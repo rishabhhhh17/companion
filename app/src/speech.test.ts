@@ -211,7 +211,7 @@ describe("a Show me asked by voice counts only its own answer", () => {
     expect(card).toContain("player.current.start(steps, { aim, words }, speaking, speed, pace);");
     expect(card).not.toMatch(/const speaking = speechOn\(\)/);
     // Pressed, not asked by voice: the hero key, Find the problem, Do it for me, Show me with an empty box, rescue, a lesson.
-    const findKey = card.slice(card.indexOf('listen("find-problem"'), card.indexOf("const offFound"));
+    const findKey = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="));   // the key and the Find the problem chip
     expect(findKey).toContain("pressed();");
     for (const l of card.split("\n").filter((x) => x.includes('invoke("do_it_for_me")') || x.includes("send(findProblem(project))") || x.includes("message: S.showMeHint"))) expect(l).toContain("pressed();");
     expect(card.slice(card.indexOf("const rescue = () => {"), card.indexOf("const rescue = () => {") + 200)).toContain("pressed();");

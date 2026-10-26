@@ -14,24 +14,25 @@ Written after the first hands on Mac session (26 Oct 2026), where the founder sa
 
 - A skin is one entry in `app/src/skins.ts`: its id, its folder of poses, its one cool hue and the numbers of its motion.
 - Flowflow (water): its own motion and one cool hue (a blue), only on or around the character: the glow ring while it listens or when a file is over it, and the droplets.
-- The chrome never reads a skin. Home, the island, Settings, the first run and the pointer do not import `skins.ts`. The glow rules take the hue from `--skin-glow`, set on the character's button only.
+- The chrome never reads a skin. Home, the island, Settings, the first run and the pointer do not import `skins.ts` (Home's Flowflow comes through `characters.ts` and `flow/`, as the dock's does). The glow rules take the hue from `--skin-glow`, set on the character's button only.
 - A new character is a folder of poses (same size, see through, premultiplied), a skin entry and its motion numbers. Nothing else changes.
 
 ## 3. Everything lives in the notch island, one thing at a time
 
-- The island and Home are black like the notch. Home is one calm column: the current job is the whole screen.
+- The island and Home are black like the notch. Home is one black panel that hangs from the notch (27 Oct 2026, after the founder found the side list "complicated" and asked for fun, like the notch apps): square at the top, a 30 point radius at the bottom, black with white words in both Mac themes (its own tokens, `:root.home-page` in `style.css`). Its window and panel paint nothing (main.rs), so only the shape shows, with a hairline edge.
 - The island (27 Oct 2026, the founder: "it does not always have to show Ready there", "this needs to be fun"):
   - Idle it is the bare notch (or a small 72 point pill, or the thin line), with no words ever. "Ready" is gone from the strings.
   - The pointer resting on it: Flowflow (the peek pose) pops down from under the notch edge with a spring overshoot, a wobble and now and then a blink, and tucks back up when the pointer leaves. One line under it only when there is something real to say (not connected, an update, the engine stopped, a failing watch).
   - While something happens: wings, 40 points each side of the notch, in the menu bar row only (`island.rs` `WING`). Left, a tiny Flowflow in the state's pose, swimming. Right, one live mark: dots (thinking), a spinning arc (working, looking), bars (listening, the microphone's light), a pulsing amber dot (needs you), a green tick that draws itself (done; the wings tuck back after 4 s), a red dot (error, failing watch).
   - The pointer on the wings: one line below them, 300 points wide, cut with an ellipsis.
   - Motion: the window changes size at once and the page springs its black shape inside it (`islandSpring.ts`, about 0.35 s, one small overshoot); getting smaller, the window waits 320 ms for the shape to tuck back. With reduced motion or Less motion everything is simply there. The island's name for VoiceOver always says the state in words.
-- One headline in plain words, one short paragraph, one primary button, one quiet secondary text button. Everything else is out of the way: other ways to ask and the options are behind one quiet line, watches too (they open by themselves when one is failing).
-- Home is 600 points wide (680 with Large, island.rs `HomeSize`), and never shorter than its side list (27 Oct 2026; 380 was too narrow). Large stops at 680 so the character, 160 plus its margin, still fits beside Home on a 1024 wide display.
-- The places (Now, What I did, Learn, Memory, Settings) are a list down the side, each a drawing and its word, shown. The open one has a fill and a solid bar on its edge (the bar meets 3 to 1). Up and Down move between them. What is open has its title at the top and a close button beside it.
-- Settings shows one section at a time: the side list becomes Back and Settings' sections. A section is a small capitals label over one rounded group of rows; a row is its name and a short line on the left and its control on the right; an on or off setting is a switch. What it usually is, and Reset, show only once it was changed. Search looks through everything.
-- Undo and Stop are always in a quiet strip at the bottom, whatever the card shows.
-- The job comes first and the ask box after it, so the first thing you see is what is happening or what happened.
+- No side list and no title bar. The top row has small round buttons only: What I did, Learn, Memory (each opens inside Home with a back arrow and its name), the gear (Settings in its own window; inside Home until the app has that window) and Close. The open one is filled white; a place that waits for you has a small amber dot.
+- Now: Flowflow on the left, large and moving (`homeCharacter.tsx`, the dock's own pose for each state), and beside it the job in big words (22 points) with one short line under it (`homeHero.ts`). Under them, across the width, one ask box (16 points, "Ask anything or describe the problem") with the mic and the one filled button inside it, then three quick actions as a drawing and a word: Find the problem, Explain an error, Show me. The other ways to ask and the options stay behind "More ways to ask".
+- A result (an answer, a receipt, research, a rescue, an explanation, Second Look, a question waiting for you) is a big card below, on a slightly lighter black, with 16 to 17 point words, ticks for what was checked and the cost.
+- Undo and Stop are small pills at the bottom, only when they can act: Undo after a task that changed files, Stop while something works (with the key that stops everything beside it).
+- The folder and the watches are one quiet line at the foot of Now.
+- Home is 640 points wide (680 with Large, island.rs `HomeSize`) and as tall as what it shows, from 300. Large stops at 680 so the character, 160 plus its margin, still fits beside Home on a 1024 wide display (720 failed that check).
+- It springs down out of the notch at each opening (scale from the top centre and a fade, 320 ms), and its contents follow a beat later. None with Reduce motion or Less motion.
 
 ## 4. Replies are read, not squinted at
 

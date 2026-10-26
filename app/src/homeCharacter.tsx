@@ -1,0 +1,37 @@
+// Flowflow in Home (27 Oct 2026): the same water as on the desktop, large, beside the job. The same pose for each state as the
+// character on the edge (characters.ts poseFor, from the model's visualState), so working wobbles, done splashes and needs
+// you waves. It is a picture, not a control: VoiceOver hears the job in the headline beside it. A touch makes it wobble.
+// With the Mac's Reduce motion or Less motion it is calm (no wobble, no ripple, no droplets), as on the desktop.
+import { useEffect, useRef, useState } from "react";
+import { poseFor, poseUrl } from "./characters.ts";
+import { useFlow } from "./flow/useFlow.ts";
+import { visualState, type Model } from "./model.ts";
+import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { reactionsOn } from "./reactions.ts";
+
+export function HomeCharacter({ m }: { m: Model }) {
+  const [reduced, setReduced] = useState(reducedMotion);
+  useEffect(() => watchReducedMotion(setReduced), []);
+  const state = visualState(m);
+  const pose = poseFor(state);
+  const flow = useFlow({ pose, state, calm: reduced });
+  const box = useRef<HTMLDivElement>(null);
+  // A task that just finished: a ripple and droplets from the middle of the water, once.
+  const wasDone = useRef(state === "done");
+  useEffect(() => {
+    const now = state === "done";
+    if (now && !wasDone.current && playful(reactionsOn(), reducedMotion())) {
+      const r = box.current?.getBoundingClientRect();
+      if (r) flow.api.big(r.left + r.width / 2, r.top + r.height / 2);
+    }
+    wasDone.current = now;
+  }, [state]);
+  return (
+    <div ref={box} className="home-char" data-state={state} data-flow={flow.ready ? "on" : undefined} aria-hidden="true"
+      onPointerDown={(e) => flow.api.poke(e.clientX, e.clientY)}>
+      {!flow.failed && <canvas ref={flow.canvasRef} className="home-flow" />}
+      <img className={`home-pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
+      {!flow.failed && <canvas ref={flow.dropRef} className="home-drops" />}
+    </div>
+  );
+}

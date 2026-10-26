@@ -39,7 +39,7 @@ describe("Home's tabs", () => {
     expect(PANEL_TAB.settings).toBe("settings");
   });
   test("the ask box is only hidden on other tabs, never taken away: a draft, and words from hold to talk, are kept", () => {
-    expect(card).toMatch(/<div hidden=\{!show\("ask"\)\}>/);
+    expect(card).toMatch(/<div className="askwrap" hidden=\{!show\("ask"\)\}>/);
     expect(card).not.toMatch(/\{show\("ask"\) &&/);
   });
   test("words from hold to talk bring Now forward, where the box is", () => {
@@ -140,10 +140,10 @@ describe(`what ${PRODUCT} says about itself shows on every tab`, () => {
     expect(m.error).toBeTruthy();
     for (const t of TABS) expect(shownOn("notes", t, m), t).toBe(true);
   });
-  test("the card draws the notes between the tabs and the tab's panel, not inside one tab", () => {
+  test("the card draws the notes between the top of Home and the open place, not inside one place", () => {
     const at = card.indexOf('{show("notes") && <>');
-    expect(at).toBeGreaterThan(card.indexOf('role="tablist"'));
-    expect(at).toBeLessThan(card.indexOf('role="tabpanel"'));
+    expect(at).toBeGreaterThan(card.indexOf('<nav className="places"'));
+    expect(at).toBeLessThan(card.indexOf('role="region"'));
     const block = card.slice(at, card.indexOf("</>}", at));
     expect(block).toContain("{m.error}");
     expect(block).toContain("{m.notice}");
@@ -235,14 +235,13 @@ describe("the tabs from the keyboard", () => {
     expect(tabKey("now", "ArrowUp")).toBe("settings");
     for (const k of ["Enter", " ", "Tab", "a"]) expect(tabKey("learn", k)).toBeNull();
   });
-  test("the tab list follows the tabs pattern: one tab in the Tab order, arrows for the rest, the chosen one marked", () => {
-    expect(card).toContain('role="tablist"');
-    expect(card).toContain('role="tab"');
-    expect(card).toContain('role="tabpanel"');
-    expect(card).toMatch(/aria-selected=\{t === home\.tab\}/);
-    expect(card).toMatch(/tabIndex=\{t === home\.tab \? 0 : -1\}/);
-    expect(card).toMatch(/onKeyDown=\{[^\n]*tabKey\(/);
-    // A tab shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
+  test("the places are round buttons in the Tab order, the open one marked, and a back arrow to Now (27 Oct 2026)", () => {
+    // No tab list any more: each place is a plain button, reached with Tab, that says whether it is open.
+    expect(card).not.toContain('role="tablist"');
+    expect(card).toMatch(/aria-pressed=\{t === home\.tab\}/);
+    expect(card).toContain('className="back" type="button" aria-label={S.look.back}');
+    expect(card).toContain('role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title"');
+    // A place shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
     expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
   });
 });

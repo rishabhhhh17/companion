@@ -17,15 +17,15 @@ describe("the character floats on the desktop", () => {
     expect(read("../overlay.html")).toMatch(/html,body\{margin:0;background:transparent/);
   });
   test("its window and panel are see through too (the page cannot paint over a white panel)", () => {
-    expect(main).toContain('let b = if label == "dock" { b.transparent(true) } else { b };');
+    expect(main).toContain('let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };');
     const at = main.indexOf("let dock = make_panel(mtm, dock_ns, false, dock_frame);");
     expect(at).toBeGreaterThan(0);
     const after = main.slice(at, at + 400);
     expect(after).toContain("dock.setOpaque(false);");
     expect(after).toContain("dock.setHasShadow(false);");
     expect(after).toContain("dock.setBackgroundColor(Some(&NSColor::clearColor()));");
-    // Home is still an ordinary opaque window.
-    expect(main).not.toMatch(/card_w[^;]*transparent\(true\)/);
+    // Home is see through too (27 Oct 2026): its page paints one black shape with round bottom corners (island.rs tests).
+    expect(main).toContain('let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };');
   });
   test("what it says is a small pill that stays readable on any wallpaper", () => {
     const pill = /\.dock-label \{([^}]*)\}/.exec(css)![1];
@@ -48,29 +48,29 @@ describe("the character floats on the desktop", () => {
 });
 
 describe("Home is one calm column", () => {
-  test("the places are a list down the side, each a drawing and its word, shown (the wide Home of 27 Oct 2026)", () => {
-    expect(card).toContain('<Icon name={t} />');
-    expect(card).toContain('<span className="tab-word">{tabName(t)}</span>');
-    expect(card).toContain('aria-orientation="vertical"');
-    // The tab list is still a tab list, with every tab reachable by the arrows.
-    expect(card).toContain('role="tablist"');
-    expect(card).toMatch(/onKeyDown=\{\(e\) => \{ const n = tabKey\(t, e\.key\);/);
+  test("the places are round buttons at the top, each a drawing with its name (the black Home of 27 Oct 2026)", () => {
+    expect(card).toContain("<Icon name={t} size={18} />");
+    expect(card).toContain("aria-label={tabName(t)} title={tabName(t)}");
+    expect(card).not.toContain('role="tablist"');
   });
-  test("the first screen shows the current job first and the ask box after it", () => {
-    const ask = card.indexOf('<div hidden={!show("ask")}>');
+  test("the first screen shows the current job first, in big words, and the ask box after it; results follow below", () => {
+    const head = card.indexOf('className="headline">{hero.headline}</h1>');
+    const ask = card.indexOf('<div className="askwrap" hidden={!show("ask")}>');
+    expect(head).toBeGreaterThan(-1);
+    expect(head).toBeLessThan(ask);
     for (const panel of ['{show("urgent") && <div ref={urgent}>', '{show("receipt") && m.receipt', '{show("proof") && m.task?.proof', '{show("research") && m.research']) {
-      expect(card.indexOf(panel), panel).toBeGreaterThan(-1);
-      expect(card.indexOf(panel), `${panel} comes before the ask box`).toBeLessThan(ask);
+      expect(card.indexOf(panel), panel).toBeGreaterThan(ask);
     }
   });
   test("one filled button to start; the other ways to ask and the options are behind one quiet line", () => {
     const more = card.indexOf('<details className="more">');
     expect(more).toBeGreaterThan(-1);
-    const startAt = card.indexOf('<button className="btn primary" type="button" onClick={submit}>{S.start}</button>');
+    const startAt = card.indexOf('<button className="btn primary send" type="button" aria-label={S.look.send} title={S.look.send} onClick={submit}>');
     expect(startAt).toBeGreaterThan(-1);
     expect(startAt).toBeLessThan(more);
     const inside = card.slice(more, card.indexOf("</details>", more));
-    for (const btn of ["plan", "rescue", "research", "shipCheck", "online", "showMe", "drawIt"]) expect(inside, btn).toContain(`buttonShown("${btn}")`);
+    // Show me is one of the three quick actions now (homeHero.test.ts), so it is not here twice.
+    for (const btn of ["plan", "rescue", "research", "shipCheck", "online", "drawIt"]) expect(inside, btn).toContain(`buttonShown("${btn}")`);
     expect(inside).toContain("setOff(e.target.checked)");
     // A ticked "off the record" is still said on the line that closes the options.
     expect(inside).toContain("{off && <span> · {S.offRecord}</span>}");
@@ -79,7 +79,7 @@ describe("Home is one calm column", () => {
     expect(card).toMatch(/<details className="more" open=\{watchesOf\(m\.watches, project\)\.some\(\(w\) => w\.state === "failing"\)\}>/);
   });
   test("a reply is large and in a comfortable line, not in a small box", () => {
-    const answer = /\.answer \{([^}]*)\}/.exec(css)![1];
+    const answer = /\n\.answer \{([^}]*)\}/.exec(css)![1];
     expect(answer).toContain("font-size: var(--t-answer)");
     expect(answer).toContain("line-height: 1.5");
     expect(answer).toMatch(/max-width: (4\d|5\d|6\d|70)ch/);
@@ -90,9 +90,10 @@ describe("Home is one calm column", () => {
     expect(card).toContain('ehLines(m).map((l, i) => <div className="answer" key={i}>');
     expect(card).toContain('slLines(m).map((l, i) => <div className="answer" key={i}>');
   });
-  test("a panel is no box: a hairline between jobs, a small mark for waiting, never a coloured edge", () => {
+  test("a result is a big readable card on Home's black; a small mark for waiting, never a coloured edge", () => {
     expect(/\n\.panel \{([^}]*)\}/.exec(css)![1]).toContain("border: 0");
-    expect(css).toContain(".panel + .panel { border-top: 1px solid var(--line);");
+    expect(css).toMatch(/\.home \.view \.panel \{ background: var\(--card\); border-radius: 20px;/);
+    expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }");
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
   test("the receipt reads as one block: what changed, a tick for what was checked, then what it cost and how many files", () => {
@@ -104,24 +105,24 @@ describe("Home is one calm column", () => {
   });
 });
 
-describe("Undo and Stop are always in reach", () => {
-  const strip = card.slice(card.indexOf('<div className="strip"'), card.indexOf("</>)}", card.indexOf('<div className="strip"')));
-  test("a quiet strip at the bottom, drawn whatever tab is open", () => {
-    expect(card.indexOf('<div className="strip"')).toBeGreaterThan(card.indexOf('role="tabpanel"'));
+describe("Undo and Stop are in reach whenever they can act", () => {
+  const strip = card.slice(card.indexOf('<div className="strip"'), card.indexOf("</div>", card.indexOf('{keyHint("stop"')));
+  test("small pills at the foot of Home, drawn whatever place is open, and nothing when neither can act", () => {
+    expect(card.indexOf('<div className="strip"')).toBeGreaterThan(card.indexOf('role="region"'));
     expect(css).toMatch(/\.strip \{[^}]*position: sticky; bottom: 0;/);
+    expect(css).toContain(".strip:empty { display: none; }");
   });
   test("Undo is the same flow as before: the receipt's own question, on the same button id, with the same condition", () => {
     expect(strip).toContain("id={undoId}");
     expect(strip).toContain("aria-label={S.undo}");
     expect(strip).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
-    expect(strip).toContain("disabled={!(m.receipt && m.receipt.changed.length > 0 && !m.undo && project)}");
-    // The "are you sure" step and its keyboard handling are still in the receipt, and give the keyboard back to this button.
+    expect(strip).toContain("{undoCan(m, project) && (");
     expect(card).toContain("label={S.undoSure} back={undoId}");
-    // The old button inside the receipt is gone, so there is one Undo.
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);
   });
-  test("Stop stops the agent, is pressable while one works, and the key that stops everything is named beside them", () => {
-    expect(strip).toContain("disabled={!working} onClick={() => void send(stopAgent())}");
+  test("Stop stops the agent, shows while one works, and the key that stops everything is named beside it", () => {
+    expect(strip).toContain("{stopCan(m) && (");
+    expect(strip).toContain("onClick={() => void send(stopAgent())}");
     expect(strip).toContain('keyHint("stop", S.look.stopKeys, keys)');
   });
 });

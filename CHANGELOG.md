@@ -23,6 +23,21 @@ The founder: "this needs to be fun", and "our guys can always be outside of the 
 - It never hides behind the menu bar, the notch or the Dock, or onto another display; on those edges it just stays in view.
 - Two new switches in Settings, Home and the character: "Rest past the edge of the screen" and "Take a curious peek now and then". Both are on; turn the first off to keep the character fully in view as before.
 
+## Home is one black panel under the notch, with Flowflow beside you: 27 Oct 2026
+
+The founder saw the wide Home with its side list and said it looked complicated and needed to be fun. The best notch apps open as one big black shape that drops out of the notch, with big content, few words and a few round buttons. Home now works that way.
+
+- **One black panel, in light and dark.** Home hangs from the notch: square at the top, round at the bottom, black with white words whatever the Mac's theme. Nothing else is drawn around it.
+- **Flowflow is in Home, large and moving.** The same water as on the desktop sits on the left: it types while working, waves when it needs your OK, and splashes when a task is done.
+- **The job in big words.** At the top: what you asked for, and one short line (working and what it cost so far, checked and working, or that your answer is needed just below).
+- **One ask box and three quick actions:** Find the problem, Explain an error and Show me. The mic in the box shows the keys for hold to talk. The other ways to ask stay behind "More ways to ask".
+- **Results are big cards.** An answer, a receipt, research or a rescue shows as a large, easy to read card below, with ticks for what was checked and the cost.
+- **No side list.** Small round buttons at the top: What I did, Learn and Memory open inside Home with a back arrow; the gear opens Settings (in its own window once that lands; until then, inside Home); and Close.
+- **Undo and Stop only when they can act,** as small pills at the bottom: Undo after a task that changed files, Stop while something works.
+- **It springs open** from the notch in about a third of a second. With Reduce motion or Less motion it just appears.
+- Home is 640 points wide (680 with Large; 720 did not leave room for the character on a small display) and as tall as what it shows, from 300.
+- **Checked by machine and in a browser preview only.** Nobody has seen it on a Mac yet.
+
 ## Home is wider, with a side list, and Settings reads like a Mac app: 27 Oct 2026
 
 The founder found the card under the notch "too narrow". Taking the lead from how HeyClicky lays out its own Home:
