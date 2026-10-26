@@ -331,7 +331,7 @@ describe("most steps in a plan (drive.maxSteps)", () => {
     expect(r.engine.calls[1].prompt).toContain("at most 12 steps");
     expect(of(r.events, "plan.ready")[0].steps.length).toBe(12);
     expect(of(r.events, "plan.ready")[0].truncated).toBe(true);
-    expect(of(r.events, "plan.ready")[0].estimateUsd).toBe(3);
+    expect(of(r.events, "plan.ready")[0].estimateUsd).toBe(0.72);
   });
   test("at 3: asked for at most 3, cut to 3, and an approved plan of 5 runs only 3", async () => {
     const r = setup([[planText("A", "B", "C", "D", "E")], [planText("A", "B", "C", "D", "E")], [write("a.txt", "1")], [write("a.txt", "2")], [write("a.txt", "3")]], [ok()], { values: { "drive.maxSteps": 3 } });
@@ -380,27 +380,29 @@ describe("the rough cost shown before Start (at most) follows the model the plan
     expect(of(r.events, "plan.ready")[0].estimateUsd).toBe(report);
     return report;
   };
-  test("on the usual models it is exactly today's: $0.25 a step, for a plan and for a Rescue", async () => {
-    expect(await plan(MODELS.agent)).toBe(1);
-    expect(await rescue(MODELS.diagnose)).toBe(1);
+  // The step rate is measured (drive.ts MEASURED_STEP_USD, 4 cents on Sonnet 5.5) times 1.5, so four steps are 24 cents on
+  // Sonnet 5.5 and, at twice the list price, 48 cents on Opus 5.5.
+  test("on the usual work model: six cents a step, for a plan; a Rescue on its usual model (Opus 5.5) is twice that", async () => {
+    expect(await plan(MODELS.agent)).toBe(0.24);
+    expect(await rescue(MODELS.diagnose)).toBe(0.48);
   });
   test("a plan made on Careful (Opus 5.5) shows about twice as much, as its words say", async () => {
-    expect(await plan(MODEL_CHOICES.work.careful.model)).toBe(2);
+    expect(await plan(MODEL_CHOICES.work.careful.model)).toBe(0.48);
   });
   test("a Rescue on Recommended (Sonnet 5.5) shows about half, as its words say", async () => {
-    expect(await rescue(MODEL_CHOICES.rescue.recommended.model)).toBe(0.5);
+    expect(await rescue(MODEL_CHOICES.rescue.recommended.model)).toBe(0.24);
   });
   test(`a model ${PRODUCT} does not know counts as the dearest it knows, so the figure is never too low`, async () => {
     const unknown = await plan("claude-future-9");
-    for (const m of KNOWN_MODELS) expect(unknown, m).toBeGreaterThanOrEqual(planEstimate(4, m, MODELS.agent));
+    for (const m of KNOWN_MODELS) expect(unknown, m).toBeGreaterThanOrEqual(planEstimate(4, m));
   });
-  test("the step rate is today's for the job's usual model, scaled by the chosen model's list price against it", () => {
-    expect(planEstimate(12)).toBe(3);
-    expect(planEstimate(12, MODELS.agent, MODELS.agent)).toBe(3);
-    expect(planEstimate(12, "claude-opus-5-5", MODELS.agent)).toBe(6);
-    expect(planEstimate(4, MODELS.diagnose, MODELS.diagnose)).toBe(1);
-    expect(planEstimate(4, "claude-sonnet-5-5", MODELS.diagnose)).toBe(0.5);
-    expect(planEstimate(4, "claude-haiku-4-5-20251001", MODELS.agent)).toBe(0.5);
+  test("the step rate is the measured one on Sonnet 5.5, scaled by the chosen model's list price against it", () => {
+    expect(planEstimate(12)).toBe(0.72);
+    expect(planEstimate(12, MODELS.agent)).toBe(0.72);
+    expect(planEstimate(12, "claude-opus-5-5")).toBe(1.44);
+    expect(planEstimate(4, MODELS.diagnose)).toBe(0.48);
+    expect(planEstimate(4, "claude-sonnet-5-5")).toBe(0.24);
+    expect(planEstimate(4, "claude-haiku-4-5-20251001")).toBe(0.12);
   });
 });
 

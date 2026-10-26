@@ -55,13 +55,18 @@ export const freshStepPrompt = (goal: string, prompt: string) =>
   `${goal ? `This is one step of a bigger goal: ${goal}\n` : ""}Earlier steps may already be done in the project's files, so look before you change anything.${carriesPastedError(goal) ? `\n${STALE_ERROR_RULE}` : ""}\n\n${prompt}`;
 export const freshShortenPrompt = (goal: string, n: number, max = MAX_STEPS) =>
   `${planPrompt(goal, max)}\n\nA first try gave ${n} steps, which is too many. Reply with ONLY a JSON list of at most ${max} steps, combining small ones.`;
-// A rough, honest estimate to show before the person presses Start.
-// It is an upper limit ("up to"), because most steps cost far less. $0.25 a step is today's figure for the job's usual model
-// (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue); a plan made on another model (Claude for tasks, Claude for Rescue)
-// is scaled by that model's list price against the usual one, so "about twice the cost" shows as about twice the figure.
-export const STEP_USD = 0.25;
-export const estimateUsd = (steps: number, model?: string, usual?: string) =>
-  Math.round(steps * STEP_USD * (model && usual ? priceRatio(model, usual) : 1) * 100) / 100;
+// A rough, honest estimate to show before the person presses Start. It is what real steps cost, not what a step may cost at
+// most (the budget caps do that, and are not touched here): the first Mac session showed "about 25 cents" for a task that
+// cost 3 cents. A step on Sonnet 5.5, the usual model for a Drive plan, has a measured median of about 4 cents (a fixed
+// project $0.04 in the first real run, 4.6 cents in the loop breaker set, 3.2 cents on the founder's Mac; the Rescue path
+// ran $0.09 to $0.12 a case with its diagnosis on Opus). The figure is that median times a safety factor of 1.5, never below
+// one cent for a plan that has a step, and scaled by the chosen model's list price against Sonnet 5.5 (so Opus shows twice
+// as much, as its words say).
+export const MEASURED_STEP_USD = 0.04;
+export const STEP_SAFETY = 1.5;
+const MEASURED_ON = "claude-sonnet-5-5";
+export const estimateUsd = (steps: number, model?: string) =>
+  steps <= 0 ? 0 : Math.max(0.01, Math.round(steps * MEASURED_STEP_USD * STEP_SAFETY * (model ? priceRatio(model, MEASURED_ON) : 1) * 100) / 100);
 
 // Tools that only look. Everything else is refused while planning, in code.
 export const READ_ONLY_TOOLS = new Set(["Read", "Glob", "Grep", "LS", "NotebookRead", "TodoWrite"]);

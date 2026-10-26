@@ -17,7 +17,7 @@ import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
-import { MODELS, usualModel } from "./models.ts";
+import { MODELS } from "./models.ts";
 import { agentModesOf } from "./groups.ts";
 import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
@@ -1346,7 +1346,7 @@ export class AgentRunner {
       const truncated = steps.length > max;
       const kept = steps.slice(0, max);
       this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal, maxSteps: max });
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model, usualModel("work")) } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model) } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -2028,7 +2028,7 @@ export class AgentRunner {
         ...(cmd.offTheRecord ? { offTheRecord: true, goal: rescueGoal(d) } : {}) });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
       // The rough cost follows the model the plan's steps run on (Claude for Rescue), against Rescue's usual one.
-      const estimate = estimateUsd(steps.length, cmd.model, usualModel("rescue"));
+      const estimate = estimateUsd(steps.length, cmd.model);
       this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimate } as never);
       this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimate } as never);
       this.state(cmd.agent, "needsYou");
