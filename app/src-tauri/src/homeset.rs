@@ -207,7 +207,7 @@ mod wiring {
         let point = body("fn point_problem(");
         let voice = body("fn voice_worker(");
         let phelp = body_in(include_str!("phelp.rs"), "pub fn on_hotkey(");
-        let errhelp = body_in(include_str!("errhelp.rs"), "pub fn on_hotkey(");
+        let errhelp = body_in(include_str!("errhelp.rs"), "fn press(");
         let seclook = body_in(include_str!("seclook.rs"), "pub fn on_hotkey(");
         for (name, b) in [("show me", &showme), ("point at the problem", &point), ("hold to talk", &voice), ("prompt help", &phelp), ("error explainer", &errhelp), ("second look", &seclook)] {
             assert!(!b.contains("island") && !b.contains("ISLAND") && !b.contains("home_set()"), "{name} depends on the island or a Home setting");
@@ -231,11 +231,17 @@ mod wiring {
         assert!(gate < listening && listening < wait && wait < mic, "hidden check, then the light, then a moment, then the microphone");
         // Prompt help and the error explainer: Home opens (beside the character when there is no island, card_spot) with
         // "Reading", and gets a moment to draw, before the text box is read.
-        for (name, b, opened) in [("prompt help", &phelp, "open_card(&app, \"prompt_help\", false);"), ("error explainer", &errhelp, "open_card(&app, \"explain_error\", false);"), ("second look", &seclook, "open_card(&app, \"second_look\", false);")] {
-            let said = b.find("say(&app, \"reading\"").unwrap();
+        // The error explainer's press is its own function (errhelp.rs `press`, finding D) and wakes the app in front while it
+        // looks for the box (`ax::focused_waking`), so it names its call and the `app` it holds a little differently.
+        for (name, b, opened, said_at, reads) in [
+            ("prompt help", &phelp, "open_card(&app, \"prompt_help\", false);", "say(&app, \"reading\"", "ax::focused("),
+            ("error explainer", &errhelp, "open_card(app, \"explain_error\", false);", "say(app, \"reading\"", "ax::focused_waking("),
+            ("second look", &seclook, "open_card(&app, \"second_look\", false);", "say(&app, \"reading\"", "ax::focused("),
+        ] {
+            let said = b.find(said_at).unwrap();
             let after = |what: &str| b[said..].find(what).map(|i| said + i).unwrap_or_else(|| panic!("{name}: no {what} after the light"));
-            let (open, draw, read) = (after(opened), after("std::thread::sleep(INDICATOR_DRAW);"), after("ax::focused("));
-            assert!(!b[..said].contains("ax::focused("), "{name}: nothing is read before the light");
+            let (open, draw, read) = (after(opened), after("std::thread::sleep(INDICATOR_DRAW);"), after(reads));
+            assert!(!b[..said].contains("ax::focused"), "{name}: nothing is read before the light");
             assert!(open < draw && draw < read, "{name}: the light, Home, a moment, then the read");
         }
         // Turning the island off hides only the island: never the character or Home's own window.
