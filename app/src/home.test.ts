@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, visualState, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 import { PH_KEYS_MS } from "./keys.ts";
@@ -302,16 +302,17 @@ describe("Home steps aside for what it opens", () => {
 });
 
 describe("the island's status", () => {
-  test("a mark beside the notch only when the person should look: a question, listening, just done", () => {
+  test("wings beside the notch while something happens: working, a question, listening, just done; never idle", () => {
     expect(islandAlert(initial())).toBe(false);
-    expect(islandAlert(run(task()))).toBe(false);
+    // The fun island (27 Oct 2026): work going on now shows too, as wings with a live mark (it used to stay bare).
+    expect(islandAlert(run(task()))).toBe(true);
     expect(islandAlert(run([...task(), approval()]))).toBe(true);
     expect(islandAlert(run([ev({ type: "app.voice", stage: "listening", message: "Listening" })]))).toBe(true);
     expect(islandAlert(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })]))).toBe(true);
     expect(islandAlert(run([ev({ type: "app.runner_down" })]))).toBe(false);
   });
-  test("one line: ready, working on what, needs you for what, done with what", () => {
-    expect(islandLine(initial())).toBe(S.islandReady);
+  test("one line: nothing when idle, working on what, needs you for what, done with what", () => {
+    expect(islandLine(initial())).toBe("");
     expect(islandLine(run(task()))).toBe(S.islandWorkingOn("add a sign up page"));
     expect(islandLine(run([...task(), approval()]))).toBe(S.islandNeedsYou("git push sends your work to a remote"));
     expect(islandLine(run([...task(), stuck]))).toBe(S.islandNeedsYou(S.stuckTitle));
@@ -333,14 +334,9 @@ describe("the island's status", () => {
   test("working with no name says what the character says", () => {
     expect(islandLine(run([ev({ type: "agent.state", agent: "a", state: "thinking" })]))).toBe("Thinking");
   });
-  test("the pill's one word is the character's state, short enough for the pill", () => {
-    expect(islandWord(initial())).toBe("Ready");
-    expect(islandWord(run([...task(), approval()]))).toBe("Needs you");
-    expect(islandWord(run([ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe(S.islandWordError);
-    for (const st of ["idle", "thinking", "working", "checking", "needsYou", "done", "error"]) {
-      expect(islandWord(run([ev({ type: "agent.state", agent: "a", state: st })])).length, st).toBeLessThanOrEqual(12);
-    }
-    expect(islandWord(run([ev({ type: "app.runner_down" })])).length).toBeLessThanOrEqual(12);
+  test("the pill has no word any more: idle it is bare, and what happens shows as wings (island.test.ts)", () => {
+    const page = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
+    expect(page).not.toMatch(/islandWord|pillrow/);
   });
 });
 
@@ -477,7 +473,7 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(islandAlert(initial(), true), "nothing waiting: no mark").toBe(false);
     expect(islandAlert(run([ev({ type: "app.runner_down" })]), true)).toBe(false);
     const island = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
-    expect(island).toContain('const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");');
+    expect(island).toContain('const raw = islandWings(m, useSetting("home.goToNeeds") === "markTab");');
   });
   test("with Only mark the tab and no island, the character shows that mark instead, and keeps its own lights", () => {
     const lesson = run(walkStep());

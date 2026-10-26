@@ -54,7 +54,7 @@ describe("A53: Cancel on a plan, or Close on Rescue's report", () => {
     expect(islandLine(before)).toBe(S.islandNeedsYou(S.planTitle));
     const after = island([state("thinking"), planReady, state("needsYou"), state("idle")]);
     expect(after.plan).toBeNull();
-    expect(islandLine(after)).toBe(S.islandReady);
+    expect(islandLine(after)).toBe("");
     expect(islandAlert(after)).toBe(false);
   });
   test("a plan stays on the card while its agent waits on the person for it", () => {
@@ -111,7 +111,7 @@ describe("A56: closing Point at the problem or which task broke it is heard by t
   test("once the engine lets the agent rest, the mark and the words go", () => {
     const rested = run([state("idle")], foundIsland);
     expect(islandAlert(rested)).toBe(false);
-    expect(islandLine(rested)).toBe(S.islandReady);
+    expect(islandLine(rested)).toBe("");
   });
   test("Close on Home asks the engine to let the agent rest, only when nothing else waits for it", () => {
     const point = card.slice(card.indexOf("{show(\"point\") && m.point && ("), card.indexOf("{show(\"bisect\")"));

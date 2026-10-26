@@ -20,6 +20,12 @@ Written after the first hands on Mac session (26 Oct 2026), where the founder sa
 ## 3. Everything lives in the notch island, one thing at a time
 
 - The island and Home are black like the notch. Home is one calm column: the current job is the whole screen.
+- The island (27 Oct 2026, the founder: "it does not always have to show Ready there", "this needs to be fun"):
+  - Idle it is the bare notch (or a small 72 point pill, or the thin line), with no words ever. "Ready" is gone from the strings.
+  - The pointer resting on it: Flowflow (the peek pose) pops down from under the notch edge with a spring overshoot, a wobble and now and then a blink, and tucks back up when the pointer leaves. One line under it only when there is something real to say (not connected, an update, the engine stopped, a failing watch).
+  - While something happens: wings, 40 points each side of the notch, in the menu bar row only (`island.rs` `WING`). Left, a tiny Flowflow in the state's pose, swimming. Right, one live mark: dots (thinking), a spinning arc (working, looking), bars (listening, the microphone's light), a pulsing amber dot (needs you), a green tick that draws itself (done; the wings tuck back after 4 s), a red dot (error, failing watch).
+  - The pointer on the wings: one line below them, 300 points wide, cut with an ellipsis.
+  - Motion: the window changes size at once and the page springs its black shape inside it (`islandSpring.ts`, about 0.35 s, one small overshoot); getting smaller, the window waits 320 ms for the shape to tuck back. With reduced motion or Less motion everything is simply there. The island's name for VoiceOver always says the state in words.
 - One headline in plain words, one short paragraph, one primary button, one quiet secondary text button. Everything else is out of the way: other ways to ask and the options are behind one quiet line, watches too (they open by themselves when one is failing).
 - Home is 600 points wide (680 with Large, island.rs `HomeSize`), and never shorter than its side list (27 Oct 2026; 380 was too narrow). Large stops at 680 so the character, 160 plus its margin, still fits beside Home on a 1024 wide display.
 - The places (Now, What I did, Learn, Memory, Settings) are a list down the side, each a drawing and its word, shown. The open one has a fill and a solid bar on its edge (the bar meets 3 to 1). Up and Down move between them. What is open has its title at the top and a close button beside it.

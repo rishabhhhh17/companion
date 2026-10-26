@@ -752,7 +752,6 @@ export const S = {
     otherDay: (day: string, hm: string) => `${day} at ${hm}`,
     // The island: one plain line while a watch is failing. No popup, and it never takes the keyboard.
     islandFailing: (name: string) => `${name} is failing`,
-    islandWord: "Failing",
     // What a task is told when the person presses Fix it on a failed watch. The evidence was read only, secrets hidden.
     fixPrompt: (what: string, evidence: string) => `Fix this problem with my project. ${what}\n\nWhat ${PRODUCT} saw, read only from my own tools:\n${evidence.slice(0, 4000)}\n\nFind the cause and make the smallest change that fixes it, then check that it works. Do not weaken or delete tests.`,
     fixWhat: { site_up: (host: string) => `My site ${host} is not answering properly.`, deploy_status: () => "My latest Vercel deploy failed.", ci_status: () => "My latest GitHub run failed.", project_checks: () => "This project's own checks are failing." } as Record<string, (host: string) => string>,
@@ -971,13 +970,13 @@ export const S = {
   homeMemoryLoading: "Looking up what I know…",
   homeMemoryNoProject: "Choose a project folder first, on Now.",
   islandOpen: `Open ${PRODUCT}`,
-  islandWordError: "Needs a look",
-  islandReady: "Ready. Stuck in any app? Press Point at the problem.",
+  // Only heard (VoiceOver), never shown: idle, the island is the bare notch with no words on it.
+  islandQuiet: "Nothing needs you right now.",
   islandNotConnected: "Not connected yet. Click to connect Claude.",
   islandUpdate: (version: string) => `Version ${version} is ready. Click to install it.`,
   homeUpdateReady: (version: string) => `Version ${version} of ${PRODUCT} is ready.`,
   islandOff: "The engine is not running. Click to see why.",
-  islandListening: "Listening. Let go of the keys when you are done.",
+  islandListening: "Listening. Let go when you are done.",
   islandWorkingOn: (what: string) => `Working on ${what}`,
   islandNeedsYou: (what: string) => `Needs you: ${what}`,
   islandDone: (what: string) => `Done: ${what}`,

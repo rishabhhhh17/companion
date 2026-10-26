@@ -393,14 +393,18 @@ thread_local! {
     // The tracking area on the island does not keep its owner alive, so it is kept here for as long as the app runs.
     static ISLAND_HOVER_OWNER: RefCell<Option<Retained<hover::HoverOwner>>> = const { RefCell::new(None) };
 }
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, says: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
 /// The display it is on now, for Home to drop down from.
 static ISLAND_ON: Mutex<Option<island::Display>> = Mutex::new(None);
-/// What the island page was last told: its size, and what it sits on (the notch, a pill, or the thin line on the top edge).
-static ISLAND_SENT: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+/// What the island page was last told: its size, what it sits on (the notch, a pill, or the thin line on the top edge), and
+/// the frame it springs its shape to (island.rs `Look`). Null until the first time.
+static ISLAND_SENT: Mutex<Value> = Mutex::new(Value::Null);
+/// Counts each frame asked of the island, so a smaller frame that waits for the shape to tuck back (island.rs `retract_ms`)
+/// is dropped when a newer one was asked meanwhile.
+static ISLAND_GEN: AtomicU64 = AtomicU64::new(0);
 /// Which display the pointer has stayed on, so the island can go to the one the person is using.
 static ISLAND_FOLLOW: Mutex<island::Follow> = Mutex::new(island::Follow::new());
 /// Home (the card) is open; each opening takes a number, so an older click away watch stops.
@@ -470,22 +474,38 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     if moved { reset_hover(); }
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); *s };
     let mode = island::mode(state);
-    let f = island::island_frame(&d, mode);
+    let look = island::look(&d, mode, state.says);
+    let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
-    // Growing downward is a short motion (island.rs), unless Reduce motion or Less motion is on; anything else is at once.
-    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { let secs = if p.isVisible() { island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion()) } else { None }; set_frame_moving(p, to_appkit(f, ph), secs, None, &ISLAND_MOVES); } });
+    // The page springs its shape to the new size (island.tsx). Growing is at once, so the shape has room to grow into;
+    // getting smaller in place waits while the shape tucks back (island.rs), unless Reduce motion or Less motion is on.
+    let gen = ISLAND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let from = ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)));
     let kind = island::kind(&d);
-    tell_island(mode, kind);
+    tell_island(mode, kind, &look);
+    match from.filter(|_| !moved).and_then(|from| island::retract_ms(from, f, reduce_motion())) {
+        None => set_island_frame(f, ph),
+        Some(ms) => if let Some(app) = APP.get() {
+            let a = app.clone();
+            std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(ms)); let _ = a.run_on_main_thread(move || if ISLAND_GEN.load(Ordering::SeqCst) == gen { set_island_frame(f, ph) }); });
+        },
+    }
     if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
 }
 
-fn tell_island(mode: island::Mode, kind: island::Kind) {
+/// Sets the island's window to `f` (global top left points) at once. Every frame of the island goes through here. Main thread.
+fn set_island_frame(f: Rect, ph: f64) {
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES); } });
+}
+
+fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look) {
+    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row });
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
-        if g.0 == mode.word() && g.1 == kind.word() { return; }
-        *g = (mode.word().to_string(), kind.word().to_string());
+        if *g == v { return; }
+        *g = v.clone();
     }
-    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", json!({ "mode": mode.word(), "kind": kind.word() })); }
+    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", v); }
 }
 
 /// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds (island.rs
@@ -542,12 +562,13 @@ fn home_closed() {
     }
 }
 
-/// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
-/// pill, or the thin line on the top edge growing into the pill.
+/// The page says whether the wings are out (something is happening; home.ts islandWings) and whether it has a line to show
+/// under the pointer (`says`), so a peek at the bare notch is wide enough for its line, or only for Flowflow.
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool) {
+fn island_alert(app: AppHandle, on: bool, says: Option<bool>) {
+    let says = says.unwrap_or(false);
     let _ = app.run_on_main_thread(move || {
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on; s.alert = on; c };
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.says != says; s.alert = on; s.says = says; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }
@@ -555,9 +576,10 @@ fn island_alert(app: AppHandle, on: bool) {
 /// For the island page when it loads: its size now, what it sits on, and an update a check found (its version only).
 #[tauri::command]
 fn island_state() -> Value {
-    let (mode, kind) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let update = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|v| json!({ "version": v })).unwrap_or(Value::Null);
-    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind }, "update": update })
+    let mut v = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if !v.is_object() { v = json!({ "mode": "rest", "kind": "pill" }); }
+    v["update"] = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|u| json!({ "version": u })).unwrap_or(Value::Null);
+    v
 }
 
 /// macOS tells us the pointer entered or left the island: a tracking area on that one window, active even while another

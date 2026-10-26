@@ -223,7 +223,7 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     const calls = [...main.matchAll(/set_frame_moving\(([^;]*)\)/g)].map((m) => m[1]).filter((c) => !c.startsWith("p: &NSPanel"));
     expect(calls.length).toBe(3);
     expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
-    expect(main).toContain("island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion())");
+    expect(main).toContain("island::retract_ms(from, f, reduce_motion())");
     expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
   });
 });

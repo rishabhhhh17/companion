@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The island in the notch is fun now, and never says Ready: 27 Oct 2026
+
+The founder said the island "looks ass and complicated" and "does not always have to show Ready there". So it now works like the best notch apps:
+
+- **Idle, it is just the notch.** Black, no words, nothing to read.
+- **Rest the pointer on it and Flowflow peeks out** from under the notch with a little springy bounce and a wobble, and tucks back when you move away. A short line shows under it only when there is something real to say: not connected yet, an update waiting, the engine stopped.
+- **While something happens, the notch grows small wings.** A tiny Flowflow swims on the left; on the right one live mark: three dots while thinking, a spinning ring while working or looking, moving bars while listening, a pulsing amber dot when it needs your OK, a green tick that draws itself when done (the wings tuck away four seconds later), a small red dot when something went wrong. Each wing takes about 40 points of the menu bar, no more.
+- **Rest the pointer on the wings** to see one short line of what is happening, like "Working on fix the gallery page" or "Needs you: install a package".
+- Everything moves on springs, and simply appears with Reduce motion or Less motion. Clicking still opens Home. VoiceOver still hears what is going on, in words.
+
 ## Home is wider, with a side list, and Settings reads like a Mac app: 27 Oct 2026
 
 The founder found the card under the notch "too narrow". Taking the lead from how HeyClicky lays out its own Home:

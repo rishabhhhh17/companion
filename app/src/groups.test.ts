@@ -402,8 +402,11 @@ describe("the pages are wired to the catalog", () => {
   });
   test("the island starts its line with the group at work when the setting is on, and the dock names the look for the art", () => {
     const m = { ...initial(), runnerUp: true };
-    expect(islandLine(m, {})).toBe(S.islandReady);
-    expect(islandLine(m, { group: S.groups.names.flow })).toBe(S.groups.islandGroup(S.groups.names.flow, S.islandReady));
+    // Idle the island has no words at all (the fun island, 27 Oct 2026), so no group name either.
+    expect(islandLine(m, {})).toBe("");
+    expect(islandLine(m, { group: S.groups.names.flow })).toBe("");
+    const working = { ...m, character: "working" as const, task: { label: "x" } as never };
+    expect(islandLine(working, { group: S.groups.names.flow })).toBe(S.groups.islandGroup(S.groups.names.flow, islandLine(working, {})));
     expect(islandLine({ ...m, runnerUp: false }, { group: "Flow" })).toBe(S.islandOff);
     expect(island).toContain('useSetting("groups.islandName") !== false');
     expect(dock).toContain("data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined}");

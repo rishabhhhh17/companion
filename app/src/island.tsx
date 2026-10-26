@@ -1,11 +1,12 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import { startSettings, useSetting } from "./settingsStore.ts";
-import { followLessMotion } from "./motion.ts";
+import { followLessMotion, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
-import { islandAlert, islandLine, islandWord } from "./home.ts";
+import { DONE_WINGS_MS, ISLAND_MODES, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
-import { visualState } from "./model.ts";
+import { poseFor, poseUrl } from "./characters.ts";
+import { springStep, type Spring } from "./islandSpring.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import { useDrop } from "./dropRing.tsx";
@@ -13,52 +14,125 @@ import { activeGroup } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import "./style.css";
 
-// The island in the notch (F18): Companion's home base, quiet until something needs the person. The app decides its size
-// and what it sits on (island.rs): the notch itself, a small pill in the middle of the menu bar, or a thin line on the top
-// edge where no menu bar shows. It only ever grows downward: a lip under the notch with a mark when something needs you
-// (the pill shows the mark in itself; the thin line grows into the pill), and the status lines while the pointer rests on
-// it. This page only draws it, from the same runner events as the character and Home. A click opens Home below it. The
-// island never takes the keyboard (it is a borderless panel), so nothing here listens for keys.
+// The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
+// notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
+// is only that, black, with no words. Resting the pointer on it makes Flowflow peek out from under it. While something
+// happens it grows short wings: a tiny Flowflow on the left, one live mark on the right. A sentence shows only under the
+// pointer, and only when there is something real to say (home.ts). The black shape moves on a small spring
+// (islandSpring.ts) toward the size the app gives; the window itself changes at once, and shrinks only after the shape has
+// tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
-type Shape = { mode: "rest" | "alert" | "peek"; kind: Kind };
+type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number };
+const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : 0);
 const shapeFrom = (v: unknown): Shape | null => {
-  const o = v as { mode?: unknown; kind?: unknown } | null;
-  return o && (o.mode === "rest" || o.mode === "alert" || o.mode === "peek") && KINDS.includes(o.kind as Kind) ? { mode: o.mode, kind: o.kind as Kind } : null;
+  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown } | null;
+  if (!o || !ISLAND_MODES.includes(o.mode as IslandMode) || !KINDS.includes(o.kind as Kind)) return null;
+  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row) };
 };
+/** How long the shape takes to tuck back (the app waits as long before it makes the window smaller: island.rs RETRACT_MS). */
+const TUCK_MS = 450;
+
+/** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
+ *  The window is centred on the notch at every size, so a shape centred in it stays put on the screen when the window
+ *  changes. Size 0 (not told yet): the whole window. */
+function useSpringBox(w: number, h: number, reduced: boolean) {
+  const box = useRef<HTMLSpanElement>(null);
+  const at = useRef<{ x: Spring; y: Spring } | null>(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const draw = () => { const s = at.current; if (!s) return; el.style.setProperty("--sw", `${Math.max(0, s.x.x)}px`); el.style.setProperty("--sh", `${Math.max(0, s.y.x)}px`); };
+    if (!w || !h) { at.current = null; el.style.removeProperty("--sw"); el.style.removeProperty("--sh"); return; }
+    if (!at.current || reduced) { at.current = { x: { x: w, v: 0 }, y: { x: h, v: 0 } }; draw(); return; }
+    let raf = 0, last = performance.now();
+    const tick = (t: number) => {
+      const s = at.current!, dt = (t - last) / 1000;
+      last = t;
+      s.x = springStep(s.x, w, dt, reducedMotion());
+      s.y = springStep(s.y, h, dt, reducedMotion());
+      draw();
+      if (s.x.x !== w || s.y.x !== h || s.x.v !== 0 || s.y.v !== 0) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [w, h, reduced]);
+  return box;
+}
+
+/** The live mark on the right wing (home.ts WingMark). Drawn only, never read: the island's name says it in words. */
+function Mark({ w, count }: { w: Wings; count: number }) {
+  const inner = w.mark === "dots" ? <><i /><i /><i /></>
+    : w.mark === "bars" ? <><i /><i /><i /><i /></>
+    : w.mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
+    : null;
+  return <><span className="mark" data-state={w.state} data-mark={w.mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
+}
 
 function Island() {
   const [m] = useModel();
-  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill" });
-  // A new version a check found (the shell's "update-ready"): the status says so when nothing else is going on.
+  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0 });
+  // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);
+  const [reduced, setReduced] = useState(reducedMotion);
+  useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
     void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
     return () => { off.then((f) => f()); offUp.then((f) => f()); };
   }, []);
-  // A question waiting, listening, or just done: a mark shows (the lip under the notch, or the pill). With When something
-  // needs me set to only mark the tab (home.goToNeeds), anything that needs the person shows it too.
-  const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");
-  useEffect(() => { void invoke("island_alert", { on: alert }).catch(() => {}); }, [alert]);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
   const drop = useDrop();
   const g = activeGroup(m, running(drop.s));
   const showGroup = useSetting("groups.islandName") !== false;
   const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null });
-  const state = visualState(m);
-  const waiting = m.approvals.length;
+  // The wings, and the done tick put away after a few seconds. With When something needs me set to only mark the tab
+  // (home.goToNeeds), anything that needs the person shows the amber mark too.
+  const raw = islandWings(m, useSetting("home.goToNeeds") === "markTab");
+  const ticking = raw?.mark === "tick";
+  const [doneSince, setDoneSince] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!ticking) { setDoneSince(null); return; }
+    const t0 = Date.now();
+    setDoneSince(t0); setNow(t0);
+    const id = setTimeout(() => setNow(Date.now()), DONE_WINGS_MS);
+    return () => clearTimeout(id);
+  }, [ticking]);
+  const wings = wingsAt(raw, doneSince, now);
+  // The app sizes the window: wings out or not, and whether a peek has a line to show.
+  const out = wings !== null, says = line !== "";
+  useEffect(() => { void invoke("island_alert", { on: wings !== null, says: line !== "" }).catch(() => {}); }, [out, says]);
+  // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
+  const lastWings = useRef<Wings | null>(null);
+  if (wings) lastWings.current = wings;
+  const lastOut = useRef<IslandMode>("rest");
+  if (shape.mode !== "rest") lastOut.current = shape.mode;
+  const [restSettled, setRestSettled] = useState(true);
+  useEffect(() => {
+    if (shape.mode !== "rest") { setRestSettled(false); return; }
+    const id = setTimeout(() => setRestSettled(true), TUCK_MS);
+    return () => clearTimeout(id);
+  }, [shape.mode]);
+  const tucking = shape.mode === "rest" && !restSettled ? lastOut.current : null;
+  const parts = islandParts(shape.mode, line);
+  const showWings = parts.wings || tucking === "wings" || tucking === "wingsPeek";
+  const w = wings ?? lastWings.current;
+  const box = useSpringBox(shape.w, shape.h, reduced);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
-  const over = drop.s.hover;
-  const pill = <span className="pillrow" aria-hidden="true"><span className="mark" data-state={state} />{islandWord(m)}</span>;
+  const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-drop={over ? "over" : undefined}>
-      <button className="island-hit" type="button" aria-label={`${S.islandOpen}. ${line}`} onClick={() => void invoke("island_click")}>
-        {shape.kind === "notch" && shape.mode === "alert" && <span className="lip" aria-hidden="true"><span className="mark" data-state={state} />{waiting > 0 ? waiting : ""}</span>}
-        {shape.kind === "pill" && shape.mode !== "peek" && pill}
-        {shape.kind === "edge" && shape.mode === "alert" && pill}
-        {shape.mode === "peek" && <span className="peekline" aria-hidden="true">{line}</span>}
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} style={vars}>
+      <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
+        <span className="island-shape" aria-hidden="true" ref={box}>
+          {showWings && w && <>
+            <span className="island-wing left"><img className="island-flow" src={poseUrl(poseFor(w.state))} alt="" draggable={false} /></span>
+            <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
+          </>}
+          {(parts.face || tucking === "peek") && <span className="island-face"><img className="island-peek" src={poseUrl("peek")} alt="" draggable={false} /></span>}
+          {parts.line && <span className="peekline">{line}</span>}
+        </span>
       </button>
     </main>
   );
