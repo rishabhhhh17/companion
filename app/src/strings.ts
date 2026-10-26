@@ -148,6 +148,8 @@ export const S = {
   shipClose: "Close",
   shipRun: "Check the work now",
   recentTitle: "Recent tasks",
+  historyUndo: "Undo this task",
+  historyUndoWhy: "Undo is on the newest task that changed files. Undoing an older one would also take back the work done after it.",
   noRecent: "Nothing yet.",
   checkingTitle: "Checking the work",
   notDone: "Not done",

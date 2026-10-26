@@ -15,7 +15,7 @@ import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, HistoryItem, MemoryLine, Practice, Problem } from "./model.ts";
+import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
@@ -38,7 +38,7 @@ import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettin
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
-import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, type HistoryQuery, type HistoryStatus } from "./history.ts";
+import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
@@ -209,9 +209,14 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
 
 // What I did: the project's tasks, newest first, with a search by words in their name and by how they ended (history.ts).
 // Without a search the newest 20 show; with one, every match among the tasks the engine sent.
-function HistoryPanel({ items, q, setQ }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void }) {
+// Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
+// the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
+function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void }) {
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
+  const undoId = useId();
+  const offers = project ? shown.map((h) => historyUndo(items, h, u?.stage === "done" ? u.checkpoint : null)) : [];
+  const explainWhy = offers.includes("older");
   return (
     <section className="panel" aria-label={S.recentTitle}>
       <h2>{S.recentTitle}</h2>
@@ -229,9 +234,25 @@ function HistoryPanel({ items, q, setQ }: { items: HistoryItem[]; q: HistoryQuer
       )}
       {items.length > 0 && <div className={filtering ? "line muted" : "sr"} role="status" aria-live="polite">{filtering ? (shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch) : ""}</div>}
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
-      {shown.map((h) => (
-        <div className="line" key={h.id}>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
-      ))}
+      {shown.map((h, i) => { const backId = `${undoId}-${h.id}`; return (
+        <div className="line" key={h.id}>
+          <div>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+          {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
+          {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
+            {u.stage === "confirm" && (
+              <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
+                <div className="row">
+                  <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
+                  <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+                </div></ConfirmStep>
+            )}
+            {u.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+            {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
+            {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}{u.recovered ? ` ${S.undoRecovered}` : ""}{u.large ? ` ${S.undoLarge}` : ""}</div>}
+          </>)}
+        </div>
+      ); })}
+      {explainWhy && <div className="line muted">{S.historyUndoWhy}</div>}
     </section>
   );
 }
@@ -2056,7 +2077,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} />}
       </div>
       </>)}
     </main>
