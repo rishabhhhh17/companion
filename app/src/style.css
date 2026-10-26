@@ -266,6 +266,15 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .dock[data-drop="menu"] .dock-label { display: none; }
 @media (prefers-reduced-motion: reduce) { .character[data-drop] { transform: none; transition: none; } }
 :root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
+/* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, a small lean toward the screen. Its own rotate and
+   translate, so the breathing animation (which sets transform) never cancels it. None with Reduce motion or Less motion. */
+.character[data-peek] { transition: rotate .3s ease-out, translate .3s ease-out; }
+.character[data-peek="peek"][data-peek-edge="right"] { rotate: -7deg; translate: -2px 0; }
+.character[data-peek="peek"][data-peek-edge="left"] { rotate: 7deg; translate: 2px 0; }
+.character[data-peek="peek"][data-peek-edge="top"] { translate: 0 3px; }
+.character[data-peek="peek"][data-peek-edge="bottom"] { translate: 0 -3px; }
+@media (prefers-reduced-motion: reduce) { .character[data-peek] { rotate: none; translate: none; transition: none; } }
+:root[data-less-motion] .character[data-peek] { rotate: none; translate: none; transition: none; }
 .drop-ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 /* A target: a round 44 point button with a small drawing and no letters. Its word shows in the middle of the ring. */
 .drop-item { position: absolute; width: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); padding: 0; display: grid; place-items: center; cursor: pointer; pointer-events: auto; box-shadow: 0 2px 10px rgba(0, 0, 0, .22); animation: ring-in var(--dur) var(--ease) both; }

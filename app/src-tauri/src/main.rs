@@ -4,6 +4,7 @@
 //! makeKeyAndOrderFront on a panel.
 
 mod docking;
+mod peek;
 mod island;
 mod roam;
 mod fullscreen;
@@ -266,8 +267,11 @@ fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64
     let want = [f.origin.x, f.origin.y, f.size.width, f.size.height];
     let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());
     let (w, w2) = (p.retain(), p.retain());
+    // The character's own moves (peeking, peek.rs) overshoot a little and settle, like a spring.
+    let spring = secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);
     let changes = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
         unsafe { ctx.as_ref() }.setDuration(secs.unwrap_or(0.0));
+        if spring { spring_timing(unsafe { ctx.as_ref() }); }
         let a = w.animator();
         a.setFrame_display(f, true);
         if let Some(x) = alpha { a.setAlphaValue(x); }
@@ -336,9 +340,11 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner()) = edge;
     if let Some(app) = APP.get() { if roam_phase() != roam::Phase::Home { roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, f, f, None, edge)); } }
     with_panels(|d, c| {
-        d.setFrame_display(to_appkit(f, ph), true);
+        set_frame_moving(d, to_appkit(f, ph), None, None, &DOCK_MOVES);
         if c.isVisible() { place_card(d, c); }
     });
+    // Put at its place fully in view; it goes back past the edge on the next look, if it should (peek_apply).
+    peek_placed();
     if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }
 }
 
@@ -392,6 +398,8 @@ thread_local! {
     static ISLAND: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
     // The tracking area on the island does not keep its owner alive, so it is kept here for as long as the app runs.
     static ISLAND_HOVER_OWNER: RefCell<Option<Retained<hover::HoverOwner>>> = const { RefCell::new(None) };
+    // The same for the character's window (peeking).
+    static DOCK_HOVER_OWNER: RefCell<Option<Retained<hover::DockHoverOwner>>> = const { RefCell::new(None) };
 }
 static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
@@ -581,6 +589,19 @@ fn island_hover_settle() {
     }
 }
 
+/// The same for the character's window (peeking: the pointer on its sliver brings it in). Kept for as long as the app runs.
+fn add_dock_hover_tracking(mtm: MainThreadMarker, panel: &NSPanel) {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions};
+    let Some(view) = panel.contentView() else { return };
+    let owner = hover::DockHoverOwner::new(mtm);
+    let opts = NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveAlways | NSTrackingAreaOptions::InVisibleRect;
+    let any: &objc2::runtime::AnyObject = owner.as_ref();
+    let area = unsafe { NSTrackingArea::initWithRect_options_owner_userInfo(NSTrackingArea::alloc(), view.bounds(), opts, Some(any), None) };
+    view.addTrackingArea(&area);
+    DOCK_HOVER_OWNER.with(|o| *o.borrow_mut() = Some(owner));
+}
+
 fn add_hover_tracking(mtm: MainThreadMarker, panel: &NSPanel) {
     use objc2::AnyThread;
     use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions};
@@ -615,6 +636,28 @@ mod hover {
     );
 
     impl HoverOwner {
+        pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
+        }
+    }
+
+    define_class!(
+        // SAFETY: as above: NSObject has no rules for subclasses, and this class has no Drop and no instance variables.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "CompanionDockHover"]
+        pub struct DockHoverOwner;
+
+        impl DockHoverOwner {
+            #[unsafe(method(mouseEntered:))]
+            fn mouse_entered(&self, _event: &NSEvent) { super::dock_hover_changed(true); }
+            #[unsafe(method(mouseExited:))]
+            fn mouse_exited(&self, _event: &NSEvent) { super::dock_hover_changed(false); }
+        }
+    );
+
+    impl DockHoverOwner {
         pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
             let this = Self::alloc(mtm).set_ivars(());
             unsafe { msg_send![super(this), init] }
@@ -837,8 +880,98 @@ fn roam_set(app: &AppHandle, r: Rect, gen: u64) {
         *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
         let mtm = MainThreadMarker::new().unwrap();
         let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        with_panels(|d, _| d.setFrame_display(to_appkit(r, ph), true));
+        with_panels(|d, _| set_frame_moving(d, to_appkit(r, ph), None, None, &DOCK_MOVES));
     });
+}
+
+// ---------- peeking from past the edge of the screen (character.peek; the rules are in peek.rs, tested) ----------
+
+static PEEK: Mutex<peek::Peeker> = Mutex::new(peek::Peeker::new());
+fn peeker() -> std::sync::MutexGuard<'static, peek::Peeker> { PEEK.lock().unwrap_or_else(|e| e.into_inner()) }
+/// The pose the character's window was last moved for.
+static PEEK_POSE: Mutex<peek::Pose> = Mutex::new(peek::Pose::In);
+/// The frames asked of the character's own window (island::Moves): a peek still moving never ends on an older target
+/// after a trip or a drag set the frame at once.
+static DOCK_MOVES: Mutex<island::Moves> = Mutex::new(island::Moves::new());
+
+/// The character was put at its place, fully in view (apply_dock): that is the pose now.
+fn peek_placed() { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; }
+
+/// An event from the engine or the shell (Runner::publish, and Stop everything): it may make the character peek, need the
+/// person (it stays in view), or be a light (listening, looking at the screen). A light brings it fully in at once, and
+/// the caller waits for that before the microphone opens or the screen is read (rule 5).
+pub(crate) fn peek_heard(app: &AppHandle, v: &Value) {
+    // Most events are not news for peeking (a tool line, the cost): nothing more is done for them.
+    if peek::news_of(v).is_empty() { return; }
+    let lit = peeker().hear(v, now() as u64, quiet);
+    if lit { peek_now(app, true); } else { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
+}
+
+/// Moves the character to the pose it should be in, on the main thread, and waits (at most a moment) until it has.
+fn peek_now(app: &AppHandle, light: bool) {
+    if MainThreadMarker::new().is_some() { peek_apply(app, light); return; }
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || { peek_apply(&a, light); let _ = tx.send(()); });
+    let _ = rx.recv_timeout(Duration::from_millis(300));
+}
+
+/// The pointer came onto the character or left it: macOS's tracking area on its window (at once), and each tick (the
+/// pointer's place only, never anything else, the same reading as a trip's pause).
+fn dock_hover_changed(inside: bool) {
+    peeker().pointer(inside, now() as u64);
+    if let Some(app) = APP.get() { peek_apply(app, false); }
+}
+
+/// Puts the character in the pose the timing asks for (peek.rs `Peeker::pose`), where the geometry says (`peek::frame`),
+/// with a short spring, or at once with Reduce motion or Less motion, or for a light. Only at its place on the edge: beside
+/// a window or while dragged it is fully in and left to the trip. It only moves the panel: never orders it in, never
+/// gives it the keyboard. Main thread.
+fn peek_apply(app: &AppHandle, light: bool) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    if companion_hidden() { return; }
+    let hs = home_set();
+    let calm = reduce_motion();
+    let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
+    let n = peek::Now { now: now() as u64, on: hs.peek, idle_on: hs.peek_idle, calm, at_home };
+    let pose = peeker().pose(&n, quiet);
+    let was = *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner());
+    if pose == was || !at_home { if !at_home { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; } return; }
+    let Some(home) = roamer().home() else { return };
+    let list = screens_now(mtm);
+    let Some(first) = list.first() else { return };
+    let ph = first.frame[3];
+    let Some(s) = roam::display_of(&list, home) else { return };
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    let f = peek::frame(home, edge, s, &list, pose);
+    let secs = peek::motion(was, pose, calm, light);
+    with_panels(|d, _| set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES));
+    *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
+    *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;
+    // The page leans toward the screen while it peeks (dock.tsx data-peek). Where it may not hide, it is simply in.
+    let shown = if f == home { peek::Pose::In } else { pose };
+    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word() }));
+}
+
+/// Each tick: the pointer over the character's window (its place only), then the pose.
+fn peek_tick(app: &AppHandle) {
+    if !home_set().peek { if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::In { peek_apply(app, false); } return; }
+    if let Some(at) = *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) {
+        let p = macos_see::pointer();
+        peeker().pointer(p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3], now() as u64);
+    }
+    peek_apply(app, false);
+}
+
+/// The curve of the character's own moves (peek::SPRING), set on the motion's context. CAMediaTimingFunction is looked
+/// up by name (QuartzCore is already loaded by AppKit), so no new dependency. If it is missing the move is the usual curve.
+fn spring_timing(ctx: &objc2_app_kit::NSAnimationContext) {
+    use objc2::runtime::{AnyClass, AnyObject, MessageReceiver};
+    let Some(cls) = AnyClass::get(c"CAMediaTimingFunction") else { return };
+    let [a, b, c, d] = peek::SPRING;
+    let f: *mut AnyObject = unsafe { MessageReceiver::send_message(cls, objc2::sel!(functionWithControlPoints::::), (a, b, c, d)) };
+    if f.is_null() { return; }
+    let _: () = unsafe { objc2::msg_send![ctx, setTimingFunction: f] };
 }
 
 /// Settings: whether the character comes to what it is about (on unless turned off), the registry's character.comeTo
@@ -890,6 +1023,8 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
         "island.peekOnHover" | "island.openDelay" | "island.closeDelay" => {
             let _ = app.run_on_main_thread(|| { reset_hover(); if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "setting"); } });
         }
+        // Peeking turned on or off: the character goes where it should be now (fully in when off).
+        "character.peek" | "character.peekIdle" => { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
         // Close Home when I click another app: an open Home's watch stops at once, or starts when it is turned on.
         "home.closeOnClickAway" => {
             HOME_GEN.fetch_add(1, Ordering::SeqCst);
@@ -3303,6 +3438,8 @@ fn tick(app: &AppHandle) {
     follow_pointer(mtm);
     // The character beside a window goes home when its window changed, its app left the front, or nothing about it is up.
     roam_tick(app, &wins, front_pid);
+    // Peeking from past the edge: the pointer, then the pose (character.peek).
+    peek_tick(app);
     let act = active(mtm);
     let fr = front();
     // Take the wheel: the editor or terminal came to the front while a plan runs, so ask it to pause.
@@ -3611,7 +3748,9 @@ fn main() {
                         keymap::Action::Stop => {
                             let r = app.state::<runner::Runner>().stop_everything("kill switch");
                             log("hotkey", json!({ "id": "stop", "stop_everything": true, "sent": r.is_ok() }));
-                            let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                            let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
+                            peek_heard(app, &stop);
+                            let _ = app.emit("runner-event", stop);
                             showme_stop(&app);
                         }
                         keymap::Action::Talk => {}
@@ -3664,6 +3803,8 @@ fn main() {
             dock.setOpaque(false);
             dock.setHasShadow(false);
             dock.setBackgroundColor(Some(&NSColor::clearColor()));
+            // Peeking: the pointer on the character, or on the sliver of it past the edge, brings it in.
+            add_dock_hover_tracking(mtm, &dock);
             let card = make_panel(mtm, card_ns, true, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(CARD.0, CARD.1)));
             // Native witness: every mouse down macOS delivers to our panels, independent of the page.
             let block = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent {
@@ -3738,7 +3879,9 @@ fn main() {
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));
-                        let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                        let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
+                        peek_heard(app, &stop);
+                        let _ = app.emit("runner-event", stop);
                         showme_stop(&app);
                     }
                     "quit" => app.exit(0),
