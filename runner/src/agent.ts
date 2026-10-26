@@ -39,7 +39,7 @@ import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { fileApprovals, readRunFiles, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
@@ -1230,7 +1230,7 @@ export class AgentRunner {
     let text = "";
     const gen = this.o.reviewer!.start({
       prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent,
-      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; },
+      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: refusal("the reviewer only reads the text it is given") }; },
     });
     try {
       let next = await gen.next();
@@ -1238,7 +1238,7 @@ export class AgentRunner {
         const turn = next.value;
         spent(turn.costUsd);
         let result: ToolResult | undefined;
-        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; }
+        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: refusal("the reviewer only reads the text it is given") }; }
         else if (turn.text) text += turn.text + "\n";
         next = await gen.next(result);
       }
@@ -1286,12 +1286,12 @@ export class AgentRunner {
       }
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
       const notGiven = NOT_GIVEN.get(tool.name);
-      let refusal = notGiven ? `Blocked by ${PRODUCT}: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      let refused = notGiven ? refusal(notGiven) : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
-      if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by ${PRODUCT}: ${v.reason}.`; }
-      const ok = allowed.has(tool.name) && !refusal;
+      if (!refused && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refused = refusal(v.reason); }
+      const ok = allowed.has(tool.name) && !refused;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? `Blocked by ${PRODUCT}: this can only look at the project, not change it.` };
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: refused ?? spec.refuse ?? refusal("this can only look at the project, not change it") };
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
@@ -1338,7 +1338,7 @@ export class AgentRunner {
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
     // Most steps in a plan (drive.maxSteps, usual 12): read as the plan is made, and kept with it until it is approved.
     const max = this.setting<number>("drive.maxSteps", cmd.project);
-    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: `Blocked by ${PRODUCT}: planning can only look at the project, not change it.` }, async (ask, st) => {
+    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: refusal("planning can only look at the project, not change it") }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal, max)));
       if (steps.length > max && !st.abort.signal.aborted) {
         const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length, max)) : ask(shortenPrompt(steps.length, max), st.sessionId)));
@@ -1360,8 +1360,8 @@ export class AgentRunner {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
-    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? `Blocked by ${PRODUCT}: research may only open public web pages, never this computer or a private network.` : null;
-    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: `Blocked by ${PRODUCT}: research can look things up, but never change the project.` }, async (ask, st) => {
+    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? refusal("research may only open public web pages, never this computer or a private network") : null;
+    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: refusal("research can look things up, but never change the project") }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
@@ -2170,7 +2170,7 @@ export class AgentRunner {
 
     if (verdict.decision === "deny") {
       tell("blocked");
-      return { allow: false, reason: `Blocked by ${PRODUCT}: ${verdict.reason}` };
+      return { allow: false, reason: refusal(verdict.reason) };
     }
     // After Stop (or a pause) nothing more runs in this task, and nothing more is asked: the real engine can still ask once
     // while it winds down.
@@ -2207,7 +2207,7 @@ export class AgentRunner {
       });
       // Tell every page, so none keeps a stale card or badge.
       this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
-      if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : "The user did not allow this command." }; }
+      if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : `The person said no to this, so ${PRODUCT} did not run it. Carry on without it, or end with one short question if you need them to choose.` }; }
       if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
       if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");
