@@ -977,7 +977,8 @@ export const S = {
   homeUpdateReady: (version: string) => `Version ${version} of ${PRODUCT} is ready.`,
   islandOff: "The engine is not running. Click to see why.",
   islandListening: "Listening. Let go when you are done.",
-  islandWorkingOn: (what: string) => `Working on ${what}`,
+  // A task's name reads like an order ("fix the gallery page"), so it follows a colon with a capital letter.
+  islandWorkingOn: (what: string) => `Working on: ${what.charAt(0).toUpperCase()}${what.slice(1)}`,
   islandNeedsYou: (what: string) => `Needs you: ${what}`,
   islandDone: (what: string) => `Done: ${what}`,
   // What Home says out loud for VoiceOver (a11y.ts), politely, without moving the keyboard.

@@ -314,6 +314,7 @@ describe("the island's status", () => {
   test("one line: nothing when idle, working on what, needs you for what, done with what", () => {
     expect(islandLine(initial())).toBe("");
     expect(islandLine(run(task()))).toBe(S.islandWorkingOn("add a sign up page"));
+    expect(islandLine(run(task()))).toBe("Working on: Add a sign up page");
     expect(islandLine(run([...task(), approval()]))).toBe(S.islandNeedsYou("git push sends your work to a remote"));
     expect(islandLine(run([...task(), stuck]))).toBe(S.islandNeedsYou(S.stuckTitle));
     expect(islandLine(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })]))).toBe(S.islandDone("add a sign up page"));
