@@ -977,14 +977,33 @@ fn peek_apply(app: &AppHandle, light: bool) {
     let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word() }));
 }
 
-/// Each tick: the pointer over the character's window (its place only), then the pose.
+/// Each tick: the pointer on the character (its place only), then the pose.
 fn peek_tick(app: &AppHandle) {
     if !home_set().peek { if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::In { peek_apply(app, false); } return; }
-    if let Some(at) = *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) {
-        let p = macos_see::pointer();
-        peeker().pointer(p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3], now() as u64);
-    }
+    if let Some(on) = MainThreadMarker::new().and_then(pointer_on_character) { peeker().pointer(on, now() as u64); }
     peek_apply(app, false);
+}
+
+/// Whether the pointer is on the character: over its window, or, while it is tucked away, at the screen's edge beside it
+/// (peek::at_edge). Only the pointer's place is read. None when its place is not known yet.
+fn pointer_on_character(mtm: MainThreadMarker) -> Option<bool> {
+    let at = (*ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()))?;
+    let p = macos_see::pointer();
+    if p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3] { return Some(true); }
+    if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { return Some(false); }
+    let home = roamer().home()?;
+    let list = screens_now(mtm);
+    let s = roam::display_of(&list, home)?;
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    Some(peek::at_edge(home, edge, s, &list, (p.x, p.y)))
+}
+
+/// While it is tucked away, often (peek::EDGE_POLL_MS): the pointer reaching the edge brings it in at once, not on the
+/// next tick. Main thread.
+fn peek_edge_poll(app: &AppHandle) {
+    if !home_set().peek { return; }
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    if pointer_on_character(mtm) == Some(true) { peeker().pointer(true, now() as u64); peek_apply(app, false); }
 }
 
 /// The curve of the character's own moves (peek::SPRING), set on the motion's context. CAMediaTimingFunction is looked
@@ -3917,6 +3936,15 @@ fn main() {
                 std::thread::sleep(Duration::from_millis(500));
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || tick(&h2));
+            });
+            // Tucked away past the edge, the character is called in by the pointer at that edge: the pointer's place is
+            // read often while it is hidden, and not by this loop otherwise.
+            let h = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));
+                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }
+                let h2 = h.clone();
+                let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
             });
             // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
             // may already own some of them. That must never stop Companion from opening; the one notice says what to do.

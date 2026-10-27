@@ -46,7 +46,7 @@ describe("the shipped list of settings", () => {
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
-      "character.peek": true, "character.peekIdle": true,
+      "character.peek": true, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,

@@ -1,7 +1,9 @@
 //! Peeking (27 Oct 2026, the founder: "our guys can always be outside of the screen, it might take a sneak peek to see what
-//! is already happening"). With character.peek on, the character rests mostly past the edge of the screen it lives on, with
-//! a sliver of it showing. It peeks in about half way when something happens, comes fully in when the pointer reaches it,
-//! and every few minutes while nothing happens it may take a short curious peek (character.peekIdle).
+//! is already happening"; then: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the
+//! side screen, and when it's idle it will always be there"). With character.peek on, the character rests fully past the
+//! edge of the screen it lives on, and comes fully in when the pointer reaches that edge beside it (`at_edge`), or when
+//! something needs the person or a light is on. Only with character.peekIdle ("Peek in on its own", off unless turned on)
+//! does it also peek in about half way when something happens, and now and then while nothing does.
 //!
 //! Two pure parts, both tested here:
 //! - the geometry (`frame`): where the window is for each pose, on each edge and display, never onto another display and
@@ -21,12 +23,15 @@ use std::collections::BTreeSet;
 /// one line of words centred down (style.css `.dock`, `.character`). What is shown or hidden is counted on the body, not
 /// the see through margin around it.
 pub const BODY: Rect = [24.0, 28.0, 112.0, 80.0];
-/// How much of the body shows at rest: about a quarter (three quarters hidden past the edge).
-pub const REST_SHOWN: f64 = 0.25;
-/// How much shows during a peek: about half.
+/// How much shows during a peek: about half. At rest none of it shows: the whole window is past the edge.
 pub const PEEK_SHOWN: f64 = 0.5;
-/// The least of the body that is ever left on screen, in points, so the sliver is always something to point at and click.
+/// The least of the body left on screen during a peek, in points, so it is always something to point at and click.
 pub const MIN_SHOWN: f64 = 10.0;
+/// How close to the display's edge, in points, the pointer calls the hidden character in (the pointer stops at the last
+/// column of points, so pushing it into the edge always lands here).
+pub const EDGE_STRIP: f64 = 3.0;
+/// How often the pointer's place is read while the character is hidden, so it answers the edge at once (milliseconds).
+pub const EDGE_POLL_MS: u64 = 40;
 /// Within this many points of each other, two edges are the same edge (display sizes are whole points, a work area may not be).
 const SAME: f64 = 1.0;
 
@@ -38,7 +43,7 @@ impl Pose {
     /// The word the character's page is told (dock.tsx `data-peek`).
     pub fn word(self) -> &'static str { match self { Pose::Hidden => "hidden", Pose::Peek => "peek", Pose::In => "in" } }
     /// The part of the body that shows.
-    pub fn shown(self) -> f64 { match self { Pose::Hidden => REST_SHOWN, Pose::Peek => PEEK_SHOWN, Pose::In => 1.0 } }
+    pub fn shown(self) -> f64 { match self { Pose::Hidden => 0.0, Pose::Peek => PEEK_SHOWN, Pose::In => 1.0 } }
 }
 
 /// Whether the character may go past `edge` of `s` at all. Only where the work area reaches the display's own edge: past
@@ -55,25 +60,44 @@ pub fn may_hide(s: &Screen, edge: Edge) -> bool {
 }
 
 /// The window's frame (top left points) for `pose`, from `home` (its usual place on `s`, docking.rs `place`, flush with
-/// `edge`). Fully in is `home` itself. Otherwise the window slides straight out past the display's edge until only
-/// `pose.shown()` of the body is left on screen (never less than MIN_SHOWN points), along the edge exactly where it was.
-/// It stays at `home` instead when it may not hide past that edge (`may_hide`), when any part of it would then be on
-/// another display (`others`: every display, this one included, is fine to pass), or when it would reach the island's clear
-/// zone at the top centre.
+/// `edge`). Fully in is `home` itself. Hidden, the whole window sits just past the display's edge, so not even its see
+/// through margin is left to catch a click. A peek slides it out until only `pose.shown()` of the body is left on screen
+/// (never less than MIN_SHOWN points). Either way it stays exactly where it was along the edge. It stays at `home` instead
+/// when it may not hide past that edge (`may_hide`), when any part of it would then be on another display (`others`: every
+/// display, this one included, is fine to pass), or when it would reach the island's clear zone at the top centre.
 pub fn frame(home: Rect, edge: Edge, s: &Screen, others: &[Screen], pose: Pose) -> Rect {
     if pose == Pose::In || !may_hide(s, edge) { return home; }
     let f = s.frame;
     let along = |len: f64| (pose.shown() * len).max(MIN_SHOWN).min(len);
     let mut r = home;
-    match edge {
-        Edge::Right => r[0] = (f[0] + f[2] - BODY[0] - along(BODY[2])).max(home[0]),
-        Edge::Left => r[0] = (f[0] + along(BODY[2]) - BODY[0] - BODY[2]).min(home[0]),
-        Edge::Bottom => r[1] = (f[1] + f[3] - BODY[1] - along(BODY[3])).max(home[1]),
-        Edge::Top => r[1] = (f[1] + along(BODY[3]) - BODY[1] - BODY[3]).min(home[1]),
+    match (edge, pose) {
+        (Edge::Right, Pose::Hidden) => r[0] = f[0] + f[2],
+        (Edge::Left, Pose::Hidden) => r[0] = f[0] - home[2],
+        (Edge::Bottom, Pose::Hidden) => r[1] = f[1] + f[3],
+        (Edge::Top, Pose::Hidden) => r[1] = f[1] - home[3],
+        (Edge::Right, _) => r[0] = (f[0] + f[2] - BODY[0] - along(BODY[2])).max(home[0]),
+        (Edge::Left, _) => r[0] = (f[0] + along(BODY[2]) - BODY[0] - BODY[2]).min(home[0]),
+        (Edge::Bottom, _) => r[1] = (f[1] + f[3] - BODY[1] - along(BODY[3])).max(home[1]),
+        (Edge::Top, _) => r[1] = (f[1] + along(BODY[3]) - BODY[1] - BODY[3]).min(home[1]),
     }
     let onto_another = others.iter().any(|o| o.id != s.id && docking::overlaps(r, o.frame));
     if onto_another || docking::overlaps(r, docking::notch_zone(s)) { return home; }
     r
+}
+
+/// Whether the pointer `p` (top left points) calls the hidden character in: within EDGE_STRIP points of the display's edge
+/// it hides past, and beside it (along the edge, within its window's length). Never where it cannot hide at all (`frame`
+/// keeps it at `home`), since there it is already in view. Only the pointer's place is read.
+pub fn at_edge(home: Rect, edge: Edge, s: &Screen, others: &[Screen], p: (f64, f64)) -> bool {
+    if frame(home, edge, s, others, Pose::Hidden) == home { return false; }
+    let (f, (x, y)) = (s.frame, p);
+    let beside = |at: f64, from: f64, len: f64| at >= from && at < from + len;
+    match edge {
+        Edge::Right => x >= f[0] + f[2] - EDGE_STRIP && x < f[0] + f[2] && beside(y, home[1], home[3]),
+        Edge::Left => x >= f[0] && x < f[0] + EDGE_STRIP && beside(y, home[1], home[3]),
+        Edge::Bottom => y >= f[1] + f[3] - EDGE_STRIP && y < f[1] + f[3] && beside(x, home[0], home[2]),
+        Edge::Top => y >= f[1] && y < f[1] + EDGE_STRIP && beside(x, home[0], home[2]),
+    }
 }
 
 /// How many points of the body are on `s` when the window is at `r`: the hit target that is left.
@@ -161,7 +185,8 @@ pub struct Now {
     pub now: u64,
     /// character.peek: off, the character is always fully in, as before the setting.
     pub on: bool,
-    /// character.peekIdle: the curious peeks while nothing happens.
+    /// character.peekIdle ("Peek in on its own"): the half way peeks when something happens and the curious ones while
+    /// nothing does. Off, it stays tucked away until the pointer, a question or a light brings it in.
     pub idle_on: bool,
     /// Reduce motion (the Mac) or Less motion (character.motion): no curious peeks, and every move is at once.
     pub calm: bool,
@@ -236,7 +261,7 @@ impl Peeker {
         if !n.on || !n.at_home { return Pose::In; }
         if self.light() || self.needs_you() || self.over { return Pose::In; }
         if self.left_at.is_some_and(|t| n.now < t + LEAVE_MS) { return Pose::In; }
-        if n.now < self.peek_until || n.now < self.idle_until { return Pose::Peek; }
+        if n.idle_on && (n.now < self.peek_until || n.now < self.idle_until) { return Pose::Peek; }
         // A curious peek, when one is due: never with less motion, never during a presentation or a call. Either way the
         // next one is chosen afresh.
         match self.next_idle {
@@ -275,13 +300,14 @@ mod tests {
     // ---- the geometry ----
 
     #[test]
-    fn at_rest_about_three_quarters_of_the_body_is_past_the_right_edge_and_a_peek_shows_about_half() {
+    fn at_rest_the_whole_window_is_past_the_right_edge_and_a_peek_shows_about_half() {
         let s = mac();
         let h = home(&s, Edge::Right);
         let rest = frame(h, Edge::Right, &s, &[s.clone()], Pose::Hidden);
         assert_eq!(rest[1], h[1], "along the edge it stays exactly where it was");
         assert_eq!((rest[2], rest[3]), (160.0, 160.0));
-        assert_eq!(shown(rest, &s, Edge::Right), 28.0, "a quarter of 112");
+        assert_eq!(shown(rest, &s, Edge::Right), 0.0, "tucked away: none of it shows");
+        assert_eq!(rest[0], 1512.0, "not even its see through margin is left on screen to catch a click");
         let peek = frame(h, Edge::Right, &s, &[s.clone()], Pose::Peek);
         assert_eq!(shown(peek, &s, Edge::Right), 56.0, "half of 112");
         assert_eq!(frame(h, Edge::Right, &s, &[s.clone()], Pose::In), h, "fully in is its usual place");
@@ -297,24 +323,48 @@ mod tests {
             let rest = frame(h, e, &s, &[s.clone()], Pose::Hidden);
             let peek = frame(h, e, &s, &[s.clone()], Pose::Peek);
             let len = if e == Edge::Left { 112.0 } else { 80.0 };
-            assert_eq!(shown(rest, &s, e), len * REST_SHOWN, "{e:?}");
+            assert_eq!(shown(rest, &s, e), 0.0, "{e:?}");
             assert_eq!(shown(peek, &s, e), len * PEEK_SHOWN, "{e:?}");
-            if e == Edge::Left { assert_eq!(rest[1], h[1]); assert!(rest[0] < 0.0); } else { assert_eq!(rest[0], h[0]); assert!(rest[1] + rest[3] > 982.0); }
+            if e == Edge::Left { assert_eq!(rest[1], h[1]); assert_eq!(rest[0] + rest[2], 0.0); } else { assert_eq!(rest[0], h[0]); assert_eq!(rest[1], 982.0); }
         }
     }
 
     #[test]
-    fn the_sliver_is_always_at_least_ten_points_of_the_body_on_every_edge_and_pose() {
+    fn hidden_nothing_of_the_window_is_on_screen_and_a_peek_always_shows_at_least_ten_points() {
         // A top edge with no menu bar (a display where it hides), to reach every edge.
         let bare = screen("800x600@0,0", [0.0, 0.0, 800.0, 600.0], [0.0, 0.0, 800.0, 600.0], None);
         for e in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] {
-            for p in [Pose::Hidden, Pose::Peek, Pose::In] {
-                let h = home(&bare, e);
-                let r = frame(h, e, &bare, &[bare.clone()], p);
-                let (w, ht) = body_on_screen(r, &bare);
+            let h = home(&bare, e);
+            let rest = frame(h, e, &bare, &[bare.clone()], Pose::Hidden);
+            assert!(!docking::overlaps(rest, bare.frame), "{e:?}: {rest:?}");
+            for p in [Pose::Peek, Pose::In] {
+                let (w, ht) = body_on_screen(frame(h, e, &bare, &[bare.clone()], p), &bare);
                 assert!(w >= MIN_SHOWN && ht >= MIN_SHOWN, "{e:?} {p:?}: {w} by {ht}");
             }
         }
+    }
+
+    #[test]
+    fn the_pointer_at_the_very_edge_beside_where_it_hides_calls_it_in_and_nowhere_else_does() {
+        let s = mac();
+        let h = home(&s, Edge::Right);
+        let mid = h[1] + 80.0;
+        let call = |x: f64, y: f64| at_edge(h, Edge::Right, &s, &[s.clone()], (x, y));
+        assert!(call(1511.0, mid), "the last column of points, beside it");
+        assert!(call(1512.0 - EDGE_STRIP, mid));
+        assert!(!call(1512.0 - EDGE_STRIP - 1.0, mid), "a little way in is just using the Mac");
+        assert!(call(1511.0, h[1]) && call(1511.0, h[1] + h[3] - 1.0), "anywhere along its own length");
+        assert!(!call(1511.0, h[1] - 1.0) && !call(1511.0, h[1] + h[3]), "not above or below it (scroll bars, other corners)");
+        // The other edges.
+        let l = home(&s, Edge::Left);
+        assert!(at_edge(l, Edge::Left, &s, &[s.clone()], (0.0, l[1] + 10.0)));
+        assert!(!at_edge(l, Edge::Left, &s, &[s.clone()], (1511.0, l[1] + 10.0)));
+        // Where it may not hide (another display beside it, the Dock there), it is in view anyway: no strip.
+        let both = [s.clone(), right_of_mac()];
+        assert!(!at_edge(h, Edge::Right, &s, &both, (1511.0, mid)));
+        let d = mac_dock_bottom();
+        let hb = home(&d, Edge::Bottom);
+        assert!(!at_edge(hb, Edge::Bottom, &d, &[d.clone()], (hb[0] + 10.0, 981.0)));
     }
 
     #[test]
@@ -367,10 +417,12 @@ mod tests {
         x.work = x.frame;   // the Dock hidden
         let h = home(&x, Edge::Right);
         let r = frame(h, Edge::Right, &x, &[x.clone()], Pose::Hidden);
-        assert_eq!(shown(r, &x, Edge::Right), 28.0);
-        assert_eq!(r[0], 1512.0 + 1920.0 - 24.0 - 28.0);
+        assert_eq!(shown(r, &x, Edge::Right), 0.0);
+        assert_eq!(r[0], 1512.0 + 1920.0);
+        let p = frame(h, Edge::Right, &x, &[x.clone()], Pose::Peek);
+        assert_eq!(shown(p, &x, Edge::Right), 56.0);
         let l = frame(home(&x, Edge::Left), Edge::Left, &x, &[x.clone()], Pose::Hidden);
-        assert_eq!(shown(l, &x, Edge::Left), 28.0);
+        assert_eq!(l[0] + l[2], 1512.0);
     }
 
     #[test]
@@ -520,6 +572,31 @@ mod tests {
     }
 
     #[test]
+    fn with_peeking_on_its_own_off_idle_is_always_tucked_away_and_only_the_pointer_or_what_matters_brings_it_in() {
+        let own_off = |t: u64| Now { idle_on: false, ..now(t) };
+        let mut p = Peeker::new();
+        // Work starting and finishing, receipts: the notch shows those; the character stays away.
+        for (i, ev) in [state("a", "working"), state("a", "done"), json!({ "type": "receipt" })].iter().enumerate() {
+            let t = 10_000 * (i as u64 + 1);
+            p.hear(ev, t, LOUD);
+            assert_eq!(p.pose(&own_off(t), LOUD), Pose::Hidden, "{ev}");
+        }
+        // Hours of nothing: never a curious peek.
+        assert!((0..7_200).all(|i| p.pose(&own_off(100_000 + i * 500), LOUD) == Pose::Hidden));
+        // The pointer at the edge brings it in, and it goes back a few seconds after.
+        p.pointer(true, 4_000_000);
+        assert_eq!(p.pose(&own_off(4_000_000), LOUD), Pose::In);
+        p.pointer(false, 4_000_100);
+        assert_eq!(p.pose(&own_off(4_000_100 + LEAVE_MS), LOUD), Pose::Hidden);
+        // A question waiting, and the lights (rule 5), still bring it fully in.
+        p.hear(&json!({ "type": "approval.request", "approval": "q" }), 5_000_000, LOUD);
+        assert_eq!(p.pose(&own_off(5_000_001), LOUD), Pose::In);
+        p.hear(&json!({ "type": "approval.resolved", "approval": "q" }), 5_000_002, LOUD);
+        assert!(p.hear(&json!({ "type": "app.voice", "stage": "listening" }), 5_000_003, LOUD));
+        assert_eq!(p.pose(&own_off(5_000_004), LOUD), Pose::In);
+    }
+
+    #[test]
     fn only_the_type_state_stage_and_id_of_an_event_are_read() {
         assert_eq!(news_of(&json!({ "type": "agent.state", "agent": "a", "state": "needsYou" })), vec![News::AgentWaits("a".into(), true)]);
         assert_eq!(news_of(&json!({ "type": "agent.tool", "summary": "secret words" })), vec![]);
@@ -566,7 +643,7 @@ mod wiring {
         assert!(apply.contains("roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging()"), "never beside a window or while dragged");
         assert!(apply.contains("peek::frame(home, edge, s, &list, pose)"));
         assert!(apply.contains("let calm = reduce_motion();"));
-        for name in ["fn peek_apply(", "fn peek_tick(", "fn peek_now(", "fn peek_heard(", "fn dock_hover_changed("] {
+        for name in ["fn peek_apply(", "fn peek_tick(", "fn peek_now(", "fn peek_heard(", "fn dock_hover_changed(", "fn pointer_on_character(", "fn peek_edge_poll("] {
             let b = body(name);
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }
@@ -584,7 +661,12 @@ mod wiring {
         assert!(MAIN.contains("fn mouse_entered(&self, _event: &NSEvent) { super::dock_hover_changed(true); }"));
         assert!(body("fn tick(").contains("peek_tick(app);"));
         let tick = body("fn peek_tick(");
-        assert!(tick.contains("macos_see::pointer()") && tick.contains("peek_apply(app, false)"));
+        assert!(tick.contains("pointer_on_character") && tick.contains("peek_apply(app, false)"));
+        // Tucked away, the pointer at the edge beside it counts as on it, read often but only while it is hidden.
+        let on = body("fn pointer_on_character(");
+        assert!(on.contains("macos_see::pointer()") && on.contains("peek::at_edge(home, edge, s, &list, (p.x, p.y))"), "{on}");
+        assert!(MAIN.contains("std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));\n                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }"));
+        assert!(body("fn peek_edge_poll(").contains("pointer_on_character(mtm) == Some(true)"));
         // Turned on or off in Settings: applied at once.
         assert!(body("fn home_setting_applied(").contains("\"character.peek\" | \"character.peekIdle\""));
     }

@@ -76,10 +76,11 @@ Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. Radius: `--radius
 
 ## 9. Peeking
 
-- With "Rest past the edge of the screen" on (the usual), the character waits mostly out of sight: about three quarters of its body is past the edge it lives on, and at least 10 points of it always show, so the sliver can be pointed at and clicked.
-- It peeks about half way in, with a small spring and a lean toward the screen, when something happens: a task starts, finishes or fails, a check runs. It comes all the way in when the pointer reaches it or its sliver, and goes back out a few seconds after the pointer leaves. While something needs the person it stays fully in view until answered.
+- With "Tuck away past the edge of the screen" on (the usual), the character waits fully out of sight just past the edge it lives on (the founder, 27 Oct 2026: "it will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there"). Nothing of its window is left on screen, so it never catches a click meant for the app underneath.
+- Pushing the pointer into that edge, beside where it waits (within 3 points of the edge, along its own length), brings it all the way in with a small spring and a lean toward the screen. It goes back out a few seconds after the pointer leaves. While something needs the person it stays fully in view until answered.
+- With "Peek in on its own" on (off unless turned on) it also peeks about half way in when a task starts, finishes or fails.
 - The light shows first (rule 5): before it listens or looks at the screen it is fully in view, at once, with no motion.
-- Every few minutes while nothing happens it may take a short curious peek ("Take a curious peek now and then", on), never more often than every 3 minutes, never with Reduce motion or Less motion, never during a presentation or a call. With Reduce motion or Less motion every move is a jump.
+- With "Peek in on its own" on, every few minutes while nothing happens it may also take a short curious peek, never more often than every 3 minutes, never with Reduce motion or Less motion, never during a presentation or a call. With Reduce motion or Less motion every move is a jump.
 - It never hides over the menu bar, the notch or the Dock, and never onto another display: on an edge where that would happen (the top, under the menu bar; an edge with the Dock; an edge next to another display) it simply stays in view.
 - The geometry and the timing are `app/src-tauri/src/peek.rs` (tested); the page only gets the pose as data (`data-peek`, `data-peek-edge`).
 

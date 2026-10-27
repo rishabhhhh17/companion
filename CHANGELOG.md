@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow stays tucked away until you call it: 27 Oct 2026
+
+The founder: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there".
+
+- **While nothing needs you, the character waits fully out of sight** just past the edge of your screen. No sliver, nothing in the way of the app underneath.
+- **Push the pointer into that edge, beside where it waits, and it springs in.** It slips back out a few seconds after you move away.
+- It still comes in by itself when something needs your answer, and always before it listens or looks at your screen.
+- It no longer peeks in on its own when work starts or finishes, or now and then while idle; the notch shows that instead. The switch "Peek in on its own" in Settings brings those peeks back. The other switch is now called "Tuck away past the edge of the screen"; turn it off to keep the character in view.
+
 ## The island in the notch is fun now, and never says Ready: 27 Oct 2026
 
 The founder said the island "looks ass and complicated" and "does not always have to show Ready there". So it now works like the best notch apps:
