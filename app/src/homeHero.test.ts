@@ -186,7 +186,12 @@ describe("it springs open from the notch, and not at all with less motion", () =
   });
   test("the character in Home is Flowflow, with the dock's own pose for each state", () => {
     const ch = read("./homeCharacter.tsx");
-    expect(ch).toContain("useFlow({ pose, state, calm: reduced })");
+    expect(ch).toContain("useFlow({ pose, state, calm: reduced, off: live })");
+    // With Draw live on, the founder's live water, loaded only then; the pictures come back if it cannot start.
+    expect(ch).toContain('useSetting("character.live") === true');
+    expect(ch).toContain('import("./flowflow/view.tsx")');
+    expect(ch).not.toMatch(/^import .* from "\.\/flowflow\//m);
+    expect(ch).toContain("onFallback={() => setLiveFailed(true)}");
     expect(ch).toContain("poseFor(state");
     expect(ch).toContain("visualState(m)");
     expect(ch).toContain("watchReducedMotion(setReduced)");

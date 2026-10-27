@@ -89,6 +89,11 @@ After the first time you used it on your Mac, you said it looked bad, the card w
 - **The ring when you drop a file is bigger and calmer.** Round targets of 44 points with space between them, small drawings instead of letters (a format shows its own name), and a More that opens the whole list in Home.
 - **Under the hood:** a character is now a "skin" in one place, so a new character brings its own pictures, its own one colour and its own motion without touching the rest of the app. The rules are in `docs/design/look.md`.
 - **Not decided:** the founder has not chosen a visual direction. This round is neutral on purpose.
+## Flowflow can be drawn live, as moving water: 24 Oct 2026
+
+- **A new way to draw the character, off until you choose it** (Settings, "Draw Squibby live"). Instead of a picture, Flowflow is drawn live on your Mac's graphics chip as a droplet of water that stretches the way it moves, squashes and rebounds when it stops, wobbles and settles, with two eyes that follow your pointer and tiny drops that leave and come back.
+- **It only reflects what really happened:** it brightens and sends out a ripple when work is proven, turns cloudy and darker on an error, closes its eyes when asleep, and squishes where you touch it. If your Mac cannot draw it, the pictures stay.
+- **A preview page with sliders** for how stiff, how damped, how fast, how rippled and how clear it is: `docs/flowflow-live.md` says how to open it. It is a first pass at the look and has not been seen in the real app yet; nothing is claimed about speed beyond what was measured in the preview.
 
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 

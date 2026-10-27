@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>Squibby: Flowflow preview</title>
+<style>
+  :root { color-scheme: dark light; font: 13px -apple-system, "SF Pro Text", sans-serif; }
+  body { margin: 0; background: #12161d; color: #e8edf6; display: grid; grid-template-columns: 1fr 300px; min-height: 100vh; }
+  body.light { background: #eef2f8; color: #14202e; } body.checker { background: repeating-conic-gradient(#2a303a 0 25%, #1c2128 0 50%) 0 0/24px 24px; }
+  main { padding: 18px; display: grid; gap: 14px; align-content: start; }
+  .stage { position: relative; border: 1px dashed #ffffff30; border-radius: 12px; overflow: hidden; width: 560px; height: 420px; }
+  .stage canvas { width: 100%; height: 100%; display: block; }
+  .row { display: flex; gap: 18px; align-items: end; flex-wrap: wrap; }
+  .tiny { position: relative; border: 1px dashed #ffffff30; border-radius: 8px; } .tiny canvas { display: block; width: 100%; height: 100%; }
+  aside { padding: 18px; border-left: 1px solid #ffffff22; display: grid; gap: 10px; align-content: start; font-size: 12.5px; }
+  label { display: grid; grid-template-columns: 88px 1fr 40px; gap: 8px; align-items: center; } input[type=range] { width: 100%; }
+  button { font: inherit; padding: 5px 9px; border-radius: 7px; border: 1px solid #ffffff44; background: #ffffff12; color: inherit; cursor: pointer; } button:hover { background: #ffffff22; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; } h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; opacity: .7; margin: 8px 0 0; }
+  pre { margin: 0; font: 11.5px ui-monospace, Menlo, monospace; opacity: .85; white-space: pre-wrap; } small { opacity: .65; }
+</style></head>
+<body>
+  <main>
+    <div><b>Flowflow</b> <small>live, drawn on the GPU: no picture files. Move the mouse over the stage; click the body to touch it.</small></div>
+    <div class="stage"><canvas id="big"></canvas></div>
+    <div class="row">
+      <div><small>The dock's size (112 x 96)</small><div class="tiny" style="width:112px;height:96px"><canvas id="dock"></canvas></div></div>
+      <div><small>Body about 48 px tall (100 x 88): can you still tell what it is?</small><div class="tiny" style="width:100px;height:88px"><canvas id="small"></canvas></div></div>
+    </div>
+    <pre id="stats"></pre>
+  </main>
+  <aside>
+    <h2>State</h2>
+    <div class="btns" id="states"></div>
+    <div class="btns"><button id="poke">Poke it</button><button id="land">Land</button><button id="burst">Shake</button></div>
+    <h2>Physics and look</h2>
+    <div id="dials"></div>
+    <div class="btns"><button id="reset">Reset dials</button><button id="copy">Copy values</button></div>
+    <h2>Background</h2>
+    <div class="btns"><button data-bg="dark">Dark</button><button data-bg="light">Light</button><button data-bg="checker">Checker</button></div>
+    <label style="grid-template-columns:auto 1fr"><input type="checkbox" id="reduced" /> Less motion (one still frame per change)</label>
+    <small>Success and error only appear when you press them: nothing here claims work was done.</small>
+  </aside>
+  <script type="module" src="../src/flowflow/preview.ts"></script>
+</body></html>
