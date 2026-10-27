@@ -1119,7 +1119,7 @@ export const S = {
     firstSwitch: (name: string) => `${name} is on`,
     settingsLink: "Groups of tools",
     tools: {
-      drive: { name: "Tasks", invite: "Try giving me a small task in the box, then press Start." },
+      drive: { name: "Tasks", invite: "Try giving me a small task in the box, then press the arrow to start." },
       followUp: { name: "Follow ups", invite: "Try a follow up under a finished task." },
       rescue: { name: "Rescue", invite: "Try Rescue when something in your project is broken." },
       findProblem: { name: "Point at the problem", invite: "Try Point at the problem when a check fails." },

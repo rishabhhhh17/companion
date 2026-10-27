@@ -118,6 +118,9 @@ html.home-page, body.home-page { background: transparent; }
 .home .ask:focus-within { border-color: var(--fg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 8%, transparent); }
 .home .ask textarea { border: 0; background: transparent; padding: calc(8rem / 14) calc(12rem / 14); border-radius: var(--r-lg); }
 .home .ask .icon-btn { background: transparent; color: var(--muted); }
+/* How to talk (a click cannot open the microphone, rule 5): a quiet text button inside the box, not a record button. */
+.home .ask .talk-how { align-self: center; flex: none; padding: 4px 10px; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font-size: var(--t-small); font-weight: 500; }
+.home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
 .home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 14%, var(--surface)); color: var(--fg); }
 .btn.primary.send { flex: none; display: grid; place-items: center; width: calc(32rem / 14); min-height: calc(32rem / 14); height: calc(32rem / 14); padding: 0; border-radius: 50%; transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
 .home .ask:has(textarea:placeholder-shown) .btn.primary.send { transform: scale(.85); background: color-mix(in srgb, var(--fg) 22%, var(--bg)); color: var(--fg); }
