@@ -1,12 +1,13 @@
 import { StrictMode, useEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import { startSettings, useSetting } from "./settingsStore.ts";
-import { followLessMotion, reducedMotion, watchReducedMotion } from "./motion.ts";
+import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
 import { poseFor, poseUrl } from "./characters.ts";
-import { springStep, type Spring } from "./islandSpring.ts";
+import { CHEER_AT_MS, CHEER_FOR_MS, CHEER_SPRING, ISLAND_SPRING, TUCK_MS, springStep, type Spring } from "./islandSpring.ts";
+import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
 import { useDrop } from "./dropRing.tsx";
@@ -30,13 +31,11 @@ const shapeFrom = (v: unknown): Shape | null => {
   if (!o || !ISLAND_MODES.includes(o.mode as IslandMode) || !KINDS.includes(o.kind as Kind)) return null;
   return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row) };
 };
-/** How long the shape takes to tuck back (the app waits as long before it makes the window smaller: island.rs RETRACT_MS). */
-const TUCK_MS = 450;
 
 /** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
  *  The window is centred on the notch at every size, so a shape centred in it stays put on the screen when the window
  *  changes. Size 0 (not told yet): the whole window. */
-function useSpringBox(w: number, h: number, reduced: boolean) {
+function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
   const box = useRef<HTMLSpanElement>(null);
   const at = useRef<{ x: Spring; y: Spring } | null>(null);
   useEffect(() => {
@@ -49,20 +48,23 @@ function useSpringBox(w: number, h: number, reduced: boolean) {
     const tick = (t: number) => {
       const s = at.current!, dt = (t - last) / 1000;
       last = t;
-      s.x = springStep(s.x, w, dt, reducedMotion());
-      s.y = springStep(s.y, h, dt, reducedMotion());
+      const { k, c } = soft ? CHEER_SPRING : ISLAND_SPRING;
+      s.x = springStep(s.x, w, dt, reducedMotion(), k, c);
+      s.y = springStep(s.y, h, dt, reducedMotion(), k, c);
       draw();
       if (s.x.x !== w || s.y.x !== h || s.x.v !== 0 || s.y.v !== 0) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [w, h, reduced]);
+  }, [w, h, reduced, soft]);
   return box;
 }
 
 /** The live mark on the right wing (home.ts WingMark). Drawn only, never read: the island's name says it in words. */
 function Mark({ w, count }: { w: Wings; count: number }) {
-  const inner = w.mark === "dots" ? <><i /><i /><i /></>
+  // Thinking: one dot that breathes. Working and looking: a thin round arc (13 points across) that turns.
+  const inner = w.mark === "dots" ? <i />
+    : w.mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6.5" /></svg>
     : w.mark === "bars" ? <><i /><i /><i /><i /></>
     : w.mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
     : null;
@@ -103,7 +105,17 @@ function Island() {
   const wings = wingsAt(raw, doneSince, now);
   // The app sizes the window: wings out or not, and whether a peek has a line to show.
   const out = wings !== null, says = line !== "";
-  useEffect(() => { void invoke("island_alert", { on: wings !== null, says: line !== "" }).catch(() => {}); }, [out, says]);
+  // A proven fix: once the tick has drawn, the wings widen a little on a softer spring and settle back (island.rs cheered).
+  // Only with reactions on and motion allowed, as every celebration.
+  const [cheer, setCheer] = useState(false);
+  useEffect(() => {
+    if (!ticking || !playful(reactionsOn(), reducedMotion())) { setCheer(false); return; }
+    const on = setTimeout(() => setCheer(true), CHEER_AT_MS);
+    const off = setTimeout(() => setCheer(false), CHEER_AT_MS + CHEER_FOR_MS);
+    return () => { clearTimeout(on); clearTimeout(off); setCheer(false); };
+  }, [ticking]);
+  const cheering = cheer && out;
+  useEffect(() => { void invoke("island_alert", { on: out, says, cheer: cheering }).catch(() => {}); }, [out, says, cheering]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
@@ -119,7 +131,9 @@ function Island() {
   const parts = islandParts(shape.mode, line);
   const showWings = parts.wings || tucking === "wings" || tucking === "wingsPeek";
   const w = wings ?? lastWings.current;
-  const box = useSpringBox(shape.w, shape.h, reduced);
+  const [soft, setSoft] = useState(false);
+  useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
+  const box = useSpringBox(shape.w, shape.h, reduced, soft);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
   return (

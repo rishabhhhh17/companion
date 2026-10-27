@@ -52,6 +52,8 @@ export const S = {
     stripLabel: "Undo and Stop",
     undoShort: "Undo",
     stopKeys: "Stop everything: {keys}",
+    // After an undo, for two seconds at the foot of Home (M15 wave 3).
+    putBack: "Put back as it was",
     factsLabel: "About this task",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
     // The side list and the top of what is open (the wide Home of 27 Oct 2026).

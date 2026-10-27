@@ -493,8 +493,8 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(characterShows(looking, true, false)).toBe("checking");
     const listening = run([...walkStep(), ev({ type: "app.voice", stage: "listening", message: "Listening" })]);
     expect(characterShows(listening, true, false)).toBe("listening");
-    // needsYou has a ring that shows with no motion at all, so it is a visible light with reduced motion too.
-    expect(read("./style.css")).toMatch(/\.character\[data-state="needsYou"\] \{ box-shadow:/);
+    // needsYou has a glow that shows with no motion at all, so it is a visible light with reduced motion too.
+    expect(read("./style.css")).toMatch(/\.character\[data-pose\]\[data-state="needsYou"\] \{ filter: drop-shadow\(/);
     // The character's page draws it from the two settings.
     const dock = read("./dock.tsx");
     expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');

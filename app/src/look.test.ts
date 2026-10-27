@@ -31,14 +31,17 @@ describe("the character floats on the desktop", () => {
     const pill = /\.dock-label \{([^}]*)\}/.exec(css)![1];
     expect(pill).toMatch(/background: color-mix\(in srgb, var\(--bg\) \d+%, transparent\)/);
     expect(pill).toContain("backdrop-filter: blur(");
-    expect(pill).toContain("border-radius: var(--radius-pill)");
+    expect(pill).toContain("border-radius: var(--r-pill)");
   });
-  test("the count of waiting questions has no colour of its own: ink on white with a dark rim", () => {
-    expect(/\.badge \{([^}]*)\}/.exec(css)![1]).toMatch(/background: #fff; color: #000; box-shadow: 0 0 0 1\.5px #000/);
+  test("the count of waiting questions has no colour of its own: a small black pill with white words and a white rim", () => {
+    expect(/\.badge \{([^}]*)\}/.exec(css)![1]).toMatch(/min-height: 18px;[^}]*border-radius: var\(--r-pill\); background: #000; color: #fff; box-shadow: 0 0 0 1\.5px #fff/);
   });
   test("the rings that show the lights first are still there, around the water", () => {
     for (const s of ["listening", "checking", "needsYou", "done"]) expect(css).toMatch(new RegExp(`\\.character\\[data-pose\\]\\[data-state="${s}"\\][^{]*\\{[^}]*drop-shadow`));
     expect(dock).toContain("style={skinVars(SKIN)");
+    // Never a web style ring or a filled box around the picture (M15): every light is a glow along the outline.
+    expect(css).not.toMatch(/\.character\[[^{]*\{[^}]*box-shadow: 0 0 0/);
+    expect(css).not.toMatch(/\.character\[data-state="error"\] \{[^}]*background/);
   });
   test("with the water drawing, the button's own wobble stands down, and the glows stay", () => {
     expect(css).toMatch(/\.character\[data-flow\]\[data-pose\]\[data-motion="breathe"\][^{]*\{ animation: none; \}/);
@@ -49,7 +52,7 @@ describe("the character floats on the desktop", () => {
 
 describe("Home is one calm column", () => {
   test("the places are round buttons at the top, each a drawing with its name (the black Home of 27 Oct 2026)", () => {
-    expect(card).toContain("<Icon name={t} size={18} />");
+    expect(card).toContain("<Icon name={t} size={16} />");
     expect(card).toContain("aria-label={tabName(t)} title={tabName(t)}");
     expect(card).not.toContain('role="tablist"');
   });
@@ -92,7 +95,8 @@ describe("Home is one calm column", () => {
   });
   test("a result is a big readable card on Home's black; a small mark for waiting, never a coloured edge", () => {
     expect(/\n\.panel \{([^}]*)\}/.exec(css)![1]).toContain("border: 0");
-    expect(css).toMatch(/\.home \.view \.panel \{ background: var\(--card\); border-radius: 20px;/);
+    expect(css).toMatch(/\.home \.view \.panel \{ background: var\(--card\); border-radius: var\(--r-lg\);/);
+    expect(css).toContain("--r-lg: 20px;");
     expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }");
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
@@ -120,10 +124,22 @@ describe("Undo and Stop are in reach whenever they can act", () => {
     expect(card).toContain("label={S.undoSure} back={undoId}");
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);
   });
-  test("Stop stops the agent, shows while one works, and the key that stops everything is named beside it", () => {
+  test("Stop stops the agent, shows while one works, and the key that stops everything is in its name and its tooltip", () => {
     expect(strip).toContain("{stopCan(m) && (");
     expect(strip).toContain("onClick={() => void send(stopAgent())}");
-    expect(strip).toContain('keyHint("stop", S.look.stopKeys, keys)');
+    expect(strip).toContain('aria-label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)}');
+    // No line of its own: Undo and Stop, centred; Stop is the one bright thing while it works.
+    expect(strip).not.toContain('className="muted grow"');
+    expect(css).toMatch(/\.strip \{[^}]*justify-content: center; gap: var\(--space-3\);/);
+    expect(css).toMatch(/\.pill\.stop \{ background: var\(--fg\); color: var\(--bg\);/);
+  });
+  test("Undo turns back on a press, and says Put back as it was for two seconds once the undo is done", () => {
+    expect(strip).toContain("spin(e.currentTarget);");
+    expect(strip).toContain('<Icon name="undo" size={14} />');
+    expect(card).toContain('{putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}');
+    expect(card).toContain('if (m.undo?.stage !== "done") return;');
+    expect(css).toMatch(/\.pill\.spin \.ic \{ animation: undo-spin var\(--dur-4\) var\(--ease-spring\)/);
+    expect(css).toContain("@keyframes undo-spin { from { rotate: 0deg; } to { rotate: -360deg; } }");
   });
 });
 

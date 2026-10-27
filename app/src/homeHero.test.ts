@@ -33,7 +33,8 @@ describe("Home is black in both Mac themes", () => {
     expect(css).toMatch(/html\.home-page, body\.home-page \{ background: transparent;/);
     const shape = /\n\.home \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(shape).toContain("background: var(--bg)");
-    expect(shape).toMatch(/border-radius: 0 0 (2[89]|3[0-2])px (2[89]|3[0-2])px/);
+    expect(shape).toMatch(/border-radius: 0 0 var\(--r-xl\) var\(--r-xl\)/);
+    expect(css).toContain("--r-xl: 30px;");
   });
 });
 
@@ -112,7 +113,8 @@ describe("the top says the job in big words", () => {
     expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>');
     expect(card).toContain('<p className="subline">{hero.line}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(h).toMatch(/font-size: calc\((2[0-4])rem \/ 14\)/);
+    expect(h).toMatch(/font-size: var\(--t-display\)/);
+    expect(css).toContain("--t-display: calc(22rem / 14);");
   });
 });
 
@@ -176,7 +178,10 @@ describe("it springs open from the notch, and not at all with less motion", () =
   test("a short spring from the top centre, played again at each opening", () => {
     const spring = /@keyframes home-spring \{([^\n]*)\}/.exec(css)?.[1] ?? "";
     expect(spring).toContain("transform");
-    expect(css).toMatch(/\.home\.springing \{[^}]*animation: home-spring (2[5-9]\d|3[0-5]\d)ms/);
+    expect(css).toMatch(/\.home\.springing \{ animation: home-spring var\(--dur-4\) var\(--ease-spring\) both; \}/);
+    expect(css).toContain("--dur-4: 400ms;");
+    // It unrolls: a squashed scale and a clip that opens from the top.
+    expect(spring).toContain("scale(0.96, 0.6)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
     expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
     expect(card).toContain('el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing");');
   });

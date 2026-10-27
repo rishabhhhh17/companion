@@ -155,6 +155,16 @@ pub fn look(d: &Display, mode: Mode, says: bool) -> Look {
     Look { frame, core, row }
 }
 
+/// How much wider the wings get for a moment when a fix is proven (the done tick): the page springs its shape out and back.
+pub const CHEER: f64 = 8.0;
+/// The wings during that moment: CHEER wider around the same middle, the same top and height, kept on the display. Only the
+/// wings (Alert, WingsPeek) cheer; the bare notch and the peek stay as they are.
+pub fn cheered(d: &Display, mode: Mode, l: Look) -> Look {
+    if !matches!(mode, Mode::Alert | Mode::WingsPeek) { return l; }
+    let w = (l.frame[2] + CHEER).min(d.frame[2]);
+    Look { frame: [around(center_x(d), w, d.frame[0], d.frame[2]), l.frame[1], w, l.frame[3]], ..l }
+}
+
 /// Where the island is drawn, in global points.
 pub fn frame_of(d: &Display, mode: Mode, says: bool) -> Rect { look(d, mode, says).frame }
 /// The biggest the island gets in `mode` (with a line to show): what the character keeps clear of (docking.rs, roam.rs).
@@ -167,7 +177,8 @@ pub fn island_frame(d: &Display, mode: Mode) -> Rect { frame_of(d, mode, true) }
 
 /// How long the island takes to grow downward, and Home to drop open, in seconds.
 pub const OPEN_SECS: f64 = 0.18;
-/// How long the window waits before it gets smaller, while the shape tucks back (island.tsx TUCK_MS is a little longer).
+/// How long the window waits before it gets smaller, while the shape tucks back: the same as islandSpring.ts TUCK_MS (the
+/// spring settles in about 0.26 s and the peek's tuck takes 280 ms; island.test.ts pins the two equal).
 pub const RETRACT_MS: u64 = 320;
 /// How far above its place Home starts its drop, in points: the gap under the island, so it never starts over the island.
 pub const DROP: f64 = GAP;
@@ -884,6 +895,22 @@ mod tests {
         }
         assert!((150..=400).contains(&RETRACT_MS), "a spring of 150 to 400 ms (look.md)");
         assert!((0.15..=0.2).contains(&OPEN_SECS), "Home's drop: short, it should feel like opening, not waiting");
+    }
+    #[test]
+    fn a_proven_fix_widens_the_wings_a_little_then_they_tuck_back_in_place() {
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            for (m, says) in [(Mode::Alert, false), (Mode::WingsPeek, true)] {
+                let l = look(&d, m, says);
+                let c = cheered(&d, m, l);
+                assert_eq!(c.frame[2], l.frame[2] + CHEER, "{} {m:?}: CHEER wider", d.id);
+                assert!((c.frame[0] + c.frame[2] / 2.0 - (l.frame[0] + l.frame[2] / 2.0)).abs() < 0.5, "{} {m:?}: around the same middle", d.id);
+                assert_eq!((c.frame[1], c.frame[3], c.core, c.row), (l.frame[1], l.frame[3], l.core, l.row), "{} {m:?}: same top, height and row", d.id);
+                assert_eq!(retract_ms(l.frame, c.frame, false), None, "{} {m:?}: out at once, the page springs the shape", d.id);
+                assert_eq!(retract_ms(c.frame, l.frame, false), Some(RETRACT_MS), "{} {m:?}: back after the shape settles", d.id);
+            }
+            for (m, says) in [(Mode::Rest, false), (Mode::Peek, true)] { assert_eq!(cheered(&d, m, look(&d, m, says)), look(&d, m, says), "{} {m:?}: only the wings cheer", d.id); }
+        }
+        assert!((4.0..=12.0).contains(&CHEER), "a small bounce, not a new size");
     }
     #[test]
     fn reduce_motion_or_less_motion_makes_it_appear_at_once() {

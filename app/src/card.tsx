@@ -849,7 +849,7 @@ function Card() {
       homeShown.current = true; setHomeOpen(true);
       // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion).
       const el = root.current;
-      if (el) { el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing"); }
+      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing"); }
       homeDispatch({ type: "opened", keyboard });
       if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
@@ -865,8 +865,11 @@ function Card() {
       touch();
     });
     // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
+    // Closing (Close, Esc, the island or the character again): it rolls back up into the notch, then the shell hides it
+    // (main.rs HOME_CLOSE_MS). The shell does not ask with Reduce motion or Less motion.
+    const offClosing = listen("closing", () => { const el = root.current; if (el) { el.classList.remove("springing"); el.classList.add("closing"); } });
     const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; });
-    return () => { off.then((f) => f()); offClosed.then((f) => f()); };
+    return () => { off.then((f) => f()); offClosing.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
   // Tell the app how tall the content is, so the panel fits it.
   useEffect(() => {
@@ -1344,6 +1347,19 @@ function Card() {
   };
 
   const hero = heroWords(m, project, needNow);
+  // Undo's small moment: the pill's drawing turns back once on a press; when the undo is done the result settles and
+  // "Put back as it was" shows for two seconds. Motion only; with Reduce motion or Less motion the words still show.
+  const spin = (b: HTMLElement) => { b.classList.remove("spin"); void b.offsetWidth; b.classList.add("spin"); };
+  const [putBackShown, setPutBackShown] = useState(false);
+  useEffect(() => {
+    if (m.undo?.stage !== "done") return;
+    setPutBackShown(true);
+    const el = root.current;
+    el?.classList.add("putback");
+    const settle = setTimeout(() => el?.classList.remove("putback"), 400);
+    const id = setTimeout(() => setPutBackShown(false), 2000);
+    return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
+  }, [m.undo?.stage]);
   const viewTitle = home.tab === "settings" ? (settingsPlaces().find((p) => p.id === setPlace)?.title ?? settingsPlaces()[0]?.title ?? tabName("settings")) : tabName(home.tab);
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
@@ -1358,8 +1374,10 @@ function Card() {
           Home has a back arrow and its name on the left. A place that waits for the person has a small dot. */}
       {onboarded && (
         <header className="bar">
+          {/* On Now: the folder's name and a small dot for how things are (style.css .bar-dot, from data-tone). */}
+          {home.tab === "now" && <span className="bar-folder" title={project || undefined}><span className="bar-dot" aria-hidden="true" />{project ? <><span className="sr">{S.folderLabel}: </span>{folderName(project)}</> : S.look.noFolder}</span>}
           {home.tab !== "now" && <>
-            <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={18} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>
+            <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>
             <h1 id="home-title" className="view-title">{viewTitle}</h1>
           </>}
           <nav className="places" aria-label={S.look.placesLabel}>
@@ -1367,13 +1385,13 @@ function Card() {
               const waits = needNow?.tab === t && t !== home.tab;
               return (
                 <button key={t} id={tabId(t)} className="icon-btn" type="button" aria-label={tabName(t)} title={tabName(t)} aria-pressed={t === home.tab} onClick={() => pickTab(placeAfter(home.tab, t))}>
-                  <Icon name={t} size={18} />
+                  <Icon name={t} size={16} />
                   {waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
                 </button>
               );
             })}
-            <button className="icon-btn" type="button" aria-label={tabName("settings")} title={tabName("settings")} aria-pressed={home.tab === "settings"} onClick={gear}><Icon name="gear" size={18} /></button>
-            <button className="icon-btn" type="button" aria-label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={18} /></button>
+            <button className="icon-btn" type="button" aria-label={tabName("settings")} title={tabName("settings")} aria-pressed={home.tab === "settings"} onClick={gear}><Icon name="gear" size={16} /></button>
+            <button className="icon-btn close" type="button" aria-label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></button>
           </nav>
         </header>
       )}
@@ -1809,7 +1827,7 @@ function Card() {
       )}
 
       {show("receipt") && m.receipt && (
-        <section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
+        <section className="panel receipt" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           <h2>{receiptHeading(m.receipt)}</h2>
           {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
             <div className="answer" role={w.help ? "status" : undefined}>
@@ -2136,7 +2154,6 @@ function Card() {
       {/* The folder, quietly at the foot of Now. */}
       {show("folder") && <div className="foot">
       <div className="row folder" role="group" aria-label={S.folderLabel}>
-        <span className="muted">{S.folderLabel}: <b title={project}>{project ? project.split("/").filter(Boolean).slice(-2).join("/") : "-"}</b></span>
         <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
         {recent.length > 1 && (
           <select aria-label={S.folderRecent} value="" onChange={(e) => { if (e.target.value) useFolder(e.target.value); }}>
@@ -2166,12 +2183,12 @@ function Card() {
       // receipt asks "are you sure" and keeps the choices), Stop while something works, with the key that stops everything.
       <div className="strip" ref={strip} role="group" aria-label={S.look.stripLabel}>
         {undoCan(m, project) && (
-          <button id={undoId} className="pill" type="button" aria-label={S.undo} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={16} />{S.look.undoShort}</button>
+          <button id={undoId} className="pill" type="button" aria-label={S.undo} onClick={(e) => { spin(e.currentTarget); if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.look.undoShort}</button>
         )}
         {stopCan(m) && (
-          <button className="pill" type="button" onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</button>
+          <button className="pill stop" type="button" aria-label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</button>
         )}
-        {stopCan(m) && <span className="muted grow" role="note">{keyHint("stop", S.look.stopKeys, keys)}</span>}
+        {putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}
       </div>
       )}
     </main>

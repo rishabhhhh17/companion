@@ -117,7 +117,9 @@ describe("the island window", () => {
     expect(watch).toContain('emit_to("card", "home-click-away"');
   });
   test("every way Home closes tells the island", () => {
-    for (const f of ["close_card", "toggle_home"]) expect(fnBody(f), f).toContain("home_closed(");
+    // Close and the island or the character again roll Home up first (close_home_rolled), then close it the same way.
+    for (const f of ["close_card", "toggle_home"]) expect(fnBody(f), f).toContain("close_home_rolled(");
+    expect(fnBody("close_home_rolled")).toContain("home_closed(");
     const tick = fnBody("tick");
     expect(tick.slice(tick.indexOf("if !show"), tick.indexOf("hidden_for_full_screen"))).toContain("home_closed(");
   });
@@ -144,7 +146,7 @@ describe("with the island turned off", () => {
     // Looking moves the character (it scans); listening has its own ring that shows with no motion at all, and so has
     // looking once motion is reduced (motion.test.ts). Either way the words under the character say it.
     expect(motionFor("checking", false)).toBe("scan");
-    expect(read("./style.css")).toMatch(/\.character\[data-state="listening"\] \{ box-shadow:/);
+    expect(read("./style.css")).toMatch(/\.character\[data-state="listening"\] \{ filter: drop-shadow\(/);
     // The character's page draws that state and those words. The only island or Home settings it reads are the two that
     // may add a mark to it (home.ts characterShows), and they never change these lights.
     const dock = read("./dock.tsx");
@@ -338,7 +340,8 @@ describe("the fun island", () => {
     const page = read("./island.tsx");
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
-    expect(page).toContain('invoke("island_alert", { on: wings !== null, says: line !== "" })');
+    expect(page).toContain("const out = wings !== null, says = line !== \"\";");
+    expect(page).toContain('invoke("island_alert", { on: out, says, cheer: cheering })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -374,5 +377,60 @@ describe("the fun island", () => {
     const num = (re: RegExp, text: string) => { const m = text.match(re); expect(m, String(re)).not.toBeNull(); return Number(m![1]); };
     expect(num(/\.island \{[^}]*--wing: (\d+)px/, css)).toBe(num(/pub const WING: f64 = ([\d.]+);/, rs));
     expect(num(/\.island \{[^}]*--face: (\d+)px/, css)).toBe(num(/pub const FACE: f64 = ([\d.]+);/, rs));
+  });
+});
+
+// M15 wave 3: one number for the tuck, a celebratory bounce, hand made marks, and Home rolling back up.
+describe("the island's motion agrees with the app's timing", () => {
+  test("the page's tuck and the window's wait are one number, and the spring has settled by then", async () => {
+    const { TUCK_MS, ISLAND_SPRING, springStep, settled } = await import("./islandSpring.ts");
+    const rs = read("../src-tauri/src/island.rs");
+    const retract = Number(/pub const RETRACT_MS: u64 = (\d+);/.exec(rs)?.[1]);
+    expect(TUCK_MS).toBe(retract);
+    // From the wings (core plus 80) back to the bare notch: within a point of the notch by the wait, and it never swings out
+    // past the window's new size by more than that afterwards, so nothing you could see is cut when the window gets smaller.
+    let s = { x: 265, v: 0 }, t = 0;
+    for (; t < TUCK_MS / 1000; t += 1 / 120) s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c);
+    expect(Math.abs(s.x - 185)).toBeLessThan(1);
+    for (let u = 0; u < 0.5 && !settled(s, 185); u += 1 / 120) { s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c); expect(s.x - 185).toBeLessThan(1); }
+    // The peek's own tuck (a CSS animation) is over by then too.
+    const css = read("./style.css");
+    expect(css).toMatch(/\.island\[data-tuck="peek"\] \.island-peek \{ animation: island-tuck var\(--dur-3\)/);
+    expect(Number(/--dur-3: (\d+)ms/.exec(css)?.[1])).toBeLessThanOrEqual(TUCK_MS);
+  });
+  test("a proven fix widens the wings by island.rs CHEER on the softer spring, only with reactions and motion on", async () => {
+    const { CHEER_SPRING, CHEER_AT_MS, CHEER_FOR_MS } = await import("./islandSpring.ts");
+    expect(CHEER_SPRING).toEqual({ k: 380, c: 22 });
+    const zeta = CHEER_SPRING.c / (2 * Math.sqrt(CHEER_SPRING.k));
+    expect(zeta).toBeGreaterThan(0.4); expect(zeta).toBeLessThan(1);   // one soft overshoot, no jelly
+    expect(CHEER_AT_MS).toBeGreaterThanOrEqual(120 + 280);   // after the tick has drawn (delay plus draw)
+    expect(CHEER_FOR_MS).toBeLessThan(1000);
+    const page = read("./island.tsx");
+    expect(page).toContain("playful(reactionsOn(), reducedMotion())");
+    expect(page).toContain('invoke("island_alert", { on: out, says, cheer: cheering })');
+    const main = read("../src-tauri/src/main.rs");
+    expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
+  });
+  test("the marks are drawn by hand: a turning arc, one breathing dot, and no grey", () => {
+    const css = read("./style.css"), page = read("./island.tsx");
+    expect(page).toContain('<circle cx="8" cy="8" r="6.5" />');
+    expect(css).toMatch(/\.island-wing \.mark\[data-mark="arc"\] svg \{[^}]*stroke-width: 1\.75; stroke-linecap: round;[^}]*island-spin \.8s cubic-bezier\(\.45, \.05, \.55, \.95\)/);
+    expect(css).toMatch(/\.island-wing \.mark\[data-mark="dots"\] i \{ width: 6px; height: 6px;[^}]*island-breathe 1\.4s/);
+    expect(css).toContain("@keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }");
+    expect(css).not.toMatch(/#8e8e93/i);
+    expect(css).toMatch(/\.mark \{[^}]*background: rgba\(255, 255, 255, \.5\)/);
+  });
+  test("Flowflow is never sliced by a box when it peeks: it fades out at its foot", () => {
+    const css = read("./style.css");
+    expect(css).not.toMatch(/\.island-face \{[^}]*overflow: hidden/);
+    expect(css).toMatch(/\.island-peek \{[^}]*height: calc\(var\(--face\) \+ 14px\); margin-bottom: -4px;[^}]*mask-image: linear-gradient\(to bottom, #000 70%, transparent\)/);
+  });
+  test("Home rolls back up in the time the shell waits before it hides it", () => {
+    const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
+    const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
+    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-in\) both; \}/);
+    expect(Number(/--dur-2: (\d+)ms/.exec(css)?.[1])).toBe(ms);
+    expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
+    expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);
   });
 });
