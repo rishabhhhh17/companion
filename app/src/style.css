@@ -555,10 +555,11 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-cost { color: #FFB766; font-size: var(--t-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
 .island-panel .ip-job[data-tone="done"] .ip-cost { color: #A6EFC6; }
 .island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
-/* The sun beside the notch (M16): Squibby's mark on the menu bar just left of the notch, at rest only (the wings and the
-   panel take its place while they show). The window is island.rs MARK wider each side, see through; resting on it opens
-   the panel. It fades in, and breathes very slowly. */
-.island-sun { position: absolute; top: calc((var(--row) - 16px) / 2); left: calc(50% - var(--core) / 2 - 22px); width: 16px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; filter: drop-shadow(0 0 3px rgba(255, 150, 60, .55)); }
+/* The sun beside the notch (M16): Squibby's mark (the smiling pinwheel sun, app/brand) on the menu bar just left of the
+   notch, at rest only (the wings and the panel take its place while they show). One colour like the Mac's own menu bar
+   icons: white on a dark menu bar, black on a light one. The window is island.rs MARK wider each side, see through;
+   resting on it opens the panel. It fades in, and breathes very slowly. */
+.island-sun { position: absolute; top: calc((var(--row) - 16px) / 2); left: calc(50% - var(--core) / 2 - 22px); width: 16px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both, island-sun-breathe 6s ease-in-out var(--dur-3) infinite; }
 @keyframes island-sun-in { from { opacity: 0; scale: .6; } }
-@keyframes island-sun-breathe { 50% { filter: drop-shadow(0 0 6px rgba(255, 150, 60, .8)); } }
+@keyframes island-sun-breathe { 50% { opacity: .78; scale: .94; } }

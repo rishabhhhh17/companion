@@ -62,8 +62,15 @@ describe("the sun beside the notch (M16)", () => {
   test("drawn on the menu bar left of the notch at rest only; the black shape stays exactly the notch", () => {
     const page = read("./island.tsx"), css = read("./style.css");
     expect(page).toContain('shape.mode === "rest" && shape.kind === "notch" && shape.core > 0 ? shape.core : shape.w');
-    expect(page).toContain('src="./brand/sun.svg"');
+    // One colour, as the Mac's own menu bar icons: white on a dark menu bar, black on a light one.
+    expect(page).toContain('<source srcSet="./brand/sun-dark.svg" media="(prefers-color-scheme: dark)" />');
+    expect(page).toContain('src="./brand/sun-light.svg"');
     expect(css).toMatch(/\.island\.notch\[data-mode="rest"\]:not\(\[data-tuck\]\) \.island-sun \{ display: block;/);
-    expect(readFileSync(new URL("../public/brand/sun.svg", import.meta.url), "utf8")).toContain("<svg");
+    const dark = readFileSync(new URL("../public/brand/sun-dark.svg", import.meta.url), "utf8"), light = readFileSync(new URL("../public/brand/sun-light.svg", import.meta.url), "utf8");
+    expect(dark).toContain('fill="#fff"'); expect(light).toContain('fill="#000"');
+    // The mark is exactly seven identical rays (make_logo.py rotates one path 360/7 degrees) and a sun with its smile cut out.
+    expect(dark.match(/transform="rotate\(/g)?.length).toBe(7);
+    expect(new Set([...dark.matchAll(/<path d="([^"]+)" fill="#fff" transform/g)].map((m) => m[1])).size).toBe(1);
+    expect(dark).toContain('mask="url(#cutd)"');
   });
 });

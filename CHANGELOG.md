@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A new mark: the smiling sun in motion: 27 Oct 2026
+
+- **Squibby has its logo:** a round sun with a smile cut through it and seven curved rays spinning the same way, like a pinwheel. Fun and warm, and it reads at 16 points. The founder picked the shape and the colours after several rounds and some research on which colours AI and developer tools already own.
+- **The sun beside the notch is now this mark,** in one colour like the Mac's own menu bar icons: white on a dark menu bar, black on a light one.
+- **The app icon is the mark in electric lime on matte black,** a colour no AI or developer tool owns, and the colour of "it works".
+
 ## Glow, and the sun beside the notch: 27 Oct 2026
 
 - **The panel under the notch wears Glow, the palette the founder picked:** a shiny gold "+ Fix something", a mint "Is it safe to go live?", a warm "Find the problem", and a soft grey lift under the notch's black.
