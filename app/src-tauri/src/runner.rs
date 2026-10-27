@@ -149,11 +149,32 @@ pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Optio
         (None, Some(_)) => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         (None, None) => match (in_bundle("bin/bun"), in_bundle("runner/src/main.ts")) {
             (Some(b), Some(r)) => (b, r),
-            _ if bundle.is_some() => return Err(concat!(crate::product_s!(), " engine is missing from this copy of the app. Download ", crate::product!(), " again and replace this one.").into()),
+            _ if bundle.is_some() => return Err(concat!("Part of ", crate::product!(), " is missing from this copy of the app. Download ", crate::product!(), " again and replace this one.").into()),
             _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
     Ok(Locations { bun, runner, data, env: allowed_env(&dev) })
+}
+
+/// What a person reads when the helper that runs Claude cannot start, is not there yet, or does not answer. Plain words;
+/// the raw reason goes to the log (take_detail).
+pub const HELPER_DOWN: &str = concat!(crate::product!(), " could not start the helper that runs Claude. Quit and open ", crate::product!(), " again.");
+pub const NOT_READY: &str = concat!(crate::product!(), " is not ready yet. Try again in a moment.");
+pub const NOT_ANSWERING: &str = concat!(crate::product!(), " is busy and did not answer. Try again in a moment.");
+
+/// A failure's raw detail (runner/src/plainfail.ts `failure`, or the shell's own), taken off a protocol.error or
+/// app.runner_down so no page ever shows it. None for every other event, which keeps its fields.
+pub fn take_detail(v: &mut Value) -> Option<String> {
+    let t = v.get("type").and_then(Value::as_str)?;
+    if t != "protocol.error" && t != "app.runner_down" { return None; }
+    let d = v.as_object_mut()?.remove("detail")?;
+    Some(match d { Value::String(s) => s, other => other.to_string() })
+}
+/// The log line for a failure's detail: what failed and the detail, with the home folder written as ~, short.
+pub fn detail_line(kind: &str, failed: Option<&str>, detail: &str) -> Value {
+    let home = std::env::var("HOME").unwrap_or_default();
+    let d = if home.len() > 1 { detail.replace(&home, "~") } else { detail.to_string() };
+    serde_json::json!({ "kind": kind, "failed": failed.unwrap_or(""), "detail": d.chars().take(400).collect::<String>() })
 }
 
 /// Status messages a page that loads late still needs (who is connected, is the engine up).
@@ -250,8 +271,8 @@ impl Shared {
     /// Queue one line for the engine. Never waits: a full queue or a missing engine is an immediate, plain error.
     pub fn send_line(&self, line: String) -> Result<(), String> {
         match lock(&self.tx).as_ref() {
-            None => Err("The engine is not running.".into()),
-            Some(tx) => tx.try_send(line).map_err(|e| match e { TrySendError::Full(_) => "The engine is not answering.".to_string(), TrySendError::Disconnected(_) => "The engine is not running.".to_string() }),
+            None => Err(NOT_READY.into()),
+            Some(tx) => tx.try_send(line).map_err(|e| match e { TrySendError::Full(_) => NOT_ANSWERING.to_string(), TrySendError::Disconnected(_) => NOT_READY.to_string() }),
         }
     }
     pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { kill_group(c); } }
@@ -274,7 +295,7 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
             if shared.quitting.load(Ordering::SeqCst) { return; }
             let started = Instant::now();
             match spawn() {
-                Err(e) => emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": format!("could not start the engine: {e}") })),
+                Err(e) => emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": HELPER_DOWN, "detail": format!("could not start the engine: {e}") })),
                 Ok(mut child) => {
                     starts += 1;
                     let (stdout, stdin) = (child.stdout.take(), child.stdin.take());
@@ -308,7 +329,7 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
             if shared.quitting.load(Ordering::SeqCst) { return; }
             failures = if started.elapsed() >= t.healthy { 0 } else { failures + 1 };
             let Some(wait) = backoff(failures.max(1), &t).filter(|_| failures < t.give_up_after) else {
-                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": concat!("The engine keeps stopping. Quit and open ", crate::product!(), " again.") }));
+                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": concat!(crate::product!(), " keeps stopping. Quit and open ", crate::product!(), " again.") }));
                 return;
             };
             let until = Instant::now() + wait;
@@ -327,7 +348,9 @@ impl Runner {
     pub fn replay(&self) -> Vec<Value> { lock(&self.sticky).values().cloned().collect() }
 
     /// Tell every page, and remember it for pages that load later.
-    pub fn publish(app: &AppHandle, v: Value) {
+    pub fn publish(app: &AppHandle, mut v: Value) {
+        // A failure's raw detail is for the log only: taken off before any page sees the event (or a late page replays it).
+        if let Some(d) = take_detail(&mut v) { crate::log("failure_detail", detail_line(v["type"].as_str().unwrap_or(""), v.get("failed").and_then(Value::as_str), &d)); }
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
         crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)
@@ -348,7 +371,7 @@ impl Runner {
                 .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.
-        let first = spawn().map_err(|e| format!("could not start the runner: {e}"))?;
+        let first = spawn().map_err(|e| { crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}"))); HELPER_DOWN.to_string() })?;
         let first = Arc::new(Mutex::new(Some(first)));
         let spawn2: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = { let first = first.clone(); let again = spawn.clone(); Arc::new(move || match lock(&first).take() { Some(c) => Ok(c), None => again() }) };
         let a = app.clone();
@@ -403,6 +426,28 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_failures_raw_detail_goes_to_the_log_and_never_to_a_page() {
+        let mut e = json!({ "v": 1, "type": "protocol.error", "reason": "Something went wrong.", "detail": "git add -A failed: fatal", "failed": "agent.start" });
+        assert_eq!(take_detail(&mut e).as_deref(), Some("git add -A failed: fatal"));
+        assert!(e.get("detail").is_none() && e["reason"] == "Something went wrong." && e["failed"] == "agent.start");
+        let mut down = json!({ "type": "app.runner_down", "reason": HELPER_DOWN, "detail": "No such file" });
+        assert_eq!(take_detail(&mut down).as_deref(), Some("No such file"));
+        // Every other event keeps its detail (a proof step's output, an install's progress).
+        let mut step = json!({ "type": "proof.step", "detail": "build failed" });
+        assert_eq!(take_detail(&mut step), None);
+        assert_eq!(step["detail"], "build failed");
+        let home = std::env::var("HOME").unwrap_or_default();
+        let line = detail_line("protocol.error", Some("agent.start"), &format!("{home}/x failed {}", "y".repeat(600)));
+        let d = line["detail"].as_str().unwrap();
+        assert!(d.starts_with("~/x failed") && d.chars().count() == 400, "{d}");
+        assert!(crate::logfile::should_log("failure_detail", false));
+        // The plain words: the product's name, never "engine", never the raw error.
+        for w in [HELPER_DOWN, NOT_READY, NOT_ANSWERING] { assert!(w.starts_with(crate::product!()) && !w.to_lowercase().contains("engine"), "{w}"); }
+        let publish = { let a = include_str!("runner.rs"); let at = a.find("pub fn publish(").unwrap(); a[at..at + a[at..].find("\n    }\n").unwrap()].to_string() };
+        assert!(publish.find("take_detail(&mut v)").unwrap() < publish.find("remember(").unwrap(), "{publish}");
+    }
     #[test]
     fn install_inspect_and_find_may_only_name_the_chosen_project() {
         let c = |t: &str, p: &str| json!({ "v": 1, "id": "x", "type": t, "project": p });
@@ -834,7 +879,9 @@ mod tests {
         let shared = Shared::new(); let events = Arc::new(Mutex::new(Vec::new())); let e2 = events.clone();
         supervise(shared.clone(), Arc::new(|| Err(io::Error::new(io::ErrorKind::NotFound, "no bun"))), Arc::new(move |v| e2.lock().unwrap().push(v)), Arc::new(|_| {}), quick());
         assert!(wait_for(|| events.lock().unwrap().iter().any(|e| e["reason"].as_str().is_some_and(|m| m.contains("keeps stopping"))), 5000));
-        assert!(events.lock().unwrap().iter().any(|e| e["reason"].as_str().is_some_and(|m| m.contains("no bun"))));
+        // The person reads a plain sentence; the raw reason rides in detail, which publish takes off for the log.
+        assert!(events.lock().unwrap().iter().any(|e| e["reason"] == HELPER_DOWN && e["detail"].as_str().is_some_and(|m| m.contains("no bun"))));
+        assert!(!events.lock().unwrap().iter().any(|e| e["reason"].as_str().is_some_and(|m| m.contains("no bun"))));
     }
     #[test]
     fn sending_never_waits_even_when_the_engine_stops_reading() {
@@ -848,7 +895,7 @@ mod tests {
         let shared = r.shared.clone();
         std::thread::spawn(move || { let results: Vec<_> = (0..2000).map(|_| shared.send_line(line.clone())).collect(); let _ = tx.send(results); });
         let results = rx.recv_timeout(Duration::from_secs(30)).expect("sending waited for an engine that does not read");
-        assert!(results.iter().any(|x| x.as_ref().is_err_and(|m| m.contains("not answering"))), "a full queue was never reported");
+        assert!(results.iter().any(|x| x.as_ref().is_err_and(|m| m == NOT_ANSWERING)), "a full queue was never reported");
         r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
     }
     #[test]
@@ -892,7 +939,7 @@ mod tests {
     #[test]
     fn stop_everything_with_no_engine_says_so_plainly() {
         let runner = Runner::new();
-        assert!(runner.stop_everything("test").unwrap_err().contains("not running"));
+        assert_eq!(runner.stop_everything("test").unwrap_err(), NOT_READY);
     }
     #[test]
     fn quitting_does_not_hang_on_an_engine_that_ignores_the_closed_pipe_and_does_not_restart_it() {

@@ -9,6 +9,7 @@ import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
 import { SWITCHED, type SwitchedId } from "./groups.ts";
 import { FIRST_PRACTICE, costWords, needsMacCheck, nodeMissing, practiceOf, timeWords } from "./practice.ts";
 
@@ -40,7 +41,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
     if (problem) { setKeyNote(problem); return; }
     // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy.
     const k = key; setKey("");
-    void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
+    void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(failNote(e, "key")));
   };
   // The Mac check: at the practice (it waits only when Node is missing) and with the permissions.
   useEffect(() => { if (step === "permissions" || (step === "practice" && needsMacCheck(doctor))) void send(checkMac()); }, [step]);

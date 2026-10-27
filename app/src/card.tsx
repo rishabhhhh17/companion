@@ -28,6 +28,8 @@ import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
+import { CheckDetail, checkParts } from "./checkDetail.tsx";
 import { undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
 import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
@@ -190,8 +192,8 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
         <figure className="receipt-shot">
           <img src={`data:image/jpeg;base64,${f.card.image}`} alt={`${f.card.title} ${S.isLive}`} />
           <div className="row">
-            <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(String(e)))}>{S.savePicture}</button>
-            <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(String(e)))}>{S.copyLink}</button>
+            <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(failNote(e, "picture")))}>{S.savePicture}</button>
+            <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(failNote(e, "link")))}>{S.copyLink}</button>
             <OpenButton url={f.card.url} onNote={setShared} />
           </div>
           {shared && <div className="line muted" role="status">{shared}</div>}
@@ -673,8 +675,8 @@ function Card() {
     const mark = markFor(was, now);
     if (mark && now) void invoke("practice_mark", { which: now.kind, stage: mark }).then(loadPractice).catch(() => {});
   }, [m.practice]);
-  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
-  const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
+  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
+  const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(failNote(e, "folder")); });
   // About this project: asked each time a folder is opened (reads files only).
   useEffect(() => { if (project) void send(inspectProject(project)); }, [project]);
   // Opened from a link: once it is copied, it becomes the project folder.
@@ -1795,7 +1797,7 @@ function Card() {
           {m.rescue.works.length > 0 && <div className="line"><b>{S.rescueWorks}:</b> {m.rescue.works.join("; ")}</div>}
           <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
-          {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
+          {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as Record<string, string>)[e.status] ?? e.status}<CheckDetail parts={checkParts(e)} /></div>)}
           <div className="row">
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <CopyButton text={rescueCopy(m.rescue)} label={S.copyAnswer} />
@@ -1820,7 +1822,7 @@ function Card() {
               <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
               <span>
                 {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
-                {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+                <CheckDetail parts={checkParts(s)} />
               </span>
             </div>
           ))}

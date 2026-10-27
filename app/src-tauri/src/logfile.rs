@@ -9,8 +9,10 @@ pub const MAX_BYTES: u64 = 512 * 1024;
 
 /// What is always written: the app starting, the engine starting or failing, the person pressing one of our own hotkeys,
 /// a question asked before something risky and how it was answered (the kind and the tool, never the words),
-/// and a second copy of Companion leaving because one was already running.
-const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered"];
+/// a second copy of Companion leaving because one was already running, and the raw detail of a failure from Squibby's own
+/// machinery (the person reads one plain sentence; the detail, secrets hidden and the home folder written as ~, is kept
+/// here for a report).
+const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail"];
 
 pub fn should_log(ev: &str, verbose: bool) -> bool { verbose || QUIET.contains(&ev) }
 

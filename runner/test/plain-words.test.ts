@@ -10,7 +10,8 @@ import { AgentRunner } from "../src/agent.ts";
 import type { Engine, EngineOptions, Turn, ToolResult } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import { evaluate, NOT_GIVEN, refusal } from "../src/safety.ts";
-import { COMPANION_APPEND } from "../src/sdkEngine.ts";
+import { buildSdkOptions, COMPANION_APPEND } from "../src/sdkEngine.ts";
+import { PRODUCT } from "../src/names.ts";
 import type { Event } from "../../protocol/index.ts";
 
 const made: string[] = [];
@@ -34,6 +35,15 @@ describe("the standing instructions say what to call things", () => {
     expect(COMPANION_APPEND).toMatch(/never touch files outside the project/);
     expect(COMPANION_APPEND).toMatch(/Never ask for a password/);
     expect(COMPANION_APPEND).toMatch(/one short question/);
+  });
+});
+
+describe("the fallback answer the model may see reads in everyday words", () => {
+  test("the permission fallback says Squibby decides this itself, never names a hook", async () => {
+    const o = buildSdkOptions({ project: "/p", model: "m", budgetUsd: 1, claudeBinary: "/x", env: {}, authorize: async () => ({ allow: true, reason: "" }), signal: new AbortController().signal }) as any;
+    const r = await o.canUseTool("Bash", {}, {});
+    expect(r).toEqual({ behavior: "deny", message: `${PRODUCT} decides this itself.` });
+    expect(r.message).not.toMatch(JARGON);
   });
 });
 

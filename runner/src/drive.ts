@@ -87,8 +87,8 @@ export function triedLine(end: LoopEnd = { tries: 3, same: true }): string {
   if (end.tries <= 1) return "The check failed, so the current approach is not working.";
   return end.same ? `The same check has failed ${times} in a row with the same problem, so the current approach is not working.` : `The checks have failed ${times} in a row, so the current approach is not working.`;
 }
-export const differentPrompt = (title: string, f: { label: string; detail: string }, end?: LoopEnd) =>
-  `Step: ${title}\n\n${triedLine(end)}\nFailed check: ${f.label}\nWhat happened: ${f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
+export const differentPrompt = (title: string, f: { label: string; detail: string; forModel?: string }, end?: LoopEnd) =>
+  `Step: ${title}\n\n${triedLine(end)}\nFailed check: ${f.label}\nWhat happened: ${f.forModel ?? f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
 export const STUCK_OPTIONS = [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }];
 export const pausedPrompt = (title: string) =>
   `You were paused because the person looked at or changed the project themselves. Re-read whatever you need, keep their changes, and carry on with this step: ${title}`;

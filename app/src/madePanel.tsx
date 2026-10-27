@@ -6,6 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { ConfirmStep } from "./confirm.tsx";
 import { canOpen, canTrash, madeFrom, marks, sizeWords, trashAsk, whenWords, type MadeFolder, type MadeList } from "./made.ts";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
 import { invoke } from "./tauri.ts";
 
 type Act = { open: (f: MadeFolder) => void; show: (f: MadeFolder) => void; trash: (f: MadeFolder) => void };
@@ -50,7 +51,7 @@ export function MadePanel({ busy, project }: { busy: boolean; project: string })
   const fail = (e: unknown) => { setNote(String(e)); load(); };
   const act: Act = {
     open: (f) => { setNote(""); void invoke("open_made", { name: f.name, busy }).then(() => { setNote(S.made.opened(f.name)); load(); }).catch(fail); },
-    show: (f) => { setNote(""); void invoke("reveal_made", { name: f.name }).catch((e) => setNote(String(e))); },
+    show: (f) => { setNote(""); void invoke("reveal_made", { name: f.name }).catch((e) => setNote(failNote(e, "finder"))); },
     // git: this question was the git one (trashAsk), so its Yes is the person's confirm of that too.
     trash: (f) => { setNote(""); void invoke("trash_made", { name: f.name, git: trashAsk(f).git, busy }).then(() => { setNote(S.made.done(f.name)); load(); }).catch(fail); },
   };

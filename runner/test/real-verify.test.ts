@@ -62,6 +62,7 @@ describe("every command it sends is one today's runner accepts", () => {
     "new-folder-research": ["research.ask"],
     "daily-limit": ["drive.plan", "agent.start"],
     "error-explainer": ["error.explain"],
+    "error-explainer-stale": ["error.explain"],
     "approve-after-wait": ["agent.start"],
     "approve-git-save": ["agent.start"],
     "approve-env-line": ["agent.start"],

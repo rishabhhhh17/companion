@@ -696,6 +696,21 @@ export const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // M15 wave 2, beside the fix side's stale-error case (evals/fix-projects/cases.json): the selected error names a line
+    // that is already fixed, so the answer says it looks already fixed and suggests no fix.
+    name: "error-explainer-stale", what: "an error whose line is already fixed is said to look already fixed, with no fix suggested", estimateUsd: 0.005, capUsd: 0.1, timeoutS: 120,
+    async run(kit, note) {
+      const dir = kit.scratch("err-stale"); put(dir, { "src/App.tsx": 'import React from "react";\n\nexport default function App() {\n  const name = "shop";\n  const total: number = 3;\n  return <p>{name} {total}</p>;\n}\n' });
+      const r = kit.runner(dir); if (!await r.ready()) return false;
+      r.send({ v: 1, id: "e", type: "error.explain", req: "err-2", app: "com.apple.Terminal", text: "src/App.tsx:5:9 - error TS2322: Type 'string' is not assignable to type 'number'.", project: dir });
+      const out = await r.until((e) => e.type === "error.explained", 60_000);
+      if (!out) { note("no answer"); return false; }
+      const said = (out.sentences ?? []).join(" ");
+      note(`ok = ${out.ok}; sentences: ${JSON.stringify(out.sentences)}; where: ${JSON.stringify(out.where ? { file: out.where.file, line: out.where.line } : null)}; cost ${out.usdEstimate}`);
+      return out.ok === true && /already (been )?fixed|looks fixed|no longer/i.test(said) && !/change (the|it) to|replace|set it to/i.test(said);
+    },
+  },
+  {
     name: "approve-after-wait", what: "an approval card for git init answered yes after a wait lets it run once, and the task finishes; any other card is denied", estimateUsd: 0.1, capUsd: 0.6, timeoutS: 300,
     async run(kit, note) {
       const dir = kit.scratch("approve"); put(dir, { "notes.txt": "start" });
@@ -911,7 +926,7 @@ export function realKit(ctx: CaseCtx, o: { cheap: boolean; loopChoice: "stop" | 
 }
 
 export function verifyCases(o: { cheap: boolean; loopChoice: "stop" | "different" }, make: (ctx: CaseCtx) => Kit = (ctx) => realKit(ctx, o)): Case[] {
-  const models = (s: Scenario) => (s.name === "ship-gates" ? ["no model"] : s.name === "rescue" ? [o.cheap ? CHEAP : MODELS.diagnose, o.cheap ? CHEAP : MODELS.agent] : s.name === "second-model-review" ? [o.cheap ? CHEAP : MODELS.review] : s.name === "diagram" || s.name === "error-explainer" ? [MODELS.fast] : s.name === "explain" ? [o.cheap ? CHEAP : MODELS.agent, MODELS.fast] : [o.cheap ? CHEAP : MODELS.agent]);
+  const models = (s: Scenario) => (s.name === "ship-gates" ? ["no model"] : s.name === "rescue" ? [o.cheap ? CHEAP : MODELS.diagnose, o.cheap ? CHEAP : MODELS.agent] : s.name === "second-model-review" ? [o.cheap ? CHEAP : MODELS.review] : s.name === "diagram" || s.name === "error-explainer" || s.name === "error-explainer-stale" ? [MODELS.fast] : s.name === "explain" ? [o.cheap ? CHEAP : MODELS.agent, MODELS.fast] : [o.cheap ? CHEAP : MODELS.agent]);
   return SCENARIOS.map((s) => ({ name: s.name, what: s.what, models: models(s), estimateUsd: s.estimateUsd, capUsd: s.capUsd, timeoutS: s.timeoutS, run: (ctx) => s.run(make(ctx), ctx.note) }));
 }
 

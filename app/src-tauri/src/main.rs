@@ -1463,6 +1463,12 @@ fn arm_now(app: &AppHandle, on: bool) {
 // The error explainer's card: the answer about reading in this app (shared with Prompt help), and Close.
 #[tauri::command] fn eh_consent(app: AppHandle, choice: String) { errhelp::consent_answer(&app, &choice); }
 #[tauri::command] fn eh_dismiss(app: AppHandle) { errhelp::dismiss(&app); }
+/// A page's press failed inside Squibby's own machinery: the person read one plain sentence (app/src/failwords.ts), and the
+/// raw words are kept here for a report, the home folder written as ~, short. Nothing else is done with them.
+#[tauri::command] fn note_failure(kind: String, detail: String) {
+    let kind: String = kind.chars().filter(|c| c.is_ascii_alphanumeric()).take(20).collect();
+    log("failure_detail", runner::detail_line("page", Some(&kind), &detail));
+}
 /// The Explain chip with words in Home's ask box (errhelp.rs `typed`). Only Home may ask.
 #[tauri::command] fn eh_typed(app: AppHandle, window: tauri::WebviewWindow, text: String) -> Result<(), String> {
     if window.label() != "card" { return Err("notOffered".into()); }
@@ -1713,7 +1719,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
     let Some(parent) = chosen else { return Err(String::new()) };
     let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
     let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
-    app.state::<runner::Runner>().send(&cmd).map_err(|_| concat!(crate::product_s!(), " engine is not running. Try again in a moment.").to_string())
+    app.state::<runner::Runner>().send(&cmd).map_err(|_| runner::NOT_READY.to_string())
 }
 
 /// One new folder at a time (two presses at once never race for the same name).
@@ -1741,7 +1747,7 @@ fn start_in_new_folder(window: tauri::WebviewWindow, app: AppHandle, cmd: Value)
     let task = newfolder::task_command(&req, &folder);
     runner::check_command(&task)?;
     runner::check_project(&task, &current_project())?;
-    app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product_s!(), " engine is not running. Press the button again in a moment.").to_string())?;
+    app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product!(), " is not ready yet. Press the button again in a moment.").to_string())?;
     Ok(folder)
 }
 
@@ -3851,7 +3857,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

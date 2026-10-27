@@ -187,7 +187,7 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
     }
   });
   test("the engine failing the fix's own request still ends it", () => {
-    const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "could not handle agent.start: boom" })]);
+    const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "Something went wrong.", failed: "agent.start" })]);
     expect(m.practice?.stage).toBe("failed");
   });
   // Found in review of the A55 fix: the engine catches a task that throws itself, tells the reason for its agent and sets it to

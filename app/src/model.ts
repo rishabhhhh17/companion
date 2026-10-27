@@ -15,7 +15,9 @@ export type CharacterState = "off" | "idle" | "listening" | "thinking" | "workin
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
 export type ToolLine = { id: string; text: string; tool: string; words: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
-export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string };
+// summary: a failed step's one plain sentence from the engine; problem: where it failed. The detail (the check's own
+// output) is shown behind Details (checkDetail.tsx).
+export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem };
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
 // changedAt: the first changed line ("Show me what changed"). repeat: the same small change made in two places (your turn).
 export type ChangeAt = { file: string; line: number; lineText: string };
@@ -213,6 +215,8 @@ export type Model = {
   followUp: "idle" | "sending";
   notice: string | null;
   error: string | null;
+  // The error that says the helper stopped (app.runner_down), so its coming back clears only that one.
+  downError?: string;
 };
 
 // The record without one agent's entry.
@@ -278,7 +282,7 @@ const browserRung = (steps: unknown, test: (s: any) => boolean) => Array.isArray
 // Most sentences the engine sends were written for a person ("Something is still working on this project. Wait for it to finish,
 // or press Stop."). Those are shown as they are. A technical message (an error name, a path, a code) is wrapped and never shown raw.
 const LOOKS_TECHNICAL = /(\b[A-Z][A-Za-z]*(Error|Exception)\b|\bE[A-Z]{3,}\b|\bat \/|\.(ts|js|tsx|rs):\d|\bundefined\b|\bnull\b|\bNaN\b|\[object|\bstack\b|\bgit [a-z-]+ failed|\bexit(ed)? (code|with)\b|\bunknown approval\b|\bstderr\b)/;
-const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
+export const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
 /** Claude's own stops, which the engine names (runner/src/reach.ts): Claude out of reach (never the project's or the key's
  *  fault), and every other kind of failed request, in plain words and never in Claude Code's own (which names its /login).
  *  "(ask again)" marks a flow with no Try again, so the words point at no button. Null for any other reason. */
@@ -301,10 +305,16 @@ export function plainError(reason: string): string {
   if (nc) return nc[0];
   const r = reason.replace(/^engine error:\s*/i, "");
   if (WRITTEN_FOR_A_PERSON(r)) return r.trim();
-  return `Something went wrong: ${r.replace(/[.\s]+$/, "")}. Try again, and if it keeps happening, press Stop and start a new task.`;
+  // Anything else is Squibby's own machinery: one plain sentence, never the raw words (the engine keeps those for the log).
+  return S.somethingWrong;
 }
 
 type Ev = Record<string, any> & { type?: string };
+// A step's plain summary and its place, when the engine sent them whole.
+const stepExtras = (s: any): { summary?: string; problem?: Problem } => ({
+  ...(typeof s?.summary === "string" && s.summary ? { summary: s.summary } : {}),
+  ...(s?.problem && typeof s.problem === "object" && typeof s.problem.kind === "string" ? { problem: s.problem as Problem } : {}),
+});
 
 // A place from the engine is used only when it is whole: a file, a line number from 1, and the line's text.
 const placeOk = (c: any): c is ChangeAt => !!c && typeof c === "object" && typeof c.file === "string" && c.file.length > 0 && Number.isInteger(c.line) && c.line >= 1 && typeof c.lineText === "string";
@@ -498,7 +508,7 @@ function reduceRest(m: Model, e: Ev): Model {
     // The rungs of the person's own check, kept on their card only (never on the finished task's proof).
     case "teach.step": {
       if (m.teach?.stage !== "checking" || m.teach.checkpoint !== e.checkpoint || typeof e.rung !== "string") return m;
-      const line: ProofLine = { rung: e.rung, label: String(e.label ?? e.rung), status: e.status, detail: String(e.detail ?? "") };
+      const line: ProofLine = { rung: e.rung, label: String(e.label ?? e.rung), status: e.status, detail: String(e.detail ?? ""), ...stepExtras(e) };
       const steps = m.teach.steps ?? [], at = steps.findIndex((s) => s.rung === line.rung);
       return { ...m, teach: { ...m.teach, steps: at >= 0 ? steps.map((s, i) => (i === at ? line : s)) : [...steps, line].slice(-12) } };
     }
@@ -518,8 +528,10 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "ui.settle": return withAgents(m, Object.fromEntries(Object.entries(m.agents).map(([a, s]) => [a, s === "done" ? "idle" : s])) as Record<string, CharacterState>);
     case "ui.approvalAnswered": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
-    case "app.runner_down": return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: e.reason ? `The engine could not start: ${e.reason}` : `The engine stopped. Restart ${PRODUCT}.` };
-    case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && /^The engine /.test(m.error) ? null : m.error };
+    // The shell's reason is already one plain sentence (runner.rs HELPER_DOWN and the others); it is shown as it is, and
+    // cleared when the helper says hello again.
+    case "app.runner_down": { const down = typeof e.reason === "string" && e.reason ? plainError(e.reason) : S.helperStopped; return { ...withAgents({ ...m, runnerUp: false }, m.agents), error: down, downError: down }; }
+    case "runner.hello": return { ...withAgents({ ...m, runnerUp: true }, m.agents), error: m.error && m.error === m.downError ? null : m.error, downError: undefined };
     // A new engine knows nothing of the old one's questions, so nothing waiting on it can be answered any more.
     // The new engine keeps no conversation either: the last task can no longer be followed up or tried again (gone). A check
     // that was running is not left saying Running. A turn whose place still has the old code stays, with only Put my fix
@@ -703,7 +715,7 @@ function reduceRest(m: Model, e: Ev): Model {
       const p = m.task.proof;
       // A step arriving after a finished try means the work was sent back and is being checked again.
       const base: ProofState = !p || p.verdict ? { steps: [], tries: (p?.tries ?? 0) } : p;
-      const line: ProofLine = { rung: e.rung, label: String(e.label ?? e.rung), status: e.status, detail: String(e.detail ?? "") };
+      const line: ProofLine = { rung: e.rung, label: String(e.label ?? e.rung), status: e.status, detail: String(e.detail ?? ""), ...stepExtras(e) };
       const at = base.steps.findIndex((s) => s.rung === line.rung);
       return { ...m, task: { ...m.task, proof: { ...base, steps: at >= 0 ? base.steps.map((s, i) => (i === at ? line : s)) : [...base.steps, line] } } };
     }
@@ -783,7 +795,7 @@ function reduceRest(m: Model, e: Ev): Model {
       const failed = e.verdict === "failed" ? (e.steps ?? []).find((s: any) => s.status === "failed") : undefined;
       if (e.verdict !== "cancelled") m = { ...m, where: failed?.problem ?? null };
       if (!m.task) return m;
-      const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "" }));
+      const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "", ...stepExtras(s) }));
       return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
     }
     case "plan.ready": if (m.away[e.agent] !== undefined) return m;
@@ -862,7 +874,7 @@ function reduceRest(m: Model, e: Ev): Model {
       // its undo point is made, only its receipt or its agent stopping ends it (agent.state; a refusal of another command,
       // such as the key pressed again during the fix, is not its end). Its checks end on an error only from the engine itself (no agent): a refusal for the agent
       // comes with that check's own answer.
-      return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" && (!m.practice.checkpoint || /^could not handle agent\./.test(String(e.reason))) ? { practice: { ...m.practice, stage: "failed" as const } } : m.practice?.stage === "proving" && typeof e.agent !== "string" ? { practice: { ...m.practice, stage: "failed" as const, checksFailed: true } } : {}), error: plainError(String(e.reason)) };
+      return { ...m, followUp: "idle", ...(m.practice?.stage === "fixing" && (!m.practice.checkpoint || String(e.failed ?? "").startsWith("agent.")) ? { practice: { ...m.practice, stage: "failed" as const } } : m.practice?.stage === "proving" && typeof e.agent !== "string" ? { practice: { ...m.practice, stage: "failed" as const, checksFailed: true } } : {}), error: plainError(String(e.reason)) };
     // The browser check's download. A second press while it runs changes nothing.
     case "ui.browserInstallAsked": return browserBusy(m.browser) ? m : { ...m, browser: { ...m.browser, stage: "asked", percent: undefined, mb: undefined, detail: undefined } };
     case "ui.browserClosed": return browserBusy(m.browser) ? m : { ...m, browser: { needed: false, stage: "idle", ...(m.browser.installed !== undefined ? { installed: m.browser.installed } : {}) } };
