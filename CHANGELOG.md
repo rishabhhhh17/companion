@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Glow, and the sun beside the notch: 27 Oct 2026
+
+- **The panel under the notch wears Glow, the palette the founder picked:** a shiny gold "+ Fix something", a mint "Is it safe to go live?", a warm "Find the problem", and a soft grey lift under the notch's black.
+- **Squibby's sun sits beside the notch** on the menu bar, like the best notch apps do with their logo. It breathes very slowly; rest the pointer on it (or on the notch) and the panel opens. It takes 26 points of the menu bar each side of the notch, less than the wings while work runs.
+
 ## The water is on, the notch opens into a panel, and a logo: 27 Oct 2026
 
 The founder: "the hovering on the notch is pretty bad", "I didn't see the fluidity mechanics", "it has to be something like HeyClicky's notch hover", "Flowflow is not the main guy, he is the water agent", and the logo "has to be a circle with 7 rays and the gradient like this".

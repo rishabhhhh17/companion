@@ -516,39 +516,49 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .proof-chips li.bad .ic { color: var(--danger); }
 
 /* The panel under the notch (islandPanel.tsx; 27 Oct 2026, "like HeyClicky's notch hover", "I need a bit of colour"): the
-   notch grown down into a small panel, never a character. Colour lives here, from Squibby's mark (app/brand): one glowing
-   sunset button for the main thing, a warm pill and a fresh green pill, work cards lit by how they are going, and a faint
-   sunset glow along the bottom edge. The rest of the chrome stays black and white. Always laid out at island.rs PANEL_W so
+   notch grown down into a small panel, never a character. Colour lives here, in the palette the founder picked (Glow,
+   M16): a shiny gold button for the main thing, a mint pill, a lifted grey panel, work cards lit by how they are going,
+   and a faint warm glow along the bottom edge. The rest of the chrome stays black and white. Always laid out at island.rs PANEL_W so
    its height is measured before it opens; shown only while the pointer rests on the island. */
-.island-panel { --sun-hi: #FFD27A; --sun-mid: #F58A36; --sun-lo: #DE4A1E; --leaf: #7EE2A8; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+.island-panel { --gold-hi: #FFF3CF; --gold: #FFCF73; --gold-lo: #FF9A3D; --gold-ink: #3A1400; --mint-hi: #D9FBE6; --mint: #A6EFC6; --mint-ink: #0D3B22; --lift: #1D1D20; --chip: #2D2D31; --spark: #FFA552; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+/* Glow (the founder's pick, 27 Oct 2026, M16): the notch's black, lifting to a soft grey where the panel hangs. */
+.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #1D1D20 100%); }
 .island-panel[data-shown] { visibility: visible; opacity: 1; transition-delay: 60ms; }
-.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(245, 138, 54, .35), transparent); pointer-events: none; }
+.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 170, 80, .3), transparent); pointer-events: none; }
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 14px; color: #2B0B02; background-color: #FFC15E; background-image: linear-gradient(180deg, var(--sun-hi) 0%, var(--sun-mid) 58%, var(--sun-lo) 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -2px 6px rgba(120, 20, 0, .35), 0 6px 18px rgba(222, 74, 30, .35); font-size: var(--t-body); font-weight: 700; letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
-.island-panel .ip-go:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 -2px 6px rgba(120, 20, 0, .35), 0 8px 24px rgba(222, 74, 30, .5); }
+.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 16px; color: #3A1400; background-color: #FFCF73; background-image: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 38%, var(--gold-lo) 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), inset 0 -3px 8px rgba(200, 80, 0, .35), 0 1px 0 rgba(255, 255, 255, .2), 0 10px 26px rgba(255, 150, 60, .4); font-size: var(--t-body); font-weight: 700; letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), filter var(--dur-2) var(--ease-out); }
+.island-panel .ip-go:hover { filter: brightness(1.05); box-shadow: inset 0 2px 0 #fff, inset 0 -3px 8px rgba(200, 80, 0, .35), 0 1px 0 rgba(255, 255, 255, .2), 0 12px 32px rgba(255, 150, 60, .55); }
 .island-panel .ip-go:active { transform: scale(.98); }
 .island-panel .ip-plus { font-size: calc(18rem / 14); font-weight: 600; line-height: 1; }
 .island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 600; transition: filter var(--dur-2) var(--ease-out); }
-.island-panel .ip-pill:hover { filter: brightness(1.15); }
-.island-panel .ip-pill.find { color: #FFD9B0; background: #3A1D0E; box-shadow: inset 0 0 0 1px rgba(245, 138, 54, .45); }
-.island-panel .ip-pill.live { color: #C9F5DA; background: #0F2E1D; box-shadow: inset 0 0 0 1px rgba(126, 226, 168, .45); }
-.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #1c1c1f; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
-.island-panel .ip-open:hover { background: #2a2a2e; }
+.island-panel .ip-pill:hover { filter: brightness(1.12); }
+.island-panel .ip-pill.find { color: #FFE0C2; background: #2D2D31; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
+.island-panel .ip-pill.find .ic { color: #FFA552; }
+.island-panel .ip-pill.live { color: #0D3B22; background-color: #BDF4D4; background-image: linear-gradient(180deg, var(--mint-hi), var(--mint)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8); }
+.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2D2D31; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
+.island-panel .ip-open:hover { background: #38383d; }
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .island-panel .ip-jobs li { animation: ip-in var(--dur-4) var(--ease-spring) both; }
 @keyframes ip-in { from { opacity: 0; translate: 0 -6px; scale: .97; } }
-.island-panel .ip-job { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 14px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
-.island-panel .ip-job:hover { background: #1c1c1f; }
-.island-panel .ip-job[data-tone="working"] { background: #18120E; box-shadow: inset 0 0 0 1px rgba(245, 138, 54, .4); }
+.island-panel .ip-job { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 14px; background: #26262A; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover { background: #2D2D31; }
+.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(255, 165, 82, .35); }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
-.island-panel .ip-job[data-tone="done"] { background: #0F1A14; box-shadow: inset 0 0 0 1px rgba(126, 226, 168, .5); }
-.island-panel .ip-job[data-tone="failed"] { background: #1C0F0F; box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
+.island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(166, 239, 198, .5); }
+.island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
 .island-panel .ip-text b { font-weight: 600; color: #fff; overflow-wrap: anywhere; }
-.island-panel .ip-text span { color: #b8b8bd; font-size: var(--t-caption); overflow-wrap: anywhere; }
-.island-panel .ip-cost { color: #FFD9B0; font-size: var(--t-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
-.island-panel .ip-job[data-tone="done"] .ip-cost { color: #C9F5DA; }
+.island-panel .ip-text span { color: #c4c4c9; font-size: var(--t-caption); overflow-wrap: anywhere; }
+.island-panel .ip-cost { color: #FFB766; font-size: var(--t-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
+.island-panel .ip-job[data-tone="done"] .ip-cost { color: #A6EFC6; }
 .island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
+/* The sun beside the notch (M16): Squibby's mark on the menu bar just left of the notch, at rest only (the wings and the
+   panel take its place while they show). The window is island.rs MARK wider each side, see through; resting on it opens
+   the panel. It fades in, and breathes very slowly. */
+.island-sun { position: absolute; top: calc((var(--row) - 16px) / 2); left: calc(50% - var(--core) / 2 - 22px); width: 16px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; filter: drop-shadow(0 0 3px rgba(255, 150, 60, .55)); }
+.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both, island-sun-breathe 6s ease-in-out var(--dur-3) infinite; }
+@keyframes island-sun-in { from { opacity: 0; scale: .6; } }
+@keyframes island-sun-breathe { 50% { filter: drop-shadow(0 0 6px rgba(255, 150, 60, .8)); } }

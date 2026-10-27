@@ -57,3 +57,13 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering \}\)/);
   });
 });
+
+describe("the sun beside the notch (M16)", () => {
+  test("drawn on the menu bar left of the notch at rest only; the black shape stays exactly the notch", () => {
+    const page = read("./island.tsx"), css = read("./style.css");
+    expect(page).toContain('shape.mode === "rest" && shape.kind === "notch" && shape.core > 0 ? shape.core : shape.w');
+    expect(page).toContain('src="./brand/sun.svg"');
+    expect(css).toMatch(/\.island\.notch\[data-mode="rest"\]:not\(\[data-tuck\]\) \.island-sun \{ display: block;/);
+    expect(readFileSync(new URL("../public/brand/sun.svg", import.meta.url), "utf8")).toContain("<svg");
+  });
+});

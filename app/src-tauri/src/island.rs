@@ -81,6 +81,10 @@ pub const WING: f64 = 40.0;
 /// Squibby is for, and each job at work as a little card with its plan and then its result (island.tsx). This wide, so it
 /// fits on the smallest MacBook screen and inside the character's clear zone (docking.rs NOTCH_CLEAR, with CLEAR_MARGIN).
 pub const PANEL_W: f64 = 400.0;
+/// The sun beside the notch (M16, the founder: "yeah" to HeyClicky's logo beside the notch): at rest on a notch the window
+/// is this much wider on each side, see through, and the page draws Squibby's mark on the menu bar just left of the notch.
+/// The black shape stays exactly the notch. Resting the pointer on the sun opens the panel, like resting it on the notch.
+pub const MARK: f64 = 26.0;
 /// How tall the panel may be below the notch's row: the page measures what it shows and asks (island_alert `panel`).
 pub const PANEL_MIN: f64 = 56.0;
 pub const PANEL_MAX: f64 = 240.0;
@@ -147,7 +151,7 @@ pub fn look(d: &Display, mode: Mode, panel: f64) -> Look {
     let at = |w: f64, top: f64, h: f64| { let w = w.min(fw); [around(cx, w, fx, fw), top, w, h] };
     let winged = core + 2.0 * WING;
     let frame = match mode {
-        Mode::Rest => r,
+        Mode::Rest => if kind(d) == Kind::Notch { at(core + 2.0 * MARK, r[1], r[3]) } else { r },
         Mode::Alert => at(winged, top, row),
         Mode::Peek => at(winged.max(PANEL_W), r[1], r[3] + panel_h(panel)),
         Mode::WingsPeek => at(winged.max(PANEL_W), top, row + panel_h(panel)),
@@ -416,11 +420,15 @@ mod tests {
         assert_eq!(notch_from(1512.0, f64::NAN, 663.5, 663.5), None);
     }
     #[test]
-    fn on_a_notch_the_island_at_rest_is_the_notch_itself() {
+    fn on_a_notch_the_island_at_rest_is_the_notch_and_room_for_the_sun_beside_it() {
+        // M16: the black shape stays exactly the notch (the page draws it at `core`); the window is MARK wider each side,
+        // see through, for the sun on the menu bar. Less than a wing (the founder agreed to the sun, 27 Oct 2026).
+        assert!(MARK < WING);
         let d = mbp14();
-        assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN), [663.5, 0.0, 185.0, 32.0]);
+        assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN), [663.5 - MARK, 0.0, 185.0 + 2.0 * MARK, 32.0]);
+        assert_eq!(look(&d, Mode::Rest, PANEL_MIN).core, 185.0, "the page is told the notch's own width");
         let big = mbp16();
-        assert_eq!(frame_of(&big, Mode::Rest, PANEL_MIN), [771.5, 0.0, 185.0, 32.0]);
+        assert_eq!(frame_of(&big, Mode::Rest, PANEL_MIN), [771.5 - MARK, 0.0, 185.0 + 2.0 * MARK, 32.0]);
         assert_eq!(menu_bar(&d), Some(32.0));
     }
     // The menu bar beside the notch holds app menus and status icons, and the middle of a menu bar without a notch can

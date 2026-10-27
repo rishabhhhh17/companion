@@ -145,11 +145,15 @@ function Island() {
   const w = wings ?? lastWings.current;
   const [soft, setSoft] = useState(false);
   useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
-  const box = useSpringBox(shape.w, shape.h, reduced, soft);
+  // At rest on a notch the window is wider than the notch (island.rs MARK, room for the sun); the black shape stays the notch.
+  const shapeW = shape.mode === "rest" && shape.kind === "notch" && shape.core > 0 ? shape.core : shape.w;
+  const box = useSpringBox(shapeW, shape.h, reduced, soft);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
   return (
     <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} style={vars}>
+      {/* Squibby's mark on the menu bar beside the notch (M16): drawn only, the island's name says what it is. */}
+      {shape.kind === "notch" && <img className="island-sun" src="./brand/sun.svg" alt="" aria-hidden="true" draggable={false} />}
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
