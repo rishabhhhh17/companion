@@ -186,6 +186,23 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
 }
 
 /// Close, Cancel or Stop everything: a read under way is dropped, a question about an app is forgotten.
+/// The Explain chip with words in Home's ask box: the person typed or pasted them into Squibby itself, so nothing is read
+/// from another app (rule 5 is untouched, no light is needed) and no Accessibility is used. The same engine path as the
+/// hotkey from there on (secrets hidden, two plain sentences, where it is in the project). A press still under way is
+/// dropped. Err is a plain code: "tooShort" when there is nothing to explain, "noEngine" when the engine is not running.
+pub fn typed(app: &AppHandle, text: &str) -> Result<(), &'static str> {
+    *awaiting() = None;
+    let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let errorsel::Selection::Send(t) = errorsel::prepare(text) else { return Err("tooShort") };
+    let req = format!("eh_{}", now_ms());
+    ANSWERED.claim(gen);
+    say(app, Outcome::Sent("typed").stage(), json!({ "req": req }));
+    let sent = app.state::<crate::runner::Runner>().send(&errorsel::command(&req, errorsel::ASK_BOX, &t, &crate::current_project()));
+    note(errorsel::ASK_BOX, 0, t.chars().count(), if sent.is_ok() { "typed" } else { "no_engine" });
+    if sent.is_err() { say(app, Outcome::NoEngine.stage(), json!({ "why": Outcome::NoEngine.why() })); return Err("noEngine"); }
+    Ok(())
+}
+
 pub fn dismiss(app: &AppHandle) {
     GEN.fetch_add(1, Ordering::SeqCst);
     *awaiting() = None;

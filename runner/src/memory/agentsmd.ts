@@ -82,7 +82,7 @@ export function syncAgentsFiles(project: string, m: MemoryStore, o: { approved: 
     else if (!importsAgents(c) && !ours(c)) put(cPath, "CLAUDE.md", withBlock(c.text, `${BEGIN}\n@AGENTS.md\n${END}`), c.text);
     return changed.length ? { status: "written", files: changed } : { status: "unchanged", files: [] };
   } catch (e) {
-    return { status: "failed", files: [], reason: `Could not write the shared files (${(e as Error).message}).` };
+    return { status: "failed", files: [], reason: "Could not write the shared files. Try again." };
   }
 }
 

@@ -9,6 +9,7 @@ import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
 import { SWITCHED, type SwitchedId } from "./groups.ts";
 import { FIRST_PRACTICE, costWords, needsMacCheck, nodeMissing, practiceOf, timeWords } from "./practice.ts";
 import { FirstLook } from "./firstLook.tsx";
@@ -45,7 +46,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
     // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy. The engine then checks it
     // once with Anthropic (free) and says what it heard.
     const k = key; setKey("");
-    void invoke("save_api_key", { key: k }).then(() => { setKeyNote(""); setSavedAt(Date.now()); }).catch(() => setKeyNote(S.obKeyFailed));
+    void invoke("save_api_key", { key: k }).then(() => { setKeyNote(""); setSavedAt(Date.now()); }).catch((e) => setKeyNote(failNote(e, "key")));
   };
   const check = keyCheck(savedAt, keyTested);
   // The Mac check, when the folder step offers the practice (it waits only when Node is missing).

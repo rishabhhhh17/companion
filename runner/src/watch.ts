@@ -227,7 +227,7 @@ export class WatchEngine {
           : w.kind === "deploy_status" ? await this.o.checks.deploy(w.project, sig)
           : w.kind === "ci_status" ? await this.o.checks.ci(w.project, sig)
           : await this.o.checks.project(w.project, sig);
-      } catch (e) { answer = { outcome: "unknown", reason: `The check itself stopped (${clip(redact(String((e as Error)?.message ?? e)), 80)}).` }; }
+      } catch (e) { answer = { outcome: "unknown", reason: "The check could not run this time. It tries again at the next check." }; }
       finally { clearTimeout(timer); }
       // The watch was removed or paused while the check ran: its answer is dropped.
       if (this.running.get(w.id) !== slot) return;

@@ -11,7 +11,7 @@
   ],
   "tools": [
     { "id": "askBox", "group": "core", "hotkeys": ["card"], "permissions": [], "settings": [],
-      "commands": ["char_click", "ui_click", "open_card_cmd", "first_run_open", "toggle_card", "island_click", "island_alert", "island_state", "resize_card", "close_card", "quiet_now", "celebrate", "read_document", "drag_dock", "drop_dock", "replay_events"],
+      "commands": ["char_click", "ui_click", "note_failure", "open_card_cmd", "first_run_open", "toggle_card", "island_click", "island_alert", "island_state", "resize_card", "close_card", "quiet_now", "celebrate", "read_document", "drag_dock", "drop_dock", "replay_events"],
       "runner": ["engine.warm"] },
     { "id": "engine", "group": "core", "permissions": [], "settings": [],
       "commands": ["send_command"],
@@ -95,7 +95,7 @@
       "commands": ["ph_consent", "ph_ready", "ph_disarm", "ph_accept", "ph_restore", "ph_dismiss", "ph_answer"],
       "runner": ["assist.prompt"], "stays": ["ph_disarm", "ph_restore", "ph_dismiss"] },
     { "id": "errorHelp", "group": "voice", "hotkeys": ["explain"], "tried": "page", "permissions": ["accessibility"], "settings": [],
-      "commands": ["eh_consent", "eh_dismiss"],
+      "commands": ["eh_consent", "eh_dismiss", "eh_typed"],
       "runner": ["error.explain"], "stays": ["eh_dismiss"] },
     { "id": "secondLook", "group": "voice", "hotkeys": ["secondlook"], "tried": "page", "permissions": ["accessibility"], "settings": ["secondLook.on", "secondLook.searches"],
       "commands": ["sl_consent", "sl_dismiss"],

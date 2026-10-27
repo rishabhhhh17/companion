@@ -473,7 +473,8 @@ describe("a check that does not finish, or cannot run", () => {
     r.script.ci = [() => Promise.reject(new Error("spawn failed"))];
     await r.cmd("watch.add", { kind: "ci_status", schedule: "15m" }); await r.settle();
     expect(r.engine.all()[0]).toMatchObject({ state: "unknown" });
-    expect(r.engine.all()[0].reason).toMatch(/check itself stopped/);
+    expect(r.engine.all()[0].reason).toBe("The check could not run this time. It tries again at the next check.");
+    expect(r.engine.all()[0].reason).not.toContain("spawn failed");
   });
   test("a project that is busy is not judged: the state stays, and it is tried again in two minutes", async () => {
     const r = rig();

@@ -14,6 +14,7 @@ import { isBusy } from "./updates.ts";
 import { workingOn } from "./practice.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { followLessMotion } from "./motion.ts";
+import type { HomeArrival } from "./home.ts";
 import "./style.css";
 
 function SettingsWindow() {
@@ -30,8 +31,9 @@ function SettingsWindow() {
   const places = settingsPlaces();
   const open = place && places.some((p) => p.id === place) ? place : places[0]?.id ?? "";
   const content = useRef<HTMLDivElement>(null);
-  // Practice and the walk through a permission happen in Home: it opens, and this window stays as it is.
-  const toHome = () => void invoke("open_card_cmd");
+  // Practice and the walk through a permission happen in Home: it opens and does what was pressed (starts that lesson, or
+  // shows Learn), and this window stays as it is.
+  const toHome = (then: HomeArrival) => void invoke("open_card_cmd", { then });
   return (
     <main className="settings-window">
       <nav className="side" aria-label={S.settingsTitle}>
@@ -46,7 +48,7 @@ function SettingsWindow() {
           <header className="top"><h1 id="settings-title">{places.find((p) => p.id === open)?.title ?? S.settingsTitle}</h1></header>
           <div role="region" aria-labelledby="settings-title">
             <SettingsPage place={open} working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending}
-              onClose={() => void invoke("close_settings_window")} onPracticeList={toHome} onLesson={toHome} />
+              onClose={() => void invoke("close_settings_window")} onPracticeList={() => toHome({ place: "learn" })} onLesson={(lesson) => toHome({ lesson })} />
           </div>
         </div>
       </div>

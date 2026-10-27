@@ -98,6 +98,16 @@ export function need(m: Model): Need | null {
 
 /** needKey: the need last acted on. What VoiceOver hears about a need, and the tab it is on, is Home's one live line
  *  (a11y.ts `liveLine`), since focus does not move there. */
+/** What Home does on arrival when the Settings window opened it (main.rs open_card_cmd's `then`, checked by the shell in
+ *  settingswin.rs arrival): start that lesson, or show Learn. Anything else is ignored and Home just opens. */
+export type HomeArrival = { lesson: string } | { place: "learn" };
+export function arrivalFrom(opened: unknown): HomeArrival | null {
+  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown } | null | undefined;
+  if (!t || typeof t !== "object") return null;
+  if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };
+  return t.place === "learn" ? { place: "learn" } : null;
+}
+
 export type HomeState = { tab: Tab; needKey: string };
 export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.

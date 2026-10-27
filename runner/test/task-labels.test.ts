@@ -3,13 +3,14 @@
 //     app's display name, never the selected text (that task is off the record).
 //  G. A step of a plan is named by its step, never by the engine's own words ("Do only this step, keep the change small").
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { PRODUCT } from "../src/names.ts";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog, type TaskRow } from "../src/tasklog.ts";
-import { appDisplayName, errorFixLabel, isOffRecordLabel, OFF_RECORD_LABEL, taskLabel } from "../src/labels.ts";
+import { appDisplayName, ASK_BOX_APP, errorFixLabel, isOffRecordLabel, OFF_RECORD_LABEL, taskLabel } from "../src/labels.ts";
 import { NO_UNASKED_DETAILS_STEP, stepPrompt } from "../src/drive.ts";
 import { STALE_ERROR_RULE } from "../src/staleerror.ts";
 import { recapLines } from "../src/recap.ts";
@@ -77,6 +78,10 @@ describe("a plan's steps are named by their steps in What I did", () => {
 describe("the app's display name", () => {
   test("common apps by their names, others by the last part of their identifier, nothing odd at all", () => {
     expect(appDisplayName("com.apple.TextEdit")).toBe("TextEdit");
+    // An error pasted into Home's own ask box (the Explain chip) is named as the product, and still reads as off the record.
+    expect(appDisplayName(ASK_BOX_APP)).toBe(PRODUCT);
+    expect(isOffRecordLabel(errorFixLabel(appDisplayName(ASK_BOX_APP)))).toBe(true);
+    expect(readFileSync(new URL("../../app/src-tauri/src/errorsel.rs", import.meta.url), "utf8")).toContain(`pub const ASK_BOX: &str = "${ASK_BOX_APP}";`);
     expect(appDisplayName("com.apple.Terminal")).toBe("Terminal");
     expect(appDisplayName("com.googlecode.iterm2")).toBe("iTerm");
     expect(appDisplayName("com.todesktop.230313mzl4w4u92")).toBe("Cursor");

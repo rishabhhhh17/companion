@@ -87,7 +87,7 @@ describe("errors and sign in, in plain words", () => {
     expect(run([ev({ type: "protocol.error", reason: "error_max_turns: the run stopped" })]).error).toBe(w);
   });
   test("not connected tells you what to do", () => expect(plainError("engine error: Not connected: add your API key, or sign in with your Claude plan.")).toMatch(/add your API key/i));
-  test("an unknown error is shown without raw jargon prefixes", () => expect(plainError("engine error: boom")).toContain("Something went wrong: boom"));
+  test("an unknown error is one plain sentence, never the raw words (they stay in the log)", () => { expect(plainError("engine error: boom")).toBe(S.somethingWrong); expect(plainError("engine error: boom")).not.toContain("boom"); });
   test("auth none shows a not connected notice, auth api_key clears it", () => {
     const m = run([ev({ type: "auth.status", method: "none" })]);
     expect(m.connected).toBe("none");

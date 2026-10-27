@@ -25,6 +25,21 @@ The four reviews of the whole product agreed: a new person never reached the "wo
 - **The character lost its web style rings** and the grey box when something went wrong; the count of questions is a small black pill.
 - **Flowflow drawn live is merged in, still off.** The founder's live water (with eyes) is now the one live drawing, in the corner and in Home, behind "Draw Squibby live". It stays off until it has been seen on a real Mac.
 
+## Nothing broken, no jargon: 27 Oct 2026
+
+Every button does something you can see, and when Squibby's own machinery fails you read one plain sentence.
+
+- **Explain an error now explains what is in the box.** Paste an error into the ask box and press it: two plain sentences and where it is in your project, the same as the explain keys. With the box empty it says how, in a line you can close. Reading an error in another app still needs the keys, with the light on first.
+- **The mic button is now "How to talk".** It shows the keys to hold. A click never turns on the microphone.
+- **Start or Show me with an empty box** puts the cursor in the box and says "Type what you want done first." (or how to ask Show me), never an amber error.
+- **In the Settings window, "Walk me through it" starts that walkthrough in Home**, and "Open the practice list" opens Learn. Before, both just opened Home.
+- **One plain sentence for every failure from Squibby itself**: the undo point, starting the helper that runs Claude, the checks, the server, picking a folder, saving the key, saving the logs. No more "could not handle agent.start: git add failed", "(exit code 1)" or "The engine is not running". The raw detail is kept in Squibby's log (on this Mac only, secrets hidden, your home folder written as ~) for a problem report.
+- **Check panels lead with a plain summary and the file and line.** The check's own output is behind "Details".
+- **"The engine" is now "Squibby"** everywhere you read it.
+- **Explain an error checks the error still applies.** If the line it names is already fixed, it says it looks already fixed and suggests nothing.
+- A change that weakened a check now says "The change weakened a check, so it was not accepted." (Claude is still told to fix the real problem.)
+- A test now fails if any line you can read contains a machine word (exit code, git commands, stderr, hook, engine, checkpoint, SDK).
+
 ## Flowflow stays tucked away until you call it: 27 Oct 2026
 
 The founder: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there".

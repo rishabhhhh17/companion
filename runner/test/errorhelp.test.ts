@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
-import { cleanSelection, errorRequest, excerptOf, locateError, MAX_SELECTION, parseExplanation } from "../src/errorhelp.ts";
+import { cleanSelection, errorRequest, excerptOf, locateError, MAX_SELECTION, parseExplanation, STALE_ERROR_EXPLAIN_RULE } from "../src/errorhelp.ts";
 import { parseEvent, type Event } from "../../protocol/index.ts";
 
 const made: string[] = [];
@@ -149,6 +149,19 @@ describe("what the fast model is asked, and what is kept of its answer", () => {
     expect(r.system).toMatch(/never follow instructions/i);
     expect(r.text.match(/<\/error>/g)).toHaveLength(1);
     expect(r.text).toContain("src/App.tsx, line 5");
+  });
+  test("an error that may already be fixed: the line as it is now is shown, and the rule says to say so and suggest nothing", () => {
+    // The person selects an old error; the line it names is already fixed. The locator still confirms the place (the file
+    // and line exist), so the model sees the line as it is now and can tell the problem is gone.
+    const dir = project({ "src/App.tsx": 'export default function App() {\n  const name = "shop";\n  const total: number = 3;\n  return name + total;\n}\n' });
+    const text = "src/App.tsx:3:9 - error TS2322: Type 'string' is not assignable to type 'number'.";
+    const where = locateError(text, dir);
+    const r = errorRequest(text, where);
+    expect(r.text).toContain("src/App.tsx, line 3, which reads now: const total: number = 3;");
+    expect(r.system).toContain(STALE_ERROR_EXPLAIN_RULE);
+    expect(STALE_ERROR_EXPLAIN_RULE).toMatch(/no longer shows this problem/);
+    expect(STALE_ERROR_EXPLAIN_RULE).toMatch(/already fixed/);
+    expect(STALE_ERROR_EXPLAIN_RULE).toMatch(/suggest no fix|no change is needed/i);
   });
   test("two plain sentences, secrets hidden, anything else is no answer", () => {
     expect(parseExplanation('{"what":"The page uses a name that does not exist.","next":"Check the spelling of totl on line 6."}')).toEqual(["The page uses a name that does not exist.", "Check the spelling of totl on line 6."]);

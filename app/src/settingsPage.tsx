@@ -16,6 +16,7 @@ import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem,
 import { useKeys } from "./useKeys.ts";
 import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
@@ -47,7 +48,7 @@ function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; worki
     setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
     if (!r.send) { setProblem(r.problem ?? ""); return; }
     setProblem(""); setStep("working");
-    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("replace"); });
+    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(failNote(e, "key")); setStep("replace"); });
   };
   const remove = () => {
     setProblem(""); setStep("working");
@@ -729,7 +730,7 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
   const [askPractice, setAskPractice] = useState(false);
   const [practiceSaid, setPracticeSaid] = useState("");
   const practiceAllId = useId();
-  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(String(e))); };
+  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(failNote(e, "practice"))); };
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
@@ -898,9 +899,9 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       </Group>}
       {fixedShown("logs") && <Group title={S.exportLogsTitle}>
       <div className="line muted">{S.exportLogsHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
       <div className="line muted">{S.reportHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       </Group>}
       {results.all && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}

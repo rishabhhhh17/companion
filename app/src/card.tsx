@@ -24,11 +24,13 @@ import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
-import { closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
+import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { ProofChips } from "./proofChipsView.tsx";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
+import { CheckDetail, checkParts } from "./checkDetail.tsx";
 import { undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
 import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
@@ -191,8 +193,8 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
         <figure className="receipt-shot">
           <img src={`data:image/jpeg;base64,${f.card.image}`} alt={`${f.card.title} ${S.isLive}`} />
           <div className="row">
-            <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(String(e)))}>{S.savePicture}</button>
-            <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(String(e)))}>{S.copyLink}</button>
+            <button className="btn primary" type="button" onClick={() => void invoke("save_share_card", { image: f.card!.image, title: f.card!.title }).then((n) => setShared(`${S.savedTo} ${String(n)}`)).catch((e) => setShared(failNote(e, "picture")))}>{S.savePicture}</button>
+            <button className="btn" type="button" onClick={() => void invoke("copy_link", { url: f.card!.url }).then(() => setShared(S.linkCopied)).catch((e) => setShared(failNote(e, "link")))}>{S.copyLink}</button>
             <OpenButton url={f.card.url} onNote={setShared} />
           </div>
           {shared && <div className="line muted" role="status">{shared}</div>}
@@ -351,6 +353,10 @@ function Card() {
   const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);
   // The mic beside the ask box says how to hold to talk (the keys work in any app).
   const [talkHint, setTalkHint] = useState(false);
+  // A gentle line under the ask box when a press needs words first (Start, Show me or Explain with the box empty). It has a
+  // Close button, and typing clears it.
+  const [askHint, setAskHint] = useState<string | null>(null);
+  const needWords = (line: string) => { setAskHint(line); box.current?.focus(); };
   // What is open is measured, not the column it sits in (that column is as tall as the window, so it could never shrink).
   const inner = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
@@ -463,6 +469,7 @@ function Card() {
   // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
   // went down (askbox.ts FollowAim), used once when the words come back.
   const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
+  const onArrival = useRef<(t: HomeArrival) => void>(() => {});
   // The same as state, for what must follow Home on and off screen (the Prompt help result's keys).
   const [homeOpen, setHomeOpen] = useState(false);
   // More on the ring around the character opens Home: the whole list is on Now.
@@ -670,8 +677,8 @@ function Card() {
     const mark = markFor(was, now);
     if (mark && now) void invoke("practice_mark", { which: now.kind, stage: mark }).then(loadPractice).catch(() => {});
   }, [m.practice]);
-  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(String(e)));
-  const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(String(e)); });
+  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
+  const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(failNote(e, "folder")); });
   // About this project: asked each time a folder is opened (reads files only).
   useEffect(() => { if (project) void send(inspectProject(project)); }, [project]);
   // Opened from a link: once it is copied, it becomes the project folder.
@@ -853,7 +860,10 @@ function Card() {
       const el = root.current;
       if (el) { el.classList.remove("closing"); el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing"); }
       homeDispatch({ type: "opened", keyboard });
-      if (keyboard) setTimeout(() => box.current?.focus(), 30);
+      // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
+      const then = arrivalFrom(e.payload);
+      if (then) onArrival.current(then);
+      else if (keyboard) setTimeout(() => box.current?.focus(), 30);
       if (changesNow.current) rememberVersion(changesNow.current.remember);   // what changed has been on screen once
       warmSoon();
       // Coming back after a break: ask what happened while away. Only Companion's own history is used. The folder is read
@@ -1177,6 +1187,7 @@ function Card() {
     dispatch({ type: "ui.walkRequested", walk }); homeDispatch({ type: "pick", tab: "learn" }); void send(c);
     return walk;
   };
+  onArrival.current = (t: HomeArrival) => { if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn"); };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
   const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
   const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false), afterAct = useRef(false);
@@ -1271,7 +1282,8 @@ function Card() {
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
     if (prompt && inNewFolder) { startNew("build"); return; }
-    if (!prompt || !project) return;
+    if (!prompt) { needWords(S.typeFirst); return; }
+    if (!project) return;
     // A task is Flow's. With Flow off the words stay in the box and the box says why, instead of bouncing silently (the ask
     // box is core, so it stays; Enter and hold to talk both come through here).
     if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
@@ -1284,6 +1296,16 @@ function Card() {
     sent.current = { prompt, attached: attachedNow.current, off };
     void send(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
+  };
+  // The Explain chip: words in the box (an error pasted or typed into Squibby itself) are explained the way the explain keys
+  // explain a selection (errhelp.rs typed). Nothing is read from another app here: that still needs the keys (rule 5). With
+  // the box empty it says how, in a line that can be closed.
+  const explainFromBox = () => {
+    pressed();
+    const q = box.current?.value.trim() ?? "";
+    if (q.length < 3) { needWords(keyHint("explain", S.explainChipHint, keys, S.explainChipHintNoKeys)); return; }
+    setAskHint(null);
+    void invoke("eh_typed", { text: q }).then(() => clearBox(), (e) => { if (String(e) === "tooShort") needWords(S.explainChipHintNoKeys); });
   };
   // The words from hold to talk send through this, so they always go with the current folder and settings.
   const submitNow = useRef(submit); submitNow.current = submit;
@@ -1417,7 +1439,7 @@ function Card() {
           {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
           <div className="ask">
             <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.look.ask} aria-label={S.look.ask} aria-describedby="ask-keys"
-              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
+              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
               onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
               onKeyDown={(e) => {
@@ -1425,10 +1447,12 @@ function Card() {
                 e.preventDefault();
                 if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
               }} />
-            {groups.on("talk") && <button className="icon-btn mic" type="button" aria-label={S.look.talk} title={talkKeysLine(keys)} aria-pressed={m.voice?.stage === "listening"} onClick={() => setTalkHint((v) => !v)}><Icon name="mic" size={18} /></button>}
+            {/* A click may never open the microphone (rule 5): this only says how to hold to talk, with the keys. */}
+            {groups.on("talk") && <button className="btn talk-how" type="button" aria-expanded={talkHint} aria-controls="talk-keys" onClick={() => setTalkHint((v) => !v)}>{S.look.howToTalk}</button>}
             {!working && buttonShown("start") && <button className="btn primary send" type="button" aria-label={S.look.send} title={S.look.send} onClick={submit}><Icon name="send" size={18} /></button>}
           </div>
-          {talkHint && <div className="line muted" role="status">{talkKeysLine(keys)}</div>}
+          {talkHint && <div className="line muted" id="talk-keys" role="status">{talkKeysLine(keys)}</div>}
+          {askHint && <div className="line muted" role="status">{askHint} <button className="btn" type="button" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
           {dragging && <div className="line" role="status">{S.attachDrop}</div>}
           {attached.length > 0 && (
@@ -1449,8 +1473,8 @@ function Card() {
           <div className="chips quick" role="group" aria-label={S.look.chipsLabel}>
             {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}</button>}
             {buttonShown("shipCheck") && <button className="chip-btn" type="button" onClick={() => shipIt()}><Icon name="shield" size={16} />{S.look.chipSafe}</button>}
-            {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={() => { pressed(); dispatch({ type: "app.notice", message: keyHint("explain", S.errKeyHint, keys) }); }}><Icon name="explain" size={16} />{S.look.chipExplain}</button>}
-            {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}</button>}
+            {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={explainFromBox}><Icon name="explain" size={16} />{S.look.chipExplain}</button>}
+            {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}</button>}
           </div>
           {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
           {!working && (
@@ -1796,7 +1820,7 @@ function Card() {
           {m.rescue.works.length > 0 && <div className="line"><b>{S.rescueWorks}:</b> {m.rescue.works.join("; ")}</div>}
           <div className="line"><b>{S.rescueBroken}:</b> {m.rescue.broken}</div>
           <div className="line muted"><b>{S.rescueChecks}:</b></div>
-          {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {e.status}{e.detail ? ` ${e.detail}` : ""}</div>)}
+          {m.rescue.evidence.map((e, i) => <div className={`line ${e.status === "failed" ? "blocked" : "muted"}`} key={i}>{e.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as Record<string, string>)[e.status] ?? e.status}<CheckDetail parts={checkParts(e)} /></div>)}
           <div className="row">
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
             <CopyButton text={rescueCopy(m.rescue)} label={S.copyAnswer} />
@@ -1821,7 +1845,7 @@ function Card() {
               <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
               <span>
                 {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
-                {s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span> : null}
+                <CheckDetail parts={checkParts(s)} />
               </span>
             </div>
           ))}
