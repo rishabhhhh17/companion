@@ -74,3 +74,22 @@ describe("the Settings window", () => {
     expect(read("./openSettings.ts")).toContain('invoke("open_settings_window")');
   });
 });
+
+describe("Home opened from the Settings window", () => {
+  test("Walk me through it starts that lesson in Home, and Open the practice list shows Learn", async () => {
+    const page = read("./settingsWindow.tsx");
+    expect(page).toContain('invoke("open_card_cmd", { then })');
+    expect(page).toContain('onPracticeList={() => toHome({ place: "learn" })}');
+    expect(page).toContain("onLesson={(lesson) => toHome({ lesson })}");
+    const { arrivalFrom } = await import("./home.ts");
+    expect(arrivalFrom({ keyboard: true, then: { lesson: "companion-microphone" } })).toEqual({ lesson: "companion-microphone" });
+    expect(arrivalFrom({ keyboard: true, then: { place: "learn" } })).toEqual({ place: "learn" });
+    for (const p of [{ keyboard: true }, null, { then: { place: "settings" } }, { then: { lesson: "" } }, { then: "learn" }]) expect(arrivalFrom(p)).toBeNull();
+    // Home does it on arrival, after "opened" (which shows Now), so the lesson or Learn is what stays on screen.
+    const card = read("./card.tsx");
+    const opened = card.slice(card.indexOf('listen("opened"'), card.indexOf('listen("closed"'));
+    expect(opened.indexOf('homeDispatch({ type: "opened", keyboard })')).toBeLessThan(opened.indexOf("onArrival.current(then)"));
+    expect(card).toContain('onArrival.current = (t: HomeArrival) => { if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn"); };');
+    expect(fnBody("open_card_cmd")).toContain("settingswin::arrival");
+  });
+});

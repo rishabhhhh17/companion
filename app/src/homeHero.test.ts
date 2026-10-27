@@ -157,14 +157,14 @@ describe("one ask box and three quick actions that do what the existing paths do
     // The key's listener and the chip share one path.
     expect(card).toContain("latest.current.find(e.payload)");
   });
-  test("Explain an error says how its key reads the error from the other app (nothing new is sent)", () => {
+  test("Explain an error explains the words in the box, or says how (nodeadbuttons.test.ts)", () => {
     expect(chips).toContain('toolOn("errorHelp")');
-    expect(chips).toContain('keyHint("explain", S.errKeyHint, keys)');
+    expect(chips).toContain("onClick={explainFromBox}");
   });
   test("Show me is the Show me button that was behind More: the question in the box, or how to ask one", () => {
     expect(chips).toContain('buttonShown("showMe")');
     expect(chips).toContain('sentFromBox("showme"); showMe(q, q, []);');
-    expect(chips).toContain('dispatch({ type: "app.showme", stage: "error", message: S.showMeHint })');
+    expect(chips).toContain("pressed(); needWords(S.showMeHint);");
   });
   test("each chip is a drawing and a word", () => {
     for (const w of ["S.look.chipFind", "S.look.chipExplain", "S.look.chipShowMe"]) expect(chips, w).toContain(w);

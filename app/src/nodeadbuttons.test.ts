@@ -1,0 +1,48 @@
+// M15 wave 2, "nothing broken": every button under Home's ask box does something a person can see. These read card.tsx and
+// the shell, since the buttons themselves need a real Mac to press.
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { S } from "./strings.ts";
+
+const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+const errhelp = readFileSync(new URL("../src-tauri/src/errhelp.rs", import.meta.url), "utf8");
+const fnBody = (src: string, name: string) => { const a = src.indexOf(name); return a < 0 ? "" : src.slice(a, src.indexOf("\n  };\n", a)); };
+
+describe("the buttons under the ask box", () => {
+  test("Start with an empty box puts the cursor in the box and says what to do", () => {
+    expect(S.typeFirst).toBe("Type what you want done first.");
+    const submit = fnBody(card, "const submit = () => {");
+    expect(submit).toContain("if (!prompt) { needWords(S.typeFirst); return; }");
+    expect(card).toContain("const needWords = (line: string) => { setAskHint(line); box.current?.focus(); };");
+  });
+  test("Show me with an empty box is a gentle line, never the amber error panel", () => {
+    expect(card).toContain("else { pressed(); needWords(S.showMeHint); }");
+    expect(card).not.toContain('dispatch({ type: "app.showme", stage: "error", message: S.showMeHint })');
+  });
+  test("the line can be closed, and typing clears it", () => {
+    expect(card).toContain("{askHint && <div className=\"line muted\" role=\"status\">{askHint} <button className=\"btn\" type=\"button\" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</button></div>}");
+    expect(card).toContain("setVoiceHint(null); setAskHint(null);");
+  });
+  test("Explain an error explains the words in the box; with none it says how, in a line that can be closed", () => {
+    const ex = fnBody(card, "const explainFromBox = () => {");
+    expect(ex).toContain('invoke("eh_typed", { text: q })');
+    expect(ex).toContain('needWords(keyHint("explain", S.explainChipHint, keys, S.explainChipHintNoKeys))');
+    expect(card).not.toContain('dispatch({ type: "app.notice", message: keyHint("explain", S.errKeyHint, keys) })');
+    // The shell sends it down the explain keys' own engine path, only from Home, and never reads another app for it.
+    expect(main).toContain("fn eh_typed(app: AppHandle, window: tauri::WebviewWindow, text: String)");
+    expect(main).toMatch(/fn eh_typed[^\n]*\n\s*if window\.label\(\) != "card"/);
+    expect(main).toMatch(/[ ,]eh_typed,/);
+    const typed = errhelp.slice(errhelp.indexOf("pub fn typed("), errhelp.indexOf("pub fn dismiss("));
+    expect(typed).toContain("errorsel::command(&req, errorsel::ASK_BOX, &t, &crate::current_project())");
+    for (const read of ["ax::", "read_selection", "focused"]) expect(typed).not.toContain(read);
+  });
+  test("the talk button says how to talk and shows the keys; a click never opens the microphone (rule 5)", () => {
+    expect(S.look.howToTalk).toBe("How to talk");
+    const btn = card.split("\n").find((l) => l.includes("S.look.howToTalk"))!;
+    expect(btn).toContain('aria-expanded={talkHint} aria-controls="talk-keys" onClick={() => setTalkHint((v) => !v)}');
+    // Not a record button: no pressed state, no microphone drawing, nothing sent.
+    for (const no of ["aria-pressed", 'Icon name="mic"', "send(", "invoke("]) expect(btn).not.toContain(no);
+    expect(card).toContain('{talkHint && <div className="line muted" id="talk-keys" role="status">{talkKeysLine(keys)}</div>}');
+  });
+});

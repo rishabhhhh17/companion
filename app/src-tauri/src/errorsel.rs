@@ -126,6 +126,10 @@ impl Answered {
 /// showed no box, and switched off again afterwards (ax.rs `let_apps_sleep`).
 pub fn should_wake(found_plain: bool, front_is_own: bool) -> bool { !found_plain && !front_is_own }
 
+/// The "app" named when the words come from Home's own ask box (the Explain chip with text in the box), not from another
+/// app. The engine names it as the product (runner/src/labels.ts).
+pub const ASK_BOX: &str = "dev.companion.askbox";
+
 /// The command for the engine. The text goes only here, never into a log; the project is named only when one is chosen.
 pub fn command(req: &str, bundle: &str, text: &str, project: &str) -> Value {
     let mut c = json!({ "v": 1, "id": format!("{req}-c"), "type": "error.explain", "req": req, "app": bundle, "text": text });

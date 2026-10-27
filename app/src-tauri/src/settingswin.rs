@@ -25,6 +25,20 @@ pub fn may_close(window: &str) -> Result<(), &'static str> { if window == LABEL 
 pub enum Open { Focus, Make }
 pub fn open(already: bool) -> Open { if already { Open::Focus } else { Open::Make } }
 
+/// What Home does when it opens from here (open_card_cmd's `then`): "Walk me through it" starts that lesson in Home, and
+/// "Open the practice list" shows Learn. Only these two shapes pass, a lesson id being a short plain id; anything else is
+/// dropped and Home just opens.
+pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
+    let o = v.as_object()?;
+    if o.len() != 1 { return None; }
+    if let Some(l) = o.get("lesson") {
+        let id = l.as_str()?;
+        let ok = !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.');
+        return ok.then(|| serde_json::json!({ "lesson": id }));
+    }
+    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), _ => None }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -40,6 +54,20 @@ mod tests {
         let open = body("fn open_settings_window(");
         assert!(open.contains("settingswin::may_open(window.label())?"), "{open}");
         assert!(body("fn close_settings_window(").contains("settingswin::may_close(window.label())?"));
+    }
+
+    #[test]
+    fn home_opened_from_here_starts_the_lesson_or_shows_learn_and_nothing_else() {
+        use serde_json::json;
+        assert_eq!(arrival(&json!({ "lesson": "settings-lesson" })), Some(json!({ "lesson": "settings-lesson" })));
+        assert_eq!(arrival(&json!({ "place": "learn" })), Some(json!({ "place": "learn" })));
+        for bad in [json!({ "place": "settings" }), json!({ "lesson": "" }), json!({ "lesson": "../x" }), json!({ "lesson": 3 }),
+            json!({ "lesson": "a", "place": "learn" }), json!("learn"), json!(null), json!({}), json!({ "lesson": "a b" })] {
+            assert_eq!(arrival(&bad), None, "{bad}");
+        }
+        let cmd = body("fn open_card_cmd(");
+        assert!(cmd.contains("settingswin::arrival"), "{cmd}");
+        assert!(body("fn open_card_then(").contains("\"then\": t"));
     }
 
     #[test]
