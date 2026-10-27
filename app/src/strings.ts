@@ -52,6 +52,8 @@ export const S = {
     stripLabel: "Undo and Stop",
     undoShort: "Undo",
     stopKeys: "Stop everything: {keys}",
+    // After an undo, for two seconds at the foot of Home (M15 wave 3).
+    putBack: "Put back as it was",
     factsLabel: "About this task",
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
     // The side list and the top of what is open (the wide Home of 27 Oct 2026).
@@ -76,6 +78,7 @@ export const S = {
     below: "Your answer goes just below.",
     answerBelow: "The answer is just below.",
     working: (cost: string) => `Working · ${cost} so far`,
+    workingFree: "Working",
     doneLine: (proof: string, cost: string) => `${proof} · ${cost}`,
   },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
@@ -1162,6 +1165,7 @@ export const S = {
     "character.overFullScreen": { label: `Show ${PRODUCT} over full screen apps`, help: `Off, the character, the island and Home step aside while a full screen app is in front, such as a video or a presentation. Hold to talk still waits until you can see ${PRODUCT}.`, also: ["full screen", "video", "presentation", "game", "hide"] },
     "character.peek": { label: "Tuck away past the edge of the screen", help: "On, the character waits out of sight just past the edge of your screen. Move the pointer to that edge, beside where it waits, and it comes in. It also comes in when something needs you, and always before it listens or looks at your screen. Off, it stays in view.", also: ["peek", "hide", "edge", "out of the way", "tuck", "auto hide"] },
     "character.peekIdle": { label: "Peek in on its own", help: "Off, the character stays tucked away until you call it with the pointer. On, it also peeks in for a moment when work starts or finishes, and now and then while nothing happens (never more often than every 3 minutes). Never with less motion, and never during a presentation or a call.", also: ["peek", "idle", "fun", "motion", "curious"] },
+    "character.live": { label: `Draw ${PRODUCT} live`, help: `Off, ${PRODUCT_S} character is a picture that changes with what it is doing. On, it is drawn live on your screen as water that moves, stretches and settles, with eyes that follow your pointer. It uses a little more of your Mac while it moves, and goes back to the pictures by itself if your Mac cannot draw it.`, also: ["water", "animation", "3d", "live", "physics", "character", "droplet", "gpu"] },
     "fun.reactions": { label: "Reactions and celebrations", help: "Small moves of the character when a check passes or fails, and a celebration when work is proven. None while your Mac asks for less motion.", also: ["confetti", "animation", "celebrate", "motion", "fun"] },
     "showme.askWorked": { label: "Ask Did that work? after each step", help: `In a step by step Show me answer, ${PRODUCT} asks whether each step worked before it looks for the next one. Only when unsure skips the question after you click right on a solid ring: it moves on by itself, writes the step down as clicked but not checked, and checks it on the next look. It still asks after a soft ring, a click beside the target, or Do it for me.`, also: ["did that work", "walkthrough", "step by step", "continue", "ask"], options: { everyStep: "Every step", whenUnsure: "Only when unsure" } },
     "showme.waitForPage": { label: "Wait for the page before the next step", help: `In a step by step Show me answer or a lesson, after you click, ${PRODUCT} takes a few small looks at the same screen and waits until it stops changing, for at most 3 seconds, before it looks for the next step. The light stays on, nothing is kept, and Stop everything ends the wait. Always on when Ask Did that work? is set to only when unsure.`, also: ["slow page", "loading", "wait", "walkthrough", "settle"] },

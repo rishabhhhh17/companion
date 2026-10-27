@@ -14,6 +14,17 @@ The four reviews of the whole product agreed: a new person never reached the "wo
 - **Drop a project folder on Flowflow and pick "Fix this":** it becomes your project and Home finds what is wrong in it.
 - **"Is it safe to go live?" is now a quick action** right after "Find the problem", the two things Squibby is for.
 
+## One calm look and small moments of delight: 27 Oct 2026
+
+- **One set of sizes everywhere.** Six text sizes, five corner sizes, one spacing scale and one spring, so every screen lines up.
+- **The notch.** Flowflow no longer looks sliced when it peeks: it fades out into the black. Working shows a thin turning arc, thinking one breathing dot, and nothing is grey.
+- **A small celebration when a fix is proven.** The tick draws itself, glows green for a moment, and the notch gives a little bounce. Off with Reactions off or Less motion.
+- **Home is calmer.** The folder's name and a status dot sit at the top left, the buttons are smaller, the ask box is softer and glows when you type, the answer sits on its own card, and the line about the stop key is gone (it is in Stop's tooltip now). While something works, Stop is the one white button.
+- **Undo says what it did.** The Undo button turns back when pressed, and "Put back as it was" shows for two seconds once your files are back.
+- **Home unrolls out of the notch and rolls back up when you close it** with Close, Esc, the island or the character.
+- **The character lost its web style rings** and the grey box when something went wrong; the count of questions is a small black pill.
+- **Flowflow drawn live is merged in, still off.** The founder's live water (with eyes) is now the one live drawing, in the corner and in Home, behind "Draw Squibby live". It stays off until it has been seen on a real Mac.
+
 ## Flowflow stays tucked away until you call it: 27 Oct 2026
 
 The founder: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there".
@@ -101,6 +112,11 @@ After the first time you used it on your Mac, you said it looked bad, the card w
 - **The ring when you drop a file is bigger and calmer.** Round targets of 44 points with space between them, small drawings instead of letters (a format shows its own name), and a More that opens the whole list in Home.
 - **Under the hood:** a character is now a "skin" in one place, so a new character brings its own pictures, its own one colour and its own motion without touching the rest of the app. The rules are in `docs/design/look.md`.
 - **Not decided:** the founder has not chosen a visual direction. This round is neutral on purpose.
+## Flowflow can be drawn live, as moving water: 24 Oct 2026
+
+- **A new way to draw the character, off until you choose it** (Settings, "Draw Squibby live"). Instead of a picture, Flowflow is drawn live on your Mac's graphics chip as a droplet of water that stretches the way it moves, squashes and rebounds when it stops, wobbles and settles, with two eyes that follow your pointer and tiny drops that leave and come back.
+- **It only reflects what really happened:** it brightens and sends out a ripple when work is proven, turns cloudy and darker on an error, closes its eyes when asleep, and squishes where you touch it. If your Mac cannot draw it, the pictures stay.
+- **A preview page with sliders** for how stiff, how damped, how fast, how rippled and how clear it is: `docs/flowflow-live.md` says how to open it. It is a first pass at the look and has not been seen in the real app yet; nothing is claimed about speed beyond what was measured in the preview.
 
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 

@@ -162,7 +162,7 @@ describe("following up by voice", () => {
     expect(into).not.toContain("setBox(");
   });
   test("the pointer is noticed only on the receipt, inside Home's own window, and forgotten when Home opens or closes", () => {
-    expect(card).toContain('<section className="panel" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>');
+    expect(card).toContain('<section className="panel receipt" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>');
     const opened = card.slice(card.indexOf('listen("opened"'), card.indexOf("warmSoon();", card.indexOf('listen("opened"')));
     expect(opened).toContain("overReceipt.current = false;");
     expect(opened).toContain("homeShown.current = true;");

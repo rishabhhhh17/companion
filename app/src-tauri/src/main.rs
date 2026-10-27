@@ -403,6 +403,8 @@ thread_local! {
     // The same for the character's window (peeking).
     static DOCK_HOVER_OWNER: RefCell<Option<Retained<hover::DockHoverOwner>>> = const { RefCell::new(None) };
 }
+/// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
+static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
 static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, says: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
@@ -485,6 +487,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); *s };
     let mode = island::mode(state);
     let look = island::look(&d, mode, state.says);
+    let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() { island::cheered(&d, mode, look) } else { look };
     let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
     // The page springs its shape to the new size (island.tsx). Growing is at once, so the shape has room to grow into;
@@ -575,10 +578,12 @@ fn home_closed() {
 /// The page says whether the wings are out (something is happening; home.ts islandWings) and whether it has a line to show
 /// under the pointer (`says`), so a peek at the bare notch is wide enough for its line, or only for Flowflow.
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, says: Option<bool>) {
+fn island_alert(app: AppHandle, on: bool, says: Option<bool>, cheer: Option<bool>) {
     let says = says.unwrap_or(false);
+    let cheer = cheer.unwrap_or(false) && on;
     let _ = app.run_on_main_thread(move || {
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.says != says; s.alert = on; s.says = says; c };
+        let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.says != says || cheer_changed; s.alert = on; s.says = says; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }
@@ -1477,6 +1482,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
+        HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
         let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
         if !was_open { HOME_OPEN.store(true, Ordering::SeqCst); HOME_GEN.fetch_add(1, Ordering::SeqCst); reset_hover(); }
         // Home opens on the display the person is using (the one with the pointer): the island goes there first.
@@ -1603,13 +1609,29 @@ fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 #[tauri::command]
 fn island_click(app: AppHandle) { toggle_home(app, "island"); }
 
+/// Home rolls back up into the notch as it closes (style.css .home.closing, the reverse of its opening), then its panel goes.
+/// At once with Reduce motion or Less motion. Must match style.css home-roll-up (motion.test.ts checks).
+const HOME_CLOSE_MS: u64 = 200;
+/// Bumped by every opening and every close asked, so a close that waits never hides a Home opened again meanwhile.
+static HOME_CLOSE_GEN: AtomicU64 = AtomicU64::new(0);
+/// Closes Home after its page has rolled it up (Close, Esc, the island or the character clicked again). Main thread.
+fn close_home_rolled(a: &AppHandle, extra: Value) {
+    let gen = HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let go = move |extra: Value| { with_panels(|_, c| c.orderOut(None)); home_closed(); log("card_closed", extra); };
+    if reduce_motion() || !card_visible() { go(extra); return; }
+    let _ = a.emit_to("card", "closing", json!({}));
+    let a2 = a.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(HOME_CLOSE_MS));
+        let _ = a2.run_on_main_thread(move || if HOME_CLOSE_GEN.load(Ordering::SeqCst) == gen && card_visible() { go(extra) });
+    });
+}
+
 fn toggle_home(app: AppHandle, source: &'static str) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         if card_visible() {
-            with_panels(|_, c| c.orderOut(None));
-            home_closed();
-            log("card_closed", json!({ "source": source }));
+            close_home_rolled(&a, json!({ "source": source }));
             card_closed_hush(&a);
         } else {
             open_card(&a, source, false);
@@ -1814,11 +1836,10 @@ fn shared_files_state(window: tauri::WebviewWindow) -> Result<Value, String> {
 #[tauri::command]
 fn close_card(app: AppHandle) {
     card_closed_hush(&app);   // closing the card silences it (home_closed gives back the keys Prompt help borrowed)
+    let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
-        with_panels(|_, c| c.orderOut(None));
-        home_closed();
-        log("card_closed", json!({ "app_active": active(mtm) }));
+        close_home_rolled(&a, json!({ "app_active": active(mtm) }));
     });
 }
 

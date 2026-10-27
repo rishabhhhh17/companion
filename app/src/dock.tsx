@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
@@ -17,6 +17,9 @@ import { useFlow } from "./flow/useFlow.ts";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import "./style.css";
+
+// The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
+const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((m) => ({ default: m.FlowflowView })));
 
 function Dock() {
   const [m] = useModel();
@@ -70,10 +73,14 @@ function Dock() {
   const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
-  // Flowflow (src/flow/): a soft body of water drawn in WebGL over the pose pictures, with the plain picture as the fallback.
-  // The page only tells it what happens (a touch, how fast the window moves, a big moment); how it looks is physics.ts.
+  // Two ways to draw Flowflow, one setting (character.live). Off (the usual until it is seen on a real Mac): the pose pictures,
+  // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's
+  // live water (src/flowflow/, physics, eyes and droplets, loaded on demand), and src/flow/ stands down. If the live drawing
+  // cannot start, or the GPU context is lost, the pictures come back and nothing else about the character changes.
+  const liveOn = useSetting("character.live") === true;
+  const [liveFailed, setLiveFailed] = useState(false);
   const pose = poseFor(state, { roam: roam.phase, react: react?.r });
-  const flow = useFlow({ pose, state, calm: reduced });
+  const flow = useFlow({ pose, state, calm: reduced, off: liveOn && !liveFailed });
   const button = useRef<HTMLButtonElement>(null);
   const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
   // A click opens or closes the card; dragging moves the character to any edge or corner of the screen. The window moves
@@ -130,12 +137,16 @@ function Dock() {
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
-        <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
+        {liveOn && !liveFailed
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} onFallback={() => setLiveFailed(true)} /></Suspense>
+          : <>
+            {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
+            <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
+          </>}
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
       <div className="dock-label" role="status" aria-live="polite">{label}</div>
-      {!flow.failed && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
+      {!flow.failed && !(liveOn && !liveFailed) && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />
     </main>

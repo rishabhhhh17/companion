@@ -44,7 +44,7 @@ describe("the shipped list of settings", () => {
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
-      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
+      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": false,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
       "character.peek": true, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.

@@ -44,6 +44,7 @@
     { "key": "character.overFullScreen", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "character.peek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "character.peekIdle", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "character.live", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "fun.reactions", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.reactions", "map": "notOff" } } },
 

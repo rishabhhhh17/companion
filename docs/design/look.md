@@ -1,6 +1,6 @@
 # The look (rules for every screen and every character)
 
-Written after the first hands on Mac session (26 Oct 2026), where the founder said the app looked bad, the card was complicated, replies were in a small box, and Flowflow was "a photo in a square box". These are the rules the real app follows now. They are not a brand: no colour, font or shape has been chosen. The founder has not picked a visual direction, so the app is calm, neutral and simple, and the motion carries the personality. Everything here is in `app/src/style.css` as tokens, `app/src/skins.ts` and `app/src/flow/`.
+Written after the first hands on Mac session (26 Oct 2026), where the founder said the app looked bad, the card was complicated, replies were in a small box, and Flowflow was "a photo in a square box". These are the rules the real app follows now. They are not a brand: no colour, font or shape has been chosen. The founder has not picked a visual direction, so the app is calm, neutral and simple, and the motion carries the personality. Everything here is in `app/src/style.css` as tokens, `app/src/skins.ts`, `app/src/flow/` (the pictures' motion) and `app/src/flowflow/` (the founder's live drawing, off by default).
 
 ## 1. Black and white base
 
@@ -22,17 +22,20 @@ Written after the first hands on Mac session (26 Oct 2026), where the founder sa
 - The island and Home are black like the notch. Home is one black panel that hangs from the notch (27 Oct 2026, after the founder found the side list "complicated" and asked for fun, like the notch apps): square at the top, a 30 point radius at the bottom, black with white words in both Mac themes (its own tokens, `:root.home-page` in `style.css`). Its window and panel paint nothing (main.rs), so only the shape shows, with a hairline edge.
 - The island (27 Oct 2026, the founder: "it does not always have to show Ready there", "this needs to be fun"):
   - Idle it is the bare notch (or a small 72 point pill, or the thin line), with no words ever. "Ready" is gone from the strings.
-  - The pointer resting on it: Flowflow (the peek pose) pops down from under the notch edge with a spring overshoot, a wobble and now and then a blink, and tucks back up when the pointer leaves. One line under it only when there is something real to say (not connected, an update, the engine stopped, a failing watch).
-  - While something happens: wings, 40 points each side of the notch, in the menu bar row only (`island.rs` `WING`). Left, a tiny Flowflow in the state's pose, swimming. Right, one live mark: dots (thinking), a spinning arc (working, looking), bars (listening, the microphone's light), a pulsing amber dot (needs you), a green tick that draws itself (done; the wings tuck back after 4 s), a red dot (error, failing watch).
+  - The pointer resting on it: Flowflow (the peek pose) pops down from under the notch edge with a spring overshoot, a wobble and now and then a blink, and tucks back up when the pointer leaves. It is never cut by a box: its foot fades out into the black (a mask), so it seems to come out of the notch. One line under it only when there is something real to say (not connected, an update, the engine stopped, a failing watch).
+  - While something happens: wings, 40 points each side of the notch, in the menu bar row only (`island.rs` `WING`). Left, a tiny Flowflow in the state's pose, swimming. Right, one live mark, drawn by hand, never a stock spinner and never grey: one white dot that breathes (thinking), a thin round arc that turns (working, looking: 13 points across, a 1.75 point line, a third of the circle), bars (listening, the microphone's light), a pulsing amber dot (needs you), a green tick that draws itself and glows green for a moment (done; the wings tuck back after 4 s), a red dot (error, failing watch). A plain dot is white at half strength.
+  - A proven fix: once the tick has drawn, the wings widen 8 points on a softer spring and settle back (`island.rs` `cheered`, `islandSpring.ts` `CHEER_SPRING`), only with Reactions on and motion allowed. In Home the headline comes in again with a 4 point lift.
   - The pointer on the wings: one line below them, 300 points wide, cut with an ellipsis.
-  - Motion: the window changes size at once and the page springs its black shape inside it (`islandSpring.ts`, about 0.35 s, one small overshoot); getting smaller, the window waits 320 ms for the shape to tuck back. With reduced motion or Less motion everything is simply there. The island's name for VoiceOver always says the state in words.
-- No side list and no title bar. The top row has small round buttons only: What I did, Learn, Memory (each opens inside Home with a back arrow and its name), the gear (Settings in its own window; inside Home until the app has that window) and Close. The open one is filled white; a place that waits for you has a small amber dot.
+  - Motion: the window changes size at once and the page springs its black shape inside it (`islandSpring.ts`, about 0.35 s, one small overshoot); getting smaller, the window waits 320 ms for the shape to tuck back (`island.rs` `RETRACT_MS` and `islandSpring.ts` `TUCK_MS` are one number, pinned by a test). With reduced motion or Less motion everything is simply there. The island's name for VoiceOver always says the state in words.
+- No side list and no title bar. On Now the top row starts with the folder's name (small, muted) and a 6 point dot for how things are (white at half strength idle, white working, amber waiting, green done, red not done). On the right, small round buttons (28 points, 16 point drawings): What I did, Learn, Memory (each opens inside Home with a back arrow and its name), the gear (Settings in its own window; inside Home until the app has that window) and Close (smaller, a little apart). The open one is filled white; a place that waits for you has a small amber dot.
 - Now: Flowflow on the left, large and moving (`homeCharacter.tsx`, the dock's own pose for each state), and beside it the job in big words (22 points) with one short line under it (`homeHero.ts`). Under them, across the width, one ask box (16 points, "Ask anything or describe the problem") with the mic and the one filled button inside it, then three quick actions as a drawing and a word: Find the problem, Explain an error, Show me. The other ways to ask and the options stay behind "More ways to ask".
-- A result (an answer, a receipt, research, a rescue, an explanation, Second Look, a question waiting for you) is a big card below, on a slightly lighter black, with 16 to 17 point words, ticks for what was checked and the cost.
-- Undo and Stop are small pills at the bottom, only when they can act: Undo after a task that changed files, Stop while something works (with the key that stops everything beside it).
-- The folder and the watches are one quiet line at the foot of Now.
+- The ask box has a quiet edge that still reaches 3 to 1 (it turns white with a soft ring on focus), a 20 point corner, and a send button that waits small and grey and pops to full size on the spring once there are words.
+- The quick actions are small pills (32 points, 13 point words, 14 point drawings at 70 percent that go full on hover).
+- A result (an answer, a receipt, research, a rescue, an explanation, Second Look, a question waiting for you) is a big card below that sits on its own surface: a slightly lighter black (`--card` #18181b), a hairline, a 20 point corner, 16 point words, and it rises in on the spring.
+- Undo and Stop are small pills, centred at the bottom, only when they can act: Undo after a task that changed files, Stop while something works. While something works Stop is the one bright thing (white with black words), and the key that stops everything is in its name and tooltip, not a line of its own. On a press Undo's drawing turns back once; once the undo is done the result settles and "Put back as it was" shows for two seconds.
+- Changing the folder and the watches are quiet lines at the foot of Now.
 - Home is 640 points wide (680 with Large, island.rs `HomeSize`) and as tall as what it shows, from 300. Large stops at 680 so the character, 160 plus its margin, still fits beside Home on a 1024 wide display (720 failed that check).
-- It springs down out of the notch at each opening (scale from the top centre and a fade, 320 ms), and its contents follow a beat later. None with Reduce motion or Less motion.
+- It unrolls out of the notch at each opening (a squashed scale and a clip that opens from the top, 400 ms on the island's spring), and its words, the ask box, the quick actions and the results follow 40 ms apart. Closing with Close, Esc, the island or the character rolls it back up in 200 ms, easing in (`main.rs` `close_home_rolled`, which waits as long before it hides the panel); a click away or a full screen app still closes it at once. None with Reduce motion or Less motion.
 
 ## 4. Replies are read, not squinted at
 
@@ -49,14 +52,15 @@ Type is in rem, so the text size choice in Settings reaches every word. At the u
 | `--t-small` | 13 | muted notes, the folder line, the summary of a quiet section |
 | `--t-body` | 15 | every line, every button |
 | `--t-answer` | 16 | a reply, the ask box |
-| `--t-title` | 19 | a headline (`h2`) |
+| `--t-title` | 19 | a headline (`h2`), the name of a place |
+| `--t-display` | 22 | Home's headline, the Settings window's title |
 
-Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. Radius: `--radius` 10, `--radius-pill` for pills and the main button. Targets: a button is at least 32 points high; a target on the drop ring is 44 points.
+One scale, used everywhere (M15 wave 3); no other sizes. Space: `--space-1` to `--space-7` are 4, 8, 12, 16, 20, 24, 32 px (in rem as `calc(Nrem / 14)` of the same steps where a size must follow the text size). Corners: `--r-sm` 8, `--r-md` 12, `--r-lg` 20, `--r-xl` 30, `--r-pill`. Motion: `--ease-out`, `--ease-in`, one `--ease-spring` (the island's spring as a `linear()` curve), and `--dur-1` to `--dur-4`: 120, 200, 280, 400 ms. The character's own loops (breathing, wobble, blink, swim) keep their own timings, because they are the character, not the interface. Targets: a button is at least 32 points high; a target on the drop ring is 44 points.
 
 ## 6. Motion principles
 
 - Spring physics, not eased tweens, for the body: the character is a damped spring. Underdamped (it overshoots once and settles), never jelly that never stops. Numbers in the skin; tests in `app/src/flow/physics.test.ts`.
-- Ease out for everything the interface does (`--ease: cubic-bezier(.2, .8, .2, 1)`), 150 to 300 ms (`--dur-fast` 150, `--dur` 220, `--dur-slow` 300). The liquid dissolve between poses is about half a second because it is the character, not a control.
+- Ease out for everything the interface does (`--ease-out: cubic-bezier(.2, .8, .2, 1)`), ease in for what goes away, the one spring for what pops, 120 to 400 ms (`--dur-1` to `--dur-4`). The liquid dissolve between poses is about half a second because it is the character, not a control.
 - Interruptible: a new pose during a dissolve waits and only the newest is kept; a touch during a wobble adds to it; nothing blocks a click.
 - Quiet when still: breathing is drawn at 30 frames a second, a touch or a drag at 60, nothing at all with less motion once the picture is drawn. The loop stops while the window is hidden.
 - Reduced motion (the Mac's, or `character.motion` Less motion, through `motion.ts`): no wobble, no squash, no ripple, no droplets, no dissolve, only a quick plain crossfade. Every stylesheet rule that moves stops with it. The lights that show first (listening, looking at the screen) stay.
@@ -66,7 +70,11 @@ Space: `--space-1` to `--space-6` are 4, 8, 12, 16, 24, 32 px. Radius: `--radius
 
 - Plain words. A productivity tool, never an AI friend (rule 16): no affection, no streaks, no mood.
 - Every control is reachable by the keyboard and has a name VoiceOver reads. Colours meet WCAG AA in light and dark (`a11y.test.ts` computes each pair from the tokens).
-- The character is see through and floats on the desktop; what it says sits in a small blurred pill that reads on any wallpaper.
+- The character is see through and floats on the desktop; what it says sits in a small blurred pill that reads on any wallpaper. Its lights are glows along its outline, never a ring around a box or a filled box (M15). The count of questions waiting is a small black pill with white words and a white rim.
+
+## 10. Flowflow drawn live
+
+- One setting, "Draw Squibby live" (`character.live`), off until it has been seen on a real Mac. Off: the pose pictures, moved by `app/src/flow/` (a soft body over the picture). On: the founder's live water (`app/src/flowflow/`, `docs/flowflow-live.md`: springs, moods, eyes that follow the pointer, droplets), in the dock and in Home, loaded only then; `flow/` stands down. If it cannot start the pictures come back.
 
 ## 8. Settings window
 

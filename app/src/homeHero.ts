@@ -26,7 +26,7 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
   if (cardWorking(m)) {
     const label = m.task?.label || characterWords(m);
     const now = activityNow(m, 1)[0]?.words;
-    return { headline: label, line: m.task ? S.look.working(formatUsd(m.task.costUsd)) : now ?? characterWords(m), tone: "working" };
+    return { headline: label, line: m.task ? (m.task.costUsd > 0 ? S.look.working(formatUsd(m.task.costUsd)) : S.look.workingFree) : now ?? characterWords(m), tone: "working" };
   }
   // Something else waits for a look (a problem found, Prompt help, the error explainer, a pointer): its own words.
   if (n) return { headline: n.why, line: characterWords(m), tone: "needsYou" };

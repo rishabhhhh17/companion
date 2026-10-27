@@ -174,7 +174,8 @@ describe("every animation and transition in the stylesheets stops with reduced m
     // Rule 5: the light for the screen and the microphone must be on screen first. Looking's own light is its scan, which
     // stops with reduced motion, so a still ring must show it then, as listening's ring always does.
     const all = rules(read("./style.css"));
-    const still = (r: Rule) => !!r.decl["box-shadow"] && !/^none\b/.test(r.decl["box-shadow"]) && !r.decl.animation && !r.decl.transition;
+    // A still mark: a glow along the character's outline (M15: never a ring around a box), with nothing moving.
+    const still = (r: Rule) => /drop-shadow\(/.test(r.decl.filter ?? "") && !r.decl.animation && !r.decl.transition;
     for (const state of ["checking", "listening"]) {
       const sel = `.character[data-state="${state}"]`;
       const always = all.filter((r) => r.sel === sel && r.media === "" && still(r));
