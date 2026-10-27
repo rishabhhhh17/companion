@@ -1375,7 +1375,7 @@ function Card() {
       {onboarded && (
         <header className="bar">
           {/* On Now: the folder's name and a small dot for how things are (style.css .bar-dot, from data-tone). */}
-          {home.tab === "now" && <span className="bar-folder" title={project || undefined}><span className="bar-dot" aria-hidden="true" />{project ? <><span className="sr">{S.folderLabel}: </span>{folderName(project)}</> : S.look.noFolder}</span>}
+          {home.tab === "now" && <span className="bar-folder" title={project || undefined}><span className="bar-dot" aria-hidden="true" />{project ? <><span className="sr">{S.folderLabel}: </span>{project.split("/").filter(Boolean).pop() ?? project}</> : S.look.noFolder}</span>}
           {home.tab !== "now" && <>
             <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>
             <h1 id="home-title" className="view-title">{viewTitle}</h1>

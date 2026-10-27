@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## One calm look and small moments of delight: 27 Oct 2026
+
+- **One set of sizes everywhere.** Six text sizes, five corner sizes, one spacing scale and one spring, so every screen lines up.
+- **The notch.** Flowflow no longer looks sliced when it peeks: it fades out into the black. Working shows a thin turning arc, thinking one breathing dot, and nothing is grey.
+- **A small celebration when a fix is proven.** The tick draws itself, glows green for a moment, and the notch gives a little bounce. Off with Reactions off or Less motion.
+- **Home is calmer.** The folder's name and a status dot sit at the top left, the buttons are smaller, the ask box is softer and glows when you type, the answer sits on its own card, and the line about the stop key is gone (it is in Stop's tooltip now). While something works, Stop is the one white button.
+- **Undo says what it did.** The Undo button turns back when pressed, and "Put back as it was" shows for two seconds once your files are back.
+- **Home unrolls out of the notch and rolls back up when you close it** with Close, Esc, the island or the character.
+- **The character lost its web style rings** and the grey box when something went wrong; the count of questions is a small black pill.
+- **Flowflow drawn live is merged in, still off.** The founder's live water (with eyes) is now the one live drawing, in the corner and in Home, behind "Draw Squibby live". It stays off until it has been seen on a real Mac.
+
 ## Flowflow stays tucked away until you call it: 27 Oct 2026
 
 The founder: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there".

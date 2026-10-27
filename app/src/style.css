@@ -325,7 +325,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island.pill .island-shape { border-radius: var(--r); }
 .island.pill[data-mode="peek"], .island.pill[data-mode="wingsPeek"] { --r: var(--r-md); }
 .island.edge { --r: 3px; }
-.island.edge[data-mode="alert"], .island.edge[data-mode="peek"], .island.edge[data-mode="wingsPeek"] { --r: var(--r-md); }
+.island.edge[data-mode="wings"], .island.edge[data-mode="peek"], .island.edge[data-mode="wingsPeek"] { --r: var(--r-md); }
 /* The wings: a tiny Flowflow on the left of the notch, one live mark on the right, each --wing wide, in the top row. */
 .island-wing { position: absolute; top: 0; height: var(--row); width: var(--wing); display: flex; align-items: center; justify-content: center; gap: var(--space-1); }
 .island-wing.left { left: calc(50% - var(--core) / 2 - var(--wing)); }
