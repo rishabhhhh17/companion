@@ -1,6 +1,6 @@
 // The soft body's rules, without a screen. Each test states a thing a person would see.
 import { describe, expect, test } from "bun:test";
-import { DEFAULT_TUNING, FIXED_STEP, MAX_FRAME, SoftBody, Spring, TUNING_LIMITS, clampTuning, frameDelta, keepInside, springFor } from "./physics.ts";
+import { DEFAULT_TUNING, FIXED_STEP, MAX_FRAME, MAX_SQUASH, SoftBody, Spring, TUNING_LIMITS, clampTuning, frameDelta, keepInside, springFor } from "./physics.ts";
 
 const run = (b: SoftBody, seconds: number, dt: number) => { let t = 0; while (t < seconds - 1e-9) { b.advance(dt); t += dt; } return b.pose; };
 
@@ -113,5 +113,16 @@ describe("the dials", () => {
       for (const v of Object.values(b.pose)) expect(Number.isFinite(v)).toBe(true);
       expect(b.settled, JSON.stringify({ stiffness, damping, speed })).toBe(true);
     }
+  });
+  test("hit after hit at the softest dials never flattens or flips the body (the squash has a ceiling)", () => {
+    for (const [stiffness, damping] of [[0.2, 0.2], [1, 1], [3, 3]]) {
+      const b = new SoftBody({ stiffness, damping }); let most = 0;
+      for (let i = 0; i < 400; i++) {
+        if (i % 37 === 0) { b.impulse("land", 1); b.impulse("burst", 1); b.impulse("poke", 1, 0.3, -0.2); }
+        b.advance(1 / 240); most = Math.max(most, Math.abs(b.pose.squash));
+      }
+      expect(most, JSON.stringify({ stiffness, damping })).toBeLessThanOrEqual(MAX_SQUASH);
+    }
+    expect(MAX_SQUASH).toBeLessThan(1);   // 1 would squash it to nothing
   });
 });

@@ -68,6 +68,8 @@ export type BodyPose = {
 };
 
 const MAX_STRETCH = 0.38;
+/** The most it may squash (+) or rebound (-). Hits stack, and at 1 the shape would fold flat, so it stops here and loses that energy. */
+export const MAX_SQUASH = 0.45;
 
 export class SoftBody {
   private px: Spring; private py: Spring;
@@ -135,6 +137,7 @@ export class SoftBody {
     if (slowing > 3.5) { this.squashS.v += Math.min(2, (slowing - 3.5) * 0.03) * Math.min(1, this.lastSpeed); }
     this.lastSpeed = speed;
     this.squashS.step(h, 0);
+    if (Math.abs(this.squashS.x) > MAX_SQUASH) { this.squashS.x = Math.sign(this.squashS.x) * MAX_SQUASH; this.squashS.v = 0; }
     // The wobble modes are shaken by sudden changes of speed (never by chance) and ring down on their own.
     const jerk = Math.min(4, Math.abs(slowing)) * 0.004 * h * 60;
     this.w2.v += jerk * (vx >= 0 ? 1 : -1); this.w3.v += jerk * 0.5;
