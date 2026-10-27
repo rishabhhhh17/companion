@@ -5,14 +5,15 @@
 import { useEffect, useRef, useState } from "react";
 import { poseFor, poseUrl } from "./characters.ts";
 import { useFlow } from "./flow/useFlow.ts";
-import { visualState, type Model } from "./model.ts";
+import { visualState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 
-export function HomeCharacter({ m }: { m: Model }) {
+/** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). */
+export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
-  const state = visualState(m);
+  const state = as ?? (m ? visualState(m) : "idle");
   const pose = poseFor(state);
   const flow = useFlow({ pose, state, calm: reduced });
   const box = useRef<HTMLDivElement>(null);

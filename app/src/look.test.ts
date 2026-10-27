@@ -69,8 +69,13 @@ describe("Home is one calm column", () => {
     expect(startAt).toBeGreaterThan(-1);
     expect(startAt).toBeLessThan(more);
     const inside = card.slice(more, card.indexOf("</details>", more));
-    // Show me is one of the three quick actions now (homeHero.test.ts), so it is not here twice.
-    for (const btn of ["plan", "rescue", "research", "shipCheck", "online", "drawIt"]) expect(inside, btn).toContain(`buttonShown("${btn}")`);
+    // Show me and the check before going live are quick actions now (homeHero.test.ts, M15), so they are not here twice.
+    for (const btn of ["plan", "rescue", "research", "online", "drawIt"]) expect(inside, btn).toContain(`buttonShown("${btn}")`);
+    expect(inside).not.toContain('buttonShown("shipCheck")');
+    const chips = card.slice(card.indexOf('<div className="chips quick"'), card.indexOf("</div>", card.indexOf('<div className="chips quick"')));
+    // The two things Squibby is for lead the quick actions: find the problem, then is it safe to go live.
+    expect(chips.indexOf('buttonShown("findProblem")')).toBeLessThan(chips.indexOf('buttonShown("shipCheck")'));
+    expect(chips.indexOf('buttonShown("shipCheck")')).toBeLessThan(chips.indexOf('toolOn("errorHelp")'));
     expect(inside).toContain("setOff(e.target.checked)");
     // A ticked "off the record" is still said on the line that closes the options.
     expect(inside).toContain("{off && <span> · {S.offRecord}</span>}");

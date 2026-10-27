@@ -1544,6 +1544,18 @@ fn open_card_cmd(app: AppHandle) {
     open_card(&app, "button", true);
 }
 
+/// Home's own page asks for this when it loads and the first run has not been finished on this Mac (M15 wave 1: "nothing
+/// opens at launch, people do not know to click the notch"). Once per launch, only from Home's own page, and without the
+/// keyboard (rule 9): the person just opened the app, and Home is what they see first.
+static FIRST_RUN_OPENED: AtomicBool = AtomicBool::new(false);
+#[tauri::command]
+fn first_run_open(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "card" { return Err("only Home opens itself".into()); }
+    if FIRST_RUN_OPENED.swap(true, Ordering::SeqCst) { return Ok(()); }
+    open_card(&app, "first_run", false);
+    Ok(())
+}
+
 /// Opens the Settings window (settingswin.rs), from Home or the island, on the person's press. The one window a click
 /// gives the keyboard to: the person asked for it (rule 9 is about never taking it unasked). A second call brings the open
 /// one to the front.
@@ -1666,9 +1678,11 @@ fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
 /// dialog, so it runs off the thread that reads the engine's output.
 fn hand_key_over(app: &AppHandle, key: Option<&str>) {
     let (a, key) = (app.clone(), key.map(str::to_string));
+    // A key the person just saved is checked once with Anthropic (free); one read from the Keychain is not.
+    let fresh = key.is_some();
     std::thread::spawn(move || {
         let key = key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() });
-        let _ = a.state::<runner::Runner>().hand_key(key.as_deref());
+        let _ = a.state::<runner::Runner>().hand_key(key.as_deref(), fresh);
     });
 }
 
@@ -1681,7 +1695,7 @@ fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String)
     keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || !keystore::gone(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
-    let _ = app.state::<runner::Runner>().hand_key(None);
+    let _ = app.state::<runner::Runner>().hand_key(None, false);
     Ok(())
 }
 
@@ -3679,6 +3693,7 @@ struct TrimIn { start: f64, end: f64 }
 #[tauri::command]
 fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: String, trim: Option<TrimIn>) -> Result<(), String> {
     if !matches!(window.label(), "dock" | "card") { return Err("notOffered".into()); }
+    if action == convert::OPEN_PROJECT { return drop_open_project(&app, id); }
     let prefs = convert::Prefs::read(setting_now);
     let work = convert::work_root().join(format!("{id}-{}", now()));
     let trim = trim.map(|t| convert::Trim { start: t.start, end: t.end });
@@ -3737,6 +3752,27 @@ fn drop_end_for_quit() {
 }
 
 /// Closes the menu (never while its job runs: Stop ends it first), in every window.
+/// "Fix this project" on a dropped folder (M15 wave 1): the folder becomes the project, checked exactly like one picked in
+/// the folder chooser (projects::validate, inside use_project_inner), the menu closes, Home opens, and Home finds what is
+/// wrong in it (the page's own Find the problem, "home-find"). Nothing is changed in the folder by this.
+fn drop_open_project(app: &AppHandle, id: u64) -> Result<(), String> {
+    let path = {
+        let mut g = drop_now_lock();
+        let d = g.as_ref().filter(|d| d.id == id).ok_or("gone")?;
+        if d.running.is_some() { return Err("busy".into()); }
+        if !d.actions.contains(&convert::OPEN_PROJECT) || d.paths.len() != 1 { return Err("notOffered".into()); }
+        let p = d.paths[0].to_string_lossy().into_owned();
+        *g = None;
+        p
+    };
+    let _ = app.emit("drop-menu", Value::Null);
+    let folder = use_project_inner(app.clone(), path)?;
+    log("drop_project", json!({}));
+    open_card(app, "drop_project", false);
+    let _ = app.emit_to("card", "home-find", json!({ "project": folder }));
+    Ok(())
+}
+
 #[tauri::command]
 fn drop_close(app: AppHandle, id: u64) {
     let mut g = drop_now_lock();
@@ -3842,7 +3878,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

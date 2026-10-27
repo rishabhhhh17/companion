@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { DoctorItem } from "./model.ts";
+import type { DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac } from "./commands.ts";
 import { changeSetting } from "./settingsStore.ts";
-import { canContinue, commandsFor, groupSettingsFor, settingsFor, DEFAULT_ANSWERS, effectsOf, FIRST_TASKS, keyLooksRight, next, back, QUESTIONS, STEPS, type Answers, type Step } from "./onboarding.ts";
+import { canContinue, commandsFor, groupSettingsFor, settingsFor, DEFAULT_ANSWERS, effectsOf, keyCheck, keyLooksRight, KEY_PAGE, next, back, QUESTIONS, REQUIRED, STEPS, type Answers, type Step } from "./onboarding.ts";
 import { keyHints, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
@@ -11,42 +11,48 @@ import { shouldTakeFocus } from "./cardlogic.ts";
 import { S } from "./strings.ts";
 import { SWITCHED, type SwitchedId } from "./groups.ts";
 import { FIRST_PRACTICE, costWords, needsMacCheck, nodeMissing, practiceOf, timeWords } from "./practice.ts";
+import { FirstLook } from "./firstLook.tsx";
 
-// startPractice: copy a practice and open it (the first run ends there); pickPractice: end the first run on the Learn
-// tab's list of practices.
-type Props = { doctor: DoctorItem[] | null; connected: string; project: string; send: (c: unknown) => unknown; pickFolder: () => void; useTask: (prompt: string) => void; startPractice: (id: string) => void; pickPractice: () => void; onDone: () => void };
+// The first run (onboarding.ts has the order and the rules): the recorded fix, Connect, the folder, and an optional last
+// step. startPractice: copy a practice and open it (the first run ends there).
+type Props = { doctor: DoctorItem[] | null; connected: string; keyTested: Model["keyTested"]; project: string; send: (c: unknown) => unknown; pickFolder: () => void; startPractice: (id: string) => void; onDone: () => void };
 
-export function Onboarding({ doctor, connected, project, send, pickFolder, useTask, startPractice, pickPractice, onDone }: Props) {
-  const [step, setStep] = useState<Step>("welcome");
+export function Onboarding({ doctor, connected, keyTested, project, send, pickFolder, startPractice, onDone }: Props) {
+  const [step, setStep] = useState<Step>("look");
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   // The groups switched off here (F20): none unless the person switches one. Applied when the first run finishes.
   const [groupsOff, setGroupsOff] = useState<SwitchedId[]>([]);
   const [key, setKey] = useState("");
   const [keyNote, setKeyNote] = useState("");
-  // The keys every job uses now (the person may have picked others, or another app may hold the usual ones). The card
-  // asks the app for them when it opens.
+  // When the key was saved: setup shows Anthropic's answer for this save only (onboarding.ts keyCheck).
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  // The keys every job uses now (the person may have picked others, or another app may hold the usual ones).
   const keys = useKeys();
   const ok = connected === "api_key" || connected === "plan";
   const ctx = { connected: ok, project };
   const go = (to: Step | null) => { if (to) setStep(to); };
-  const finish = () => {
-    for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command)) void send(c);
-    for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);
-    for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);
+  const finish = (keep: boolean) => {
+    if (keep) {
+      for (const c of commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command)) void send(c);
+      for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);
+      for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);
+    }
     onDone();
   };
   const saveKey = () => {
     const problem = keyLooksRight(key);
     if (problem) { setKeyNote(problem); return; }
-    // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy.
+    // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy. The engine then checks it
+    // once with Anthropic (free) and says what it heard.
     const k = key; setKey("");
-    void invoke("save_api_key", { key: k }).then(() => setKeyNote("")).catch((e) => setKeyNote(String(e)));
+    void invoke("save_api_key", { key: k }).then(() => { setKeyNote(""); setSavedAt(Date.now()); }).catch(() => setKeyNote(S.obKeyFailed));
   };
-  // The Mac check: at the practice (it waits only when Node is missing) and with the permissions.
-  useEffect(() => { if (step === "permissions" || (step === "practice" && needsMacCheck(doctor))) void send(checkMac()); }, [step]);
-  // Node was installed while Home stayed open: coming back to Companion checks again, only while Node is flagged missing.
+  const check = keyCheck(savedAt, keyTested);
+  // The Mac check, when the folder step offers the practice (it waits only when Node is missing).
+  useEffect(() => { if (step === "folder" && needsMacCheck(doctor)) void send(checkMac()); }, [step]);
+  // Node was installed while Home stayed open: coming back to Squibby checks again, only while Node is flagged missing.
   useEffect(() => {
-    if (step !== "practice" || !nodeMissing(doctor)) return;
+    if (step !== "folder" || !nodeMissing(doctor)) return;
     const again = () => void send(checkMac());
     window.addEventListener("focus", again);
     return () => window.removeEventListener("focus", again);
@@ -62,42 +68,43 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
     if (!h || !shouldTakeFocus(a && a !== document.body ? { tag: a.tagName, editable: a.isContentEditable } : null, document.hasFocus())) return;
     h.setAttribute("tabindex", "-1"); h.focus();
   }, [step]);
-  const n = STEPS.indexOf(step) + 1;
+  const n = REQUIRED.indexOf(step) + 1;
+
+  if (step === "look") return <section className="panel onboarding look" aria-label={S.obTitle} ref={box}><FirstLook onGo={() => go(next(step))} /></section>;
+
   return (
-    <section className="panel" aria-label={S.obTitle} ref={box}>
-      <div className="line muted">Step {n} of {STEPS.length}</div>
-      {step === "welcome" && (<>
-        <h2>{S.obTitle}</h2><div className="line">{S.obWelcome1}</div><div className="line">{S.obWelcome2}</div>
-      </>)}
+    <section className="panel onboarding" aria-label={S.obTitle} ref={box}>
+      <div className="line muted">{n > 0 ? `Step ${n} of ${REQUIRED.length}` : S.obYoursTitle}</div>
       {step === "connect" && (<>
         <h2>{S.obConnectTitle}</h2>
-        {ok ? <div className="line"><b>{S.obConnected}</b></div> : (<>
+        {ok && check !== "refused" ? <div className="line" role="status"><b>{check ? S.obKeyCheck[check] : S.obConnected}</b></div> : (<>
           <div className="line">{S.obKeyHelp}</div>
+          <ol className="ob-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>
+          <div className="row"><button className="btn" type="button" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.obGetKey}</button></div>
           <div className="row">
             <input type="password" autoComplete="off" spellCheck={false} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) saveKey(); }} />
             <button className="btn primary" type="button" onClick={saveKey}>{S.obKeySave}</button>
           </div>
+          {check === "refused" && <div className="error" role="alert">{S.obKeyCheck.refused}</div>}
           {keyNote && <div className="error" role="alert">{keyNote}</div>}
           <div className="line muted">{S.obPlanLater}</div>
         </>)}
-      </>)}
-      {step === "practice" && (<>
-        <h2>{S.obPracticeTitle}</h2>
-        <div className="line">{S.obPracticeHelp}</div>
-        {first.needsNode && noNode && <div className="line blocked" role="status">{S.practiceNodeLine(noNode.fix ?? "")}</div>}
-        <div className="row">
-          {/* Taking it ends the first run here: the practice opens its own folder. Nothing from the questions is kept. */}
-          <button className="btn primary" type="button" disabled={first.needsNode && !!noNode} onClick={() => { onDone(); startPractice(first.id); }}>{S.obPractice(S.practices[first.id].title, timeWords(first), costWords(first))}</button>
-          <button className="btn" type="button" onClick={() => { onDone(); pickPractice(); }}>{S.obPracticePick}</button>
-        </div>
       </>)}
       {step === "folder" && (<>
         <h2>{S.obFolderTitle}</h2><div className="line">{S.obFolderHelp}</div>
         <div className="line"><b>{project ? project : "-"}</b></div>
         <div className="row"><button className="btn primary" type="button" onClick={pickFolder}>{S.folderChange}</button></div>
+        <h2 className="ob-sub">{S.obTryPractice}</h2>
+        <div className="line muted">{S.obPracticeHelp}</div>
+        {first.needsNode && noNode && <div className="line blocked" role="status">{S.practiceNodeLine(noNode.fix ?? "")}</div>}
+        {/* Taking it ends the first run here: the practice opens its own folder. Nothing from the last step is kept. */}
+        <div className="row"><button className="btn" type="button" disabled={first.needsNode && !!noNode} onClick={() => { onDone(); startPractice(first.id); }}>{S.obPractice(S.practices[first.id].title, timeWords(first), costWords(first))}</button></div>
       </>)}
-      {step === "questions" && (<>
-        <h2>{S.obQuestionsTitle}</h2><div className="line muted">{S.obQuestionsHelp}</div>
+      {step === "yours" && (<>
+        <h2>{S.obYoursTitle}</h2>
+        <div className="line muted">{S.obYoursHelp}</div>
+        <div className="row"><button className="btn primary" type="button" onClick={() => finish(false)}>{S.obSkipStart}</button></div>
+        <h2 className="ob-sub">{S.obQuestionsTitle}</h2><div className="line muted">{S.obQuestionsHelp}</div>
         {QUESTIONS.map((q) => (
           <div key={q.key}>
             <div className="line"><b>{q.ask}</b></div>
@@ -108,9 +115,7 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
           </div>
         ))}
         <div className="line muted">{effectsOf(answers).join(" ")}</div>
-      </>)}
-      {step === "groups" && (<>
-        <h2>{S.groups.firstTitle}</h2><div className="line muted">{S.groups.firstHelp}</div>
+        <h2 className="ob-sub">{S.groups.firstTitle}</h2><div className="line muted">{S.groups.firstHelp}</div>
         {SWITCHED.map((g) => {
           const id = g.id as SwitchedId, on = !groupsOff.includes(id);
           return (
@@ -122,30 +127,18 @@ export function Onboarding({ doctor, connected, project, send, pickFolder, useTa
           );
         })}
         <div className="line muted">{S.groups.core}</div>
-      </>)}
-      {step === "permissions" && (<>
-        <h2>{S.obPermTitle}</h2><div className="line">{S.obPerm1}</div><div className="line">{S.obPerm2}</div><div className="line">{S.obPerm3}</div><div className="line muted">{S.obPermNone}</div>
-        {doctor && (<>
-          <h2>{S.obMacTitle}</h2>
-          {doctor.map((d) => <div className={`line ${d.ok ? "" : "blocked"}`} key={d.id}><b>{d.label}:</b> {d.detail}{d.fix ? <span className="muted"> {d.fix}</span> : null}</div>)}
-        </>)}
-      </>)}
-      {step === "first" && (<>
-        <h2>{S.obFirstTitle}</h2>
-        <div className="line muted">{S.obPracticeLater}</div>
-        <div className="line muted">{S.obOrOwn}</div>
-        <div className="row">{FIRST_TASKS.map((t) => <button key={t.label} className="btn" type="button" onClick={() => { finish(); useTask(t.prompt); }}>{t.label}</button>)}</div>
-        <h2>{S.keysTitle}</h2>
+        <h2 className="ob-sub">{S.keysTitle}</h2>
         <div className="line muted">{S.keysHelp}</div>
         {keyHints(keys).map((l, i) => <div className="line" key={i}>{l}</div>)}
         {talkSharedNote(keys) && <div className="line muted">{talkSharedNote(keys)}</div>}
+        <div className="line">{S.obAnyApp}</div>
+        <h2 className="ob-sub">{S.obPermTitle}</h2>
+        <div className="line">{S.obWelcome2}</div><div className="line">{S.obPerm1}</div><div className="line">{S.obPerm2}</div><div className="line">{S.obPerm3}</div><div className="line muted">{S.obPermNone}</div>
       </>)}
       <div className="row">
         {back(step) && <button className="btn" type="button" onClick={() => go(back(step))}>{S.obBack}</button>}
-        {step === "welcome" && <button className="btn primary" type="button" onClick={() => go(next(step))}>{S.obStart}</button>}
-        {step !== "welcome" && step !== "first" && <button className={`btn${step === "practice" ? "" : " primary"}`} type="button" disabled={!canContinue(step, ctx)} onClick={() => go(next(step))}>{step === "practice" ? S.obPracticeSkip : S.obContinue}</button>}
-        {step === "questions" && <button className="btn" type="button" onClick={() => { setAnswers(DEFAULT_ANSWERS); go("groups"); }}>{S.obSkip}</button>}
-        {step === "first" && <button className="btn primary" type="button" onClick={finish}>{S.obFinish}</button>}
+        {step !== "yours" && <button className="btn primary" type="button" disabled={!canContinue(step, ctx) || (step === "connect" && check === "refused")} onClick={() => go(next(step))}>{S.obContinue}</button>}
+        {step === "yours" && <button className="btn primary" type="button" onClick={() => finish(true)}>{S.obDoneStart}</button>}
       </div>
     </section>
   );

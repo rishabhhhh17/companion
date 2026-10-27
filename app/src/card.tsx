@@ -27,6 +27,7 @@ import { followLessMotion } from "./motion.ts";
 import { closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { ProofChips } from "./proofChipsView.tsx";
 import { S } from "./strings.ts";
 import { undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
@@ -498,14 +499,15 @@ function Card() {
   useEffect(() => { offNow.current = off; if (off === offWas.current) return; offWas.current = off; keepDraft(box.current?.value ?? ""); }, [off]);
   // The first run: shown until finished, remembered only on this Mac.
   const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
-  const pendingPrompt = useRef<string | null>(null);
   useEffect(() => {
     if (!onboarded || !box.current) return;
-    if (pendingPrompt.current) { setBox(pendingPrompt.current); box.current.focus(); pendingPrompt.current = null; return; }
     let kept = "";
     try { kept = localStorage.getItem(DRAFT_KEY) ?? ""; } catch { /* storage may be unavailable */ }
     if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
   }, [onboarded]);
+  // A new person sees Home open by itself at launch (first_run_open: once, without the keyboard), so they never have to
+  // guess that the notch is where it lives.
+  useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);
   const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays after the last new line for as long as the person chose (memory.toastSeconds, ten seconds
   // usually), or until it is closed.
@@ -944,6 +946,9 @@ function Card() {
   useEffect(() => {
     // The key and the Find the problem chip on Home take one path (latest.current.find).
     const offKey = listen("find-problem", (e) => latest.current.find(e.payload));
+    // A folder dropped on the character with Fix this project (main.rs drop_open_project): it is the project now, so Find
+    // runs in it at once, even before the page has drawn the new folder.
+    const offDropFind = listen("home-find", (e) => { const p = (e.payload as { project?: unknown })?.project; if (typeof p === "string" && p) { projectRef.current = p; latest.current.find(null); } });
     const offFound = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; verdict?: string; problem?: Problem; project?: string };
       // A practice copy opened again runs Find by itself (resume): that answer is shown on the card, never pointed at on the
@@ -951,7 +956,7 @@ function Card() {
       if (ev.type === "problem.found" && quietFind.current === ev.project) { quietFind.current = ""; return; }
       if (ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
     });
-    return () => { offKey.then((f) => f()); offFound.then((f) => f()); };
+    return () => { offKey.then((f) => f()); offDropFind.then((f) => f()); offFound.then((f) => f()); };
   }, []);
   // Your turn (off unless turned on in Settings): the person asked to make the second of two identical changes themselves.
   // Once the engine has put that place back, it is rung the same way Point at the problem rings a line (light first).
@@ -1379,7 +1384,7 @@ function Card() {
       )}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} project={project} send={send} pickFolder={pickFolder} useTask={(p) => { pendingPrompt.current = p; }} startPractice={beginPractice} pickPractice={() => homeDispatch({ type: "pick", tab: "learn" })} onDone={finishOnboarding} />}
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
       {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
@@ -1425,6 +1430,7 @@ function Card() {
           {/* Three quick actions, each a drawing and a word: what their keys and buttons already do. */}
           <div className="chips quick" role="group" aria-label={S.look.chipsLabel}>
             {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}</button>}
+            {buttonShown("shipCheck") && <button className="chip-btn" type="button" onClick={() => shipIt()}><Icon name="shield" size={16} />{S.look.chipSafe}</button>}
             {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={() => { pressed(); dispatch({ type: "app.notice", message: keyHint("explain", S.errKeyHint, keys) }); }}><Icon name="explain" size={16} />{S.look.chipExplain}</button>}
             {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); dispatch({ type: "app.showme", stage: "error", message: S.showMeHint }); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}</button>}
           </div>
@@ -1436,7 +1442,6 @@ function Card() {
                 {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
                 {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
                 {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
-                {buttonShown("shipCheck") && <button className="btn" type="button" onClick={() => shipIt()}>{S.shipCheck}</button>}
                 {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
                 {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
               </div>
@@ -1826,6 +1831,7 @@ function Card() {
               <span>{receiptProofWords(m)}</span>
             </div>
           )}
+          <ProofChips m={m} />
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />

@@ -37,7 +37,9 @@ Already fixed since the first Mac session (checked in code): stale errors on the
 1. **Home opens by itself on the very first launch**, with Flowflow peeking in from the edge toward it.
 2. **See it work before anything is asked.** Step one is a short recorded fix of the sample sign up page, on the main screen: the broken page, the exact line, the fix, the check going red to green, a picture of the working page, Undo. It spends nothing and needs no key or Node. It says plainly that it is a recording ("This is a recorded run. Next, your own project.").
 3. **Setup goes from 8 steps to 3:** see it work, connect (with a "Get a key" guide in 3 short steps), pick a folder. The questionnaire, groups and permissions are asked the first time each feature is used (permissions already work this way).
+   *Changed while building (27 Oct 2026):* founder decisions F05 (an optional questionnaire in onboarding) and F20 (each group has its place in the first run) are kept, not reopened: the questions, the four groups, the keys and what Squibby may ask the Mac for are one optional last step, "Make it yours", with "Skip and start" at the top. The three required steps are as planned. The separate permissions step is gone (each permission is asked when its feature first needs it, as before).
 4. **The key is tested when it is saved**, with one tiny request (a fraction of a cent, said on screen): "Key works" or "Anthropic said no, here is why".
+   *Changed while building:* the check uses Anthropic's list of models, which answers any good key and costs nothing. It cannot see whether the account has credit; a fix without credit still says so plainly.
 5. **The practice runs on the main screen** (Now), in big type: Problem, Fix, Proof, Undo.
 6. **Proof you can see**, on every fix: the failing check in red, then green, with the screenshot of the working app beside it.
 7. **Drop a project folder on Flowflow: "Fix this project"** (find the problem), not just "zip".

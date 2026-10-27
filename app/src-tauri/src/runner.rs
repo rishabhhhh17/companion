@@ -365,7 +365,7 @@ impl Runner {
     /// Hands the engine the key, or tells it there is none (after the key was removed). The line goes out exactly as
     /// `handoff_line` wrote it: the engine takes it only when it starts `{"v":1,"type":"auth.key"`, and turning it into a
     /// JSON value first would sort its fields ("key" first), so the engine would refuse it and stay without a key.
-    pub fn hand_key(&self, key: Option<&str>) -> Result<(), String> { self.shared.send_line(crate::keystore::handoff_line(key)) }
+    pub fn hand_key(&self, key: Option<&str>, fresh: bool) -> Result<(), String> { self.shared.send_line(crate::keystore::handoff_line(key, fresh)) }
 
     /// The Stop key. It must work even when the engine is stuck, so if the stop cannot be delivered, or the engine does not
     /// answer a moment later, the engine is stopped by force and started again.
@@ -766,8 +766,8 @@ mod tests {
         let script: &'static str = Box::leak(format!("read -r a; read -r b; printf '%s\\n%s\\n' \"$a\" \"$b\" > '{}'; sleep 5", out.display()).into_boxed_str());
         let r = rig(script, quick());
         let runner = Runner::with_shared(r.shared.clone(), quick());
-        assert!(wait_for(|| runner.hand_key(Some("sk-ant-test-not-a-real-key")).is_ok(), 3000));
-        assert!(runner.hand_key(None).is_ok());
+        assert!(wait_for(|| runner.hand_key(Some("sk-ant-test-not-a-real-key"), false).is_ok(), 3000));
+        assert!(runner.hand_key(None, false).is_ok());
         assert!(wait_for(|| std::fs::read_to_string(&out).is_ok_and(|t| t.lines().count() >= 2), 3000), "the engine never got two lines");
         let got = std::fs::read_to_string(&out).unwrap();
         let lines: Vec<&str> = got.lines().collect();

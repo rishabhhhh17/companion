@@ -204,6 +204,9 @@ export type Model = {
   history: HistoryItem[];
   runnerUp: boolean;
   connected: "unknown" | "api_key" | "plan" | "none";
+  /** What Anthropic said about the key the person just saved (keytest.ts), and when it arrived, so setup shows only the
+   *  answer for the key it saved. Null until a saved key was checked. */
+  keyTested: { result: "works" | "refused" | "no_connection" | "unknown"; at: number } | null;
   agents: Record<string, CharacterState>;
   character: CharacterState;
   task: Task | null;
@@ -217,7 +220,7 @@ export type Model = {
 
 // The record without one agent's entry.
 function without<T>(r: Record<string, T>, agent: string): Record<string, T> { const o = { ...r }; delete o[agent]; return o; }
-export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, sl: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, watches: {}, watchAlerts: {}, watchFix: null, watchAsked: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
+export const initial = (): Model => ({ everyday: null, folder: null, away: {}, driveAway: null, workIn: {}, researchCount: 0, bisect: null, eh: null, sl: null, spending: null, browser: { needed: false, stage: "idle" }, undo: null, lessons: null, walkWant: null, walk: null, practice: null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, doctor: null, voice: null, showme: null, shipFlow: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, explainOn: true, recap: null, watches: {}, watchAlerts: {}, watchFix: null, watchAsked: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, ship: null, ph: null, research: null, rescue: null, paused: null, stuck: null, plan: null, drive: null, history: [], runnerUp: true, connected: "unknown", keyTested: null, agents: {}, character: "idle", task: null, approvals: [], receipt: null, followUp: "idle", notice: null, error: null });
 
 // Busiest first: an error or a question to you outranks work in progress.
 const RANK: Record<CharacterState, number> = { error: 8, needsYou: 7, checking: 6, working: 5, thinking: 4, listening: 3, done: 2, idle: 1, off: 0 };
@@ -541,7 +544,9 @@ function reduceRest(m: Model, e: Ev): Model {
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
       // for the new engine says "none" for a moment before the shell hands over the key.
       const notice = connected === "none" ? (m.notice && m.notice !== S.notConnectedNotice ? m.notice : S.notConnectedNotice) : (m.notice === S.notConnectedNotice ? null : m.notice);
-      return { ...m, connected, notice };
+      const t = e.tested;
+      const keyTested = t === "works" || t === "refused" || t === "no_connection" || t === "unknown" ? { result: t, at: Date.now() } : m.keyTested;
+      return { ...m, connected, notice, keyTested };
     }
     case "explain.ready": {
       // A Drive step's explanation joins the plan's list, whatever is on the card by the time it arrives.

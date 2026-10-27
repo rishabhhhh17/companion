@@ -165,7 +165,8 @@ export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchChe
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
 export type RunnerHello = Envelope & { type: "runner.hello"; runnerVersion: string; sdk: string; claudeCode?: string };
-export type AuthStatus = Envelope & { type: "auth.status"; method: "api_key" | "plan" | "cloud" | "none" | "unknown"; source?: string };
+/** `tested`: only right after the person saved a key, what Anthropic said about it (runner/src/keytest.ts). */
+export type AuthStatus = Envelope & { type: "auth.status"; method: "api_key" | "plan" | "cloud" | "none" | "unknown"; source?: string; tested?: "works" | "refused" | "no_connection" | "unknown" };
 export type CheckpointCreated = Envelope & {
   type: "checkpoint.created"; project: string; agent: string; checkpoint: string; label: string; files: number;
   skipped: { path: string; reason: string }[];
@@ -525,7 +526,7 @@ const EVENTS: Record<string, Check[]> = {
   "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
   "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],
-  "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"])],
+  "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"]), opt("tested", oneOf("tested", ["works", "refused", "no_connection", "unknown"]))],
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],

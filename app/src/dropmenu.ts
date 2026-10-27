@@ -198,7 +198,7 @@ export const showsWord = (id: string): boolean => /^to[A-Z]/.test(id);
 
 /** Which small drawing a choice gets (icons.tsx). Every action the page has words for has one of its own kind; an unknown id
  *  gets the plain file. */
-export type ActionIcon = "image" | "pdf" | "doc" | "audio" | "video" | "archive" | "resize" | "squeeze" | "trim" | "rotate" | "flip" | "gray" | "clean" | "grid" | "merge" | "split" | "text" | "mono" | "file";
+export type ActionIcon = "find" | "image" | "pdf" | "doc" | "audio" | "video" | "archive" | "resize" | "squeeze" | "trim" | "rotate" | "flip" | "gray" | "clean" | "grid" | "merge" | "split" | "text" | "mono" | "file";
 export function actionIcon(id: string): ActionIcon {
   if (/^(toPng|toJpeg|toHeic|toTiff|toWebp|toGif|toBmp|toJp2|toTga|toAvif|toIcns|toIco|pagesToImages|stillStart|stillMiddle)$/.test(id)) return "image";
   if (id === "resize") return "resize";
@@ -218,5 +218,6 @@ export function actionIcon(id: string): ActionIcon {
   if (id === "stripInfo") return "clean";
   if (id === "thumbnails") return "grid";
   if (id === "zip" || id === "unzip") return "archive";
+  if (id === "openProject") return "find";
   return "file";
 }

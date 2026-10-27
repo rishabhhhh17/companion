@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
-type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer";
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield";
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
@@ -28,6 +28,7 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   cross: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
   wait: <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />,
   // The strip at the bottom of Home
+  shield: <><path d="M12 3.5l7 2.8v5.2c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6.3z" /><path d="M9 12l2.2 2.2L15.5 10" /></>,
   undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
   // The ring

@@ -94,6 +94,14 @@ describe("errors and sign in, in plain words", () => {
     expect(m.notice).toMatch(/not connected/i);
     expect(run([ev({ type: "auth.status", method: "api_key" })], m).notice).toBeNull();
   });
+  test("a saved key's check result is kept with when it came; a later status without one keeps it", () => {
+    expect(initial().keyTested).toBeNull();
+    const m = run([ev({ type: "auth.status", method: "api_key", tested: "refused" })]);
+    expect(m.keyTested?.result).toBe("refused");
+    expect(typeof m.keyTested?.at).toBe("number");
+    expect(run([ev({ type: "auth.status", method: "api_key" })], m).keyTested).toEqual(m.keyTested);
+    expect(run([ev({ type: "auth.status", method: "api_key", tested: "nonsense" })]).keyTested).toBeNull();
+  });
   test("a protocol error becomes a visible message", () => {
     expect(run([ev({ type: "protocol.error", reason: "error_max_budget_usd: x" })]).error).toMatch(/spending limit/i);
   });

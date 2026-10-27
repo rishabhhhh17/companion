@@ -117,7 +117,12 @@ pub fn save(raw: &str, _: &std::path::Path) -> Result<(), String> { check(raw).m
 pub fn move_old_item(_: &std::path::Path) -> Option<bool> { None }
 
 /// The one line the engine is sent: the key itself (or null for none). It is written to the engine's pipe and nowhere else.
-pub fn handoff_line(key: Option<&str>) -> String { format!(r#"{{"v":1,"type":"auth.key","key":{}}}"#, serde_json::to_string(&key).unwrap_or_else(|_| "null".into())) }
+/// `fresh`: the person has just saved this key, so the engine checks it once with Anthropic (free, runner/src/keytest.ts)
+/// and setup can say whether it works. Never set at launch, when the key comes from the Keychain.
+pub fn handoff_line(key: Option<&str>, fresh: bool) -> String {
+    let fresh = if fresh && key.is_some() { r#","fresh":true"# } else { "" };
+    format!(r#"{{"v":1,"type":"auth.key","key":{}{fresh}}}"#, serde_json::to_string(&key).unwrap_or_else(|_| "null".into()))
+}
 
 /// The exact words the settings page sends to remove the key, so a stray call removes nothing.
 pub const REMOVE_PHRASE: &str = "remove the key";
@@ -237,8 +242,12 @@ mod tests {
     }
     #[test]
     fn the_handoff_line_is_one_line_and_a_missing_key_is_null() {
-        let l = handoff_line(Some("sk-ant-x")); assert!(!l.contains('\n')); assert!(l.starts_with(r#"{"v":1,"type":"auth.key""#));
-        assert!(handoff_line(None).contains(r#""key":null"#));
+        let l = handoff_line(Some("sk-ant-x"), false); assert!(!l.contains('\n')); assert!(l.starts_with(r#"{"v":1,"type":"auth.key""#));
+        assert!(handoff_line(None, false).contains(r#""key":null"#));
+        assert!(!l.contains("fresh"), "a key read at launch is not tested again");
+        let saved: serde_json::Value = serde_json::from_str(&handoff_line(Some("sk-ant-x"), true)).unwrap();
+        assert_eq!((saved["key"].as_str(), saved["fresh"].as_bool()), (Some("sk-ant-x"), Some(true)), "a key just saved is checked once");
+        assert!(!handoff_line(None, true).contains("fresh"), "no key, nothing to check");
     }
     #[test]
     fn removing_the_key_needs_the_exact_words_and_is_done_only_when_it_is_really_gone() {

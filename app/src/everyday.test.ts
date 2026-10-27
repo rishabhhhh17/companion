@@ -239,12 +239,13 @@ describe("settings and words", () => {
   });
   test("the first run says the key works in any app; the idle island says nothing at all", () => {
     expect(S.pointHint).toMatch(/any app/);
-    expect(S.obWelcome1 + S.obWelcome2).toMatch(/any app/);
+    expect(S.obAnyApp).toMatch(/any app/);
+    expect(S.firstLook.tagline).not.toMatch(/any app/);   // F17: never the headline
     // The founder, 27 Oct 2026: "it does not always have to show Ready there". Idle, the island is the bare notch.
     expect(islandLine({ ...initial(), runnerUp: true, connected: "api_key" })).toBe("");
   });
   test("plain words, no em dashes", () => {
-    const words = [S.everydayTitle, S.everydayNone, S.everydayFixed, S.everydaySaidWorks, S.everydayAsk, S.everydayCheck, S.everydaySteps, S.everydayChecking, S.everydayStill, S.everydayFromTable, S.everydayLookInstead, S.everydayCheckProject, S.everydayWhyTitle, S.pointHint, S.islandQuiet, S.obWelcome1, S.set["point.everyday"].help, S.set["point.everydayWhy"].help];
+    const words = [S.everydayTitle, S.everydayNone, S.everydayFixed, S.everydaySaidWorks, S.everydayAsk, S.everydayCheck, S.everydaySteps, S.everydayChecking, S.everydayStill, S.everydayFromTable, S.everydayLookInstead, S.everydayCheckProject, S.everydayWhyTitle, S.pointHint, S.islandQuiet, S.obAnyApp, S.set["point.everyday"].help, S.set["point.everydayWhy"].help];
     for (const w of words) { expect(typeof w).toBe("string"); expect(w).not.toContain("\u2014"); }
   });
 });

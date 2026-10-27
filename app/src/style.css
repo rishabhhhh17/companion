@@ -424,3 +424,63 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .side-item:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, var(--bg)); }
 .side-item[aria-current="page"] { background: color-mix(in srgb, var(--fg) 11%, var(--bg)); border-left-color: var(--fg); font-weight: 600; }
 @media (forced-colors: active) { .side-item[aria-current="page"] { outline: 2px solid Highlight; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The first run (onboarding.tsx). The recorded fix (firstLook.tsx) is the first thing a new person sees: one big line per
+   step, a small picture of the page and the line of code, the check going from red to green, and Undo. Words stay the
+   star; the picture is decoration for sighted people (the words carry it for VoiceOver). */
+.onboarding .ob-sub { font-size: var(--t-body); margin: var(--space-4) 0 var(--space-1); }
+.onboarding .ob-steps { margin: var(--space-2) 0; padding-left: 1.4em; display: grid; gap: var(--space-1); font-size: var(--t-body); }
+.first-look { display: grid; gap: var(--space-3); }
+.fl-tagline { margin: 0; font-size: var(--t-small); font-weight: 600; color: var(--muted); }
+.fl-say h2 { margin: 0; font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -0.01em; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-say p { margin: var(--space-1) 0 0; font-size: var(--t-body); }
+@keyframes fl-in { from { opacity: 0; transform: translateY(4px); } }
+.fl-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--space-3); align-items: start; }
+.fl-page { border-radius: 12px; background: #f5f5f7; color: #111; overflow-wrap: anywhere; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); transition: box-shadow var(--dur-slow) var(--ease); }
+.fl-page.ok { box-shadow: 0 0 0 2px var(--ok); }
+.fl-chrome { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 7px 10px; border-bottom: 1px solid #e2e2e6; font-size: var(--t-caption); color: #555; background: #f5f5f7; border-radius: 12px 12px 0 0; }
+.fl-chrome span { width: 7px; min-height: 7px; border-radius: 50%; background: #c9c9cf; }
+.fl-chrome b { margin-left: var(--space-2); font-weight: 500; }
+.fl-body { padding: var(--space-3); display: grid; gap: var(--space-2); }
+.fl-h { font-weight: 700; font-size: var(--t-body); }
+.fl-form { display: flex; flex-wrap: wrap; gap: 6px; }
+.fl-input { flex: 1; min-width: 80px; padding: 5px 8px; border: 1px solid #c9c9cf; border-radius: 6px; color: #666; background: #fff; font-size: var(--t-caption); }
+.fl-join { padding: 5px 12px; border-radius: 6px; background: #111; color: #fff; font-size: var(--t-caption); font-weight: 600; }
+.fl-join.press { animation: fl-press 1.4s var(--ease) .4s 2; }
+@keyframes fl-press { 20% { transform: scale(.92); } 40% { transform: none; } }
+.fl-msg { font-size: var(--t-caption); font-weight: 600; }
+.fl-msg.bad { color: #b3261e; background: #f5f5f7; }
+.fl-msg.ok { color: #187a42; background: #f5f5f7; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-caption { padding: 0 var(--space-3) var(--space-2); font-size: var(--t-caption); color: #187a42; background: #f5f5f7; border-radius: 0 0 12px 12px; font-weight: 600; }
+.fl-side { display: grid; gap: var(--space-2); }
+.fl-code, .fl-check, .fl-undo { opacity: .25; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); transform: translateY(4px); }
+.fl-code.in, .fl-check.in, .fl-undo.in { opacity: 1; transform: none; }
+.fl-code { border-radius: 12px; background: var(--surface); padding: var(--space-2) var(--space-3); display: grid; gap: 4px; }
+.fl-file { font-size: var(--t-caption); font-weight: 600; overflow-wrap: anywhere; }
+.fl-line { display: block; font: var(--t-caption) / 1.5 ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.fl-line.bad { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.fl-line.gone { text-decoration: line-through; color: var(--fg); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.fl-line.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); animation: fl-in var(--dur-slow) var(--ease); }
+.fl-n { display: inline-block; min-width: 1.6em; color: var(--muted); }
+.fl-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-radius: 12px; padding: var(--space-2) var(--space-3); background: var(--surface); font-size: var(--t-small); }
+.fl-check b { margin-left: auto; }
+.fl-check.bad .fl-mark, .fl-check.bad b { color: var(--danger); }
+.fl-check.ok .fl-mark, .fl-check.ok b { color: var(--ok); }
+.fl-check.ok.in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 50%, transparent); }
+.fl-undo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-self: start; padding: 6px 12px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--fg) 10%, transparent); font-size: var(--t-small); font-weight: 600; }
+.fl-undo.in .fl-undo-ic { animation: fl-spin .6s var(--ease) .2s; }
+@keyframes fl-spin { from { transform: rotate(0); } to { transform: rotate(-360deg); } }
+.fl-dots { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fl-dot { width: 22px; min-height: 6px; padding: 0; border: 0; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--fg) 22%, transparent); cursor: pointer; transition: background var(--dur) var(--ease); }
+.fl-dot.on { background: var(--fg); }
+.fl-recorded { margin: 0; }
+@media (max-width: 520px) { .fl-stage { grid-template-columns: 1fr; } }
+.fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); column-gap: var(--space-4); align-items: center; }
+.fl-head .home-char { width: 112px; margin: 0; }
+.fl-say .fl-tagline { margin-bottom: var(--space-1); }
+/* The checks that ran on a fix (proofChipsView.tsx): green or red, each with its tick or cross too. */
+.proof-chips { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.proof-chips li { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: var(--t-small); font-weight: 500; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.proof-chips li.ok .ic { color: var(--ok); }
+.proof-chips li.bad .ic { color: var(--danger); }

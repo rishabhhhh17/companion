@@ -14,6 +14,7 @@ import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
 import { label } from "./redact.ts";
 import { heldKey } from "./keychain.ts";
+import { testKey } from "./keytest.ts";
 import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
@@ -139,9 +140,11 @@ function dispatch(cmd: Command) {
 
 function takeKey(line: string): boolean {
   try {
-    const j = JSON.parse(line) as { type?: string; key?: unknown };
+    const j = JSON.parse(line) as { type?: string; key?: unknown; fresh?: unknown };
     if (j.type !== "auth.key") return false;
     heldKey.set(typeof j.key === "string" ? j.key : null);
+    // A key the person just saved is checked once with Anthropic (free, keytest.ts), so setup can say whether it works.
+    if (j.fresh === true && typeof j.key === "string") { const k = j.key.trim(); void announceAuth().then(async () => say({ type: "auth.status", method: "api_key", source: "keychain", tested: await testKey(k) })); return true; }
   } catch { say({ type: "protocol.error", reason: "the key from the app could not be read" }); return false; }
   void announceAuth();
   return true;
