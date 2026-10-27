@@ -245,6 +245,7 @@ export const S = {
     again: "Watch again",
     nextStep: "Next step",
     go: "Try it on my project",
+    watch: "Watch the 15 second tour",
     pause: "Pause",
     play: "Play",
   },

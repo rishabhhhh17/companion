@@ -28,6 +28,7 @@ import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { ProofChips } from "./proofChipsView.tsx";
+import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { CheckDetail, checkParts } from "./checkDetail.tsx";
@@ -515,6 +516,8 @@ function Card() {
   // A new person sees Home open by itself at launch (first_run_open: once, without the keyboard), so they never have to
   // guess that the notch is where it lives.
   useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);
+  // The tour on Learn: the recorded first run, played again only when pressed.
+  const [tour, setTour] = useState(false);
   const finishOnboarding = () => { try { localStorage.setItem("companion.onboarded", "1"); } catch { /* storage may be unavailable */ } setOnboarded(true); };
   // The "remembered" toast stays after the last new line for as long as the person chose (memory.toastSeconds, ten seconds
   // usually), or until it is closed.
@@ -1565,6 +1568,10 @@ function Card() {
             back: () => { const to = backTo(pr.previous, recent, practiceRec); dispatch({ type: "ui.practiceClosed" }); if (to) useFolder(to); else pickFolder(); },
           }} />;
       })()}
+      {/* The recorded first run, again on a press (it costs nothing and changes nothing; firstLook.ts). */}
+      {home.tab === "learn" && (tour
+        ? <section className="panel onboarding look" aria-label={S.firstLook.watch}><FirstLook onGo={() => setTour(false)} /></section>
+        : <section className="panel" aria-label={S.firstLook.watch}><div className="row"><button className="btn" type="button" onClick={() => setTour(true)}>{S.firstLook.watch}</button></div></section>)}
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
       {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}

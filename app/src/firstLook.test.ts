@@ -59,3 +59,12 @@ describe("the recorded first run", () => {
     expect(JSON.stringify(S.firstLook)).not.toContain("—");
   });
 });
+
+describe("the tour can be watched again", () => {
+  test("Learn offers it on a press, whatever groups are on, and it plays nothing until pressed", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("onClick={() => setTour(true)}>{S.firstLook.watch}</button>");
+    expect(card).toContain("const [tour, setTour] = useState(false);");
+    expect(card).toContain("<FirstLook onGo={() => setTour(false)} />");
+  });
+});

@@ -8,6 +8,7 @@ The four reviews of the whole product agreed: a new person never reached the "wo
 
 - **Home opens by itself the very first time you open Squibby.** No guessing that the notch is where it lives.
 - **The first thing you see is a short recorded fix:** a signup page whose Join button fails, Squibby finding the exact line, one small change, the project's own check going from red to green, and Undo. Flowflow acts it out and splashes when the check passes. It says plainly that it is a recording and changed nothing on your Mac. Every file, line and message in it is the real practice project's, and a test makes the same fix on a copy and runs the check, so the recording can never show something Squibby does not do.
+- **Watch it again any time:** Learn has "Watch the 15 second tour".
 - **Setup is three steps:** see it work, connect Claude, pick a folder. The questions, the four groups and the keys are one optional last step you can skip in one press.
 - **Your key is checked the moment you save it.** Squibby asks Anthropic once (it costs nothing) and says "Anthropic accepted your key" or plainly why not, so a wrong key is found in setup, not on your first fix. A "Get a key" button opens Anthropic's own page, with three short steps.
 - **Proof you can see:** under every fix, a small green or red chip for each check that really ran ("Builds", "Tests pass", "Works in a browser").
