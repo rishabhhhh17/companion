@@ -211,6 +211,15 @@ export const S = {
   awayQuestion: (folder: string) => `About the task in ${folder}`,
   diffAdded: "added:",
   obTitle: `Welcome to ${PRODUCT}`,
+  // The panel under the notch (islandPanel.ts): the work, never a character.
+  panel: {
+    go: "Fix something",
+    open: `Open ${PRODUCT}`,
+    label: `${PRODUCT}: what is happening`,
+    needsYou: "Needs your OK. Open to answer.",
+    step: (i: number, n: number, title: string) => `Step ${i} of ${n}: ${title}`,
+    jobs: "Work going on",
+  },
   // The checks that ran on a fix, as chips under its receipt (proofChips.ts): one per rung of the proof ladder.
   proofChip: { install: "Installs", checks: "Builds", tests: "Tests pass", start: "Starts", browser: "Works in a browser", review: "Second look" } as Record<string, string>,
   proofChipsLabel: "Checks that ran on this fix",

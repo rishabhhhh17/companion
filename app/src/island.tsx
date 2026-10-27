@@ -17,11 +17,12 @@ import "./style.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
 // notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
-// is only that, black, with no words. Resting the pointer on it makes Flowflow peek out from under it. While something
+// is only that, black, with no words. Resting the pointer on it opens the panel under it (islandPanel.tsx). While something
 // happens it grows short wings: a tiny Flowflow on the left, one live mark on the right. A sentence shows only under the
 // pointer, and only when there is something real to say (home.ts). The black shape moves on a small spring
 // (islandSpring.ts) toward the size the app gives; the window itself changes at once, and shrinks only after the shape has
 // tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
+import { IslandPanel } from "./islandPanel.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
 type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number };
@@ -104,7 +105,18 @@ function Island() {
   }, [ticking]);
   const wings = wingsAt(raw, doneSince, now);
   // The app sizes the window: wings out or not, and whether a peek has a line to show.
-  const out = wings !== null, says = line !== "";
+  const out = wings !== null;
+  // The panel that hangs from it: always laid out (hidden until the pointer rests on the island), so its height is known and
+  // the app can size the window before it opens (island.rs PANEL_MIN to PANEL_MAX).
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelH, setPanelH] = useState(0);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setPanelH(Math.ceil(el.offsetHeight)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   // A proven fix: once the tick has drawn, the wings widen a little on a softer spring and settle back (island.rs cheered).
   // Only with reactions on and motion allowed, as every celebration.
   const [cheer, setCheer] = useState(false);
@@ -115,7 +127,7 @@ function Island() {
     return () => { clearTimeout(on); clearTimeout(off); setCheer(false); };
   }, [ticking]);
   const cheering = cheer && out;
-  useEffect(() => { void invoke("island_alert", { on: out, says, cheer: cheering }).catch(() => {}); }, [out, says, cheering]);
+  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering }).catch(() => {}); }, [out, panelH, cheering]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
@@ -128,7 +140,7 @@ function Island() {
     return () => clearTimeout(id);
   }, [shape.mode]);
   const tucking = shape.mode === "rest" && !restSettled ? lastOut.current : null;
-  const parts = islandParts(shape.mode, line);
+  const parts = islandParts(shape.mode);
   const showWings = parts.wings || tucking === "wings" || tucking === "wingsPeek";
   const w = wings ?? lastWings.current;
   const [soft, setSoft] = useState(false);
@@ -138,16 +150,16 @@ function Island() {
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
   return (
     <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} style={vars}>
-      <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
-        <span className="island-shape" aria-hidden="true" ref={box}>
-          {showWings && w && <>
+      <span className="island-shape" ref={box}>
+        {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
+        <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
+          {showWings && w && <span aria-hidden="true">
             <span className="island-wing left"><img className="island-flow" src={poseUrl(poseFor(w.state))} alt="" draggable={false} /></span>
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
-          </>}
-          {(parts.face || tucking === "peek") && <span className="island-face"><img className="island-peek" src={poseUrl("peek")} alt="" draggable={false} /></span>}
-          {parts.line && <span className="peekline">{line}</span>}
-        </span>
-      </button>
+          </span>}
+        </button>
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} />
+      </span>
     </main>
   );
 }

@@ -36,6 +36,10 @@ pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
         let ok = !id.is_empty() && id.len() <= 80 && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.');
         return ok.then(|| serde_json::json!({ "lesson": id }));
     }
+    // The panel under the notch (islandPanel.ts): Find the problem, or the check before going live, once Home is open.
+    if let Some(d) = o.get("do") {
+        return match d.as_str() { Some("find") => Some(serde_json::json!({ "do": "find" })), Some("shipCheck") => Some(serde_json::json!({ "do": "shipCheck" })), _ => None };
+    }
     match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), _ => None }
 }
 

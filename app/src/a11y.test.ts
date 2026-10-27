@@ -298,8 +298,10 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
     // Idle nothing is written on it, and its name still says the state in words (home.ts islandName).
     expect(island).toContain("aria-label={islandName(line)}");
     expect(S.islandQuiet).not.toMatch(/Ready/);
-    // What it draws for sighted people (the shape with Flowflow, the marks and the line) is hidden from VoiceOver.
-    expect(island).toMatch(/className="island-shape" aria-hidden="true"/);
+    // What it draws for sighted people (the wings with the agent and the mark) is hidden from VoiceOver; the panel under
+    // it is real buttons with words (islandPanel.tsx), hidden from VoiceOver only while it is not shown.
+    expect(island).toContain('{showWings && w && <span aria-hidden="true">');
+    expect(read("./islandPanel.tsx")).toContain("aria-hidden={!shown}");
     expect(island).toMatch(/<img className="island-flow" [^>]*alt=""/);
   });
 });
@@ -827,7 +829,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 describe("Home stays usable with bigger text (part 4)", () => {
   const css = rules(read("./style.css"));
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after'];
+  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after"];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";

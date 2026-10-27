@@ -38,12 +38,12 @@ describe("the island page", () => {
     for (const k of ["notch", "pill", "edge"]) expect(page, k).toContain(`"${k}"`);
     expect(page).not.toMatch(/\.notch\b|notch: /);
   });
-  test("draws the status line at the size the app gives it", () => {
+  test("lays the panel out at the width the app gives it, so its measured height is the height it opens at", () => {
     const rs = read("../src-tauri/src/island.rs");
     const css = read("./style.css");
     const num = (re: RegExp, text: string) => { const m = text.match(re); expect(m, String(re)).not.toBeNull(); return Number(m![1]); };
-    expect(num(/\.peekline \{[^}]*line-height: (\d+)px/, css)).toBe(num(/pub const LINE_H: f64 = ([\d.]+);/, rs));
-    expect(num(/\.peekline \{[^}]*-webkit-line-clamp: (\d+)/, css)).toBe(num(/pub const PEEK_LINES: f64 = ([\d.]+);/, rs));
+    expect(num(/\.island-panel \{[^}]*width: (\d+)px/, css)).toBe(num(/pub const PANEL_W: f64 = ([\d.]+);/, rs));
+    expect(css).not.toMatch(/\.island-panel \{[^}]*display: none/);   // hidden by visibility, so it still has a height
     // The old ears are gone; the wings (27 Oct 2026) are their own small rounded shape.
     expect(read("./island.tsx")).not.toMatch(/\bear\b/);
     expect(css).not.toMatch(/\.ear\b/);
@@ -298,14 +298,11 @@ describe("the fun island", () => {
       expect(islandAlert(m)).toBe(false);
       expect(islandLine(m, { group: "Flow" }), "no group name on nothing").toBe("");
     }
-    for (const line of ["", "Working on x"]) {
-      expect(islandParts("rest", line)).toEqual({ wings: false, face: false, line: false });
-      expect(islandParts("wings", line)).toEqual({ wings: true, face: false, line: false });
-    }
-    // Resting the pointer on the bare notch: Flowflow peeks, and a line only when there is something to say.
-    expect(islandParts("peek", "")).toEqual({ wings: false, face: true, line: false });
-    expect(islandParts("peek", S.islandNotConnected)).toEqual({ wings: false, face: true, line: true });
-    expect(islandParts("wingsPeek", "Working on x")).toEqual({ wings: true, face: false, line: true });
+    expect(islandParts("rest")).toEqual({ wings: false, panel: false });
+    expect(islandParts("wings")).toEqual({ wings: true, panel: false });
+    // Resting the pointer on it opens the panel under the notch (islandPanel.ts), never a character peeking.
+    expect(islandParts("peek")).toEqual({ wings: false, panel: true });
+    expect(islandParts("wingsPeek")).toEqual({ wings: true, panel: true });
   });
   test("something real to say on the bare notch: not connected, an update, the engine stopped, a failing watch", async () => {
     const { islandLine } = await import("./home.ts");
@@ -340,8 +337,8 @@ describe("the fun island", () => {
     const page = read("./island.tsx");
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
-    expect(page).toContain("const out = wings !== null, says = line !== \"\";");
-    expect(page).toContain('invoke("island_alert", { on: out, says, cheer: cheering })');
+    expect(page).toContain("const out = wings !== null;");
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -366,17 +363,16 @@ describe("the fun island", () => {
   test("the island page draws Flowflow from the character's poses, never from a skin directly", () => {
     const page = read("./island.tsx");
     expect(page).toContain('import { poseFor, poseUrl } from "./characters.ts";');
-    expect(page).toContain('poseUrl("peek")');
+    expect(page).toContain("poseUrl(poseFor(w.state))");   // the working agent in the wings; nothing peeks on hover
     expect(page).not.toContain("skins.ts");
     // Its name says the state in words even while nothing is written on it.
     expect(page).toContain("aria-label={islandName(line)}");
   });
-  test("the CSS draws the wings at the width the app gives them, and the peek at its height", () => {
+  test("the CSS draws the wings at the width the app gives them", () => {
     const rs = read("../src-tauri/src/island.rs");
     const css = read("./style.css");
     const num = (re: RegExp, text: string) => { const m = text.match(re); expect(m, String(re)).not.toBeNull(); return Number(m![1]); };
     expect(num(/\.island \{[^}]*--wing: (\d+)px/, css)).toBe(num(/pub const WING: f64 = ([\d.]+);/, rs));
-    expect(num(/\.island \{[^}]*--face: (\d+)px/, css)).toBe(num(/pub const FACE: f64 = ([\d.]+);/, rs));
   });
 });
 
@@ -393,10 +389,8 @@ describe("the island's motion agrees with the app's timing", () => {
     for (; t < TUCK_MS / 1000; t += 1 / 120) s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c);
     expect(Math.abs(s.x - 185)).toBeLessThan(1);
     for (let u = 0; u < 0.5 && !settled(s, 185); u += 1 / 120) { s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c); expect(s.x - 185).toBeLessThan(1); }
-    // The peek's own tuck (a CSS animation) is over by then too.
-    const css = read("./style.css");
-    expect(css).toMatch(/\.island\[data-tuck="peek"\] \.island-peek \{ animation: island-tuck var\(--dur-3\)/);
-    expect(Number(/--dur-3: (\d+)ms/.exec(css)?.[1])).toBeLessThanOrEqual(TUCK_MS);
+    // The panel stays drawn while the shape tucks back over it (island.tsx keeps it shown while tucking from a peek).
+    expect(read("./island.tsx")).toContain('shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"}');
   });
   test("a proven fix widens the wings by island.rs CHEER on the softer spring, only with reactions and motion on", async () => {
     const { CHEER_SPRING, CHEER_AT_MS, CHEER_FOR_MS } = await import("./islandSpring.ts");
@@ -407,7 +401,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(CHEER_FOR_MS).toBeLessThan(1000);
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
-    expect(page).toContain('invoke("island_alert", { on: out, says, cheer: cheering })');
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering })');
     const main = read("../src-tauri/src/main.rs");
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });
@@ -420,10 +414,12 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(css).not.toMatch(/#8e8e93/i);
     expect(css).toMatch(/\.mark \{[^}]*background: rgba\(255, 255, 255, \.5\)/);
   });
-  test("Flowflow is never sliced by a box when it peeks: it fades out at its foot", () => {
-    const css = read("./style.css");
-    expect(css).not.toMatch(/\.island-face \{[^}]*overflow: hidden/);
-    expect(css).toMatch(/\.island-peek \{[^}]*height: calc\(var\(--face\) \+ 14px\); margin-bottom: -4px;[^}]*mask-image: linear-gradient\(to bottom, #000 70%, transparent\)/);
+  test("the hover is the panel under the notch, not a character (27 Oct: \"Flowflow is not the main guy, he is the water agent\")", () => {
+    const page = read("./island.tsx"), css = read("./style.css");
+    expect(page).not.toContain("island-peek");
+    expect(css).not.toMatch(/\.island-peek \{|\.island-face \{|\.island-live \{/);
+    // An agent's face shows only inside its own job card.
+    expect(read("./islandPanel.tsx")).toContain('<img className="ip-agent" src={poseUrl(poseFor(j.state))}');
   });
   test("Home rolls back up in the time the shell waits before it hides it", () => {
     const css = read("./style.css"), main = read("../src-tauri/src/main.rs");

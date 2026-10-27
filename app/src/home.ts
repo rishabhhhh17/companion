@@ -100,10 +100,11 @@ export function need(m: Model): Need | null {
  *  (a11y.ts `liveLine`), since focus does not move there. */
 /** What Home does on arrival when the Settings window opened it (main.rs open_card_cmd's `then`, checked by the shell in
  *  settingswin.rs arrival): start that lesson, or show Learn. Anything else is ignored and Home just opens. */
-export type HomeArrival = { lesson: string } | { place: "learn" };
+export type HomeArrival = { lesson: string } | { place: "learn" } | { do: "find" | "shipCheck" };
 export function arrivalFrom(opened: unknown): HomeArrival | null {
-  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown } | null | undefined;
+  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown } | null | undefined;
   if (!t || typeof t !== "object") return null;
+  if (t.do === "find" || t.do === "shipCheck") return { do: t.do };
   if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };
   return t.place === "learn" ? { place: "learn" } : null;
 }
@@ -237,8 +238,8 @@ export function wingsAt(w: Wings | null, doneSince: number | null, now: number):
  *  resting the pointer on the bare notch shows Flowflow peeking, and a line only when there is one. */
 export type IslandMode = "rest" | "wings" | "peek" | "wingsPeek";
 export const ISLAND_MODES: readonly IslandMode[] = ["rest", "wings", "peek", "wingsPeek"];
-export function islandParts(mode: IslandMode, line: string): { wings: boolean; face: boolean; line: boolean } {
-  return { wings: mode === "wings" || mode === "wingsPeek", face: mode === "peek", line: (mode === "peek" || mode === "wingsPeek") && line !== "" };
+export function islandParts(mode: IslandMode): { wings: boolean; panel: boolean } {
+  return { wings: mode === "wings" || mode === "wingsPeek", panel: mode === "peek" || mode === "wingsPeek" };
 }
 
 /** The first watch whose failing alert is still going (F21): the island shows its red mark and says so in one plain line

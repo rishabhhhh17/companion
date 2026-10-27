@@ -76,14 +76,16 @@ pub const PILL_W: f64 = 72.0;
 pub const EDGE_H: f64 = 5.0;
 /// Each wing, either side of the notch or the pill: room for a tiny Flowflow or one mark, and no more of the menu bar.
 pub const WING: f64 = 40.0;
-/// Below the bare notch while the pointer rests on it: room for Flowflow to peek out (style.css `--face`).
-pub const FACE: f64 = 30.0;
-/// One line of the status (style.css `.peekline`: one line, 15 points, cut with an ellipsis), with room around it.
-pub const LINE_H: f64 = 15.0;
-pub const PEEK_LINES: f64 = 1.0;
-pub const PEEK_H: f64 = PEEK_LINES * LINE_H + 9.0;
-/// How wide the island is while it shows its line under the pointer, so a short sentence fits on one line.
-pub const PEEK_W: f64 = 300.0;
+/// The hover panel (27 Oct 2026, the founder: "like HeyClicky's notch hover", "Flowflow is not the main guy"): resting the
+/// pointer on the island opens a small black panel hanging from it, the notch grown down, with the ask bar, the two things
+/// Squibby is for, and each job at work as a little card with its plan and then its result (island.tsx). This wide, so it
+/// fits on the smallest MacBook screen and inside the character's clear zone (docking.rs NOTCH_CLEAR, with CLEAR_MARGIN).
+pub const PANEL_W: f64 = 400.0;
+/// How tall the panel may be below the notch's row: the page measures what it shows and asks (island_alert `panel`).
+pub const PANEL_MIN: f64 = 56.0;
+pub const PANEL_MAX: f64 = 240.0;
+/// The height the page asked for, kept between PANEL_MIN and PANEL_MAX (nonsense is the smallest).
+pub fn panel_h(asked: f64) -> f64 { if asked.is_finite() { asked.clamp(PANEL_MIN, PANEL_MAX) } else { PANEL_MIN } }
 /// The usual macOS menu bar on a display without a notch: the pill's size where no menu bar shows.
 pub const DEFAULT_MENU_BAR: f64 = 24.0;
 /// Between the island and Home, and between Home and the bottom of the work area.
@@ -133,10 +135,10 @@ fn rest_frame(d: &Display) -> Rect {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Look { pub frame: Rect, pub core: f64, pub row: f64 }
 
-/// Where the island is drawn and what it holds. `says`: there is a line to show under the pointer (island.tsx tells).
+/// Where the island is drawn and what it holds. `panel`: how tall the hover panel is below the row (island.tsx measures it).
 /// Every size is centred on the notch (or the display) and hangs from the same top, so the page's shape, centred in the
 /// window, stays in place on the screen when the window changes.
-pub fn look(d: &Display, mode: Mode, says: bool) -> Look {
+pub fn look(d: &Display, mode: Mode, panel: f64) -> Look {
     let r = rest_frame(d);
     let (fx, fw, cx) = (d.frame[0], d.frame[2], center_x(d));
     let core = r[2];
@@ -147,9 +149,8 @@ pub fn look(d: &Display, mode: Mode, says: bool) -> Look {
     let frame = match mode {
         Mode::Rest => r,
         Mode::Alert => at(winged, top, row),
-        Mode::Peek if says => at(winged.max(PEEK_W), r[1], r[3] + FACE + PEEK_H),
-        Mode::Peek => at(core, r[1], r[3] + FACE),
-        Mode::WingsPeek => at(winged.max(PEEK_W), top, row + PEEK_H),
+        Mode::Peek => at(winged.max(PANEL_W), r[1], r[3] + panel_h(panel)),
+        Mode::WingsPeek => at(winged.max(PANEL_W), top, row + panel_h(panel)),
     };
     let row = match mode { Mode::Rest | Mode::Peek => r[3], Mode::Alert | Mode::WingsPeek => row };
     Look { frame, core, row }
@@ -166,9 +167,9 @@ pub fn cheered(d: &Display, mode: Mode, l: Look) -> Look {
 }
 
 /// Where the island is drawn, in global points.
-pub fn frame_of(d: &Display, mode: Mode, says: bool) -> Rect { look(d, mode, says).frame }
-/// The biggest the island gets in `mode` (with a line to show): what the character keeps clear of (docking.rs, roam.rs).
-pub fn island_frame(d: &Display, mode: Mode) -> Rect { frame_of(d, mode, true) }
+pub fn frame_of(d: &Display, mode: Mode, panel: f64) -> Rect { look(d, mode, panel).frame }
+/// The biggest the island gets in `mode` (the tallest panel): what the character keeps clear of (docking.rs, roam.rs).
+pub fn island_frame(d: &Display, mode: Mode) -> Rect { frame_of(d, mode, PANEL_MAX) }
 
 // ---- the motion (the fun island: springs, 27 Oct 2026) ----
 // The window changes at once and the page springs its black shape inside it (island.tsx). Growing is at once, so the shape
@@ -293,10 +294,10 @@ impl Follow {
     }
 }
 
-/// What decides the island's size: the pointer is on it, something is happening (the wings), Home is open, and whether
-/// there is a line to show under the pointer (`says`).
+/// What decides the island's size: the pointer is on it, something is happening (the wings), Home is open, and how tall
+/// the hover panel's contents are (`panel`, whole points, as the page measured them).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub says: bool }
+pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16 }
 
 /// Home open shows everything the line or the wings would, right below, so the island stays the bare notch over it.
 pub fn mode(s: State) -> Mode {
@@ -417,9 +418,9 @@ mod tests {
     #[test]
     fn on_a_notch_the_island_at_rest_is_the_notch_itself() {
         let d = mbp14();
-        assert_eq!(frame_of(&d, Mode::Rest, false), [663.5, 0.0, 185.0, 32.0]);
+        assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN), [663.5, 0.0, 185.0, 32.0]);
         let big = mbp16();
-        assert_eq!(frame_of(&big, Mode::Rest, false), [771.5, 0.0, 185.0, 32.0]);
+        assert_eq!(frame_of(&big, Mode::Rest, PANEL_MIN), [771.5, 0.0, 185.0, 32.0]);
         assert_eq!(menu_bar(&d), Some(32.0));
     }
     // The menu bar beside the notch holds app menus and status icons, and the middle of a menu bar without a notch can
@@ -433,42 +434,43 @@ mod tests {
         assert!((36.0..=44.0).contains(&WING), "about 36 to 44 points each side");
         for d in [mbp14(), mbp16()] {
             let n = d.notch.unwrap();
-            let w = frame_of(&d, Mode::Alert, false);
+            let w = frame_of(&d, Mode::Alert, PANEL_MIN);
             assert_eq!(w, [d.frame[0] + n.x - WING, d.frame[1], n.w + 2.0 * WING, n.h], "{}: the notch plus a wing each side, as tall as the notch", d.id);
-            assert_eq!(frame_of(&d, Mode::Alert, true), w, "a line to show changes nothing until the pointer rests on it");
-            // Peeking at the bare notch with nothing to say: exactly the notch's width, only longer downward.
-            let p = frame_of(&d, Mode::Peek, false);
-            assert_eq!((p[0], p[1], p[2]), (d.frame[0] + n.x, d.frame[1], n.w), "{}", d.id);
-            assert_eq!(p[3], n.h + FACE);
-            let look = look(&d, Mode::Alert, false);
+            assert_eq!(frame_of(&d, Mode::Alert, PANEL_MAX), w, "the panel's height changes nothing until the pointer rests on it");
+            // The pointer on the bare notch: the panel hangs from it, PANEL_W wide, as tall as the page asked.
+            let p = frame_of(&d, Mode::Peek, 120.0);
+            assert_eq!((p[1], p[2], p[3]), (d.frame[1], PANEL_W, n.h + 120.0), "{}", d.id);
+            assert!((cx(p) - (d.frame[0] + n.x + n.w / 2.0)).abs() < 0.01, "{} centred on the notch", d.id);
+            let look = look(&d, Mode::Alert, PANEL_MIN);
             assert_eq!((look.core, look.row), (n.w, n.h), "the page is told the notch's width and the wings' row");
         }
     }
     #[test]
-    fn every_size_hangs_from_the_top_centred_and_only_a_line_under_the_pointer_is_wider_than_the_wings() {
+    fn every_size_hangs_from_the_top_centred_and_only_the_panel_under_the_pointer_is_wider_than_the_wings() {
         let mut hidden = air(); hidden.work = [0.0, 0.0, 1440.0, 830.0];
         for d in [mbp14(), mbp16(), ext(), air(), hidden] {
-            let rest = frame_of(&d, Mode::Rest, false);
-            let wings = frame_of(&d, Mode::Alert, false);
+            let rest = frame_of(&d, Mode::Rest, PANEL_MIN);
+            let wings = frame_of(&d, Mode::Alert, PANEL_MIN);
             for m in [Mode::Rest, Mode::Alert, Mode::Peek, Mode::WingsPeek] {
-                for says in [false, true] {
-                    let r = frame_of(&d, m, says);
+                for panel in [PANEL_MIN, PANEL_MAX] {
+                    let r = frame_of(&d, m, panel);
                     assert!((cx(r) - cx(rest)).abs() < 0.01, "{} {m:?} centred on the notch or the display", d.id);
                     assert!(r[1] <= rest[1] + 0.01 && r[1] >= d.frame[1], "{} {m:?} hangs from the top", d.id);
                     assert!(inside(r, d.frame), "{} {m:?}", d.id);
-                    let line = says && m == Mode::Peek || m == Mode::WingsPeek;
-                    if line { assert_eq!(r[2], PEEK_W, "{} {m:?}: room for one line", d.id); } else { assert!(r[2] <= wings[2] + 0.01, "{} {m:?} no wider than the wings", d.id); }
+                    if matches!(m, Mode::Peek | Mode::WingsPeek) { assert_eq!(r[2], PANEL_W.max(wings[2]).min(d.frame[2]), "{} {m:?}: the panel", d.id); } else { assert!(r[2] <= wings[2] + 0.01, "{} {m:?} no wider than the wings", d.id); }
                 }
             }
         }
     }
     #[test]
-    fn on_a_notch_the_pointer_opens_one_line_below_the_wings_or_flowflow_and_its_line_below_the_bare_notch() {
+    fn on_a_notch_the_pointer_opens_the_panel_below_the_notch_or_the_wings_as_tall_as_the_page_asks_within_limits() {
         let d = mbp14();
-        assert_eq!(frame_of(&d, Mode::WingsPeek, true), [756.0 - PEEK_W / 2.0, 0.0, PEEK_W, 32.0 + PEEK_H], "one line below the wings");
-        assert_eq!(frame_of(&d, Mode::Peek, true), [756.0 - PEEK_W / 2.0, 0.0, PEEK_W, 32.0 + FACE + PEEK_H], "Flowflow, then the line");
-        assert_eq!(frame_of(&d, Mode::Peek, false), [663.5, 0.0, 185.0, 32.0 + FACE], "only Flowflow peeking");
-        assert_eq!(PEEK_LINES, 1.0, "one line, never a paragraph");
+        assert_eq!(frame_of(&d, Mode::WingsPeek, 150.0), [756.0 - PANEL_W / 2.0, 0.0, PANEL_W, 32.0 + 150.0], "below the wings");
+        assert_eq!(frame_of(&d, Mode::Peek, 150.0), [756.0 - PANEL_W / 2.0, 0.0, PANEL_W, 32.0 + 150.0], "below the bare notch");
+        assert_eq!(frame_of(&d, Mode::Peek, 9999.0)[3], 32.0 + PANEL_MAX, "never taller than PANEL_MAX");
+        assert_eq!(frame_of(&d, Mode::Peek, -3.0)[3], 32.0 + PANEL_MIN);
+        assert_eq!(panel_h(f64::NAN), PANEL_MIN, "nonsense is the smallest");
+        assert!(PANEL_W + 2.0 * crate::docking::CLEAR_MARGIN <= crate::docking::NOTCH_CLEAR.0, "the character's clear zone holds the panel");
     }
     #[test]
     fn without_a_notch_it_is_a_small_bare_pill_at_the_top_center_and_its_wings_stay_inside_the_menu_bar() {
@@ -477,20 +479,20 @@ mod tests {
             let mb = menu_bar(&d).unwrap();
             assert_eq!(mb, 24.0, "{}", d.id);
             for (m, w) in [(Mode::Rest, PILL_W), (Mode::Alert, PILL_W + 2.0 * WING)] {
-                let r = frame_of(&d, m, false);
+                let r = frame_of(&d, m, PANEL_MIN);
                 assert!((cx(r) - cx(d.frame)).abs() < 0.01, "{} {m:?} centred", d.id);
                 assert!(r[1] >= d.frame[1] && r[1] + r[3] <= d.frame[1] + mb, "{} {m:?} inside the menu bar: {r:?}", d.id);
                 assert_eq!(r[2], w);
             }
-            assert_eq!(frame_of(&d, Mode::Alert, false)[3], frame_of(&d, Mode::Rest, false)[3], "the wings are as tall as the pill");
-            let p = frame_of(&d, Mode::WingsPeek, true);
-            assert_eq!(p[2], PEEK_W);
-            assert!(p[1] + p[3] > d.frame[1] + mb + LINE_H, "the line opens below the menu bar");
+            assert_eq!(frame_of(&d, Mode::Alert, PANEL_MIN)[3], frame_of(&d, Mode::Rest, PANEL_MIN)[3], "the wings are as tall as the pill");
+            let p = frame_of(&d, Mode::WingsPeek, PANEL_MAX);
+            assert_eq!(p[2], PANEL_W);
+            assert!(p[1] + p[3] >= d.frame[1] + mb + PANEL_MIN, "the panel opens below the menu bar");
             assert!((cx(p) - cx(d.frame)).abs() < 0.01);
-            assert_eq!(look(&d, Mode::Alert, false).core, PILL_W);
+            assert_eq!(look(&d, Mode::Alert, PANEL_MIN).core, PILL_W);
         }
         // The external monitor's pill is on the external monitor, not the laptop.
-        assert!((cx(frame_of(&ext(), Mode::Rest, false)) - (1512.0 + 1280.0)).abs() < 0.01);
+        assert!((cx(frame_of(&ext(), Mode::Rest, PANEL_MIN)) - (1512.0 + 1280.0)).abs() < 0.01);
     }
     #[test]
     fn where_the_menu_bar_hides_itself_or_there_is_none_it_is_a_thin_line_at_the_top_edge() {
@@ -505,13 +507,13 @@ mod tests {
         for d in [hidden, second, junk] {
             assert_eq!(kind(&d), Kind::Edge, "{}", d.id);
             assert_eq!(menu_bar(&d), None, "{}", d.id);
-            let r = frame_of(&d, Mode::Rest, false);
+            let r = frame_of(&d, Mode::Rest, PANEL_MIN);
             assert_eq!(r[1], d.frame[1], "{} on the top edge", d.id);
             assert_eq!(r[3], EDGE_H, "{} only a thin line", d.id);
             assert!((cx(r) - cx(d.frame)).abs() < 0.01, "{} centred", d.id);
-            let a = frame_of(&d, Mode::Alert, false);
+            let a = frame_of(&d, Mode::Alert, PANEL_MIN);
             assert!(a[3] > EDGE_H && a[3] <= DEFAULT_MENU_BAR && a[1] == d.frame[1], "{} the pill with wings shows while something happens: {a:?}", d.id);
-            assert_eq!(frame_of(&d, Mode::Peek, false)[3], EDGE_H + FACE);
+            assert_eq!(frame_of(&d, Mode::Peek, PANEL_MIN)[3], EDGE_H + PANEL_MIN);
             let h = home_frame(&d, (380.0, 420.0));
             assert!(inside(h, d.work) && h[1] >= r[1] + r[3], "{} Home below the line: {h:?}", d.id);
         }
@@ -521,13 +523,13 @@ mod tests {
     #[test]
     fn a_display_narrower_than_the_line_keeps_the_island_on_it() {
         let d = Display { id: "250x500@0,0".into(), frame: [0.0, 0.0, 250.0, 500.0], work: [0.0, 24.0, 250.0, 476.0], primary: true, notch: None };
-        for m in [Mode::Rest, Mode::Alert, Mode::Peek, Mode::WingsPeek] { for says in [false, true] { assert!(inside(frame_of(&d, m, says), d.frame), "{m:?} {says}"); } }
+        for m in [Mode::Rest, Mode::Alert, Mode::Peek, Mode::WingsPeek] { for panel in [PANEL_MIN, PANEL_MAX] { assert!(inside(frame_of(&d, m, panel), d.frame), "{m:?} {panel}"); } }
     }
     #[test]
     fn home_drops_down_from_the_island_centered_and_inside_the_work_area() {
         for d in [mbp14(), mbp16(), ext(), air()] {
             let h = home_frame(&d, (380.0, 420.0));
-            let island = frame_of(&d, Mode::Rest, false);
+            let island = frame_of(&d, Mode::Rest, PANEL_MIN);
             assert!(inside(h, d.work), "{}: {h:?} inside {:?}", d.id, d.work);
             assert!((cx(h) - cx(island)).abs() < 0.01, "{} centered under the island", d.id);
             assert!(h[1] >= island[1] + island[3], "{} below the island", d.id);
@@ -549,7 +551,7 @@ mod tests {
             // The island's display known: Home drops from the island, wherever the character lives, and no edge is read.
             let spot = card_spot(Some(&mac), home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, (CARD.0, h)).unwrap();
             assert_eq!(spot, home_frame(&mac, (CARD.0, h)), "{h}");
-            assert!((cx(spot) - cx(frame_of(&mac, Mode::Rest, false))).abs() < 0.01 && spot[1] >= 32.0 + GAP, "under the notch: {spot:?}");
+            assert!((cx(spot) - cx(frame_of(&mac, Mode::Rest, PANEL_MIN))).abs() < 0.01 && spot[1] >= 32.0 + GAP, "under the notch: {spot:?}");
             assert!(!crate::docking::overlaps(spot, home), "never over the character");
             // On the external display when the island is there, even with the character on the laptop.
             assert_eq!(card_spot(Some(&ext), home, &both, |_: &str| Edge::Right, (CARD.0, h)), Some(home_frame(&ext, (CARD.0, h))));
@@ -662,7 +664,7 @@ mod tests {
     }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
-        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, says: false });
+        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0 });
         assert_eq!(s(false, false, false), Mode::Rest);
         assert_eq!(s(false, true, false), Mode::Alert);
         assert_eq!(s(true, false, false), Mode::Peek);
@@ -883,15 +885,15 @@ mod tests {
     #[test]
     fn the_window_grows_at_once_and_waits_for_the_shape_to_tuck_back_before_it_gets_smaller() {
         for d in [mbp14(), mbp16(), ext(), air()] {
-            let rest = frame_of(&d, Mode::Rest, false);
-            for (m, says) in [(Mode::Alert, false), (Mode::Peek, false), (Mode::Peek, true), (Mode::WingsPeek, true)] {
+            let rest = frame_of(&d, Mode::Rest, PANEL_MIN);
+            for (m, says) in [(Mode::Alert, PANEL_MIN), (Mode::Peek, PANEL_MIN), (Mode::Peek, PANEL_MAX), (Mode::WingsPeek, PANEL_MAX)] {
                 let to = frame_of(&d, m, says);
                 assert_eq!(retract_ms(rest, to, false), None, "{} {m:?}: growing is at once, the page springs the shape", d.id);
                 assert_eq!(retract_ms(to, rest, false), Some(RETRACT_MS), "{} {m:?}: back to the bare notch after the tuck", d.id);
                 assert_eq!(retract_ms(to, to, false), None, "{} the same size: nothing to wait for", d.id);
             }
             // From the line under the pointer back to the wings: smaller, so it waits too.
-            assert_eq!(retract_ms(frame_of(&d, Mode::WingsPeek, true), frame_of(&d, Mode::Alert, false), false), Some(RETRACT_MS));
+            assert_eq!(retract_ms(frame_of(&d, Mode::WingsPeek, PANEL_MAX), frame_of(&d, Mode::Alert, PANEL_MIN), false), Some(RETRACT_MS));
         }
         assert!((150..=400).contains(&RETRACT_MS), "a spring of 150 to 400 ms (look.md)");
         assert!((0.15..=0.2).contains(&OPEN_SECS), "Home's drop: short, it should feel like opening, not waiting");
@@ -899,7 +901,7 @@ mod tests {
     #[test]
     fn a_proven_fix_widens_the_wings_a_little_then_they_tuck_back_in_place() {
         for d in [mbp14(), mbp16(), ext(), air()] {
-            for (m, says) in [(Mode::Alert, false), (Mode::WingsPeek, true)] {
+            for (m, says) in [(Mode::Alert, PANEL_MIN), (Mode::WingsPeek, PANEL_MAX)] {
                 let l = look(&d, m, says);
                 let c = cheered(&d, m, l);
                 assert_eq!(c.frame[2], l.frame[2] + CHEER, "{} {m:?}: CHEER wider", d.id);
@@ -908,22 +910,22 @@ mod tests {
                 assert_eq!(retract_ms(l.frame, c.frame, false), None, "{} {m:?}: out at once, the page springs the shape", d.id);
                 assert_eq!(retract_ms(c.frame, l.frame, false), Some(RETRACT_MS), "{} {m:?}: back after the shape settles", d.id);
             }
-            for (m, says) in [(Mode::Rest, false), (Mode::Peek, true)] { assert_eq!(cheered(&d, m, look(&d, m, says)), look(&d, m, says), "{} {m:?}: only the wings cheer", d.id); }
+            for (m, says) in [(Mode::Rest, PANEL_MIN), (Mode::Peek, PANEL_MAX)] { assert_eq!(cheered(&d, m, look(&d, m, says)), look(&d, m, says), "{} {m:?}: only the wings cheer", d.id); }
         }
         assert!((4.0..=12.0).contains(&CHEER), "a small bounce, not a new size");
     }
     #[test]
     fn reduce_motion_or_less_motion_makes_it_appear_at_once() {
         let d = mbp14();
-        assert_eq!(retract_ms(frame_of(&d, Mode::Alert, false), frame_of(&d, Mode::Rest, false), true), None);
+        assert_eq!(retract_ms(frame_of(&d, Mode::Alert, PANEL_MIN), frame_of(&d, Mode::Rest, PANEL_MIN), true), None);
         let to = home_frame(&d, (380.0, 400.0));
         assert_eq!(home_drop(to, true, true), None);
     }
     #[test]
     fn a_move_to_another_display_never_waits() {
         let (a, b) = (mbp14(), ext());
-        assert_eq!(retract_ms(frame_of(&b, Mode::Alert, false), frame_of(&a, Mode::Rest, false), false), None);
-        let r = frame_of(&a, Mode::Alert, false);
+        assert_eq!(retract_ms(frame_of(&b, Mode::Alert, PANEL_MIN), frame_of(&a, Mode::Rest, PANEL_MIN), false), None);
+        let r = frame_of(&a, Mode::Alert, PANEL_MIN);
         assert!(!shrinks_in_place(r, [r[0] + 30.0, r[1], r[2] - 80.0, r[3]]), "another middle");
         assert!(!shrinks_in_place(r, [r[0], r[1] + 5.0, r[2], r[3] - 10.0]), "another top");
     }
@@ -946,7 +948,7 @@ mod tests {
             let start = home_drop(to, true, false).expect("opening");
             assert_eq!([start[0], start[2], start[3]], [to[0], to[2], to[3]], "same place across and the same size");
             assert!(start[1] < to[1] && to[1] - start[1] <= DROP + 0.01, "{}: a little higher, then down", d.id);
-            let rest = frame_of(&d, Mode::Rest, false);
+            let rest = frame_of(&d, Mode::Rest, PANEL_MIN);
             assert!(start[1] >= rest[1] + rest[3] - 0.01, "{}: never over the island", d.id);
             // Home grows and shrinks as its page changes: that is never animated.
             assert_eq!(home_drop(to, false, false), None);

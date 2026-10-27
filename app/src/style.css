@@ -319,11 +319,11 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
    (or the pill's) width and --row the height of the row the wings sit in, both given by the app. Pop ins use the one spring
    (--ease-spring). Sizes come from the same scale as Home, at the island's own 14 px root (it never takes the text size). */
 html.island-page, body.island-page { background: transparent; overflow: hidden; height: 100%; }
-.island { height: 100vh; --wing: 40px; --face: 30px; --r: var(--r-md); }
-.island-hit { all: unset; box-sizing: border-box; position: relative; display: block; width: 100vw; height: 100vh; background: transparent; color: #fff; cursor: pointer; font: 600 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; overflow: hidden; }
+.island { height: 100vh; --wing: 40px; --r: var(--r-md); }
+.island-hit { all: unset; box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; height: var(--row, 100%); min-height: 100%; display: block; color: #fff; cursor: pointer; font: 600 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; }
 .island-hit:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
 .island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: var(--sw, 100%); height: var(--sh, 100%); background: #000; overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
-.island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: var(--r-md); }
+.island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: 22px; }
 .island.pill { --r: var(--r-pill); }
 .island.pill .island-shape { border-radius: var(--r); }
 .island.pill[data-mode="peek"], .island.pill[data-mode="wingsPeek"] { --r: var(--r-md); }
@@ -371,16 +371,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 /* Resting the pointer on the bare notch: Flowflow pops down from under its edge with a springy overshoot, wobbles, and
    now and then squashes like a blink. Never sliced: it is not cut by a box, it fades out at its foot into the black (a
    mask), so it seems to come out of the notch. It tucks back up when the pointer leaves. */
-.island-face { position: absolute; left: 0; right: 0; top: var(--row); height: var(--face); display: flex; align-items: flex-end; justify-content: center; }
-.island-peek { display: block; height: calc(var(--face) + 14px); margin-bottom: -4px; width: auto; transform-origin: 50% 100%; pointer-events: none; user-select: none; -webkit-user-select: none; -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent); mask-image: linear-gradient(to bottom, #000 70%, transparent); animation: island-peek 520ms var(--ease-spring) both, island-wobble 900ms ease-in-out 520ms 1, island-blink 4s ease-in-out 1.8s infinite; }
-.island[data-tuck="peek"] .island-peek { animation: island-tuck var(--dur-3) var(--ease-in) both; }
-@keyframes island-peek { from { translate: 0 -32px; scale: .8; } }
-@keyframes island-wobble { 25% { rotate: -7deg; } 55% { rotate: 5deg; } 80% { rotate: -2deg; } }
-@keyframes island-blink { 0%, 92%, 100% { scale: 1 1; } 96% { scale: 1.08 .86; } }
-@keyframes island-tuck { to { translate: 0 -32px; scale: .8; } }
 /* The one line, only under the pointer and only when there is something to say. Cut to one line with an ellipsis. */
-.peekline { position: absolute; left: var(--space-3); right: var(--space-3); bottom: var(--space-1); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-height: 15px; overflow: hidden; text-align: center; white-space: normal; overflow-wrap: anywhere; animation: island-line var(--dur-2) var(--ease-out) 80ms both; }
-@keyframes island-line { from { opacity: 0; translate: 0 -3px; } }
 @media (prefers-reduced-motion: reduce) { .island *, .island *::before, .island *::after { animation: none !important; transition: none !important; } }
 @media (forced-colors: active) { .island-shape { forced-color-adjust: none; border: 1px solid #fff; border-top: 0; } .island-hit { forced-color-adjust: none; } }
 
@@ -523,3 +514,41 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .proof-chips li { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: var(--t-small); font-weight: 500; background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .proof-chips li.ok .ic { color: var(--ok); }
 .proof-chips li.bad .ic { color: var(--danger); }
+
+/* The panel under the notch (islandPanel.tsx; 27 Oct 2026, "like HeyClicky's notch hover", "I need a bit of colour"): the
+   notch grown down into a small panel, never a character. Colour lives here, from Squibby's mark (app/brand): one glowing
+   sunset button for the main thing, a warm pill and a fresh green pill, work cards lit by how they are going, and a faint
+   sunset glow along the bottom edge. The rest of the chrome stays black and white. Always laid out at island.rs PANEL_W so
+   its height is measured before it opens; shown only while the pointer rests on the island. */
+.island-panel { --sun-hi: #FFD27A; --sun-mid: #F58A36; --sun-lo: #DE4A1E; --leaf: #7EE2A8; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+.island-panel[data-shown] { visibility: visible; opacity: 1; transition-delay: 60ms; }
+.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(245, 138, 54, .35), transparent); pointer-events: none; }
+.island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
+.island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 14px; color: #2B0B02; background-color: #FFC15E; background-image: linear-gradient(180deg, var(--sun-hi) 0%, var(--sun-mid) 58%, var(--sun-lo) 100%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .55), inset 0 -2px 6px rgba(120, 20, 0, .35), 0 6px 18px rgba(222, 74, 30, .35); font-size: var(--t-body); font-weight: 700; letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.island-panel .ip-go:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), inset 0 -2px 6px rgba(120, 20, 0, .35), 0 8px 24px rgba(222, 74, 30, .5); }
+.island-panel .ip-go:active { transform: scale(.98); }
+.island-panel .ip-plus { font-size: calc(18rem / 14); font-weight: 600; line-height: 1; }
+.island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 600; transition: filter var(--dur-2) var(--ease-out); }
+.island-panel .ip-pill:hover { filter: brightness(1.15); }
+.island-panel .ip-pill.find { color: #FFD9B0; background: #3A1D0E; box-shadow: inset 0 0 0 1px rgba(245, 138, 54, .45); }
+.island-panel .ip-pill.live { color: #C9F5DA; background: #0F2E1D; box-shadow: inset 0 0 0 1px rgba(126, 226, 168, .45); }
+.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #1c1c1f; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.island-panel .ip-open:hover { background: #2a2a2e; }
+.island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.island-panel .ip-jobs li { animation: ip-in var(--dur-4) var(--ease-spring) both; }
+@keyframes ip-in { from { opacity: 0; translate: 0 -6px; scale: .97; } }
+.island-panel .ip-job { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 14px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover { background: #1c1c1f; }
+.island-panel .ip-job[data-tone="working"] { background: #18120E; box-shadow: inset 0 0 0 1px rgba(245, 138, 54, .4); }
+.island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
+.island-panel .ip-job[data-tone="done"] { background: #0F1A14; box-shadow: inset 0 0 0 1px rgba(126, 226, 168, .5); }
+.island-panel .ip-job[data-tone="failed"] { background: #1C0F0F; box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
+.island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
+.island-panel .ip-text b { font-weight: 600; color: #fff; overflow-wrap: anywhere; }
+.island-panel .ip-text span { color: #b8b8bd; font-size: var(--t-caption); overflow-wrap: anywhere; }
+.island-panel .ip-cost { color: #FFD9B0; font-size: var(--t-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
+.island-panel .ip-job[data-tone="done"] .ip-cost { color: #C9F5DA; }
+.island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }

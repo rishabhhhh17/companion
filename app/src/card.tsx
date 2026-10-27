@@ -1190,7 +1190,11 @@ function Card() {
     dispatch({ type: "ui.walkRequested", walk }); homeDispatch({ type: "pick", tab: "learn" }); void send(c);
     return walk;
   };
-  onArrival.current = (t: HomeArrival) => { if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn"); };
+  onArrival.current = (t: HomeArrival) => {
+    // From the panel under the notch: the two things Squibby is for.
+    if ("do" in t) { if (t.do === "find") findFromHome(); else shipIt(); return; }
+    if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn");
+  };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
   const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
   const aimed = useRef(""), staleReq = useRef<string | undefined>(undefined), acted = useRef(""), actTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined), noAim = useRef(false), afterAct = useRef(false);

@@ -1,6 +1,6 @@
 # Flowflow, drawn live
 
-Flowflow is the water character. This is the version that is drawn live on the GPU instead of shown as a picture. It is **off by default** (Settings, "Draw Squibby live", the setting `character.live`); the picture poses (`docs/art/water-character.md`) stay as the fallback and as the default until the founder has seen it on a real Mac.
+Flowflow is the water character. This is the version that is drawn live on the GPU instead of shown as a picture. It is **on by default** since 27 Oct 2026 (the founder had not seen the fluid mechanics with it off; it was **off by default** before) (Settings, "Draw Squibby live", the setting `character.live`); the picture poses (`docs/art/water-character.md`) stay as the fallback and as the default until the founder has seen it on a real Mac.
 
 ## What it is, and what it is not
 A rounded droplet with a flattened base, drawn by shaders from a sphere. A small **spring and damper soft body** moves and bends it; a **mood** state machine says what it is doing; two eyes follow a target on their own; tiny droplets leave and merge back; ripples spread from a touch. Nothing is a picture or an animation file.

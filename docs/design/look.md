@@ -74,7 +74,7 @@ One scale, used everywhere (M15 wave 3); no other sizes. Space: `--space-1` to `
 
 ## 10. Flowflow drawn live
 
-- One setting, "Draw Squibby live" (`character.live`), off until it has been seen on a real Mac. Off: the pose pictures, moved by `app/src/flow/` (a soft body over the picture). On: the founder's live water (`app/src/flowflow/`, `docs/flowflow-live.md`: springs, moods, eyes that follow the pointer, droplets), in the dock and in Home, loaded only then; `flow/` stands down. If it cannot start the pictures come back.
+- One setting, "Draw Squibby live" (`character.live`), on by default since 27 Oct 2026 (the founder: "I didn't see the fluidity mechanics"). The notch hover does not show a character: it opens the panel under the notch (islandPanel.ts, island.rs PANEL_W 400, PANEL_MIN to PANEL_MAX tall, measured by the page): a glowing sunset "+ Fix something" button, a card per piece of work with its agent's face, its step and its cost, then its result, and a row of pills (Find the problem in amber, Is it safe to go live? in green) with a button to open Home. Colour lives in this panel only, from the mark's sunset (app/brand), on the founder's ask ("I need a bit of colour"); the rest of the chrome stays black and white (the founder, 27 Oct 2026: "like HeyClicky's notch hover", "Flowflow is not the main guy, he is the water agent"). Off: the pose pictures, moved by `app/src/flow/` (a soft body over the picture). On: the founder's live water (`app/src/flowflow/`, `docs/flowflow-live.md`: springs, moods, eyes that follow the pointer, droplets), in the dock and in Home, loaded only then; `flow/` stands down. If it cannot start the pictures come back.
 
 ## 8. Settings window
 

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+  <radialGradient id="sun" cx="50%" cy="78%" r="85%" fx="50%" fy="88%">
+    <stop offset="0" stop-color="#FFF3B0"/><stop offset=".28" stop-color="#F8D45A"/><stop offset=".58" stop-color="#F08A2C"/>
+    <stop offset=".82" stop-color="#E0461A"/><stop offset="1" stop-color="#B8200E"/>
+  </radialGradient>
+  <linearGradient id="ray" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#F6B044"/><stop offset=".5" stop-color="#EA5E1E"/><stop offset="1" stop-color="#C02410"/>
+  </linearGradient>
+  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5A1A1E"/><stop offset=".45" stop-color="#2E1426"/><stop offset="1" stop-color="#1B1229"/>
+  </linearGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+    <stop offset="0" stop-color="#FF7A30" stop-opacity=".9"/><stop offset=".45" stop-color="#E0461A" stop-opacity=".45"/>
+    <stop offset="1" stop-color="#B8200E" stop-opacity="0"/>
+  </radialGradient>
+  <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<circle cx="512" cy="512" r="250" fill="url(#glow)" filter="url(#soft)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(0.000)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(51.429)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(102.857)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(154.286)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(205.714)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(257.143)"/>
+  <path d="M -42.0 -286.0 L -17.0 -462.0 A 17.0 17.0 0 0 1 17.0 -462.0 L 42.0 -286.0 A 42.0 42.0 0 0 1 -42.0 -286.0 Z" fill="url(#ray)" transform="translate(512 512) rotate(308.571)"/>
+<circle cx="512" cy="512" r="212" fill="url(#sun)"/>
+</svg>

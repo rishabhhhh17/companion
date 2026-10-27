@@ -73,7 +73,8 @@ function Dock() {
   const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
   const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
-  // Two ways to draw Flowflow, one setting (character.live). Off (the usual until it is seen on a real Mac): the pose pictures,
+  // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
+  // fluidity mechanics"). Off: the pose pictures,
   // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's
   // live water (src/flowflow/, physics, eyes and droplets, loaded on demand), and src/flow/ stands down. If the live drawing
   // cannot start, or the GPU context is lost, the pictures come back and nothing else about the character changes.

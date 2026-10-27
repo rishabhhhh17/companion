@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The water is on, the notch opens into a panel, and a logo: 27 Oct 2026
+
+The founder: "the hovering on the notch is pretty bad", "I didn't see the fluidity mechanics", "it has to be something like HeyClicky's notch hover", "Flowflow is not the main guy, he is the water agent", and the logo "has to be a circle with 7 rays and the gradient like this".
+
+- **Flowflow is drawn live by default:** the founder's own water physics, with eyes that follow your pointer, on the screen edge, in Home and in the notch. It goes back to the pictures by itself if a Mac cannot draw it, and "Draw Squibby live" in Settings turns it off.
+- **Rest the pointer on the notch and it opens into a small panel**, like the notch growing down, with colour: one glowing sunset button, "+ Fix something" (the colours of the new mark), a card for each piece of work with its agent's face, what it is doing ("Step 2 of 3: ..."), the cost so far and then its result, and a row of pills: "Find the problem" in warm amber, "Is it safe to go live?" in green, and a button that opens Squibby in full. Any of them opens Home. No character peeks out any more: Flowflow is the water agent, shown on its own work.
+- **A new mark and app icon:** a sun of seven rays, an orb lit from below in a sunset gradient, on a deep plum square. Made from code (`app/brand/`), so it can be tuned in one place.
+
 ## See it work in the first minute: 27 Oct 2026
 
 The four reviews of the whole product agreed: a new person never reached the "wow". Nothing opened at launch, and setup asked for an Anthropic key before anything worked.
