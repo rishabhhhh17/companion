@@ -13,13 +13,15 @@ import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 
-type Props = { m: Model; line: string; shown: boolean };
+/** `brief` (M26): the panel opened by itself (a question, or a moment of work), so it shows only the cards; the pointer
+ *  opens the whole panel. */
+type Props = { m: Model; line: string; shown: boolean; brief?: boolean };
 
-export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown }, ref) {
+export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief }, ref) {
   // What the panel shows and its size (M19, Look and feel): the hello, the work, the quick actions, usual or compact.
   const showHello = useSetting("panel.showHello") !== false, showWork = useSetting("panel.showWork") !== false, showButtons = useSetting("panel.showButtons") !== false;
   const compact = useSetting("panel.size") === "compact";
-  const jobs = showWork ? islandJobs(m) : [];
+  const jobs = showWork || brief ? islandJobs(m) : [];
   const tab = shown ? 0 : -1;
   const note = panelNote(line, jobs);
   // M23: when each question's card was first seen with the panel open; its buttons wait ARM_MS from then.
@@ -66,7 +68,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       ))}
     </ul>;
   return (
-    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+      {brief ? list : <>
       {showHello && jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
       {asking && list}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
@@ -80,6 +83,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         <button className="ip-pill set" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.settings }).catch(() => {})}><Icon name="gear" size={13} />{S.panel.settings}</button>
         <button className="ip-open" type="button" tabIndex={tab} aria-label={S.panel.open} title={S.panel.open} onClick={() => void invoke("island_click").catch(() => {})}><Icon name="resize" size={14} /></button>
       </div>}
+      </>}
     </div>
   );
 });

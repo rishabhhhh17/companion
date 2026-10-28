@@ -38,6 +38,12 @@ export function islandJobs(m: Model): JobCard[] {
   return out.slice(0, MAX_JOBS);
 }
 
+/** M26: work cards hang from the notch by themselves for a moment when something changes (a job starts, moves a step,
+ *  ends with its proof), like a phone's live activity, then tuck back so nothing stays over the person's windows. This is
+ *  what counts as a change: each card's kind, title and line, never its cost. "" when there is no work. */
+export const workPeekKey = (jobs: JobCard[]): string => jobs.filter((j) => !j.approval).map((j) => `${j.key}|${j.tone}|${j.sub}`).join("\n");
+export const WORK_PEEK_MS = 3500;
+
 /** The one line under the cards (not connected, an update, the engine stopped): only when no card already says what is
  *  happening, so nothing is said twice. */
 export const panelNote = (line: string, jobs: JobCard[]): string => (jobs.length ? "" : line);

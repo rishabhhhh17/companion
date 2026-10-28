@@ -108,3 +108,33 @@ describe("answering in the notch (M23)", () => {
     expect(src).not.toMatch(/scope:\s*"task"/);
   });
 });
+
+// M26: work cards that hang from the notch by themselves for a moment (like a phone's live activity): when a job starts,
+// moves to a new step, and ends with its proof. Then they tuck back; the pointer still opens the whole panel.
+import { WORK_PEEK_MS, workPeekKey } from "./islandPanel.ts";
+
+describe("work cards drop from the notch on each change (M26)", () => {
+  test("the moment changes when a job starts, moves a step, or ends", () => {
+    const a = run(started);
+    const k0 = workPeekKey(islandJobs(initial()));
+    const k1 = workPeekKey(islandJobs(a));
+    expect(k0).toBe("");
+    expect(k1).not.toBe("");
+    const b = run([ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })], a);
+    expect(workPeekKey(islandJobs(b))).not.toBe(k1);
+  });
+  test("the cost going up is not a new moment", () => {
+    const a = run(started);
+    const paid = run([ev({ type: "cost.update", agent: "a", usdEstimate: 0.04 })], a);
+    expect(workPeekKey(islandJobs(paid))).toBe(workPeekKey(islandJobs(a)));
+  });
+  test("a moment is long enough to read and short enough not to be in the way", () => {
+    expect(WORK_PEEK_MS).toBeGreaterThanOrEqual(2500);
+    expect(WORK_PEEK_MS).toBeLessThanOrEqual(5000);
+  });
+  test("opened by itself, the panel shows only the cards; the pointer shows everything", () => {
+    const view = read("./islandPanel.tsx");
+    expect(view).toContain("brief");
+    expect(read("./island.tsx")).toContain('useSetting("island.showWork") !== false');
+  });
+});

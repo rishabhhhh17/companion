@@ -28,6 +28,7 @@
 
     { "key": "character.name", "section": "home", "kind": "text", "default": "", "maxLength": 24, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "island.show", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "islandOff" },
+    { "key": "island.showWork", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "island.openForQuestions", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "home.escStops", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "island.peekOnHover", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },

@@ -502,7 +502,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let gen = ISLAND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let from = ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)));
     let kind = island::kind(&d);
-    tell_island(mode, kind, &look);
+    tell_island(mode, kind, &look, state.hover);
     match from.filter(|_| !moved).and_then(|from| island::retract_ms(from, f, reduce_motion())) {
         None => set_island_frame(f, ph),
         Some(ms) => if let Some(app) = APP.get() {
@@ -518,8 +518,10 @@ fn set_island_frame(f: Rect, ph: f64) {
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES); } });
 }
 
-fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look) {
-    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row });
+/// `hover`: the pointer is what opened the panel (M26): otherwise it opened by itself for a question or for work going on,
+/// and the page shows only the cards.
+fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look, hover: bool) {
+    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "hover": hover });
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
         if *g == v { return; }

@@ -32,7 +32,7 @@ describe("the island page", () => {
   });
   test("is told what the island sits on: the notch, a pill in the menu bar, or the thin line on the top edge", () => {
     const page = read("./island.tsx");
-    expect(main).toContain('let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row });');
+    expect(main).toContain('let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "hover": hover });');
     expect(main).toContain('app.emit_to("island", "island-mode", v)');
     expect(fnBody("island_state")).toContain('"kind"');
     for (const k of ["notch", "pill", "edge"]) expect(page, k).toContain(`"${k}"`);
@@ -430,5 +430,12 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(Number(/--dur-2: (\d+)ms/.exec(css)?.[1])).toBe(ms);
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
     expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);
+  });
+});
+
+describe("the island page never skips a hook (M26)", () => {
+  test("no setting is read behind a condition", () => {
+    const page = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
+    for (const line of page.split("\n")) if (/useSetting\(/.test(line)) expect(line, line).not.toMatch(/(&&|\|\||\?)[\s(]*useSetting\(/);
   });
 });
