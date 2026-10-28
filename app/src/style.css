@@ -259,8 +259,10 @@ h2 { font-size: var(--t-title); font-weight: 650; line-height: 1.25; letter-spac
 details.more { margin: var(--space-2) 0 var(--space-3); }
 details.more > summary { cursor: pointer; color: var(--muted); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; }
 details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::after { content: " +"; }
-details.more[open] > summary::after { content: " \2212"; }
+/* M27: a small chevron that turns when it opens, not a + and a minus. */
+details.more > summary { display: inline-flex; align-items: center; gap: 8px; }
+details.more > summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; translate: 0 -1px; transition: rotate var(--dur-1) var(--ease-out); }
+details.more[open] > summary::after { rotate: 45deg; translate: 0 -3px; }
 details.more > summary:hover { color: var(--fg); }
 ins.added, del.removed { text-decoration-thickness: 2px; }
 .added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; text-decoration: underline; }
@@ -629,6 +631,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .home-char { -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); }
 .home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
 .home .subline { font-size: var(--t-small); }
+/* M27: the line under the headline sits in the water, clear of the wave, never on it. */
+.home .hero .hero-words .subline { margin-top: 24px; color: color-mix(in srgb, var(--fg) 72%, transparent); }
 /* The ask box: white paper on the water, the words in black, the lime key to send. */
 .home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
 .home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(198, 244, 50, .55), 0 10px 40px rgba(0, 0, 0, .45); }
@@ -861,3 +865,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-name .fr-flow { width: 34px; }
 .fr-flow { display: block; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .fr-flow:not(.ff-mini) { filter: hue-rotate(var(--water-turn, 0deg)); }
+
+/* M27: the folder actions at the foot of Home are one quiet row under a hairline, all the same small pill, lined up. */
+.home .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); }
+.home .foot > .row.folder { display: contents; }
+.home .foot > .line, .home .foot > .error, .home .foot > .notice, .home .foot > .row:not(.folder) { flex-basis: 100%; }
+.home .foot .row.folder .btn, .home .foot .row.folder select { margin: 0; min-height: 30px; padding: 0 12px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: color-mix(in srgb, var(--fg) 80%, transparent); font-size: var(--t-small); font-weight: 500; }
+.home .foot .row.folder .btn:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }

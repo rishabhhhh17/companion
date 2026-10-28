@@ -61,7 +61,7 @@ export const S = {
     close: `Close ${PRODUCT}`,
     settingsPlaces: "Settings sections",
     // Home as one black panel under the notch (27 Oct 2026): the job in big words, one ask box, three quick actions.
-    ask: "Ask anything or describe the problem",
+    ask: "Describe the problem",   // M27: short enough to fit beside How to talk at Home's width
     send: "Start",
     talk: "Hold to talk",
     chipFind: "Find the problem",

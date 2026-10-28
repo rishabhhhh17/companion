@@ -6,6 +6,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 
 - **Flowflow doesn't just sit there any more.** Every few seconds it does something small: looks around, shakes water off, stretches, bounces, blows a bubble. Never the same thing twice in a row, never while it's working, and never with less motion.
 - **It breathes and floats** a little more, so it reads as alive even while resting.
+- **Home is tidier.** The ask box no longer cuts its words in half, the line under the headline sits clear of the wave, "More ways to ask" and "Watches" open with a small arrow, and the folder buttons sit in one neat row at the bottom.
 - **It's bigger on the edge of your screen**, and the "Ready" tag under it is gone while it rests. Words show up only when there's something to say.
 
 ## Work cards, captions and a real Esc: 29 Oct 2026
