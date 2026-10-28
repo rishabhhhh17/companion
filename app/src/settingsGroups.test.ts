@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { GROUP_ORDER, groupOf, groupPlaces } from "./settingsGroups.ts";
 
 const reg = JSON.parse(readFileSync(new URL("../../protocol/settings.json", import.meta.url), "utf8")) as { sections: string[] };
-const FIXED = ["permissions", "key", "practice", "made", "kept", "acknowledgements", "logs"].map((f) => `fixed:${f}`);
+const FIXED = ["permissions", "key", "google", "practice", "made", "kept", "acknowledgements", "logs"].map((f) => `fixed:${f}`);
 
 describe("the Settings side list in groups", () => {
   test("every section of the registry and every fixed part has a group, and none is left to More by accident", () => {

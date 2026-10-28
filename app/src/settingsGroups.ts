@@ -7,7 +7,7 @@ const OF: Record<string, GroupId> = {
   home: "companion", look: "companion", talking: "companion", display: "companion",
   groups: "powers", pointing: "powers", files: "powers", checks: "powers", work: "powers", watch: "powers", memory: "powers",
   keys: "mac", otherApps: "mac", sharing: "mac", "fixed:permissions": "mac",
-  "fixed:key": "account", spending: "account", updates: "account", numbers: "account",
+  "fixed:key": "account", "fixed:google": "account", spending: "account", updates: "account", numbers: "account",
   "fixed:practice": "more", "fixed:made": "more", "fixed:kept": "more", "fixed:acknowledgements": "more", "fixed:logs": "more",
 };
 export function groupOf(id: string): GroupId { return OF[id] ?? "more"; }

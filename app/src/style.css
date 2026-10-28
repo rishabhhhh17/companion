@@ -807,3 +807,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sections-group .sections { margin: 0; }
 .sections-head { margin: 0 0 var(--space-1); color: var(--muted); font: 600 var(--t-caption) var(--round); }
 .fr-seg.three { grid-template-columns: repeat(3, 1fr); }
+/* Google in Settings (M21): who is signed in, and each connected account with its apps. */
+.google-head { margin: var(--space-4) 0 var(--space-1); font: 700 var(--t-body) var(--round); }
+.google-dot { display: inline-grid; place-items: center; width: 28px; min-height: 28px; flex: none; border-radius: 50%; background: var(--fg); color: var(--bg); font: 700 var(--t-small) var(--round); }
+.google-me, .google-acct { align-items: center; gap: var(--space-3); }
+.google-acct .line { flex: 1; }
+.google-new { display: grid; gap: var(--space-1); margin-top: var(--space-3); }
