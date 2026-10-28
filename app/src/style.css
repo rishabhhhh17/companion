@@ -724,3 +724,24 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-q { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
 .fr-q b { font: 600 var(--t-small) var(--round); }
 @media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* Settings, grouped (M18): the side list under a few headings, each part with a small dot in its group's colour (water for
+   the companion, lime for the powers, grey for the rest), and the character alive
+   on the water at the top of its own part. */
+.side-group { display: flex; flex-direction: column; gap: 1px; }
+.side-group + .side-group { margin-top: var(--space-3); }
+.side-head { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.side-item { display: flex; align-items: center; gap: var(--space-2); }
+.side-dot { flex: none; width: 8px; min-height: 8px; border-radius: 50%; background: var(--muted); }
+.side-group[data-group="companion"] .side-dot { background: #59D2FF; }
+.side-group[data-group="powers"] .side-dot { background: var(--key); }
+.companion-hero { position: relative; display: grid; place-items: center; min-height: 190px; margin: 0 0 var(--space-4); border-radius: 22px; background: linear-gradient(180deg, #0B0D12, #000000 60%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); overflow: clip; isolation: isolate; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(180deg, #04182A, #020C15); z-index: 0; }
+.companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
+.companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.companion-hero .ch-char { position: relative; z-index: 1; margin-top: var(--space-5); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
+.companion-hero .ch-name { position: absolute; left: var(--space-5); bottom: var(--space-4); z-index: 2; color: #ffffff; background: #04182A; font: 800 calc(22rem / 14) var(--round); letter-spacing: -0.02em; }
+.companion-hero .ch-states { position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2; display: flex; gap: var(--space-1); }
+.companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #0B2232; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-states button[aria-pressed="true"] { background: #ffffff; color: #000000; }
