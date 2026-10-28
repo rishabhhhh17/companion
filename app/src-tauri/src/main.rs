@@ -7,9 +7,12 @@
 mod docking;
 mod peek;
 mod gaze;
+mod google;
+mod claude_install;
 mod follow;
 mod settingswin;
 mod island;
+mod esc;
 mod roam;
 mod fullscreen;
 mod anchor;
@@ -409,7 +412,7 @@ thread_local! {
 }
 /// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0 });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
@@ -499,7 +502,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let gen = ISLAND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let from = ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)));
     let kind = island::kind(&d);
-    tell_island(mode, kind, &look);
+    tell_island(mode, kind, &look, state.hover);
     match from.filter(|_| !moved).and_then(|from| island::retract_ms(from, f, reduce_motion())) {
         None => set_island_frame(f, ph),
         Some(ms) => if let Some(app) = APP.get() {
@@ -515,8 +518,10 @@ fn set_island_frame(f: Rect, ph: f64) {
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES); } });
 }
 
-fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look) {
-    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row });
+/// `hover`: the pointer is what opened the panel (M26): otherwise it opened by itself for a question or for work going on,
+/// and the page shows only the cards.
+fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look, hover: bool) {
+    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "hover": hover });
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
         if *g == v { return; }
@@ -582,12 +587,13 @@ fn home_closed() {
 /// The page says whether the wings are out (something is happening; home.ts islandWings) and how tall its hover panel's
 /// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>) {
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>) {
     let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
     let cheer = cheer.unwrap_or(false) && on;
+    let ask = ask.unwrap_or(false) && on;
     let _ = app.run_on_main_thread(move || {
         let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || cheer_changed; s.alert = on; s.panel = panel; c };
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }
@@ -1322,7 +1328,7 @@ fn groups_applied(app: &AppHandle) {
                 // Let go of what is registered for the job, then mark it held (so nothing registers it again meanwhile).
                 if let Some(c) = key_registered(a) { let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()); }
                 KEYS_HELD[a.index()].store(true, Ordering::SeqCst);
-                if a == keymap::Action::Accept && ACCEPT_ARMED.swap(false, Ordering::SeqCst) { let _ = gs.unregister(sc_esc()); }
+                if a == keymap::Action::Accept && ACCEPT_ARMED.swap(false, Ordering::SeqCst) { esc_apply(app, esc::RESULT, false); }
                 log("keys_held", json!({ "action": a.id() }));
             } else {
                 KEYS_HELD[a.index()].store(false, Ordering::SeqCst);
@@ -1476,6 +1482,34 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 // fixed, and it is on no list.
 fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
 static ARMED: AtomicU64 = AtomicU64::new(0);
+/// Why Esc is borrowed from the person's apps now (esc.rs).
+static ESC: Mutex<esc::Holds> = Mutex::new(esc::Holds::new());
+static ESC_SCREEN_GEN: AtomicU64 = AtomicU64::new(0);
+/// Takes or gives back Esc for one reason. Main thread, with the keys lock held by the caller (as every change of keys).
+fn esc_apply(app: &AppHandle, why: u8, on: bool) {
+    let change = ESC.lock().unwrap_or_else(|e| e.into_inner()).set(why, on);
+    let gs = app.global_shortcut();
+    match change { esc::Change::Take => { let _ = gs.register(sc_esc()); } esc::Change::GiveBack => { let _ = gs.unregister(sc_esc()); } esc::Change::Keep => {} }
+}
+/// Squibby started or stopped drawing on the screen (M26): Esc clears it while it shows, with Esc stops what Squibby shows
+/// on (home.escStops). A drawing nothing cleared gives Esc back after esc::SCREEN_MAX_SECS.
+fn esc_screen(app: &AppHandle, on: bool) {
+    if on && !home_set().esc_stops { return; }
+    let gen = ESC_SCREEN_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || { let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner()); esc_apply(&a, esc::SCREEN, on); });
+    if on {
+        let a = app.clone();
+        std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(esc::SCREEN_MAX_SECS)); if ESC_SCREEN_GEN.load(Ordering::SeqCst) == gen { esc_screen(&a, false); } });
+    }
+}
+/// Esc while Squibby draws on the screen: the drawing, a Show me walk and anything being said all stop, at once.
+fn esc_take_back(app: &AppHandle) {
+    log("esc_take_back", json!({}));
+    point_cancel(); turn_cancel(); speech_off(app); showme_end_answer(app);
+    hide_overlay(app); showme_pending().end(); say_showme(app, "done", "", json!({}));
+    let _ = app.emit("hush", ());
+}
 
 /// Use a suggestion and Esc exist only while a result is showing, and give themselves up after a minute and a half. Esc
 /// is taken from the person's apps only for that long (T11). The work runs on the main thread, like every change of keys
@@ -1501,13 +1535,13 @@ fn arm_now(app: &AppHandle, on: bool) {
             if got != was { set_key_using(accept, got); log("accept_keys", json!({ "id": got.map(keymap::id) })); }
             ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);
         }
-        let _ = gs.register(sc_esc());
+        esc_apply(app, esc::RESULT, true);
         let a = app.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(90)); if ARMED.load(Ordering::SeqCst) == gen { arm_result_keys(&a, false); } });
     } else {
         ARMED.fetch_add(1, Ordering::SeqCst);
         if ACCEPT_ARMED.swap(false, Ordering::SeqCst) { if let Some(c) = key_using(accept) { let _ = gs.unregister(keymap::shortcut(c)); } }
-        let _ = gs.unregister(sc_esc());
+        esc_apply(app, esc::RESULT, false);
     }
 }
 
@@ -1557,6 +1591,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app
 fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<serde_json::Value>) {
     log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
+    let src = source.to_string();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
@@ -1569,7 +1604,7 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             // Opening (not already open): a short drop from just under the island while it fades in (island.rs home_drop),
             // unless Reduce motion or Less motion is on. A resize while it is open is never animated.
             let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-            match island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion()) {
+            match island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion()) {
                 Some(start) => { let end = c.frame(); c.setAlphaValue(0.0); c.setFrame_display(to_appkit(start, ph), false); c.orderFrontRegardless(); set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES); }
                 None => { c.setAlphaValue(1.0); c.orderFrontRegardless(); }
             }
@@ -1577,7 +1612,8 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
         if !was_open && home_set().click_away { watch_click_away(&a); }
-        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "then": t }), None => json!({ "keyboard": keyboard }) });
+        let instant = !island::animates_open(&src);
+        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) });
     });
 }
 
@@ -1764,6 +1800,164 @@ fn project_now(app: &AppHandle, folder: &str) {
     settings_told(app, &[]);
 }
 
+// ---------- Anthropic's Claude, installed at first run (M22, claude_install.rs) ----------
+
+/// Where Anthropic's Claude builds go: Squibby's own folder, one folder per version.
+fn claude_root() -> PathBuf { data_dir().join("claude") }
+/// What is happening with the install now (only one at a time).
+static CLAUDE_STATUS: Mutex<Option<claude_install::Status>> = Mutex::new(None);
+
+/// Whether Anthropic's Claude is ready. A development run (the engine from the developer's setup) uses the SDK package's
+/// own build, so it is always ready there.
+#[tauri::command]
+fn claude_status(window: tauri::WebviewWindow) -> Result<Value, String> {
+    if window.label() != "card" { return Err("not_card".into()); }   // only Home asks (the first run and its notice)
+    if let Some(s) = CLAUDE_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone() { return Ok(s.json()); }
+    let bundled = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e)).is_some_and(|b| b.is_dir());
+    let ready = !bundled || claude_install::installed(&claude_root(), &claude_install::pin()).is_some();
+    Ok(if ready { claude_install::Status::Ready } else { claude_install::Status::Missing }.json())
+}
+
+/// Installs Anthropic's Claude (the pinned build, checked by hash and signature) and starts the engine again so it uses it.
+/// Progress and the end come as "claude-install" to every window.
+#[tauri::command]
+fn claude_install_now(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "card" { return Err("not_card".into()); }   // only Home asks (the first run and its notice)
+    {
+        let mut st = CLAUDE_STATUS.lock().unwrap_or_else(|e| e.into_inner());
+        if matches!(*st, Some(claude_install::Status::Installing { .. })) { return Ok(()); }
+        *st = Some(claude_install::Status::Installing { received: 0, total: None });
+    }
+    std::thread::spawn(move || {
+        let a = app.clone();
+        let tell = move |s: claude_install::Status| { *CLAUDE_STATUS.lock().unwrap_or_else(|e| e.into_inner()) = Some(s.clone()); let _ = a.emit("claude-install", s.json()); };
+        let progress = { let t = tell.clone(); move |received: u64, total: Option<u64>| t(claude_install::Status::Installing { received, total }) };
+        match claude_install::install(&claude_root(), &claude_install::pin(), &progress) {
+            Ok(_) => { log("claude_installed", json!({ "version": claude_install::pin().version })); tell(claude_install::Status::Ready); app.state::<runner::Runner>().restart(); }
+            Err(m) => { log("claude_install_failed", json!({})); tell(claude_install::Status::Failed(m)); }
+        }
+    });
+    Ok(())
+}
+
+// ---------- Google (M21, google.rs): sign in with Google, and connect Gmail, Calendar and Drive ----------
+
+/// The client id the founder made in Google's console (app/google.json, read when the app is built). Empty: not set up.
+const GOOGLE_CONFIG: &str = include_str!("../../google.json");
+/// Only one Google sign in at a time (a second press while the browser is open does nothing).
+static GOOGLE_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The accounts kept, in the order they were added. The list of who is kept is its own Keychain item; each account is one
+/// more item holding its refresh token (google.rs Kept). Nothing of it is ever logged.
+fn google_index() -> Vec<String> {
+    security_framework::passwords::get_generic_password(google::SERVICE, "index").ok()
+        .and_then(|b| serde_json::from_slice::<Vec<String>>(&b).ok()).unwrap_or_default()
+}
+fn google_set_index(subs: &[String]) {
+    let _ = security_framework::passwords::set_generic_password(google::SERVICE, "index", serde_json::to_string(subs).unwrap_or_default().as_bytes());
+}
+fn google_kept() -> Vec<google::Kept> {
+    google_index().iter().filter_map(|sub| security_framework::passwords::get_generic_password(google::SERVICE, &google::keychain_account(sub)).ok())
+        .filter_map(|b| google::kept_from(&String::from_utf8_lossy(&b))).collect()
+}
+fn google_keep(k: &google::Kept) -> Result<(), String> {
+    security_framework::passwords::set_generic_password(google::SERVICE, &google::keychain_account(&k.person.sub), google::kept_json(k).as_bytes())
+        .map_err(|_| "Could not keep the Google account in the Keychain.".to_string())?;
+    let mut idx = google_index();
+    if !idx.contains(&k.person.sub) { idx.push(k.person.sub.clone()); google_set_index(&idx); }
+    Ok(())
+}
+fn google_forget(sub: &str) {
+    let _ = keystore::delete_item(google::SERVICE, &google::keychain_account(sub));
+    let idx: Vec<String> = google_index().into_iter().filter(|s| s != sub).collect();
+    google_set_index(&idx);
+}
+
+/// What the pages may know: whether Google is set up in this build, and each account without its tokens.
+#[tauri::command]
+fn google_accounts(window: tauri::WebviewWindow) -> Result<Value, String> {
+    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    Ok(json!({ "ready": google::client(GOOGLE_CONFIG).is_some(), "busy": GOOGLE_BUSY.load(std::sync::atomic::Ordering::SeqCst), "accounts": google_kept().iter().map(google::shown).collect::<Vec<_>>() }))
+}
+
+/// Sign in with Google (`signin`) or connect a Google account for some apps. Opens Google's own page in the person's
+/// browser and returns at once; the result comes as "google-changed" to every window (or "google-failed" with plain words).
+#[tauri::command]
+fn google_start(app: AppHandle, window: tauri::WebviewWindow, signin: bool, apps: Vec<String>, label: Option<String>) -> Result<(), String> {
+    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    let Some((id, secret)) = google::client(GOOGLE_CONFIG) else { return Err("notSetUp".into()) };
+    let apps: Vec<google::App> = apps.iter().filter_map(|a| google::App::from_word(a)).collect();
+    if !signin && apps.is_empty() { return Err("noApps".into()); }
+    if GOOGLE_BUSY.swap(true, std::sync::atomic::Ordering::SeqCst) { return Err("busy".into()); }
+    std::thread::spawn(move || {
+        let r = google_flow(&id, &secret, signin, &apps, label.as_deref().unwrap_or(""));
+        GOOGLE_BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+        match r {
+            Ok(()) => { log("google_connected", json!({ "signin": signin, "apps": apps.iter().map(|a| a.word()).collect::<Vec<_>>() })); let _ = app.emit("google-changed", ()); google_push(&app); }
+            Err(m) => { log("google_failed", json!({})); let _ = app.emit("google-failed", m); }
+        }
+    });
+    Ok(())
+}
+
+/// The sign in itself (google.rs): a one time listener on 127.0.0.1, Google's page in the browser, the code traded for
+/// tokens, and the account kept. Apps already connected on the same account stay; a new label replaces the old one.
+fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label: &str) -> Result<(), String> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").map_err(|_| "Could not start the sign in.".to_string())?;
+    let port = listener.local_addr().map_err(|_| "Could not start the sign in.".to_string())?.port();
+    let (verifier, challenge) = google::pkce(google::random32());
+    let state = google::b64url(&google::random32());
+    let url = google::auth_url(id, port, &google::scopes_for(apps), &challenge, &state, None);
+    std::process::Command::new("/usr/bin/open").arg(&url).spawn().map_err(|_| "Could not open the browser.".to_string())?;
+    let code = google::wait_for_code(listener, &state, crate::product!())?;
+    let t = google::read_tokens(&google::post_form(google::TOKEN_URL, &google::exchange_form(id, secret, &code, &verifier, port))?)?;
+    let person = t.person.ok_or("Google did not say who signed in (the email must be verified).")?;
+    let old = google_kept().into_iter().find(|k| k.person.sub == person.sub);
+    let refresh = t.refresh.or_else(|| old.as_ref().map(|k| k.refresh.clone())).ok_or("Google gave no lasting sign in. Try again.")?;
+    let mut granted = google::apps_granted(&t.granted);
+    if let Some(o) = &old { for a in &o.apps { if !granted.contains(a) { granted.push(*a); } } }
+    let label = if label.trim().is_empty() { old.as_ref().map(|k| k.label.clone()).unwrap_or_else(|| google::label_for("", &person.email)) } else { google::label_for(label, &person.email) };
+    let keep_signin = signin || old.as_ref().is_some_and(|k| k.signin);
+    // Only one account is the one signed in to Squibby: signing in with another moves it.
+    if signin { for mut k in google_kept().into_iter().filter(|k| k.signin && k.person.sub != person.sub) { k.signin = false; let _ = google_keep(&k); } }
+    google_keep(&google::Kept { person, refresh, label, apps: granted, signin: keep_signin })
+}
+
+/// Disconnect one account: Google is asked to revoke it, and its Keychain item goes. `signOutOnly`: the account signed in
+/// to Squibby stops being that, but stays connected for its apps when it has any.
+#[tauri::command]
+fn google_disconnect(app: AppHandle, window: tauri::WebviewWindow, id: String, sign_out_only: Option<bool>) -> Result<(), String> {
+    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    let sub = id.strip_prefix("google:").unwrap_or(&id).to_string();
+    let Some(mut k) = google_kept().into_iter().find(|k| k.person.sub == sub) else { return Err("gone".into()) };
+    if sign_out_only == Some(true) && !k.apps.is_empty() { k.signin = false; google_keep(&k)?; }
+    else {
+        let token = k.refresh.clone();
+        std::thread::spawn(move || { let _ = google::post_form(google::REVOKE_URL, &format!("token={}", token)); });
+        google_forget(&sub);
+    }
+    log("google_disconnected", json!({}));
+    let _ = app.emit("google-changed", ());
+    google_push(&app);
+    Ok(())
+}
+
+/// Gives the engine a fresh access token for every connected account (never the refresh token), so the Google tools work
+/// on the person's request. Runs now and again before the tokens run out (google_refresh_loop).
+fn google_push(app: &AppHandle) {
+    let a = app.clone();
+    std::thread::spawn(move || {
+        let Some((id, secret)) = google::client(GOOGLE_CONFIG) else { return };
+        let mut out = Vec::new();
+        for k in google_kept().into_iter().filter(|k| !k.apps.is_empty()) {
+            let Ok(body) = google::post_form(google::TOKEN_URL, &google::refresh_form(&id, &secret, &k.refresh)) else { continue };
+            let Ok(t) = google::read_tokens(&body) else { continue };
+            out.push(json!({ "label": k.label, "email": k.person.email, "apps": k.apps.iter().map(|x| x.word()).collect::<Vec<_>>(), "token": t.access, "expiresInSecs": t.expires_in }));
+        }
+        if let Some(r) = a.try_state::<runner::Runner>() { let _ = r.send(&json!({ "v": 1, "id": format!("google-{}", now()), "type": "google.accounts", "accounts": out })); }
+    });
+}
+
 /// Saves the person's own key into the Keychain. The page clears its box right after; nothing here is ever logged.
 #[tauri::command]
 fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
@@ -1941,6 +2135,7 @@ fn say_showme(app: &AppHandle, stage: &str, message: &str, extra: Value) {
 }
 
 fn hide_overlay(app: &AppHandle) {
+    esc_screen(app, false);
     OVERLAY_BUSY_UNTIL.store(0, std::sync::atomic::Ordering::SeqCst);
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to("overlay", "overlay-clear", ());
@@ -2123,6 +2318,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
+        esc_screen(&a, true);
     });
     Some((watched, ring))
 }
@@ -2472,7 +2668,10 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Opti
     if !ok { return Ok(json!({ "said": false, "why": "repeat" })); }
     log("speak", json!({ "chars": line.chars().count(), "whole": whole == Some(true) }));   // how long, never what
     let set = voice_now();
+    let shown = line.clone();
     let _ = app.run_on_main_thread(move || speak::mac::say(&line, set.voice.as_ref(), set.speed));
+    // M26: the words said, shown at the bottom of the screen while they are said (talk.captions).
+    if setting_now("talk.captions") != json!(false) { show_caption(&app, &shown, set.speed); }
     if whole.is_some() { mark_tried(&app, "speak"); }   // an answer really said out loud; the voice sample in Settings sends no `whole`, so trying a voice is not a use
     Ok(json!({ "said": true }))
 }
@@ -2550,7 +2749,7 @@ fn voice_save(before: &voiceset::Saved, next: &voiceset::Saved) -> Result<(), &'
 /// Silence, at once. Also part of Stop everything.
 #[tauri::command]
 fn speak_stop(app: AppHandle) { speech_off(&app); }
-fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); }
+fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
 
 /// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
 #[tauri::command]
@@ -2904,6 +3103,7 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        esc_screen(&a, true);
         let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x, "ms": diagram::shown_ms(&chosen), "settings": settings }));
         let _ = tx.send(true);
     });
@@ -2922,6 +3122,54 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         }
     });
     Ok(())
+}
+
+// ---------- Captions while Squibby talks (M26) ----------
+
+static CAPTION_GEN: AtomicU64 = AtomicU64::new(0);
+/// Shows what is being said at the bottom of the display the character is on, a page at a time (speak::caption_pages), and
+/// takes it away the moment the voice stops (or is stopped). Never while Squibby is hidden. The overlay is see through to
+/// clicks, so the caption is never in the way; it goes away with the overlay only when nothing else is drawn on it.
+fn show_caption(app: &AppHandle, line: &str, speed: f64) {
+    if companion_hidden() { return; }
+    let pages: Vec<Value> = speak::caption_pages(line).into_iter().map(|p| { let ms = speak::caption_ms(p.chars().count(), speed); json!({ "text": p, "ms": ms }) }).collect();
+    if pages.is_empty() { return; }
+    let gen = CAPTION_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let Some(dock) = with_panels(|dock, _| dock.frame()) else { return };
+        let (cx, cy) = (dock.origin.x + dock.size.width / 2.0, dock.origin.y + dock.size.height / 2.0);
+        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { return };
+        let busy = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+        if !busy {
+            let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
+            let ak = coords::rect_to_appkit(d, primary_h);
+            OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        }
+        let _ = a.emit_to("overlay", "overlay-caption", json!({ "pages": pages }));
+    });
+    // The caption stays exactly as long as the voice: checked five times a second, at most two minutes.
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        for _ in 0..600 {
+            if CAPTION_GEN.load(Ordering::SeqCst) != gen { return; }
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = a.run_on_main_thread(move || { let _ = tx.send(speak::mac::speaking()); });
+            if !rx.recv_timeout(Duration::from_secs(1)).unwrap_or(false) { break; }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        if CAPTION_GEN.load(Ordering::SeqCst) != gen { return; }
+        let _ = a.emit_to("overlay", "overlay-caption-end", ());
+        std::thread::sleep(Duration::from_millis(300));
+        let free = !overlay_busy() && TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none();
+        if CAPTION_GEN.load(Ordering::SeqCst) == gen && free {
+            let _ = a.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
+        }
+    });
 }
 
 // ---------- Celebration ----------
@@ -3693,10 +3941,12 @@ fn start_runner(app: &AppHandle) {
     *PROJECT.lock().unwrap_or_else(|e| e.into_inner()) = saved.or(first);
     let bundle = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e));
     let result = runner::locations_with_bundle(dev.as_deref(), &|k| std::env::var(k).ok(), data.join("runner"), bundle)
+        // Anthropic's Claude as installed at first run (claude_install.rs, M22), used once it is there.
+        .map(|mut loc| { loc.claude = claude_install::dest(&claude_root(), &claude_install::pin().version); loc })
         .and_then(|loc| app.state::<runner::Runner>().start(app, &loc, { let handle = app.clone(); move |t| {
             log("runner_event", json!({ "kind": t }));
             // Each time the engine (re)starts it has no key yet; it is handed one as soon as it says hello.
-            if t == "runner.hello" { hand_key_over(&handle, None); }
+            if t == "runner.hello" { hand_key_over(&handle, None); google_push(&handle); }
             // An engine that has just (re)started knows no question, so an answer is not coming: what was seen is forgotten.
             if t == "runner.hello" { showme_pending().end(); }
             WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);
@@ -3934,8 +4184,13 @@ fn main() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
                     // Esc dismisses a Prompt help result while one shows (it is registered only then, and is on no list).
+                    // M26: and it takes back control while Squibby draws on the screen (registered only then too, esc.rs).
                     if s == &sc_esc() {
-                        if e.state == ShortcutState::Pressed { let a = app.clone(); std::thread::spawn(move || { arm_result_keys(&a, false); phelp::dismiss(&a); }); }
+                        if e.state == ShortcutState::Pressed {
+                            let (result, screen) = { let h = ESC.lock().unwrap_or_else(|e| e.into_inner()); (h.has(esc::RESULT), h.has(esc::SCREEN)) };
+                            let a = app.clone();
+                            std::thread::spawn(move || { if result { arm_result_keys(&a, false); phelp::dismiss(&a); } if screen { esc_take_back(&a); } });
+                        }
                         return;
                     }
                     // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.
@@ -3993,7 +4248,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -4110,6 +4365,10 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || gaze_tick(&h2));
             });
+            // Google (google.rs): the engine gets fresh access tokens for the connected accounts soon after launch and
+            // again every 45 minutes, before Google's hour runs out. Nothing happens with no account connected.
+            let h = app.handle().clone();
+            std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(5)); loop { google_push(&h); std::thread::sleep(Duration::from_secs(45 * 60)); } });
             // A drop that follows the pointer (follow.rs), only with A drop of water chosen.
             let h = app.handle().clone();
             std::thread::spawn(move || follow_loop(h));

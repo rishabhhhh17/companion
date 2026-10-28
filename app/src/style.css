@@ -7,16 +7,21 @@
    One design scale (M15 wave 3), used everywhere below; no other sizes. Type (rem, so the text size choice reaches every
    word), at the usual 14 px root: caption 12, small 13, body 15, answer 16, title 19, display 22. Corners: 8 12 20 30 and a
    pill. Space: 4 8 12 16 20 24 32 (in rem where a size must follow the text size, as calc(Nrem / 14) of the same steps).
-   Motion: ease out for what the interface does, ease in for what goes away, one spring (the island's, islandSpring.ts, as a
-   linear() curve) for what pops, and four durations, 120 200 280 400 ms. Interruptible, none with reduced motion. */
+   Motion (M25, after an audit against Emil Kowalski's animation standards): one strong ease out for everything the
+   interface does, coming and going; an ease in out for what moves across the screen; the spring (the island's,
+   islandSpring.ts, as a linear() curve) only for rare delight (the first run, a proven fix); four durations, 120 200 280
+   400 ms, and nothing a person sees often over 280 ms. Every press answers at once with a small squeeze (scale .97).
+   Interruptible, none with reduced motion. */
 :root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
   --lime: #C6F432; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
   --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
   --r-sm: 8px; --r-md: 12px; --r-lg: 20px; --r-xl: 30px; --r-pill: 999px;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); --ease-in: cubic-bezier(0.4, 0, 1, 1);
-  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1); --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* Names the recorded first run uses (firstLook.tsx), kept as aliases of the tokens here. */
+  --dur: var(--dur-2); --dur-slow: var(--dur-3); --ease: var(--ease-out); --radius-pill: var(--r-pill);
+  --ease-spring: linear(0, 0.031, 0.111, 0.220, 0.344, 0.470, 0.591, 0.701, 0.796, 0.876, 0.940, 0.989, 1.024, 1.047, 1.061, 1.067, 1.068, 1.064, 1.057, 1.050, 1.041, 1.032, 1.024, 1.017, 1.011, 1.006, 1.003, 1.000, 0.998, 0.996, 0.996, 0.995, 0.995, 0.996, 0.996, 0.997, 1);
   --dur-1: 120ms; --dur-2: 200ms; --dur-3: 280ms; --dur-4: 400ms;
   font: 14px -apple-system, "SF Pro Text", sans-serif; }
 /* Text size (Settings, textsize.ts): one root size, and every size below is in rem (12px at Standard is calc(12rem / 14)),
@@ -40,7 +45,7 @@ button, select { font: inherit; }
    shape per state; motion is named by the model so reduced motion can freeze it. */
 html.dock-page, body.dock-page { background: transparent; }
 .dock { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-.character { position: relative; width: 112px; height: 80px; border-radius: 0; background: none; border: 0; padding: 0; }
+.character { position: relative; width: 132px; height: 94px; border-radius: 0; background: none; border: 0; padding: 0; }
 .character:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
 .character[data-state="off"] { filter: grayscale(1); opacity: .5; }
 .character[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
@@ -91,7 +96,9 @@ html.home-page, body.home-page { background: transparent; }
 .icon-btn, .back { position: relative; flex: none; display: grid; place-items: center; width: calc(28rem / 14); height: calc(28rem / 14); padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .icon-btn.close { width: calc(22rem / 14); height: calc(22rem / 14); margin-left: var(--space-2); }
 .icon-btn:hover, .back:hover { background: color-mix(in srgb, var(--fg) 16%, var(--bg)); }
-.icon-btn:active, .back:active, .chip-btn:active, .pill:active { transform: scale(.92); }
+/* Press feedback (M25): every pressable thing squeezes a little the moment it is pressed, and lets go on the same curve. */
+.icon-btn, .back, .chip-btn, .pill, .btn, .section-pill { transition-property: transform, background-color, color, opacity; transition-duration: 160ms; transition-timing-function: var(--ease-out); }
+.icon-btn:active, .back:active, .chip-btn:active, .pill:active, .btn:active, .section-pill:active, .home .chips.quick .chip-btn:active { transform: scale(.97); }
 /* The place open inside Home: its button is filled white (a change of fill, not of colour alone). */
 .icon-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .icon-btn .tabdot, .back .tabdot { position: absolute; top: 0; right: 0; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
@@ -124,8 +131,8 @@ html.home-page, body.home-page { background: transparent; }
 .home .ask .talk-how { align-self: center; flex: none; padding: 4px 10px; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font-size: var(--t-small); font-weight: 500; }
 .home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
 .home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 14%, var(--surface)); color: var(--fg); }
-.btn.primary.send { flex: none; display: grid; place-items: center; width: calc(32rem / 14); min-height: calc(32rem / 14); height: calc(32rem / 14); padding: 0; border-radius: 50%; transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
-.home .ask:has(textarea:placeholder-shown) .btn.primary.send { transform: scale(.85); background: color-mix(in srgb, var(--fg) 22%, var(--bg)); color: var(--fg); }
+.btn.primary.send { flex: none; display: grid; place-items: center; width: calc(32rem / 14); min-height: calc(32rem / 14); height: calc(32rem / 14); padding: 0; border-radius: 50%; transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
+.home .ask:has(textarea:placeholder-shown) .btn.primary.send { transform: scale(.95); background: color-mix(in srgb, var(--fg) 22%, var(--bg)); color: var(--fg); }
 /* Three quick actions, each a drawing and a word. */
 .chips.quick { margin: var(--space-2) 0 0; }
 .chip-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: calc(32rem / 14); padding: 0 calc(12rem / 14) 0 calc(10rem / 14); border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); font-size: var(--t-small); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
@@ -135,14 +142,12 @@ html.home-page, body.home-page { background: transparent; }
 /* Night and lime (M17): headings, buttons and pills in the Mac's rounded face; Home's quick actions draw in lime and lift a
    little under the pointer. */
 .headline, .view-title, .chip-btn, .pill, .section-pill, .btn.primary, .dock-label { font-family: var(--round); }
-.home .chip-btn { transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.home .chip-btn { transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
 .home .chip-btn .ic { color: var(--key); opacity: 1; }
-.home .chip-btn:hover { transform: translateY(-1px) rotate(-1deg); }
-.home .chip-btn:nth-child(even):hover { transform: translateY(-1px) rotate(1deg); }
 .home details.more { margin: var(--space-3) 0 0; }
 /* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a big readable card that sits on the
    black: a slightly lighter black, a hairline, a large corner, and it rises in on the spring when it arrives. */
-.home .view .panel { background: var(--card); border-radius: var(--r-lg); padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-3); border: 1px solid rgba(255, 255, 255, .06); animation: card-in var(--dur-3) var(--ease-spring) both; }
+.home .view .panel { background: var(--card); border-radius: var(--r-lg); padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-3); border: 1px solid rgba(255, 255, 255, .06); animation: card-in var(--dur-2) var(--ease-out) both; }
 @keyframes card-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .home .view .panel + .panel { border: 1px solid rgba(255, 255, 255, .06); padding-top: var(--space-4); }
 .home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }
@@ -163,14 +168,16 @@ html.home-page, body.home-page { background: transparent; }
    top, on the island's spring, and what is in it follows, 40 ms apart. Closing (the shell says "closing", main.rs
    HOME_CLOSE_MS) rolls it back up the same way, quicker, easing in. None with Reduce motion or Less motion (the rules near
    the end of this file); the shell then closes at once. */
-.home.springing { animation: home-spring var(--dur-4) var(--ease-spring) both; }
-.home.springing .hero-words { animation: home-in var(--dur-3) var(--ease-out) 40ms both; }
-.home.springing .askwrap { animation: home-in var(--dur-3) var(--ease-out) 80ms both; }
-.home.springing .chips.quick { animation: home-in var(--dur-3) var(--ease-out) 120ms both; }
-.home.springing .view { animation: home-in var(--dur-3) var(--ease-out) 160ms both; }
-.home.closing { animation: home-roll-up var(--dur-2) var(--ease-in) both; }
-@keyframes home-spring { from { opacity: 0; transform: scale(0.96, 0.6); clip-path: inset(0 0 100% 0); } 40% { opacity: 1; } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
-@keyframes home-roll-up { to { opacity: 0; transform: scale(0.96, 0.6); clip-path: inset(0 0 100% 0); } }
+/* Home drops from the notch in 240 ms on the strong ease out, unrolling from the top, and its parts follow 20 ms apart, all
+   done inside 280 ms (M25: it opens many times a day, so no bounce and no long wait). It rolls back up faster than it came. */
+.home.springing { animation: home-spring 240ms var(--ease-out) both; }
+.home.springing .hero-words { animation: home-in var(--dur-2) var(--ease-out) 20ms both; }
+.home.springing .askwrap { animation: home-in var(--dur-2) var(--ease-out) 40ms both; }
+.home.springing .chips.quick { animation: home-in var(--dur-2) var(--ease-out) 60ms both; }
+.home.springing .view { animation: home-in var(--dur-2) var(--ease-out) 80ms both; }
+.home.closing { animation: home-roll-up var(--dur-2) var(--ease-out) both; }
+@keyframes home-spring { from { opacity: 0; transform: scale(0.98, 0.94); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+@keyframes home-roll-up { to { opacity: 0; transform: scale(0.98, 0.94); clip-path: inset(0 0 100% 0); } }
 @keyframes home-in { from { opacity: 0; transform: translateY(4px); } }
 /* A finished job: the headline and its line come in again, lifted a little, as the done line replaces the working one. */
 .home[data-tone="done"] .hero-words { animation: hero-done var(--dur-3) var(--ease-out) both; }
@@ -245,15 +252,17 @@ h2 { font-size: var(--t-title); font-weight: 650; line-height: 1.25; letter-spac
 @keyframes undo-spin { from { rotate: 0deg; } to { rotate: -360deg; } }
 .putback-note { font-size: var(--t-small); font-weight: 500; color: var(--muted); animation: putback 2s var(--ease-out) both; }
 @keyframes putback { 0% { opacity: 0; transform: translateY(4px); } 12%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-.home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-in) both; }
+.home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-out) both; }
 @keyframes card-settle { from { opacity: .6; transform: scaleY(1.04) translateY(-4px); } }
 
 /* The other things you can ask for, kept out of the way until wanted. */
 details.more { margin: var(--space-2) 0 var(--space-3); }
 details.more > summary { cursor: pointer; color: var(--muted); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; }
 details.more > summary::-webkit-details-marker { display: none; }
-details.more > summary::after { content: " +"; }
-details.more[open] > summary::after { content: " \2212"; }
+/* M27: a small chevron that turns when it opens, not a + and a minus. */
+details.more > summary { display: inline-flex; align-items: center; gap: 8px; }
+details.more > summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; translate: 0 -1px; transition: rotate var(--dur-1) var(--ease-out); }
+details.more[open] > summary::after { rotate: 45deg; translate: 0 -3px; }
 details.more > summary:hover { color: var(--fg); }
 ins.added, del.removed { text-decoration-thickness: 2px; }
 .added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; text-decoration: underline; }
@@ -324,7 +333,7 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 
 /* The island in the notch (F18, made fun on 27 Oct 2026): black like the notch in both themes. Idle it is only the notch
    (or the small pill, or the thin line), with no words. The app sizes the window (island.rs); the black shape inside it
-   moves on a spring (island.tsx, islandSpring.ts) to the size the app gives, --sw by --sh, centred on the notch, so the
+   moves on a spring (island.tsx, islandSpring.ts) to the size the app gives (set on the shape itself), centred on the notch, so the
    wings grow out of the notch and tuck back into it. --wing and --face are island.rs WING and FACE; --core is the notch's
    (or the pill's) width and --row the height of the row the wings sit in, both given by the app. Pop ins use the one spring
    (--ease-spring). Sizes come from the same scale as Home, at the island's own 14 px root (it never takes the text size). */
@@ -332,7 +341,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island { height: 100vh; --wing: 40px; --r: var(--r-md); }
 .island-hit { all: unset; box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; height: var(--row, 100%); min-height: 100%; display: block; color: #fff; cursor: pointer; font: 600 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; }
 .island-hit:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
-.island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: var(--sw, 100%); height: var(--sh, 100%); background: #000; overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
+.island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: #000; overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
 .island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: 22px; }
 .island.pill { --r: var(--r-pill); }
 .island.pill .island-shape { border-radius: var(--r); }
@@ -343,11 +352,11 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-wing { position: absolute; top: 0; height: var(--row); width: var(--wing); display: flex; align-items: center; justify-content: center; gap: var(--space-1); }
 .island-wing.left { left: calc(50% - var(--core) / 2 - var(--wing)); }
 .island-wing.right { left: calc(50% + var(--core) / 2); }
-.island-wing > * { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both; }
+.island-wing > * { animation: island-pop var(--dur-2) var(--ease-out) both; }
 .island-flow { display: block; height: calc(var(--row) * .85); width: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.island-wing .island-flow { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both, island-swim 1.8s ease-in-out 460ms infinite; }
+.island-wing .island-flow { animation: island-pop var(--dur-2) var(--ease-out) both; }
 .island-count { font: 700 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; color: #fff; }
-@keyframes island-pop { from { scale: .3; opacity: 0; } 40% { opacity: 1; } }
+@keyframes island-pop { from { scale: .9; opacity: 0; } }
 @keyframes island-swim { 0%, 100% { translate: 0 0; rotate: -4deg; } 50% { translate: 0 -1.5px; rotate: 4deg; } }
 /* The marks, drawn by hand, never a stock spinner and never grey. A plain dot is white at half strength; amber waits for
    you, green is done, red went wrong. Working (and looking) is a thin round arc that turns; thinking is one dot that
@@ -358,7 +367,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .mark[data-state="done"] { background: #4cc27f; }
 .mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #fff; }
 .mark[data-state="error"] { background: #ff7a6e; box-shadow: 0 0 0 2px rgba(255, 122, 110, .3); }
-.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both, island-needsYou-pulse 1.6s ease-in-out 460ms infinite; }
+.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-2) var(--ease-out) both, island-needsYou-pulse 1.6s ease-in-out 200ms infinite; }
 @keyframes island-needsYou-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } }
 .island-wing .mark[data-mark="dots"], .island-wing .mark[data-mark="arc"], .island-wing .mark[data-mark="bars"], .island-wing .mark[data-mark="tick"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 2px; }
 .island-wing .mark[data-mark="dots"] i { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: island-breathe 1.4s ease-in-out infinite; }
@@ -397,7 +406,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 :root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
 /* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, a small lean toward the screen. Its own rotate and
    translate, so the breathing animation (which sets transform) never cancels it. None with Reduce motion or Less motion. */
-.character[data-peek] { transition: rotate .3s ease-out, translate .3s ease-out; }
+.character[data-peek] { transition: rotate var(--dur-2) var(--ease-out), translate var(--dur-2) var(--ease-out); }
 .character[data-peek="peek"][data-peek-edge="right"] { rotate: -7deg; translate: -2px 0; }
 .character[data-peek="peek"][data-peek-edge="left"] { rotate: 7deg; translate: 2px 0; }
 .character[data-peek="peek"][data-peek-edge="top"] { translate: 0 3px; }
@@ -514,6 +523,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fl-dots { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .fl-dot { width: 22px; min-height: 6px; padding: 0; border: 0; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--fg) 22%, transparent); cursor: pointer; transition: background var(--dur) var(--ease); }
 .fl-dot.on { background: var(--fg); }
+/* M26: the step playing now fills its own bar, steadily, like stories do, so the run shows where it is and what is next. */
+.fl-dot { position: relative; clip-path: inset(0 round 999px); }
+.fl-dot.now::after { content: ""; position: absolute; inset: 0; background: var(--fg); transform-origin: 0 50%; animation: fl-fill var(--beat, 2800ms) linear both; }
+@keyframes fl-fill { from { transform: scaleX(0); } }
 .fl-recorded { margin: 0; }
 @media (max-width: 520px) { .fl-stage { grid-template-columns: 1fr; } }
 .fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); column-gap: var(--space-4); align-items: center; }
@@ -531,10 +544,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    how they are going (lime while working, green when done), and a faint lime glow sits along the bottom edge. With nothing
    running it says hello in big rounded words. Always laid out at island.rs PANEL_W so its height is measured before it
    opens; shown only while the pointer rests on the island. */
-.island-panel { --lime-hi: #E4FF8A; --lime-lo: #8DBA12; --lime-ink: #1A2600; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+.island-panel { --lime-hi: #E4FF8A; --lime-lo: #8DBA12; --lime-ink: #1A2600; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity 120ms var(--ease-out), scale 120ms var(--ease-out), visibility 0s linear 120ms; }
 /* The notch's black, lifting to a soft grey where the panel hangs. */
 .island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
-.island-panel[data-shown] { visibility: visible; opacity: 1; transition-delay: 60ms; }
+.island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity 160ms var(--ease-out), scale 160ms var(--ease-out), visibility 0s; }
 .island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(198, 244, 50, .22), transparent); pointer-events: none; }
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -544,15 +557,20 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(198, 244, 50, .25); }
 .island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #C6F432; background: #1A2600; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
 .island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
-.island-panel .ip-pill:hover { background: #34343A; transform: translateY(-1px); }
-.island-panel .ip-pill:active { transform: scale(.94); }
+.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
+.island-panel .ip-pill:hover { background: #34343A; }
+.island-panel .ip-pill:active, .island-panel .ip-open:active, .island-panel .ip-job:active { transform: scale(.97); }
+.island-panel .ip-open, .island-panel .ip-job, .island-panel .ip-answer button { transition: transform 160ms var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .island-panel .ip-pill .ic { color: #C6F432; }
 .island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
 .island-panel .ip-open:hover { background: #34343A; }
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.island-panel .ip-jobs li { animation: ip-in var(--dur-4) var(--ease-spring) both; }
-@keyframes ip-in { from { opacity: 0; translate: 0 -6px; scale: .97; } }
+/* M26: opened by itself (a question, or a moment of work), the panel is only the cards, narrower, so it covers as little
+   of the windows under the notch as it can. */
+.island-panel[data-brief] { width: 340px; padding: 6px 10px 10px; }
+/* The rows come with the panel itself, not one by one (M25: it opens on every hover). While the panel is hidden, nothing in
+   it keeps animating. */
+.island-panel:not([data-shown]) *, .island-panel:not([data-shown]) *::after { animation-play-state: paused; }
 .island-panel .ip-job { position: relative; overflow: hidden; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 16px; background: #1E1E21; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
 .island-panel .ip-job:hover { background: #26262A; }
 .island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(198, 244, 50, .3); }
@@ -560,6 +578,20 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #C6F432, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
 @keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
+/* M23: a question answered right in the notch. The buttons sit under the words and wake up once the card has been seen
+   for a moment (islandPanel.ts ARM_MS), so a pointer resting where the panel opens cannot answer by accident. */
+.island-panel .ip-ask { grid-template-columns: 30px minmax(0, 1fr); row-gap: 8px; }
+.island-panel .ip-ask:hover { background: #1E1E21; }
+.island-panel .ip-answer { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 6px; opacity: .4; transition: opacity var(--dur-2) var(--ease-out); }
+.island-panel .ip-ask:not([data-armed]) .ip-answer button { cursor: default; }
+.island-panel .ip-ask[data-armed] .ip-answer { opacity: 1; }
+.island-panel .ip-answer button { min-height: 30px; padding: 0 14px; border-radius: 999px; font: 600 12.5px/1 var(--round); }
+.island-panel .ip-answer button:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+.island-panel .ip-no { background: #2C2C31; color: #FFFFFF; }
+.island-panel .ip-no:hover { background: #36363C; }
+.island-panel .ip-yes { background: #C6F432; color: #0A0A0A; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18); }
+.island-panel .ip-yes:hover { background: #D2F85A; }
+.island-panel .ip-yes:active, .island-panel .ip-no:active { transform: scale(.97); }
 .island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
@@ -574,8 +606,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    icons: white on a dark menu bar, black on a light one. The window is island.rs MARK wider each side, see through;
    resting on it opens the panel. It fades in, and breathes very slowly. */
 .island-sun { position: absolute; top: calc((var(--row) - 15px) / 2); left: calc(50% - var(--core) / 2 - 20.5px); width: 15px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; z-index: 1; }
-.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both; }
-@keyframes island-sun-in { from { opacity: 0; scale: .6; } }
+.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-2) var(--ease-out) both; }
+@keyframes island-sun-in { from { opacity: 0; scale: .9; } }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The waterline (M17 step 4, 28 Oct 2026, a frontend-design pass after the founder said the look still fell flat). Home is
@@ -599,6 +631,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .home-char { -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); }
 .home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
 .home .subline { font-size: var(--t-small); }
+/* M27: the line under the headline sits in the water, clear of the wave, never on it. */
+.home .hero .hero-words .subline { margin-top: 24px; color: color-mix(in srgb, var(--fg) 72%, transparent); }
 /* The ask box: white paper on the water, the words in black, the lime key to send. */
 .home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
 .home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(198, 244, 50, .55), 0 10px 40px rgba(0, 0, 0, .45); }
@@ -696,7 +730,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-power span { display: block; color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
 .fr-power em { display: block; margin-top: 2px; color: #FFCF73; background: #101013; font-style: normal; font-size: var(--t-caption); }
 .fr-tog { position: relative; width: 44px; min-height: 26px; padding: 0; border: 0; border-radius: var(--r-pill); background: #3A3A40; cursor: pointer; transition: background-color var(--dur-2) var(--ease-out); }
-.fr-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform var(--dur-3) var(--ease-spring); }
+.fr-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform var(--dur-1) var(--ease-out); }
 .fr-tog[aria-pressed="true"] { background: #C6F432; }
 .fr-tog[aria-pressed="true"]::after { transform: translateX(18px); background: #1A2600; }
 /* Connect and the folder. */
@@ -755,20 +789,20 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .onboarding.look .fl-tagline { font-family: var(--round); }
 .onboarding.look .fl-stage { grid-template-columns: minmax(0, 1fr); }
 .onboarding.look .fl-code, .onboarding.look .fl-check { background: #121216; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
-.onboarding.look .fl-dot.on { background: var(--key); }
+.onboarding.look .fl-dot.on, .onboarding.look .fl-dot.now::after { background: var(--key); }
 .onboarding.look .fl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
 .companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-again:hover { background: #2A2A30; }
 /* Fluid steps (M18): each screen of the first run slides in on the island's spring, from the right going on and from the
    left going back, a little blurred until it settles, while the water rises underneath. None with reduced motion. */
-.fr-slide { display: flex; flex-direction: column; flex: 1; animation: fr-slide-on 520ms var(--ease-spring) both; }
+.fr-slide { display: flex; flex-direction: column; flex: 1; animation: fr-slide-on var(--dur-3) var(--ease-out) both; }
 .fr-slide[data-dir="back"] { animation-name: fr-slide-back; }
 .fr-slide > .fr-hello { z-index: 1; }
-@keyframes fr-slide-on { from { opacity: 0; transform: translateX(36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
-@keyframes fr-slide-back { from { opacity: 0; transform: translateX(-36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
-.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in 520ms var(--ease-out) 60ms both; }
-.fr-slide .fr-line { animation-delay: 110ms; }
+@keyframes fr-slide-on { from { opacity: 0; transform: translateX(24px); } }
+@keyframes fr-slide-back { from { opacity: 0; transform: translateX(-24px); } }
+.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in var(--dur-3) var(--ease-out) 30ms both; }
+.fr-slide .fr-line { animation-delay: 60ms; }
 @keyframes fr-rise-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* Home's theme (M19, look.theme; lookfeel.ts): Night (the usual black), Deep sea (dark blue) or Paper (light). Only Home
@@ -796,8 +830,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 /* On the character's card (M19): the water colours as drops, one tap each, and how lively, both shown at once above. */
 .ch-look { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin: calc(var(--space-2) * -1) 0 var(--space-4); }
 .ch-waters { display: flex; gap: var(--space-2); }
-.ch-water-pick { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; background: radial-gradient(circle at 38% 30%, #ffffff 0 10%, var(--pick) 45%, var(--pick-deep)); box-shadow: 0 0 0 2px transparent; cursor: pointer; transition: transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) var(--ease-out); }
+.ch-water-pick { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; background: radial-gradient(circle at 38% 30%, #ffffff 0 10%, var(--pick) 45%, var(--pick-deep)); box-shadow: 0 0 0 2px transparent; cursor: pointer; transition: transform 160ms var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
 .ch-water-pick:hover { transform: translateY(-2px) scale(1.06); }
+.ch-water-pick:active { transform: scale(.97); }
 .ch-water-pick[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); transform: scale(1.1); }
 .ch-lively { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface); }
 .ch-lively button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: var(--surface); color: var(--fg); font: 600 var(--t-caption) var(--round); cursor: pointer; }
@@ -807,3 +842,33 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sections-group .sections { margin: 0; }
 .sections-head { margin: 0 0 var(--space-1); color: var(--muted); font: 600 var(--t-caption) var(--round); }
 .fr-seg.three { grid-template-columns: repeat(3, 1fr); }
+/* Google in Settings (M21): who is signed in, and each connected account with its apps. */
+.google-head { margin: var(--space-4) 0 var(--space-1); font: 700 var(--t-body) var(--round); }
+.google-dot { display: inline-grid; place-items: center; width: 28px; min-height: 28px; flex: none; border-radius: 50%; background: var(--fg); color: var(--bg); font: 700 var(--t-small) var(--round); }
+.google-me, .google-acct { align-items: center; gap: var(--space-3); }
+.google-acct .line { flex: 1; }
+.google-new { display: grid; gap: var(--space-1); margin-top: var(--space-3); }
+/* The first run's download of Anthropic's Claude (M22): a water bar that fills; one that does not know the size drifts. */
+.fr-progress { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--t-small); }
+.fr-bar { min-height: 10px; border-radius: var(--r-pill); background: #121216; overflow: clip; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--water-deep), var(--water)); transition: width var(--dur-3) var(--ease-out); }
+.fr-bar i[data-unknown] { animation: fr-drift 1.4s ease-in-out infinite alternate; }
+@keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }
+
+/* M24: one Flowflow everywhere. The small live water (flowflowMini.tsx) takes the place of the picture in the notch, its
+   panel and the first run, at the same size; its canvas fills a square box, and its colour already comes from Settings. */
+.ff-mini { position: relative; display: block; aspect-ratio: 1; filter: none; overflow: visible; }
+.ff-mini .ff-mini-canvas { position: absolute; inset: -12%; width: 124%; height: 124%; display: block; pointer-events: none; }
+.island-flow.ff-mini { width: calc(var(--row) * .85); }
+.island-panel .ip-agent.ff-mini { height: 30px; }
+.fr-pick .fr-flow { width: 64px; }
+.fr-name .fr-flow { width: 34px; }
+.fr-flow { display: block; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.fr-flow:not(.ff-mini) { filter: hue-rotate(var(--water-turn, 0deg)); }
+
+/* M27: the folder actions at the foot of Home are one quiet row under a hairline, all the same small pill, lined up. */
+.home .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid color-mix(in srgb, var(--fg) 10%, transparent); }
+.home .foot > .row.folder { display: contents; }
+.home .foot > .line, .home .foot > .error, .home .foot > .notice, .home .foot > .row:not(.folder) { flex-basis: 100%; }
+.home .foot .row.folder .btn, .home .foot .row.folder select { margin: 0; min-height: 30px; padding: 0 12px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: color-mix(in srgb, var(--fg) 80%, transparent); font-size: var(--t-small); font-weight: 500; }
+.home .foot .row.folder .btn:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }

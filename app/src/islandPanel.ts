@@ -6,7 +6,16 @@ import { characterWords, formatUsd, receiptProofWords, visualState, type Charact
 import { S } from "./strings.ts";
 
 export type JobTone = "working" | "needsYou" | "done" | "failed";
-export type JobCard = { key: string; state: CharacterState; tone: JobTone; title: string; sub: string; cost: string | null };
+export type JobCard = { key: string; state: CharacterState; tone: JobTone; title: string; sub: string; cost: string | null; approval?: string; risk?: string };
+
+/** M23: the questions answered right in the notch, once: the ones that can be taken back. Anything that cannot be undone
+ *  (send, pay, delete, go live) or that changes the person's git, and any kind not known here, opens Home to look first. */
+const HERE: readonly string[] = ["network", "install", "outside_project", "settings"];
+export const answerHere = (risk: string): boolean => HERE.includes(risk);
+/** The buttons work only once the card has been on screen this long, so a pointer that happens to sit where the panel
+ *  springs open cannot answer by accident. `since`: when the card was first drawn, null while hidden. */
+export const ARM_MS = 600;
+export const armed = (since: number | null, now: number): boolean => since !== null && now - since >= ARM_MS;
 
 /** At most this many cards, so the panel stays a glance (island.rs PANEL_MAX); the rest are in Home. */
 export const MAX_JOBS = 3;
@@ -17,7 +26,7 @@ const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The cards, most urgent first: questions waiting for the person, then the work going on, then the last result. */
 export function islandJobs(m: Model): JobCard[] {
-  const out: JobCard[] = m.approvals.map((a) => ({ key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: a.title, sub: S.panel.needsYou, cost: null }));
+  const out: JobCard[] = m.approvals.map((a) => ({ key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: a.title, sub: answerHere(a.risk) ? S.panel.askHere : S.panel.needsYou, cost: null, approval: a.id, risk: a.risk }));
   const v = visualState(m);
   if (m.task && BUSY.includes(v)) {
     const d = m.drive && !m.drive.finished ? m.drive : null;
@@ -28,6 +37,12 @@ export function islandJobs(m: Model): JobCard[] {
   }
   return out.slice(0, MAX_JOBS);
 }
+
+/** M26: work cards hang from the notch by themselves for a moment when something changes (a job starts, moves a step,
+ *  ends with its proof), like a phone's live activity, then tuck back so nothing stays over the person's windows. This is
+ *  what counts as a change: each card's kind, title and line, never its cost. "" when there is no work. */
+export const workPeekKey = (jobs: JobCard[]): string => jobs.filter((j) => !j.approval).map((j) => `${j.key}|${j.tone}|${j.sub}`).join("\n");
+export const WORK_PEEK_MS = 3500;
 
 /** The one line under the cards (not connected, an update, the engine stopped): only when no card already says what is
  *  happening, so nothing is said twice. */

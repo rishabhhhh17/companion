@@ -1,0 +1,7 @@
+{
+  "package": "@anthropic-ai/claude-agent-sdk-darwin-arm64",
+  "version": "0.3.293",
+  "integrity": "sha512-E2rwiiHr3LwYzBuTROVDpJkts4QmYCrW39ZIN1qixVSNQhSEiz5LjaKxzrwq0xgPgQDU0vd2fLMG1k72BgD24w==",
+  "team": "Q6L2SF6YDW",
+  "identifier": "com.anthropic.claude-code"
+}

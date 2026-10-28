@@ -301,10 +301,17 @@ impl Follow {
 /// What decides the island's size: the pointer is on it, something is happening (the wings), Home is open, and how tall
 /// the hover panel's contents are (`panel`, whole points, as the page measured them).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16 }
+pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool }
+
+/// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
+/// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
+pub fn animates_open(source: &str) -> bool { source != "hotkey" }
 
 /// Home open shows everything the line or the wings would, right below, so the island stays the bare notch over it.
+/// A question waiting for the person (`ask`, M23: the page says so only with Open the notch for questions on) opens the
+/// panel under the wings without the pointer, so it can be answered there.
 pub fn mode(s: State) -> Mode {
+    if s.ask && !s.home_open { return Mode::WingsPeek; }
     match (s.home_open, s.hover, s.alert) {
         (true, _, _) => Mode::Rest,
         (false, true, true) => Mode::WingsPeek,
@@ -672,7 +679,7 @@ mod tests {
     }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
-        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0 });
+        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false });
         assert_eq!(s(false, false, false), Mode::Rest);
         assert_eq!(s(false, true, false), Mode::Alert);
         assert_eq!(s(true, false, false), Mode::Peek);
@@ -1012,4 +1019,19 @@ mod tests {
         assert!(body("fn open_card(").contains("&CARD_MOVES)"));
     }
 
+
+    #[test]
+    fn a_question_opens_the_panel_unless_home_is_open() {
+        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask });
+        assert_eq!(s(false, false, true), Mode::WingsPeek);
+        assert_eq!(s(true, false, true), Mode::WingsPeek);
+        assert_eq!(s(false, true, true), Mode::Rest);
+        assert_eq!(s(false, false, false), Mode::Alert);
+    }
+
+    #[test]
+    fn home_opened_by_a_key_is_there_at_once() {
+        assert!(!animates_open("hotkey"));
+        for s in ["button", "island", "dock", "drop", "first_run", "reopen"] { assert!(animates_open(s), "{s}"); }
+    }
 }

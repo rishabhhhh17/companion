@@ -61,7 +61,7 @@ export const S = {
     close: `Close ${PRODUCT}`,
     settingsPlaces: "Settings sections",
     // Home as one black panel under the notch (27 Oct 2026): the job in big words, one ask box, three quick actions.
-    ask: "Ask anything or describe the problem",
+    ask: "Describe the problem",   // M27: short enough to fit beside How to talk at Home's width
     send: "Start",
     talk: "Hold to talk",
     chipFind: "Find the problem",
@@ -238,6 +238,13 @@ export const S = {
     asks: { guide: "Asks for screen access the first time", voice: "Asks for the microphone the first time" } as Record<string, string>,
     next: "Next",
     connectTitle: "Connect your Claude",
+    claudeTitle: "Getting Claude ready",
+    claudeLine: "Squibby runs Anthropic's own Claude on your Mac. It downloads straight from Anthropic, once, and is checked before it's used.",
+    claudeGetting: (mb: number, pct: number | null) => (pct === null ? `Downloading, ${mb} MB so far` : `Downloading, ${pct}%`),
+    claudeReady: "Claude is ready.",
+    claudeAgain: "Try again",
+    claudeMissing: "Squibby needs Anthropic's Claude to work. It downloads once, straight from Anthropic.",
+    claudeInstall: "Get Claude",
     folderTitle: "Which project are we finishing?",
     folderNone: "No folder chosen yet.",
     folderGo: (name: string) => `Open ${name}`,
@@ -256,7 +263,10 @@ export const S = {
     hiWord: "finishing",
     open: `Open ${PRODUCT}`,
     label: `${PRODUCT}: what is happening`,
-    needsYou: "Needs your OK. Open to answer.",
+    needsYou: "Needs your OK. Look at it first.",
+    // M23: a question answered right in the notch (islandPanel.ts answerHere), this once only.
+    askHere: "Needs your OK, just this once.",
+    lookFirst: "Look first",
     step: (i: number, n: number, title: string) => `Step ${i} of ${n}: ${title}`,
     jobs: "Work going on",
   },
@@ -1223,6 +1233,10 @@ export const S = {
     "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the island moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
     "home.closeOnClickAway": { label: "Close Home when I click another app", help: "Off, Home stays open until you close it, press Esc, or click the character, or the island when it is shown, again. It never closes by itself while something waits for you.", also: ["click away", "close", "keep open"] },
     "home.stepAside": { label: "Step aside for what Home opens", help: "On, when Home opens a web page, the email for Report a problem, or Finder showing the support log, Home closes so you can see it. Open it again with the island or the character; what it said is still there. It stays open while something on it waits for you, such as a question or a lesson.", also: ["report a problem", "link", "browser", "email", "close", "out of the way"] },
+    "talk.captions": { label: "Show my words while I talk", help: "When I say something out loud, the words also show at the bottom of your screen, and go away when I stop.", also: ["captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
+    "home.escStops": { label: "Esc stops what I show on screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["escape", "esc", "stop", "cancel", "take back", "control"] },
+    "island.showWork": { label: "Show work under the notch", help: "When a job starts, moves to its next step or finishes, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["live", "progress", "cards", "jobs", "activity", "notch"] },
+    "island.openForQuestions": { label: "Open the notch for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["approve", "allow", "ask", "question", "notch", "pop up"] },
     "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are, and puts a dot on that tab and a mark on the island, or on the character when the island is off. With Speak to me on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
     "home.size": { label: "Home size", help: "Large makes Home wider and taller, which suits larger text. The character keeps clear of Home at either size.", also: ["bigger", "wider", "taller", "window"], options: { standard: "Standard", large: "Large" } },
     "character.edge": { label: "Edge for the character on this display", help: "Which edge of the screen the character lives on, on the display it is on now. You can also drag it to any edge or corner.", also: ["place", "move", "corner", "side", "position"], options: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" } },
@@ -1368,6 +1382,27 @@ export const S = {
   // Puts back the character's edge, its position along it and Same place on every display together.
   setResetPlace: "Put the character back in its usual place",
   // The parts of Settings that are not settings, found by the search too.
+  // Google (M21, google.rs): sign in with Google, and connect Gmail, Calendar and Drive. Plain words; Google's page opens in
+  // the person's own browser, never here.
+  google: {
+    notSetUp: "Google isn't set up in this build yet. (For the team: add the Google client id to app/google.json and build again.)",
+    signInTitle: "Your account",
+    signInLine: "Sign in with Google to have a Squibby account. Your own Claude key keeps working without one.",
+    signIn: "Sign in with Google",
+    signOut: "Sign out",
+    signedIn: (name: string, email: string) => (name ? `${name}, ${email}` : email),
+    connectTitle: "Connections",
+    connectLine: "Connect a Google account so Squibby can use Gmail, Calendar or Drive when you ask. Sending an email, adding an event or sharing a file always waits for your OK.",
+    apps: { gmail: "Gmail", calendar: "Calendar", drive: "Drive" } as Record<string, string>,
+    appLines: { gmail: "Search, read and draft emails (never sends on its own)", calendar: "See your events, find a free time, add an event after you OK it", drive: "Read the files you open or pick with Squibby" } as Record<string, string>,
+    label: "Name it (Work, Personal)",
+    connect: "Connect a Google account",
+    waiting: "Finish in your browser. Google's own page is open there.",
+    disconnect: "Disconnect",
+    none: "No Google account connected yet.",
+    failed: (why: string) => `Not connected: ${why}`,
+    busy: "A Google sign in is already open in your browser.",
+  },
   // The headings of the Settings side list (settingsGroups.ts).
   setGroups: { companion: "Character", powers: "Powers", mac: "Your Mac", account: "Account", more: "More" } as Record<string, string>,
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
@@ -1379,6 +1414,7 @@ export const S = {
   fixedGroups: {
     permissions: { title: `What ${PRODUCT} may do on this Mac`, also: ["permission", "accessibility", "screen recording", "microphone", "privacy"] },
     key: { title: "Your Claude key", also: ["api key", "anthropic", "keychain", "account"] },
+    google: { title: "Google", also: ["google", "sign in", "account", "gmail", "email", "calendar", "drive", "docs", "connect", "connections"] },
     practice: { title: "Practice", also: ["sample", "try", "learn"] },
     made: { title: `What ${PRODUCT} made`, also: ["new folder", "new folders", "made", "folders", "trash", "remove", "delete", "clean up", "projects", "make me something"] },
     kept: { title: `What ${PRODUCT} keeps on this Mac`, also: ["delete everything", "data", "storage", "erase", "privacy"] },

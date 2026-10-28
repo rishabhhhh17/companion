@@ -17,6 +17,7 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 | `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped; sets `metadata.user_id` and removes any `metadata` the client sent |
 | `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
 | `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
+| `src/google.ts` | Sign in with Google (M21): checks a Google ID token (RS256 against Google's keys, issuer, audience = `GOOGLE_CLIENT_ID`, expiry, verified email) with Web Crypto; the owner is `google:<sub>`. `POST /v1/signin/google` with `{"idToken"}` answers `{token, plan, email, name, picture}`; it sits behind the same switch and secret check as every request, so while the switch is off it is refused too |
 | `src/operator.ts`, `scripts/suspend.ts` | The operator's tool to find, suspend and restore one person (dry run by default) |
 | `src/usage.ts` | Reads token counts from a reply (streaming or not) without keeping any text; prices them with the app's own table |
 | `src/proxy.ts` | The request handler: switch, token, plan, budget, forward, stream back, book the cost |

@@ -199,7 +199,9 @@ function Dock() {
           </>}
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
-      <div className="dock-label" role="status" aria-live="polite">{label}</div>
+      {/* M26: the words show only when there is something to say; resting, "Ready" is for VoiceOver only, so Flowflow is not
+          labelled like a debug readout. */}
+      <div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>
       {!flow.failed && !(liveOn && !liveFailed) && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />

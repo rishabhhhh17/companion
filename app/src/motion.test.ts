@@ -231,7 +231,7 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(main).toContain("let calm = reduce_motion();");
     expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::retract_ms(from, f, reduce_motion())");
-    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
+    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion())");
   });
 });
 

@@ -1,8 +1,8 @@
 // The recorded first run on screen (firstLook.ts has the rules and the real practice it shows). It plays by itself, a few
 // seconds a step; with Reduce motion or Less motion it waits for Next step instead. The dots jump to any step. Nothing
 // here talks to the engine or the Mac: it is a picture of a run, and it says so.
-import { useEffect, useRef, useState } from "react";
-import { BEATS, BEAT_STATE, RECORDING, beatAt, beatIndex, shown, type Beat } from "./firstLook.ts";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { BEATS, BEAT_MS, BEAT_STATE, RECORDING, beatAt, beatIndex, shown, type Beat } from "./firstLook.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Icon } from "./icons.tsx";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -21,13 +21,14 @@ export function FirstLook({ onGo }: { onGo: () => void }) {
   const playing = !reduced && !paused && picked === null;
   const beat: Beat = picked ?? (reduced ? "broken" : beatAt(now - startedAt));
   const done = beat === BEATS[BEATS.length - 1];
-  const raf = useRef(0);
+  // M26: one update at each step's start, not one per screen refresh (the step's own bar fills in CSS meanwhile).
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (reduced || paused || picked !== null || done) return;
-    const tick = () => { setNow(performance.now()); raf.current = requestAnimationFrame(tick); };
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
-  }, [reduced, paused, picked, done]);
+    const left = BEAT_MS - ((now - startedAt) % BEAT_MS);
+    timer.current = setTimeout(() => setNow(performance.now()), left + 5);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [reduced, paused, picked, done, now, startedAt]);
   const again = () => { setPicked(reduced ? "broken" : null); setPaused(false); const t = performance.now(); setStartedAt(t); setNow(t); };
   const step = () => setPicked(BEATS[Math.min(BEATS.length - 1, beatIndex(beat) + 1)]);
   const i = beatIndex(beat);
@@ -72,7 +73,8 @@ export function FirstLook({ onGo }: { onGo: () => void }) {
 
       <div className="fl-dots" role="group" aria-label={W.recorded}>
         {BEATS.map((b, n) => (
-          <button key={b} type="button" className={`fl-dot${n <= i ? " on" : ""}`} aria-current={b === beat ? "step" : undefined}
+          <button key={b} type="button" className={`fl-dot${n < i || (n === i && !playing) ? " on" : ""}${n === i && playing ? " now" : ""}`} aria-current={b === beat ? "step" : undefined}
+            style={{ "--beat": `${BEAT_MS}ms` } as CSSProperties}
             aria-label={W.stepOf(n + 1, BEATS.length, W.stepNames[b])} onClick={() => setPicked(b)} />
         ))}
       </div>

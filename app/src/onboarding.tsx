@@ -6,7 +6,7 @@ import { changeSetting } from "./settingsStore.ts";
 import { STEPS, canContinue, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, yoursSettings, type Answers, type Edge, type Follow, type Lively, type Step, type Yours } from "./onboarding.ts";
 import { keyHints, keyRows, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
-import { invoke } from "./tauri.ts";
+import { invoke, listen } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S, NAMES } from "./strings.ts";
 import { failNote } from "./failwords.ts";
@@ -16,7 +16,7 @@ import { FirstLook } from "./firstLook.tsx";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { COMPANIONS } from "./companion.ts";
-import { poseFor, poseUrl } from "./characters.ts";
+import { FlowMini } from "./flowflowMini.tsx";
 
 // The first run (M18, the whole flow; onboarding.ts has the order and the rules). Home's black, with water at the foot that
 // rises with every step (the progress, also said in words), and the one lime button always in the same place at the bottom.
@@ -47,10 +47,25 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // The keys every job uses now (the person may have picked others, or another app may hold the usual ones).
   const keys = useKeys();
   const ok = connected === "api_key" || connected === "plan";
-  const ctx = { connected: ok, project };
   // Which way the last move went, so the next screen slides in from the right going on and from the left going back.
   const [dir, setDir] = useState<"on" | "back">("on");
-  const go = (to: Step | null) => { if (!to) return; setDir(STEPS.indexOf(to) < STEPS.indexOf(step) ? "back" : "on"); setStep(to); };
+  // Anthropic's Claude (M22): asked about as the first run opens, and fetched in the background at once if it is missing, so
+  // it is usually ready by the time its step comes. Its step is passed over when it is already ready.
+  const [claude, setClaude] = useState<{ state: string; received?: number; total?: number | null; message?: string } | null>(null);
+  useEffect(() => {
+    void invoke("claude_status").then((v) => { const s = v as { state: string }; setClaude(s); if (s.state === "missing") void invoke("claude_install_now").catch(() => {}); }).catch(() => setClaude({ state: "ready" }));
+    const off = listen("claude-install", (e) => setClaude(e.payload as { state: string }));
+    return () => { off.then((f) => f()); };
+  }, []);
+  const claudeReady = claude?.state === "ready";
+  const ctx = { connected: ok, project, claude: claude ? claude.state === "ready" : undefined };
+  const go = (target: Step | null) => {
+    if (!target) return;
+    const forward = STEPS.indexOf(target) >= STEPS.indexOf(step);
+    const to = target === "claude" && claudeReady ? (forward ? next(target) : back(target)) : target;
+    if (!to) return;
+    setDir(forward ? "on" : "back"); setStep(to);
+  };
   const own = NAMES.character;
   const name = yours.name.trim() || own;
   // What was chosen on the way (the name, how lively, the edge, the groups) is kept however the first run ends; the questions
@@ -126,7 +141,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <p className="fr-line">{S.fr.pickLine}</p>
         <div className="fr-cast">
           {COMPANIONS.map((c) => c.ready
-            ? <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><img src={poseUrl(poseFor("idle"))} alt="" draggable={false} /><b>{name}</b><span>{S.fr.pickWater}</span></button>
+            ? <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><FlowMini className="fr-flow" state="idle" /><b>{name}</b><span>{S.fr.pickWater}</span></button>
             : <div key={c.id} className="fr-pick slot"><span className="fr-hole" aria-hidden="true" /><b>{S.groups.names[c.group]}</b><span className="fr-soon">{S.fr.soon}</span></div>)}
         </div>
         <div className="fr-grow" />
@@ -135,7 +150,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
 
       {step === "yours" && (<>
         <h2 className="fr-title">{S.fr.yoursTitle}</h2>
-        <label className="fr-name"><img src={poseUrl(poseFor("idle"))} alt="" draggable={false} /><span className="sr">{S.fr.nameLabel}</span>
+        <label className="fr-name"><FlowMini className="fr-flow" state="idle" /><span className="sr">{S.fr.nameLabel}</span>
           <input type="text" value={yours.name} maxLength={NAME_MAX} placeholder={own} spellCheck={false} autoComplete="off" onChange={(e) => setYours({ ...yours, name: e.target.value })} /></label>
         <div className="fr-label" id="fr-lively">{S.fr.livelyLabel}</div>
         <div className="fr-seg" role="group" aria-labelledby="fr-lively">
@@ -171,6 +186,22 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <p className="fr-small">{S.groups.core}</p>
         <div className="fr-grow" />
         {main(S.fr.next, () => go(next(step)))}
+      </>)}
+
+      {step === "claude" && (<>
+        <h2 className="fr-title">{S.fr.claudeTitle}</h2>
+        <p className="fr-line">{S.fr.claudeLine}</p>
+        {claude?.state === "installing" && (() => {
+          const mb = Math.round((claude.received ?? 0) / 1e6), pct = claude.total ? Math.min(100, Math.round(((claude.received ?? 0) / claude.total) * 100)) : null;
+          return <div className="fr-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined} aria-valuetext={S.fr.claudeGetting(mb, pct)}>
+            <div className="fr-bar"><i style={{ width: `${pct ?? 30}%` }} data-unknown={pct === null ? "yes" : undefined} /></div><span>{S.fr.claudeGetting(mb, pct)}</span></div>;
+        })()}
+        {claudeReady && <p className="fr-ok" role="status">{S.fr.claudeReady}</p>}
+        {claude?.state === "failed" && <><div className="error" role="alert">{claude.message}</div>
+          <button className="fr-link" type="button" onClick={() => { setClaude({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{S.fr.claudeAgain}</button></>}
+        {claude?.state === "missing" && <button className="fr-link" type="button" onClick={() => void invoke("claude_install_now").catch(() => {})}>{S.fr.claudeInstall}</button>}
+        <div className="fr-grow" />
+        {main(S.obContinue, () => go(next(step)), !canContinue(step, ctx))}
       </>)}
 
       {step === "connect" && (<>

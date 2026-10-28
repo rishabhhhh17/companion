@@ -28,10 +28,10 @@ describe("the panel under the notch shows the work, not a character", () => {
     const m = run([...started, ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })]);
     expect(islandJobs(m)[0].sub).toBe(S.panel.step(2, 3, "Rename the function"));
   });
-  test("a question waiting comes first, and says to open Home to answer", () => {
+  test("a question waiting comes first, and says it can be answered here", () => {
     const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Install a package", expiresAt: "2099-01-01T00:00:00Z" })]);
     const c = islandJobs(m);
-    expect(c[0]).toMatchObject({ tone: "needsYou", title: "Install a package", sub: S.panel.needsYou });
+    expect(c[0]).toMatchObject({ tone: "needsYou", title: "Install a package", sub: S.panel.askHere });
   });
   test("never more than a glance", () => {
     let m = run(started);
@@ -57,7 +57,7 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.find })');
     expect(view).toContain('<button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>');
     expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.ship })');
-    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering \}\)/);
+    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask \}\)/);
   });
 });
 
@@ -75,5 +75,66 @@ describe("the sun inside the notch (M20)", () => {
     expect(lime.match(/transform="rotate\(/g)?.length).toBe(7);
     expect(new Set([...lime.matchAll(/<path d="([^"]+)" fill="#C6F432" transform/g)].map((m) => m[1])).size).toBe(1);
     expect(lime).toContain('mask="url(#cutn)"');
+  });
+});
+
+// M23: answer in the notch. Only questions that can be taken back are answered here, once, and only after the card has
+// been seen for a moment; the rest open Home to look first.
+import { ARM_MS, answerHere, armed } from "./islandPanel.ts";
+import { answerApproval } from "./commands.ts";
+
+describe("answering in the notch (M23)", () => {
+  const ask = (risk: string) => run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk, title: "Q", expiresAt: "2099-01-01T00:00:00Z" })]);
+  test("questions that can be taken back are answered here", () => {
+    for (const r of ["network", "install", "outside_project", "settings"]) expect(answerHere(r), r).toBe(true);
+  });
+  test("what cannot be undone, and anything touching the person's git, opens Home to look first", () => {
+    for (const r of ["irreversible", "git", "something new"]) expect(answerHere(r), r).toBe(false);
+  });
+  test("the card carries the question's id and risk", () => {
+    expect(islandJobs(ask("install"))[0]).toMatchObject({ approval: "ap1", risk: "install" });
+    expect(islandJobs(run(started))[0].approval).toBeUndefined();
+  });
+  test("the buttons wait until the card has been on screen for a moment", () => {
+    expect(ARM_MS).toBeGreaterThanOrEqual(500);
+    expect(armed(null, 10_000)).toBe(false);
+    expect(armed(1000, 1000 + ARM_MS - 1)).toBe(false);
+    expect(armed(1000, 1000 + ARM_MS)).toBe(true);
+  });
+  test("an answer from the notch is for this once only", () => {
+    expect((answerApproval("ap1", true) as { scope: string }).scope).toBe("once");
+    const src = read("./islandPanel.tsx");
+    expect(src).toContain("answerApproval(");
+    expect(src).not.toMatch(/scope:\s*"task"/);
+  });
+});
+
+// M26: work cards that hang from the notch by themselves for a moment (like a phone's live activity): when a job starts,
+// moves to a new step, and ends with its proof. Then they tuck back; the pointer still opens the whole panel.
+import { WORK_PEEK_MS, workPeekKey } from "./islandPanel.ts";
+
+describe("work cards drop from the notch on each change (M26)", () => {
+  test("the moment changes when a job starts, moves a step, or ends", () => {
+    const a = run(started);
+    const k0 = workPeekKey(islandJobs(initial()));
+    const k1 = workPeekKey(islandJobs(a));
+    expect(k0).toBe("");
+    expect(k1).not.toBe("");
+    const b = run([ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })], a);
+    expect(workPeekKey(islandJobs(b))).not.toBe(k1);
+  });
+  test("the cost going up is not a new moment", () => {
+    const a = run(started);
+    const paid = run([ev({ type: "cost.update", agent: "a", usdEstimate: 0.04 })], a);
+    expect(workPeekKey(islandJobs(paid))).toBe(workPeekKey(islandJobs(a)));
+  });
+  test("a moment is long enough to read and short enough not to be in the way", () => {
+    expect(WORK_PEEK_MS).toBeGreaterThanOrEqual(2500);
+    expect(WORK_PEEK_MS).toBeLessThanOrEqual(5000);
+  });
+  test("opened by itself, the panel shows only the cards; the pointer shows everything", () => {
+    const view = read("./islandPanel.tsx");
+    expect(view).toContain("brief");
+    expect(read("./island.tsx")).toContain('useSetting("island.showWork") !== false');
   });
 });

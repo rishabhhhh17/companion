@@ -26,6 +26,8 @@ export interface Store {
   /** Lift the block so a new token can be issued. Old tokens stay dead (the person signs in again). False if not suspended. */
   restoreOwner(ownerId: string, info: { at: number; caseId?: string }): Promise<boolean>;
   isSuspended(ownerId: string): Promise<boolean>;
+  /** The plan the owner already has (from their newest token that still works), or null for someone new. Signing in again keeps it. */
+  planOfOwner?(ownerId: string): Promise<string | null>;
   suspensions(): Promise<SuspensionRecord[]>;
 }
 
@@ -44,6 +46,11 @@ export class MemoryStore implements Store {
   }
   async listOwnerIds() { return [...new Set([...this.#users.values()].map((u) => u.id))]; }
   async isSuspended(ownerId: string) { return this.#suspended.has(ownerId); }
+  async planOfOwner(ownerId: string) {
+    let plan: string | null = null;
+    for (const u of this.#users.values()) if (u.id === ownerId && u.status !== "revoked") plan = u.plan;   // the newest one wins
+    return plan;
+  }
   async suspensions() { return this.#log.map((r) => ({ ...r })); }
   async suspendOwner(ownerId: string, info: { at: number; caseId?: string }) {
     if (this.#suspended.has(ownerId)) return { tokensRevoked: 0, alreadySuspended: true };

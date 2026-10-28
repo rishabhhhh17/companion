@@ -5,7 +5,6 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
-import { poseFor, poseUrl } from "./characters.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, CHEER_SPRING, ISLAND_SPRING, TUCK_MS, springStep, type Spring } from "./islandSpring.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
@@ -24,14 +23,16 @@ import "./style.css";
 // tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
+import { islandJobs, workPeekKey, WORK_PEEK_MS } from "./islandPanel.ts";
+import { FlowMini } from "./flowflowMini.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
-type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number };
+type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; hover: boolean };
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : 0);
 const shapeFrom = (v: unknown): Shape | null => {
-  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown } | null;
+  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown; hover?: unknown } | null;
   if (!o || !ISLAND_MODES.includes(o.mode as IslandMode) || !KINDS.includes(o.kind as Kind)) return null;
-  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row) };
+  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row), hover: o.hover !== false };
 };
 
 /** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
@@ -43,8 +44,10 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const draw = () => { const s = at.current; if (!s) return; el.style.setProperty("--sw", `${Math.max(0, s.x.x)}px`); el.style.setProperty("--sh", `${Math.max(0, s.y.x)}px`); };
-    if (!w || !h) { at.current = null; el.style.removeProperty("--sw"); el.style.removeProperty("--sh"); return; }
+    // The size goes straight on the shape (M25), not through inherited variables, so a frame restyles the shape alone and not
+    // everything inside it.
+    const draw = () => { const s = at.current; if (!s) return; el.style.width = `${Math.max(0, s.x.x)}px`; el.style.height = `${Math.max(0, s.y.x)}px`; };
+    if (!w || !h) { at.current = null; el.style.removeProperty("width"); el.style.removeProperty("height"); return; }
     if (!at.current || reduced) { at.current = { x: { x: w, v: 0 }, y: { x: h, v: 0 } }; draw(); return; }
     let raf = 0, last = performance.now();
     const tick = (t: number) => {
@@ -76,7 +79,7 @@ function Mark({ w, count }: { w: Wings; count: number }) {
 function Island() {
   useLook();   // the water's colour for the work cards (M19)
   const [m] = useModel();
-  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0 });
+  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0, hover: true });
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);
   const [reduced, setReduced] = useState(reducedMotion);
@@ -129,7 +132,21 @@ function Island() {
     return () => { clearTimeout(on); clearTimeout(off); setCheer(false); };
   }, [ticking]);
   const cheering = cheer && out;
-  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering }).catch(() => {}); }, [out, panelH, cheering]);
+  // M23: a question waiting opens the panel under the wings by itself (island.rs mode), with Open the notch for questions on.
+  // M26: and the work cards drop down for a moment at each change (a job starts, moves a step, ends with its proof), with
+  // Show work under the notch on; then they tuck back so nothing stays over the person's windows.
+  const showWork = useSetting("island.showWork") !== false;
+  const peekKey = showWork ? workPeekKey(islandJobs(m)) : "";
+  const [workPeek, setWorkPeek] = useState(false);
+  useEffect(() => {
+    if (!peekKey) { setWorkPeek(false); return; }
+    setWorkPeek(true);
+    const id = setTimeout(() => setWorkPeek(false), WORK_PEEK_MS);
+    return () => clearTimeout(id);
+  }, [peekKey]);
+  const questionsOpen = useSetting("island.openForQuestions") !== false;   // read every render: a hook is never skipped
+  const ask = out && ((questionsOpen && m.approvals.length > 0) || workPeek);
+  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask }).catch(() => {}); }, [out, panelH, cheering, ask]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
@@ -164,11 +181,11 @@ function Island() {
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
           {showWings && w && <span aria-hidden="true">
-            <span className="island-wing left"><img className="island-flow" src={poseUrl(poseFor(w.state))} alt="" draggable={false} /></span>
+            <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
           </span>}
         </button>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} />
       </span>
     </main>
   );

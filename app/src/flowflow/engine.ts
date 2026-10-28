@@ -24,9 +24,15 @@ export function gazeOf(dx: number, dy: number, span = GAZE_SPAN): { nx: number; 
 /** How far the body lags behind its window per point a second of the window's speed (world units), and the most it lags. */
 export const PUSH_PER = 0.0011;
 export const PUSH_MAX = 0.55;
-/** Life when nothing happens (Lively): a small hop every so often, on the seeded schedule (the same every run). */
-export const HOP_EVERY = [6, 12] as const;
+/** Life when nothing happens (Lively): something small every few seconds, on the seeded schedule (the same every run). */
+export const HOP_EVERY = [4, 8] as const;
 export const HOP_S = 0.5;
+/** M26: what it does when nothing happens, so it never just sits: a hop, a double bounce, a look around, a shake of
+ *  water off itself, a stretch, a bubble blown upward. Each with how long it lasts (seconds) and how often it is picked. */
+export const IDLE_ACTS = ["hop", "double", "look", "shake", "stretch", "bubble"] as const;
+export type IdleAct = (typeof IDLE_ACTS)[number];
+const ACT_S: Record<IdleAct, number> = { hop: 0.5, double: 0.9, look: 2.2, shake: 0.7, stretch: 1.3, bubble: 0.35 };
+const ACT_WEIGHT: Record<IdleAct, number> = { hop: 3, double: 1, look: 3, shake: 2, stretch: 2, bubble: 2 };
 
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
@@ -47,7 +53,9 @@ export class FlowflowEngine {
   private lastLook = -Infinity; private lastMove = -Infinity; private lastGaze = -Infinity; private pushing = false;
   /** Lively (M19, M20): with nothing happening it now and then hops. Off unless the page turns it on (Lively chosen). */
   lively = false;
-  private hopIn: number = HOP_EVERY[0]; private hopT = -1;
+  private hopIn: number = HOP_EVERY[0]; private hopT = -1; private act: IdleAct = "hop";
+  /** The idle moves done so far, oldest first (the last 64): for the tests, and to never do the same one twice in a row. */
+  readonly idleDone: IdleAct[] = [];
   private credit = 0;
   /** How far the body may roam toward the pointer, as a fraction of the frame (the dock is tiny, the preview is large). */
   followRange = 0.35;
@@ -139,17 +147,58 @@ export class FlowflowEngine {
 
   /** A small hop now and then while Lively and nothing happens (not while it is followed, pushed or busy). */
   private idleLife(d: number): void {
-    if (this.hopT >= 0) {
-      this.hopT += d;
-      const k = this.hopT / HOP_S;
-      if (k >= 1) { this.hopT = -1; this.body.setTarget(0, 0); this.body.impulse("land", 0.7); this.ripples.add(this.body.pose.x, this.body.pose.y - 0.3, 0.5); return; }
-      this.body.setTarget(0, Math.sin(k * Math.PI) * 0.22);
-      return;
-    }
+    if (this.hopT >= 0) { this.playAct(d); return; }
     const quiet = this.lively && !this.pushing && this.behavior.state === "idle" && this.time - this.lastMove > 4;
     if (!quiet) { this.hopIn = Math.max(this.hopIn, 2); return; }
     this.hopIn -= d;
-    if (this.hopIn <= 0) { this.hopIn = HOP_EVERY[0] + this.rand() * (HOP_EVERY[1] - HOP_EVERY[0]); this.hopT = 0; this.body.impulse("poke", 0.4, 0, -BODY_RADIUS * 0.7); }
+    if (this.hopIn <= 0) {
+      this.hopIn = HOP_EVERY[0] + this.rand() * (HOP_EVERY[1] - HOP_EVERY[0]);
+      this.act = this.pickAct(); this.hopT = 0;
+      this.idleDone.push(this.act); if (this.idleDone.length > 64) this.idleDone.shift();
+      if (this.act === "hop" || this.act === "double") this.body.impulse("poke", 0.4, 0, -BODY_RADIUS * 0.7);
+      if (this.act === "stretch") this.face.blinkNow();
+    }
+  }
+  /** A move from the seeded schedule, weighted, never the one just done. */
+  private pickAct(): IdleAct {
+    const last = this.idleDone[this.idleDone.length - 1];
+    const can = IDLE_ACTS.filter((a) => a !== last);
+    const total = can.reduce((n, a) => n + ACT_WEIGHT[a], 0);
+    let r = this.rand() * total;
+    for (const a of can) { r -= ACT_WEIGHT[a]; if (r <= 0) return a; }
+    return can[can.length - 1];
+  }
+  /** One frame of the move under way; each ends with the body back home. */
+  private playAct(d: number): void {
+    const was = this.hopT; this.hopT += d;
+    const k = Math.min(1, this.hopT / ACT_S[this.act]), p = this.body.pose;
+    const crossed = (at: number) => was < at * ACT_S[this.act] && this.hopT >= at * ACT_S[this.act];
+    switch (this.act) {
+      case "hop": this.body.setTarget(0, Math.sin(k * Math.PI) * 0.22); break;
+      case "double": {
+        this.body.setTarget(0, Math.abs(Math.sin(k * Math.PI * 2)) * 0.15);
+        if (crossed(0.5)) { this.body.impulse("land", 0.45); this.body.impulse("poke", 0.3, 0, -BODY_RADIUS * 0.7); }
+        break;
+      }
+      case "look": {
+        // Left, then right, a little lean each way, then back to the middle.
+        const side = k < 0.45 ? -1 : k < 0.9 ? 1 : 0;
+        this.face.glance(side * 0.9, 0.15, 0.3);
+        this.body.setTarget(side * 0.06, 0);
+        break;
+      }
+      case "shake": {
+        this.body.setTarget(Math.sin(k * Math.PI * 6) * 0.09 * (1 - k), 0);
+        if (crossed(0.35) || crossed(0.6)) this.emitDroplet((crossed(0.35) ? -1 : 1) * BODY_RADIUS * 0.8, 0.1, 0.55);
+        break;
+      }
+      case "stretch": this.body.setTarget(0, Math.sin(k * Math.PI) * 0.12); if (crossed(0.5)) this.body.impulse("poke", 0.35, 0, BODY_RADIUS * 0.8); break;
+      case "bubble": if (crossed(0.3)) { this.emitDroplet(0, BODY_RADIUS * 0.9, 0.6); this.ripples.add(p.x, p.y + 0.4, 0.35); } break;
+    }
+    if (k >= 1) {
+      this.hopT = -1; this.body.setTarget(0, 0);
+      if (this.act === "hop" || this.act === "double") { this.body.impulse("land", 0.7); this.ripples.add(p.x, p.y - 0.3, 0.5); }
+    }
   }
 
   readonly rippleBuffer = new Float32Array(16);

@@ -15,7 +15,7 @@ use serde_json::Value;
 pub const KEYS: &[&str] = &[
     "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
     "home.closeOnClickAway", "home.size", "character.linger", "character.motion", "character.overFullScreen",
-    "character.peek", "character.peekIdle",
+    "character.peek", "character.peekIdle", "home.escStops",
 ];
 
 /// What the shell does about Home, the island and the character, as the settings say now.
@@ -43,13 +43,15 @@ pub struct HomeSet {
     pub peek: bool,
     /// character.peekIdle ("Peek in on its own"): it also peeks in when something happens, and now and then while nothing does.
     pub peek_idle: bool,
+    /// home.escStops (M26): Esc clears what Squibby draws on the screen and stops it talking, while it draws (esc.rs).
+    pub esc_stops: bool,
 }
 
 impl HomeSet {
     /// Today's behaviour: the constants these settings replaced. Peeking is new (27 Oct 2026) and on, as the founder asked.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, peek_idle: false,
+        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, peek_idle: false, esc_stops: true,
     };
 }
 
@@ -73,6 +75,7 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
         less_motion: word("character.motion") == "less",
         over_full_screen: on("character.overFullScreen", u.over_full_screen),
         peek: on("character.peek", u.peek),
+        esc_stops: on("home.escStops", u.esc_stops),
         peek_idle: on("character.peekIdle", u.peek_idle),
     }
 }

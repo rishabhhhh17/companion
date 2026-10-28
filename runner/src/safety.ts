@@ -150,6 +150,9 @@ const writtenText = (input: Record<string, unknown>): string => [input.new_strin
 const WRITE_TOOLS: Record<string, string> = { Write: "file_path", Edit: "file_path", MultiEdit: "file_path", NotebookEdit: "notebook_path" };
 const READ_PATHS: Record<string, string> = { Read: "file_path", Grep: "path", Glob: "path", LS: "path", NotebookRead: "notebook_path" };
 const SAFE_TOOLS = new Set(["TodoWrite", "WebSearch", "ExitPlanMode", "ToolSearch"]);
+/** The Google tools (M21): their full names start with this, and these only read. */
+const GOOGLE_PREFIX = "mcp__google__";
+const GOOGLE_READS = new Set(["gmail_search", "gmail_read", "calendar_list", "calendar_free", "drive_search", "drive_read"]);
 const WEB_SEARCH_OFF = `Web search is turned off for tasks in ${PRODUCT_S} Settings. Carry on without searching the web.`;
 
 // Built in tools the pinned SDK (0.3.293) has that Companion never gives the engine (tools.ts lists what it does give). The
@@ -267,6 +270,16 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   if (SAFE_TOOLS.has(tool)) return allow();
   const notGiven = NOT_GIVEN.get(tool);
   if (notGiven) return deny("irreversible", notGiven);
+  // Google (M21, google/tools.ts): reading a connected account and making a Gmail draft run when the person asked for the
+  // task; adding a calendar event, which can email the people invited, waits for a tap every time and is never covered for
+  // the rest of a task (rule 13). Any other Google tool is unknown and asks.
+  if (tool.startsWith(GOOGLE_PREFIX)) {
+    const name = tool.slice(GOOGLE_PREFIX.length);
+    if (GOOGLE_READS.has(name)) return allow("reads from a connected Google account");
+    if (name === "gmail_draft") return { decision: "allow", reason: "makes a Gmail draft; nothing is sent", undoable: false };
+    if (name === "calendar_create") return ask("network", "adds an event to your Google Calendar, and invites anyone it names", false);
+    return ask("irreversible", `unknown Google tool "${name}"`);
+  }
   if (tool === "Bash") {
     const cmd = input.command;
     if (typeof cmd !== "string") return ask("irreversible", "no command given");
