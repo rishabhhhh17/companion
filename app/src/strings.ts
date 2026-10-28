@@ -289,7 +289,7 @@ export const S = {
     undo: "Undo",
     again: "Watch again",
     nextStep: "Next step",
-    go: "Try it on my project",
+    go: "Choose your character",
     watch: "Watch the 15 second tour",
     pause: "Pause",
     play: "Play",
@@ -1352,7 +1352,7 @@ export const S = {
   setResetPlace: "Put the character back in its usual place",
   // The parts of Settings that are not settings, found by the search too.
   // The headings of the Settings side list (settingsGroups.ts).
-  setGroups: { companion: "Companion", powers: "Powers", mac: "Your Mac", account: "Account", more: "More" } as Record<string, string>,
+  setGroups: { companion: "Character", powers: "Powers", mac: "Your Mac", account: "Account", more: "More" } as Record<string, string>,
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
   heroStates: { idle: "Resting", working: "Working", done: "Done" } as Record<string, string>,
   heroStatesLabel: "Show it",

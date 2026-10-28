@@ -745,3 +745,17 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .companion-hero .ch-states { position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2; display: flex; gap: var(--space-1); }
 .companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #0B2232; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-states button[aria-pressed="true"] { background: #ffffff; color: #000000; }
+
+/* The recorded fix inside the first run (M18): the same black, one column so the page and the code each get the width,
+   big rounded words, lime step marks, and the same full width lime key at the bottom as every other step. */
+.home:has(.onboarding.look) { background: #000000; }
+.onboarding.look .first-look { gap: var(--space-4); }
+.onboarding.look .fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.onboarding.look .fl-head .home-char { width: 132px; margin: -8px -12px -6px; }
+.onboarding.look .fl-say h2 { font: 800 calc(26rem / 14)/1.08 var(--round); letter-spacing: -0.02em; }
+.onboarding.look .fl-tagline { font-family: var(--round); }
+.onboarding.look .fl-stage { grid-template-columns: minmax(0, 1fr); }
+.onboarding.look .fl-code, .onboarding.look .fl-check { background: #121216; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.onboarding.look .fl-dot.on { background: var(--key); }
+.onboarding.look .fl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }

@@ -74,6 +74,8 @@ describe("the shipped list of settings", () => {
       "watch.on": true, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
       // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
       "make.folder": "home",
+      // M18: the character's name, chosen in the first run or Settings; empty is its own name.
+      "character.name": "",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
