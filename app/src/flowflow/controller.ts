@@ -73,6 +73,9 @@ export class FlowflowController {
     this.engine.touch(0, 0.6); this.lastPointer = performance.now(); this.resumeOrPause();
   }
 
+  /** The water's colours (lookfeel.ts flowColours). */
+  setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); if (this.reduced) this.still(); else this.resumeOrPause(); }
+
   setState(s: CharacterState): void { this.engine.applyApp(s); if (this.reduced) this.still(); }
   setTuning(t: Partial<Tuning>): void { this.engine.setTuning(t); if (this.reduced) this.still(); }
   setReduced(r: boolean): void { if (r === this.reduced) return; this.reduced = r; if (r) { this.stop(); this.still(); } else this.resumeOrPause(); }

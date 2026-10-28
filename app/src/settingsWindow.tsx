@@ -10,6 +10,7 @@ import { invoke, listen } from "./tauri.ts";
 import { S } from "./strings.ts";
 import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
 import { groupPlaces } from "./settingsGroups.ts";
+import { useLook } from "./useLook.ts";
 import { characterName } from "./companion.ts";
 import { startSettings, useSetting } from "./settingsStore.ts";
 import { useModel } from "./useModel.ts";
@@ -22,6 +23,7 @@ import "./style.css";
 
 function SettingsWindow() {
   const [m] = useModel();
+  useLook();   // the water's colour on the character's card (M19)
   const [project, setProject] = useState("");
   useEffect(() => {
     void invoke("get_project").then((p) => setProject(String(p ?? "")));

@@ -3,7 +3,7 @@
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
 import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, ringLook, ringMsOf } from "./pointer.ts";
-import { arcAt, BEAD_R, bud, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
+import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
@@ -52,7 +52,9 @@ function show(p: Point) {
   // Ring colour in Settings, for a confirmed target; a guess keeps its soft dashed look whatever the colour (rule 22).
   const look = ringLook(setting("point.colour"), p.exact);
   const color = look.stroke;
-  tintWater(waterTint(setting("point.colour")));
+  tintWater(waterTint(setting("point.colour"), setting("look.water")));
+  // The pointer's style and size (M19): water (the drop and its ring of water) or a plain ring; the drop small to large.
+  const style = setting("point.style") === "ring" ? "ring" : "water", ks = dropScale(setting("point.dropSize")), R = DROP_R * ks;
   // The ring and the drop are drawn only inside the window they were confirmed in (nothing lands on a different app).
   let layer: Element = svg;
   if (p.clip) {
@@ -77,18 +79,18 @@ function show(p: Point) {
   // A confirmed target's ring is the water (the beads below); its line stays as the shape the celebration turns green. A
   // guess keeps the soft dashed ring and no water (rule 22), and high contrast keeps its solid white ring under the water.
   const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": look.width, "stroke-dasharray": look.dash, class: "ring", "data-main": 1, opacity: reduced && !strokes ? 1 : 0 });
-  if (p.exact && !look.halo) ring.setAttribute("data-water", "1");
+  if (p.exact && !look.halo && style === "water") ring.setAttribute("data-water", "1");
   layer.appendChild(ring);
   // The water ring: beads evenly spaced around the target that spread out like water and wobble gently (still with less
   // motion). It starts when the plain ring would show.
-  const beads = p.exact ? ringBeads(rx, ry).map((b) => ({ b, c: ringWater.appendChild(el("circle", { cx, cy, r: 0, fill: "url(#wg)" })) })) : [];
+  const beads = p.exact && style === "water" ? ringBeads(rx, ry, BEAD_GAP * ks).map((b) => ({ b, c: ringWater.appendChild(el("circle", { cx, cy, r: 0, fill: "url(#wg)" })) })) : [];
   const placeBeads = (k: number, now: number) => {
     const sk = reduced ? 1 : settle(k), grow = reduced ? 1 : Math.min(1, k * 2);
     for (const { b, c } of beads) {
       const wob = reduced ? 0 : Math.sin(now / 330 + b.ux * 4) * 2.2 + Math.sin(now / 190 + b.uy * 5) * 1.3;
       c.setAttribute("cx", String(cx + b.ux * rx * sk + b.nx * wob));
       c.setAttribute("cy", String(cy + b.uy * ry * sk + b.ny * wob));
-      c.setAttribute("r", String(BEAD_R * grow));
+      c.setAttribute("r", String(BEAD_R * ks * grow));
     }
   };
   const ringOn = () => {
@@ -136,8 +138,10 @@ function show(p: Point) {
     cap.style.left = `${spot.left}px`;
     cap.style.top = `${spot.top}px`;
     cap.classList.toggle("left", side < 0);
+    cap.classList.toggle("white", setting("point.caption") === "white");
     cap.classList.add("on");
   };
+  if (style === "ring") { land(); return; }   // a plain ring simply appears, as it used to
   if (reduced) { land(); return; }
   // The drop: it splits off the character (a hop from the last step's target skips that), arcs to the target stretched
   // the way it moves with a few tiny drops dropping behind, squashes on arrival, then the ring spreads from it.
@@ -162,7 +166,7 @@ function show(p: Point) {
     const t = now - t0;
     if (t < splitMs) {
       const b = bud(origin, to, t / splitMs);
-      shape(b.x, b.y, b.r, 1, 1, 0);
+      shape(b.x, b.y, b.r * ks, 1, 1, 0);
       neck.setAttribute("cx", String(b.neck.x)); neck.setAttribute("cy", String(b.neck.y)); neck.setAttribute("r", String(b.neck.r));
       start = { x: b.x, y: b.y }; prev = { x: b.x, y: b.y, t: now };
       requestAnimationFrame(step); return;
@@ -172,13 +176,13 @@ function show(p: Point) {
     if (k < 1) {
       const q = arcAt(start, to, e, hop), dt = Math.max(1, now - prev.t);
       const vx = ((q.x - prev.x) / dt) * 1000, vy = ((q.y - prev.y) / dt) * 1000, st = stretch(Math.hypot(vx, vy));
-      shape(q.x, q.y, DROP_R, st.along, st.across, (Math.atan2(vy, vx) * 180) / Math.PI);
+      shape(q.x, q.y, R, st.along, st.across, (Math.atan2(vy, vx) * 180) / Math.PI);
       if (Math.hypot(vx, vy) > 300 && trail.length < 40 && (Math.round(now / 16) % 2 === 0)) trail.push({ c: water.appendChild(el("circle", { cx: q.x, cy: q.y, r: 5, fill: "url(#wg)" })), r: 5, life: 1 });
       prev = { x: q.x, y: q.y, t: now };
     } else {
       // The squash on arrival, then the drop drains into the ring.
       const l = Math.min(1, (t - splitMs - dur) / LAND_MS), sq = Math.sin(l * Math.PI);
-      shape(cx, cy, DROP_R * (1 - 0.6 * l), 1 + 0.55 * sq, 1 - 0.4 * sq, 0);
+      shape(cx, cy, R * (1 - 0.6 * l), 1 + 0.55 * sq, 1 - 0.4 * sq, 0);
       if (l >= 1) { drop.remove(); land(); }
     }
     for (const d of trail) { d.life -= 0.06; d.c.setAttribute("r", String(Math.max(0, d.r * d.life))); }

@@ -38,7 +38,7 @@ describe("the character floats on the desktop", () => {
   });
   test("the rings that show the lights first are still there, around the water", () => {
     for (const s of ["listening", "checking", "needsYou", "done"]) expect(css).toMatch(new RegExp(`\\.character\\[data-pose\\]\\[data-state="${s}"\\][^{]*\\{[^}]*drop-shadow`));
-    expect(dock).toContain("style={skinVars(SKIN)");
+    expect(dock).toContain("style={{ ...skinVars(SKIN),");
     // Never a web style ring or a filled box around the picture (M15): every light is a glow along the outline.
     expect(css).not.toMatch(/\.character\[[^{]*\{[^}]*box-shadow: 0 0 0/);
     expect(css).not.toMatch(/\.character\[data-state="error"\] \{[^}]*background/);

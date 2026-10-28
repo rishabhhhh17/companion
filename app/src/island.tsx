@@ -22,6 +22,7 @@ import "./style.css";
 // pointer, and only when there is something real to say (home.ts). The black shape moves on a small spring
 // (islandSpring.ts) toward the size the app gives; the window itself changes at once, and shrinks only after the shape has
 // tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
+import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
@@ -73,6 +74,7 @@ function Mark({ w, count }: { w: Wings; count: number }) {
 }
 
 function Island() {
+  useLook();   // the water's colour for the work cards (M19)
   const [m] = useModel();
   const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0 });
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.

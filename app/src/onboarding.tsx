@@ -3,7 +3,7 @@ import type { DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac } from "./commands.ts";
 import { changeSetting } from "./settingsStore.ts";
-import { canContinue, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, yoursSettings, type Answers, type Edge, type Lively, type Step, type Yours } from "./onboarding.ts";
+import { STEPS, canContinue, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, yoursSettings, type Answers, type Edge, type Lively, type Step, type Yours } from "./onboarding.ts";
 import { keyHints, keyRows, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke } from "./tauri.ts";
@@ -47,7 +47,9 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const keys = useKeys();
   const ok = connected === "api_key" || connected === "plan";
   const ctx = { connected: ok, project };
-  const go = (to: Step | null) => { if (to) setStep(to); };
+  // Which way the last move went, so the next screen slides in from the right going on and from the left going back.
+  const [dir, setDir] = useState<"on" | "back">("on");
+  const go = (to: Step | null) => { if (!to) return; setDir(STEPS.indexOf(to) < STEPS.indexOf(step) ? "back" : "on"); setStep(to); };
   const own = NAMES.character;
   const name = yours.name.trim() || own;
   // What was chosen on the way (the name, how lively, the edge, the groups) is kept however the first run ends; the questions
@@ -109,6 +111,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         </div>
       )}
 
+      <div className="fr-slide" key={step} data-dir={dir}>
       {step === "hello" && (<>
         <div className="fr-hello" aria-hidden="true"><span className="fr-drop" /><span className="fr-ripple" /><div className="fr-rise"><HomeCharacter as="idle" /></div></div>
         <h2 className="fr-title">{S.fr.helloTitle}</h2>
@@ -221,6 +224,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <button className="fr-key" type="button" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.fr.practice}</button>
         <button className="fr-quiet" type="button" onClick={finish}>{S.fr.goProject}</button>
       </>)}
+      </div>
     </section>
   );
 }

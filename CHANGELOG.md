@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Make it yours: colours, themes, sounds and more: 28 Oct 2026
+
+- **Pick the water's colour:** Ocean, Lagoon, Lime, Berry or Midnight. Flowflow, the drop that shows you where to click, its ring and the waterline all change together. One tap on the coloured drops at the top of Settings, and you see it at once.
+- **Home has three themes:** Night (black), Deep sea (dark blue) and Paper (light).
+- **Lively, Calm or Still** in one switch, and the character can be small, usual or large on the edge of the screen.
+- **Sounds, if you want them:** soft water sounds when the drop leaves, when you click the right thing, when work is done and when something needs you. Off unless you turn them on, and silent during calls.
+- **The pointer your way:** the water drop or a plain ring, the drop small to large, and the caption in lime or white.
+- **The notch panel your way:** choose whether it says hello, shows the work and the quick buttons, and make it compact.
+- **Settings is easy to find:** a Settings button in the notch panel, Command comma in Home, and a sliders icon instead of the old one that looked like the sun.
+- **The first run slides** from screen to screen on a spring.
+
 ## A new first run, choosing your companion, and Settings that make sense: 28 Oct 2026
 
 - **The first run feels like meeting someone.** A drop falls into the water and Flowflow rises out of it. Then you watch it fix a real bug (before you connect anything), choose your companion, name it, pick how lively it is and which edge of the screen it lives on, and switch off any power you don't want. Then you connect Claude and choose your project. The water at the bottom rises with every step, so you always know how far along you are.

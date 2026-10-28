@@ -28,6 +28,7 @@ import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
+import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { FirstLook } from "./firstLook.tsx";
@@ -308,6 +309,7 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 }
 
 function Card() {
+  useLook();   // the water's colour and Home's theme chosen in Settings (M19)
   const [m, dispatch] = useModel();
   // A command of a tool whose group is switched off is refused with one plain line (the shell, then the engine). The line is
   // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".
@@ -1175,6 +1177,13 @@ function Card() {
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
   // The gear: Settings in its own window; if the app cannot open it, Settings inside Home as before.
   const gear = () => { void openSettings(invoke, () => pickTab("settings")); };
+  // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
+  const gearRef = useRef(gear); gearRef.current = gear;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "," && !e.isComposing) { e.preventDefault(); gearRef.current(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // What each tab shows is asked for whenever it is the one showing (picked, or shown by itself), and again for a new folder:
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.

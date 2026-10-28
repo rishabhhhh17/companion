@@ -10,7 +10,7 @@
    Motion: ease out for what the interface does, ease in for what goes away, one spring (the island's, islandSpring.ts, as a
    linear() curve) for what pops, and four durations, 120 200 280 400 ms. Interruptible, none with reduced motion. */
 :root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
-  --lime: #C6F432; --water: #59D2FF; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
+  --lime: #C6F432; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
   --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
@@ -584,12 +584,12 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    rounded type. Below: deep water, where the work happens. It is the one bold thing; everything under it is quiet: a white
    ask box like paper on the water with the lime key in it, and the quick actions as plain rows with a lime drawing (no
    cards, no pills). The surface drifts slowly; it is still with reduced motion. */
-.home { background: linear-gradient(180deg, #04182A 0, #04182A 200px, #020C15 460px, #000000 100%); }
+.home { background: linear-gradient(180deg, var(--home-sea) 0, var(--home-sea) 200px, var(--home-sea-deep) 460px, var(--sky) 100%); }
 .home .bar { position: relative; z-index: 2; }
 .home .hero { position: relative; grid-template-columns: 132px minmax(0, 1fr); row-gap: var(--space-6); margin-bottom: var(--space-4); }
 /* The sky: black from the top of Home down to the surface. The surface itself is a wave drawn in the page (card.tsx
    Waterline), black above a thin water blue line, drifting slowly sideways. */
-.home .hero::before { content: ""; position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: -300px; height: calc(300px + 80px); background: #000000; pointer-events: none; z-index: 0; }
+.home .hero::before { content: ""; position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: -300px; height: calc(300px + 80px); background: var(--sky); pointer-events: none; z-index: 0; }
 .home .waterline { position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: 76px; height: 22px; overflow: clip; pointer-events: none; z-index: 0; }
 .home .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 @keyframes waterline { to { translate: -160px 0; } }
@@ -630,7 +630,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home:has(.fr) { background: #000000; }
 .fr { position: relative; display: flex; flex-direction: column; min-height: calc(560rem / 14); margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) calc(var(--space-5) * -1); padding: var(--space-5) var(--space-6) var(--space-6); overflow: clip; isolation: isolate; }
 .fr > * { position: relative; z-index: 1; }
-.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, #04182A, #020C15); transition: height 900ms var(--ease-spring); }
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); transition: height 900ms var(--ease-spring); }
 .fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
 .fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 .fr-top { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--muted); font: 600 var(--t-caption) var(--round); }
@@ -650,8 +650,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-label { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 var(--t-small) var(--round); }
 /* The hello: a drop falls into the water, a ripple spreads, and Flowflow rises out of it. */
 .fr-hello { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, #ffffff 0 12%, #59D2FF 45%, #1676C8); animation: fr-fall 900ms cubic-bezier(.55, 0, 1, .45) 200ms forwards; }
-.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid #59D2FF; border-radius: 50%; opacity: 0; animation: fr-ripple 1.2s ease-out 1.05s; }
+.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, #ffffff 0 12%, var(--water) 45%, #1676C8); animation: fr-fall 900ms cubic-bezier(.55, 0, 1, .45) 200ms forwards; }
+.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid var(--water); border-radius: 50%; opacity: 0; animation: fr-ripple 1.2s ease-out 1.05s; }
 .fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise 900ms var(--ease-spring) 1.05s forwards; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); }
 @keyframes fr-fall { to { top: calc(100% - var(--level) - 6px); opacity: 0; } }
 @keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
@@ -659,7 +659,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr[data-step="hello"] .fr-title { margin-top: var(--space-7); }
 /* Who do you want with you: Flowflow chosen, and empty places for the companions to come. */
 .fr-cast { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
-.fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: #0d2533; color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px #59D2FF; cursor: default; }
+.fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: color-mix(in srgb, var(--water) 18%, #000000); color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px var(--water); cursor: default; }
 .fr-pick img { width: 64px; height: auto; }
 .fr-pick b { font: 700 var(--t-answer) var(--round); }
 .fr-pick span { color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
@@ -684,12 +684,12 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-seg.small button { padding: var(--space-2) var(--space-3); font: 600 var(--t-small) var(--round); }
 .fr-edges { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
 .fr-edge { position: relative; min-height: 56px; border: 0; border-radius: 12px; background: #121216; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
-.fr-edge i { position: absolute; width: 12px; min-height: 10px; border-radius: 50%; background: #59D2FF; }
+.fr-edge i { position: absolute; width: 12px; min-height: 10px; border-radius: 50%; background: var(--water); }
 .fr-edge[data-edge="left"] i { left: 4px; top: calc(50% - 5px); }
 .fr-edge[data-edge="right"] i { right: 4px; top: calc(50% - 5px); }
 .fr-edge[data-edge="top"] i { left: calc(50% - 6px); top: 4px; }
 .fr-edge[data-edge="bottom"] i { left: calc(50% - 6px); bottom: 4px; }
-.fr-edge[aria-pressed="true"] { background: #0d2533; box-shadow: inset 0 0 0 2px #59D2FF; }
+.fr-edge[aria-pressed="true"] { background: color-mix(in srgb, var(--water) 18%, #000000); box-shadow: inset 0 0 0 2px var(--water); }
 /* What should it help with. */
 .fr-powers { display: grid; gap: var(--space-2); }
 .fr-power { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: 18px; background: #101013; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
@@ -708,10 +708,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-keyrow input:focus { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
 .fr-save { min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 700 var(--t-body) var(--round); cursor: pointer; }
 .fr-ok { margin: 0; color: var(--key); font: 700 var(--t-answer) var(--round); }
-.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed rgba(255, 255, 255, .35); border-radius: 20px; background: #08141E; color: #ffffff; text-align: left; cursor: pointer; }
+.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed rgba(255, 255, 255, .35); border-radius: 20px; background: color-mix(in srgb, var(--water) 8%, #000000); color: #ffffff; text-align: left; cursor: pointer; }
 .fr-folder b { font: 700 var(--t-answer) var(--round); }
 .fr-folder span { color: var(--muted); font-size: var(--t-caption); overflow-wrap: anywhere; }
-.fr-folder:hover { border-color: #59D2FF; }
+.fr-folder:hover { border-color: var(--water); }
 /* Ready: the water nearly full, Flowflow pleased, the keys to remember, the optional questions folded away. */
 .fr-done { align-self: center; margin-top: var(--space-2); }
 .fr[data-step="ready"] .fr-title { margin-top: var(--space-2); }
@@ -734,16 +734,16 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .side-head { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--muted); font: 600 var(--t-caption) var(--round); }
 .side-item { display: flex; align-items: center; gap: var(--space-2); }
 .side-dot { flex: none; width: 8px; min-height: 8px; border-radius: 50%; background: var(--muted); }
-.side-group[data-group="companion"] .side-dot { background: #59D2FF; }
+.side-group[data-group="companion"] .side-dot { background: var(--water); }
 .side-group[data-group="powers"] .side-dot { background: var(--key); }
 .companion-hero { position: relative; display: grid; place-items: center; min-height: 190px; margin: 0 0 var(--space-4); border-radius: 22px; background: linear-gradient(180deg, #0B0D12, #000000 60%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); overflow: clip; isolation: isolate; }
-.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(180deg, #04182A, #020C15); z-index: 0; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); z-index: 0; }
 .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
 .companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 .companion-hero .ch-char { position: relative; z-index: 1; margin-top: var(--space-5); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
-.companion-hero .ch-name { position: absolute; left: var(--space-5); bottom: var(--space-4); z-index: 2; color: #ffffff; background: #04182A; font: 800 calc(22rem / 14) var(--round); letter-spacing: -0.02em; }
+.companion-hero .ch-name { position: absolute; left: var(--space-5); bottom: var(--space-4); z-index: 2; color: #ffffff; background: var(--sea); font: 800 calc(22rem / 14) var(--round); letter-spacing: -0.02em; }
 .companion-hero .ch-states { position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2; display: flex; gap: var(--space-1); }
-.companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #0B2232; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--water) 14%, #000000); color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-states button[aria-pressed="true"] { background: #ffffff; color: #000000; }
 
 /* The recorded fix inside the first run (M18): the same black, one column so the page and the code each get the width,
@@ -761,3 +761,45 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
 .companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-again:hover { background: #2A2A30; }
+/* Fluid steps (M18): each screen of the first run slides in on the island's spring, from the right going on and from the
+   left going back, a little blurred until it settles, while the water rises underneath. None with reduced motion. */
+.fr-slide { display: flex; flex-direction: column; flex: 1; animation: fr-slide-on 520ms var(--ease-spring) both; }
+.fr-slide[data-dir="back"] { animation-name: fr-slide-back; }
+.fr-slide > .fr-hello { z-index: 1; }
+@keyframes fr-slide-on { from { opacity: 0; transform: translateX(36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes fr-slide-back { from { opacity: 0; transform: translateX(-36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in 520ms var(--ease-out) 60ms both; }
+.fr-slide .fr-line { animation-delay: 110ms; }
+@keyframes fr-rise-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* Home's theme (M19, look.theme; lookfeel.ts): Night (the usual black), Deep sea (dark blue) or Paper (light). Only Home
+   follows it; the notch stays black like the notch, and the first run is always Night (it comes before any choice). The
+   water's colour (look.water) sets --water and --sea on every page; under Paper the sea is a pale wash of that water. */
+:root.home-page { --home-sea: var(--sea); --home-sea-deep: var(--sea-deep); }
+:root.home-page[data-theme="deep"] { --bg: #071423; --sky: #071423; --surface: #10233A; --card: #0D1E31; --line: #1E3550; }
+:root.home-page[data-theme="paper"] { --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #C6F432; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
+:root.home-page[data-theme="paper"] .home .ask { box-shadow: 0 0 0 1px #DCDAD2, 0 8px 24px rgba(0, 0, 0, .08); }
+:root.home-page[data-theme="paper"] .home .waterline .line { stroke: var(--water-deep); }
+.fr { --fg: #f5f5f7; --muted: #a1a1a6; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; color: #f5f5f7; background: #000000; }
+.home:has(.fr) { background: #000000; }
+.waterline .sky { fill: var(--sky); }
+.waterline .sea { fill: var(--sea); }
+.waterline .line { stroke: var(--water); }
+/* The water's colour (M19) turns Flowflow's pictures too (they are drawn in ocean blue), and its size on the edge scales it
+   inside its window (look.size; lookfeel.ts SIZE_SCALE keeps large inside the 160 point window). */
+.pose, .home-pose, .ip-agent, .fr-pick img, .fr-name img { filter: hue-rotate(var(--water-turn, 0deg)); }
+.character { scale: var(--char-scale, 1); }
+/* The notch panel, compact (M19, panel.size): tighter and smaller words; the main button stays easy to hit. */
+.island-panel[data-size="compact"] { padding: 6px 12px 10px; gap: 8px; font-size: var(--t-caption); }
+.island-panel[data-size="compact"] .ip-hi { font-size: calc(17rem / 14); }
+.island-panel[data-size="compact"] .ip-go { min-height: 40px; border-radius: 14px; font-size: var(--t-body); }
+.island-panel[data-size="compact"] .ip-job { padding: 6px 8px; }
+/* On the character's card (M19): the water colours as drops, one tap each, and how lively, both shown at once above. */
+.ch-look { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin: calc(var(--space-2) * -1) 0 var(--space-4); }
+.ch-waters { display: flex; gap: var(--space-2); }
+.ch-water-pick { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; background: radial-gradient(circle at 38% 30%, #ffffff 0 10%, var(--pick) 45%, var(--pick-deep)); box-shadow: 0 0 0 2px transparent; cursor: pointer; transition: transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) var(--ease-out); }
+.ch-water-pick:hover { transform: translateY(-2px) scale(1.06); }
+.ch-water-pick[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); transform: scale(1.1); }
+.ch-lively { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface); }
+.ch-lively button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: var(--surface); color: var(--fg); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.ch-lively button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }

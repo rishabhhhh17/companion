@@ -17,7 +17,8 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   memory: <><path d="M6 4h12v16l-6-4-6 4z" /></>,
   settings: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
   // Home's round buttons, the ask box and its quick actions (27 Oct 2026)
-  gear: <><circle cx="12" cy="12" r="3" /><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4L18 18M6 18l1.6-1.6M16.4 7.6L18 6" /></>,
+  // Settings as sliders (28 Oct 2026): the old cog, a circle with eight rays, read as the sun of the mark.
+  gear: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
   mic: <><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v2.5" /></>,
   send: <><path d="M12 19V5.5" /><path d="M6.5 11L12 5.5 17.5 11" /></>,
   find: <><circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5 5" /></>,

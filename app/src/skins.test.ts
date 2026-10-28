@@ -69,7 +69,7 @@ describe("the chrome does not read a skin", () => {
     };
     // Semantic marks keep a colour (checked, waiting, a refusal), and so does the brand (M17, night and lime, approved 28 Oct
     // 2026): lime, the mark's colour, for "do this", and water blue for Flowflow's work. Everything else is grey.
-    const SEMANTIC = ["--amber", "--amber-line", "--danger", "--ok", "--lime", "--water", "--key", "--key-ink", "--key-edge"];
+    const SEMANTIC = ["--amber", "--amber-line", "--danger", "--ok", "--lime", "--water", "--water-hi", "--water-deep", "--sea", "--sea-deep", "--key", "--key-ink", "--key-edge"];
     for (const [name, block] of [["light", lightRoot], ["dark", darkRoot]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

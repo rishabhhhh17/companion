@@ -9,6 +9,7 @@ import { visualState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useSetting } from "./settingsStore.ts";
+import { flowColours, waterOf } from "./lookfeel.ts";
 
 // With "Draw live" on (character.live), the founder's live water (src/flowflow/), loaded only then, as on the desktop.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
@@ -20,6 +21,9 @@ export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
   const state = as ?? (m ? visualState(m) : "idle");
   const pose = poseFor(state);
   const liveOn = useSetting("character.live") === true;
+  // The water's colour chosen in Settings (look.water).
+  const water = useSetting("look.water");
+  const colours = flowColours(waterOf(water));
   const [liveFailed, setLiveFailed] = useState(false);
   const live = liveOn && !liveFailed;
   const flow = useFlow({ pose, state, calm: reduced, off: live });
@@ -38,7 +42,7 @@ export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
     <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>
       {live
-        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" onFallback={() => setLiveFailed(true)} /></Suspense>
+        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} onFallback={() => setLiveFailed(true)} /></Suspense>
         : <>
           {!flow.failed && <canvas ref={flow.canvasRef} className="home-flow" />}
           <img className={`home-pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

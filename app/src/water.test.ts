@@ -81,10 +81,27 @@ describe("its colours", () => {
   });
   test("a guess is never water: it keeps the dashed ring and gets no beads (rule 22)", () => {
     const o = readFileSync(new URL("./overlay.ts", import.meta.url), "utf8");
-    expect(o).toContain("const beads = p.exact ? ringBeads(rx, ry)");
-    expect(o).toContain('if (p.exact && !look.halo) ring.setAttribute("data-water", "1");');
+    expect(o).toContain('const beads = p.exact && style === "water" ? ringBeads(rx, ry');
+    expect(o).toContain('if (p.exact && !look.halo && style === "water") ring.setAttribute("data-water", "1");');
   });
   test("no orange: the old ring colour is not in the water", () => {
     expect(readFileSync(new URL("./water.ts", import.meta.url), "utf8")).not.toMatch(/#ff9a2e/i);
+  });
+});
+
+describe("the pointer's style and size (M19)", () => {
+  test("the usual ring colour is the water's own, a chosen ring colour still wins, and the drop has three sizes", async () => {
+    const { WATER_TINTS } = await import("./lookfeel.ts");
+    const { dropScale } = await import("./water.ts");
+    expect(waterTint("orange", "berry").mid).toBe(WATER_TINTS.berry.mid);
+    expect(waterTint("orange", undefined)).toEqual(WATER_TINT);
+    expect(waterTint("red", "berry")).not.toEqual(waterTint("orange", "berry"));
+    expect([dropScale("small"), dropScale("usual"), dropScale("large"), dropScale("odd")]).toEqual([0.75, 1, 1.35, 1]);
+  });
+  test("a plain ring simply appears with no flight and no water, and the caption can be white", () => {
+    const o = readFileSync(new URL("./overlay.ts", import.meta.url), "utf8");
+    expect(o).toContain('if (style === "ring") { land(); return; }');
+    expect(o).toContain('cap.classList.toggle("white", setting("point.caption") === "white");');
+    expect(readFileSync(new URL("../overlay.html", import.meta.url), "utf8")).toContain(".cap.white{background:#fff;color:#000;");
   });
 });

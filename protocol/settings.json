@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sections": ["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
+  "sections": ["groups", "keys", "talking", "home", "look", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"],
   "settings": [
     { "key": "flow.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "guide.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
@@ -48,6 +48,15 @@
     { "key": "character.live", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "fun.reactions", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.reactions", "map": "notOff" } } },
+    { "key": "look.water", "section": "look", "kind": "choice", "default": "ocean", "options": ["ocean", "lagoon", "lime", "berry", "midnight"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "look.theme", "section": "look", "kind": "choice", "default": "night", "options": ["night", "deep", "paper"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "look.size", "section": "look", "kind": "choice", "default": "usual", "options": ["small", "usual", "large"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "sound.on", "section": "look", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "sound.volume", "section": "look", "kind": "choice", "default": "soft", "options": ["soft", "usual", "loud"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "panel.showHello", "section": "look", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "panel.showWork", "section": "look", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "panel.showButtons", "section": "look", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "panel.size", "section": "look", "kind": "choice", "default": "usual", "options": ["usual", "compact"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
 
     { "key": "showme.allScreens", "section": "pointing", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.showmeAllScreens", "map": "isOne" } } },
@@ -57,6 +66,9 @@
     { "key": "point.ringSeconds", "section": "pointing", "kind": "number", "default": 10, "min": 5, "max": 30, "step": 1, "unit": "seconds", "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "floor": "point.ringSeconds" },
     { "key": "point.yourTurnSeconds", "section": "pointing", "kind": "number", "default": 90, "min": 30, "max": 300, "step": 15, "unit": "seconds", "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "point.yourTurnSeconds" },
     { "key": "point.colour", "section": "pointing", "kind": "choice", "default": "orange", "options": ["orange", "red", "yellow", "blue", "highContrast"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "point.colour" },
+    { "key": "point.style", "section": "pointing", "kind": "choice", "default": "water", "options": ["water", "ring"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "point.dropSize", "section": "pointing", "kind": "choice", "default": "usual", "options": ["small", "usual", "large"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "point.caption", "section": "pointing", "kind": "choice", "default": "lime", "options": ["lime", "white"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "point.lettering", "section": "pointing", "kind": "choice", "default": "plain", "options": ["plain", "handwritten"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "point.guesses", "section": "pointing", "kind": "choice", "default": "softRing", "options": ["softRing", "wordsOnly"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "point.guesses" },
     { "key": "point.pace", "section": "pointing", "kind": "choice", "default": "normal", "options": ["slower", "normal", "faster"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
