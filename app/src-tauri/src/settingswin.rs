@@ -66,7 +66,9 @@ mod tests {
         use serde_json::json;
         assert_eq!(arrival(&json!({ "lesson": "settings-lesson" })), Some(json!({ "lesson": "settings-lesson" })));
         assert_eq!(arrival(&json!({ "place": "learn" })), Some(json!({ "place": "learn" })));
-        for bad in [json!({ "place": "settings" }), json!({ "lesson": "" }), json!({ "lesson": "../x" }), json!({ "lesson": 3 }),
+        // M20: the notch's Settings button opens Settings inside Home.
+        assert_eq!(arrival(&json!({ "place": "settings" })), Some(json!({ "place": "settings" })));
+        for bad in [json!({ "place": "elsewhere" }), json!({ "lesson": "" }), json!({ "lesson": "../x" }), json!({ "lesson": 3 }),
             json!({ "lesson": "a", "place": "learn" }), json!("learn"), json!(null), json!({}), json!({ "lesson": "a b" })] {
             assert_eq!(arrival(&bad), None, "{bad}");
         }
