@@ -48,3 +48,9 @@ The full suite runs after each step, the app is built and opened after each step
 ## Decisions only the founder can make
 1. Replace M16's Glow palette (gold and mint) with night and lime everywhere. (This changes a choice the founder made on 27 Oct.)
 2. The water pointer replaces the flying arrow for Flowflow.
+
+## Step 4 notes (28 Oct 2026): the waterline
+The founder said the look still fell flat and asked to add design skills from GitHub. Anthropic's official `frontend-design` skill (github.com/anthropics/skills) was installed for Claude Code (`~/.claude/skills/frontend-design`) and Home was redone with it:
+- **Tried and dropped:** one lime word in a heading (the skill names it as a tell of generated design), grey pills for the quick actions, filled grey round buttons in the top row.
+- **The one bold thing:** Home is a cross section of water. Black sky above a slowly drifting wave, Flowflow floating in the surface, deep water below where the work happens.
+- **Kept quiet:** a white ask box with the lime key inside, quick actions as plain rows with a lime drawing, top row buttons as drawings only.

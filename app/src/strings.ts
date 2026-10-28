@@ -214,7 +214,7 @@ export const S = {
   // The panel under the notch (islandPanel.ts): the work, never a character.
   panel: {
     go: "Fix something",
-    // The hello with nothing running (M17): "Hey. What are we finishing?", the last word in lime.
+    // The hello with nothing running (M17): "Hey. What are we finishing?"
     hiLead: "Hey. What are we",
     hiWord: "finishing",
     open: `Open ${PRODUCT}`,

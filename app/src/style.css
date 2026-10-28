@@ -539,7 +539,6 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .island-panel .ip-hi { margin: 4px 4px 0; color: #F7F7F2; font: 700 calc(21rem / 14)/1.15 var(--round); letter-spacing: -.01em; }
-.island-panel .ip-hi em { font-style: normal; color: #C6F432; }
 .island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 18px; color: #1A2600; background-color: #C6F432; background-image: linear-gradient(180deg, var(--lime-hi) 0%, #C6F432 55%, #B5E61F 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 4px 0 var(--lime-lo), 0 12px 30px rgba(198, 244, 50, .3); font: 700 var(--t-answer) var(--round); letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
 .island-panel .ip-go:hover { transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 5px 0 var(--lime-lo), 0 16px 38px rgba(198, 244, 50, .45); }
 .island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(198, 244, 50, .25); }
@@ -578,3 +577,48 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both, island-sun-breathe 6s ease-in-out var(--dur-3) infinite; }
 @keyframes island-sun-in { from { opacity: 0; scale: .6; } }
 @keyframes island-sun-breathe { 50% { opacity: .78; scale: .94; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The waterline (M17 step 4, 28 Oct 2026, a frontend-design pass after the founder said the look still fell flat). Home is
+   a cross section of water. Above the line: black, Flowflow floating half in the water, and the question in big heavy
+   rounded type. Below: deep water, where the work happens. It is the one bold thing; everything under it is quiet: a white
+   ask box like paper on the water with the lime key in it, and the quick actions as plain rows with a lime drawing (no
+   cards, no pills). The surface drifts slowly; it is still with reduced motion. */
+.home { background: linear-gradient(180deg, #04182A 0, #04182A 200px, #020C15 460px, #000000 100%); }
+.home .bar { position: relative; z-index: 2; }
+.home .hero { position: relative; grid-template-columns: 132px minmax(0, 1fr); row-gap: var(--space-6); margin-bottom: var(--space-4); }
+/* The sky: black from the top of Home down to the surface. The surface itself is a wave drawn in the page (card.tsx
+   Waterline), black above a thin water blue line, drifting slowly sideways. */
+.home .hero::before { content: ""; position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: -300px; height: calc(300px + 80px); background: #000000; pointer-events: none; z-index: 0; }
+.home .waterline { position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: 76px; height: 22px; overflow: clip; pointer-events: none; z-index: 0; }
+.home .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+@keyframes waterline { to { translate: -160px 0; } }
+.home .hero .home-char, .home .hero .hero-words { position: relative; z-index: 1; }
+.home .hero .hero-words { align-self: start; padding-top: var(--space-3); }
+/* Flowflow floats in the surface: the lower part of it is under the line, seen through the water. */
+.home .hero .home-char { translate: 0 18px; }
+.home .home-char { -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); }
+.home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
+.home .subline { font-size: var(--t-small); }
+/* The ask box: white paper on the water, the words in black, the lime key to send. */
+.home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
+.home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(198, 244, 50, .55), 0 10px 40px rgba(0, 0, 0, .45); }
+.home .ask textarea { color: #000000; background: #ffffff; caret-color: #000000; }
+.home .ask textarea::placeholder { color: #5f5f66; background: #ffffff; }
+.home .ask .icon-btn { color: #3a3a40; background: #ffffff; }
+.home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: #ececef; color: #000000; }
+.home .ask .talk-how { background: #f0f0f2; color: #000000; }
+.home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: #e2e2e6; }
+.home .ask .btn.primary.send { background: #C6F432; color: #1A2600; box-shadow: 0 2px 0 #8DBA12; }
+.home .ask:has(textarea:placeholder-shown) .btn.primary.send { background: #e8e8ec; color: #5f5f66; box-shadow: none; }
+/* The quick actions: plain rows, a lime drawing and a verb, left aligned, the whole width. */
+.home .chips.quick { display: grid; gap: 0; margin: var(--space-3) 0 0; }
+.home .chips.quick .chip-btn { justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: calc(42rem / 14); padding: 0 var(--space-2); border-radius: var(--r-md); background: transparent; color: var(--fg); font: 600 var(--t-body) var(--round); transform: none; }
+.home .chips.quick .chip-btn:hover { background: rgba(89, 210, 255, .1); transform: none; }
+.home .chips.quick .chip-btn .ic { color: var(--key); width: 16px; }
+/* The top row stays out of the way: the round buttons are only their drawings until the pointer is on them. */
+.home .bar .icon-btn { background: transparent; color: var(--muted); }
+.home .bar .icon-btn:hover { background: rgba(255, 255, 255, .1); color: var(--fg); }
+.home .bar .icon-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.home .foot { border-top: 0; }
+@media (prefers-reduced-motion: reduce) { .home .waterline svg { animation: none; } }

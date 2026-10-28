@@ -19,7 +19,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const note = panelNote(line, jobs);
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
-      {jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} <em>{S.panel.hiWord}</em>?</p>}
+      {jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
         <span className="ip-plus" aria-hidden="true">+</span>{S.panel.go}
       </button>
