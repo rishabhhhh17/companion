@@ -4,7 +4,8 @@
 // sends the menu's number and the chosen action, and the shell does the rest (convert.rs).
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke, listen } from "./tauri.ts";
-import { EMPTY, actionWords, clearsSaid, dropReduce, jobFrom, jobLine, keyMove, kindNote, madeOf, menuFrom, namesLine, refusedLine, ringSpots, running, trimFrom, type DropState } from "./dropmenu.ts";
+import { EMPTY, RADIUS, actionIcon, actionWords, arcSpots, clearsSaid, dropReduce, jobFrom, jobLine, keyMove, kindNote, madeOf, menuFrom, namesLine, refusedLine, ringChoices, running, showsWord, trimFrom, type DropState } from "./dropmenu.ts";
+import { ActionGlyph, Icon } from "./icons.tsx";
 import { S } from "./strings.ts";
 
 type Dispatch = (a: Parameters<typeof dropReduce>[1]) => void;
@@ -80,35 +81,50 @@ function Outcome({ s, d }: { s: DropState; d: Dispatch }) {
   );
 }
 
-/** The ring around the character, in the character's own window. A drop on the island shows its choices in Home only. */
+/** The ring around the character, in the character's own window: up to six round targets of 44 points on an arc (dropmenu.ts),
+ *  each a small drawing (a format conversion shows the format's name); the word for a drawing under the pointer or the keyboard
+ *  shows in the middle, outside the target. A drop
+ *  that can be done many ways shows the first few, and More opens the whole list in Home. A drop on the island shows its
+ *  choices in Home only. */
 export function DropRing({ drop }: { drop: Drop }) {
   const { s, d, said } = drop;
   const items = useRef<(HTMLButtonElement | null)[]>([]);
+  // Which target is under the pointer or has the keyboard: its word is shown in the middle.
+  const [aim, setAim] = useState<number | null>(null);
   const m = s.menu;
   // Focus follows the reducer's place, so VoiceOver and Full Keyboard Access stay on the button that is current.
   useEffect(() => { if (m && !s.job && document.activeElement && items.current.includes(document.activeElement as HTMLButtonElement)) items.current[s.focus]?.focus(); }, [s.focus, m, s.job]);
+  useEffect(() => { setAim(null); }, [m?.id]);
   if (!m || m.at !== "dock") return null;
   if (m.refused) return (
     <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{refusedLine(m.refused)}</div><button className="btn" type="button" onClick={() => close(s, d)}>{S.drop.close}</button></div>
   );
   if (s.job) return <div className="drop-over-character"><Outcome s={s} d={d} /></div>;
   if (said) return <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{said}</div><button className="btn" type="button" onClick={() => d({ type: "trim", open: false })}>{S.drop.trimBack}</button></div>;
-  const all = [...m.actions, "close"];
-  const spots = ringSpots(all.length, 58);
+  const { shown, more } = ringChoices(m.actions);
+  const all = [...shown, ...(more ? ["more"] : []), "close"];
+  const spots = arcSpots(all.length, RADIUS);
+  const words = (a: string): { short: string; label: string } | null =>
+    a === "close" ? { short: S.drop.close, label: S.drop.close } : a === "more" ? { short: S.drop.moreShort, label: S.drop.more } : actionWords(a);
+  // The word in the middle is for the targets that are drawings; a format shows its own name inside its target already.
+  const aimedId = aim !== null ? all[aim] : undefined;
+  const aimed = aimedId && !showsWord(aimedId) ? words(aimedId) : null;
   return (
     <div className="drop-ring" role="menu" aria-label={S.drop.menuLabel(namesLine(m))} onKeyDown={(e) => onKey(e, drop)}>
       {all.map((a, i) => {
-        const w = a === "close" ? { short: "×", label: S.drop.close } : actionWords(a)!;
+        const w = words(a)!;
         return (
           <button key={a} ref={(el) => { items.current[i] = el; }} className={`drop-item${a === "close" ? " drop-close" : ""}`} type="button" role="menuitem"
             tabIndex={i === s.focus ? 0 : -1} aria-label={w.label} title={w.label}
             style={{ transform: `translate(${spots[i].x}px, ${spots[i].y}px)` }}
-            onFocus={() => { if (a !== "close") d({ type: "focus", i }); }}
-            onClick={() => (a === "close" ? close(s, d) : choose(drop, a, false))}>
-            <span aria-hidden="true">{w.short}</span>
+            onPointerEnter={() => setAim(i)} onPointerLeave={() => setAim((c) => (c === i ? null : c))} onBlur={() => setAim((c) => (c === i ? null : c))}
+            onFocus={() => { setAim(i); if (a !== "close" && a !== "more") d({ type: "focus", i }); }}
+            onClick={() => (a === "close" ? close(s, d) : a === "more" ? void invoke("open_card_cmd") : choose(drop, a, false))}>
+            {a === "close" ? <Icon name="close" size={18} /> : a === "more" ? <Icon name="more" size={20} /> : showsWord(a) ? <span className="drop-word" aria-hidden="true">{w.short}</span> : <ActionGlyph kind={actionIcon(a)} />}
           </button>
         );
       })}
+      <div className="drop-caption" aria-hidden="true">{aimed ? aimed.short : ""}</div>
       <div className="sr">{S.drop.pickInHome}</div>
     </div>
   );

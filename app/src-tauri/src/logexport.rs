@@ -16,8 +16,8 @@ const CRASH_DAYS: u64 = 14;
 
 /// The only events and fields the activity log may contribute. Detailed (developer) logging adds app names and window
 /// shapes; none of that is ever exported.
-const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide"];
-const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason"];
+const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "approval_asked", "approval_answered"];
+const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason", "approval", "risk", "tool", "outcome"];
 
 const SECRET_STARTS: &[&str] = &["sk-", "sk_", "pk_live_", "pk_test_", "rk_live_", "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "glpat-", "xoxb-", "xoxp-", "xoxa-", "xoxs-", "xoxe", "AKIA", "ASIA", "eyJ", "npm_", "AIza", "hf_", "gsk_"];
 /// Common folder names that are not worth hiding when they are all that is left of a project's name.
@@ -273,6 +273,17 @@ mod tests {
         for gone in ["Zoom", "Acme", "front_app_changed", "Mail", "prompt_help_step", "com.apple.mail", "not json"] { assert!(!out.contains(gone), "{gone}"); }
         let long = format!(r#"{{"ev":"runner_failed","reason":"{}"}}"#, "x".repeat(500));
         assert!(safe_activity(&long).len() < 200);
+    }
+    #[test]
+    fn an_approval_asked_and_answered_shows_in_the_report_without_any_words_from_the_question() {
+        let raw = [
+            r#"{"run":"1-2","seq":1,"ev":"approval_asked","approval":"ap_1","risk":"git","tool":"Bash","title":"pushes SECRET_NAME","t":1,"ms":2}"#,
+            r#"{"run":"1-2","seq":2,"ev":"approval_answered","approval":"ap_1","outcome":"yes","t":3,"ms":4}"#,
+        ].join("\n");
+        let out = safe_activity(&raw);
+        assert!(out.contains("\"ev\":\"approval_asked\"") && out.contains("\"risk\":\"git\"") && out.contains("\"tool\":\"Bash\""));
+        assert!(out.contains("\"ev\":\"approval_answered\"") && out.contains("\"outcome\":\"yes\""));
+        assert!(!out.contains("SECRET_NAME") && !out.contains("title"));
     }
     #[test]
     fn a_crash_report_loses_the_list_of_other_software_and_ends_on_a_whole_line() {

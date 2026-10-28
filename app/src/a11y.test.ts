@@ -771,7 +771,9 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
     test(`${theme}: the focus ring, a box's edge and the open tab's line stand out (3 to 1)`, () => {
       expect(ratio(c(colourIn(one(":focus-visible")!.decl.outline)!), bg), "focus ring").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".character:focus-visible")!.decl.outline)!), bg), "the character's focus ring").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(colourIn(one(".btn")!.decl.border)!), bg), "a button's edge").toBeGreaterThanOrEqual(3);
+      // A button is a quiet word (its words are the sign, readable at 4.5 to 1 above) or, for the one main thing, a filled pill.
+      expect(one(".btn")!.decl.border, "a plain button has no edge of its own").toBe("0");
+      expect(ratio(c(colourIn(one(".btn.primary")!.decl.background)!), bg), "the main button's fill").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask textarea")!.decl.border)!), bg), "the ask box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one('.row input[type="search"]')!.decl.border)!), bg), "the search box's edge").toBeGreaterThanOrEqual(3);
@@ -797,7 +799,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 describe("Home stays usable with bigger text (part 4)", () => {
   const css = rules(read("./style.css"));
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".character", ".tabdot", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page"];
+  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page"];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";
@@ -822,9 +824,15 @@ describe("Home stays usable with bigger text (part 4)", () => {
   const ISLAND_SIZE = /island|\.lip|\.peekline|\.pillrow/;
   test("every word in Home is sized from the one root size (rem), so the text size choice reaches all of them", () => {
     let sized = 0;
+    // The type scale is a set of tokens (--t-*), each in rem; a rule that names one is read as the size it stands for.
+    const tokens = css.find((x) => x.sel === ":root" && !x.media)!.decl;
+    const scale = Object.entries(tokens).filter(([k]) => k.startsWith("--t-"));
+    expect(scale.length, "the type scale").toBeGreaterThanOrEqual(5);
+    for (const [k, v] of scale) expect(v, `${k} follows the text size`).toMatch(/rem/);
+    const resolve = (v: string) => v.replace(/var\((--[\w-]+)\)/g, (_, k) => tokens[k] ?? "");
     for (const r of css) {
       if (ISLAND_SIZE.test(r.sel)) continue;
-      const fs = r.decl["font-size"] ?? "", font = r.decl.font ?? "";
+      const fs = resolve(r.decl["font-size"] ?? ""), font = resolve(r.decl.font ?? "");
       if (r.sel.startsWith(":root")) { expect(fs + font, r.sel).toMatch(/^(\d+px)?(\d+px -apple-system.*)?$/); continue; }
       expect(fs, `${r.sel} { font-size: ${fs} } does not follow the text size: use rem`).not.toMatch(/\d(px|pt)\b/);
       expect(font, `${r.sel} { font: ${font} } does not follow the text size: use rem`).not.toMatch(/\d(px|pt)\b/);

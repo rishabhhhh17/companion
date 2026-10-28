@@ -28,7 +28,7 @@ describe("a chord in words", () => {
     expect(chordLabel("control-return")).toBe("Control and Return");
   });
   test("is empty for anything that is not a chord in exactly the app's form", () => {
-    for (const junk of ["", "k", "option", "-k", "command-control-option-k", "control-control-k", "control-option-command-K", "control-option-command-v", "fn-k", "control-option-command-k-x", "Option and Space"]) expect(chordLabel(junk), junk).toBe("");
+    for (const junk of ["", "k", "option", "-k", "command-control-option-k", "control-control-k", "control-option-command-K", "control-option-command-tab", "fn-k", "control-option-command-k-x", "Option and Space"]) expect(chordLabel(junk), junk).toBe("");
   });
 });
 
@@ -91,7 +91,7 @@ describe("every line that names a key", () => {
     stop();
   });
   test("an answer that names no keys means none were taken, and the line names none", () => {
-    for (const v of [null, undefined, false, true, "", "Control, Option, Command and A", "control-option-command-z", 7, {}]) {
+    for (const v of [null, undefined, false, true, "", "Control, Option, Command and A", "control-option-command-tab", 7, {}]) {
       setKeysNow(KEYS_START);
       expect(armedFor(v), String(v)).toBe(false);
       expect(keysNow(), String(v)).toEqual(KEYS_START);

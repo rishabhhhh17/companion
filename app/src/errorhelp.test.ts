@@ -5,6 +5,7 @@ import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ERROR_FIX_PROMPT, fixError } from "./commands.ts";
 import { ehLines, initial, reduce, type Model } from "./model.ts";
 import { S, PRODUCT } from "./strings.ts";
+import { need } from "./home.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -44,6 +45,29 @@ describe("each stage on the card", () => {
     }
     expect(ehLines(run([stage("nothing_selected", { app: "Terminal" })]))[0]).toContain("Control, Option, Command and E");
     expect(ehLines(run([stage("needs_accessibility")]))[0]).toContain("Control, Option, Command and E");
+  });
+  test("every outcome of the key ends in one plain sentence, never silence (finding D)", () => {
+    // The refusals the shell can send (errorsel.rs `Outcome::why`), the stages it can send, and the two new ones.
+    const stages: [string, Record<string, unknown>][] = [
+      ["error", { why: "no_front" }], ["error", { why: "unreadable" }], ["error", { why: "own_app" }], ["error", { why: "no_engine" }],
+      ["refused", { why: "secure_field" }], ["refused", { why: "secure_input" }], ["refused", { why: "never_app" }], ["refused", { why: "refused_by_you" }],
+      ["needs_accessibility", {}], ["nothing_selected", { app: "Cursor" }], ["consent", { app: "Cursor" }], ["reading", { app: "Cursor" }],
+    ];
+    for (const [st, o] of stages) {
+      const l = ehLines(run([stage(st, o)]));
+      expect(l.length, st + JSON.stringify(o)).toBeGreaterThan(0);
+      expect(l[0], st + JSON.stringify(o)).toMatch(/\.$/);
+      expect(l[0]).not.toMatch(/undefined|—|\{keys\}/);
+    }
+    // The generic "went wrong" sentence must not be what a new reason falls back to.
+    expect(ehLines(run([stage("error", { why: "no_front" })]))[0]).not.toBe(S.ehError);
+    expect(ehLines(run([stage("error", { why: "unreadable" })]))[0]).not.toBe(S.ehError);
+  });
+  test("the app not being found, and a read that takes too long, say what to do", () => {
+    expect(ehLines(run([stage("error", { why: "no_front" })]))[0]).toBe(S.ehNoFront.replace("{keys}", "Control, Option, Command and E"));
+    expect(ehLines(run([stage("error", { why: "unreadable" })]))[0]).toBe(S.ehUnreadable.replace("{keys}", "Control, Option, Command and E"));
+    expect(S.ehUnreadable).toContain("Select the text");
+    expect(need(run([stage("error", { why: "unreadable" })]))).toMatchObject({ tab: "now", mustShow: true });
   });
   test("closing, Stop everything, a restart or another folder clears it", () => {
     for (const end of [stage("dismissed"), ev({ type: "app.stop_everything" }), ev({ type: "app.runner_restarted" }), ev({ type: "ui.projectChanged" }), ev({ type: "ui.ehClosed" })]) {

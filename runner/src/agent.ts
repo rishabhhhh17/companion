@@ -17,7 +17,7 @@ import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
-import { MODELS, usualModel } from "./models.ts";
+import { MODELS } from "./models.ts";
 import { agentModesOf } from "./groups.ts";
 import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
@@ -39,7 +39,7 @@ import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, taskScopeCovers, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { fileApprovals, readRunFiles, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
@@ -48,6 +48,9 @@ import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings }
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
 import { UndoOneError } from "./checkpoints.ts";
+import { withStaleCheck, isFixItRequest } from "./staleerror.ts";
+import { claudeFolderExists, removeEmptyClaudeFolder } from "./litter.ts";
+import { appDisplayName, errorFixLabel, OFF_RECORD_LABEL, taskLabel } from "./labels.ts";
 import { cleanSelection, errorRequest, excerptOf, locateError, parseExplanation } from "./errorhelp.ts";
 import { secondLook, SecondLookError } from "./secondlook.ts";
 import type { FastLike } from "./lanes.ts";
@@ -909,8 +912,12 @@ export class AgentRunner {
     // Our work ends however the task ends: if anything threw before the usual place, the baseline must still move on, or Undo would
     // take the task's own changes for the person's.
     const started: { store: CheckpointStore | null; ended: boolean } = { store: null, ended: false };
+    const hadClaudeFolder = claudeFolderExists(cmd.project);
     try { return await this.runInnerBody(cmd, opts, started); }
-    finally { if (started.store && !started.ended) await started.store.noteAgentEnd().catch(() => undefined); }
+    finally {
+      if (started.store && !started.ended) await started.store.noteAgentEnd().catch(() => undefined);
+      removeEmptyClaudeFolder(cmd.project, hadClaudeFolder);   // the empty one Claude Code leaves behind (litter.ts)
+    }
   }
   private async runInnerBody(cmd: StartCmd, opts: RunOpts, started: { store: CheckpointStore | null; ended: boolean }): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const prior = opts.priorUsd ?? 0;
@@ -935,7 +942,9 @@ export class AgentRunner {
     if (room <= 0) { this.dailyLimit(cmd.agent, cmd.project); this.state(cmd.agent, "error"); return { status: "daily_limit", usd: 0 }; }
     const budget = Math.min(cmd.budgetUsd, room);
     const store = this.store(cmd.project);
-    const lbl = cmd.offTheRecord ? "Off the record task" : makeLabel(opts.label ?? cmd.prompt);
+    // Off the record, nothing of the request is kept in the label. A fix for an error the person selected in another app says
+    // which app (its display name only, never the selected text); every other label has none of the engine's own words.
+    const lbl = cmd.offTheRecord ? (isFixItRequest(cmd.prompt) ? errorFixLabel(this.errorApps.get(cmd.project) ?? this.errorApps.get("")) : OFF_RECORD_LABEL) : taskLabel(opts.label ?? cmd.prompt);
     const recalled = this.learnAndRecall(cmd.project, opts.said ?? cmd.prompt, cmd.offTheRecord);
     const goal = opts.goal ?? cmd.prompt, first = opts.first ?? goal;
     const abort = new AbortController();
@@ -1044,7 +1053,7 @@ export class AgentRunner {
     let changed: Awaited<ReturnType<CheckpointStore["diff"]>> = [];
     let shot: PageShot | undefined;   // the page as it is after a passing check, for the visual receipt
     let lastAfter = before.id;   // the snapshot the receipt's changes are measured to
-    let ok = await round(cmd.prompt, opts.resumeSession);
+    let ok = await round(withStaleCheck(cmd.prompt), opts.resumeSession);
     // Did the round that just ended stop to ask the person something (asks.ts: an offer of more work or a check in is not
     // asking)? Then the task needs them: no fix round is started over the question (it would bury it, and spend the
     // person's money on a guess). After checks that failed, only a question that names something only the person has (their
@@ -1226,7 +1235,7 @@ export class AgentRunner {
     let text = "";
     const gen = this.o.reviewer!.start({
       prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent,
-      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; },
+      authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: refusal("the reviewer only reads the text it is given") }; },
     });
     try {
       let next = await gen.next();
@@ -1234,7 +1243,7 @@ export class AgentRunner {
         const turn = next.value;
         spent(turn.costUsd);
         let result: ToolResult | undefined;
-        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: `Blocked by ${PRODUCT}: the reviewer only reads the text it is given.` }; }
+        if (turn.tool) { this.emit({ type: "agent.tool", agent: "reviewer", tool: turn.tool.name, summary: summary(turn.tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); result = { ok: false, output: refusal("the reviewer only reads the text it is given") }; }
         else if (turn.text) text += turn.text + "\n";
         next = await gen.next(result);
       }
@@ -1265,6 +1274,7 @@ export class AgentRunner {
     this.driveStop.delete(spec.agent);
     this.plans.delete(spec.agent);
     this.state(spec.agent, "thinking");
+    const hadClaudeFolder = claudeFolderExists(spec.project);
     const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     let booked = 0;
     const book = () => { this.ledger.add(spec.project, st.usd - booked); booked = st.usd; };
@@ -1282,12 +1292,12 @@ export class AgentRunner {
       }
       // A built in tool Companion never gives keeps its own plain reason (safety.ts NOT_GIVEN), not this flow's general one.
       const notGiven = NOT_GIVEN.get(tool.name);
-      let refusal = notGiven ? `Blocked by ${PRODUCT}: ${notGiven}` : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
+      let refused = notGiven ? refusal(notGiven) : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
-      if (!refusal && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refusal = `Blocked by ${PRODUCT}: ${v.reason}.`; }
-      const ok = allowed.has(tool.name) && !refusal;
+      if (!refused && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refused = refusal(v.reason); }
+      const ok = allowed.has(tool.name) && !refused;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
-      return ok ? { allow: true, reason: "" } : { allow: false, reason: refusal ?? spec.refuse ?? `Blocked by ${PRODUCT}: this can only look at the project, not change it.` };
+      return ok ? { allow: true, reason: "" } : { allow: false, reason: refused ?? spec.refuse ?? refusal("this can only look at the project, not change it") };
     };
     const ask = async (prompt: string, resume?: string): Promise<string> => {
       let text = "";
@@ -1326,6 +1336,7 @@ export class AgentRunner {
       this.state(spec.agent, "error");
     } finally {
       book();
+      removeEmptyClaudeFolder(spec.project, hadClaudeFolder);   // the empty one Claude Code leaves behind (litter.ts)
       this.sessions.delete(spec.agent);
       this.driving.delete(spec.agent);
     }
@@ -1334,7 +1345,7 @@ export class AgentRunner {
   private async drivePlan(cmd: Extract<Command, { type: "drive.plan" }>): Promise<void> {
     // Most steps in a plan (drive.maxSteps, usual 12): read as the plan is made, and kept with it until it is approved.
     const max = this.setting<number>("drive.maxSteps", cmd.project);
-    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: `Blocked by ${PRODUCT}: planning can only look at the project, not change it.` }, async (ask, st) => {
+    await this.readOnly({ mode: "drive", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, said: cmd.goal, refuse: refusal("planning can only look at the project, not change it") }, async (ask, st) => {
       let steps = parsePlan(await ask(planPrompt(cmd.goal, max)));
       if (steps.length > max && !st.abort.signal.aborted) {
         const again = parsePlan(await (cmd.offTheRecord ? ask(freshShortenPrompt(cmd.goal, steps.length, max)) : ask(shortenPrompt(steps.length, max), st.sessionId)));
@@ -1345,7 +1356,7 @@ export class AgentRunner {
       const truncated = steps.length > max;
       const kept = steps.slice(0, max);
       this.plans.set(cmd.agent, { project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, usd: st.usd, sessionId: st.sessionId, offTheRecord: cmd.offTheRecord, goal: cmd.goal, maxSteps: max });
-      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model, usualModel("work")) } as never);
+      this.emit({ type: "plan.ready", agent: cmd.agent, steps: kept.map((title, i) => ({ id: i + 1, title })), truncated, estimateUsd: estimateUsd(kept.length, cmd.model) } as never);
       this.state(cmd.agent, "needsYou");
     });
   }
@@ -1356,8 +1367,8 @@ export class AgentRunner {
     const question = cmd.question.replace(/\s+/g, " ").trim();
     if (!question) { this.fail("Research needs a question to look into.", cmd.agent); return; }
     const web = new Set([...READ_ONLY_TOOLS, "WebSearch", "WebFetch", "ToolSearch"]);
-    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? `Blocked by ${PRODUCT}: research may only open public web pages, never this computer or a private network.` : null;
-    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: `Blocked by ${PRODUCT}: research can look things up, but never change the project.` }, async (ask, st) => {
+    const check = (t: ToolUse) => (t.name === "WebFetch" && !isSafeUrl(String(t.input.url ?? ""))) ? refusal("research may only open public web pages, never this computer or a private network") : null;
+    await this.readOnly({ mode: "research", agent: cmd.agent, project: cmd.project, model: cmd.model, budgetUsd: cmd.budgetUsd, offTheRecord: cmd.offTheRecord, allow: web, check, tools: RESEARCH_TOOLS, refuse: refusal("research can look things up, but never change the project") }, async (ask, st) => {
       const r = parseResearch(await ask(researchPrompt(question)));
       if (st.abort.signal.aborted) { this.state(cmd.agent, "idle"); return; }
       if (!r) { this.fail("Research found no cited notes (notes with sources), so nothing was filed. Try asking a more specific question.", cmd.agent); this.state(cmd.agent, "error"); return; }
@@ -1835,9 +1846,12 @@ export class AgentRunner {
 
   // Text the person selected in another app and sent with the hotkey. Secrets are hidden first, before it is used for anything;
   // then where it lives in the project is looked up (no model), and the fast model says what it means in two plain sentences.
+  private errorApps = new Map<string, string>();
   private async errorExplain(cmd: Extract<Command, { type: "error.explain" }>): Promise<void> {
     const text = cleanSelection(cmd.text);
     const project = cmd.project && existsSync(cmd.project) ? cmd.project : undefined;
+    // Only the app's display name is remembered, so a fix started from this error can be named (labels.ts). Never the text.
+    if (text) this.errorApps.set(cmd.project ?? "", appDisplayName(cmd.app));
     const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "error.explained", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, sentences: [], excerpt: excerptOf(text), evidence: clip(text, 3000), usdEstimate: 0, ...extra } as never);
     if (!text) { say(false, { reason: "There was no text to explain. Select the error first, then press the keys again." }); return; }
     let where: Problem | null = null;
@@ -2027,7 +2041,7 @@ export class AgentRunner {
         ...(cmd.offTheRecord ? { offTheRecord: true, goal: rescueGoal(d) } : {}) });
       const steps = d.steps.map((title, i) => ({ id: i + 1, title }));
       // The rough cost follows the model the plan's steps run on (Claude for Rescue), against Rescue's usual one.
-      const estimate = estimateUsd(steps.length, cmd.model, usualModel("rescue"));
+      const estimate = estimateUsd(steps.length, cmd.model);
       this.emit({ type: "rescue.report", agent: cmd.agent, summary: d.summary, works: d.works, broken: d.broken, steps, evidence, estimateUsd: estimate } as never);
       this.emit({ type: "plan.ready", agent: cmd.agent, steps, truncated: false, estimateUsd: estimate } as never);
       this.state(cmd.agent, "needsYou");
@@ -2098,7 +2112,7 @@ export class AgentRunner {
         const runStep = async (first: string, extra: { label?: string; said?: string; asked?: string } = {}): Promise<Awaited<ReturnType<AgentRunner["run"]>>> => {
           let prompt = first;
           for (;;) {
-            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, ...extra, step: { index, title } });
+            let r = await this.run(stepCmd(prompt), { resumeSession: resumeAt(), taskAllowed, ...carry, label: `Step ${index} of ${total}: ${title}`, ...extra, step: { index, title } });
             session = r.sessionId ?? session; remaining -= r.usd; spent += r.usd;
             // Paused in the middle of the step: wait, then carry on with the same step.
             if (r.status === "interrupted" && this.pauseReq.has(cmd.agent) && !this.driveStop.has(cmd.agent)) {
@@ -2163,7 +2177,7 @@ export class AgentRunner {
 
     if (verdict.decision === "deny") {
       tell("blocked");
-      return { allow: false, reason: `Blocked by ${PRODUCT}: ${verdict.reason}` };
+      return { allow: false, reason: refusal(verdict.reason) };
     }
     // After Stop (or a pause) nothing more runs in this task, and nothing more is asked: the real engine can still ask once
     // while it winds down.
@@ -2200,7 +2214,7 @@ export class AgentRunner {
       });
       // Tell every page, so none keeps a stale card or badge.
       this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
-      if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : "The user did not allow this command." }; }
+      if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : `The person said no to this, so ${PRODUCT} did not run it. Carry on without it, or end with one short question if you need them to choose.` }; }
       if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
       if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");

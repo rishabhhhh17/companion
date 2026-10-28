@@ -1,15 +1,15 @@
 // Where was I: three plain lines when someone comes back, written by code from Companion's own task history only.
 // Free, exact, and it cannot invent anything.
 import type { TaskRow } from "./tasklog.ts";
+import { isOffRecordLabel } from "./labels.ts";
 
-const OFF = "Off the record task";
 // Stopped before the work was done, for a reason that is not a failed check: the person stopped it, a limit, no connection
 // to Claude, or Claude busy.
 const STOPPED = new Set(["interrupted", "error_max_budget_usd", "error_max_turns", "no_connection", "claude_busy"]);
 const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 export function recapLines(rows: TaskRow[], since: string, pendingApprovals: number): string[] {
-  const visible = rows.filter((r) => r.label !== OFF);
+  const visible = rows.filter((r) => !isOffRecordLabel(r.label));
   const startedAway = visible.filter((r) => r.startedAt >= since);
   if (startedAway.length === 0) return [];
   const before = visible.filter((r) => r.startedAt < since).sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1))[0];

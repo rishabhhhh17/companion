@@ -2,6 +2,40 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby checks first, quotes a fair price and speaks plainly: 26 Oct 2026
+
+Found in the first hands on session on a Mac, the engine side.
+
+- **A fix from an error now checks the error is still real.** Before, "Fix it" on an error that was already fixed made up a cause and moved a line for no reason. Now it reads the file and line, looks at whether the thing it names still fails, and if not says "This error looks already fixed" and changes nothing. A new test project, `stale-error`, measures this. One real run: it said so and changed nothing, for 3.7 cents.
+- **The cost shown before Start is about what it really costs.** It said about 25 cents for a task that cost 3 cents. It is now what steps really cost (about 4 cents on the usual model) with a margin of one half, so one step shows about 6 cents. What a task may spend at most did not change.
+- **What I did reads plainly.** A step of a plan is named by the step, not by Squibby's own instructions ("Do only this step..."). A fix started from an error you selected says which app it came from ("Fix for an error you selected in TextEdit"), and never keeps the error itself.
+- **Squibby no longer talks like its own code.** Claude was told to say "the hook is blocking me". It is now told never to say hook, sandbox or permission mode, and when something is not allowed to say "Squibby does not let tasks...", with what you can do. The reasons it is given are in everyday words too.
+- **No empty hidden folder left in your project.** Claude Code leaves an empty `.claude` folder in the project folder. Squibby now removes it after a task, but only when it was not there before and is empty. A `.claude` folder of your own is never touched.
+- **Support can see that an approval happened.** The activity log now records that a question was asked (the kind of risk and which tool) and how it was answered (yes, no, expired or stopped), never the question's words.
+- **Checked by machine, plus one real run** of the new test project only. Nobody has seen these changes on screen.
+
+## Fixes from the first hands on session, the way it behaves: 26 Oct 2026
+
+- **The explain key always answers.** Before, pressing it with nothing selected in Cursor showed nothing at all. Now every press ends in a plain line on the card: nothing was selected, Accessibility is off, the field is private, Squibby itself is in front, no app could be found, or the app could not be read in five seconds. Apps like Cursor and VS Code that hide their text boxes until told a screen reader is near are now woken for that one press and put back to sleep after.
+- **The Show me key listens at once.** Press it, say what you want to find, press it again. The light comes on first. If voice is off, the speech model is not downloaded or the microphone is not allowed yet, it opens the question box as before. There is a new switch in Settings, "Show me key listens at once", on by default.
+- **Undo where you look.** What I did now has an Undo button on the newest task that changed files, with the same question as before. Older tasks say why they have none: undoing an older task would also take back the work done after it.
+- **Answers are called Answer.** A plain question is answered under "Answer". "What changed" stays for tasks that changed files.
+- **Pick any hotkey.** Under Keys to remember, tick Control, Option, Shift or Command and choose the key from a list. It needs two ticks, one of them Control or Command, and it refuses the Mac's own shortcuts and keys another job already has. Nothing reads what you type.
+- **Not seen on a real Mac yet.** All of this was checked by tests on a Mac with no one at the screen. The explain key in Cursor, the Show me key listening and the new hotkey picker need your eyes.
+
+## A calmer look, and Flowflow that moves like water: 26 Oct 2026
+
+After the first time you used it on your Mac, you said it looked bad, the card was complicated, replies were in a small box and Flowflow was a photo in a square. This is the first round of fixing that. It is checked by machine and in a browser only: nobody has seen it on a Mac yet.
+
+- **The square box is gone.** Flowflow now floats on your desktop with nothing behind it. What it says sits in a small see through pill that stays readable on any wallpaper.
+- **Flowflow is water.** It breathes and wobbles when idle, its top lags behind when you drag it, it squashes and sends out a ripple when you click it, it melts from one pose into the next, it has a soft shimmer, and it throws a few droplets when a task is done. With less motion (your Mac's setting or ours) it only fades between poses.
+- **No more orange.** The app is black and white and follows your Mac's light and dark. Only small marks keep a colour: green for checked, amber for waiting for your yes, red for a refusal. Flowflow's own glow is a cool blue, on the character only.
+- **Home is one calm column.** The job comes first and the ask box after it. The places (Now, What I did, Learn, Memory, Settings) are a small row of drawings at the top. One filled button; the other ways to ask, the options and the watches are behind one quiet line. Undo and Stop are always at the bottom.
+- **Replies are easy to read.** Larger type, a comfortable line length, no small box. What was checked shows as ticks, with what it cost and how many files changed.
+- **The ring when you drop a file is bigger and calmer.** Round targets of 44 points with space between them, small drawings instead of letters (a format shows its own name), and a More that opens the whole list in Home.
+- **Under the hood:** a character is now a "skin" in one place, so a new character brings its own pictures, its own one colour and its own motion without touching the rest of the app. The rules are in `docs/design/look.md`.
+- **Not decided:** the founder has not chosen a visual direction. This round is neutral on purpose.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.

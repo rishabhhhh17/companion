@@ -122,7 +122,7 @@ describe(`a built in tool ${PRODUCT} does not give is refused in plain words, ne
       for (const t of ["Agent", "Task"]) {
         const r = evaluate({ tool: t, input }, { project: P });
         expect(r.decision, `${t} ${JSON.stringify(input)}`).toBe("deny");
-        expect(r.reason).toBe(`${PRODUCT} does not give Claude sub agents. Do the work yourself with the tools you have.`);
+        expect(r.reason).toBe(`${PRODUCT} does not let tasks hand work to helpers. Do the work yourself.`);
       }
     }
   });

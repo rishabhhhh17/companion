@@ -46,6 +46,15 @@ export const S = {
   },
   start: "Start",
   stop: "Stop",
+  // The look (docs/design/look.md): the words the calm layout adds. Plain, no cute talk (rule 16).
+  look: {
+    more: "More ways to ask",
+    stripLabel: "Undo and Stop",
+    undoShort: "Undo",
+    stopKeys: "Stop everything: {keys}",
+    factsLabel: "About this task",
+    files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
+  },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",
   allow: "Allow",
@@ -68,6 +77,7 @@ export const S = {
   undoRecovered: "Files you had changed were saved aside first.",
   undoLarge: "Some very large files were left as they are.",
   receiptTitle: "What changed",
+  answerTitle: "Answer",
   isLive: "is live",
   savePicture: "Save picture",
   copyLink: "Copy link",
@@ -147,6 +157,8 @@ export const S = {
   shipClose: "Close",
   shipRun: "Check the work now",
   recentTitle: "Recent tasks",
+  historyUndo: "Undo this task",
+  historyUndoWhy: "Undo is on the newest task that changed files. Undoing an older one would also take back the work done after it.",
   noRecent: "Nothing yet.",
   checkingTitle: "Checking the work",
   notDone: "Not done",
@@ -211,7 +223,7 @@ export const S = {
   keyJobs: { card: "Open the ask box", problem: "Point at the problem", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", stop: "Stop everything" },
   // How a chord is named: the modifiers in the Mac's order, then the key (keymap.rs MODS and KEYS use the same words).
   keyWords: { control: "Control", option: "Option", shift: "Shift", command: "Command", space: "Space", return: "Return" },
-  keysSettingsHelp: "Each job has its own keys. Press Change to pick others from a short list of keys that are free on this Mac.",
+  keysSettingsHelp: "Each job has its own keys. Press Change to pick others from a short list of keys that are free on this Mac, or to pick any keys you like.",
   keysNone: "No keys right now",
   keysChange: "Change",
   keysChangeFor: (job: string) => `Change the keys for ${job}`,
@@ -226,6 +238,12 @@ export const S = {
   keysTaken: "Another app is already using those keys. Pick other keys.",
   keysInUse: `Another of ${PRODUCT_S} jobs already uses those keys. Pick other keys.`,
   keysNotSaved: "Could not save that on this Mac. Try again.",
+  keysNotEnough: "Use at least two of Control, Option, Shift and Command, and at least one of them Control or Command. Option and Shift alone type characters.",
+  keysReserved: "Your Mac already uses those keys itself. Pick other keys.",
+  keysCustomTitle: "Or pick any keys",
+  keysCustomHelp: "Tick at least two of Control, Option, Shift and Command, one of them Control or Command, then choose the key. Nothing here listens to your keyboard.",
+  keysCustomKey: "Key",
+  keysCustomUse: "Use these keys",
   keysFailed: "That did not change. Try again.",
   keysAcceptWhen: "These keys work only while a Prompt help suggestion shows.",
   keysChanged: (job: string, keys: string) => `${job} now uses ${keys}.`,
@@ -309,7 +327,7 @@ export const S = {
   lessonLooking: "I look at your screen once for each step, with the light on first.",
   pointNoProject: "Choose your project folder first, then press the key again.",
   pointHint: "Stuck in any app? Press {keys}. In your project I check it and point at what is wrong; anywhere else I look at your screen once, with a light on first, and walk you through the fix.",
-  showMeKeyHint: "Press {keys}, then type what you want to find. I look at your screen once, with a light on first.",
+  showMeKeyHint: "Press {keys} and ask out loud what you want to find, then press it again. I look at your screen once, with a light on first. With voice off, it opens a box to type in.",
   phKeyHint: "In another app's text box, press {keys}. I suggest a clearer prompt, and nothing changes until you say so.",
   slKeyHint: "Select an answer from any AI and press {keys}. I redo its maths, look at the rest, and say what to check and what I cannot tell.",
   errKeyHint: "Select an error in any app (Terminal, a browser, a builder's chat) and press {keys}. I say what it means in plain words and find where it is in your project.",
@@ -803,6 +821,8 @@ export const S = {
   ehNeverApp: "I never read this kind of app.",
   ehRefusedByYou: "You told me not to read in this app.",
   ehOwnApp: "Select the error in the app where you see it, then press {keys}.",
+  ehNoFront: "I could not tell which app is in front. Click the app with the error, select the text, then press {keys}.",
+  ehUnreadable: "I could not read that app. Select the text and try again with {keys}.",
   ehNoEngine: `${PRODUCT_S} engine is not running, so I could not look at it. Try again in a moment.`,
   ehError: "Something went wrong while reading it. Try again.",
   ehWhere: (file: string, line: number) => `It is in ${file}, line ${line}.`,
@@ -1049,6 +1069,7 @@ export const S = {
     "talk.voice": { label: "Voice, speed and microphone", help: `Your voice and ${PRODUCT_S} are handled on this Mac. Nothing you say or hear is sent anywhere.`, also: ["microphone", "mic", "speed", "language", "voice", "headphones"], usual: "your Mac's own voice and microphone" },
     "talk.speak": { label: "Speak to me", help: `${PRODUCT} says short lines out loud (the step you are on, what a ring points at) in the voice picked here. Stop everything, closing Home, or holding the talk keys silences it.`, also: ["read aloud", "say", "sound", "spoken"] },
     "talk.speakReplies": { label: "Answer out loud when I ask by voice", help: `When you ask by holding the talk keys, ${PRODUCT} says its short answer out loud, all of it. A long answer is said up to a point, and the rest is in Home.`, also: ["aloud", "spoken answer", "reply"] },
+    "showme.listen": { label: "Show me key listens at once", help: `On, the Show me key starts listening as soon as you press it (the light comes on first), and you press it again when you are done. ${PRODUCT} then looks at your screen and points at the answer. Off, the key only opens the question box. It also opens the box when voice is off, the speech model is not downloaded, or ${PRODUCT} may not use the microphone yet.`, also: ["voice", "talk", "ask", "question", "microphone", "show me", "key", "hotkey", "listen"] },
     "talk.maxHold": { label: "Longest hold to talk", help: `${PRODUCT} stops listening after this long, even if you are still holding the keys.`, also: ["microphone", "mic", "listen", "dictation", "limit"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     "speak.alsoSay": { label: "Also say out loud", help: `With Speak to me on, ${PRODUCT} can also say when something needs you and when a task ends.`, also: ["aloud", "announce", "spoken", "task done", "needs you"], options: { needsYou: "When something needs me", taskDone: "When a task ends" } },
     "talk.autoSend": { label: "Send spoken words automatically", help: "When you let go of the talk keys, a request for work of three words or more is sent at once. Words that mean wait or stop, or take it back (wait, hold on, never mind, not yet, don't, I changed my mind, scratch that), a question about your screen, and words in another language than English always wait in the box. Off, your words always wait in the box until you press Start.", also: ["dictation", "send", "hold to talk"] },
@@ -1171,6 +1192,7 @@ export const S = {
     pressNeverRisky: "A button whose words sound like it sends, pays, deletes or publishes is never pressed, whatever this says.",
     browserAlways: "Starting the project and the browser check can never be left out.",
     noAnswerIsNo: "No answer always counts as no.",
+    "showme.listen": "The microphone opens only after the light is on, closes on your second press or Stop everything, and never listens longer than the limit above. Your voice is turned into words on this Mac.",
     "talk.maxHold": "There is always a limit, and the microphone is on only while you hold the keys and the light is on.",
     "speak.alsoSay": "Only with Speak to me on. Nothing is said during a call, and anything that looks like a key or password is never said.",
     "point.ringSeconds": "A ring always goes at once when its window moves, closes, is covered or another app comes to the front.",
@@ -1349,6 +1371,9 @@ export const S = {
   // F19, drop a file on the companion (dropmenu.ts, dropRing.tsx). Short words fit a small round button; the label is
   // what VoiceOver says and what Home's list shows.
   drop: {
+    // The ring around the character shows a few choices; More opens the whole list in Home.
+    more: "More ways to use this file",
+    moreShort: "More",
     actions: {
       toPng: { short: "PNG", label: "Convert to PNG" },
       toJpeg: { short: "JPEG", label: "Convert to JPEG" },

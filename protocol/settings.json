@@ -21,6 +21,7 @@
       "from": { "pageStorage": { "name": "companion.voiceAutoSend", "map": "isOne" } } },
     { "key": "talk.followUpByPointing", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "talk.shortSteps", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "showme.listen", "section": "talking", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "showme.listen" },
     { "key": "talk.maxHold", "section": "talking", "kind": "choice", "default": "60", "options": ["30", "60", "120"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "talk.maxHold" },
     { "key": "speak.alsoSay", "section": "talking", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["needsYou", "taskDone"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "speak.alsoSay" },
 

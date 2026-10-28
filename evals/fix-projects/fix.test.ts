@@ -12,7 +12,7 @@ import { applySteps, copyProject, needMet, removeDir, resolveCmd, runCheck } fro
 import { scripted, stepsToTurns } from "../lib/session.ts";
 import type { FixStep } from "../lib/project.ts";
 import { FIX_ASK, fixPrompt, HIDDEN, loadCases, runFixCase, type LoadedCase } from "./pipeline.ts";
-import { askedFor, classify, lastMessage, summarize, summaryLine } from "./score.ts";
+import { askedFor, classify, lastMessage, saysAlreadyFixed, summarize, summaryLine } from "./score.ts";
 
 const cases = loadCases();
 const byId = (id: string) => cases.find((c) => c.id === id)!;
@@ -21,17 +21,17 @@ const run = (c: LoadedCase, extra: Partial<Parameters<typeof runFixCase>[1]> = {
 const runnable = (c: LoadedCase) => (c.needs ?? []).every(needMet);
 
 describe("the case list", () => {
-  test("25 cases: the 15 rescue projects and 10 AI builder breakages, each with a project", () => {
-    expect(cases.length).toBe(25);
-    expect(new Set(cases.map((c) => c.id)).size).toBe(25);
+  test("26 cases: the 15 rescue projects, 10 AI builder breakages and the stale error, each with a project", () => {
+    expect(cases.length).toBe(26);
+    expect(new Set(cases.map((c) => c.id)).size).toBe(26);
     const rescue = readdirSync(join(import.meta.dir, "..", "rescue-projects", "cases")).sort();
     expect(cases.filter((c) => c.source.startsWith("rescue:")).map((c) => c.source.slice(7)).sort()).toEqual(rescue);
     const fixtures = readdirSync(join(import.meta.dir, "fixtures")).sort();
     expect(cases.filter((c) => c.source.startsWith("fixture:")).map((c) => c.source.slice(8)).sort()).toEqual(fixtures);
     for (const c of cases) expect(existsSync(c.src), c.id).toBe(true);
   });
-  test("a train split of 12 and a held out test split of 13, and 12 hard cases for the model sweep", () => {
-    expect(cases.filter((c) => c.split === "train").length).toBe(12);
+  test("a train split of 13 and a held out test split of 13, and 12 hard cases for the model sweep", () => {
+    expect(cases.filter((c) => c.split === "train").length).toBe(13);
     expect(cases.filter((c) => c.split === "test").length).toBe(13);
     expect(cases.filter((c) => c.hard).length).toBe(12);
   });
@@ -49,6 +49,15 @@ describe("the case list", () => {
   test("a case that needs something only the person has comes with no fix, and with the words a question must name", () => {
     for (const c of cases.filter((x) => x.expect === "ask")) { expect(c.fix, c.id).toEqual([]); expect(c.ask?.names.length, c.id).toBeGreaterThan(0); }
     for (const c of cases.filter((x) => x.expect === "fix")) expect(c.fix.length, c.id).toBeGreaterThan(0);
+  });
+  test("a stale error case comes with the pasted error, no fix, and a guard that the project still works", () => {
+    const stale = cases.filter((x) => x.expect === "stale");
+    expect(stale.map((c) => c.id)).toEqual(["stale-error"]);
+    for (const c of stale) {
+      expect(c.fix, c.id).toEqual([]);
+      expect(c.error, c.id).toMatch(/not defined/);
+      expect(c.hidden.every((h) => h.kind === "guard"), c.id).toBe(true);
+    }
   });
   test("every known good fix still fits its project exactly (each text to replace is there once)", () => {
     for (const c of cases) {
@@ -105,14 +114,16 @@ describe("dry: every case, start to finish, with the known good fix", () => {
       const r = await results.get(c.id)!;
       expect(r.notes.filter((n) => !n.startsWith(`${PRODUCT} asked for approval`)), r.notes.join(" | ")).toEqual([]);
       expect(r.notes.join(" | ")).not.toContain("Companion");
-      expect(r.outcome).toBe(c.expect === "ask" ? "asked" : "fixed");
-      if (c.where) expect(r.detail?.locatedRight, JSON.stringify(r.detail?.found)).toBe(true);
+      expect(r.outcome).toBe(c.expect === "ask" ? "asked" : c.expect === "stale" ? "already_fixed" : "fixed");
+      if (c.where && c.expect !== "stale") expect(r.detail?.locatedRight, JSON.stringify(r.detail?.found)).toBe(true);
       expect(r.costUsd).toBe(0);
       expect(r.turns).toBeGreaterThan(0);
       // How big the change was, from the project before and after (M11 step 4 scores diff size).
       const size = r.detail?.diff as { files: number; added: number; removed: number } | undefined;
       expect(size, c.id).toBeDefined();
       if (c.expect === "fix") expect(size!.files, c.id).toBeGreaterThan(0); else expect(size, c.id).toEqual({ files: 0, added: 0, removed: 0 });
+      // The task was started with the shipped Fix it request, which carries the rule that the error is checked first.
+      if (c.expect === "stale") expect(r.detail?.prompt, c.id).toContain("still applies");
     }, 180_000);
   }
 });
@@ -266,6 +277,47 @@ describe("wrong fixes are told apart from right ones", () => {
     expect(r.outcome).toBe("broke_something");
     expect(r.notes.join(" ")).toMatch(/password/);
   }, 60_000);
+});
+
+// A fix started from an error that was already fixed: the right answer is to change nothing and say so (finding A).
+describe("a stale error: scored on nothing changed and the card saying it is already fixed", () => {
+  const stale = byId("stale-error");
+  const s1 = early(() => run(stale, { agent: turnsOf([{ edit: "index.html", old: "\n    <script src=\"app.js\"></script>\n  </body>", new: "\n  </body>" }, { edit: "index.html", old: "  </head>", new: "    <script src=\"app.js\"></script>\n  </head>" }], "Fixed: I moved the script tag.") }));
+  test("moving the script tag for no reason is a change, however it is explained", async () => {
+    const r = await s1();
+    expect(r.outcome).toBe("changed_anyway");
+    expect(r.notes.join(" ")).toMatch(/changed/i);
+  }, 60_000);
+  const s2 = early(() => run(stale, { agent: scripted([[{ text: "Done.", costUsd: 0 }]]) }));
+  test("changing nothing but not saying why is not the answer either", async () => {
+    const r = await s2();
+    expect(r.outcome).toBe("not_fixed");
+  }, 60_000);
+  const s3 = early(() => run(stale, { agent: turnsOf([{ edit: "app.js", old: "document.getElementById('gallery').hidden = false;", new: "document.getElementById('gallery').hidden = false; // checked" }], "This error looks already fixed: showGallery is defined now.") }));
+  test("saying it is already fixed after changing a file still counts as a change", async () => {
+    const r = await s3();
+    expect(r.outcome).toBe("changed_anyway");
+  }, 60_000);
+  test("the words that count as saying it is already fixed", () => {
+    for (const w of ["This error looks already fixed: showGallery is defined now.", "It is already fixed, so I changed nothing.", "The error no longer applies.", "That function exists now; there is nothing to fix.", "This was fixed earlier."]) expect(saysAlreadyFixed(w), w).toBe(true);
+    for (const w of ["I moved the script tag after the button.", "Done.", "", "The fix is to define showGallery."]) expect(saysAlreadyFixed(w), w).toBe(false);
+  });
+  test("the scorer: nothing changed and said so is already fixed; any change is changed anyway", () => {
+    const j = { expect: "stale" as const, ladder: "passed", accept: [], regressions: [], asked: false };
+    expect(classify({ ...j, changed: false, saidFixed: true }).outcome).toBe("already_fixed");
+    expect(classify({ ...j, changed: false, saidFixed: false }).outcome).toBe("not_fixed");
+    expect(classify({ ...j, changed: true, saidFixed: true }).outcome).toBe("changed_anyway");
+    expect(classify({ ...j, changed: true, saidFixed: false }).outcome).toBe("changed_anyway");
+    expect(classify({ ...j, changed: false, saidFixed: true, regressions: ["x"] }).outcome).toBe("changed_anyway");
+    expect(classify({ ...j, changed: false, saidFixed: true, error: "boom" }).outcome).toBe("error");
+  });
+  test("the summary counts them as good only when nothing was changed", () => {
+    const r = (id: string, outcome: string) => ({ id, outcome, costUsd: 0.1, turns: 4, tokens: { in: 0, cacheRead: 0, out: 0 }, ms: 1, notes: [], detail: {} });
+    const sum = summarize([r("a", "already_fixed"), r("b", "changed_anyway"), r("c", "fixed")]);
+    expect(sum.counts).toMatchObject({ already_fixed: 1, changed_anyway: 1, fixed: 1 });
+    expect(sum.goodRate).toBeCloseTo(2 / 3);
+    expect(summaryLine(sum)).toMatch(/already fixed 1, changed anyway 1/);
+  });
 });
 
 describe("the app's own Fix it with me path (Rescue's diagnosis, then the approved plan)", () => {

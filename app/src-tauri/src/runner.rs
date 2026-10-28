@@ -167,6 +167,40 @@ pub fn remember(map: &mut BTreeMap<String, Value>, v: &Value) -> bool {
     }
 }
 
+// ---------- the event log can show an approval ----------
+//
+// Support must be able to see that a question was asked and how it was answered (the first Mac session: the log held no
+// runner events at all). So two plain lines are always written: approval_asked (the kind of risk and the tool) and
+// approval_answered (yes, no, expired or stopped). Never the question's words, which can name a setting or a file.
+
+/// Words that may go into the log: letters, digits, underscore, dash, at most `max` of them. Anything else is "unknown".
+fn plain_word(s: Option<&str>, max: usize) -> String {
+    match s { Some(w) if !w.is_empty() && w.len() <= max && w.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') => w.to_string(), _ => "unknown".into() }
+}
+
+/// The log line for an event, if it is one about an approval. `seen` remembers the tool of each call waiting for a yes
+/// (its agent.tool event comes just before the approval.request), a few dozen at most.
+pub fn approval_line(v: &Value, seen: &mut BTreeMap<String, String>) -> Option<(&'static str, Value)> {
+    let get = |k: &str| v.get(k).and_then(Value::as_str);
+    match get("type")? {
+        "agent.tool" if get("outcome") == Some("needs_approval") => {
+            if seen.len() >= 64 { seen.clear(); }
+            seen.insert(plain_word(get("toolUseId"), 80), plain_word(get("tool"), 40));
+            None
+        }
+        "approval.request" => {
+            let tool = seen.remove(&plain_word(get("toolUseId"), 80)).unwrap_or_else(|| "unknown".into());
+            Some(("approval_asked", serde_json::json!({ "approval": plain_word(get("approval"), 40), "risk": plain_word(get("risk"), 30), "tool": tool })))
+        }
+        "approval.resolved" => {
+            let outcome = match get("outcome") { Some("allowed") => "yes", Some("denied") => "no", Some("expired") => "expired", Some("cancelled") => "stopped", _ => "unknown" };
+            Some(("approval_answered", serde_json::json!({ "approval": plain_word(get("approval"), 40), "outcome": outcome })))
+        }
+        _ => None,
+    }
+}
+static APPROVALS_SEEN: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+
 // ---------- keeping the engine alive ----------
 //
 // The engine (the runner) is a separate program. It can crash, hang, print garbage or ignore us. None of that may freeze the
@@ -297,6 +331,7 @@ impl Runner {
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
         crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)
+        if let Some((ev, extra)) = approval_line(&v, &mut lock(&APPROVALS_SEEN)) { crate::log(ev, extra); }   // asked and answered, never the words
         let _ = app.emit("runner-event", v);
     }
 
@@ -389,6 +424,55 @@ mod tests {
         assert!(check_project(&c("walk.start", "/Users/me/other"), "/Users/me/site").is_err());
     }
     use serde_json::json;
+
+    // ---------- the event log can show an approval was asked and answered (finding I) ----------
+
+    fn tool_event(id: &str, tool: &str) -> Value { json!({ "v": 1, "type": "agent.tool", "agent": "builder-1", "tool": tool, "summary": "git push origin main", "toolUseId": id, "undoable": false, "outcome": "needs_approval" }) }
+    fn asked(id: &str, tool_use: &str, risk: &str) -> Value { json!({ "v": 1, "type": "approval.request", "approval": id, "agent": "builder-1", "checkpoint": "cp_0001", "toolUseId": tool_use, "risk": risk, "title": "pushes your work to GitHub: SECRET_NAME", "expiresAt": "2026-10-26T12:00:00Z" }) }
+    fn answered(id: &str, outcome: &str) -> Value { json!({ "v": 1, "type": "approval.resolved", "approval": id, "agent": "builder-1", "outcome": outcome }) }
+
+    #[test]
+    fn an_approval_asked_is_logged_with_its_kind_and_tool_and_nothing_it_said() {
+        let mut seen = BTreeMap::new();
+        assert!(approval_line(&tool_event("toolu_1", "Bash"), &mut seen).is_none());
+        let (ev, extra) = approval_line(&asked("ap_1", "toolu_1", "git"), &mut seen).expect("a line");
+        assert_eq!(ev, "approval_asked");
+        assert_eq!(extra, json!({ "approval": "ap_1", "risk": "git", "tool": "Bash" }));
+        let text = extra.to_string();
+        for leaked in ["push", "GitHub", "SECRET_NAME", "origin"] { assert!(!text.contains(leaked), "{leaked}"); }
+    }
+    #[test]
+    fn an_answer_is_logged_as_yes_no_expired_or_stopped() {
+        let mut seen = BTreeMap::new();
+        for (outcome, word) in [("allowed", "yes"), ("denied", "no"), ("expired", "expired"), ("cancelled", "stopped"), ("surprise", "unknown")] {
+            let (ev, extra) = approval_line(&answered("ap_1", outcome), &mut seen).expect("a line");
+            assert_eq!(ev, "approval_answered");
+            assert_eq!(extra, json!({ "approval": "ap_1", "outcome": word }));
+        }
+    }
+    #[test]
+    fn a_question_whose_tool_was_not_seen_still_logs_and_odd_words_never_reach_the_log() {
+        let mut seen = BTreeMap::new();
+        let (_, extra) = approval_line(&asked("ap_2", "toolu_none", "network"), &mut seen).unwrap();
+        assert_eq!(extra["tool"], "unknown");
+        let _ = approval_line(&tool_event("toolu_3", "Bash; rm -rf ~ and a very long made up name that goes on and on"), &mut seen);
+        let (_, extra) = approval_line(&asked("ap_3", "toolu_3", "irreversible\nmore"), &mut seen).unwrap();
+        assert_eq!(extra["tool"], "unknown");
+        assert_eq!(extra["risk"], "unknown");
+        let (_, extra) = approval_line(&answered("ap 4/../x", "allowed"), &mut seen).unwrap();
+        assert_eq!(extra["approval"], "unknown");
+    }
+    #[test]
+    fn other_events_are_not_logged_and_the_memory_of_tools_stays_small() {
+        let mut seen = BTreeMap::new();
+        for t in ["cost.update", "receipt", "agent.state", "plan.ready", "proof.step"] { assert!(approval_line(&json!({ "type": t }), &mut seen).is_none(), "{t}"); }
+        let mut running = tool_event("x", "Read"); running["outcome"] = json!("ran");
+        assert!(approval_line(&running, &mut seen).is_none());
+        assert!(seen.is_empty(), "a tool that needed no approval is not remembered");
+        for i in 0..500 { let _ = approval_line(&tool_event(&format!("toolu_{i}"), "Bash"), &mut seen); }
+        assert!(seen.len() <= 64);
+    }
+
 
     #[test]
     fn allows_the_commands_pages_need() {

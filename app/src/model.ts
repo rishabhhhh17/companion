@@ -1119,7 +1119,7 @@ export function ehLines(m: Model): string[] {
   if (!h) return [];
   const app = h.app || S.thisApp;
   const where = h.where && h.where.kind === "line" ? [S.ehWhere(h.where.file, h.where.line)] : [];
-  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.ehOwnApp, "explain"), no_engine: S.ehNoEngine };
+  const refused: Record<string, string> = { secure_field: S.ehSecureField, secure_input: S.ehSecureInput, never_app: S.ehNeverApp, refused_by_you: S.ehRefusedByYou, own_app: withKeys(S.ehOwnApp, "explain"), no_engine: S.ehNoEngine, no_front: withKeys(S.ehNoFront, "explain"), unreadable: withKeys(S.ehUnreadable, "explain") };
   switch (h.stage) {
     case "reading": return [S.ehReading(app)];
     case "thinking": return [S.ehThinking];
@@ -1260,6 +1260,11 @@ export function receiptSaid(m: Model): { lead: string; words: string; help?: str
   if (!r?.said) return null;
   if (!r.asks || r.undone || r.gone) return { lead: S.receiptSaid, words: r.said };
   return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: r.inPlan ? S.receiptAnswerHelpPlan : S.receiptAnswerHelp };
+}
+
+/** The receipt block's heading: Answer when the task changed no files and only answered, else What changed. */
+export function receiptHeading(r: Receipt | null | undefined): string {
+  return r && r.changed.length === 0 && !!r.said ? S.answerTitle : S.receiptTitle;
 }
 
 // The receipt's one line about its checks. "Checked and working" only while no place has its old code back from a turn.
