@@ -3,15 +3,40 @@
 import type { Command } from "../../protocol/index.ts";
 import { switchKey, type SwitchedId } from "./groups.ts";
 
-// The first run (M15 wave 1): see it work before anything is asked, then connect Claude, then pick a folder; the last step is
-// optional (the questions, F05; the four groups, F20; the keys) and can be skipped in one press. "look" is a recording of
-// the signup practice (firstLook.ts): it spends nothing and needs no key, no Node and no folder, so the hero is the first
-// thing everyone sees (F17: the first run sells only the hero; product doc section 4: a demo runs before anything is
-// connected). The real practice is one press away on the folder step. Permissions are asked when a feature first needs one.
-export const STEPS = ["look", "connect", "folder", "yours"] as const;
+// The first run (M18, 28 Oct 2026, the whole flow): a hello, then see it work before anything is asked (F17, F05: a demo runs
+// before anything is connected), then choose your companion and make it yours, say what it should help with, connect Claude,
+// pick a folder, and a last screen with the real shortcuts, the practice project and the optional questions (F05). "look" is
+// a recording of the signup practice (firstLook.ts): it spends nothing and needs no key, no Node and no folder. Permissions
+// are asked when a feature first needs one, never here. The water at the foot of Home rises with every step (LEVEL).
+export const STEPS = ["hello", "look", "pick", "yours", "powers", "connect", "folder", "ready"] as const;
 /** The steps that must be done; the rest can be skipped. */
 export const REQUIRED: readonly Step[] = ["connect", "folder"];
 export type Step = (typeof STEPS)[number];
+/** The steps counted in words ("2 of 5"): the hello and the recording come before the count, the last screen after it. */
+export const COUNTED: readonly Step[] = ["pick", "yours", "powers", "connect", "folder"];
+export function countOf(step: Step): { n: number; of: number } | null { const i = COUNTED.indexOf(step); return i < 0 ? null : { n: i + 1, of: COUNTED.length }; }
+/** How high the water stands at each step, in percent of Home's height: it rises as you go and is nearly full at the end. The
+ *  hello sits Flowflow in the surface; the recording keeps it low, out of the way. */
+export const LEVEL: Record<Step, number> = { hello: 34, look: 10, pick: 24, yours: 36, powers: 48, connect: 60, folder: 72, ready: 86 };
+
+/** Make it yours: the name (empty keeps the character's own), how lively, and which edge it lives on. Null: not chosen here,
+ *  so the setting is left as it is (the person may have moved the character already). */
+export type Lively = "lively" | "calm";
+export type Edge = "left" | "right" | "top" | "bottom";
+export type Yours = { name: string; lively: Lively | null; edge: Edge | null };
+export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null };
+export const NAME_MAX = 24;
+/** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), the reactions for
+ *  how lively, and the edge. Only what was chosen. */
+export function yoursSettings(y: Yours, ownName: string): [string, unknown][] {
+  const out: [string, unknown][] = [];
+  const name = y.name.trim().slice(0, NAME_MAX);
+  if (name && name !== ownName) out.push(["character.name", name]);
+  if (y.lively) out.push(["fun.reactions", y.lively === "lively"]);
+  if (y.edge) out.push(["character.edge", y.edge]);
+  return out;
+}
+
 export type Answers = { explain: boolean; short: boolean; plain: boolean; autoSend: boolean };
 export const DEFAULT_ANSWERS: Answers = { explain: true, short: false, plain: true, autoSend: false };
 

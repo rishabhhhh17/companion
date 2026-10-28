@@ -17,11 +17,11 @@ Written 28 Oct 2026, after the founder said the look still fell short and asked 
 The water at the bottom of the panel rises with every step: it is the progress bar, and "1 of 5" says it in words too. The lime button is always in the same place.
 1. **Hello.** A drop falls into the water and Flowflow rises out of it. "Your AI built it. Let's finish it." One line on what it does. Then the recorded fix (today's first look), before anything is asked.
 2. **Who do you want with you?** Flowflow, chosen, beside empty places for the companions to come (see decision 2).
-3. **Make it yours.** Its name (Flowflow unless changed), how lively it is (Lively or Calm, the reactions and motion settings), and where it lives (left, right, a corner, or only in the notch).
+3. **Make it yours.** Its name (Flowflow unless changed), how lively it is (Lively or Calm, the reactions and motion settings), and where it lives (the left, right, top or bottom edge: the existing character.edge setting).
 4. **What should it help with?** The four groups as plain switches (Fix my project, Show me how, Talk to it, Drop files on it), each saying what it will ask for, and that it asks only the first time, never at install.
 5. **Connect your Claude.** The key goes into the Keychain (today's flow, restyled). A plan login stays in Anthropic's own flow, unchanged.
 6. **Which project are we finishing?** Drop a folder or pick a recent one.
-7. **Ready.** The panel is full of water. The real shortcuts from the app (not made up), then "Watch it fix a practice project" (today's recorded first look) or "Skip, take me to my project".
+7. **Ready.** The panel is full of water. The real shortcuts from the app (not made up), then "Try a practice project" (the real practice, as on today's folder step) or "Go to my project". The optional questions (F05) sit here, folded away.
 
 ## Settings
 A Mac style window with a grouped side list and the Mac's own controls:
