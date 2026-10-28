@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Work cards, captions and a real Esc: 29 Oct 2026
+
+- **Work drops from the notch as it happens.** When a job starts, moves to its next step, or finishes with its proof, its card drops from the notch for a few seconds and tucks back. You see progress without opening anything, and nothing stays over your windows.
+- **Captions while Squibby talks.** Anything said out loud also shows at the bottom of your screen, and goes away when it stops.
+- **Esc takes back control.** While Squibby points at something or walks you through steps, Esc clears it and stops it talking. The rest of the time, Esc stays with your other apps.
+- **Your shortcut opens Squibby instantly.** No animation when you open it from the keyboard, so it feels immediate.
+- **The first-run demo shows its progress.** The step playing now fills its own little bar, like stories do.
+- Each of these has a switch in Settings.
+
 ## Snappier, calmer motion: 29 Oct 2026
 
 - **Everything answers faster.** Home drops from the notch in a quarter of a second without bouncing, and rolls back up just as quickly. The notch panel opens in a blink, from the notch, instead of fading in late.
