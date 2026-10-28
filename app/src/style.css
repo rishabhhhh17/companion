@@ -10,6 +10,8 @@
    Motion: ease out for what the interface does, ease in for what goes away, one spring (the island's, islandSpring.ts, as a
    linear() curve) for what pops, and four durations, 120 200 280 400 ms. Interruptible, none with reduced motion. */
 :root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
+  --lime: #C6F432; --water: #59D2FF; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
+  --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
   --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
   --r-sm: 8px; --r-md: 12px; --r-lg: 20px; --r-xl: 30px; --r-pill: 999px;
@@ -22,7 +24,7 @@
 :root[data-text="large"] { font-size: 16px; }
 :root[data-text="larger"] { font-size: 18px; }
 :root[data-text="largest"] { font-size: 20px; }
-@media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; } }
+@media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; } }
 @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-top-width: 2px; } }
 html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; -webkit-font-smoothing: antialiased; }
 /* What a person may want to copy (an error, a path, a plan step) can be selected. */
@@ -70,7 +72,7 @@ html.dock-page, body.dock-page { background: transparent; }
    Its window paints nothing (main.rs), so only the shape shows. No side list and no title bar: small round buttons at the
    top, Flowflow large beside the job in big words, one ask box and three quick actions, then the result as a card. The
    window is as tall as what shows (card.tsx measures .inner and the strip), from 300 (island.rs HomeSize). */
-:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; }
+:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; }
 @media (prefers-contrast: more) { :root.home-page { --muted: var(--fg); --line: var(--edge); } }
 html.home-page, body.home-page { background: transparent; }
 .card { padding: 0; height: 100vh; box-sizing: border-box; }
@@ -130,6 +132,13 @@ html.home-page, body.home-page { background: transparent; }
 .chip-btn .ic { width: 14px; height: auto; opacity: .7; transition: opacity var(--dur-1) var(--ease-out); }
 .chip-btn:hover .ic { opacity: 1; }
 .chip-btn:hover { background: color-mix(in srgb, var(--fg) 14%, var(--bg)); }
+/* Night and lime (M17): headings, buttons and pills in the Mac's rounded face; Home's quick actions draw in lime and lift a
+   little under the pointer. */
+.headline, .view-title, .chip-btn, .pill, .section-pill, .btn.primary, .dock-label { font-family: var(--round); }
+.home .chip-btn { transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.home .chip-btn .ic { color: var(--key); opacity: 1; }
+.home .chip-btn:hover { transform: translateY(-1px) rotate(-1deg); }
+.home .chip-btn:nth-child(even):hover { transform: translateY(-1px) rotate(1deg); }
 .home details.more { margin: var(--space-3) 0 0; }
 /* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a big readable card that sits on the
    black: a slightly lighter black, a hairline, a large corner, and it rises in on the spring when it arrives. */
@@ -183,9 +192,10 @@ main.card.dropping { outline: 2px dashed var(--edge); outline-offset: -4px; }
 .btn { padding: calc(8rem / 14) calc(12rem / 14); min-height: calc(32rem / 14); box-sizing: border-box; border-radius: var(--r-md); border: 0; background: transparent; color: var(--fg); font-size: var(--t-body); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
 .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn.primary { background: var(--fg); color: var(--bg); padding: calc(8rem / 14) calc(20rem / 14); border-radius: var(--r-pill); }
+.btn.primary { background: var(--key); color: var(--key-ink); padding: calc(8rem / 14) calc(20rem / 14); border-radius: var(--r-pill); font-weight: 700; box-shadow: 0 3px 0 var(--key-edge); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.btn.primary:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-edge); }
 /* The main button keeps its own look under the pointer (the plain hover tint would put its words on a pale patch). */
-.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 82%, var(--bg)); }
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--key) 88%, #ffffff); }
 .btn.danger { color: var(--danger); }
 /* A lone text button at the start of a line lines its words up with the text above it. */
 .row > .btn:first-child:not(.primary) { margin-left: calc(-12rem / 14); }
@@ -515,45 +525,50 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .proof-chips li.ok .ic { color: var(--ok); }
 .proof-chips li.bad .ic { color: var(--danger); }
 
-/* The panel under the notch (islandPanel.tsx; 27 Oct 2026, "like HeyClicky's notch hover", "I need a bit of colour"): the
-   notch grown down into a small panel, never a character. Colour lives here, in the palette the founder picked (Glow,
-   M16): a shiny gold button for the main thing, a mint pill, a lifted grey panel, work cards lit by how they are going,
-   and a faint warm glow along the bottom edge. The rest of the chrome stays black and white. Always laid out at island.rs PANEL_W so
-   its height is measured before it opens; shown only while the pointer rests on the island. */
-.island-panel { --gold-hi: #FFF3CF; --gold: #FFCF73; --gold-lo: #FF9A3D; --gold-ink: #3A1400; --mint-hi: #D9FBE6; --mint: #A6EFC6; --mint-ink: #0D3B22; --lift: #1D1D20; --chip: #2D2D31; --spark: #FFA552; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
-/* Glow (the founder's pick, 27 Oct 2026, M16): the notch's black, lifting to a soft grey where the panel hangs. */
-.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #1D1D20 100%); }
+/* The panel under the notch (islandPanel.tsx; 27 Oct 2026, "like HeyClicky's notch hover"; 28 Oct 2026, M17 night and lime):
+   the notch grown down into a small panel, never a character. Lime, the mark's colour, is the one colour that means "do
+   this": the main button is a lime key that sinks when pressed. Pills are dark with a lime drawing, work cards are lit by
+   how they are going (lime while working, green when done), and a faint lime glow sits along the bottom edge. With nothing
+   running it says hello in big rounded words. Always laid out at island.rs PANEL_W so its height is measured before it
+   opens; shown only while the pointer rests on the island. */
+.island-panel { --lime-hi: #E4FF8A; --lime-lo: #8DBA12; --lime-ink: #1A2600; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+/* The notch's black, lifting to a soft grey where the panel hangs. */
+.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
 .island-panel[data-shown] { visibility: visible; opacity: 1; transition-delay: 60ms; }
-.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(255, 170, 80, .3), transparent); pointer-events: none; }
+.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(198, 244, 50, .22), transparent); pointer-events: none; }
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
-.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 16px; color: #3A1400; background-color: #FFCF73; background-image: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold) 38%, var(--gold-lo) 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .95), inset 0 -3px 8px rgba(200, 80, 0, .35), 0 1px 0 rgba(255, 255, 255, .2), 0 10px 26px rgba(255, 150, 60, .4); font-size: var(--t-body); font-weight: 700; letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out), filter var(--dur-2) var(--ease-out); }
-.island-panel .ip-go:hover { filter: brightness(1.05); box-shadow: inset 0 2px 0 #fff, inset 0 -3px 8px rgba(200, 80, 0, .35), 0 1px 0 rgba(255, 255, 255, .2), 0 12px 32px rgba(255, 150, 60, .55); }
-.island-panel .ip-go:active { transform: scale(.98); }
-.island-panel .ip-plus { font-size: calc(18rem / 14); font-weight: 600; line-height: 1; }
+.island-panel .ip-hi { margin: 4px 4px 0; color: #F7F7F2; font: 700 calc(21rem / 14)/1.15 var(--round); letter-spacing: -.01em; }
+.island-panel .ip-hi em { font-style: normal; color: #C6F432; }
+.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 18px; color: #1A2600; background-color: #C6F432; background-image: linear-gradient(180deg, var(--lime-hi) 0%, #C6F432 55%, #B5E61F 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 4px 0 var(--lime-lo), 0 12px 30px rgba(198, 244, 50, .3); font: 700 var(--t-answer) var(--round); letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.island-panel .ip-go:hover { transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 5px 0 var(--lime-lo), 0 16px 38px rgba(198, 244, 50, .45); }
+.island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(198, 244, 50, .25); }
+.island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #C6F432; background: #1A2600; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
 .island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 600; transition: filter var(--dur-2) var(--ease-out); }
-.island-panel .ip-pill:hover { filter: brightness(1.12); }
-.island-panel .ip-pill.find { color: #FFE0C2; background: #2D2D31; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
-.island-panel .ip-pill.find .ic { color: #FFA552; }
-.island-panel .ip-pill.live { color: #0D3B22; background-color: #BDF4D4; background-image: linear-gradient(180deg, var(--mint-hi), var(--mint)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .8); }
-.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2D2D31; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12); }
-.island-panel .ip-open:hover { background: #38383d; }
+.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.island-panel .ip-pill:hover { background: #34343A; transform: translateY(-1px); }
+.island-panel .ip-pill:active { transform: scale(.94); }
+.island-panel .ip-pill .ic { color: #C6F432; }
+.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
+.island-panel .ip-open:hover { background: #34343A; }
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .island-panel .ip-jobs li { animation: ip-in var(--dur-4) var(--ease-spring) both; }
 @keyframes ip-in { from { opacity: 0; translate: 0 -6px; scale: .97; } }
-.island-panel .ip-job { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 14px; background: #26262A; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
-.island-panel .ip-job:hover { background: #2D2D31; }
-.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(255, 165, 82, .35); }
+.island-panel .ip-job { position: relative; overflow: hidden; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 16px; background: #1E1E21; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover { background: #26262A; }
+.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(198, 244, 50, .3); }
+/* While it works, a lime light runs along the card's foot. */
+.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #C6F432, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
+@keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
-.island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(166, 239, 198, .5); }
+.island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
-.island-panel .ip-text b { font-weight: 600; color: #fff; overflow-wrap: anywhere; }
+.island-panel .ip-text b { font: 600 var(--t-small) var(--round); color: #fff; overflow-wrap: anywhere; }
 .island-panel .ip-text span { color: #c4c4c9; font-size: var(--t-caption); overflow-wrap: anywhere; }
-.island-panel .ip-cost { color: #FFB766; font-size: var(--t-caption); font-weight: 700; font-variant-numeric: tabular-nums; }
-.island-panel .ip-job[data-tone="done"] .ip-cost { color: #A6EFC6; }
+.island-panel .ip-cost { padding: 3px 8px; border-radius: var(--r-pill); color: #C6F432; background: #2B3313; font: 700 var(--t-caption) var(--round); font-variant-numeric: tabular-nums; }
+.island-panel .ip-job[data-tone="done"] .ip-cost { color: #7BE495; background: #17301F; }
 .island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
 /* The sun beside the notch (M16): Squibby's mark (the smiling pinwheel sun, app/brand) on the menu bar just left of the
    notch, at rest only (the wings and the panel take its place while they show). One colour like the Mac's own menu bar

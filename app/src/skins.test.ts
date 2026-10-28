@@ -57,7 +57,7 @@ describe("the chrome does not read a skin", () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
     for (const line of rules.split("\n").filter((l) => l.includes("--skin-glow"))) expect(line, line).toMatch(/\.character/);
   });
-  test("the base tokens are neutral greys in light and dark (no hue at all)", () => {
+  test("the base tokens are neutral greys in light and dark (only the marks and the brand carry a hue)", () => {
     const lightRoot = /:root \{([^}]*)\}/.exec(css)![1];
     const darkRoot = /prefers-color-scheme: dark\) \{ :root \{([^}]*)\}/.exec(css)![1];
     const tokens = (block: string) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{3,6})\b/g)].map((m) => [m[1], m[2]]));
@@ -67,8 +67,9 @@ describe("the chrome does not read a skin", () => {
       const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16) / 255);
       return Math.max(r, g, b) - Math.min(r, g, b);
     };
-    // Semantic marks keep a colour (checked, waiting, a refusal); everything else is grey.
-    const SEMANTIC = ["--amber", "--amber-line", "--danger", "--ok"];
+    // Semantic marks keep a colour (checked, waiting, a refusal), and so does the brand (M17, night and lime, approved 28 Oct
+    // 2026): lime, the mark's colour, for "do this", and water blue for Flowflow's work. Everything else is grey.
+    const SEMANTIC = ["--amber", "--amber-line", "--danger", "--ok", "--lime", "--water", "--key", "--key-ink", "--key-edge"];
     for (const [name, block] of [["light", lightRoot], ["dark", darkRoot]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);
@@ -82,7 +83,11 @@ describe("the chrome does not read a skin", () => {
     const uses = css.split("\n").filter((l) => /var\(--amber(-line)?\)/.test(l) && !/^--|^:root|^@media/.test(l.trim()) && !l.trim().startsWith("/*"));
     for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|@keyframes (glow|pose-glow)|:root \{|prefers-color-scheme/);
   });
-  test("the filled button is black on white or white on black, never a colour", () => {
-    expect(css).toMatch(/\.btn\.primary \{ background: var\(--fg\); color: var\(--bg\);/);
+  test("the filled button is the lime key: lime with dark words on black, black with lime words on white", () => {
+    expect(css).toMatch(/\.btn\.primary \{ background: var\(--key\); color: var\(--key-ink\);/);
+    expect(css).toMatch(/:root \{[^}]*--lime: #C6F432;[^}]*--key: #111111; --key-ink: #C6F432;/);
+    expect(css).toMatch(/prefers-color-scheme: dark\) \{ :root \{[^}]*--key: #C6F432; --key-ink: #1A2600;/);
+    // The lime is the mark's own (app/brand/make_logo.py LIME), so the button and the logo are the same colour.
+    expect(read("../brand/make_logo.py")).toContain('LIME = "#C6F432"');
   });
 });
