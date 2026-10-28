@@ -74,8 +74,10 @@ describe("the gear opens Settings in its own window, with a way back if it canno
     await openSettings(() => Promise.reject(new Error("unknown command")), () => { inHome++; });
     expect(inHome).toBe(1);
   });
-  test("the page's gear uses it, with Settings inside Home as the fallback, and is named Settings", () => {
-    expect(card).toContain('openSettings(invoke, () => pickTab("settings"))');
+  test("the page's gear opens Settings inside Home (M20: never a separate window), and is named Settings", () => {
+    expect(card).toContain('const gear = () => pickTab("settings");');
+    expect(card).not.toContain("openSettings(invoke");
+    expect(card).toContain('pickTab(t.place === "settings" ? "settings" : "learn")');
     expect(card).toMatch(/aria-label=\{tabName\("settings"\)\}[^>]*onClick=\{gear\}/);
   });
 });

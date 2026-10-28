@@ -6,6 +6,8 @@
 
 mod docking;
 mod peek;
+mod gaze;
+mod follow;
 mod settingswin;
 mod island;
 mod roam;
@@ -107,6 +109,8 @@ static LOG: Mutex<()> = Mutex::new(());
 static APP: OnceLock<AppHandle> = OnceLock::new();
 static PROJECT: Mutex<Option<String>> = Mutex::new(None);
 thread_local! { static OVERLAY: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) }; }
+// The drop that follows the pointer (follow.rs): a tiny window that never takes clicks or the keyboard, made like the overlay.
+thread_local! { static FOLLOW: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) }; }
 /// What Show me how last saw, kept in memory until the answer's last step or until the answer is ended, then dropped; and
 /// where the last step of a multi step answer pointed, so the next flight starts there (showme::Pending).
 static SHOWME: Mutex<showme::Pending> = Mutex::new(showme::Pending::new());
@@ -1005,6 +1009,65 @@ fn pointer_on_character(mtm: MainThreadMarker) -> Option<bool> {
 
 /// While it is tucked away, often (peek::EDGE_POLL_MS): the pointer reaching the edge brings it in at once, not on the
 /// next tick. Main thread.
+/// The last place of the pointer the character's page was told (gaze.rs), so only a real move is sent.
+static LAST_GAZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+/// Follow my pointer (gaze.rs): while the character is in view and the setting is not Off, where the pointer is from the
+/// middle of the character's window, sent only when it moved. Main thread (the window's frame).
+fn gaze_tick(app: &AppHandle) {
+    if !gaze::follows(&setting_now("character.follow")) { return; }
+    if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { return; }
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    let Some(frame) = with_panels(|dock, _| from_appkit(dock.frame(), primary_h)) else { return };
+    let p = macos_see::pointer();
+    if p.x < 0.0 && p.y < 0.0 { return; }
+    let rel = gaze::relative((p.x, p.y), frame);
+    let mut last = LAST_GAZE.lock().unwrap_or_else(|e| e.into_inner());
+    if !gaze::worth_sending(*last, rel) { return; }
+    *last = Some(rel);
+    let _ = app.emit_to("dock", "gaze", json!({ "dx": rel.0, "dy": rel.1 }));
+}
+
+/// A drop that follows you (follow.rs): about sixty times a second, while A drop of water is chosen and no pointer ring is
+/// up, the drop's spring moves toward the pointer and its window follows; otherwise the window is put away. Its own thread.
+fn follow_loop(app: AppHandle) {
+    let mut d = follow::Drop::default();
+    let (mut shown, mut want, mut tick) = (false, false, 0u64);
+    let mut water = Value::Null;
+    let mut last = std::time::Instant::now();
+    loop {
+        std::thread::sleep(Duration::from_millis(follow::TICK_MS));
+        if tick % 30 == 0 { want = follow::wanted(&setting_now("character.follow")); water = setting_now("look.water"); }
+        tick += 1;
+        if !want || overlay_busy() {
+            if shown {
+                shown = false; d.placed = false;
+                let _ = app.run_on_main_thread(|| FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.orderOut(None); } }));
+            }
+            last = std::time::Instant::now();
+            continue;
+        }
+        let now = std::time::Instant::now();
+        let dt = (now - last).as_secs_f64();
+        last = now;
+        let p = macos_see::pointer();
+        if p.x < 0.0 && p.y < 0.0 { continue; }
+        d.step((p.x, p.y), dt);
+        let (fr, first) = (d.frame(), !shown);
+        shown = true;
+        let _ = app.run_on_main_thread(move || {
+            let Some(mtm) = MainThreadMarker::new() else { return };
+            let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+            FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
+                pn.setFrameOrigin(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3])));
+                if first { pn.orderFrontRegardless(); }
+            } });
+        });
+        if tick % 3 == 0 { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); }
+    }
+}
+
 fn peek_edge_poll(app: &AppHandle) {
     if !home_set().peek { return; }
     let Some(mtm) = MainThreadMarker::new() else { return };
@@ -2355,6 +2418,7 @@ fn apply_sharing(s: &presentation::Settings) {
     with_panels(|dock, card| { card.setSharingType(t); dock.setSharingType(t); });
     OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setSharingType(t); } });
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setSharingType(t); } });
+    FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.setSharingType(t); } });
 }
 
 /// Quiet during calls: a known call app is in front (and, once verified, a camera is in use, or another app uses a
@@ -3960,6 +4024,7 @@ fn main() {
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;
             let overlay_w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(100.0, 100.0).build()?;
+            let follow_w = WebviewWindowBuilder::new(app, "follow", WebviewUrl::App("follow.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(follow::SIZE, follow::SIZE).build()?;
             let island_w = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("island.html".into())).visible(false).focused(false).decorations(false).transparent(true).accept_first_mouse(true).inner_size(185.0, 32.0).build()?;
             // F19: a file dropped on the character or the island. Tauri's own drop events, on these two windows only.
             for (w, at) in [(&dock_w, "dock"), (&island_w, "island")] {
@@ -3997,6 +4062,10 @@ fn main() {
             let overlay_ns: &NSWindow = unsafe { &*(overlay_w.ns_window()? as *const NSWindow) };
             let overlay = make_overlay(mtm, overlay_ns);
             OVERLAY.with(|o| *o.borrow_mut() = Some(overlay));
+            let follow_ns: &NSWindow = unsafe { &*(follow_w.ns_window()? as *const NSWindow) };
+            let follow_p = make_overlay(mtm, follow_ns);
+            follow_p.setFrame_display(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(follow::SIZE, follow::SIZE)), false);
+            FOLLOW.with(|f| *f.borrow_mut() = Some(follow_p));
             // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.
             let island_ns: &NSWindow = unsafe { &*(island_w.ns_window()? as *const NSWindow) };
             let island = make_panel(mtm, island_ns, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(185.0, 32.0)));
@@ -4033,6 +4102,17 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
             });
+            // Follow my pointer (gaze.rs): the pointer's place, a few times a second, only while the character is in view.
+            let h = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(gaze::POLL_MS));
+                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { continue; }
+                let h2 = h.clone();
+                let _ = h.run_on_main_thread(move || gaze_tick(&h2));
+            });
+            // A drop that follows the pointer (follow.rs), only with A drop of water chosen.
+            let h = app.handle().clone();
+            std::thread::spawn(move || follow_loop(h));
             // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
             // may already own some of them. That must never stop Companion from opening; the one notice says what to do.
             let launch = start_keys(app.handle());

@@ -5,7 +5,7 @@ import type { FlowflowController } from "./flowflow/controller.ts";
 import { characterName } from "./companion.ts";
 import { useLook } from "./useLook.ts";
 import { play, wantSound, type Cue } from "./sound.ts";
-import { SIZE_SCALE, sizeOf } from "./lookfeel.ts";
+import { livelyOf, SIZE_SCALE, sizeOf } from "./lookfeel.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
@@ -63,6 +63,29 @@ function Dock() {
   const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
   // Peeking from past the edge (peek.ts): only a lean toward the screen, as data.
   const peek = usePeek();
+  // The live water (M20): a handle to move it from here, the window's speed felt as jelly lag, Lively's hops, and the eyes
+  // following the pointer anywhere on the screen (the shell sends where it is, only with Follow my pointer on).
+  const ffCtl = useRef<FlowflowController | null>(null);
+  const vel = (vx: number, vy: number) => { flow.api.velocity(vx, vy); ffCtl.current?.push(vx, vy); };
+  const reactionsSet = useSetting("fun.reactions"), motionSet = useSetting("character.motion");
+  const lively = livelyOf(reactionsSet, motionSet) === "lively";
+  useEffect(() => { ffCtl.current?.setLively(lively); }, [lively, ffCtl.current]);
+  useEffect(() => {
+    const off = listen("gaze", (e) => { const g = (e.payload ?? {}) as { dx?: number; dy?: number }; ffCtl.current?.gaze(Number(g.dx), Number(g.dy)); });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Coming in from the edge: the window slides in (peek.rs IN_SECS), the water lags behind it, then splashes as it stops.
+  // Going back out: it stretches toward the edge. None with less motion (the controller is still then).
+  const lastPeek = useRef(peek.pose);
+  useEffect(() => {
+    const was = lastPeek.current; lastPeek.current = peek.pose;
+    if (was === peek.pose || !peek.edge) return;
+    const out = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[peek.edge as "left" | "right" | "top" | "bottom"] ?? [1, 0];
+    const coming = peek.pose === "in" || (peek.pose === "peek" && was === "hidden");
+    const speed = 1400, [ox, oy] = out;
+    if (coming) { vel(-ox * speed, -oy * speed); const t = setTimeout(() => { vel(0, 0); ffCtl.current?.arrive(ox, oy); }, 320); return () => clearTimeout(t); }
+    vel(ox * speed, oy * speed); const t = setTimeout(() => vel(0, 0), 450); return () => clearTimeout(t);
+  }, [peek.pose, peek.edge]);
   const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
   useEffect(() => {
     const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
@@ -106,25 +129,25 @@ function Dock() {
     if (p.dragging) {
       void invoke("drag_dock", { x: e.screenX, y: e.screenY });
       const dt = (e.timeStamp - p.at) / 1000;
-      if (dt > 0.004) flow.api.velocity((e.screenX - p.x) / dt, (e.screenY - p.y) / dt);
+      if (dt > 0.004) vel((e.screenX - p.x) / dt, (e.screenY - p.y) / dt);
       p.x = e.screenX; p.y = e.screenY; p.at = e.timeStamp;
       clearTimeout(still.current);
-      still.current = setTimeout(() => flow.api.velocity(0, 0), 90);   // the pointer stopped, so the window did
+      still.current = setTimeout(() => vel(0, 0), 90);   // the pointer stopped, so the window did
     }
   };
   const up = () => {
     const p = press.current;
     press.current = null;
     clearTimeout(still.current);
-    flow.api.velocity(0, 0);
+    vel(0, 0);
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
   // A trip across the screen leans the body the way it goes; surfacing and settling are a soft touch.
   useEffect(() => {
     const lean = 320, dir = { left: [-lean, 0], right: [lean, 0], up: [0, -lean], down: [0, lean] } as const;
-    if (roam.phase === "travel" || roam.phase === "return") { const [vx, vy] = dir[roam.toward ?? "left"]; flow.api.velocity(vx, vy); return; }
-    flow.api.velocity(0, 0);
+    if (roam.phase === "travel" || roam.phase === "return") { const [vx, vy] = dir[roam.toward ?? "left"]; vel(vx * 3, vy * 3); return; }
+    vel(0, 0);
     if (roam.phase === "surface") flow.api.touchAt(0.5, 0.9, 0.5);
     if (roam.phase === "settle") flow.api.touchAt(0.5, 0.7, 0.8);
   }, [roam.phase, roam.toward]);
@@ -138,7 +161,6 @@ function Dock() {
   }, [react?.id]);
   // The water pointer (M17): a drop splits off the side facing the target, and lands back on top when it comes home.
   // None with reactions off or less motion.
-  const ffCtl = useRef<FlowflowController | null>(null);
   // Sounds (M19, sound.ts): only when turned on, and never while a call app is in front (the shell says only whether to be quiet).
   const cue = (c: Cue) => { if (setting("sound.on") !== true) return; void invoke("quiet_now").then((q) => { if (wantSound(true, q === true)) play(c, setting("sound.volume")); }, () => {}); };
   useEffect(() => {

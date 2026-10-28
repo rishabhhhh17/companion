@@ -40,7 +40,8 @@ pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
     if let Some(d) = o.get("do") {
         return match d.as_str() { Some("find") => Some(serde_json::json!({ "do": "find" })), Some("shipCheck") => Some(serde_json::json!({ "do": "shipCheck" })), _ => None };
     }
-    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), _ => None }
+    // The notch's Settings button (M20): Settings inside Home.
+    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), Some("settings") => Some(serde_json::json!({ "place": "settings" })), _ => None }
 }
 
 #[cfg(test)]
@@ -65,7 +66,9 @@ mod tests {
         use serde_json::json;
         assert_eq!(arrival(&json!({ "lesson": "settings-lesson" })), Some(json!({ "lesson": "settings-lesson" })));
         assert_eq!(arrival(&json!({ "place": "learn" })), Some(json!({ "place": "learn" })));
-        for bad in [json!({ "place": "settings" }), json!({ "lesson": "" }), json!({ "lesson": "../x" }), json!({ "lesson": 3 }),
+        // M20: the notch's Settings button opens Settings inside Home.
+        assert_eq!(arrival(&json!({ "place": "settings" })), Some(json!({ "place": "settings" })));
+        for bad in [json!({ "place": "elsewhere" }), json!({ "lesson": "" }), json!({ "lesson": "../x" }), json!({ "lesson": 3 }),
             json!({ "lesson": "a", "place": "learn" }), json!("learn"), json!(null), json!({}), json!({ "lesson": "a b" })] {
             assert_eq!(arrival(&bad), None, "{bad}");
         }

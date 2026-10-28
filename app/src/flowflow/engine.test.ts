@@ -1,6 +1,6 @@
 // The character as a whole, without a screen: what it does when the app and the pointer act on it.
 import { describe, expect, test } from "bun:test";
-import { BODY_RADIUS, FlowflowEngine, FOLLOW_HOLD, LOOK_HOLD } from "./engine.ts";
+import { BODY_RADIUS, FlowflowEngine, FOLLOW_HOLD, gazeOf, HOP_EVERY, LOOK_HOLD, PUSH_MAX } from "./engine.ts";
 import { MAX_DROPLETS } from "./particles.ts";
 
 const run = (e: FlowflowEngine, s: number, dt = 1 / 60) => { for (let t = 0; t < s; t += dt) e.update(dt); };
@@ -75,5 +75,41 @@ describe("limits and stability", () => {
   test("dials reach the body and the ripples", () => {
     const e = new FlowflowEngine(); e.setTuning({ ripple: 0 }); e.touch(0, 0); expect(e.ripples.alive).toBe(0);
     e.setTuning({ ripple: 1, stiffness: 2 }); expect(e.tune.stiffness).toBe(2);
+  });
+});
+
+describe("alive on the side (M20)", () => {
+  test("a pointer anywhere on the screen: the eyes look that way, a little when near, fully when far, never past their edge", () => {
+    expect(gazeOf(0, 0)).toEqual({ nx: 0, ny: 0 });
+    const near = gazeOf(40, 0), far = gazeOf(2000, 0);
+    expect(near.nx).toBeGreaterThan(0); expect(far.nx).toBeGreaterThan(near.nx); expect(far.nx).toBeLessThanOrEqual(1);
+    expect(gazeOf(0, -500).ny).toBeGreaterThan(0);   // above on the screen is up for the eyes
+    expect(gazeOf(NaN, 3)).toEqual({ nx: 0, ny: 0 });
+    const e = new FlowflowEngine(); run(e, 0.5);
+    for (let t = 0; t < 1; t += 1 / 60) { e.gaze(-900, 0); e.update(1 / 60); }
+    expect(e.update(1 / 60).eyes.lx).toBeLessThan(-0.2);
+  });
+  test("its window moving: the water lags behind, never too far, then catches up, squashing and wobbling as it settles", () => {
+    const e = new FlowflowEngine(); run(e, 0.5);
+    for (let t = 0; t < 0.3; t += 1 / 60) { e.push(-1400, 0); e.update(1 / 60); }   // the window moves left, fast
+    const lag = e.body.pose.x;
+    expect(lag).toBeGreaterThan(0.1); expect(lag).toBeLessThanOrEqual(PUSH_MAX * 1.15);   // a spring overshoots a little, never runs away
+    e.push(0, 0);
+    let wob = 0; for (let t = 0; t < 1.2; t += 1 / 60) wob = Math.max(wob, Math.abs(e.update(1 / 60).pose.wobble2));
+    expect(wob).toBeGreaterThan(0);
+    run(e, 5); expect(Math.abs(e.body.pose.x)).toBeLessThan(0.02); expect(e.body.settled).toBe(true);
+  });
+  test("coming in from the edge makes a splash, a ripple and drops", () => {
+    const e = new FlowflowEngine(); run(e, 0.5); e.arrive(1); run(e, 0.1);
+    expect(e.ripples.alive).toBeGreaterThan(0); expect(e.droplets.alive).toBeGreaterThan(0);
+  });
+  test("Lively: with nothing happening it hops now and then; never when not Lively, and not while it is followed", () => {
+    const calm = new FlowflowEngine(); run(calm, HOP_EVERY[1] + 6); expect(calm.ripples.alive).toBe(0);
+    const lively = new FlowflowEngine(); lively.lively = true;
+    let hopped = false; for (let t = 0; t < HOP_EVERY[1] + 6; t += 1 / 60) { lively.update(1 / 60); if (lively.body.pose.y > 0.08) hopped = true; }
+    expect(hopped).toBe(true);
+    const followed = new FlowflowEngine(); followed.lively = true;
+    let up = false; for (let t = 0; t < HOP_EVERY[1] + 6; t += 1 / 60) { followed.pointer(0.5, 0); followed.update(1 / 60); if (followed.body.pose.y > 0.08) up = true; }
+    expect(up).toBe(false);
   });
 });

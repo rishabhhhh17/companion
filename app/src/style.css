@@ -573,10 +573,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    notch, at rest only (the wings and the panel take its place while they show). One colour like the Mac's own menu bar
    icons: white on a dark menu bar, black on a light one. The window is island.rs MARK wider each side, see through;
    resting on it opens the panel. It fades in, and breathes very slowly. */
-.island-sun { position: absolute; top: calc((var(--row) - 16px) / 2); left: calc(50% - var(--core) / 2 - 22px); width: 16px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both, island-sun-breathe 6s ease-in-out var(--dur-3) infinite; }
+.island-sun { position: absolute; top: calc((var(--row) - 15px) / 2); left: calc(50% - var(--core) / 2 - 20.5px); width: 15px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; z-index: 1; }
+.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both; }
 @keyframes island-sun-in { from { opacity: 0; scale: .6; } }
-@keyframes island-sun-breathe { 50% { opacity: .78; scale: .94; } }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The waterline (M17 step 4, 28 Oct 2026, a frontend-design pass after the founder said the look still fell flat). Home is
@@ -803,3 +802,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .ch-lively { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface); }
 .ch-lively button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: var(--surface); color: var(--fg); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .ch-lively button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+/* Settings inside Home (M20): its parts grouped under the same headings as everywhere (settingsGroups.ts), Character first. */
+.sections-grouped { display: grid; gap: var(--space-3); margin: 0 0 var(--space-4); }
+.sections-group .sections { margin: 0; }
+.sections-head { margin: 0 0 var(--space-1); color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.fr-seg.three { grid-template-columns: repeat(3, 1fr); }

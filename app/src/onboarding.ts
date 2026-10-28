@@ -23,8 +23,9 @@ export const LEVEL: Record<Step, number> = { hello: 34, look: 10, pick: 24, your
  *  so the setting is left as it is (the person may have moved the character already). */
 export type Lively = "lively" | "calm";
 export type Edge = "left" | "right" | "top" | "bottom";
-export type Yours = { name: string; lively: Lively | null; edge: Edge | null };
-export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null };
+export type Follow = "eyes" | "drop" | "off";
+export type Yours = { name: string; lively: Lively | null; edge: Edge | null; follow?: Follow | null };
+export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null, follow: null };
 export const NAME_MAX = 24;
 /** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), the reactions for
  *  how lively, and the edge. Only what was chosen. */
@@ -34,6 +35,8 @@ export function yoursSettings(y: Yours, ownName: string): [string, unknown][] {
   if (name && name !== ownName) out.push(["character.name", name]);
   if (y.lively) out.push(["fun.reactions", y.lively === "lively"]);
   if (y.edge) out.push(["character.edge", y.edge]);
+  // Follow my pointer (M20): its eyes, a drop of water, or off; the person's choice.
+  if (y.follow) out.push(["character.follow", y.follow]);
   return out;
 }
 

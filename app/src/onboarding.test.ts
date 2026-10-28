@@ -49,6 +49,7 @@ describe("make it yours", () => {
     expect(yoursSettings({ name: "Flowflow", lively: null, edge: null }, "Flowflow")).toEqual([]);
     expect(yoursSettings({ name: "  Blub  ", lively: "calm", edge: "left" }, "Flowflow")).toEqual([["character.name", "Blub"], ["fun.reactions", false], ["character.edge", "left"]]);
     expect(yoursSettings({ name: "", lively: "lively", edge: null }, "Flowflow")).toEqual([["fun.reactions", true]]);
+    expect(yoursSettings({ name: "", lively: null, edge: null, follow: "drop" }, "Flowflow")).toEqual([["character.follow", "drop"]]);
   });
   test("a name is cut to the most the setting takes, and the setting exists in the registry", () => {
     const long = "x".repeat(40);

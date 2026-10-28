@@ -34,4 +34,4 @@ export function islandJobs(m: Model): JobCard[] {
 export const panelNote = (line: string, jobs: JobCard[]): string => (jobs.length ? "" : line);
 
 /** What the two quick buttons ask Home to do when it opens (main.rs open_card_cmd, settingswin.rs arrival). */
-export const PANEL_DO = { find: { do: "find" }, ship: { do: "shipCheck" } } as const;
+export const PANEL_DO = { find: { do: "find" }, ship: { do: "shipCheck" }, settings: { place: "settings" } } as const;

@@ -12,6 +12,22 @@ export const FOLLOW_HOLD = 1.4;
 /** The body's widest reach from its centre (world units) at the renderer's body scale; the frame is 2.2 high. */
 export const BODY_RADIUS = 0.84;
 
+/** The pointer anywhere on the screen (M20, Follow my pointer), as a look direction: `dx, dy` in points from the middle of
+ *  the character's window (y down). Near, it looks a little; far, it looks fully that way; never past the edge of its eyes. */
+export const GAZE_SPAN = 260;
+export function gazeOf(dx: number, dy: number, span = GAZE_SPAN): { nx: number; ny: number } {
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return { nx: 0, ny: 0 };
+  const d = Math.hypot(dx, dy); if (d < 1e-6) return { nx: 0, ny: 0 };
+  const m = Math.min(1, (d / (d + span)) * 1.5);
+  return { nx: (dx / d) * m, ny: (-dy / d) * m };
+}
+/** How far the body lags behind its window per point a second of the window's speed (world units), and the most it lags. */
+export const PUSH_PER = 0.0011;
+export const PUSH_MAX = 0.55;
+/** Life when nothing happens (Lively): a small hop every so often, on the seeded schedule (the same every run). */
+export const HOP_EVERY = [6, 12] as const;
+export const HOP_S = 0.5;
+
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
   /** The float added on top of the body's height (a slow bob). */
@@ -28,7 +44,10 @@ export class FlowflowEngine {
   private tuning: Tuning;
   private rand: () => number;
   private time = 0;
-  private lastLook = -Infinity; private lastMove = -Infinity;
+  private lastLook = -Infinity; private lastMove = -Infinity; private lastGaze = -Infinity; private pushing = false;
+  /** Lively (M19, M20): with nothing happening it now and then hops. Off unless the page turns it on (Lively chosen). */
+  lively = false;
+  private hopIn: number = HOP_EVERY[0]; private hopT = -1;
   private credit = 0;
   /** How far the body may roam toward the pointer, as a fraction of the frame (the dock is tiny, the preview is large). */
   followRange = 0.35;
@@ -56,6 +75,31 @@ export class FlowflowEngine {
     this.face.setTarget(nx, ny);
     this.body.setTarget(nx * this.halfW * this.followRange, ny * this.halfH * this.followRange);
   }
+  /** The pointer anywhere on the screen (M20): the eyes look toward it and the body leans a little that way. */
+  gaze(dx: number, dy: number): void {
+    const g = gazeOf(dx, dy);
+    if (g.nx === 0 && g.ny === 0 && !(dx === 0 && dy === 0)) return;
+    this.lastLook = this.time; this.lastGaze = this.time;
+    this.face.setTarget(g.nx, g.ny);
+    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD) this.body.setTarget(g.nx * this.halfW * 0.12, g.ny * this.halfH * 0.12);
+  }
+  /** Its window is moving (a peek, a trip to a window, a drag), `vx, vy` in points a second (y down): the water lags
+   *  behind like jelly. A speed of nothing lets it catch up, and it squashes and wobbles as it settles. */
+  push(vx: number, vy: number): void {
+    if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
+    if (vx === 0 && vy === 0) { this.pushing = false; this.body.setTarget(0, 0); return; }
+    this.pushing = true;
+    const lx = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, -vx * PUSH_PER)), ly = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, vy * PUSH_PER));
+    this.body.setTarget(lx, ly);
+  }
+  /** It came in from the edge (`fromX`: -1 from the left, 1 from the right, 0 from above or below): a splash on the side
+   *  facing the screen, a ripple and a few drops. */
+  arrive(fromX: number, fromY = 0): void {
+    this.pushing = false; this.body.setTarget(0, 0);
+    this.touch(-fromX * BODY_RADIUS * 0.7, -fromY * BODY_RADIUS * 0.6);
+    this.body.impulse("burst", 0.5);
+  }
+
   /** The pointer left, or the window lost focus: the eyes and the body drift back. */
   pointerLeft(): void { this.lastLook = -Infinity; this.lastMove = -Infinity; this.body.setTarget(0, 0); }
 
@@ -79,7 +123,8 @@ export class FlowflowEngine {
     this.behavior.update(d);
     const look = this.behavior.look;
     this.reactToEntered();
-    if (this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastLook < LOOK_HOLD + 1) this.body.setTarget(0, 0);
+    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && this.time - this.lastLook < LOOK_HOLD + 1) this.body.setTarget(0, 0);
+    this.idleLife(d);
     this.body.setBreath(look.breathAmp, look.breathRate);
     this.body.advance(d);
     this.face.update(d, look, this.time - this.lastLook < LOOK_HOLD);
@@ -90,6 +135,21 @@ export class FlowflowEngine {
     this.ripples.update(d);
     this.ripples.fill(this.rippleBuffer);
     return this.snapshot();
+  }
+
+  /** A small hop now and then while Lively and nothing happens (not while it is followed, pushed or busy). */
+  private idleLife(d: number): void {
+    if (this.hopT >= 0) {
+      this.hopT += d;
+      const k = this.hopT / HOP_S;
+      if (k >= 1) { this.hopT = -1; this.body.setTarget(0, 0); this.body.impulse("land", 0.7); this.ripples.add(this.body.pose.x, this.body.pose.y - 0.3, 0.5); return; }
+      this.body.setTarget(0, Math.sin(k * Math.PI) * 0.22);
+      return;
+    }
+    const quiet = this.lively && !this.pushing && this.behavior.state === "idle" && this.time - this.lastMove > 4;
+    if (!quiet) { this.hopIn = Math.max(this.hopIn, 2); return; }
+    this.hopIn -= d;
+    if (this.hopIn <= 0) { this.hopIn = HOP_EVERY[0] + this.rand() * (HOP_EVERY[1] - HOP_EVERY[0]); this.hopT = 0; this.body.impulse("poke", 0.4, 0, -BODY_RADIUS * 0.7); }
   }
 
   readonly rippleBuffer = new Float32Array(16);
