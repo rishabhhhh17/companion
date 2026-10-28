@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { parseCommand } from "../../protocol/index.ts";
 import { fixWatch, startTask, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI } from "./commands.ts";
-import { failingWatch, islandAlert, islandLine, islandWord } from "./home.ts";
+import { failingWatch, islandAlert, islandLine, islandWings } from "./home.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { usedBy } from "./groups.ts";
@@ -102,17 +102,17 @@ describe("what the model keeps", () => {
 });
 
 describe("the island", () => {
-  test("a failing watch gives one plain line and the mark; nothing else changes", () => {
+  test("a failing watch gives one plain line and the red mark; nothing else changes", () => {
     const quiet = initial();
     expect(islandAlert(quiet)).toBe(false);
-    expect(islandLine(quiet)).toBe(S.islandReady);
+    expect(islandLine(quiet)).toBe("");
     const m = run([state(), alert("failing")]);
     expect(failingWatch(m)).toMatchObject({ kind: "site_up" });
     expect(islandAlert(m)).toBe(true);
     expect(islandLine(m)).toBe("Your site (shop.example.com) is failing");
-    expect(islandWord(m)).toBe(S.watch.islandWord);
+    expect(islandWings(m)).toEqual({ state: "error", mark: "red" });
     expect(islandAlert(run([alert("recovered")], m))).toBe(false);
-    expect(islandLine(run([state({ state: "ok" })], m))).toBe(S.islandReady);
+    expect(islandLine(run([state({ state: "ok" })], m))).toBe("");
   });
   test("a question for the person still comes first, and with the engine off there is no alert", () => {
     const asking = run([state(), alert("failing"), ev({ type: "approval.request", approval: "ap_1", agent: "builder-1", checkpoint: "cp", toolUseId: "t", risk: "irreversible", title: "Delete the build folder", expiresAt: "2099-01-01T00:00:00Z" })]);
@@ -123,7 +123,7 @@ describe("the island", () => {
   });
   test("the island page draws it from the same model and adds no new command", () => {
     const page = read("./island.tsx");
-    expect(page).toContain("islandAlert(m");
+    expect(page).toContain("islandWings(m");
     expect([...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]).sort()).toEqual(["island_alert", "island_click", "island_state"]);
     expect(page).not.toMatch(/\bfocus\(|keydown|keyup/);
   });

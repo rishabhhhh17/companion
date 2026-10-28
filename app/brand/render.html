@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>Render the icon</title>
+<body style="background:#333;color:#fff;font:14px -apple-system">
+<p id="s">rendering...</p>
+<script>
+// Draws app-icon.svg and logo.svg at every size the app needs, see through, and posts each PNG to save.py.
+const SIZES = [16, 32, 64, 128, 256, 512, 1024];
+const load = (src) => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = src + "?" + Date.now(); });
+async function save(name, img, size) {
+  const c = document.createElement("canvas"); c.width = c.height = size;
+  const g = c.getContext("2d"); g.imageSmoothingQuality = "high"; g.drawImage(img, 0, 0, size, size);
+  const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+  await fetch("/save?name=" + encodeURIComponent(name), { method: "POST", body: blob });
+}
+(async () => {
+  const icon = await load("app-icon.svg"), logo = await load("logo.svg");
+  for (const s of SIZES) await save(`icon_${s}.png`, icon, s);
+  await save("logo_1024.png", logo, 1024);
+  await save("logo_256.png", logo, 256);
+  document.getElementById("s").textContent = "done";
+})();
+</script>

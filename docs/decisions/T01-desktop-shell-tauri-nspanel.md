@@ -54,3 +54,7 @@ Re-checked on the new construction in M2 (spike a's second session items move th
 
 ## Revisit if
 The natively created panel fails in M2: it does not show over full screen Safari and Terminal, a click brings the app forward, or it does not survive a Space switch and a monitor unplug. Then: native character with the web view only in the card, then Electron (section 1, row 1).
+
+
+## Amendment (27 Oct 2026, M16, following the founder's F11 amendment)
+Still an accessory app with no Dock icon, except while a window the person opened is in front: then the activation policy may be Regular so the app menu shows, and it returns to Accessory when that window closes or loses the front. To be proven in a spike on a real Mac before code depends on it (rule 18): the policy switch does not take focus from another app, the menu appears, and the Dock icon behaviour is what the founder accepted.

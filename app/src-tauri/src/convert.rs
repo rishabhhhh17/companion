@@ -262,6 +262,10 @@ fn keep_audio(ext: &str) -> (&'static str, &'static str, &'static str) {
     }
 }
 
+/// The action that makes a dropped folder the project and finds what is wrong in it. Not a conversion: main.rs drop_pick
+/// handles it before any tool, and `plan` never sees it.
+pub const OPEN_PROJECT: &str = "openProject";
+
 /// Which actions these files get. All of one kind, at most MAX_FILES (a folder and a file of no known kind go together:
 /// both can only be zipped). Trim is for one file at a time; merge is for several PDFs. Every format is offered only when
 /// `caps` says this Mac can write it.
@@ -278,6 +282,8 @@ pub fn offer(paths: &[PathBuf], caps: &Caps, prefs: &Prefs) -> Offer {
     let one = paths.len() == 1;
     let mut list: Vec<&'static str> = match kind {
         Kind::Archive => return Offer::Actions(kind, vec!["unzip"]),
+        // One folder may be the project Squibby works on (main.rs drop_pick: it is checked like any folder chosen).
+        Kind::Folder if one => vec![OPEN_PROJECT],
         Kind::Folder | Kind::Other => vec![],
         Kind::Image => {
             let mut v = formats(IMAGE_TO, own, &prefs.image, &|f| caps.image_ok(f));
@@ -2400,7 +2406,13 @@ mod tests {
         assert_eq!(kind_at(&p("/a/x.zip")), Kind::Archive);
         assert_eq!(kind_at(&p("/a/x.pages")), Kind::Other);
         assert_eq!(kind_at(&p("/a/x.PNG")), Kind::Image);
-        assert_eq!(offer(&[d.join("Photos.png")], &Caps::core(), &Prefs::usual()), Offer::Actions(Kind::Folder, vec!["zip"]));
+        // One folder: work on it as a project first (M15: the most natural "help me with this"), or zip it.
+        assert_eq!(offer(&[d.join("Photos.png")], &Caps::core(), &Prefs::usual()), Offer::Actions(Kind::Folder, vec![OPEN_PROJECT, "zip"]));
+        // Two folders cannot both be the project: they are only zipped.
+        std::fs::create_dir(d.join("Other")).unwrap();
+        assert_eq!(offer(&[d.join("Photos.png"), d.join("Other")], &Caps::core(), &Prefs::usual()), Offer::Actions(Kind::Folder, vec!["zip", "zipTogether"]));
+        // A loose file is never offered as a project.
+        assert!(!matches!(offer(&[p("/a/x.pages")], &Caps::core(), &Prefs::usual()), Offer::Actions(_, a) if a.contains(&OPEN_PROJECT)));
         assert_eq!((Kind::Archive.id(), Kind::Folder.id(), Kind::Other.id()), ("archive", "folder", "other"));
         std::fs::remove_dir_all(&d).unwrap();
     }

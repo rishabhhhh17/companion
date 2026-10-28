@@ -1,9 +1,12 @@
 //! Companion shell. Tauri's web pages inside NSPanels that we create ourselves,
 //! non activating from the start (T01: no tauri-nspanel, no convert after creation).
 //! Rule 9: never steal keyboard focus. Nothing here calls show(), set_focus() or
-//! makeKeyAndOrderFront on a panel.
+//! makeKeyAndOrderFront on a panel. The one window that takes the keyboard is the Settings window, a normal window the
+//! person opens on purpose (settingswin.rs).
 
 mod docking;
+mod peek;
+mod settingswin;
 mod island;
 mod roam;
 mod fullscreen;
@@ -266,8 +269,11 @@ fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64
     let want = [f.origin.x, f.origin.y, f.size.width, f.size.height];
     let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());
     let (w, w2) = (p.retain(), p.retain());
+    // The character's own moves (peeking, peek.rs) overshoot a little and settle, like a spring.
+    let spring = secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);
     let changes = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
         unsafe { ctx.as_ref() }.setDuration(secs.unwrap_or(0.0));
+        if spring { spring_timing(unsafe { ctx.as_ref() }); }
         let a = w.animator();
         a.setFrame_display(f, true);
         if let Some(x) = alpha { a.setAlphaValue(x); }
@@ -336,9 +342,11 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner()) = edge;
     if let Some(app) = APP.get() { if roam_phase() != roam::Phase::Home { roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, f, f, None, edge)); } }
     with_panels(|d, c| {
-        d.setFrame_display(to_appkit(f, ph), true);
+        set_frame_moving(d, to_appkit(f, ph), None, None, &DOCK_MOVES);
         if c.isVisible() { place_card(d, c); }
     });
+    // Put at its place fully in view; it goes back past the edge on the next look, if it should (peek_apply).
+    peek_placed();
     if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }
 }
 
@@ -392,15 +400,23 @@ thread_local! {
     static ISLAND: RefCell<Option<Retained<NSPanel>>> = const { RefCell::new(None) };
     // The tracking area on the island does not keep its owner alive, so it is kept here for as long as the app runs.
     static ISLAND_HOVER_OWNER: RefCell<Option<Retained<hover::HoverOwner>>> = const { RefCell::new(None) };
+    // The same for the character's window (peeking).
+    static DOCK_HOVER_OWNER: RefCell<Option<Retained<hover::DockHoverOwner>>> = const { RefCell::new(None) };
 }
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false });
+/// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
+static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0 });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
 /// The display it is on now, for Home to drop down from.
 static ISLAND_ON: Mutex<Option<island::Display>> = Mutex::new(None);
-/// What the island page was last told: its size, and what it sits on (the notch, a pill, or the thin line on the top edge).
-static ISLAND_SENT: Mutex<(String, String)> = Mutex::new((String::new(), String::new()));
+/// What the island page was last told: its size, what it sits on (the notch, a pill, or the thin line on the top edge), and
+/// the frame it springs its shape to (island.rs `Look`). Null until the first time.
+static ISLAND_SENT: Mutex<Value> = Mutex::new(Value::Null);
+/// Counts each frame asked of the island, so a smaller frame that waits for the shape to tuck back (island.rs `retract_ms`)
+/// is dropped when a newer one was asked meanwhile.
+static ISLAND_GEN: AtomicU64 = AtomicU64::new(0);
 /// Which display the pointer has stayed on, so the island can go to the one the person is using.
 static ISLAND_FOLLOW: Mutex<island::Follow> = Mutex::new(island::Follow::new());
 /// Home (the card) is open; each opening takes a number, so an older click away watch stops.
@@ -470,22 +486,39 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     if moved { reset_hover(); }
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); *s };
     let mode = island::mode(state);
-    let f = island::island_frame(&d, mode);
+    let look = island::look(&d, mode, f64::from(state.panel));
+    let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() { island::cheered(&d, mode, look) } else { look };
+    let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
-    // Growing downward is a short motion (island.rs), unless Reduce motion or Less motion is on; anything else is at once.
-    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { let secs = if p.isVisible() { island::island_motion(from_appkit(p.frame(), ph), f, reduce_motion()) } else { None }; set_frame_moving(p, to_appkit(f, ph), secs, None, &ISLAND_MOVES); } });
+    // The page springs its shape to the new size (island.tsx). Growing is at once, so the shape has room to grow into;
+    // getting smaller in place waits while the shape tucks back (island.rs), unless Reduce motion or Less motion is on.
+    let gen = ISLAND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let from = ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)));
     let kind = island::kind(&d);
-    tell_island(mode, kind);
+    tell_island(mode, kind, &look);
+    match from.filter(|_| !moved).and_then(|from| island::retract_ms(from, f, reduce_motion())) {
+        None => set_island_frame(f, ph),
+        Some(ms) => if let Some(app) = APP.get() {
+            let a = app.clone();
+            std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(ms)); let _ = a.run_on_main_thread(move || if ISLAND_GEN.load(Ordering::SeqCst) == gen { set_island_frame(f, ph) }); });
+        },
+    }
     if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
 }
 
-fn tell_island(mode: island::Mode, kind: island::Kind) {
+/// Sets the island's window to `f` (global top left points) at once. Every frame of the island goes through here. Main thread.
+fn set_island_frame(f: Rect, ph: f64) {
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES); } });
+}
+
+fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look) {
+    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row });
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
-        if g.0 == mode.word() && g.1 == kind.word() { return; }
-        *g = (mode.word().to_string(), kind.word().to_string());
+        if *g == v { return; }
+        *g = v.clone();
     }
-    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", json!({ "mode": mode.word(), "kind": kind.word() })); }
+    if let Some(app) = APP.get() { let _ = app.emit_to("island", "island-mode", v); }
 }
 
 /// The island goes to the display the person is using: the one the pointer has stayed on for a few seconds (island.rs
@@ -542,12 +575,15 @@ fn home_closed() {
     }
 }
 
-/// The page says whether a mark should show (a question waits, listening, just done; home.ts): below the notch, in the
-/// pill, or the thin line on the top edge growing into the pill.
+/// The page says whether the wings are out (something is happening; home.ts islandWings) and how tall its hover panel's
+/// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool) {
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>) {
+    let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
+    let cheer = cheer.unwrap_or(false) && on;
     let _ = app.run_on_main_thread(move || {
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on; s.alert = on; c };
+        let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || cheer_changed; s.alert = on; s.panel = panel; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }
@@ -555,9 +591,10 @@ fn island_alert(app: AppHandle, on: bool) {
 /// For the island page when it loads: its size now, what it sits on, and an update a check found (its version only).
 #[tauri::command]
 fn island_state() -> Value {
-    let (mode, kind) = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let update = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|v| json!({ "version": v })).unwrap_or(Value::Null);
-    json!({ "mode": if mode.is_empty() { "rest".to_string() } else { mode }, "kind": if kind.is_empty() { "pill".to_string() } else { kind }, "update": update })
+    let mut v = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    if !v.is_object() { v = json!({ "mode": "rest", "kind": "pill" }); }
+    v["update"] = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|u| json!({ "version": u })).unwrap_or(Value::Null);
+    v
 }
 
 /// macOS tells us the pointer entered or left the island: a tracking area on that one window, active even while another
@@ -579,6 +616,19 @@ fn island_hover_settle() {
         let a = app.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(ms + 5)); let _ = a.run_on_main_thread(island_hover_settle); });
     }
+}
+
+/// The same for the character's window (peeking: the pointer on its sliver brings it in). Kept for as long as the app runs.
+fn add_dock_hover_tracking(mtm: MainThreadMarker, panel: &NSPanel) {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSTrackingArea, NSTrackingAreaOptions};
+    let Some(view) = panel.contentView() else { return };
+    let owner = hover::DockHoverOwner::new(mtm);
+    let opts = NSTrackingAreaOptions::MouseEnteredAndExited | NSTrackingAreaOptions::ActiveAlways | NSTrackingAreaOptions::InVisibleRect;
+    let any: &objc2::runtime::AnyObject = owner.as_ref();
+    let area = unsafe { NSTrackingArea::initWithRect_options_owner_userInfo(NSTrackingArea::alloc(), view.bounds(), opts, Some(any), None) };
+    view.addTrackingArea(&area);
+    DOCK_HOVER_OWNER.with(|o| *o.borrow_mut() = Some(owner));
 }
 
 fn add_hover_tracking(mtm: MainThreadMarker, panel: &NSPanel) {
@@ -615,6 +665,28 @@ mod hover {
     );
 
     impl HoverOwner {
+        pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(mtm).set_ivars(());
+            unsafe { msg_send![super(this), init] }
+        }
+    }
+
+    define_class!(
+        // SAFETY: as above: NSObject has no rules for subclasses, and this class has no Drop and no instance variables.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "CompanionDockHover"]
+        pub struct DockHoverOwner;
+
+        impl DockHoverOwner {
+            #[unsafe(method(mouseEntered:))]
+            fn mouse_entered(&self, _event: &NSEvent) { super::dock_hover_changed(true); }
+            #[unsafe(method(mouseExited:))]
+            fn mouse_exited(&self, _event: &NSEvent) { super::dock_hover_changed(false); }
+        }
+    );
+
+    impl DockHoverOwner {
         pub fn new(mtm: MainThreadMarker) -> Retained<Self> {
             let this = Self::alloc(mtm).set_ivars(());
             unsafe { msg_send![super(this), init] }
@@ -837,8 +909,117 @@ fn roam_set(app: &AppHandle, r: Rect, gen: u64) {
         *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
         let mtm = MainThreadMarker::new().unwrap();
         let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-        with_panels(|d, _| d.setFrame_display(to_appkit(r, ph), true));
+        with_panels(|d, _| set_frame_moving(d, to_appkit(r, ph), None, None, &DOCK_MOVES));
     });
+}
+
+// ---------- peeking from past the edge of the screen (character.peek; the rules are in peek.rs, tested) ----------
+
+static PEEK: Mutex<peek::Peeker> = Mutex::new(peek::Peeker::new());
+fn peeker() -> std::sync::MutexGuard<'static, peek::Peeker> { PEEK.lock().unwrap_or_else(|e| e.into_inner()) }
+/// The pose the character's window was last moved for.
+static PEEK_POSE: Mutex<peek::Pose> = Mutex::new(peek::Pose::In);
+/// The frames asked of the character's own window (island::Moves): a peek still moving never ends on an older target
+/// after a trip or a drag set the frame at once.
+static DOCK_MOVES: Mutex<island::Moves> = Mutex::new(island::Moves::new());
+
+/// The character was put at its place, fully in view (apply_dock): that is the pose now.
+fn peek_placed() { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; }
+
+/// An event from the engine or the shell (Runner::publish, and Stop everything): it may make the character peek, need the
+/// person (it stays in view), or be a light (listening, looking at the screen). A light brings it fully in at once, and
+/// the caller waits for that before the microphone opens or the screen is read (rule 5).
+pub(crate) fn peek_heard(app: &AppHandle, v: &Value) {
+    // Most events are not news for peeking (a tool line, the cost): nothing more is done for them.
+    if peek::news_of(v).is_empty() { return; }
+    let lit = peeker().hear(v, now() as u64, quiet);
+    if lit { peek_now(app, true); } else { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
+}
+
+/// Moves the character to the pose it should be in, on the main thread, and waits (at most a moment) until it has.
+fn peek_now(app: &AppHandle, light: bool) {
+    if MainThreadMarker::new().is_some() { peek_apply(app, light); return; }
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || { peek_apply(&a, light); let _ = tx.send(()); });
+    let _ = rx.recv_timeout(Duration::from_millis(300));
+}
+
+/// The pointer came onto the character or left it: macOS's tracking area on its window (at once), and each tick (the
+/// pointer's place only, never anything else, the same reading as a trip's pause).
+fn dock_hover_changed(inside: bool) {
+    peeker().pointer(inside, now() as u64);
+    if let Some(app) = APP.get() { peek_apply(app, false); }
+}
+
+/// Puts the character in the pose the timing asks for (peek.rs `Peeker::pose`), where the geometry says (`peek::frame`),
+/// with a short spring, or at once with Reduce motion or Less motion, or for a light. Only at its place on the edge: beside
+/// a window or while dragged it is fully in and left to the trip. It only moves the panel: never orders it in, never
+/// gives it the keyboard. Main thread.
+fn peek_apply(app: &AppHandle, light: bool) {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    if companion_hidden() { return; }
+    let hs = home_set();
+    let calm = reduce_motion();
+    let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
+    let n = peek::Now { now: now() as u64, on: hs.peek, idle_on: hs.peek_idle, calm, at_home };
+    let pose = peeker().pose(&n, quiet);
+    let was = *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner());
+    if pose == was || !at_home { if !at_home { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; } return; }
+    let Some(home) = roamer().home() else { return };
+    let list = screens_now(mtm);
+    let Some(first) = list.first() else { return };
+    let ph = first.frame[3];
+    let Some(s) = roam::display_of(&list, home) else { return };
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    let f = peek::frame(home, edge, s, &list, pose);
+    let secs = peek::motion(was, pose, calm, light);
+    with_panels(|d, _| set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES));
+    *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
+    *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;
+    // The page leans toward the screen while it peeks (dock.tsx data-peek). Where it may not hide, it is simply in.
+    let shown = if f == home { peek::Pose::In } else { pose };
+    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word() }));
+}
+
+/// Each tick: the pointer on the character (its place only), then the pose.
+fn peek_tick(app: &AppHandle) {
+    if !home_set().peek { if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::In { peek_apply(app, false); } return; }
+    if let Some(on) = MainThreadMarker::new().and_then(pointer_on_character) { peeker().pointer(on, now() as u64); }
+    peek_apply(app, false);
+}
+
+/// Whether the pointer is on the character: over its window, or, while it is tucked away, at the screen's edge beside it
+/// (peek::at_edge). Only the pointer's place is read. None when its place is not known yet.
+fn pointer_on_character(mtm: MainThreadMarker) -> Option<bool> {
+    let at = (*ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()))?;
+    let p = macos_see::pointer();
+    if p.x >= at[0] && p.x < at[0] + at[2] && p.y >= at[1] && p.y < at[1] + at[3] { return Some(true); }
+    if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { return Some(false); }
+    let home = roamer().home()?;
+    let list = screens_now(mtm);
+    let s = roam::display_of(&list, home)?;
+    let edge = *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner());
+    Some(peek::at_edge(home, edge, s, &list, (p.x, p.y)))
+}
+
+/// While it is tucked away, often (peek::EDGE_POLL_MS): the pointer reaching the edge brings it in at once, not on the
+/// next tick. Main thread.
+fn peek_edge_poll(app: &AppHandle) {
+    if !home_set().peek { return; }
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    if pointer_on_character(mtm) == Some(true) { peeker().pointer(true, now() as u64); peek_apply(app, false); }
+}
+
+/// The curve of the character's own moves (peek::SPRING), set on the motion's context. CAMediaTimingFunction is looked
+/// up by name (QuartzCore is already loaded by AppKit), so no new dependency. If it is missing the move is the usual curve.
+fn spring_timing(ctx: &objc2_app_kit::NSAnimationContext) {
+    use objc2::runtime::{AnyClass, AnyObject, MessageReceiver};
+    let Some(cls) = AnyClass::get(c"CAMediaTimingFunction") else { return };
+    let [a, b, c, d] = peek::SPRING;
+    let f: *mut AnyObject = unsafe { MessageReceiver::send_message(cls, objc2::sel!(functionWithControlPoints::::), (a, b, c, d)) };
+    if f.is_null() { return; }
+    let _: () = unsafe { objc2::msg_send![ctx, setTimingFunction: f] };
 }
 
 /// Settings: whether the character comes to what it is about (on unless turned off), the registry's character.comeTo
@@ -890,6 +1071,8 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
         "island.peekOnHover" | "island.openDelay" | "island.closeDelay" => {
             let _ = app.run_on_main_thread(|| { reset_hover(); if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "setting"); } });
         }
+        // Peeking turned on or off: the character goes where it should be now (fully in when off).
+        "character.peek" | "character.peekIdle" => { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
         // Close Home when I click another app: an open Home's watch stops at once, or starts when it is turned on.
         "home.closeOnClickAway" => {
             HOME_GEN.fetch_add(1, Ordering::SeqCst);
@@ -955,7 +1138,7 @@ fn settings_get() -> Value { settings_snapshot(&[]) }
 /// Changes one setting. Only from the card. The error is a code the page puts in words; nothing changed then.
 #[tauri::command]
 fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value, project: Option<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let changed = setting_change(&app, &key, &value, project.as_deref()).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
     log("setting_changed", json!({ "key": key }));
     settings_told(&app, &changed);
@@ -1129,7 +1312,7 @@ fn tried_mark(app: AppHandle, window: tauri::WebviewWindow, tool: String) -> Res
 /// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
 fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>, project: Option<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     // `project`: the folder the page showed this reset for; another folder in Home by now means nothing is reset.
     settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
@@ -1199,7 +1382,7 @@ fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, 
 /// id and name are read, never anything in it (rule 7). Companion itself is refused. Only from the card.
 #[tauri::command]
 fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let id = front_id();
     if id.is_empty() || id.starts_with("dev.companion") { return Err("ownApp".into()); }
     Ok(json!({ "id": id, "name": front() }))
@@ -1209,7 +1392,7 @@ fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
 /// Only from the card.
 #[tauri::command]
 fn app_names(window: tauri::WebviewWindow, ids: Vec<String>) -> Result<Value, String> {
-    settings::only_card(window.label())?;
+    settings::card_or_settings(window.label())?;
     let ws = NSWorkspace::sharedWorkspace();
     let mut out = serde_json::Map::new();
     for id in ids.into_iter().take(64) {
@@ -1285,6 +1468,17 @@ fn arm_now(app: &AppHandle, on: bool) {
 // The error explainer's card: the answer about reading in this app (shared with Prompt help), and Close.
 #[tauri::command] fn eh_consent(app: AppHandle, choice: String) { errhelp::consent_answer(&app, &choice); }
 #[tauri::command] fn eh_dismiss(app: AppHandle) { errhelp::dismiss(&app); }
+/// A page's press failed inside Squibby's own machinery: the person read one plain sentence (app/src/failwords.ts), and the
+/// raw words are kept here for a report, the home folder written as ~, short. Nothing else is done with them.
+#[tauri::command] fn note_failure(kind: String, detail: String) {
+    let kind: String = kind.chars().filter(|c| c.is_ascii_alphanumeric()).take(20).collect();
+    log("failure_detail", runner::detail_line("page", Some(&kind), &detail));
+}
+/// The Explain chip with words in Home's ask box (errhelp.rs `typed`). Only Home may ask.
+#[tauri::command] fn eh_typed(app: AppHandle, window: tauri::WebviewWindow, text: String) -> Result<(), String> {
+    if window.label() != "card" { return Err("notOffered".into()); }
+    errhelp::typed(&app, &text).map_err(String::from)
+}
 // Second Look's card: the same answer about reading in this app (shared with Prompt help and the error explainer), and Close.
 #[tauri::command] fn sl_consent(app: AppHandle, choice: String) { seclook::consent_answer(&app, &choice); }
 #[tauri::command] fn sl_dismiss(app: AppHandle) { seclook::dismiss(&app); }
@@ -1294,11 +1488,15 @@ fn permissions_status() -> permissions::Permissions { permissions::current() }
 
 /// Show the card. `keyboard` is true only when the user asked to type (hotkey or Type button);
 /// clicking the character shows the card without taking the keyboard.
-fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
+fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app, source, keyboard, None); }
+
+/// Show the card, and tell Home what to do once it is open (`then`, settingswin::arrival): start a lesson, or show Learn.
+fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<serde_json::Value>) {
     log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
+        HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
         let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
         if !was_open { HOME_OPEN.store(true, Ordering::SeqCst); HOME_GEN.fetch_add(1, Ordering::SeqCst); reset_hover(); }
         // Home opens on the display the person is using (the one with the pointer): the island goes there first.
@@ -1316,7 +1514,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) {
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
         if !was_open && home_set().click_away { watch_click_away(&a); }
-        let _ = a.emit_to("card", "opened", json!({ "keyboard": keyboard }));
+        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "then": t }), None => json!({ "keyboard": keyboard }) });
     });
 }
 
@@ -1362,8 +1560,60 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn open_card_cmd(app: AppHandle) {
-    open_card(&app, "button", true);
+fn open_card_cmd(app: AppHandle, then: Option<serde_json::Value>) {
+    // Only the two known shapes pass (a lesson to start, or Learn to show); anything else just opens Home.
+    open_card_then(&app, "button", true, then.as_ref().and_then(settingswin::arrival));
+}
+
+/// Home's own page asks for this when it loads and the first run has not been finished on this Mac (M15 wave 1: "nothing
+/// opens at launch, people do not know to click the notch"). Once per launch, only from Home's own page, and without the
+/// keyboard (rule 9): the person just opened the app, and Home is what they see first.
+static FIRST_RUN_OPENED: AtomicBool = AtomicBool::new(false);
+#[tauri::command]
+fn first_run_open(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    if window.label() != "card" { return Err("only Home opens itself".into()); }
+    if FIRST_RUN_OPENED.swap(true, Ordering::SeqCst) { return Ok(()); }
+    open_card(&app, "first_run", false);
+    Ok(())
+}
+
+/// Opens the Settings window (settingswin.rs), from Home or the island, on the person's press. The one window a click
+/// gives the keyboard to: the person asked for it (rule 9 is about never taking it unasked). A second call brings the open
+/// one to the front.
+#[tauri::command]
+fn open_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    settingswin::may_open(window.label())?;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || settings_window_now(&a));
+    Ok(())
+}
+
+/// Makes the Settings window, or shows the one already open. Main thread.
+fn settings_window_now(app: &AppHandle) {
+    let open = app.get_webview_window(settingswin::LABEL);
+    match settingswin::open(open.is_some()) {
+        settingswin::Open::Focus => { if let Some(w) = open { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); } }
+        settingswin::Open::Make => {
+            let made = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App(settingswin::PAGE.into()))
+                .title(settingswin::TITLE)
+                .inner_size(settingswin::SIZE.0, settingswin::SIZE.1)
+                .min_inner_size(settingswin::MIN.0, settingswin::MIN.1)
+                .resizable(true)
+                .decorations(true)
+                .center()
+                .focused(true)
+                .build();
+            match made { Ok(w) => { let _ = w.set_focus(); log("settings_window_opened", json!({})); } Err(e) => log("settings_window_failed", json!({ "why": e.to_string() })) }
+        }
+    }
+}
+
+/// The Settings page's own Close button.
+#[tauri::command]
+fn close_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+    settingswin::may_close(window.label())?;
+    if let Some(w) = app.get_webview_window(settingswin::LABEL) { let _ = w.close(); }
+    Ok(())
 }
 
 /// Clicking the character shows or hides Home, and never takes the keyboard.
@@ -1374,13 +1624,29 @@ fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 #[tauri::command]
 fn island_click(app: AppHandle) { toggle_home(app, "island"); }
 
+/// Home rolls back up into the notch as it closes (style.css .home.closing, the reverse of its opening), then its panel goes.
+/// At once with Reduce motion or Less motion. Must match style.css home-roll-up (motion.test.ts checks).
+const HOME_CLOSE_MS: u64 = 200;
+/// Bumped by every opening and every close asked, so a close that waits never hides a Home opened again meanwhile.
+static HOME_CLOSE_GEN: AtomicU64 = AtomicU64::new(0);
+/// Closes Home after its page has rolled it up (Close, Esc, the island or the character clicked again). Main thread.
+fn close_home_rolled(a: &AppHandle, extra: Value) {
+    let gen = HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let go = move |extra: Value| { with_panels(|_, c| c.orderOut(None)); home_closed(); log("card_closed", extra); };
+    if reduce_motion() || !card_visible() { go(extra); return; }
+    let _ = a.emit_to("card", "closing", json!({}));
+    let a2 = a.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(HOME_CLOSE_MS));
+        let _ = a2.run_on_main_thread(move || if HOME_CLOSE_GEN.load(Ordering::SeqCst) == gen && card_visible() { go(extra) });
+    });
+}
+
 fn toggle_home(app: AppHandle, source: &'static str) {
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         if card_visible() {
-            with_panels(|_, c| c.orderOut(None));
-            home_closed();
-            log("card_closed", json!({ "source": source }));
+            close_home_rolled(&a, json!({ "source": source }));
             card_closed_hush(&a);
         } else {
             open_card(&a, source, false);
@@ -1449,9 +1715,11 @@ fn save_api_key(app: AppHandle, key: String) -> Result<(), String> {
 /// dialog, so it runs off the thread that reads the engine's output.
 fn hand_key_over(app: &AppHandle, key: Option<&str>) {
     let (a, key) = (app.clone(), key.map(str::to_string));
+    // A key the person just saved is checked once with Anthropic (free); one read from the Keychain is not.
+    let fresh = key.is_some();
     std::thread::spawn(move || {
         let key = key.or_else(|| { let moved = keystore::move_old_item(&data_dir()); log("key_move", json!({ "moved": moved })); keystore::read() });
-        let _ = a.state::<runner::Runner>().hand_key(key.as_deref());
+        let _ = a.state::<runner::Runner>().hand_key(key.as_deref(), fresh);
     });
 }
 
@@ -1464,7 +1732,7 @@ fn remove_api_key(app: AppHandle, window: tauri::WebviewWindow, confirm: String)
     keystore::remove_with(window.label(), &confirm, || keystore::delete_item(&svc, keystore::ACCOUNT), || !keystore::gone(&svc, keystore::ACCOUNT))?;
     log("api_key_removed", json!({}));
     // If the engine is not running now, it is told the same when it starts again: it reads the Keychain, which is empty.
-    let _ = app.state::<runner::Runner>().hand_key(None);
+    let _ = app.state::<runner::Runner>().hand_key(None, false);
     Ok(())
 }
 
@@ -1487,7 +1755,7 @@ async fn clone_project(app: AppHandle, url: String) -> Result<(), String> {
     let Some(parent) = chosen else { return Err(String::new()) };
     let parent = projects::validate_parent(&parent, &home_dir(), &data_dir())?;
     let cmd = json!({ "v": 1, "id": format!("clone{}", now()), "type": "project.clone", "url": url, "parent": parent.to_string_lossy() });
-    app.state::<runner::Runner>().send(&cmd).map_err(|_| concat!(crate::product_s!(), " engine is not running. Try again in a moment.").to_string())
+    app.state::<runner::Runner>().send(&cmd).map_err(|_| runner::NOT_READY.to_string())
 }
 
 /// One new folder at a time (two presses at once never race for the same name).
@@ -1515,7 +1783,7 @@ fn start_in_new_folder(window: tauri::WebviewWindow, app: AppHandle, cmd: Value)
     let task = newfolder::task_command(&req, &folder);
     runner::check_command(&task)?;
     runner::check_project(&task, &current_project())?;
-    app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product_s!(), " engine is not running. Press the button again in a moment.").to_string())?;
+    app.state::<runner::Runner>().send(&task).map_err(|_| concat!("Your new folder is made and open, but ", crate::product!(), " is not ready yet. Press the button again in a moment.").to_string())?;
     Ok(folder)
 }
 
@@ -1531,7 +1799,7 @@ fn made_parent() -> Result<(PathBuf, PathBuf), String> {
 /// thread, since a big folder takes a moment.
 #[tauri::command]
 async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (home, parent) = made_parent()?;
     let (current, busy) = (current_project(), busy || updates::running_now());
     tauri::async_runtime::spawn_blocking(move || {
@@ -1542,7 +1810,7 @@ async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, St
 /// Open as project: a folder from the list becomes the project (checked like any folder: projects::validate).
 #[tauri::command]
 fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: bool) -> Result<String, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, busy || updates::running_now())?;
     use_project_inner(app, path.to_string_lossy().to_string())
@@ -1550,7 +1818,7 @@ fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: b
 /// Show in Finder: a folder from the list, selected in its place.
 #[tauri::command]
 fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, false)?;
     std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).spawn().map(|_| ()).map_err(|_| "Finder could not be opened.".to_string())
@@ -1560,7 +1828,7 @@ fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String>
 /// it can be put back; nothing is deleted. Then it leaves the recent folders. Its undo points stay in Companion's own folder.
 #[tauri::command]
 fn trash_made(window: tauri::WebviewWindow, app: AppHandle, name: String, git: bool, busy: bool) -> Result<String, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let moved = {
         let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());   // never while a new folder is being made
         let (_, parent) = made_parent()?;
@@ -1583,11 +1851,10 @@ fn shared_files_state(window: tauri::WebviewWindow) -> Result<Value, String> {
 #[tauri::command]
 fn close_card(app: AppHandle) {
     card_closed_hush(&app);   // closing the card silences it (home_closed gives back the keys Prompt help borrowed)
+    let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
-        with_panels(|_, c| c.orderOut(None));
-        home_closed();
-        log("card_closed", json!({ "app_active": active(mtm) }));
+        close_home_rolled(&a, json!({ "app_active": active(mtm) }));
     });
 }
 
@@ -2011,7 +2278,7 @@ fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse
 #[tauri::command]
 async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     use tauri_plugin_updater::UpdaterExt;
-    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     let cfg = updates::parse_config(include_str!("../updater.json")).ok_or("Updates are not set up in this build yet.")?;
     let url = tauri::Url::parse(&cfg.endpoint).map_err(|_| "Updates are not set up in this build yet.".to_string())?;
     let upd = app.updater_builder().pubkey(cfg.pubkey).timeout(Duration::from_secs(20)).endpoints(vec![url]).map_err(|e| updates::failure_words(&e.to_string()).to_string())?
@@ -2039,7 +2306,7 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
 /// Downloads the update found by check_update, checks its signature, installs it and restarts. Only on a press.
 #[tauri::command]
 async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    if window.label() != "card" { return Err("Updates can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
@@ -2109,7 +2376,7 @@ static SOUND_NOTE: Mutex<voiceset::SoundNote> = Mutex::new(voiceset::SoundNote::
 /// then nothing is said, the words stay on the card, and the page is told once so it can say so.
 #[tauri::command]
 fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Option<bool>, rest: Option<String>) -> Result<Value, String> {
-    if window.label() != "card" { return Err("Speaking can only be started from the card.".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("Speaking can only be started from the card.".into()); }
     let line = if whole == Some(true) { speak::prepare_reply(&text, rest.as_deref().unwrap_or("")) } else { speak::prepare(&text) };
     let Some(line) = line else { return Ok(json!({ "said": false, "why": "nothing" })) };
     // The person is talking: the line is dropped, its words stay on the card.
@@ -2164,7 +2431,7 @@ fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
 /// card. A sync command, so it runs on the main thread, where the voice list is read. Reads names only; nothing listens.
 #[tauri::command]
 fn voice_settings(window: tauri::WebviewWindow) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     Ok(voice_state(&voice_now(), &speak::mac::voices()))
 }
 
@@ -2180,7 +2447,7 @@ fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
 /// was already picked), saved in voice.json in Companion's folder. The error is a code the page turns into words.
 #[tauri::command]
 fn set_voice_settings(app: AppHandle, window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let voices = speak::mac::voices();
     let (inputs, _) = inputs_now();
     let before = voice_now();
@@ -2264,7 +2531,7 @@ fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a
 /// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
 #[tauri::command]
 async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
-    if window.label() != "card" { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
     let cfg = report::parse_config(include_str!("../report.json"));
     // The words are checked before anything is written, so a refusal leaves nothing behind.
     report::address(&cfg, &subject, &body, "0", "0")?;
@@ -2444,7 +2711,7 @@ fn remove_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, 
 /// Returns how many went and the names of any that stayed.
 #[tauri::command]
 fn remove_all_practices(window: tauri::WebviewWindow, app: AppHandle, busy: bool) -> Result<Value, String> {
-    settings::only_card(window.label())?;   // only Home, on the person's press
+    settings::card_or_settings(window.label())?;   // only Home, on the person's press
     let (moved, kept) = trash_practice_copies(&current_project(), busy);
     for p in &moved { forget_folder(&app, p); }
     log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() }));
@@ -2885,7 +3152,7 @@ fn key_map() -> Value { keymap::state_json(&keys_using(), &keys_picked()) }
 /// change or check at a time. A sync command, so it runs on the main thread.
 #[tauri::command]
 fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let Some(a) = keymap::Action::from_id(&action) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
@@ -2900,7 +3167,7 @@ fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> 
 /// The error is a code the page puts in words.
 #[tauri::command]
 fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: String) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let (Some(a), Some(wanted)) = (keymap::Action::from_id(&action), keymap::from_id(&id)) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
@@ -2928,7 +3195,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
 /// has, and the answer names it. Only from the card.
 #[tauri::command]
 fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
-    if window.label() != "card" { return Err("not_card".into()); }
+    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
     let v = keys_to_usual(&app).map_err(str::to_string)?;
     settings_told(&app, &["keys.hotkeys".to_string()]);
     Ok(v)
@@ -3303,6 +3570,8 @@ fn tick(app: &AppHandle) {
     follow_pointer(mtm);
     // The character beside a window goes home when its window changed, its app left the front, or nothing about it is up.
     roam_tick(app, &wins, front_pid);
+    // Peeking from past the edge: the pointer, then the pose (character.peek).
+    peek_tick(app);
     let act = active(mtm);
     let fr = front();
     // Take the wheel: the editor or terminal came to the front while a plan runs, so ask it to pause.
@@ -3460,6 +3729,7 @@ struct TrimIn { start: f64, end: f64 }
 #[tauri::command]
 fn drop_pick(app: AppHandle, window: tauri::WebviewWindow, id: u64, action: String, trim: Option<TrimIn>) -> Result<(), String> {
     if !matches!(window.label(), "dock" | "card") { return Err("notOffered".into()); }
+    if action == convert::OPEN_PROJECT { return drop_open_project(&app, id); }
     let prefs = convert::Prefs::read(setting_now);
     let work = convert::work_root().join(format!("{id}-{}", now()));
     let trim = trim.map(|t| convert::Trim { start: t.start, end: t.end });
@@ -3518,6 +3788,27 @@ fn drop_end_for_quit() {
 }
 
 /// Closes the menu (never while its job runs: Stop ends it first), in every window.
+/// "Fix this project" on a dropped folder (M15 wave 1): the folder becomes the project, checked exactly like one picked in
+/// the folder chooser (projects::validate, inside use_project_inner), the menu closes, Home opens, and Home finds what is
+/// wrong in it (the page's own Find the problem, "home-find"). Nothing is changed in the folder by this.
+fn drop_open_project(app: &AppHandle, id: u64) -> Result<(), String> {
+    let path = {
+        let mut g = drop_now_lock();
+        let d = g.as_ref().filter(|d| d.id == id).ok_or("gone")?;
+        if d.running.is_some() { return Err("busy".into()); }
+        if !d.actions.contains(&convert::OPEN_PROJECT) || d.paths.len() != 1 { return Err("notOffered".into()); }
+        let p = d.paths[0].to_string_lossy().into_owned();
+        *g = None;
+        p
+    };
+    let _ = app.emit("drop-menu", Value::Null);
+    let folder = use_project_inner(app.clone(), path)?;
+    log("drop_project", json!({}));
+    open_card(app, "drop_project", false);
+    let _ = app.emit_to("card", "home-find", json!({ "project": folder }));
+    Ok(())
+}
+
 #[tauri::command]
 fn drop_close(app: AppHandle, id: u64) {
     let mut g = drop_now_lock();
@@ -3611,7 +3902,9 @@ fn main() {
                         keymap::Action::Stop => {
                             let r = app.state::<runner::Runner>().stop_everything("kill switch");
                             log("hotkey", json!({ "id": "stop", "stop_everything": true, "sent": r.is_ok() }));
-                            let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                            let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
+                            peek_heard(app, &stop);
+                            let _ = app.emit("runner-event", stop);
                             showme_stop(&app);
                         }
                         keymap::Action::Talk => {}
@@ -3621,7 +3914,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -3644,8 +3937,9 @@ fn main() {
                 // ever opening the file in its place. Nothing is read here and no path reaches the shell.
                 let b = if label == "card" { b.disable_drag_drop_handler() } else { b };
                 // The character floats on the desktop with nothing behind it (the dock page paints no background either,
-                // style.css `.dock-page`); Home is an ordinary opaque window.
-                let b = if label == "dock" { b.transparent(true) } else { b };
+                // style.css `.dock-page`). Home is see through too: its page paints one black shape that hangs from the
+                // notch, square at the top and round at the bottom (style.css `.home-page`), and nothing around it.
+                let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };
                 b.build()
             };
             let dock_w = mk("dock", "dock.html", DOCK)?;
@@ -3664,7 +3958,14 @@ fn main() {
             dock.setOpaque(false);
             dock.setHasShadow(false);
             dock.setBackgroundColor(Some(&NSColor::clearColor()));
+            // Peeking: the pointer on the character, or on the sliver of it past the edge, brings it in.
+            add_dock_hover_tracking(mtm, &dock);
             let card = make_panel(mtm, card_ns, true, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(CARD.0, CARD.1)));
+            // See through, as the character's is: make_panel paints every panel white, which would show as a white square
+            // around Home's rounded black shape. No window shadow either: it would follow the square, not the shape.
+            card.setOpaque(false);
+            card.setHasShadow(false);
+            card.setBackgroundColor(Some(&NSColor::clearColor()));
             // Native witness: every mouse down macOS delivers to our panels, independent of the page.
             let block = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent {
                 let ev = unsafe { e.as_ref() };
@@ -3708,6 +4009,15 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || tick(&h2));
             });
+            // Tucked away past the edge, the character is called in by the pointer at that edge: the pointer's place is
+            // read often while it is hidden, and not by this loop otherwise.
+            let h = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));
+                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }
+                let h2 = h.clone();
+                let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
+            });
             // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
             // may already own some of them. That must never stop Companion from opening; the one notice says what to do.
             let launch = start_keys(app.handle());
@@ -3738,7 +4048,9 @@ fn main() {
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");
                         log("menu_stop_everything", json!({ "sent": r.is_ok() }));
-                        let _ = app.emit("runner-event", json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" }));
+                        let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
+                        peek_heard(app, &stop);
+                        let _ = app.emit("runner-event", stop);
                         showme_stop(&app);
                     }
                     "quit" => app.exit(0),

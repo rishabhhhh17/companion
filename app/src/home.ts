@@ -98,6 +98,17 @@ export function need(m: Model): Need | null {
 
 /** needKey: the need last acted on. What VoiceOver hears about a need, and the tab it is on, is Home's one live line
  *  (a11y.ts `liveLine`), since focus does not move there. */
+/** What Home does on arrival when the Settings window opened it (main.rs open_card_cmd's `then`, checked by the shell in
+ *  settingswin.rs arrival): start that lesson, or show Learn. Anything else is ignored and Home just opens. */
+export type HomeArrival = { lesson: string } | { place: "learn" } | { do: "find" | "shipCheck" };
+export function arrivalFrom(opened: unknown): HomeArrival | null {
+  const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown } | null | undefined;
+  if (!t || typeof t !== "object") return null;
+  if (t.do === "find" || t.do === "shipCheck") return { do: t.do };
+  if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };
+  return t.place === "learn" ? { place: "learn" } : null;
+}
+
 export type HomeState = { tab: Tab; needKey: string };
 export const homeStart = (): HomeState => ({ tab: "now", needKey: "" });
 // typing: the person is typing in Home right now, so a need on another tab marks that tab and is said, but does not move them.
@@ -144,12 +155,13 @@ export function phArmable(m: Model, tab: Tab, shown: boolean): boolean {
   return shown && m.ph?.stage === "ready" && !!m.ph.text && shownOn("promptHelp", tab, m);
 }
 
-/** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. */
+/** The tabs pattern: arrows move along the tabs and wrap, Home and End jump to the ends. The places are a list down the side,
+ *  so Up and Down move as Left and Right do. */
 export function tabKey(t: Tab, key: string): Tab | null {
   const i = TABS.indexOf(t), n = TABS.length;
   switch (key) {
-    case "ArrowRight": return TABS[(i + 1) % n];
-    case "ArrowLeft": return TABS[(i - 1 + n) % n];
+    case "ArrowRight": case "ArrowDown": return TABS[(i + 1) % n];
+    case "ArrowLeft": case "ArrowUp": return TABS[(i - 1 + n) % n];
     case "Home": return TABS[0];
     case "End": return TABS[n - 1];
     default: return null;
@@ -179,25 +191,59 @@ export function stepsAside(m: Model, onboarding: boolean, on: boolean): boolean 
 }
 
 // ---- the island ----
+// The fun island (founder, 27 Oct 2026: "it does not always have to show Ready there"): idle, the island is the bare notch,
+// with no words at all. While something happens it grows short wings either side of the notch: a tiny Flowflow on the
+// left and one small live mark on the right. A sentence shows only while the pointer rests on it, and only when there is
+// something real to say. Plain code, tested in island.test.ts; island.tsx only draws what this decides.
 
 export const ISLAND_LINE_MAX = 64;
 const cut = (t: string) => (t.length <= ISLAND_LINE_MAX ? t : `${t.slice(0, ISLAND_LINE_MAX - 1).trimEnd()}…`);
 const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approvals.length > 0 || !!m.agentsAsk || !!m.stuck || !!m.paused || !!m.plan);
 
-/** A mark beside the notch (the island a little wider) only when the person should look: a question waits, Companion is
- *  listening, or something just finished. Never just because work is going on. `marked`: When something needs me only
- *  marks the tab (home.goToNeeds), so anything that needs the person shows the mark too. */
-export function islandAlert(m: Model, marked = false): boolean {
-  if (!m.runnerUp) return false;
-  if (waiting(m)) return true;
-  if (marked && need(m)) return true;
-  if (failingWatch(m)) return true;
+/** The small live mark on the right wing. dots: thinking. arc: working or looking. bars: listening (the microphone's light,
+ *  rule 5). amber: something waits for the person. tick: just done (it draws itself). red: something went wrong. */
+export type WingMark = "dots" | "arc" | "bars" | "amber" | "tick" | "red";
+export type Wings = { state: CharacterState; mark: WingMark };
+const MARK: Partial<Record<CharacterState, WingMark>> = { thinking: "dots", working: "arc", checking: "arc", listening: "bars", needsYou: "amber", done: "tick", error: "red" };
+
+/** The wings beside the notch, or null for the bare notch. Listening and looking at the screen come first: they are the
+ *  lights that show before the microphone or the screen is touched (rule 5), so nothing else ever covers them. Then a
+ *  question waiting, then the character's own state, then a failing watch (F21). `marked`: When something needs me only
+ *  marks the tab (home.goToNeeds), so anything that needs the person shows the amber mark too. With the engine stopped,
+ *  none: the line says so when the pointer rests on it. */
+export function islandWings(m: Model, marked = false): Wings | null {
+  if (!m.runnerUp) return null;
   const v = visualState(m);
-  return v === "needsYou" || v === "listening" || v === "done";
+  if (v === "listening" || v === "checking") return { state: v, mark: MARK[v]! };
+  if (waiting(m) || (marked && need(m))) return { state: "needsYou", mark: "amber" };
+  const mark = MARK[v];
+  if (mark) return { state: v, mark };
+  if (failingWatch(m)) return { state: "error", mark: "red" };
+  return null;
 }
 
-/** The first watch whose failing alert is still going (F21): the island says so in one plain line and shows its mark. Nothing
- *  pops up, and nothing takes the keyboard. null when none. */
+/** Are the wings out at all? The island page tells the app, which sizes the window (island.rs). */
+export function islandAlert(m: Model, marked = false): boolean { return islandWings(m, marked) !== null; }
+
+/** How long the green tick stays after something is done before the wings tuck back into the bare notch. */
+export const DONE_WINGS_MS = 4000;
+/** The wings as they show at `now`: a done tick that has shown for DONE_WINGS_MS is put away. `doneSince`: when the tick
+ *  first showed (null when it is not showing). Every other state keeps its wings for as long as it lasts. */
+export function wingsAt(w: Wings | null, doneSince: number | null, now: number): Wings | null {
+  if (w?.mark === "tick" && doneSince !== null && now - doneSince >= DONE_WINGS_MS) return null;
+  return w;
+}
+
+/** What the island draws in each of its sizes (the app's island.rs Mode words). Rest and wings never show a sentence;
+ *  resting the pointer on the bare notch shows Flowflow peeking, and a line only when there is one. */
+export type IslandMode = "rest" | "wings" | "peek" | "wingsPeek";
+export const ISLAND_MODES: readonly IslandMode[] = ["rest", "wings", "peek", "wingsPeek"];
+export function islandParts(mode: IslandMode): { wings: boolean; panel: boolean } {
+  return { wings: mode === "wings" || mode === "wingsPeek", panel: mode === "peek" || mode === "wingsPeek" };
+}
+
+/** The first watch whose failing alert is still going (F21): the island shows its red mark and says so in one plain line
+ *  under the pointer. Nothing pops up, and nothing takes the keyboard. null when none. */
 export function failingWatch(m: Model): { project: string; kind: string; target?: string; reason: string } | null {
   if (!m.runnerUp) return null;
   const id = Object.keys(m.watchAlerts).find((k) => m.watches[k]?.state === "failing" || !m.watches[k]);
@@ -213,21 +259,13 @@ export function characterShows(m: Model, markTab: boolean, islandShown: boolean)
   return v === "listening" || v === "checking" || v === "error" ? v : "needsYou";
 }
 
-/** The pill's one word, short enough for it. */
-export function islandWord(m: Model): string {
-  if (waiting(m)) return stateLabel("needsYou");
-  const v = visualState(m);
-  if (v === "idle" && failingWatch(m)) return S.watch.islandWord;
-  return v === "error" ? S.islandWordError : stateLabel(v);
-}
-
-/** The one line shown when the pointer is on the island. `update`: the version a check found ready to install (the shell's
- *  "update-ready"). With nothing else going on, it says what is next instead of Ready: connect Claude first (Not connected
- *  yet), then the update waiting for Install on Home. Neither shows the mark (islandAlert). */
+/** The one line shown when the pointer rests on the island, or "" when there is nothing real to say: then the island shows
+ *  only Flowflow peeking, never "Ready". `update`: the version a check found ready to install (the shell's "update-ready").
+ *  With nothing else going on it says what is next: connect Claude first (Not connected yet), then the update waiting. */
 export function islandLine(m: Model, o: { update?: string | null; group?: string | null } = {}): string {
   const line = islandLineBase(m, o);
   // With Show the working group on the island (groups.islandName) and a group at work, its name starts the line (F20 item 5).
-  return o.group && m.runnerUp ? cut(S.groups.islandGroup(o.group, line)) : line;
+  return line && o.group && m.runnerUp ? cut(S.groups.islandGroup(o.group, line)) : line;
 }
 function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (!m.runnerUp) return S.islandOff;
@@ -247,5 +285,8 @@ function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (fw) return cut(S.watch.islandFailing(nameOf(fw as never)));
   if (m.connected === "none") return S.islandNotConnected;
   if (o.update) return cut(S.islandUpdate(o.update));
-  return S.islandReady;
+  return "";
 }
+
+/** The island's name for VoiceOver: what it is, and its state in words, even while nothing is written on it. */
+export const islandName = (line: string): string => `${S.islandOpen}. ${line || S.islandQuiet}`;

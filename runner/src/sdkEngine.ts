@@ -100,7 +100,7 @@ export function buildSdkOptions(c: SdkConfig) {
     tools: toolsFor(c),
     disallowedTools: ["Bash(sudo *)", "Edit(.claude/**)", "Write(.claude/**)", "Edit(.companion/**)", "Write(.companion/**)", ...readDenyRules()],
     hooks: { PreToolUse: [gate], PostToolUse: [{ hooks: [post] }], PostToolUseFailure: [{ hooks: [post] }] },
-    canUseTool: async () => ({ behavior: "deny" as const, message: `${PRODUCT} decides in its safety hook, not here.` }),
+    canUseTool: async () => ({ behavior: "deny" as const, message: `${PRODUCT} decides this itself.` }),
     sandbox: sandboxSettings(homedir()),
     maxBudgetUsd: c.budgetUsd,
     maxTurns: c.maxTurns ?? 80,

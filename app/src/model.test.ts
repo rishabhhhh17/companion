@@ -87,12 +87,20 @@ describe("errors and sign in, in plain words", () => {
     expect(run([ev({ type: "protocol.error", reason: "error_max_turns: the run stopped" })]).error).toBe(w);
   });
   test("not connected tells you what to do", () => expect(plainError("engine error: Not connected: add your API key, or sign in with your Claude plan.")).toMatch(/add your API key/i));
-  test("an unknown error is shown without raw jargon prefixes", () => expect(plainError("engine error: boom")).toContain("Something went wrong: boom"));
+  test("an unknown error is one plain sentence, never the raw words (they stay in the log)", () => { expect(plainError("engine error: boom")).toBe(S.somethingWrong); expect(plainError("engine error: boom")).not.toContain("boom"); });
   test("auth none shows a not connected notice, auth api_key clears it", () => {
     const m = run([ev({ type: "auth.status", method: "none" })]);
     expect(m.connected).toBe("none");
     expect(m.notice).toMatch(/not connected/i);
     expect(run([ev({ type: "auth.status", method: "api_key" })], m).notice).toBeNull();
+  });
+  test("a saved key's check result is kept with when it came; a later status without one keeps it", () => {
+    expect(initial().keyTested).toBeNull();
+    const m = run([ev({ type: "auth.status", method: "api_key", tested: "refused" })]);
+    expect(m.keyTested?.result).toBe("refused");
+    expect(typeof m.keyTested?.at).toBe("number");
+    expect(run([ev({ type: "auth.status", method: "api_key" })], m).keyTested).toEqual(m.keyTested);
+    expect(run([ev({ type: "auth.status", method: "api_key", tested: "nonsense" })]).keyTested).toBeNull();
   });
   test("a protocol error becomes a visible message", () => {
     expect(run([ev({ type: "protocol.error", reason: "error_max_budget_usd: x" })]).error).toMatch(/spending limit/i);

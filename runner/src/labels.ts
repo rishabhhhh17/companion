@@ -5,6 +5,7 @@ import { FOUND_INTRO } from "./fixfound.ts";
 import { NO_UNASKED_DETAILS_STEP, STEP_INSTRUCTION } from "./drive.ts";
 import { label as clipLabel } from "./redact.ts";
 import { STALE_ERROR_RULE } from "./staleerror.ts";
+import { PRODUCT } from "./names.ts";
 
 /** The label of any task the person asked to keep off the record (nothing about it is kept). */
 export const OFF_RECORD_LABEL = "Off the record task";
@@ -37,6 +38,9 @@ const KNOWN_APPS: Record<string, string> = {
   "org.mozilla.firefox": "Firefox", "company.thebrowser.Browser": "Arc", "com.tinyspeck.slackmacgap": "Slack",
   "com.apple.mail": "Mail", "com.apple.MobileSMS": "Messages", "notion.id": "Notion", "md.obsidian": "Obsidian",
 };
+/** Words pasted into Home's own ask box and explained with the Explain chip (the shell's errorsel.rs ASK_BOX). */
+export const ASK_BOX_APP = "dev.companion.askbox";
+KNOWN_APPS[ASK_BOX_APP] = PRODUCT;
 const GENERIC = new Set(["app", "main", "stable", "desktop", "mac", "macos", "beta", "release"]);
 export function appDisplayName(bundleId: string): string {
   const id = String(bundleId ?? "");

@@ -273,7 +273,8 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
     const els = [...elements(read("./card.tsx")).els, ...elements(read("./settingsPage.tsx")).els];
     expect(els.filter((e) => e.tag === "button").length).toBeGreaterThan(150);
     expect(els.filter((e) => e.tag === "input").length).toBeGreaterThan(8);
-    expect(els.some((e) => lit(e.props.get("role")) === "tab")).toBe(true);
+    // The round buttons at the top of Home say whether their place is open (27 Oct 2026: no tab list any more).
+    expect(els.some((e) => e.props.has("aria-pressed"))).toBe(true);
   });
   test("a group of controls that has a name is a group VoiceOver can read (aria-label only names things with a role)", () => {
     for (const f of PAGES) {
@@ -294,9 +295,14 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
     const island = read("./island.tsx");
     // The update a check found is part of the same one line (home.ts islandLine), so VoiceOver hears what the eye sees.
     expect(island).toContain("const line = islandLine(m, { update, group: showGroup && g && g !== \"core\" ? S.groups.names[g] : null });");
-    expect(island).toMatch(/aria-label=\{`\$\{S\.islandOpen\}\. \$\{line\}`\}/);
-    // What it draws for sighted people is hidden from VoiceOver, so nothing is read twice.
-    for (const part of ["pillrow", "lip", "peekline"]) expect(island).toMatch(new RegExp(`className="${part}" aria-hidden="true"`));
+    // Idle nothing is written on it, and its name still says the state in words (home.ts islandName).
+    expect(island).toContain("aria-label={islandName(line)}");
+    expect(S.islandQuiet).not.toMatch(/Ready/);
+    // What it draws for sighted people (the wings with the agent and the mark) is hidden from VoiceOver; the panel under
+    // it is real buttons with words (islandPanel.tsx), hidden from VoiceOver only while it is not shown.
+    expect(island).toContain('{showWings && w && <span aria-hidden="true">');
+    expect(read("./islandPanel.tsx")).toContain("aria-hidden={!shown}");
+    expect(island).toMatch(/<img className="island-flow" [^>]*alt=""/);
   });
 });
 
@@ -584,7 +590,9 @@ describe("Home from the keyboard alone (part 2)", () => {
   });
   test("Home keeps the keyboard near where it was when its control goes away", () => {
     expect(card.match(/keepFocus\(/g)?.length).toBe(1);
-    expect(card).toMatch(/keepFocus\(el, \(\) => document\.getElementById\(tabId\(tabNow\.current\)\)\)/);
+    // Back to the open place's round button, or on Now (which has none) the ask box.
+    expect(card).toContain("keepFocus(el, () => placeEl(tabNow.current))");
+    expect(card).toContain('const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);');
     const f = read("./focus.ts");
     expect(f).toContain("focusSpot(");
     expect(f).toContain("hasFocus: () => document.hasFocus()");
@@ -606,7 +614,7 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(body(f, "focusIfLost")).toContain("takeIfLost(");
     expect(body(f, "focusIfLost")).not.toContain(".focus(");
     // A tab shown by itself gets the keyboard only by the same rule.
-    expect(card).toMatch(/useEffect\(\(\) => \{ takeIfLost\(\(\) => document\.getElementById\(tabId\(home\.tab\)\)\); \}, \[home\.tab\]\);/);
+    expect(card).toContain("useEffect(() => { takeIfLost(() => placeEl(home.tab)); }, [home.tab]);");
   });
   test("a box put away with Esc gives the keyboard back to the button that opened it", () => {
     for (const box of ["S.openLinkLabel", "S.obKeyLabel", "S.memoryEdit}: ${l.text}"]) {
@@ -645,7 +653,8 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(row).toContain('<div role="group" aria-labelledby={labelId} className="setting">');
     expect(row).toContain('<span className="line" id={labelId}><b>{r.label}</b></span>');
     const sec = page.slice(page.indexOf("function SettingsSection("), page.indexOf("\n}\n", page.indexOf("function SettingsSection(")));
-    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*<h3 id=\{headId\}>\{title\}<\/h3>/);
+    // (Shown alone in the side list's Settings, the heading is kept for VoiceOver only: className "sr".)
+    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*(\{\/\*[^]*?\*\/\}\s*)?<h3 id=\{headId\}( className=\{alone \? "sr" : undefined\})?>\{title\}<\/h3>/);
     const settings = page.slice(page.indexOf("export function SettingsPage("));
     expect(settings.match(/<Group title=\{S\.[\w.]+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(5);
     const g = page.slice(page.indexOf("function Group"), page.indexOf("\n}\n", page.indexOf("function Group")));
@@ -728,9 +737,16 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
   const css = rules(read("./style.css"));
   const light = Object.fromEntries(Object.entries(css.find((r) => r.sel === ":root" && !r.media)!.decl).filter(([k]) => k.startsWith("--")));
   const darkRule = css.find((r) => r.sel === ":root" && /prefers-color-scheme: dark/.test(r.media ?? ""));
-  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }]];
+  // Home is black in both Mac themes (27 Oct 2026): its own tokens on its page's root, checked as a third theme.
+  const homeRule = css.find((r) => r.sel === ":root.home-page" && !r.media);
+  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
+  test("Home's black token set is there, and its result cards keep their words readable", () => {
+    expect(homeRule!.decl["--bg"]).toBe("#000000");
+    const t = { ...light, ...homeRule!.decl }, cc = (v: string) => parseColor(v, t);
+    for (const w of ["var(--fg)", "var(--muted)", "var(--danger)"]) expect(ratio(cc(w), cc("var(--card)")), `${w} on a result card`).toBeGreaterThanOrEqual(4.5);
+  });
   test("the test reads both themes from style.css", () => {
     expect(light["--bg"]).toBeTruthy();
     expect(darkRule).toBeTruthy();
@@ -759,8 +775,12 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       expect(ratio(c(one(".btn")!.decl.color), over(hover, bg)), "a button").toBeGreaterThanOrEqual(4.5);
       expect(ratio(c(one(".btn.danger")!.decl.color), over(hover, bg)), "a warning button").toBeGreaterThanOrEqual(4.5);
       expect(ratio(c(one(".btn.primary")!.decl.color), over(ph, bg)), "the main button").toBeGreaterThanOrEqual(4.5);
-      const tabHover = one(".tab:hover")!;
-      expect(ratio(c(tabHover.decl.color), over(c(colourIn(tabHover.decl.background)!), bg)), "a tab").toBeGreaterThanOrEqual(4.5);
+      // Home's round buttons and quick actions, still and under the pointer.
+      for (const [still, hover] of [[".icon-btn, .back", ".icon-btn:hover, .back:hover"], [".chip-btn", ".chip-btn:hover"], [".section-pill", ".section-pill:hover"], [".pill", ".pill:hover"]]) {
+        const fg = c(one(still)!.decl.color);
+        expect(ratio(fg, over(c(colourIn(one(still)!.decl.background)!), bg)), still).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(fg, over(c(colourIn(one(hover)!.decl.background)!), bg)), hover).toBeGreaterThanOrEqual(4.5);
+      }
     });
     test(`${theme}: what was added or removed in a diff is readable on its tint`, () => {
       for (const s of [".added", ".removed"]) {
@@ -777,13 +797,23 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".ask textarea")!.decl.border)!), bg), "the ask box's edge").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one('.row input[type="search"]')!.decl.border)!), bg), "the search box's edge").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(one('.tab[aria-selected="true"]')!.decl["border-bottom-color"]), bg), "the open tab's line").toBeGreaterThanOrEqual(3);
+      // The open place's round button and the open settings section are filled with the words' colour (3 to 1 on the page),
+      // and their own drawing or words read on that fill.
+      for (const s of ['.icon-btn[aria-pressed="true"]', '.section-pill[aria-current="page"]']) {
+        const fill = c(one(s)!.decl.background);
+        expect(ratio(fill, bg), s).toBeGreaterThanOrEqual(3);
+        expect(ratio(c(one(s)!.decl.color), fill), `${s} words`).toBeGreaterThanOrEqual(4.5);
+      }
+      // The ask box's edge in Home.
+      expect(ratio(c(colourIn(one(".home .ask")!.decl.border)!), bg), "Home's ask box edge").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
       // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
       const dot = c(one(".tabdot")!.decl.background);
       expect(ratio(dot, bg), "on the page").toBeGreaterThanOrEqual(3);
-      expect(ratio(dot, over(c(colourIn(one(".tab:hover")!.decl.background)!), bg)), "on a tab under the pointer").toBeGreaterThanOrEqual(3);
+      // On a round button it sits in a ring of the page's own colour, so it is always seen against the page, still or under
+      // the pointer.
+      expect(one(".icon-btn .tabdot, .back .tabdot")!.decl["box-shadow"]).toBe("0 0 0 2px var(--bg)");
     });
     test(`${theme}: the island's words, ring and marks stand out on its black`, () => {
       const black = c("#000");
@@ -799,7 +829,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 describe("Home stays usable with bigger text (part 4)", () => {
   const css = rules(read("./style.css"));
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page"];
+  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after"];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";
@@ -814,7 +844,8 @@ describe("Home stays usable with bigger text (part 4)", () => {
       expect(r.decl["white-space"] ?? "", r.sel).not.toMatch(/nowrap/);
     }
     const rows = css.filter((r) => [".row", ".tabs"].includes(r.sel));
-    for (const r of rows) expect(r.decl["flex-wrap"], `${r.sel} wraps to a new line`).toBe("wrap");
+    // A row wraps to a new line; the places are a column down the side, where each word wraps inside its own place.
+    for (const r of rows) if (r.decl["flex-direction"] !== "column") expect(r.decl["flex-wrap"], `${r.sel} wraps to a new line`).toBe("wrap");
   });
   test("no page sets a height or a font size inline, out of reach of the stylesheet", () => {
     for (const f of PAGES) expect(read(`./${f}`), f).not.toMatch(/style=\{\{[^}]*(height|fontSize)/);

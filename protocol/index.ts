@@ -165,7 +165,8 @@ export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchChe
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
 export type RunnerHello = Envelope & { type: "runner.hello"; runnerVersion: string; sdk: string; claudeCode?: string };
-export type AuthStatus = Envelope & { type: "auth.status"; method: "api_key" | "plan" | "cloud" | "none" | "unknown"; source?: string };
+/** `tested`: only right after the person saved a key, what Anthropic said about it (runner/src/keytest.ts). */
+export type AuthStatus = Envelope & { type: "auth.status"; method: "api_key" | "plan" | "cloud" | "none" | "unknown"; source?: string; tested?: "works" | "refused" | "no_connection" | "unknown" };
 export type CheckpointCreated = Envelope & {
   type: "checkpoint.created"; project: string; agent: string; checkpoint: string; label: string; files: number;
   skipped: { path: string; reason: string }[];
@@ -206,7 +207,9 @@ export type TeachReady = Envelope & { type: "teach.ready"; project: string; chec
 export type TeachResult = Envelope & { type: "teach.result"; project: string; checkpoint: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; same: boolean; label?: string; detail?: string; problem?: Problem; reason?: string };
 // One rung of the check of the person's own change, as it runs. Its own event, so it is never taken for the finished task's proof.
 export type TeachStep = Envelope & { type: "teach.step"; project: string; checkpoint: string } & ProofStep;
-export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string };
+// reason: one plain sentence for the person. detail: the raw failure, for the log only (the shell takes it off before the
+// pages see the event). failed: the command type that failed, for the page's own logic, never shown.
+export type ProtocolError = Envelope & { type: "protocol.error"; reason: string; line?: string; detail?: string; failed?: string };
 
 export type AssistPromptDelta = Envelope & { type: "assist.prompt.delta"; req: string; text: string };
 export type AssistPromptDone = Envelope & { type: "assist.prompt.done"; req: string; text: string; question?: string; options?: string[]; diff: [string, string][]; usdEstimate: number; handback: "paste" | "copy" };
@@ -232,7 +235,8 @@ export type Problem =
   | { kind: "button"; label: string; message: string; from: "browser" }
   | { kind: "message"; message: string; from: string };
 // needs: "browser" means this step was skipped only because the hidden browser is not installed, so the page can offer it.
-export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser" };
+// summary: a failed step's one plain sentence; the detail (the check's own output) is shown behind Details.
+export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser"; summary?: string };
 // note: one plain line about a check that could not run (the Vercel tool missing or signed out), with what to do.
 // A problem with from "deploy" is the line the last Vercel deploy failed at, confirmed in this folder.
 export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser"; note?: string };
@@ -525,7 +529,7 @@ const EVENTS: Record<string, Check[]> = {
   "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
   "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],
-  "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"])],
+  "auth.status": [oneOf("method", ["api_key", "plan", "cloud", "none", "unknown"]), opt("tested", oneOf("tested", ["works", "refused", "no_connection", "unknown"]))],
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],

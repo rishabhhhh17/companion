@@ -3,9 +3,14 @@
 import type { Command } from "../../protocol/index.ts";
 import { switchKey, type SwitchedId } from "./groups.ts";
 
-// The practice comes right after Connect, so everyone can see the hero in minute one (F17); it can be skipped, and taking
-// it ends the first run there (the practice opens its own folder; Back to my project asks for the person's own later).
-export const STEPS = ["welcome", "connect", "practice", "folder", "questions", "groups", "permissions", "first"] as const;
+// The first run (M15 wave 1): see it work before anything is asked, then connect Claude, then pick a folder; the last step is
+// optional (the questions, F05; the four groups, F20; the keys) and can be skipped in one press. "look" is a recording of
+// the signup practice (firstLook.ts): it spends nothing and needs no key, no Node and no folder, so the hero is the first
+// thing everyone sees (F17: the first run sells only the hero; product doc section 4: a demo runs before anything is
+// connected). The real practice is one press away on the folder step. Permissions are asked when a feature first needs one.
+export const STEPS = ["look", "connect", "folder", "yours"] as const;
+/** The steps that must be done; the rest can be skipped. */
+export const REQUIRED: readonly Step[] = ["connect", "folder"];
 export type Step = (typeof STEPS)[number];
 export type Answers = { explain: boolean; short: boolean; plain: boolean; autoSend: boolean };
 export const DEFAULT_ANSWERS: Answers = { explain: true, short: false, plain: true, autoSend: false };
@@ -65,7 +70,13 @@ export function keyLooksRight(raw: string): string | null {
   return null;
 }
 
-export const FIRST_TASKS = [
-  { label: "Make a tiny website", prompt: "Make a simple one page website for my project with a title, a short description and a contact line." },
-  { label: "Explain this project to me", prompt: "Look at this project and explain in plain words what it is and how it is organised. Change nothing." },
-];
+/** Where a person makes an Anthropic key (opened only from the Get a key button). */
+export const KEY_PAGE = "https://console.anthropic.com/settings/keys";
+
+export type KeyTested = { result: "works" | "refused" | "no_connection" | "unknown"; at: number };
+/** What setup says about the key it just saved: "checking" until Anthropic's answer for this save arrives (an answer from
+ *  before the save is someone else's), then that answer. Null before anything was saved. */
+export function keyCheck(savedAt: number | null, tested: KeyTested | null): KeyTested["result"] | "checking" | null {
+  if (savedAt === null) return null;
+  return tested && tested.at >= savedAt ? tested.result : "checking";
+}

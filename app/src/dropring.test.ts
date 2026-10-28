@@ -100,3 +100,21 @@ describe("the ring on the page", () => {
     expect(S.drop.more).toBeTruthy();
   });
 });
+
+describe("a dropped folder can be the project (M15)", () => {
+  test("the ring names it in plain words with the find drawing, and Home finds the problem when the shell says so", async () => {
+    const { actionWords } = await import("./dropmenu.ts");
+    expect(actionWords("openProject")?.short).toBe("Fix this");
+    expect(actionIcon("openProject")).toBe("find");
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain('listen("home-find", (e) =>');
+    expect(card).toContain("offDropFind.then((f) => f());");
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const fn = main.slice(main.indexOf("fn drop_open_project("), main.indexOf("\n}\n", main.indexOf("fn drop_open_project(")));
+    // Checked like any folder chosen, from the menu the shell made, only for one folder, never while a job runs.
+    expect(fn).toContain("use_project_inner(app.clone(), path)?");
+    expect(fn).toContain("d.actions.contains(&convert::OPEN_PROJECT) || d.paths.len() != 1");
+    expect(fn).toContain('if d.running.is_some() { return Err("busy".into()); }');
+    expect(fn).toContain('open_card(app, "drop_project", false);');
+  });
+});

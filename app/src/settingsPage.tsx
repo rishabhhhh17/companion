@@ -16,6 +16,7 @@ import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem,
 import { useKeys } from "./useKeys.ts";
 import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } from "./updates.ts";
 import { S } from "./strings.ts";
+import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
@@ -47,7 +48,7 @@ function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; worki
     setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
     if (!r.send) { setProblem(r.problem ?? ""); return; }
     setProblem(""); setStep("working");
-    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("replace"); });
+    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(failNote(e, "key")); setStep("replace"); });
   };
   const remove = () => {
     setProblem(""); setStep("working");
@@ -615,7 +616,7 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
     if (d.key === "check.start") return <ChoiceControl value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
     if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
     switch (d.kind) {
-      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}>{r.shown}</button>;
+      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}><span className="sr">{r.shown}</span></button>;
       case "choice": return <ChoiceControl value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
       case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
       case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
@@ -638,10 +639,11 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
       {editor}
       {notes.map((n) => <div className="line muted" key={n}>{n}</div>)}
       {r.projectLine && <div className="line muted">{r.projectLine}</div>}
-      <div className="row">
+      {/* What it usually is, and Reset, only once it was changed: an untouched row is its title, its words and its control. */}
+      {r.changed && <div className="row">
         <span className="line muted">{r.usualLine}</span>
         {r.canReset && d.key !== "keys.hotkeys" && !askReset && <button id={resetId} className="btn" type="button" aria-label={r.resetLabel} onClick={resetGo > 0 ? () => setAskReset(true) : reset}>{S.setReset}</button>}
-      </div>
+      </div>}
       {askReset && resetGo > 0 && (
         <ConfirmStep className="line" label={S.chkPicturesGo(resetGo, Number(usual))} back={resetId} onCancel={() => setAskReset(false)}>
           <div className="line">{S.chkPicturesGo(resetGo, Number(usual))}</div>
@@ -671,7 +673,7 @@ function useUndoToast() {
 
 /** A section: its title, its rows (or the ones a search found), what else belongs there, and Reset this section, which
  *  asks first and names what will change, then offers Undo. Protective settings are never in it. */
-function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pictures }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode; facts: CheckFacts | null; pictures: number | undefined }) {
+function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pictures, alone = false }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode; facts: CheckFacts | null; pictures: number | undefined; alone?: boolean }) {
   useSetting(keys[0] ?? "");
   const headId = useId(), resetId = useId();
   const [asking, setAsking] = useState(false);
@@ -682,8 +684,11 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
   const yes = () => { setAsking(false); void resetWithUndo(id).then(({ done, back }) => toast.show(done, back)); };
   return (
     <section aria-labelledby={headId} className="settings-section">
-      <h3 id={headId}>{title}</h3>
+      {/* Shown alone, the section's name is already the title at the top of Home, so its heading is for VoiceOver only. */}
+      <h3 id={headId} className={alone ? "sr" : undefined}>{title}</h3>
+      <div className="group">
       {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} facts={facts} pictures={pictures} /> : null; })}
+      </div>
       {extra}
       {changed.length > 0 && !asking && <div className="row"><button id={resetId} className="btn" type="button" onClick={() => setAsking(true)}>{S.setResetSection}</button></div>}
       {asking && (
@@ -702,7 +707,15 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
 // working: a task or a check works (isBusy). practiceBusy: that, or a lesson or a practice's own checks (practice.ts
 // workingOn), so the practice copy open now is never moved to the Trash under them.
 // onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
-export function SettingsPage({ working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {} }: { working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
+/** The parts of Settings, in page order, for the side list: each section of settings, then the parts that are not settings
+ *  (what it may do on this Mac, your key, practice and the rest). An id is a section's id, or "fixed:" and the part's name. */
+export function settingsPlaces(): { id: string; title: string }[] {
+  const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
+  return [...all.sections.map((s) => ({ id: s.id, title: s.title })), ...all.fixed.map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title }))];
+}
+
+// place: the part open in the side list. A search looks through every part, as before.
+export function SettingsPage({ place = "", working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {} }: { place?: string; working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
   // Every setting, except a model row that could offer only one option so far (modelChoice.ts), and a row that only
@@ -717,7 +730,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
   const [askPractice, setAskPractice] = useState(false);
   const [practiceSaid, setPracticeSaid] = useState("");
   const practiceAllId = useId();
-  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(String(e))); };
+  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(failNote(e, "practice"))); };
   const [problem, setProblem] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
@@ -784,7 +797,9 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
   const goAll = picturesResetGoing(changedAll, inv?.receiptPictures, setting("pictures.keep"));
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
-  const fixedShown = (g: FixedGroup) => results.fixed.includes(g);
+  const onePart = !q && !!place;
+  const fixedShown = (g: FixedGroup) => results.fixed.includes(g) && (!onePart || place === `fixed:${g}`);
+  const sectionsShown = onePart ? results.sections.filter((s) => s.id === place) : results.sections;
   // The character's place (its edge, its position and Same place on every display) put back with one press.
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
   const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
@@ -822,8 +837,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
     </>),
   };
   return (
-    <section className="panel" aria-label={S.settingsTitle}>
-      <h2>{S.settingsTitle}</h2>
+    <section className="panel settings" aria-label={S.settingsTitle}>
       <div className="row" role="search">
         <input type="search" autoComplete="off" spellCheck={false} value={q} placeholder={S.setSearch} aria-label={S.setSearch}
           onChange={(e) => setQ(e.target.value)}
@@ -832,7 +846,7 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {results.sections.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} />)}
+      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
@@ -885,9 +899,9 @@ export function SettingsPage({ working, practiceBusy, project, spending, onClose
       </Group>}
       {fixedShown("logs") && <Group title={S.exportLogsTitle}>
       <div className="line muted">{S.exportLogsHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
       <div className="line muted">{S.reportHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(String(e))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
+      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       </Group>}
       {results.all && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}

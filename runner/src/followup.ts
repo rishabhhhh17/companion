@@ -6,13 +6,14 @@ import { PRODUCT } from "./names.ts";
 
 /** A follow up is one line from the card. Anything longer is cut, so a pasted log cannot fill the conversation. */
 export const MAX_FOLLOW_UP_CHARS = 2000;
-export type Failure = { label: string; detail: string };
+// forModel: what the model is told instead of the detail, when the two differ (a weakened check, proof/ladder.ts).
+export type Failure = { label: string; detail: string; forModel?: string };
 
 /** The failing step of the last check, as Claude is shown it: secrets hidden, and short. */
 export const evidence = (f: Failure): Failure => ({ label: clip(redact(f.label).replace(/\s+/g, " ").trim(), 120), detail: clip(redact(f.detail).trim(), 1500) });
 const failedLines = (f?: Failure) => {
   if (!f) return "";
-  const e = evidence(f);
+  const e = evidence({ label: f.label, detail: f.forModel ?? f.detail });
   return `\n\nFailed check: ${e.label}\nWhat happened: ${e.detail}`;
 };
 const said = (text: string) => clip(text.trim(), MAX_FOLLOW_UP_CHARS);

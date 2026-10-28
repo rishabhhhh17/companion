@@ -142,7 +142,7 @@ export function scanProject(dir: string, o: ScanOptions = {}): { findings: Findi
       if (findings.some((x) => x.file === f && x.line === i + 1)) return;
       findings.push({ file: f, line: i + 1, kind: "secret in a settings file", public: false, preview: line.replace(v, "[hidden value]").trim().slice(0, 100),
         advice: `Add ${basename(f)} to your .gitignore so it is never published, and replace the key, because it may already have been shared.`,
-        message: `${f} (line ${i + 1}) holds a secret value and is not hidden from git.` });
+        message: `${f} (line ${i + 1}) holds a secret value and is not listed in .gitignore, so it could be published.` });
     });
   }
   return { findings, scanned: Object.keys(files).length, skipped, unreadablePublic };

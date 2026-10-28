@@ -19,7 +19,8 @@ export type FlowApi = {
 
 export type Flow = { canvasRef: RefObject<HTMLCanvasElement | null>; dropRef: RefObject<HTMLCanvasElement | null>; ready: boolean; failed: boolean; api: FlowApi };
 
-export function useFlow(o: { pose: string; state: string; calm: boolean }): Flow {
+/** off: the live drawing (src/flowflow/, character.live) has the character, so no renderer is made here. */
+export function useFlow(o: { pose: string; state: string; calm: boolean; off?: boolean }): Flow {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const dropRef = useRef<HTMLCanvasElement | null>(null);
   const fr = useRef<FlowRenderer | null>(null);
@@ -31,7 +32,7 @@ export function useFlow(o: { pose: string; state: string; calm: boolean }): Flow
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || failed) return;
+    if (!canvas || failed || o.off) return;
     const r = FlowRenderer.create({
       canvas, dropCanvas: dropRef.current, skin: SKIN, motion: SKIN.motion, pose: now.current.pose, urlFor: (p) => poseFile(SKIN, p),
       onReady: () => setReady(true),
@@ -41,8 +42,8 @@ export function useFlow(o: { pose: string; state: string; calm: boolean }): Flow
     r.motion = motion(now.current.calm);
     r.setState(now.current.state);
     fr.current = r;
-    return () => { r.dispose(); if (fr.current === r) fr.current = null; };
-  }, [failed]);
+    return () => { r.dispose(); if (fr.current === r) fr.current = null; setReady(false); };
+  }, [failed, o.off]);
 
   useEffect(() => { fr.current?.setPose(o.pose); }, [o.pose]);
   useEffect(() => { fr.current?.setState(o.state); }, [o.state]);

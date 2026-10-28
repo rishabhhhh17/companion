@@ -174,7 +174,7 @@ describe("the main button", () => {
 
 describe("the numbers count each press once", () => {
   test("the key counts the press and an anywhere use; the everyday look and its looks again count nothing more", () => {
-    const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+    const key = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="))   // the key and the chip share it;
     expect(key).toContain('if (route === "screen") { count("hero_press"); count("anywhere_use"); latest.current.lookEveryday(); return; }');
     const look = card.slice(card.indexOf("const lookEveryday = "), card.indexOf("const checkEveryday = "));
     expect(look).not.toContain("count(");
@@ -203,9 +203,9 @@ describe("show you why", () => {
 });
 
 describe("the card", () => {
-  const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+  const key = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="))   // the key and the chip share it;
   test("the key chooses with heroRoute and the setting, before anything is checked or looked at", () => {
-    expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(e.payload), practice: nowModel.current.practice?.project === projectRef.current })');
+    expect(key).toContain('heroRoute({ everyday: setting("point.everyday") !== false && toolOn("showMe"), project: projectRef.current, front: frontOf(payload), practice: nowModel.current.practice?.project === projectRef.current })');
     expect(key.indexOf("heroRoute(")).toBeLessThan(key.indexOf("sendOrExplain(findProblem("));
     expect(key).toContain("lookEveryday()");
   });
@@ -237,15 +237,15 @@ describe("settings and words", () => {
     expect(S.set["point.everyday"].label.length).toBeGreaterThan(5);
     expect(S.set["point.everydayWhy"].options).toBeTruthy();
   });
-  test("the first run and the island say the key works in any app", () => {
+  test("the first run says the key works in any app; the idle island says nothing at all", () => {
     expect(S.pointHint).toMatch(/any app/);
-    expect(S.obWelcome1 + S.obWelcome2).toMatch(/any app/);
-    expect(S.islandReady).toMatch(/any app/);
-    expect(islandLine({ ...initial(), runnerUp: true, connected: "api_key" })).toBe(S.islandReady);
-    expect(S.islandReady.length).toBeLessThanOrEqual(64);
+    expect(S.obAnyApp).toMatch(/any app/);
+    expect(S.firstLook.tagline).not.toMatch(/any app/);   // F17: never the headline
+    // The founder, 27 Oct 2026: "it does not always have to show Ready there". Idle, the island is the bare notch.
+    expect(islandLine({ ...initial(), runnerUp: true, connected: "api_key" })).toBe("");
   });
   test("plain words, no em dashes", () => {
-    const words = [S.everydayTitle, S.everydayNone, S.everydayFixed, S.everydaySaidWorks, S.everydayAsk, S.everydayCheck, S.everydaySteps, S.everydayChecking, S.everydayStill, S.everydayFromTable, S.everydayLookInstead, S.everydayCheckProject, S.everydayWhyTitle, S.pointHint, S.islandReady, S.obWelcome1, S.set["point.everyday"].help, S.set["point.everydayWhy"].help];
+    const words = [S.everydayTitle, S.everydayNone, S.everydayFixed, S.everydaySaidWorks, S.everydayAsk, S.everydayCheck, S.everydaySteps, S.everydayChecking, S.everydayStill, S.everydayFromTable, S.everydayLookInstead, S.everydayCheckProject, S.everydayWhyTitle, S.pointHint, S.islandQuiet, S.obAnyApp, S.set["point.everyday"].help, S.set["point.everydayWhy"].help];
     for (const w of words) { expect(typeof w).toBe("string"); expect(w).not.toContain("\u2014"); }
   });
 });

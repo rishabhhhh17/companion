@@ -118,7 +118,9 @@ describe("checking before saying done", () => {
     expect(states(r.events)).not.toContain("done");
     expect(states(r.events).at(-1)).toBe("error");
     expect(proofResult(r.events).verdict).toBe("failed");
-    expect(JSON.stringify(proofResult(r.events).steps)).toContain("boom in the checker");
+    // The person reads one plain sentence; the checker's own words are only for the model (M15 wave 2).
+    expect(JSON.stringify(proofResult(r.events).steps)).toContain("The checks could not run, so this is not proven yet.");
+    expect(JSON.stringify(proofResult(r.events).steps)).not.toContain("boom in the checker");
   });
   test("the kill switch during the checks cancels them and ends the task as stopped", async () => {
     let seen: AbortSignal | undefined;

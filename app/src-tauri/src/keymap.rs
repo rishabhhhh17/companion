@@ -956,7 +956,8 @@ mod tests {
             let at = main.find(c).unwrap();
             assert!(main[..at].trim_end().ends_with("#[tauri::command]"), "{c} must be a plain sync command");
             let b = body(c);
-            let check = b.find("window.label() != \"card\"").or_else(|| b.find("settings::only_card(window.label())?")).unwrap_or_else(|| panic!("{c} checks no window"));
+            // Home or the Settings window (settings.rs card_or_settings), never another.
+            let check = b.find("settings::card_or_settings(window.label())").unwrap_or_else(|| panic!("{c} checks no window"));
             let work = ["KEYS_SWITCH.lock()", "keys_to_usual(", "setting_change("].iter().filter_map(|w| b.find(w)).min().unwrap_or_else(|| panic!("{c}"));
             assert!(check < work, "{c}");
         }
@@ -1000,7 +1001,8 @@ mod tests {
         let closed = body("fn home_closed(");
         assert!(closed.contains("std::thread::spawn(move || arm_result_keys(&a, false))"), "home_closed gives the keys back, on its own thread: {closed}");
         let outs: Vec<usize> = main.match_indices("c.orderOut(None)").map(|(i, _)| i).collect();
-        assert_eq!(outs.len(), 4, "close_card, toggle_home, the full screen hide and Hide in the menu bar");
+        assert_eq!(outs.len(), 3, "close_home_rolled (for close_card and toggle_home), the full screen hide and Hide in the menu bar");
+        for f in ["fn close_card(", "fn toggle_home("] { assert!(body(f).contains("close_home_rolled("), "{f} closes through close_home_rolled"); }
         for at in outs {
             let rest = &main[at..];
             let next = rest.find("home_closed();").unwrap_or_else(|| panic!("the card is ordered out at {at} with no home_closed after it"));

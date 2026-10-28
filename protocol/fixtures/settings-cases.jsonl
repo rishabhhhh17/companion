@@ -1,3 +1,6 @@
+{"key": "character.live", "value": true, "ok": true, "normalized": true}
+{"key": "character.live", "value": false, "ok": true, "normalized": false}
+{"key": "character.live", "value": "on", "ok": false, "reason": "notSwitch"}
 {"key": "fun.reactions", "value": true, "ok": true, "normalized": true}
 {"key": "fun.reactions", "value": false, "ok": true, "normalized": false}
 {"key": "fun.reactions", "value": "on", "ok": false, "reason": "notSwitch"}
@@ -43,6 +46,10 @@
 {"key": "character.motion", "value": "less", "ok": true, "normalized": "less"}
 {"key": "character.motion", "value": "none", "ok": false, "reason": "notChoice"}
 {"key": "character.overFullScreen", "value": true, "ok": true, "normalized": true}
+{"key": "character.peek", "value": false, "ok": true, "normalized": false}
+{"key": "character.peek", "value": "off", "ok": false, "reason": "notSwitch"}
+{"key": "character.peekIdle", "value": true, "ok": true, "normalized": true}
+{"key": "character.peekIdle", "value": 0, "ok": false, "reason": "notSwitch"}
 {"key": "character.sameEverywhere", "value": 1, "ok": false, "reason": "notSwitch"}
 {"key": "spend.dailyLimit", "value": 25, "ok": true, "normalized": 25}
 {"key": "spend.dailyLimit", "value": 10.004, "ok": true, "normalized": 10}
