@@ -43,7 +43,7 @@ describe("the shipped list of settings", () => {
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
       "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
-      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "talk.captions": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.

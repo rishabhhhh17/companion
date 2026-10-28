@@ -2666,7 +2666,10 @@ fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Opti
     if !ok { return Ok(json!({ "said": false, "why": "repeat" })); }
     log("speak", json!({ "chars": line.chars().count(), "whole": whole == Some(true) }));   // how long, never what
     let set = voice_now();
+    let shown = line.clone();
     let _ = app.run_on_main_thread(move || speak::mac::say(&line, set.voice.as_ref(), set.speed));
+    // M26: the words said, shown at the bottom of the screen while they are said (talk.captions).
+    if setting_now("talk.captions") != json!(false) { show_caption(&app, &shown, set.speed); }
     if whole.is_some() { mark_tried(&app, "speak"); }   // an answer really said out loud; the voice sample in Settings sends no `whole`, so trying a voice is not a use
     Ok(json!({ "said": true }))
 }
@@ -2744,7 +2747,7 @@ fn voice_save(before: &voiceset::Saved, next: &voiceset::Saved) -> Result<(), &'
 /// Silence, at once. Also part of Stop everything.
 #[tauri::command]
 fn speak_stop(app: AppHandle) { speech_off(&app); }
-fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); }
+fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
 
 /// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
 #[tauri::command]
@@ -3117,6 +3120,54 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         }
     });
     Ok(())
+}
+
+// ---------- Captions while Squibby talks (M26) ----------
+
+static CAPTION_GEN: AtomicU64 = AtomicU64::new(0);
+/// Shows what is being said at the bottom of the display the character is on, a page at a time (speak::caption_pages), and
+/// takes it away the moment the voice stops (or is stopped). Never while Squibby is hidden. The overlay is see through to
+/// clicks, so the caption is never in the way; it goes away with the overlay only when nothing else is drawn on it.
+fn show_caption(app: &AppHandle, line: &str, speed: f64) {
+    if companion_hidden() { return; }
+    let pages: Vec<Value> = speak::caption_pages(line).into_iter().map(|p| { let ms = speak::caption_ms(p.chars().count(), speed); json!({ "text": p, "ms": ms }) }).collect();
+    if pages.is_empty() { return; }
+    let gen = CAPTION_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else { return };
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let Some(dock) = with_panels(|dock, _| dock.frame()) else { return };
+        let (cx, cy) = (dock.origin.x + dock.size.width / 2.0, dock.origin.y + dock.size.height / 2.0);
+        let Some(scr) = screens.iter().map(|s| s.frame()).find(|f| cx >= f.origin.x && cx < f.origin.x + f.size.width && cy >= f.origin.y && cy < f.origin.y + f.size.height) else { return };
+        let busy = overlay_busy() || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_some();
+        if !busy {
+            let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
+            let ak = coords::rect_to_appkit(d, primary_h);
+            OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        }
+        let _ = a.emit_to("overlay", "overlay-caption", json!({ "pages": pages }));
+    });
+    // The caption stays exactly as long as the voice: checked five times a second, at most two minutes.
+    let a = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(400));
+        for _ in 0..600 {
+            if CAPTION_GEN.load(Ordering::SeqCst) != gen { return; }
+            let (tx, rx) = std::sync::mpsc::channel();
+            let _ = a.run_on_main_thread(move || { let _ = tx.send(speak::mac::speaking()); });
+            if !rx.recv_timeout(Duration::from_secs(1)).unwrap_or(false) { break; }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        if CAPTION_GEN.load(Ordering::SeqCst) != gen { return; }
+        let _ = a.emit_to("overlay", "overlay-caption-end", ());
+        std::thread::sleep(Duration::from_millis(300));
+        let free = !overlay_busy() && TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none();
+        if CAPTION_GEN.load(Ordering::SeqCst) == gen && free {
+            let _ = a.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
+        }
+    });
 }
 
 // ---------- Celebration ----------

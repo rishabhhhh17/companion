@@ -208,6 +208,23 @@ followLessMotion();
 void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
 
+// Captions while Squibby talks (M26, talk.captions): the words being said, at the bottom of the screen, a page at a time
+// (speak.rs caption_pages paces them); the last page stays until the voice stops and the shell says so.
+const talk = document.getElementById("talk")!;
+let talkGen = 0;
+void listen("overlay-caption", (e) => {
+  const { pages } = e.payload as { pages: { text: string; ms: number }[] };
+  const mine = ++talkGen;
+  const page = (i: number) => {
+    if (mine !== talkGen || i >= pages.length) return;
+    talk.textContent = pages[i].text;
+    talk.classList.add("on");
+    if (i + 1 < pages.length) setTimeout(() => page(i + 1), pages[i].ms);
+  };
+  page(0);
+});
+void listen("overlay-caption-end", () => { talkGen++; talk.classList.remove("on"); });
+
 // The person clicked the right thing: the ring turns green with a tick, and the water ring bursts into a splash of drops
 // (none with reduced motion or with reactions turned off; the green ring and the tick show either way). Then the drop
 // gathers and flies home to the character (`home`, where it is now), which ripples as it lands (the shell tells the dock).
