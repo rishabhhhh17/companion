@@ -10,16 +10,20 @@ The usage server keeps no prompts or replies. So we do not find abuse by reading
 - The suspend command: `usage-proxy/scripts/suspend.ts` (see `usage-proxy/README.md`). It needs the real store connected, which is not built yet.
 - A place to write down each case: ids and dates only (see step 6).
 
+## 0b. Look every day, not only when something arrives
+Anthropic asked for detection beyond a daily cap. Once a day while the route is on, run `bun usage-proxy/scripts/signals.ts --store <store module>`. It reads only counts and names owners who were near their daily limit on several days, who sent a burst of requests, or whose spend jumped against their own week. A signal is a reason to **look**, not to cut off: a heavy honest user raises them too. If one looks wrong, open a case (own signal) and follow step 3.
+
 ## 1. How something arrives
 | Source | What it contains | Where it lands |
 |---|---|---|
-| A notice from Anthropic | Usually the opaque `user_id` we sent, a date and the rule involved. Exact form: **not known yet** (see "Who to contact") | [the email address Anthropic uses for us: to confirm] |
+| A notice from Anthropic | Usually the opaque `user_id` we sent, a date and the rule involved. Exact form: **not known yet** (see "Who to contact") | The organization's **owner, admin and billing** role emails (Anthropic's answer of 27 Oct 2026). Point all three at one **monitored shared mailbox** so nothing is missed |
 | A report from a person | What they saw and when, no copy of the content | [abuse report address: founder to set up] |
 | Our own signal | A strange pattern in the counts (for example one account always at its daily limit, many accounts from the same sign up source) | The daily spend check in `docs/launch/company-paid-go-live-checklist.md` |
 
 Open a case number the moment anything arrives: a short reference like `case-2026-11-03-a` (letters, digits, - and _ only). Use it everywhere below.
 
 ## 2. Find the owner
+- **From an opaque id, or a request id, in a notice: use our own request log first.** Anthropic told us (27 Oct 2026) that its reports cannot be grouped by `user_id`, so **our log is the system of record**. Every request record holds the opaque id Anthropic saw, Anthropic's `request-id`, the owner id, the plan, the time, the model and the counts. Find the record by the id or the request id in the notice: it gives the owner, and the times of that owner's other requests. No secret is needed for this, but the secret is still how the suspend command checks the id.
 - From an Anthropic notice: `bun scripts/suspend.ts --store <store module> --user-id <the id in the notice> --case <case>` (a dry run). It derives each owner's id again with the secret and prints the owner id that matches. Nothing is stored in plain, so this is the only way from the id to the person.
 - From a report: it names an account or an email. Find our owner id in the store by that. Then continue with `--owner <owner id>`.
 - If it says "No owner matches": check the id was copied whole (64 characters of 0 to 9 and a to f), check the secret is the one in use, and check the date: the owner may have been deleted. Write that down in the case and ask Anthropic for more detail if the notice allows it.
@@ -67,9 +71,13 @@ The store also keeps its own log of suspend and restore (owner id, date, case id
 - **The secret leaked.** Anyone with it and a list of owner ids could match ids to people. Change it, accept that old ids can no longer be matched, and note the date in the case file.
 
 ## Who to contact at Anthropic
-**Not yet known.** The founder asked in an email on 23 Oct 2026 how Anthropic contacts us about misuse and who we contact. Placeholder: [Anthropic abuse or trust and safety contact: to fill in when they answer]. Until then: reply to the thread of the support email (`docs/outreach/anthropic-support-reply-2-2026-10-23.md`) and keep every notice they send.
+Anthropic's answer (27 Oct 2026, `docs/outreach/anthropic-support-reply-3-2026-10-27.md`): account notices go to the organization's **owner, admin and billing** roles, and there is **no separate security contact field**. So:
+1. The founder points those three role emails at a monitored shared mailbox. Someone reads it every working day.
+2. Replies to a notice go on the same thread. Keep every notice (ids and dates), with the case number.
+3. For questions about the agreement itself, the account team, not support.
 
 ## Not proven
-- The exact shape of an Anthropic notice and whether it will contain the `user_id` we send.
+- The exact shape of an Anthropic notice and whether it will contain the `user_id` we send. (Support says reports cannot be grouped by `user_id`, so a notice may name only a request or a date: keep Anthropic's `request-id`, which our log records.)
+- The signals thresholds (`usage-proxy/src/signals.ts`) are first guesses, never tuned on real use. Expect false alarms and misses in the first weeks.
 - That `metadata.user_id` is shown to Anthropic's reviewers in the way the docs imply; it is documented as an opaque identifier for the end user, nothing more.
 - The suspend command against a real store: only the in memory store exists, and the command is tested against it.

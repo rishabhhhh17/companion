@@ -7,12 +7,16 @@ import type { Usage } from "./usage.ts";
 export type User = { id: string; plan: string; status: "active" | "past_due" | "canceled" | "revoked" | "suspended" };
 /** One line of the suspension log: ids and dates only, never text. `caseId` is a short reference of ours (a report or notice number). */
 export type SuspensionRecord = { ownerId: string; kind: "suspended" | "restored"; at: number; caseId?: string };
-export type UsageRecord = { userId: string; model: string; usage: Usage; usd: number; at: number; complete: boolean };
+/** One small record per request, our own log for an abuse investigation: who (our owner id and the opaque id Anthropic saw), when,
+ *  which of Anthropic's requests (its `request-id`, so a notice can be traced to one request), the plan then, and the counts. Never text. */
+export type UsageRecord = { userId: string; model: string; usage: Usage; usd: number; at: number; complete: boolean; plan: string; metadataUserId: string; requestId?: string };
 
 export interface Store {
   userByTokenHash(hash: string): Promise<User | null>;
   spent(userId: string, now: number): Promise<Spent>;
   record(r: UsageRecord): Promise<void>;
+  /** The request records from `at` on, oldest first (for the signals check; the real store reads them from its log). */
+  recordsSince(at: number): Promise<UsageRecord[]>;
   /** Take one of the user's running request slots; false when `max` are already running. */
   begin(userId: string, max: number): Promise<boolean>;
   end(userId: string): Promise<void>;
@@ -63,6 +67,7 @@ export class MemoryStore implements Store {
     this.records.push(r);
     for (const k of [`${r.userId}|d|${dayKey(r.at)}`, `${r.userId}|m|${monthKey(r.at)}`]) this.#spent.set(k, (this.#spent.get(k) ?? 0) + r.usd);
   }
+  async recordsSince(at: number) { return this.records.filter((r) => r.at >= at).sort((a, b) => a.at - b.at).map((r) => ({ ...r })); }
   async begin(userId: string, max: number) { const n = this.#running.get(userId) ?? 0; if (n >= max) return false; this.#running.set(userId, n + 1); return true; }
   async end(userId: string) { this.#running.set(userId, Math.max(0, (this.#running.get(userId) ?? 0) - 1)); }
   inFlight(userId: string) { return this.#running.get(userId) ?? 0; }
