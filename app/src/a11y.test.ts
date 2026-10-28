@@ -287,7 +287,9 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
   test("the character says its name, its state and how many questions wait", () => {
     const dock = read("./dock.tsx");
     expect(dock).toContain("const label = characterWords(m);");
-    expect(dock).toMatch(/const spoken = `\$\{S\.characterName\}: \$\{label\}/);
+    // Its name as chosen (character.name, M18), or its own.
+    expect(dock).toMatch(/const spoken = `\$\{characterName\(nameSet\)\}: \$\{label\}/);
+    expect(dock).toContain('const nameSet = useSetting("character.name");');
     expect(dock).toContain("aria-label={spoken}");
     expect(dock).toMatch(/role="status" aria-live="polite">\{label\}/);
   });
