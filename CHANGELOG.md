@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow comes alive: 29 Oct 2026
+
+- **Flowflow doesn't just sit there any more.** Every few seconds it does something small: looks around, shakes water off, stretches, bounces, blows a bubble. Never the same thing twice in a row, never while it's working, and never with less motion.
+- **It breathes and floats** a little more, so it reads as alive even while resting.
+- **It's bigger on the edge of your screen**, and the "Ready" tag under it is gone while it rests. Words show up only when there's something to say.
+
 ## Work cards, captions and a real Esc: 29 Oct 2026
 
 - **Work drops from the notch as it happens.** When a job starts, moves to its next step, or finishes with its proof, its card drops from the notch for a few seconds and tucks back. You see progress without opening anything, and nothing stays over your windows.

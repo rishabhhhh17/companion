@@ -153,7 +153,8 @@ describe("with the island turned off", () => {
     expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
     expect(dock).toContain("data-state={state}");
     expect(dock).toContain("const label = characterWords(m);");
-    expect(dock).toContain('<div className="dock-label" role="status" aria-live="polite">{label}</div>');
+    // M26: the words hide only at rest with nothing waiting; every look at the screen and the microphone is not rest.
+    expect(dock).toContain('<div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>');
     expect([...dock.matchAll(/"(island|home)\.\w+"/g)].map((x) => x[0]).sort()).toEqual(['"home.goToNeeds"', '"island.show"']);
     for (const e of [ev({ type: "app.showme", stage: "looking", message: "Looking at your screen" }), ev({ type: "app.voice", stage: "listening", message: "Listening" }), ev({ type: "agent.state", agent: "a", state: "checking" })]) {
       const m = run([e]);

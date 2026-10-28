@@ -106,10 +106,48 @@ describe("alive on the side (M20)", () => {
   test("Lively: with nothing happening it hops now and then; never when not Lively, and not while it is followed", () => {
     const calm = new FlowflowEngine(); run(calm, HOP_EVERY[1] + 6); expect(calm.ripples.alive).toBe(0);
     const lively = new FlowflowEngine(); lively.lively = true;
-    let hopped = false; for (let t = 0; t < HOP_EVERY[1] + 6; t += 1 / 60) { lively.update(1 / 60); if (lively.body.pose.y > 0.08) hopped = true; }
+    // M26: it now does one of several moves; within a minute at least one of them leaves the ground.
+    let hopped = false; for (let t = 0; t < 60; t += 1 / 60) { lively.update(1 / 60); if (lively.body.pose.y > 0.08) hopped = true; }
     expect(hopped).toBe(true);
     const followed = new FlowflowEngine(); followed.lively = true;
-    let up = false; for (let t = 0; t < HOP_EVERY[1] + 6; t += 1 / 60) { followed.pointer(0.5, 0); followed.update(1 / 60); if (followed.body.pose.y > 0.08) up = true; }
+    let up = false; for (let t = 0; t < 60; t += 1 / 60) { followed.pointer(0.5, 0); followed.update(1 / 60); if (followed.body.pose.y > 0.08) up = true; }
     expect(up).toBe(false);
+    expect(followed.idleDone).toEqual([]);
+  });
+});
+
+// M26: life when nothing happens is a little repertoire, not one hop: a hop, a double bounce, a look around, a shake of
+// water, a stretch, a bubble. Chosen from the seeded schedule (the same every run), only with Lively, never while busy,
+// followed or pushed.
+import { IDLE_ACTS } from "./engine.ts";
+
+describe("idle life (M26)", () => {
+  const live = (seed = 7) => { const e = new FlowflowEngine({}, seed); e.lively = true; return e; };
+  const play = (e: FlowflowEngine, secs: number) => { for (let t = 0; t < secs; t += 1 / 60) e.update(1 / 60); };
+  test("in two minutes of quiet it does several different things, not the same hop", () => {
+    const e = live(); play(e, 120);
+    expect(new Set(e.idleDone).size).toBeGreaterThanOrEqual(4);
+    expect(e.idleDone.length).toBeGreaterThanOrEqual(12);
+    for (const k of e.idleDone) expect(IDLE_ACTS).toContain(k);
+  });
+  test("the same seed does the same things in the same order (no dice)", () => {
+    const a = live(3), b = live(3); play(a, 60); play(b, 60);
+    expect(a.idleDone).toEqual(b.idleDone);
+  });
+  test("nothing without Lively, and nothing while it works", () => {
+    const calm = new FlowflowEngine(); play(calm, 60); expect(calm.idleDone).toEqual([]);
+    const busy = live(); busy.applyApp("working"); play(busy, 60); expect(busy.idleDone).toEqual([]);
+  });
+  test("every move ends where it started: the body comes back home", () => {
+    const e = live(); play(e, 90);
+    play(e, 0); // let the last one finish below
+    for (let t = 0; t < 8; t += 1 / 60) { e.update(1 / 60); }
+    expect(Math.abs(e.body.pose.x)).toBeLessThan(0.3);
+  });
+  test("resting, it visibly breathes and floats", () => {
+    const e = new FlowflowEngine();
+    const look = e.behavior.look;
+    expect(look.breathAmp).toBeGreaterThanOrEqual(0.035);
+    expect(look.floatAmp).toBeGreaterThanOrEqual(0.03);
   });
 });

@@ -29,7 +29,7 @@ export type Look = {
 export const LOOK_KEYS = ["eyeOpen", "gazeGain", "breathAmp", "breathRate", "floatAmp", "cloud", "glow", "wobbleGain", "expand", "rippleGain", "droplets"] as const;
 
 export const LOOKS: Readonly<Record<BehaviorState, Look>> = {
-  idle:        { eyeOpen: 1,    gazeGain: 0.6, breathAmp: 0.025, breathRate: 0.30, floatAmp: 0.02, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2 },
+  idle:        { eyeOpen: 1,    gazeGain: 0.6, breathAmp: 0.035, breathRate: 0.32, floatAmp: 0.035, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2 },
   curious:     { eyeOpen: 1.12, gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.50, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1,   expand: 0.03, rippleGain: 0.8, droplets: 0.3 },
   following:   { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 1.1, expand: 0,    rippleGain: 0.7, droplets: 0.6 },
   working:     { eyeOpen: 0.82, gazeGain: 0.3, breathAmp: 0.015, breathRate: 0.90, floatAmp: 0,    cloud: 0.05, glow: 0.05, wobbleGain: 0.6, expand: 0,    rippleGain: 0.4, droplets: 0 },
