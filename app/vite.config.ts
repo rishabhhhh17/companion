@@ -10,6 +10,6 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    rollupOptions: { input: { dock: resolve(__dirname, "dock.html"), card: resolve(__dirname, "card.html"), overlay: resolve(__dirname, "overlay.html"), island: resolve(__dirname, "island.html"), settings: resolve(__dirname, "settings.html") } },
+    rollupOptions: { input: { dock: resolve(__dirname, "dock.html"), card: resolve(__dirname, "card.html"), overlay: resolve(__dirname, "overlay.html"), island: resolve(__dirname, "island.html"), settings: resolve(__dirname, "settings.html"), follow: resolve(__dirname, "follow.html") } },
   },
 });

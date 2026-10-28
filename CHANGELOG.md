@@ -4,7 +4,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 
 ## Flowflow comes alive: 28 Oct 2026
 
-- **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (coming next: a little drop of water that trails your pointer) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.
+- **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (a little drop of its water also trails your pointer around, stretching as it goes and settling beside it) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.
 - **It has weight.** When it slides in from the edge, travels to a window or is dragged, the water lags behind like jelly, squashes as it stops and wobbles. Coming in from the edge it lands with a splash.
 - **It fidgets.** In Lively it does a little hop now and then when nothing is happening.
 - **The logo lives inside the notch now,** in lime on the notch's black, sharp whatever your wallpaper.
