@@ -856,7 +856,7 @@ export class CheckpointStore {
         else rmSync(dst, { force: true });
       }
     } catch (e) {
-      throw new UndoOneError(`Undoing the task stopped partway (${String((e as Error).message ?? e).split("\n")[0].slice(0, 120)}). Your project as it was just before is saved, so it can be put back.`, safety.id);
+      throw new UndoOneError(`Undoing the task stopped partway. Your project as it was just before is saved, so it can be put back.`, safety.id);
     }
     // What our work left now includes this change, so the files it put back are not mistaken for the person's.
     try {

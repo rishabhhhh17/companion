@@ -1,27 +1,72 @@
 import { describe, expect, test } from "bun:test";
 import { addMemory } from "./commands.ts";
-import { back, canContinue, commandsFor, DEFAULT_ANSWERS, effectsOf, groupSettingsFor, keyLooksRight, next, QUESTIONS, settingsFor, STEPS } from "./onboarding.ts";
+import { back, canContinue, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, REQUIRED, settingsFor, STEPS, yoursSettings } from "./onboarding.ts";
+import { characterName, COMPANIONS } from "./companion.ts";
 import { readFileSync } from "node:fs";
 import { S } from "./strings.ts";
 
 describe("moving through the first run", () => {
-  test("the steps go in order, and the first and last have nowhere to go", () => {
-    expect(next("welcome")).toBe("connect"); expect(next("first")).toBeNull(); expect(back("connect")).toBe("welcome"); expect(back("welcome")).toBeNull();
-    expect(STEPS.length).toBe(8);
+  test("hello, see it work, choose and make it yours, powers, connect, folder, and a last screen; the ends have nowhere to go", () => {
+    expect([...STEPS]).toEqual(["hello", "look", "pick", "yours", "powers", "connect", "folder", "ready"]);
+    expect(next("hello")).toBe("look"); expect(next("folder")).toBe("ready"); expect(next("ready")).toBeNull();
+    expect(back("look")).toBe("hello"); expect(back("hello")).toBeNull();
+    expect([...REQUIRED]).toEqual(["connect", "folder"]);
   });
-  test("the practice comes in minute one: right after Connect, before the folder, the questions and the permissions (F17)", () => {
-    expect(STEPS.slice(0, 4)).toEqual(["welcome", "connect", "practice", "folder"]);
-    expect(next("connect")).toBe("practice"); expect(next("practice")).toBe("folder"); expect(back("folder")).toBe("practice");
-    // It can always be skipped, and it never comes before Connect (the fix needs Claude).
-    expect(canContinue("practice", { connected: true, project: "" })).toBe(true);
-    expect(STEPS.indexOf("practice")).toBeGreaterThan(STEPS.indexOf("connect"));
+  test("the hero comes before any key, folder or question (F17; product doc section 4: a demo before connecting)", () => {
+    expect(STEPS.indexOf("look")).toBeLessThan(STEPS.indexOf("connect"));
+    expect(STEPS.indexOf("look")).toBeLessThan(STEPS.indexOf("folder"));
+    expect(STEPS.slice(0, STEPS.indexOf("look"))).toEqual(["hello"]);   // only the hello, which asks nothing, comes first
+    for (const s of ["hello", "look"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("<FirstLook onGo={() => go(next(step))} />");
+    // The real practice is one press away on the last screen, and taking it ends the first run there.
+    expect(ui).toContain("onDone(); startPractice(first.id);");
   });
   test("you cannot move past connecting Claude or choosing a folder until it is done", () => {
     expect(canContinue("connect", { connected: false, project: "/p" })).toBe(false);
     expect(canContinue("connect", { connected: true, project: "" })).toBe(true);
     expect(canContinue("folder", { connected: true, project: "" })).toBe(false);
     expect(canContinue("folder", { connected: true, project: "/p" })).toBe(true);
-    for (const s of ["welcome", "practice", "questions", "groups", "permissions", "first"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    for (const s of ["pick", "yours", "powers", "ready"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+  });
+  test("the count in words covers the five steps in the middle", () => {
+    expect([...COUNTED]).toEqual(["pick", "yours", "powers", "connect", "folder"]);
+    expect(countOf("pick")).toEqual({ n: 1, of: 5 }); expect(countOf("folder")).toEqual({ n: 5, of: 5 });
+    expect(countOf("hello")).toBeNull(); expect(countOf("ready")).toBeNull();
+  });
+  test("the water rises with every counted step and ends nearly full", () => {
+    const levels = COUNTED.map((s) => LEVEL[s]);
+    for (let i = 1; i < levels.length; i++) expect(levels[i]).toBeGreaterThan(levels[i - 1]);
+    expect(LEVEL.ready).toBeGreaterThan(LEVEL.folder);
+    expect(LEVEL.ready).toBeLessThan(100);
+    for (const s of STEPS) expect(LEVEL[s]).toBeGreaterThan(0);
+  });
+});
+
+describe("make it yours", () => {
+  test("only what was chosen changes; its own name, or nothing typed, keeps the name empty", () => {
+    expect(yoursSettings(DEFAULT_YOURS, "Flowflow")).toEqual([]);
+    expect(yoursSettings({ name: "Flowflow", lively: null, edge: null }, "Flowflow")).toEqual([]);
+    expect(yoursSettings({ name: "  Blub  ", lively: "calm", edge: "left" }, "Flowflow")).toEqual([["character.name", "Blub"], ["fun.reactions", false], ["character.edge", "left"]]);
+    expect(yoursSettings({ name: "", lively: "lively", edge: null }, "Flowflow")).toEqual([["fun.reactions", true]]);
+    expect(yoursSettings({ name: "", lively: null, edge: null, follow: "drop" }, "Flowflow")).toEqual([["character.follow", "drop"]]);
+  });
+  test("a name is cut to the most the setting takes, and the setting exists in the registry", () => {
+    const long = "x".repeat(40);
+    expect(yoursSettings({ name: long, lively: null, edge: null }, "Flowflow")[0][1]).toBe("x".repeat(NAME_MAX));
+    const reg = JSON.parse(readFileSync(new URL("../../protocol/settings.json", import.meta.url), "utf8")) as { settings: { key: string; kind: string; maxLength?: number; default: unknown; options?: string[] }[] };
+    const name = reg.settings.find((x) => x.key === "character.name")!;
+    expect(name).toMatchObject({ kind: "text", default: "", maxLength: NAME_MAX });
+    expect(reg.settings.find((x) => x.key === "character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
+    expect(reg.settings.find((x) => x.key === "fun.reactions")!.kind).toBe("switch");
+  });
+  test("the character is called by the name chosen, or its own", () => {
+    expect(characterName("")).toBe("Flowflow"); expect(characterName(undefined)).toBe("Flowflow");
+    expect(characterName("  Blub ")).toBe("Blub");
+  });
+  test("Flowflow is the only companion ready; the others are empty places, one per group, with no art", () => {
+    expect(COMPANIONS.filter((c) => c.ready).map((c) => c.id)).toEqual(["water"]);
+    expect(COMPANIONS.map((c) => c.group)).toEqual(["flow", "guide", "voice", "files"]);
   });
 });
 
@@ -52,6 +97,29 @@ describe("the questions", () => {
   });
 });
 
+describe("the key is checked with Anthropic when it is saved", () => {
+  test("nothing before a save; checking until the answer for this save arrives; an older answer is never shown", () => {
+    expect(keyCheck(null, { result: "works", at: 5 })).toBeNull();
+    expect(keyCheck(100, null)).toBe("checking");
+    expect(keyCheck(100, { result: "works", at: 50 })).toBe("checking");
+    expect(keyCheck(100, { result: "refused", at: 120 })).toBe("refused");
+    expect(keyCheck(100, { result: "works", at: 100 })).toBe("works");
+  });
+  test("a refused key cannot be continued past, and every answer is in plain words", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    const connect = ui.slice(ui.indexOf('{step === "connect" && ('), ui.indexOf('{step === "folder" && ('));
+    expect(connect).toContain('main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || (step === "connect" && check === "refused"))');
+    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <button className="fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;');
+    for (const k of ["checking", "works", "refused", "no_connection", "unknown"] as const) { expect(S.obKeyCheck[k].length).toBeGreaterThan(10); expect(S.obKeyCheck[k]).not.toMatch(/40[13]|status|HTTP|models/); }
+  });
+  test("Get a key opens Anthropic's own page, only on the person's press, and a failure never shows a raw error", () => {
+    expect(KEY_PAGE).toBe("https://console.anthropic.com/settings/keys");
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain('onClick={() => void invoke("open_link", { url: KEY_PAGE })');
+    expect(ui).not.toContain("String(e)");
+  });
+});
+
 describe("the key box", () => {
   const good = "sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcdefgh";
   test("a good key passes; mistakes are explained in plain words", () => {
@@ -76,9 +144,13 @@ describe("the first run and INSTALL name every feature that asks for each permis
 });
 
 describe("the first run explains the four groups (F20 item 6)", () => {
-  test("a step after the questions and before the permissions, which can always be passed", () => {
-    expect(next("questions")).toBe("groups"); expect(next("groups")).toBe("permissions"); expect(back("permissions")).toBe("groups");
-    expect(canContinue("groups", { connected: false, project: "" })).toBe(true);
+  test("the groups have their own step before Connect, and the optional questions are folded away on the last screen", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(STEPS.indexOf("powers")).toBeLessThan(STEPS.indexOf("connect"));
+    expect(ui.slice(ui.indexOf('{step === "powers" && (')).indexOf("SWITCHED.map")).toBeGreaterThan(0);
+    const ready = ui.slice(ui.indexOf('{step === "ready" && ('));
+    expect(ready.indexOf("<details")).toBeLessThan(ready.indexOf("QUESTIONS.map"));
+    for (const s of ["powers", "ready"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
   });
   test("each group is explained in one short line, four lines in all, in plain words with no score or level", () => {
     const lines = Object.values(S.groups.short);
@@ -91,9 +163,37 @@ describe("the first run explains the four groups (F20 item 6)", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     expect(ui).toContain("for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);");
   });
-  test("skipping the questions goes on to the groups, and the practice route keeps nothing from this step", () => {
+  test("the choices made on the way are kept however the first run ends; the questions only with Go to my project", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain('onClick={() => { setAnswers(DEFAULT_ANSWERS); go("groups"); }}');
-    expect(ui).toContain("onDone(); startPractice(first.id);");
+    const keep = ui.slice(ui.indexOf("const keepChoices = () => {"), ui.indexOf("const finish = () => {"));
+    expect(keep).toContain("yoursSettings(yours, own)"); expect(keep).toContain("groupSettingsFor(groupsOff)");
+    expect(keep).not.toContain("settingsFor(answers)"); expect(keep).not.toContain("commandsFor(");
+    const fin = ui.slice(ui.indexOf("const finish = () => {"), ui.indexOf("const saveKey"));
+    expect(fin).toContain("keepChoices();"); expect(fin).toContain("settingsFor(answers)");
+    expect(ui).toContain("onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}");
+    expect(ui).toContain("onClick={finish}>{S.fr.goProject}");
+  });
+});
+
+describe("Home opens by itself at the very first launch", () => {
+  test("the page asks once when the first run is not finished; the shell opens Home once per launch, without the keyboard", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain('useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);');
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const fn = main.slice(main.indexOf("fn first_run_open("), main.indexOf("\n}\n", main.indexOf("fn first_run_open(")));
+    expect(fn).toContain('if window.label() != "card"');
+    expect(fn).toContain("FIRST_RUN_OPENED.swap(true, Ordering::SeqCst)");
+    expect(fn).toContain('open_card(&app, "first_run", false);');   // rule 9: never the keyboard unasked
+    expect(fn).not.toContain("makeKey");
+  });
+});
+
+describe("the last screen's keys", () => {
+  test("are shown in the Mac's own symbols, the words kept for VoiceOver", async () => {
+    const { keySymbols } = await import("./onboarding.tsx");
+    expect(keySymbols("Control, Option, Command and K")).toBe("\u2303\u2325\u2318K");
+    expect(keySymbols("Option and Space")).toBe("\u2325Space");
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("<kbd aria-label={r.keys}>{keySymbols(r.keys)}</kbd>");
   });
 });

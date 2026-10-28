@@ -33,3 +33,16 @@ export function filterHistory(items: HistoryItem[], q: HistoryQuery): HistoryIte
     return words.every((w) => name.includes(w));
   });
 }
+
+/** Undo in What I did. Undoing a task puts the whole project back to just before it, so it is safe only for the newest task
+ *  that changed files: undoing an older one would also take back the work done after it. "undo" is the button, "older" a
+ *  task that changed files but is not the newest (the list says why there is no button), null nothing. Nothing is offered while
+ *  a task is still working on the project, nor for a task already undone in this session (`undone`: its undo point). `items`
+ *  is the whole list, newest first, not the filtered one. */
+export function historyUndo(items: HistoryItem[], h: HistoryItem, undone: string | null): "undo" | "older" | null {
+  if (!h.checkpoint || !((h.changed ?? 0) > 0)) return null;
+  if (items.some((x) => x.status === "running") || !items.some((x) => x.id === h.id)) return null;
+  const newest = items.find((x) => !!x.checkpoint && (x.changed ?? 0) > 0);
+  if (!newest || newest.id !== h.id) return "older";
+  return undone !== null && undone === h.checkpoint ? null : "undo";
+}

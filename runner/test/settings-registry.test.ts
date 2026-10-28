@@ -26,7 +26,8 @@ describe("the shipped list of settings", () => {
   test("sections are in page order and every setting names one of them", () => {
     // Groups of tools come first (F20, M12): the four switches are the first thing Settings shows.
     expect(REGISTRY.sections[0]).toBe("groups");
-    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
+    // M19: Look and feel, right after Home and the character.
+    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "look", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
     for (const d of REGISTRY.settings) expect(REGISTRY.sections).toContain(d.section);
   });
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
@@ -44,10 +45,12 @@ describe("the shipped list of settings", () => {
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
-      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false,
+      "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
+      // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
+      "character.peek": true, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
-      "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
+      "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
       "ph.handBack": "paste", "ph.appAnswers": null, "secondLook.on": true, "secondLook.searches": 3, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
       // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
       "point.fixWith": "rescue",
@@ -72,6 +75,12 @@ describe("the shipped list of settings", () => {
       "watch.on": true, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
       // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
       "make.folder": "home",
+      // M18: the character's name, chosen in the first run or Settings; empty is its own name.
+      "character.name": "",
+      // M19: make it yours.
+      "look.water": "ocean", "look.theme": "night", "character.follow": "eyes", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
+      "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -94,7 +103,7 @@ describe("the shipped list of settings", () => {
     // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
     for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
     // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.
-    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
+    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen", "character.peek", "character.peekIdle"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
     expect(defOf("home.closeOnClickAway")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("character.motion")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("home.goToNeeds")!.applies).toEqual(["pages"]);

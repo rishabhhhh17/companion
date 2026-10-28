@@ -1,0 +1,92 @@
+{
+  "format": "companion-eval-results/1",
+  "set": "fix-projects",
+  "mode": "spend",
+  "harness": "real run harness (runner/scripts/realrun-harness.ts; key from the Keychain item \"companion-dev\")",
+  "startedAt": "2026-10-26T15:06:04.813Z",
+  "finishedAt": "2026-10-26T15:06:19.462Z",
+  "models": {
+    "agent": "claude-sonnet-5-5",
+    "diagnose": "claude-opus-5-5",
+    "review": "claude-opus-5-5",
+    "fast": "claude-sonnet-5-5",
+    "vision": "claude-sonnet-5-5",
+    "aim": "claude-sonnet-5-5",
+    "grader": "claude-sonnet-5-5"
+  },
+  "caps": {
+    "perCaseUsd": 0.4,
+    "totalUsd": 0.4
+  },
+  "spentUsd": 0.036967,
+  "stopped": null,
+  "cases": [
+    {
+      "id": "stale-error",
+      "outcome": "already_fixed",
+      "costUsd": 0.036967,
+      "turns": 2,
+      "tokens": {
+        "in": 9106,
+        "cacheRead": 46856,
+        "out": 468
+      },
+      "ms": 14644,
+      "notes": [],
+      "detail": {
+        "flow": "stale",
+        "prompt": "Fix this error. Find the cause and make the smallest change that fixes it, then check that it works. Do not weaken or delete tests.\n\nThe error, as I saw it:\nUncaught ReferenceError: showGallery is not defined\n    at HTMLButtonElement.onclick (index.html:9:46)\n\nIt points at index.html, line 9.\n\nBefore you change anything, check that the error still applies. Read the file and line it names, look at whether the thing it names is still missing or wrong, and where it is cheap run the project's own check. If the error no longer applies (for example the function it says is not defined is defined now), change nothing: do not edit, move or rename anything. Say in plain words that it looks already fixed and why, such as \"This error looks already fixed: showGallery is defined now.\" Never make up a cause for an error you cannot find in the project.",
+        "receipts": 1,
+        "diff": {
+          "files": 0,
+          "added": 0,
+          "removed": 0
+        },
+        "said": "This error looks already fixed: `showGallery` is defined now, so I changed nothing. - Line 9 of `index.html` has `onclick=\"showGallery()\"`. - `app.js` defines `function showGallery()` on line 2. A comment there says it used to be called `show()`, which is what the old error was about. - `index.html` loads `app.js` with a script tag on line 13, so the button can find the function. - I ran the project's own check, `npm test`. All 3 tests pass. They confirm the button's function exists in `app.js`, the page loads `app.js`, and `showGallery` reveals the gallery. If you still see the error in your…",
+        "saidFixed": true,
+        "changed": false,
+        "regressions": [],
+        "firstRound": {
+          "in": 9106,
+          "cacheRead": 46856,
+          "out": 468
+        },
+        "capped": false,
+        "hard": false,
+        "split": "train"
+      }
+    }
+  ],
+  "summary": {
+    "counts": {
+      "fixed": 0,
+      "not_fixed": 0,
+      "broke_something": 0,
+      "asked": 0,
+      "invented": 0,
+      "already_fixed": 1,
+      "changed_anyway": 0,
+      "cannot_run": 0,
+      "error": 0,
+      "refused": 0,
+      "stopped": 0,
+      "not_started": 0
+    },
+    "ran": 1,
+    "goodRate": 1,
+    "costUsd": 0.036967,
+    "costPerFixedUsd": null,
+    "medianTurns": 2,
+    "proofFooled": 0,
+    "testsChanged": 0,
+    "loopCards": 0,
+    "locatedRight": 0,
+    "locatedOf": 0,
+    "medianLinesChanged": 0,
+    "approvalCards": 0,
+    "tasks": 0,
+    "approvalsPerTask": 0,
+    "casesWithApprovals": 0,
+    "medianFirstRoundIn": 55962
+  }
+}

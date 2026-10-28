@@ -71,7 +71,7 @@ impl Prefs {
 /// display, since the island moves to the display the person uses. It always holds the island at its biggest (opened
 /// downward with the status, island.rs `island_frame`) with CLEAR_MARGIN around it, should a notch read wider or off
 /// centre; for every real display the fixed numbers already hold it. Trips beside a window keep clear of this zone.
-pub const NOTCH_CLEAR: (f64, f64) = (360.0, 120.0);
+pub const NOTCH_CLEAR: (f64, f64) = (420.0, 280.0);   // the hover panel at its tallest, with CLEAR_MARGIN (island.rs PANEL_W, PANEL_MAX; 27 Oct 2026)
 pub fn notch_zone(s: &Screen) -> Rect {
     let (w, depth) = NOTCH_CLEAR;
     let below_menu = (s.work[1] - s.frame[1]).max(0.0);
@@ -227,7 +227,7 @@ pub fn signature(list: &[Screen]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    // The card's real size (one definition, island.rs): 600 wide, at most 640 tall.
     use crate::island::{CARD, CARD_MAX_H};
     const WORK: Rect = [0.0, 33.0, 1512.0, 949.0];
     fn screen(id: &str, frame: Rect, work: Rect, primary: bool) -> Screen { Screen { id: id.into(), frame, work, primary, notch: None } }
@@ -347,8 +347,9 @@ mod tests {
         let s = mac();
         assert_eq!(place(&s, SIZE, Edge::Left, 0.5, STD)[0], 0.0);
         let r = place(&s, SIZE, Edge::Right, 0.5, STD); assert_eq!(r[0] + r[2], 1512.0);
-        let t = place(&s, SIZE, Edge::Top, 0.2, STD); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
-        assert_eq!(t[0], 0.2 * (1512.0 - 160.0));
+        // At a tenth of the way along: clear of the 640 wide Home in the middle of the top (further along it keeps clear of it).
+        let t = place(&s, SIZE, Edge::Top, 0.1, STD); assert_eq!(t[1], 33.0, "the top edge is just below the menu bar");
+        assert_eq!(t[0], 0.1 * (1512.0 - 160.0));
         let b = place(&s, SIZE, Edge::Bottom, 0.7, STD); assert_eq!(b[1] + b[3], 982.0);
         assert_eq!(b[0], 0.7 * (1512.0 - 160.0));
         let bd = place(&dock_bottom(), SIZE, Edge::Bottom, 0.5, STD); assert_eq!(bd[1] + bd[3], 33.0 + 879.0, "the bottom edge stops above the Dock");
@@ -414,10 +415,11 @@ mod tests {
         let s = mac();
         assert_eq!(snap_on(&s, SIZE, 30.0, 500.0, STD).0, Edge::Left);
         assert_eq!(snap_on(&s, SIZE, 1490.0, 500.0, STD).0, Edge::Right);
-        assert_eq!(snap_on(&s, SIZE, 400.0, 50.0, STD).0, Edge::Top);
+        // Along the top, away from Home's place under the notch (600 wide in the middle).
+        assert_eq!(snap_on(&s, SIZE, 250.0, 50.0, STD).0, Edge::Top);
         assert_eq!(snap_on(&s, SIZE, 900.0, 960.0, STD).0, Edge::Bottom);
-        let (e, p) = snap_on(&s, SIZE, 400.0, 50.0, STD);
-        assert!((place(&s, SIZE, e, p, STD)[0] - (400.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
+        let (e, p) = snap_on(&s, SIZE, 250.0, 50.0, STD);
+        assert!((place(&s, SIZE, e, p, STD)[0] - (250.0 - 80.0)).abs() < 0.5, "it follows the pointer along the top");
         let (e, p) = snap_on(&s, SIZE, 900.0, 960.0, STD);
         assert!((place(&s, SIZE, e, p, STD)[0] - (900.0 - 80.0)).abs() < 0.5, "and along the bottom");
         let (e, p) = snap_on(&s, SIZE, 20.0, 600.0, STD);
@@ -631,7 +633,7 @@ mod tests {
         }
         // The usual size keeps every place exactly where it was.
         let s = &island_screens()[0];
-        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (380.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
+        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (island::CARD.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
     }
     #[test]
     fn same_place_on_every_display_fills_only_displays_with_no_place_yet() {

@@ -99,7 +99,7 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
     if (exited) {
       if (exitCode === 0) return { ok: false, notAServer: true, reason: `The start command finished without staying on, so it is a tool and not a website. ${tail(output)}`.trim() };
       const busy = busyPort(output);
-      return { ok: false, reason: `The server stopped on its own (exit code ${exitCode}). ${tail(output)}`.trim(), output, ...(busy !== null ? { portBusy: busy } : {}) };
+      return { ok: false, reason: `The server stopped on its own (error code ${exitCode}). ${tail(output)}`.trim(), output, ...(busy !== null ? { portBusy: busy } : {}) };
     }
     for (const p of [port, ...portsInOutput(output).filter((x) => x !== port)]) {
       const found = await answers(p);

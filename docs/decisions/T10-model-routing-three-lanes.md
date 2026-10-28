@@ -82,10 +82,12 @@ Lane recipes are in technical_research.md section 3. Rules a coding agent must n
 - The fast lane asks for `model.quick` on every request (Prompt help, Explain, Draw it for me, the error explainer);
   `COMPANION_FAST_MODEL` in dev.json still wins for developers. The pages send `model.work` and `model.rescue` with each
   command; the practice task stays on the usual model.
-- The rough cost shown before a plan's Start ("at most") follows the plan's model: $0.25 a step is today's figure for the
-  job's usual model (Sonnet 5.5 for a Drive plan, Opus 5.5 for a Rescue), scaled by the chosen model's list price against
-  it (`priceRatio` in `models.ts`; a model the table does not know counts at the dearest current list price, see below). The usual figures are
-  unchanged. A pages test checks that each option's words name the model `MODEL_CHOICES` sends and say its cost truly, so
+- The rough cost shown before a plan's Start follows the plan's model. Changed 26 Oct 2026 (first Mac session, finding E: the card
+  said about 25 cents for a task that cost 3 cents): the figure is no longer $0.25 a step. It is the measured median cost of
+  a step on Sonnet 5.5 (about 4 cents: the first real run, the loop breaker set, the founder's Mac) times a safety factor of
+  1.5, never below one cent, scaled by the chosen model's list price against Sonnet 5.5 (`priceRatio` in `models.ts`; a
+  model the table does not know counts at the dearest current list price, see below). So Sonnet shows 6 cents a step and
+  Opus 12. The budget caps (what a task may spend at most) are separate and did not change. A pages test checks that each option's words name the model `MODEL_CHOICES` sends and say its cost truly, so
   a model upgrade in the map cannot leave old words on screen.
 - Haiku 4.5's retirement (section 14): checked on 19 Oct 2026 against the model list bundled with the Claude API notes
   (cached 6 Oct 2026), not the live list: still listed as active and served. Check the live list before shipping.

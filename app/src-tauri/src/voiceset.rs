@@ -787,7 +787,9 @@ mod tests {
         let h = &h[..h.find(']').unwrap()];
         let cmds: Vec<&str> = h["generate_handler![".len()..].split(',').map(str::trim).collect();
         for c in ["voice_settings", "set_voice_settings", "speak", "speak_stop"] { assert_eq!(cmds.iter().filter(|x| **x == c).count(), 1, "{c} is a command once"); }
-        for f in ["fn voice_settings(", "fn set_voice_settings(", "fn speak("] { assert!(body(f).contains("window.label() != \"card\""), "{f} is card only"); }
+        // Home, or the Settings window (its voice rows and Try the voice), never another window.
+        for f in ["fn voice_settings(", "fn set_voice_settings(", "fn speak("] { assert!(body(f).contains("settings::card_or_settings(window.label()).is_err()"), "{f} is Home or Settings only"); }
+        assert!(body("fn voice_speed(").contains("window.label() != \"card\""), "voice_speed is not used by Settings: Home only");
         assert!(body("fn set_voice_settings(").contains("voiceset::apply(&before, &ask, &voices, &inputs)"), "only what is on this Mac");
         assert!(MAIN.contains("fn voice_path() -> PathBuf { data_dir().join(\"voice.json\") }"));
     }

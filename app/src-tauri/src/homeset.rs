@@ -15,6 +15,7 @@ use serde_json::Value;
 pub const KEYS: &[&str] = &[
     "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
     "home.closeOnClickAway", "home.size", "character.linger", "character.motion", "character.overFullScreen",
+    "character.peek", "character.peekIdle",
 ];
 
 /// What the shell does about Home, the island and the character, as the settings say now.
@@ -38,13 +39,17 @@ pub struct HomeSet {
     pub less_motion: bool,
     /// character.overFullScreen: Companion stays on screen over a full screen app.
     pub over_full_screen: bool,
+    /// character.peek: the character rests tucked away past the edge of the screen and comes in at the pointer (peek.rs).
+    pub peek: bool,
+    /// character.peekIdle ("Peek in on its own"): it also peeks in when something happens, and now and then while nothing does.
+    pub peek_idle: bool,
 }
 
 impl HomeSet {
-    /// Today's behaviour: the constants these settings replaced.
+    /// Today's behaviour: the constants these settings replaced. Peeking is new (27 Oct 2026) and on, as the founder asked.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false,
+        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, peek_idle: false,
     };
 }
 
@@ -67,6 +72,8 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
         linger_ms: ms(&v("character.linger"), u.linger_ms),
         less_motion: word("character.motion") == "less",
         over_full_screen: on("character.overFullScreen", u.over_full_screen),
+        peek: on("character.peek", u.peek),
+        peek_idle: on("character.peekIdle", u.peek_idle),
     }
 }
 
@@ -82,6 +89,7 @@ mod tests {
         let u = HomeSet::USUAL;
         assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::STANDARD, false, false));
+        assert_eq!((u.peek, u.peek_idle), (true, false), "tucked away unless turned off; peeking in on its own only when turned on");
     }
     #[test]
     fn each_one_is_read_from_settings_json_at_both_ends_of_its_range() {
@@ -94,6 +102,9 @@ mod tests {
         let flipped = with(&[("island.show", json!(false)), ("island.peekOnHover", json!(false)), ("home.closeOnClickAway", json!(false)), ("character.overFullScreen", json!(true)), ("character.motion", json!("less")), ("home.size", json!("large"))]);
         assert!(!flipped.island_show && !flipped.hover.peek && !flipped.click_away && flipped.over_full_screen && flipped.less_motion);
         assert_eq!(flipped.size, HomeSize::LARGE);
+        let still = with(&[("character.peek", json!(false)), ("character.peekIdle", json!(false))]);
+        assert!(!still.peek && !still.peek_idle);
+        assert!(with(&[("character.peekIdle", json!(true))]).peek_idle, "turned on, it peeks in on its own");
         assert_eq!(with(&[("island.display", json!("builtIn"))]).display, Where::BuiltIn);
         assert_eq!(with(&[("island.display", json!("main"))]).display, Where::Main);
         // A value the file holds wrongly falls back to the usual one (and is listed by parse_file).
@@ -207,7 +218,7 @@ mod wiring {
         let point = body("fn point_problem(");
         let voice = body("fn voice_worker(");
         let phelp = body_in(include_str!("phelp.rs"), "pub fn on_hotkey(");
-        let errhelp = body_in(include_str!("errhelp.rs"), "pub fn on_hotkey(");
+        let errhelp = body_in(include_str!("errhelp.rs"), "fn press(");
         let seclook = body_in(include_str!("seclook.rs"), "pub fn on_hotkey(");
         for (name, b) in [("show me", &showme), ("point at the problem", &point), ("hold to talk", &voice), ("prompt help", &phelp), ("error explainer", &errhelp), ("second look", &seclook)] {
             assert!(!b.contains("island") && !b.contains("ISLAND") && !b.contains("home_set()"), "{name} depends on the island or a Home setting");
@@ -231,11 +242,17 @@ mod wiring {
         assert!(gate < listening && listening < wait && wait < mic, "hidden check, then the light, then a moment, then the microphone");
         // Prompt help and the error explainer: Home opens (beside the character when there is no island, card_spot) with
         // "Reading", and gets a moment to draw, before the text box is read.
-        for (name, b, opened) in [("prompt help", &phelp, "open_card(&app, \"prompt_help\", false);"), ("error explainer", &errhelp, "open_card(&app, \"explain_error\", false);"), ("second look", &seclook, "open_card(&app, \"second_look\", false);")] {
-            let said = b.find("say(&app, \"reading\"").unwrap();
+        // The error explainer's press is its own function (errhelp.rs `press`, finding D) and wakes the app in front while it
+        // looks for the box (`ax::focused_waking`), so it names its call and the `app` it holds a little differently.
+        for (name, b, opened, said_at, reads) in [
+            ("prompt help", &phelp, "open_card(&app, \"prompt_help\", false);", "say(&app, \"reading\"", "ax::focused("),
+            ("error explainer", &errhelp, "open_card(app, \"explain_error\", false);", "say(app, \"reading\"", "ax::focused_waking("),
+            ("second look", &seclook, "open_card(&app, \"second_look\", false);", "say(&app, \"reading\"", "ax::focused("),
+        ] {
+            let said = b.find(said_at).unwrap();
             let after = |what: &str| b[said..].find(what).map(|i| said + i).unwrap_or_else(|| panic!("{name}: no {what} after the light"));
-            let (open, draw, read) = (after(opened), after("std::thread::sleep(INDICATOR_DRAW);"), after("ax::focused("));
-            assert!(!b[..said].contains("ax::focused("), "{name}: nothing is read before the light");
+            let (open, draw, read) = (after(opened), after("std::thread::sleep(INDICATOR_DRAW);"), after(reads));
+            assert!(!b[..said].contains("ax::focused"), "{name}: nothing is read before the light");
             assert!(open < draw && draw < read, "{name}: the light, Home, a moment, then the read");
         }
         // Turning the island off hides only the island: never the character or Home's own window.

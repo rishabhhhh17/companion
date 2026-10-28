@@ -879,5 +879,31 @@
     "needs": [
       "python3:flask,pytest"
     ]
+  },
+  {
+    "id": "stale-error",
+    "source": "fixture:stale-error",
+    "expect": "stale",
+    "split": "train",
+    "hard": false,
+    "say": "This error looks already fixed: showGallery is defined in app.js now, and the button calls it. I changed nothing.",
+    "error": "Uncaught ReferenceError: showGallery is not defined\n    at HTMLButtonElement.onclick (index.html:9:46)",
+    "fix": [],
+    "hidden": [
+      {
+        "name": "gallery-intact",
+        "kind": "guard",
+        "what": "the gallery page still works as it did",
+        "cmd": [
+          "node",
+          "$HIDDEN/checks.mjs",
+          "gallery-intact"
+        ]
+      }
+    ],
+    "where": {
+      "file": "index.html",
+      "line": 9
+    }
   }
 ]

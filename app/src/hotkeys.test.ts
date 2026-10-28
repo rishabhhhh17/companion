@@ -51,13 +51,21 @@ describe("the keys main.rs registers", () => {
     expect(setup.indexOf("start_keys(app.handle())")).toBeLessThan(setup.indexOf("keymap::launch_notice(&launch.started, launch.damaged)"));
     expect(body(main, "fn start_keys(")).toContain("keymap::start_held(&picked, &held,");
     expect(main).not.toMatch(/Code::Key[A-Z]/);
-    expect(main + shipped(keymapRs)).not.toContain("Code::KeyV");
+    // V is a key like any other now that any key may be picked (keymap.rs KEYS); it is on no job's list or usual keys (keymap.rs tests).
+    expect(main).not.toContain("Code::KeyV");
   });
   test("the handler sends each job's keys to that job, and only the keys in use now reach it", () => {
     const handler = body(main, ".with_handler(", ".build(),");
     const arm = (job: string) => { const a = handler.indexOf(`keymap::Action::${job} =>`); expect(a, job).toBeGreaterThan(-1); const rest = handler.slice(a + 10); const n = rest.search(/keymap::Action::\w+ =>/); return rest.slice(0, n < 0 ? undefined : n); };
     expect(arm("Card")).toContain('open_card(app, "hotkey", true)'); expect(arm("Card")).not.toContain("showme-mode");
-    expect(arm("ShowMe")).toContain('"showme-mode"');
+    expect(arm("ShowMe")).toContain("show_me_key(app)");
+    // Finding M: the Show me key listens at once through the same worker as hold to talk (so the light, the permission and the
+    // cap checks are the same), a second press ends it, and the box is the fallback.
+    const sm = body(main, "fn show_me_key(");
+    expect(sm).toContain("voice::show_me_key(&state)");
+    expect(sm).toContain("VoiceMsg::Down(now() as u64)"); expect(sm).toContain("VoiceMsg::Up(now() as u64)");
+    expect(sm).toContain('"showme-mode"'); expect(sm).toContain('open_card(app, "hotkey", true)');
+    expect(sm).toContain('setting_now("showme.listen")');
     expect(arm("Problem")).toContain('"find-problem"');
     expect(arm("Read")).toContain("phelp::on_hotkey(");
     expect(arm("Explain")).toContain("errhelp::on_hotkey(");

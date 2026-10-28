@@ -1,1 +1,1 @@
-{ "identifier": "overlay", "description": "The overlay draws rings and sketches when told to. It may listen for events and nothing else.", "windows": ["overlay"], "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"] }
+{ "identifier": "overlay", "description": "The overlay draws rings and sketches when told to, and the follow window draws the drop that follows the pointer. They may listen for events and nothing else.", "windows": ["overlay", "follow"], "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"] }

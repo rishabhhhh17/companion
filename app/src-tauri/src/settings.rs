@@ -546,6 +546,10 @@ pub fn runner_command(key: &str, v: &Value, project: &str, id: &str) -> Option<V
 /// Only Home's own window may change settings (as with every other change in Settings).
 pub fn only_card(window: &str) -> Result<(), &'static str> { if window == "card" { Ok(()) } else { Err("not_card") } }
 
+/// The two windows a person changes settings in: Home (the card) and the Settings window (27 Oct 2026, a normal window
+/// of its own, like a notch app's). Used only by the commands the Settings page itself calls; everything else stays Home's.
+pub fn card_or_settings(window: &str) -> Result<(), &'static str> { if matches!(window, "card" | "settings") { Ok(()) } else { Err("not_card") } }
+
 /// The project a change is for. A page that says which project it was shown (house rules always do) has its change kept
 /// only while that is still the project in Home: the folder can change by itself in between (a copy from a link that
 /// finishes opens its folder), and one project's house rules must never be written over another's ("projectChanged").
@@ -1190,11 +1194,17 @@ mod tests {
         for w in ["dock", "overlay", "island", "", "Card"] { assert_eq!(only_card(w), Err("not_card"), "{w}"); }
         // Every command that changes settings checks the window first (main.rs).
         let main = include_str!("main.rs");
-        for c in ["fn settings_set(", "fn settings_reset(", "fn settings_migrate(", "fn front_app(", "fn app_names("] {
+        for c in ["fn settings_set(", "fn settings_reset(", "fn front_app(", "fn app_names("] {
             let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing"));
             let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
-            assert!(body.contains("settings::only_card(window.label())?"), "{c} does not check the window");
+            assert!(body.contains("settings::card_or_settings(window.label())?"), "{c} does not check the window");
         }
+        // Moving the old page storage over is Home's alone (it runs once, from card.tsx).
+        let at = main.find("fn settings_migrate(").unwrap();
+        assert!(main[at..at + main[at..].find("\n}\n").unwrap()].contains("settings::only_card(window.label())?"));
+        // The Settings window may change settings too, and nothing else may.
+        assert!(card_or_settings("card").is_ok() && card_or_settings("settings").is_ok());
+        for w in ["dock", "overlay", "island", "", "Settings", "settings "] { assert_eq!(card_or_settings(w), Err("not_card"), "{w}"); }
         // The per app answers change only through settings_set and prompthelp.rs's rules, with the id of the app in front.
         let at = main.find("fn setting_change(").unwrap();
         let change = &main[at..at + main[at..].find("\n}\n").unwrap()];

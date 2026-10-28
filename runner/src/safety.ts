@@ -156,11 +156,11 @@ const WEB_SEARCH_OFF = `Web search is turned off for tasks in ${PRODUCT_S} Setti
 // engine is handed an exact list, so none of these should be asked for; if one is (an older or newer Claude, or the list
 // not honoured), it is refused here with a plain reason, which Claude reads and the person never has to judge: before this,
 // each one fell through to an approval card about an "unknown tool". A refusal only makes things stricter (rule 12).
-const ASK_IN_WORDS = `${PRODUCT} gives Claude no question box. Do every part you can, then end your final message with one short question; the person answers it under the receipt.`;
-const NOT_GIVEN_WHY = `${PRODUCT} does not give Claude this tool. Carry on with the tools you have.`;
+const ASK_IN_WORDS = `${PRODUCT} does not let tasks ask questions in a pop up box. Do every part you can, then end your final message with one short question; the person answers it under the receipt.`;
+const NOT_GIVEN_WHY = `${PRODUCT} does not let tasks use this. Carry on with what you have.`;
 // A sub agent would run with no card for anything it does, and Agent can also start Claude in a git worktree written into
 // the person's .git (rule 10), in a remote environment (the project leaves this Mac), or on a dearer model.
-const NO_SUB_AGENTS = `${PRODUCT} does not give Claude sub agents. Do the work yourself with the tools you have.`;
+const NO_SUB_AGENTS = `${PRODUCT} does not let tasks hand work to helpers. Do the work yourself.`;
 export const NOT_GIVEN: ReadonlyMap<string, string> = new Map<string, string>([
   ["AskUserQuestion", ASK_IN_WORDS],
   ["Agent", NO_SUB_AGENTS],
@@ -174,7 +174,11 @@ export const NOT_GIVEN: ReadonlyMap<string, string> = new Map<string, string>([
   ].map((t): [string, string] => [t, NOT_GIVEN_WHY]),
 ]);
 
-const protectedWhy = (part: string): string => part.startsWith(".git") ? "agents never write the project's .git folder or git settings" : `${PRODUCT_S} and Claude's own settings are not for the agent to change`;
+const protectedWhy = (part: string): string => part.startsWith(".git") ? "Squibby does not let tasks change the project's .git folder or git settings" : `${PRODUCT_S} and Claude's own settings are not for a task to change`;
+
+/** What the model is told when something is refused. The model repeats it to the person, so it is in everyday words, says
+ *  who decided (never "blocked by a hook" or a rule's name), and asks for a plain answer that says what the person can do. */
+export const refusal = (reason: string): string => `${reason.trim().startsWith(PRODUCT) ? "" : `${PRODUCT} does not allow this in a task: `}${reason.trim().replace(/\.+$/, "")}. Say so to the person in plain words, and tell them what they can do instead.`;
 
 // Background commands, as the pinned SDK (0.3.293) names them. TaskStop stops one (KillShell and KillBash are its old names,
 // which the SDK maps to it). Its output is read with the Read tool from Claude Code's own file, "<session>/tasks/<id>.output";

@@ -1,6 +1,6 @@
 // Copy on replies and receipts: the text a Copy button puts on the clipboard, the same lines the card shows. Anything that
 // looks like a key or a password is hidden again first (the clipboard can be read by every app), as on the card.
-import { blockedNote, ehLines, slLines, formatUsd, receiptProofWords, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
+import { blockedNote, ehLines, slLines, formatUsd, receiptHeading, receiptProofWords, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
@@ -27,7 +27,7 @@ export function receiptCopy(m: Model, project: string): string {
   if (!r) return "";
   const changed = r.changed.length === 0 ? [S.nothingChanged] : r.changed.map((c) => `${(S as Record<string, unknown>)[c.kind] ?? c.kind}: ${c.file}`);
   return lines([
-    S.receiptTitle, ...changed,
+    receiptHeading(r), ...changed,
     r.notUndoable.length > 0 && `${S.cannotUndo}: ${r.notUndoable.join("; ")}`,
     r.changed.length > 0 && receiptProofWords(m),
     blockedNote(m, project),

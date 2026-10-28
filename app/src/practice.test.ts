@@ -187,7 +187,7 @@ describe("the fix is the practice's own task, matched by its practice id", () =>
     }
   });
   test("the engine failing the fix's own request still ends it", () => {
-    const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "could not handle agent.start: boom" })]);
+    const m = run([start(e), found(e), ev({ type: "ui.practiceFixing" }), cp(e), ev({ type: "protocol.error", reason: "Something went wrong.", failed: "agent.start" })]);
     expect(m.practice?.stage).toBe("failed");
   });
   // Found in review of the A55 fix: the engine catches a task that throws itself, tells the reason for its agent and sets it to
@@ -244,7 +244,7 @@ describe("the checks after a lesson or a fix can always be left or run again (bu
     // What a second Find would bring: the engine refuses it and answers "cancelled", which ends the checks still running.
     expect(run([ev({ type: "problem.found", project: P(s), agent: "builder-1", verdict: "cancelled" })], proving(s)).practice?.stage).toBe("failed");
     const card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
-    const key = card.slice(card.indexOf('const offKey = listen("find-problem"'), card.indexOf("const offFound ="));
+    const key = card.slice(card.indexOf("latest.current.find = (payload: unknown) => {"), card.indexOf("const findFromHome ="))   // the key and the chip share it;
     expect(key).toContain('if (nowModel.current.point?.stage === "checking") { homeDispatch({ type: "pick", tab: "now" }); return; }');
     expect(key.indexOf('nowModel.current.point?.stage === "checking"')).toBeLessThan(key.indexOf("sendOrExplain(findProblem("));
   });

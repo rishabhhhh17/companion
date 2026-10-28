@@ -57,7 +57,7 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
     expect(ringLook("nonsense", true)).toEqual(ringLook("orange", true));
   });
   test("plain lettering at the usual text size is today's caption exactly; handwriting and bigger text are bigger", () => {
-    expect(captionStyle("plain", "standard")).toEqual({ font: '600 15px -apple-system, "SF Pro Text", sans-serif', maxWidth: 300, reserveW: 320, reserveH: 60 });
+    expect(captionStyle("plain", "standard")).toEqual({ font: '700 15px ui-rounded, "SF Pro Rounded", -apple-system, sans-serif', maxWidth: 300, reserveW: 320, reserveH: 60 });
     expect(captionStyle(undefined, undefined)).toEqual(captionStyle("plain", "standard"));
     const hand = captionStyle("handwritten", "standard");
     expect(hand.font).toContain("Bradley Hand");

@@ -93,20 +93,20 @@ describe("a task that asks needs you, and is answered in the follow up box", () 
   });
   // The engine sends no new state after an undo, so the page puts the agent back to ready itself: otherwise the card would
   // look busy (Stop, no Start row, no follow up box) and the island would say it needs you with nothing waiting.
-  test("after Undo nothing waits: the card is not working, the Start row shows and the island says Ready", () => {
+  test("after Undo nothing waits: the card is not working, the Start row shows and the island is the bare notch", () => {
     const undone = run([ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], asked);
     expect(cardWorking(undone)).toBe(false);
     expect(undone.character).toBe("idle");
     expect(undone.agents[AGENT]).toBe("idle");
     expect(need(undone)).toBeNull();
-    expect(islandLine(undone)).toBe(S.islandReady);
+    expect(islandLine(undone)).toBe("");
   });
   test("after which task broke it took that task back, the same", () => {
     const working: Model = { ...asked, bisect: { stage: "done", undo: "safe", task: { label: "make signup work", at: "2026-10-19T10:00:00Z", checkpoint: "cp_1" }, undoStage: "working" } };
     const undone = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_1", ok: true, reverted: ["a.js"] })], working);
     expect(undone.receipt?.undone).toBe(true);
     expect(cardWorking(undone)).toBe(false);
-    expect(islandLine(undone)).toBe(S.islandReady);
+    expect(islandLine(undone)).toBe("");
   });
   test("an undo leaves an agent that waits for something else as it is", () => {
     const withCard = run([ev({ type: "approval.request", approval: "ap_1", agent: AGENT, checkpoint: "cp_1", toolUseId: "t", risk: "git", title: "git push sends your work to a remote", expiresAt: "2999-01-01T00:00:00Z" })], asked);

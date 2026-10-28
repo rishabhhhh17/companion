@@ -48,15 +48,50 @@ const MODS: [(u8, &str, &str, Modifiers); 4] = [
     (COMMAND, "command", "Command", Modifiers::SUPER),
 ];
 
-/// The keys a chord can end with. Only the ones some list uses: anything else in a saved file is not a chord here.
+/// The keys a chord can end with: the letters and digits (the same place on QWERTY, QWERTZ and AZERTY keyboards: the hot key
+/// service names a key by its place, not its label), Space, and Return for hold to talk's list. A job's usual and preset keys use a
+/// few of them; any of them may be picked in Settings (`custom_ok`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Key { A, C, E, F, I, J, K, L, O, P, R, S, U, X, Space, Return }
+pub enum Key { A, B, C, D, E, F, G, H, I, J, K, L, M, N, O, P, Q, R, S, T, U, V, W, X, Y, Z, N0, N1, N2, N3, N4, N5, N6, N7, N8, N9, Space, Return }
 /// Each key, in the order of `Key`, with the plugin's code, its id and the word a person reads.
-const KEYS: [(Key, Code, &str, &str); 16] = [
-    (Key::A, Code::KeyA, "a", "A"), (Key::C, Code::KeyC, "c", "C"), (Key::E, Code::KeyE, "e", "E"), (Key::F, Code::KeyF, "f", "F"), (Key::I, Code::KeyI, "i", "I"),
-    (Key::J, Code::KeyJ, "j", "J"), (Key::K, Code::KeyK, "k", "K"), (Key::L, Code::KeyL, "l", "L"), (Key::O, Code::KeyO, "o", "O"),
-    (Key::P, Code::KeyP, "p", "P"), (Key::R, Code::KeyR, "r", "R"), (Key::S, Code::KeyS, "s", "S"), (Key::U, Code::KeyU, "u", "U"),
-    (Key::X, Code::KeyX, "x", "X"), (Key::Space, Code::Space, "space", "Space"), (Key::Return, Code::Enter, "return", "Return"),
+const KEYS: [(Key, Code, &str, &str); 38] = [
+    (Key::A, Code::KeyA, "a", "A"),
+    (Key::B, Code::KeyB, "b", "B"),
+    (Key::C, Code::KeyC, "c", "C"),
+    (Key::D, Code::KeyD, "d", "D"),
+    (Key::E, Code::KeyE, "e", "E"),
+    (Key::F, Code::KeyF, "f", "F"),
+    (Key::G, Code::KeyG, "g", "G"),
+    (Key::H, Code::KeyH, "h", "H"),
+    (Key::I, Code::KeyI, "i", "I"),
+    (Key::J, Code::KeyJ, "j", "J"),
+    (Key::K, Code::KeyK, "k", "K"),
+    (Key::L, Code::KeyL, "l", "L"),
+    (Key::M, Code::KeyM, "m", "M"),
+    (Key::N, Code::KeyN, "n", "N"),
+    (Key::O, Code::KeyO, "o", "O"),
+    (Key::P, Code::KeyP, "p", "P"),
+    (Key::Q, Code::KeyQ, "q", "Q"),
+    (Key::R, Code::KeyR, "r", "R"),
+    (Key::S, Code::KeyS, "s", "S"),
+    (Key::T, Code::KeyT, "t", "T"),
+    (Key::U, Code::KeyU, "u", "U"),
+    (Key::V, Code::KeyV, "v", "V"),
+    (Key::W, Code::KeyW, "w", "W"),
+    (Key::X, Code::KeyX, "x", "X"),
+    (Key::Y, Code::KeyY, "y", "Y"),
+    (Key::Z, Code::KeyZ, "z", "Z"),
+    (Key::N0, Code::Digit0, "0", "0"),
+    (Key::N1, Code::Digit1, "1", "1"),
+    (Key::N2, Code::Digit2, "2", "2"),
+    (Key::N3, Code::Digit3, "3", "3"),
+    (Key::N4, Code::Digit4, "4", "4"),
+    (Key::N5, Code::Digit5, "5", "5"),
+    (Key::N6, Code::Digit6, "6", "6"),
+    (Key::N7, Code::Digit7, "7", "7"),
+    (Key::N8, Code::Digit8, "8", "8"),
+    (Key::N9, Code::Digit9, "9", "9"),
+    (Key::Space, Code::Space, "space", "Space"), (Key::Return, Code::Enter, "return", "Return"),
 ];
 
 /// One or more modifiers held with one key.
@@ -159,6 +194,26 @@ pub fn choices(a: Action) -> Vec<Chord> {
     v
 }
 
+/// Chords the Mac itself uses, which a picked chord may never be (a global shortcut could take them from the system, or the
+/// system could keep them): screenshots, log out, lock the screen, hide the Dock, the emoji picker and Finder search.
+const MAC_OWN: [Chord; 8] = [
+    Chord::new(COMMAND | SHIFT, Key::N3), Chord::new(COMMAND | SHIFT, Key::N4), Chord::new(COMMAND | SHIFT, Key::N5),
+    Chord::new(COMMAND | SHIFT, Key::Q), Chord::new(CONTROL | COMMAND, Key::Q), Chord::new(COMMAND | OPTION, Key::D),
+    Chord::new(CONTROL | COMMAND, Key::Space), Chord::new(COMMAND | OPTION, Key::Space),
+];
+/// Why a chord picked in Settings, one that is not on the job's short list, cannot be used. None when it can. Always checked
+/// here, never taken from the page: at least two modifiers, one of them Control or Command (Option and Shift alone type
+/// characters, and one modifier is typed or taken by other apps all the time), and none of the Mac's own shortcuts. Nothing
+/// here reads a key press: the person ticks the modifiers and chooses the key from a list (rule 8).
+pub fn why_not(c: Chord) -> Option<NotChanged> {
+    if c.mods.count_ones() < 2 || c.mods & (CONTROL | COMMAND) == 0 { Some(NotChanged::NotEnoughKeys) }
+    else if MAC_OWN.contains(&c) { Some(NotChanged::Reserved) }
+    else { None }
+}
+pub fn custom_ok(c: Chord) -> bool { why_not(c).is_none() }
+/// May this chord be a job's keys: on its short list, or one the person picked that passes `why_not`.
+pub fn allowed(a: Action, c: Chord) -> bool { choices(a).contains(&c) || custom_ok(c) }
+
 /// The keys every job uses, in the order of `ACTIONS`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Map(pub [Chord; N]);
@@ -195,6 +250,7 @@ pub const OLD_TALK_FILE: &str = "talk-keys.json";
 /// What was read: the keys to use, and whether the file was damaged (the person is then told once, at launch).
 pub fn parse(text: Option<&str>, old_talk: Option<&str>) -> (Map, bool) {
     let on_list = |a: Action, v: Option<&Value>| v.and_then(Value::as_str).and_then(from_id).filter(|c| choices(a).contains(c));
+    let picked_ok = |a: Action, v: Option<&Value>| v.and_then(Value::as_str).and_then(from_id).filter(|c| allowed(a, *c));
     let Some(text) = text else {
         // Nothing saved yet: hold to talk's keys from before, if they were picked. That file never said anything when it
         // could not be read, and still does not.
@@ -208,7 +264,7 @@ pub fn parse(text: Option<&str>, old_talk: Option<&str>) -> (Map, bool) {
     // A job this version does not know (a newer Companion's) is left alone.
     for a in ACTIONS {
         let Some(entry) = keys.get(a.id()) else { continue };
-        match on_list(a, Some(entry)) { Some(c) => m = m.with(a, c), None => damaged = true }
+        match picked_ok(a, Some(entry)) { Some(c) => m = m.with(a, c), None => damaged = true }
     }
     // No two jobs on the same keys: each goes back to its own (no job's usual keys are on another job's list, tested).
     let clash = clashes(&m);
@@ -361,10 +417,10 @@ pub fn choices_json(a: Action, f: &Free) -> Value {
 
 /// Why a change in Settings did not happen. The page turns the code into words (keys.ts, keyProblem).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum NotChanged { Taken, InUse, NotSaved, NotOnList }
+pub enum NotChanged { Taken, InUse, NotSaved, NotEnoughKeys, Reserved }
 impl NotChanged {
     pub fn code(&self) -> &'static str {
-        match self { NotChanged::Taken => "taken", NotChanged::InUse => "in_use", NotChanged::NotSaved => "not_saved", NotChanged::NotOnList => "unknown" }
+        match self { NotChanged::Taken => "taken", NotChanged::InUse => "in_use", NotChanged::NotSaved => "not_saved", NotChanged::NotEnoughKeys => "not_enough", NotChanged::Reserved => "reserved" }
     }
 }
 
@@ -378,8 +434,9 @@ pub fn switch(
     a: Action, wanted: Chord, current: Option<Chord>, keep: bool, picked: &Map, others: &[(Action, Chord)],
     register: impl FnOnce(Chord) -> bool, save: impl FnOnce(&Map) -> bool, mut unregister: impl FnMut(Chord),
 ) -> Result<Map, NotChanged> {
-    if !choices(a).contains(&wanted) { return Err(NotChanged::NotOnList); }
-    if others.iter().any(|(_, c)| *c == wanted) { return Err(NotChanged::InUse); }
+    if !choices(a).contains(&wanted) { if let Some(why) = why_not(wanted) { return Err(why); } }
+    // Another job's keys, in use or picked, and every other job's usual keys: Companion's own, even while that job has others.
+    if others.iter().any(|(_, c)| *c == wanted) || DEFAULTS.iter().any(|(b, d)| *b != a && *d == wanted) { return Err(NotChanged::InUse); }
     let next = picked.with(a, wanted);
     if current == Some(wanted) { return if save(&next) { Ok(next) } else { Err(NotChanged::NotSaved) }; }
     if !register(wanted) { return Err(NotChanged::Taken); }
@@ -461,7 +518,7 @@ mod tests {
         assert_eq!(id(OPT_SPACE), "option-space");
         for a in ACTIONS { for c in choices(a) { assert_eq!(from_id(&id(c)), Some(c), "{}", id(c)); assert_eq!(decode(encode(c)), Some(c)); } }
         for junk in ["", "k", "option", "-k", "option-", "command-control-option-k", "control-control-k", "control-option-command-K",
-            "control-option-command-z", "control-option-command-v", "fn-k", "control-fn-k", "control-option-command-k-x", "control option command k", "Control, Option, Command and K"] {
+            "control-option-command-tab", "control-option-command-f1", "control-option-command-escape", "fn-k", "control-fn-k", "control-option-command-k-x", "control option command k", "Control, Option, Command and K"] {
             assert_eq!(from_id(junk), None, "{junk:?}");
         }
         assert_eq!(decode(NONE), None); assert_eq!(decode(0x5_0000), None); assert_eq!(decode(0x0001), None, "no modifier");
@@ -530,9 +587,9 @@ mod tests {
     #[test]
     fn an_entry_that_is_not_on_its_jobs_list_goes_back_to_its_usual_keys_and_the_rest_are_kept() {
         assert_eq!(parse(Some("{\"keys\":{\"card\":7}}"), None), (Map::DEFAULT, true));
-        assert_eq!(parse(Some("{\"keys\":{\"card\":\"control-option-command-z\"}}"), None), (Map::DEFAULT, true));
+        assert_eq!(parse(Some("{\"keys\":{\"card\":\"control-option-command-tab\"}}"), None), (Map::DEFAULT, true));
         assert_eq!(parse(Some("{\"keys\":{\"card\":\"option-space\"}}"), None), (Map::DEFAULT, true), "hold to talk's keys are not on the card's list");
-        assert_eq!(parse(Some("{\"keys\":{\"talk\":\"control-option-command-j\"}}"), None), (Map::DEFAULT, true));
+        assert_eq!(parse(Some("{\"keys\":{\"talk\":\"option-j\"}}"), None), (Map::DEFAULT, true), "one modifier is never a picked chord");
         assert_eq!(parse(Some("{\"keys\":{\"card\":\"control-option-command-f\"}}"), None), (Map::DEFAULT, true), "another job's usual keys");
         let (m, damaged) = parse(Some("{\"keys\":{\"card\":\"control-option-command-j\",\"showme\":\"bogus\"}}"), None);
         assert!(damaged); assert_eq!(m, Map::DEFAULT.with(Card, k(Key::J)));
@@ -790,14 +847,15 @@ mod tests {
         assert_eq!(log, ["register control-option-command-l", "save {\"stop\":\"control-option-command-l\"}", "unregister control-option-command-l"]);
     }
     #[test]
-    fn keys_another_job_has_or_keys_not_on_the_list_are_refused_without_touching_anything() {
+    fn keys_another_job_has_or_that_cannot_be_a_chord_are_refused_without_touching_anything() {
         let (r, log) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &Map::DEFAULT, &[(ShowMe, k(Key::J))], true, true);
         assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty()); assert_eq!(NotChanged::InUse.code(), "in_use");
-        for wanted in [k(Key::F), OPT_SPACE, shift(Key::S)] {
-            let (r, log) = try_switch(Card, wanted, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
-            assert_eq!(r, Err(NotChanged::NotOnList), "{}", id(wanted)); assert!(log.is_empty());
-        }
-        assert_eq!(NotChanged::NotOnList.code(), "unknown");
+        // Another job's usual keys, even when that job picked others for now.
+        let (r, log) = try_switch(Card, k(Key::F), Some(k(Key::K)), true, &Map::DEFAULT.with(Problem, k(Key::J)), &[(Problem, k(Key::J))], true, true);
+        assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty());
+        let (r, log) = try_switch(Card, OPT_SPACE, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
+        assert_eq!(r, Err(NotChanged::NotEnoughKeys)); assert!(log.is_empty());
+        assert_eq!(NotChanged::NotEnoughKeys.code(), "not_enough"); assert_eq!(NotChanged::Reserved.code(), "reserved");
     }
     #[test]
     fn picking_the_keys_already_in_use_only_saves_them() {
@@ -898,7 +956,8 @@ mod tests {
             let at = main.find(c).unwrap();
             assert!(main[..at].trim_end().ends_with("#[tauri::command]"), "{c} must be a plain sync command");
             let b = body(c);
-            let check = b.find("window.label() != \"card\"").or_else(|| b.find("settings::only_card(window.label())?")).unwrap_or_else(|| panic!("{c} checks no window"));
+            // Home or the Settings window (settings.rs card_or_settings), never another.
+            let check = b.find("settings::card_or_settings(window.label())").unwrap_or_else(|| panic!("{c} checks no window"));
             let work = ["KEYS_SWITCH.lock()", "keys_to_usual(", "setting_change("].iter().filter_map(|w| b.find(w)).min().unwrap_or_else(|| panic!("{c}"));
             assert!(check < work, "{c}");
         }
@@ -942,7 +1001,8 @@ mod tests {
         let closed = body("fn home_closed(");
         assert!(closed.contains("std::thread::spawn(move || arm_result_keys(&a, false))"), "home_closed gives the keys back, on its own thread: {closed}");
         let outs: Vec<usize> = main.match_indices("c.orderOut(None)").map(|(i, _)| i).collect();
-        assert_eq!(outs.len(), 4, "close_card, toggle_home, the full screen hide and Hide in the menu bar");
+        assert_eq!(outs.len(), 3, "close_home_rolled (for close_card and toggle_home), the full screen hide and Hide in the menu bar");
+        for f in ["fn close_card(", "fn toggle_home("] { assert!(body(f).contains("close_home_rolled("), "{f} closes through close_home_rolled"); }
         for at in outs {
             let rest = &main[at..];
             let next = rest.find("home_closed();").unwrap_or_else(|| panic!("the card is ordered out at {at} with no home_closed after it"));
@@ -969,5 +1029,87 @@ mod tests {
         assert_eq!(choices_json(Talk, &f), json!({ "action": "talk", "choices": ["option-space", "option-return", "control-return"], "free": ["option-space", "control-return"], "ours": {} }));
         let g = Free { free: vec![k(Key::K)], ours: vec![(k(Key::J), ShowMe)] };
         assert_eq!(choices_json(Card, &g)["ours"], json!({ "control-option-command-j": "showme" }));
+    }
+
+    // ---- finding L: any chord, picked by ticking modifiers and choosing a key ----
+    const fn m(mods: u8, key: Key) -> Chord { Chord::new(mods, key) }
+    #[test]
+    fn a_picked_chord_needs_two_modifiers_and_one_of_them_control_or_command() {
+        for c in [m(CONTROL | OPTION, Key::Z), m(CONTROL | COMMAND, Key::N7), m(CONTROL | SHIFT, Key::M), m(COMMAND | SHIFT, Key::Space), m(LETTER, Key::V), m(LETTER | SHIFT, Key::Return), m(COMMAND | OPTION, Key::G)] {
+            assert!(custom_ok(c), "{}", id(c));
+        }
+        // One modifier (it would be typed in other apps, or taken by them), none, or only Option and Shift (they type characters).
+        for c in [m(CONTROL, Key::Z), m(OPTION, Key::Z), m(SHIFT, Key::Z), m(COMMAND, Key::Z), m(0, Key::Z), m(OPTION | SHIFT, Key::A), m(OPTION | SHIFT, Key::N1)] {
+            assert!(!custom_ok(c), "{}", id(c));
+        }
+        assert_eq!(why_not(m(OPTION | SHIFT, Key::A)), Some(NotChanged::NotEnoughKeys));
+        assert_eq!(why_not(m(CONTROL, Key::A)), Some(NotChanged::NotEnoughKeys));
+        assert_eq!(why_not(m(CONTROL | OPTION, Key::A)), None);
+    }
+    #[test]
+    fn the_macs_own_shortcuts_are_never_taken() {
+        for c in [m(COMMAND | SHIFT, Key::N3), m(COMMAND | SHIFT, Key::N4), m(COMMAND | SHIFT, Key::N5), m(COMMAND | SHIFT, Key::Q), m(CONTROL | COMMAND, Key::Q),
+                  m(COMMAND | OPTION, Key::D), m(CONTROL | COMMAND, Key::Space), m(COMMAND | OPTION, Key::Space)] {
+            assert!(!custom_ok(c), "{}", id(c));
+            assert_eq!(why_not(c), Some(NotChanged::Reserved), "{}", id(c));
+        }
+        assert_eq!(why_not(m(COMMAND | SHIFT, Key::N2)), None, "only the named ones");
+    }
+    #[test]
+    fn every_key_a_person_can_pick_has_its_own_name_and_keys_and_reads_back() {
+        assert_eq!(KEYS.len(), 38, "26 letters, 10 digits, Space and Return");
+        let ids: std::collections::HashSet<_> = KEYS.iter().map(|k| k.2).collect();
+        let codes: std::collections::HashSet<_> = KEYS.iter().map(|k| format!("{:?}", k.1)).collect();
+        assert_eq!((ids.len(), codes.len()), (38, 38));
+        for (i, (key, _, kid, word)) in KEYS.iter().enumerate() {
+            assert_eq!(*key as usize, i, "the table is in the order of the enum");
+            let c = Chord::new(CONTROL | COMMAND, *key);
+            assert_eq!(from_id(&id(c)), Some(c), "{kid}"); assert_eq!(decode(encode(c)), Some(c));
+            assert_eq!(label(c), format!("Control, Command and {word}"));
+        }
+        assert_eq!(id(m(CONTROL | SHIFT, Key::N7)), "control-shift-7"); assert_eq!(label(m(CONTROL | SHIFT, Key::N7)), "Control, Shift and 7");
+        assert_eq!(shortcut(m(CONTROL | SHIFT, Key::N7)), Shortcut::new(Some(Modifiers::CONTROL | Modifiers::SHIFT), Code::Digit7));
+    }
+    #[test]
+    fn the_preset_lists_are_unchanged() {
+        assert_eq!(choices(Card).len(), 8); assert_eq!(choices(Talk).len(), 3);
+        for a in ACTIONS { for c in choices(a) { assert_ne!(shortcut(c).key, Code::KeyV); } }
+    }
+    #[test]
+    fn a_picked_chord_is_registered_saved_and_the_old_keys_let_go_like_any_change() {
+        let want = m(CONTROL | OPTION, Key::Z);
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
+        assert_eq!(r, Ok(Map::DEFAULT.with(Card, want)));
+        assert_eq!(log, ["register control-option-z", "save {\"card\":\"control-option-z\"}", "unregister control-option-command-k"]);
+        // Hold to talk may take one too.
+        let (r, _) = try_switch(Talk, m(CONTROL | SHIFT, Key::M), Some(OPT_SPACE), true, &Map::DEFAULT, &[], true, true);
+        assert_eq!(r, Ok(Map::DEFAULT.with(Talk, m(CONTROL | SHIFT, Key::M))));
+    }
+    #[test]
+    fn a_picked_chord_another_app_holds_or_another_job_has_changes_nothing() {
+        let want = m(CONTROL | OPTION, Key::Z);
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT, &[], false, true);
+        assert_eq!(r, Err(NotChanged::Taken)); assert_eq!(log, ["register control-option-z"]);
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT.with(Read, want), &[(Read, want)], true, true);
+        assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty());
+    }
+    #[test]
+    fn a_chord_that_cannot_be_picked_never_reaches_the_keyboard_service() {
+        for (c, why) in [(m(OPTION, Key::Z), NotChanged::NotEnoughKeys), (m(OPTION | SHIFT, Key::Z), NotChanged::NotEnoughKeys), (m(COMMAND | SHIFT, Key::N4), NotChanged::Reserved), (m(CONTROL | COMMAND, Key::Q), NotChanged::Reserved)] {
+            let (r, log) = try_switch(Card, c, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
+            assert_eq!(r, Err(why), "{}", id(c)); assert!(log.is_empty(), "{}", id(c));
+        }
+    }
+    #[test]
+    fn picked_chords_are_saved_and_read_back_and_a_file_with_a_bad_one_is_repaired() {
+        let picked = Map::DEFAULT.with(Card, m(CONTROL | OPTION, Key::Z)).with(Talk, m(CONTROL | SHIFT, Key::M));
+        assert_eq!(parse(Some(&to_json(&picked).to_string()), None), (picked, false));
+        // A hand edited file is checked the same way as a change: the page is never trusted, nor the file.
+        for bad in ["option-z", "option-shift-z", "command-shift-4", "control-command-q"] {
+            let (got, damaged) = parse(Some(&format!("{{\"keys\":{{\"card\":\"{bad}\",\"stop\":\"control-option-z\"}}}}")), None);
+            assert!(damaged, "{bad}"); assert_eq!(got, Map::DEFAULT.with(Stop, m(CONTROL | OPTION, Key::Z)), "{bad}");
+        }
+        // The old hold to talk file only ever held its three presets.
+        assert_eq!(parse(None, Some("{\"holdToTalk\":\"control-option-z\"}")), (Map::DEFAULT, false));
     }
 }

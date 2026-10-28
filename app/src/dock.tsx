@@ -1,19 +1,30 @@
-import { StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
+import type { FlowflowController } from "./flowflow/controller.ts";
+import { characterName } from "./companion.ts";
+import { useLook } from "./useLook.ts";
+import { play, wantSound, type Cue } from "./sound.ts";
+import { livelyOf, SIZE_SCALE, sizeOf } from "./lookfeel.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
 import { poseFor, poseUrl } from "./characters.ts";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
+import { usePeek } from "./peek.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
-import { startSettings, useSetting } from "./settingsStore.ts";
+import { setting, startSettings, useSetting } from "./settingsStore.ts";
 import { DropRing, useDrop } from "./dropRing.tsx";
+import { SKIN, skinVars } from "./skins.ts";
+import { useFlow } from "./flow/useFlow.ts";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import "./style.css";
+
+// The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
+const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((m) => ({ default: m.FlowflowView })));
 
 function Dock() {
   const [m] = useModel();
@@ -50,6 +61,31 @@ function Dock() {
   // ring of what can be done with it around the character.
   const drop = useDrop();
   const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
+  // Peeking from past the edge (peek.ts): only a lean toward the screen, as data.
+  const peek = usePeek();
+  // The live water (M20): a handle to move it from here, the window's speed felt as jelly lag, Lively's hops, and the eyes
+  // following the pointer anywhere on the screen (the shell sends where it is, only with Follow my pointer on).
+  const ffCtl = useRef<FlowflowController | null>(null);
+  const vel = (vx: number, vy: number) => { flow.api.velocity(vx, vy); ffCtl.current?.push(vx, vy); };
+  const reactionsSet = useSetting("fun.reactions"), motionSet = useSetting("character.motion");
+  const lively = livelyOf(reactionsSet, motionSet) === "lively";
+  useEffect(() => { ffCtl.current?.setLively(lively); }, [lively, ffCtl.current]);
+  useEffect(() => {
+    const off = listen("gaze", (e) => { const g = (e.payload ?? {}) as { dx?: number; dy?: number }; ffCtl.current?.gaze(Number(g.dx), Number(g.dy)); });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Coming in from the edge: the window slides in (peek.rs IN_SECS), the water lags behind it, then splashes as it stops.
+  // Going back out: it stretches toward the edge. None with less motion (the controller is still then).
+  const lastPeek = useRef(peek.pose);
+  useEffect(() => {
+    const was = lastPeek.current; lastPeek.current = peek.pose;
+    if (was === peek.pose || !peek.edge) return;
+    const out = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[peek.edge as "left" | "right" | "top" | "bottom"] ?? [1, 0];
+    const coming = peek.pose === "in" || (peek.pose === "peek" && was === "hidden");
+    const speed = 1400, [ox, oy] = out;
+    if (coming) { vel(-ox * speed, -oy * speed); const t = setTimeout(() => { vel(0, 0); ffCtl.current?.arrive(ox, oy); }, 320); return () => clearTimeout(t); }
+    vel(ox * speed, oy * speed); const t = setTimeout(() => vel(0, 0), 450); return () => clearTimeout(t);
+  }, [peek.pose, peek.edge]);
   const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
   useEffect(() => {
     const off = listen("roam", (e) => setRoam(roamFrom(e.payload)));
@@ -64,34 +100,107 @@ function Dock() {
   // rules above still apply to every motion.
   const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
-  const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
-  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen.
-  const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null);
-  const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false }; (e.target as HTMLElement).setPointerCapture(e.pointerId); void invoke("char_click"); };
+  // Its name, as chosen in Settings or the first run (character.name), or its own.
+  const nameSet = useSetting("character.name");
+  // The look (M19): the water's colour on this page and the character's size on the edge.
+  const colours = useLook();
+  const sizeSet = useSetting("look.size");
+  const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
+  // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
+  // fluidity mechanics"). Off: the pose pictures,
+  // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's
+  // live water (src/flowflow/, physics, eyes and droplets, loaded on demand), and src/flow/ stands down. If the live drawing
+  // cannot start, or the GPU context is lost, the pictures come back and nothing else about the character changes.
+  const liveOn = useSetting("character.live") === true;
+  const [liveFailed, setLiveFailed] = useState(false);
+  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  const flow = useFlow({ pose, state, calm: reduced, off: liveOn && !liveFailed });
+  const button = useRef<HTMLButtonElement>(null);
+  const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
+  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen. The window moves
+  // under the pointer, so the screen position gives how fast: the top of the body trails behind it.
+  const press = useRef<{ x: number; y: number; dragging: boolean; at: number } | null>(null);
+  const still = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false, at: e.timeStamp }; (e.target as HTMLElement).setPointerCapture(e.pointerId); flow.api.poke(e.clientX, e.clientY); void invoke("char_click"); };
   const move = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p) return;
     if (!p.dragging && Math.hypot(e.screenX - p.x, e.screenY - p.y) > 5) p.dragging = true;
-    if (p.dragging) void invoke("drag_dock", { x: e.screenX, y: e.screenY });
+    if (p.dragging) {
+      void invoke("drag_dock", { x: e.screenX, y: e.screenY });
+      const dt = (e.timeStamp - p.at) / 1000;
+      if (dt > 0.004) vel((e.screenX - p.x) / dt, (e.screenY - p.y) / dt);
+      p.x = e.screenX; p.y = e.screenY; p.at = e.timeStamp;
+      clearTimeout(still.current);
+      still.current = setTimeout(() => vel(0, 0), 90);   // the pointer stopped, so the window did
+    }
   };
   const up = () => {
     const p = press.current;
     press.current = null;
+    clearTimeout(still.current);
+    vel(0, 0);
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
-  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  // A trip across the screen leans the body the way it goes; surfacing and settling are a soft touch.
+  useEffect(() => {
+    const lean = 320, dir = { left: [-lean, 0], right: [lean, 0], up: [0, -lean], down: [0, lean] } as const;
+    if (roam.phase === "travel" || roam.phase === "return") { const [vx, vy] = dir[roam.toward ?? "left"]; vel(vx * 3, vy * 3); return; }
+    vel(0, 0);
+    if (roam.phase === "surface") flow.api.touchAt(0.5, 0.9, 0.5);
+    if (roam.phase === "settle") flow.api.touchAt(0.5, 0.7, 0.8);
+  }, [roam.phase, roam.toward]);
+  // A reaction is a small push; the big one, and finishing a task, add ripples and droplets. None with reactions off or less motion.
+  useEffect(() => {
+    if (!react) return;
+    if (react.r === "nod") flow.api.touchAt(0.5, 0.35, 0.4);
+    else if (react.r === "wince") flow.api.touchAt(0.5, 0.5, 1.1);
+    else if (react.r === "cheer") flow.api.touchAt(0.5, 0.6, 0.8);
+    else { const c = centre(); flow.api.big(c.x, c.y); }
+  }, [react?.id]);
+  // The water pointer (M17): a drop splits off the side facing the target, and lands back on top when it comes home.
+  // None with reactions off or less motion.
+  // Sounds (M19, sound.ts): only when turned on, and never while a call app is in front (the shell says only whether to be quiet).
+  const cue = (c: Cue) => { if (setting("sound.on") !== true) return; void invoke("quiet_now").then((q) => { if (wantSound(true, q === true)) play(c, setting("sound.volume")); }, () => {}); };
+  useEffect(() => {
+    const off = listen("flowflow-move", (e) => {
+      const m = (e.payload ?? {}) as { kind?: string; dx?: number; dy?: number };
+      if (m.kind === "give") cue("drop"); else if (m.kind === "catch") cue("catch");
+      if (!playful(reactionsOn(), reducedMotion())) return;
+      const live = ffCtl.current;
+      if (m.kind === "give") {
+        const dx = Number(m.dx) || 0, dy = Number(m.dy) || 0, n = Math.hypot(dx, dy) || 1;
+        if (live) live.give(dx, dy); else flow.api.touchAt(0.5 + (0.4 * dx) / n, 0.5 + (0.4 * dy) / n, 0.9);
+      } else if (m.kind === "catch") { if (live) live.catch(); else flow.api.touchAt(0.5, 0.2, 1); }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Done and waiting for you have their own sounds, once each time the state arrives.
+  const lastState = useRef(state);
+  useEffect(() => { if (state !== lastState.current) { if (state === "done") cue("done"); else if (state === "needsYou") cue("needsYou"); } lastState.current = state; }, [state]);
+  const wasDone = useRef(false);
+  useEffect(() => {
+    if (state === "done" && !wasDone.current && playful(reactionsOn(), reducedMotion())) { const c = centre(); flow.api.big(c.x, c.y); }
+    wasDone.current = state === "done";
+  }, [state]);
   return (
-    <main className="dock">
-      <button className="character" type="button" data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
-        data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark}
+    <main className="dock" data-drop={dropMark}>
+      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+        data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        <img className="pose" src={poseUrl(pose)} alt="" draggable={false} />
+        {liveOn && !liveFailed
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} onFallback={() => setLiveFailed(true)} /></Suspense>
+          : <>
+            {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
+            <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
+          </>}
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
       </button>
-      <div className="muted" role="status" aria-live="polite">{label}</div>
+      <div className="dock-label" role="status" aria-live="polite">{label}</div>
+      {!flow.failed && !(liveOn && !liveFailed) && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />
     </main>

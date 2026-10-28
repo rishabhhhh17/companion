@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, visualState, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWord, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 import { PH_KEYS_MS } from "./keys.ts";
@@ -39,7 +39,7 @@ describe("Home's tabs", () => {
     expect(PANEL_TAB.settings).toBe("settings");
   });
   test("the ask box is only hidden on other tabs, never taken away: a draft, and words from hold to talk, are kept", () => {
-    expect(card).toMatch(/<div hidden=\{!show\("ask"\)\}>/);
+    expect(card).toMatch(/<div className="askwrap" hidden=\{!show\("ask"\)\}>/);
     expect(card).not.toMatch(/\{show\("ask"\) &&/);
   });
   test("words from hold to talk bring Now forward, where the box is", () => {
@@ -140,10 +140,10 @@ describe(`what ${PRODUCT} says about itself shows on every tab`, () => {
     expect(m.error).toBeTruthy();
     for (const t of TABS) expect(shownOn("notes", t, m), t).toBe(true);
   });
-  test("the card draws the notes between the tabs and the tab's panel, not inside one tab", () => {
+  test("the card draws the notes between the top of Home and the open place, not inside one place", () => {
     const at = card.indexOf('{show("notes") && <>');
-    expect(at).toBeGreaterThan(card.indexOf('role="tablist"'));
-    expect(at).toBeLessThan(card.indexOf('role="tabpanel"'));
+    expect(at).toBeGreaterThan(card.indexOf('<nav className="places"'));
+    expect(at).toBeLessThan(card.indexOf('role="region"'));
     const block = card.slice(at, card.indexOf("</>}", at));
     expect(block).toContain("{m.error}");
     expect(block).toContain("{m.notice}");
@@ -230,16 +230,18 @@ describe("the tabs from the keyboard", () => {
     expect(tabKey("learn", "ArrowLeft")).toBe("did");
     expect(tabKey("learn", "Home")).toBe("now");
     expect(tabKey("learn", "End")).toBe("settings");
-    for (const k of ["Enter", " ", "Tab", "a", "ArrowDown"]) expect(tabKey("learn", k)).toBeNull();
+    // The places are a list down the side (a vertical tab list), so Up and Down move too, the same way.
+    expect(tabKey("now", "ArrowDown")).toBe("did");
+    expect(tabKey("now", "ArrowUp")).toBe("settings");
+    for (const k of ["Enter", " ", "Tab", "a"]) expect(tabKey("learn", k)).toBeNull();
   });
-  test("the tab list follows the tabs pattern: one tab in the Tab order, arrows for the rest, the chosen one marked", () => {
-    expect(card).toContain('role="tablist"');
-    expect(card).toContain('role="tab"');
-    expect(card).toContain('role="tabpanel"');
-    expect(card).toMatch(/aria-selected=\{t === home\.tab\}/);
-    expect(card).toMatch(/tabIndex=\{t === home\.tab \? 0 : -1\}/);
-    expect(card).toMatch(/onKeyDown=\{[^\n]*tabKey\(/);
-    // A tab shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
+  test("the places are round buttons in the Tab order, the open one marked, and a back arrow to Now (27 Oct 2026)", () => {
+    // No tab list any more: each place is a plain button, reached with Tab, that says whether it is open.
+    expect(card).not.toContain('role="tablist"');
+    expect(card).toMatch(/aria-pressed=\{t === home\.tab\}/);
+    expect(card).toContain('className="back" type="button" aria-label={S.look.back}');
+    expect(card).toContain('role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title"');
+    // A place shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
     expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
   });
 });
@@ -299,17 +301,19 @@ describe("Home steps aside for what it opens", () => {
 });
 
 describe("the island's status", () => {
-  test("a mark beside the notch only when the person should look: a question, listening, just done", () => {
+  test("wings beside the notch while something happens: working, a question, listening, just done; never idle", () => {
     expect(islandAlert(initial())).toBe(false);
-    expect(islandAlert(run(task()))).toBe(false);
+    // The fun island (27 Oct 2026): work going on now shows too, as wings with a live mark (it used to stay bare).
+    expect(islandAlert(run(task()))).toBe(true);
     expect(islandAlert(run([...task(), approval()]))).toBe(true);
     expect(islandAlert(run([ev({ type: "app.voice", stage: "listening", message: "Listening" })]))).toBe(true);
     expect(islandAlert(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })]))).toBe(true);
     expect(islandAlert(run([ev({ type: "app.runner_down" })]))).toBe(false);
   });
-  test("one line: ready, working on what, needs you for what, done with what", () => {
-    expect(islandLine(initial())).toBe(S.islandReady);
+  test("one line: nothing when idle, working on what, needs you for what, done with what", () => {
+    expect(islandLine(initial())).toBe("");
     expect(islandLine(run(task()))).toBe(S.islandWorkingOn("add a sign up page"));
+    expect(islandLine(run(task()))).toBe("Working on: Add a sign up page");
     expect(islandLine(run([...task(), approval()]))).toBe(S.islandNeedsYou("git push sends your work to a remote"));
     expect(islandLine(run([...task(), stuck]))).toBe(S.islandNeedsYou(S.stuckTitle));
     expect(islandLine(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })]))).toBe(S.islandDone("add a sign up page"));
@@ -330,14 +334,9 @@ describe("the island's status", () => {
   test("working with no name says what the character says", () => {
     expect(islandLine(run([ev({ type: "agent.state", agent: "a", state: "thinking" })]))).toBe("Thinking");
   });
-  test("the pill's one word is the character's state, short enough for the pill", () => {
-    expect(islandWord(initial())).toBe("Ready");
-    expect(islandWord(run([...task(), approval()]))).toBe("Needs you");
-    expect(islandWord(run([ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe(S.islandWordError);
-    for (const st of ["idle", "thinking", "working", "checking", "needsYou", "done", "error"]) {
-      expect(islandWord(run([ev({ type: "agent.state", agent: "a", state: st })])).length, st).toBeLessThanOrEqual(12);
-    }
-    expect(islandWord(run([ev({ type: "app.runner_down" })])).length).toBeLessThanOrEqual(12);
+  test("the pill has no word any more: idle it is bare, and what happens shows as wings (island.test.ts)", () => {
+    const page = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
+    expect(page).not.toMatch(/islandWord|pillrow/);
   });
 });
 
@@ -474,7 +473,7 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(islandAlert(initial(), true), "nothing waiting: no mark").toBe(false);
     expect(islandAlert(run([ev({ type: "app.runner_down" })]), true)).toBe(false);
     const island = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
-    expect(island).toContain('const alert = islandAlert(m, useSetting("home.goToNeeds") === "markTab");');
+    expect(island).toContain('const raw = islandWings(m, useSetting("home.goToNeeds") === "markTab");');
   });
   test("with Only mark the tab and no island, the character shows that mark instead, and keeps its own lights", () => {
     const lesson = run(walkStep());
@@ -494,8 +493,8 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(characterShows(looking, true, false)).toBe("checking");
     const listening = run([...walkStep(), ev({ type: "app.voice", stage: "listening", message: "Listening" })]);
     expect(characterShows(listening, true, false)).toBe("listening");
-    // needsYou has a ring that shows with no motion at all, so it is a visible light with reduced motion too.
-    expect(read("./style.css")).toMatch(/\.character\[data-state="needsYou"\] \{ box-shadow:/);
+    // needsYou has a glow that shows with no motion at all, so it is a visible light with reduced motion too.
+    expect(read("./style.css")).toMatch(/\.character\[data-pose\]\[data-state="needsYou"\] \{ filter: drop-shadow\(/);
     // The character's page draws it from the two settings.
     const dock = read("./dock.tsx");
     expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');

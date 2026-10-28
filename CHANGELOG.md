@@ -2,6 +2,191 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow comes alive: 28 Oct 2026
+
+- **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (a little drop of its water also trails your pointer around, stretching as it goes and settling beside it) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.
+- **It has weight.** When it slides in from the edge, travels to a window or is dragged, the water lags behind like jelly, squashes as it stops and wobbles. Coming in from the edge it lands with a splash.
+- **It fidgets.** In Lively it does a little hop now and then when nothing is happening.
+- **The logo lives inside the notch now,** in lime on the notch's black, sharp whatever your wallpaper.
+- **Settings is inside Home.** The gear, Command comma and the notch's Settings button all open it right there, grouped under Character, Powers, Your Mac, Account and More.
+
+## Make it yours: colours, themes, sounds and more: 28 Oct 2026
+
+- **Pick the water's colour:** Ocean, Lagoon, Lime, Berry or Midnight. Flowflow, the drop that shows you where to click, its ring and the waterline all change together. One tap on the coloured drops at the top of Settings, and you see it at once.
+- **Home has three themes:** Night (black), Deep sea (dark blue) and Paper (light).
+- **Lively, Calm or Still** in one switch, and the character can be small, usual or large on the edge of the screen.
+- **Sounds, if you want them:** soft water sounds when the drop leaves, when you click the right thing, when work is done and when something needs you. Off unless you turn them on, and silent during calls.
+- **The pointer your way:** the water drop or a plain ring, the drop small to large, and the caption in lime or white.
+- **The notch panel your way:** choose whether it says hello, shows the work and the quick buttons, and make it compact.
+- **Settings is easy to find:** a Settings button in the notch panel, Command comma in Home, and a sliders icon instead of the old one that looked like the sun.
+- **The first run slides** from screen to screen on a spring.
+
+## A new first run, choosing your companion, and Settings that make sense: 28 Oct 2026
+
+- **The first run feels like meeting someone.** A drop falls into the water and Flowflow rises out of it. Then you watch it fix a real bug (before you connect anything), choose your companion, name it, pick how lively it is and which edge of the screen it lives on, and switch off any power you don't want. Then you connect Claude and choose your project. The water at the bottom rises with every step, so you always know how far along you are.
+- **Choose your companion.** Flowflow is ready today. The places beside it are for the companions still to come.
+- **Rename it.** Call Flowflow whatever you like; Settings uses the new name.
+- **See the first run again** any time: Settings, at the top of your character, "Show the first run again". Your key, folder and settings stay as they are.
+- **Settings is grouped:** Character, Powers, Your Mac, Account and More, instead of a long list. It opens on your companion, alive on the water, so you can see what you change.
+- **Home is a cross section of water:** Flowflow floats in the surface, and the work happens below it, with a white ask box and plain rows for the quick actions.
+
+## Show me how is now a drop of water, and everything is night and lime: 28 Oct 2026
+
+- **Flowflow shows you where to click with its own water.** A drop swells out of its side, pinches off and flies to the button you need. It lands with a squash and spreads into a ring of water around the button, with a lime bubble saying what to do. Click the right thing and the ring bursts into a splash. The drop then flies home and Flowflow catches it with a ripple. The next step starts the same way.
+- **One colour means "do this": lime,** the logo's colour. The main buttons are lime keys that sink when you press them. Headings and buttons use the Mac's rounded type. The notch panel says hello when nothing is running: "Hey. What are we finishing?"
+- Gold and mint are gone from the notch. Water blue belongs only to Flowflow, and amber still means something is waiting for you.
+
+## A new mark: the smiling sun in motion: 27 Oct 2026
+
+- **Squibby has its logo:** a round sun with a smile cut through it and seven curved rays spinning the same way, like a pinwheel. Fun and warm, and it reads at 16 points. The founder picked the shape and the colours after several rounds and some research on which colours AI and developer tools already own.
+- **The sun beside the notch is now this mark,** in one colour like the Mac's own menu bar icons: white on a dark menu bar, black on a light one.
+- **The app icon is the mark in electric lime on matte black,** a colour no AI or developer tool owns, and the colour of "it works".
+
+## Glow, and the sun beside the notch: 27 Oct 2026
+
+- **The panel under the notch wears Glow, the palette the founder picked:** a shiny gold "+ Fix something", a mint "Is it safe to go live?", a warm "Find the problem", and a soft grey lift under the notch's black.
+- **Squibby's sun sits beside the notch** on the menu bar, like the best notch apps do with their logo. It breathes very slowly; rest the pointer on it (or on the notch) and the panel opens. It takes 26 points of the menu bar each side of the notch, less than the wings while work runs.
+
+## The water is on, the notch opens into a panel, and a logo: 27 Oct 2026
+
+The founder: "the hovering on the notch is pretty bad", "I didn't see the fluidity mechanics", "it has to be something like HeyClicky's notch hover", "Flowflow is not the main guy, he is the water agent", and the logo "has to be a circle with 7 rays and the gradient like this".
+
+- **Flowflow is drawn live by default:** the founder's own water physics, with eyes that follow your pointer, on the screen edge, in Home and in the notch. It goes back to the pictures by itself if a Mac cannot draw it, and "Draw Squibby live" in Settings turns it off.
+- **Rest the pointer on the notch and it opens into a small panel**, like the notch growing down, with colour: one glowing sunset button, "+ Fix something" (the colours of the new mark), a card for each piece of work with its agent's face, what it is doing ("Step 2 of 3: ..."), the cost so far and then its result, and a row of pills: "Find the problem" in warm amber, "Is it safe to go live?" in green, and a button that opens Squibby in full. Any of them opens Home. No character peeks out any more: Flowflow is the water agent, shown on its own work.
+- **A new mark and app icon:** a sun of seven rays, an orb lit from below in a sunset gradient, on a deep plum square. Made from code (`app/brand/`), so it can be tuned in one place.
+
+## See it work in the first minute: 27 Oct 2026
+
+The four reviews of the whole product agreed: a new person never reached the "wow". Nothing opened at launch, and setup asked for an Anthropic key before anything worked.
+
+- **Home opens by itself the very first time you open Squibby.** No guessing that the notch is where it lives.
+- **The first thing you see is a short recorded fix:** a signup page whose Join button fails, Squibby finding the exact line, one small change, the project's own check going from red to green, and Undo. Flowflow acts it out and splashes when the check passes. It says plainly that it is a recording and changed nothing on your Mac. Every file, line and message in it is the real practice project's, and a test makes the same fix on a copy and runs the check, so the recording can never show something Squibby does not do.
+- **Watch it again any time:** Learn has "Watch the 15 second tour".
+- **Setup is three steps:** see it work, connect Claude, pick a folder. The questions, the four groups and the keys are one optional last step you can skip in one press.
+- **Your key is checked the moment you save it.** Squibby asks Anthropic once (it costs nothing) and says "Anthropic accepted your key" or plainly why not, so a wrong key is found in setup, not on your first fix. A "Get a key" button opens Anthropic's own page, with three short steps.
+- **Proof you can see:** under every fix, a small green or red chip for each check that really ran ("Builds", "Tests pass", "Works in a browser").
+- **Drop a project folder on Flowflow and pick "Fix this":** it becomes your project and Home finds what is wrong in it.
+- **"Is it safe to go live?" is now a quick action** right after "Find the problem", the two things Squibby is for.
+
+## One calm look and small moments of delight: 27 Oct 2026
+
+- **One set of sizes everywhere.** Six text sizes, five corner sizes, one spacing scale and one spring, so every screen lines up.
+- **The notch.** Flowflow no longer looks sliced when it peeks: it fades out into the black. Working shows a thin turning arc, thinking one breathing dot, and nothing is grey.
+- **A small celebration when a fix is proven.** The tick draws itself, glows green for a moment, and the notch gives a little bounce. Off with Reactions off or Less motion.
+- **Home is calmer.** The folder's name and a status dot sit at the top left, the buttons are smaller, the ask box is softer and glows when you type, the answer sits on its own card, and the line about the stop key is gone (it is in Stop's tooltip now). While something works, Stop is the one white button.
+- **Undo says what it did.** The Undo button turns back when pressed, and "Put back as it was" shows for two seconds once your files are back.
+- **Home unrolls out of the notch and rolls back up when you close it** with Close, Esc, the island or the character.
+- **The character lost its web style rings** and the grey box when something went wrong; the count of questions is a small black pill.
+- **Flowflow drawn live is merged in, still off.** The founder's live water (with eyes) is now the one live drawing, in the corner and in Home, behind "Draw Squibby live". It stays off until it has been seen on a real Mac.
+
+## Nothing broken, no jargon: 27 Oct 2026
+
+Every button does something you can see, and when Squibby's own machinery fails you read one plain sentence.
+
+- **Explain an error now explains what is in the box.** Paste an error into the ask box and press it: two plain sentences and where it is in your project, the same as the explain keys. With the box empty it says how, in a line you can close. Reading an error in another app still needs the keys, with the light on first.
+- **The mic button is now "How to talk".** It shows the keys to hold. A click never turns on the microphone.
+- **Start or Show me with an empty box** puts the cursor in the box and says "Type what you want done first." (or how to ask Show me), never an amber error.
+- **In the Settings window, "Walk me through it" starts that walkthrough in Home**, and "Open the practice list" opens Learn. Before, both just opened Home.
+- **One plain sentence for every failure from Squibby itself**: the undo point, starting the helper that runs Claude, the checks, the server, picking a folder, saving the key, saving the logs. No more "could not handle agent.start: git add failed", "(exit code 1)" or "The engine is not running". The raw detail is kept in Squibby's log (on this Mac only, secrets hidden, your home folder written as ~) for a problem report.
+- **Check panels lead with a plain summary and the file and line.** The check's own output is behind "Details".
+- **"The engine" is now "Squibby"** everywhere you read it.
+- **Explain an error checks the error still applies.** If the line it names is already fixed, it says it looks already fixed and suggests nothing.
+- A change that weakened a check now says "The change weakened a check, so it was not accepted." (Claude is still told to fix the real problem.)
+- A test now fails if any line you can read contains a machine word (exit code, git commands, stderr, hook, engine, checkpoint, SDK).
+
+## Flowflow stays tucked away until you call it: 27 Oct 2026
+
+The founder: "flowflow will always stay inside the side, only when I bring my pointer to the ends of the side screen, and when it's idle it will always be there".
+
+- **While nothing needs you, the character waits fully out of sight** just past the edge of your screen. No sliver, nothing in the way of the app underneath.
+- **Push the pointer into that edge, beside where it waits, and it springs in.** It slips back out a few seconds after you move away.
+- It still comes in by itself when something needs your answer, and always before it listens or looks at your screen.
+- It no longer peeks in on its own when work starts or finishes, or now and then while idle; the notch shows that instead. The switch "Peek in on its own" in Settings brings those peeks back. The other switch is now called "Tuck away past the edge of the screen"; turn it off to keep the character in view.
+
+## The island in the notch is fun now, and never says Ready: 27 Oct 2026
+
+The founder said the island "looks ass and complicated" and "does not always have to show Ready there". So it now works like the best notch apps:
+
+- **Idle, it is just the notch.** Black, no words, nothing to read.
+- **Rest the pointer on it and Flowflow peeks out** from under the notch with a little springy bounce and a wobble, and tucks back when you move away. A short line shows under it only when there is something real to say: not connected yet, an update waiting, the engine stopped.
+- **While something happens, the notch grows small wings.** A tiny Flowflow swims on the left; on the right one live mark: three dots while thinking, a spinning ring while working or looking, moving bars while listening, a pulsing amber dot when it needs your OK, a green tick that draws itself when done (the wings tuck away four seconds later), a small red dot when something went wrong. Each wing takes about 40 points of the menu bar, no more.
+- **Rest the pointer on the wings** to see one short line of what is happening, like "Working on fix the gallery page" or "Needs you: install a package".
+- Everything moves on springs, and simply appears with Reduce motion or Less motion. Clicking still opens Home. VoiceOver still hears what is going on, in words.
+
+## Settings in its own window, and the character peeks in from the edge: 27 Oct 2026
+
+The founder: "this needs to be fun", and "our guys can always be outside of the screen, it might take a sneak peek to see what is already happening".
+
+- **Settings can open in its own window.** A normal Mac window with a title, close and minimise, which you can resize. It has the same side list of sections and the same rows and switches as Settings in Home, and follows your Mac's light and dark. Changes reach Home, the island and the character at once. (The button to open it from Home and the island comes with their redesign.)
+- **The character rests just past the edge of the screen.** About three quarters of it is out of sight, with a sliver showing. It peeks in about half way when a task starts or finishes, comes all the way in when you point at it, and slips back out a few seconds after you move away. While something needs you, it stays in view until you answer.
+- **It always comes fully into view before it listens or looks at your screen**, at once, so you can see it first.
+- **Now and then it takes a curious peek**, never more often than every 3 minutes, never with Reduce motion or Less motion, and never during a presentation or a call.
+- It never hides behind the menu bar, the notch or the Dock, or onto another display; on those edges it just stays in view.
+- Two new switches in Settings, Home and the character: "Rest past the edge of the screen" and "Take a curious peek now and then". Both are on; turn the first off to keep the character fully in view as before.
+
+## Home is one black panel under the notch, with Flowflow beside you: 27 Oct 2026
+
+The founder saw the wide Home with its side list and said it looked complicated and needed to be fun. The best notch apps open as one big black shape that drops out of the notch, with big content, few words and a few round buttons. Home now works that way.
+
+- **One black panel, in light and dark.** Home hangs from the notch: square at the top, round at the bottom, black with white words whatever the Mac's theme. Nothing else is drawn around it.
+- **Flowflow is in Home, large and moving.** The same water as on the desktop sits on the left: it types while working, waves when it needs your OK, and splashes when a task is done.
+- **The job in big words.** At the top: what you asked for, and one short line (working and what it cost so far, checked and working, or that your answer is needed just below).
+- **One ask box and three quick actions:** Find the problem, Explain an error and Show me. The mic in the box shows the keys for hold to talk. The other ways to ask stay behind "More ways to ask".
+- **Results are big cards.** An answer, a receipt, research or a rescue shows as a large, easy to read card below, with ticks for what was checked and the cost.
+- **No side list.** Small round buttons at the top: What I did, Learn and Memory open inside Home with a back arrow; the gear opens Settings (in its own window once that lands; until then, inside Home); and Close.
+- **Undo and Stop only when they can act,** as small pills at the bottom: Undo after a task that changed files, Stop while something works.
+- **It springs open** from the notch in about a third of a second. With Reduce motion or Less motion it just appears.
+- Home is 640 points wide (680 with Large; 720 did not leave room for the character on a small display) and as tall as what it shows, from 300.
+- **Checked by machine and in a browser preview only.** Nobody has seen it on a Mac yet.
+
+## Home is wider, with a side list, and Settings reads like a Mac app: 27 Oct 2026
+
+The founder found the card under the notch "too narrow". Taking the lead from how HeyClicky lays out its own Home:
+
+- **Home is 600 points wide** (680 with Large), up from 380. It is never shorter than its list of places, so it does not jump around.
+- **A side list of places, with their words.** Now, What I did, Learn, Memory and Settings sit down the left, each with its drawing and its name, instead of a row of tiny drawings. The open one has a bar on its edge. Up and Down move between them.
+- **Every place has a title and a close button** at the top, so you always know where you are and how to get out.
+- **Settings shows one section at a time.** Opening it turns the side list into Back and the list of sections. Each section is one rounded group of rows: a name, a short line of what it does, and the control on the right. On and off settings are real switches. What a setting usually is, and Reset, show only once you changed it. Search still looks through everything.
+
+## Squibby checks first, quotes a fair price and speaks plainly: 26 Oct 2026
+
+Found in the first hands on session on a Mac, the engine side.
+
+- **A fix from an error now checks the error is still real.** Before, "Fix it" on an error that was already fixed made up a cause and moved a line for no reason. Now it reads the file and line, looks at whether the thing it names still fails, and if not says "This error looks already fixed" and changes nothing. A new test project, `stale-error`, measures this. One real run: it said so and changed nothing, for 3.7 cents.
+- **The cost shown before Start is about what it really costs.** It said about 25 cents for a task that cost 3 cents. It is now what steps really cost (about 4 cents on the usual model) with a margin of one half, so one step shows about 6 cents. What a task may spend at most did not change.
+- **What I did reads plainly.** A step of a plan is named by the step, not by Squibby's own instructions ("Do only this step..."). A fix started from an error you selected says which app it came from ("Fix for an error you selected in TextEdit"), and never keeps the error itself.
+- **Squibby no longer talks like its own code.** Claude was told to say "the hook is blocking me". It is now told never to say hook, sandbox or permission mode, and when something is not allowed to say "Squibby does not let tasks...", with what you can do. The reasons it is given are in everyday words too.
+- **No empty hidden folder left in your project.** Claude Code leaves an empty `.claude` folder in the project folder. Squibby now removes it after a task, but only when it was not there before and is empty. A `.claude` folder of your own is never touched.
+- **Support can see that an approval happened.** The activity log now records that a question was asked (the kind of risk and which tool) and how it was answered (yes, no, expired or stopped), never the question's words.
+- **Checked by machine, plus one real run** of the new test project only. Nobody has seen these changes on screen.
+
+## Fixes from the first hands on session, the way it behaves: 26 Oct 2026
+
+- **The explain key always answers.** Before, pressing it with nothing selected in Cursor showed nothing at all. Now every press ends in a plain line on the card: nothing was selected, Accessibility is off, the field is private, Squibby itself is in front, no app could be found, or the app could not be read in five seconds. Apps like Cursor and VS Code that hide their text boxes until told a screen reader is near are now woken for that one press and put back to sleep after.
+- **The Show me key listens at once.** Press it, say what you want to find, press it again. The light comes on first. If voice is off, the speech model is not downloaded or the microphone is not allowed yet, it opens the question box as before. There is a new switch in Settings, "Show me key listens at once", on by default.
+- **Undo where you look.** What I did now has an Undo button on the newest task that changed files, with the same question as before. Older tasks say why they have none: undoing an older task would also take back the work done after it.
+- **Answers are called Answer.** A plain question is answered under "Answer". "What changed" stays for tasks that changed files.
+- **Pick any hotkey.** Under Keys to remember, tick Control, Option, Shift or Command and choose the key from a list. It needs two ticks, one of them Control or Command, and it refuses the Mac's own shortcuts and keys another job already has. Nothing reads what you type.
+- **Not seen on a real Mac yet.** All of this was checked by tests on a Mac with no one at the screen. The explain key in Cursor, the Show me key listening and the new hotkey picker need your eyes.
+
+## A calmer look, and Flowflow that moves like water: 26 Oct 2026
+
+After the first time you used it on your Mac, you said it looked bad, the card was complicated, replies were in a small box and Flowflow was a photo in a square. This is the first round of fixing that. It is checked by machine and in a browser only: nobody has seen it on a Mac yet.
+
+- **The square box is gone.** Flowflow now floats on your desktop with nothing behind it. What it says sits in a small see through pill that stays readable on any wallpaper.
+- **Flowflow is water.** It breathes and wobbles when idle, its top lags behind when you drag it, it squashes and sends out a ripple when you click it, it melts from one pose into the next, it has a soft shimmer, and it throws a few droplets when a task is done. With less motion (your Mac's setting or ours) it only fades between poses.
+- **No more orange.** The app is black and white and follows your Mac's light and dark. Only small marks keep a colour: green for checked, amber for waiting for your yes, red for a refusal. Flowflow's own glow is a cool blue, on the character only.
+- **Home is one calm column.** The job comes first and the ask box after it. The places (Now, What I did, Learn, Memory, Settings) are a small row of drawings at the top. One filled button; the other ways to ask, the options and the watches are behind one quiet line. Undo and Stop are always at the bottom.
+- **Replies are easy to read.** Larger type, a comfortable line length, no small box. What was checked shows as ticks, with what it cost and how many files changed.
+- **The ring when you drop a file is bigger and calmer.** Round targets of 44 points with space between them, small drawings instead of letters (a format shows its own name), and a More that opens the whole list in Home.
+- **Under the hood:** a character is now a "skin" in one place, so a new character brings its own pictures, its own one colour and its own motion without touching the rest of the app. The rules are in `docs/design/look.md`.
+- **Not decided:** the founder has not chosen a visual direction. This round is neutral on purpose.
+## Flowflow can be drawn live, as moving water: 24 Oct 2026
+
+- **A new way to draw the character, off until you choose it** (Settings, "Draw Squibby live"). Instead of a picture, Flowflow is drawn live on your Mac's graphics chip as a droplet of water that stretches the way it moves, squashes and rebounds when it stops, wobbles and settles, with two eyes that follow your pointer and tiny drops that leave and come back.
+- **It only reflects what really happened:** it brightens and sends out a ripple when work is proven, turns cloudy and darker on an error, closes its eyes when asleep, and squishes where you touch it. If your Mac cannot draw it, the pictures stay.
+- **A preview page with sliders** for how stiff, how damped, how fast, how rippled and how clear it is: `docs/flowflow-live.md` says how to open it. It is a first pass at the look and has not been seen in the real app yet; nothing is claimed about speed beyond what was measured in the preview.
+
 ## A safeguard before company paid usage can ever be switched on: 24 Oct 2026
 
 - **Your own Claude key can never be sent to Squibby's server.** The audit found that if the company paid route were switched on, the light helpers would have looked in the same place for their credential as for your own key, and could have sent your own key to our server. Now the two never cross: a Squibby sign in token goes only to Squibby's server, and your own key goes only to Anthropic. The company paid route is still off, so nothing was ever sent.

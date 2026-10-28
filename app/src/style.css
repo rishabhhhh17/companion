@@ -1,104 +1,280 @@
-/* Text and focus colours meet WCAG AA in both themes (a11y.test.ts computes each pair from these tokens). --accent-line:
-   the accent where it is a line that must stand out on the page (the open tab). --amber-line: the waiting amber where it
-   is a small mark on the page (a tab's dot, the only sign a sighted person gets that another tab needs them). Both are
-   darker in light so they reach 3 to 1. */
-:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #d9d9de; --edge: #767680; --accent: #ff9a2e; --accent-line: #b25f00; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #1e8a4c; font: 14px -apple-system, "SF Pro Text", sans-serif; }
+/* The look (docs/design/look.md). The chrome is black and white and follows the Mac's light and dark; nothing in this file takes a
+   colour from a character. A character is a skin (skins.ts): only its own glow, set on the character's button as --skin-glow,
+   and the flow drawn in its canvas carry a hue. Semantic colours stay small marks: --ok (checked), --amber (waiting for your
+   yes) and --danger (a refusal). Text and focus colours meet WCAG AA in both themes (a11y.test.ts computes each pair from
+   these tokens). --amber-line: the waiting amber where it is a small mark on the page (a tab's dot, the only sign a sighted
+   person gets that another tab needs them); it is darker in light so it reaches 3 to 1.
+   One design scale (M15 wave 3), used everywhere below; no other sizes. Type (rem, so the text size choice reaches every
+   word), at the usual 14 px root: caption 12, small 13, body 15, answer 16, title 19, display 22. Corners: 8 12 20 30 and a
+   pill. Space: 4 8 12 16 20 24 32 (in rem where a size must follow the text size, as calc(Nrem / 14) of the same steps).
+   Motion: ease out for what the interface does, ease in for what goes away, one spring (the island's, islandSpring.ts, as a
+   linear() curve) for what pops, and four durations, 120 200 280 400 ms. Interruptible, none with reduced motion. */
+:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
+  --lime: #C6F432; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
+  --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
+  --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
+  --r-sm: 8px; --r-md: 12px; --r-lg: 20px; --r-xl: 30px; --r-pill: 999px;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1); --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1);
+  --dur-1: 120ms; --dur-2: 200ms; --dur-3: 280ms; --dur-4: 400ms;
+  font: 14px -apple-system, "SF Pro Text", sans-serif; }
 /* Text size (Settings, textsize.ts): one root size, and every size below is in rem (12px at Standard is calc(12rem / 14)),
    so every word in Home follows it. Standard is the root above. Only Home's page sets data-text; the island keeps its own. */
 :root[data-text="large"] { font-size: 16px; }
 :root[data-text="larger"] { font-size: 18px; }
 :root[data-text="largest"] { font-size: 20px; }
-@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1e; --fg: #f2f2f2; --muted: #a8a8ad; --line: #3a3a3e; --edge: #8e8e96; --accent-line: #ff9a2e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; } }
-@media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-width: 2px; } }
-html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; }
+@media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; } }
+@media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-top-width: 2px; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; -webkit-font-smoothing: antialiased; }
 /* What a person may want to copy (an error, a path, a plan step) can be selected. */
 .line, .error, .notice, h2 { user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
 :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 button, select { font: inherit; }
-.muted { color: var(--muted); font-size: calc(12rem / 14); }
+.muted { color: var(--muted); font-size: var(--t-small); }
+.ic { display: block; flex: none; }
 
-/* The character: a simple shape, one per state. Motion is named by the model so reduced motion can freeze it. */
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The character. Its page paints nothing (the window is see through too, main.rs), so it floats on the desktop. A simple
+   shape per state; motion is named by the model so reduced motion can freeze it. */
+html.dock-page, body.dock-page { background: transparent; }
 .dock { height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
 .character { position: relative; width: 112px; height: 80px; border-radius: 0; background: none; border: 0; padding: 0; }
 .character:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
 .character[data-state="off"] { filter: grayscale(1); opacity: .5; }
-.character[data-state="error"] { background: #8a8a90; transform: scaleY(.9); }
-.character[data-state="needsYou"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--amber) 45%, transparent); }
-.character[data-state="done"] { box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 40%, transparent); }
 .character[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
 .character[data-motion="swirl"] { animation: swirl 2.4s linear infinite; }
 .character[data-motion="busy"] { animation: busy 1s ease-in-out infinite; }
 .character[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
 .character[data-motion="glow"] { animation: glow 1.8s ease-in-out infinite; }
 .character[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
-.badge { position: absolute; top: -4px; right: -4px; min-width: 20px; min-height: 20px; box-sizing: border-box; padding: 0 5px; border-radius: 10px; background: var(--amber); color: #000; font-size: calc(12rem / 14); font-weight: 600; display: grid; place-items: center; }
+/* The count of questions waiting: a small black pill with white words and a white rim, so it reads on any wallpaper and
+   has no colour of its own. */
+.badge { position: absolute; top: -4px; right: -4px; min-width: 18px; min-height: 18px; box-sizing: border-box; padding: 0 var(--space-1); border-radius: var(--r-pill); background: #000; color: #fff; box-shadow: 0 0 0 1.5px #fff; font-size: var(--t-caption); font-weight: 600; line-height: 1; display: grid; place-items: center; }
 @keyframes breathe { 50% { transform: scale(1.04); } }
 @keyframes swirl { to { transform: rotate(360deg); } }
 @keyframes busy { 50% { transform: translateY(-4px) scale(1.03); } }
 @keyframes scan { 50% { opacity: .75; transform: scaleX(1.06); } }
-@keyframes glow { 50% { box-shadow: 0 0 0 10px color-mix(in srgb, var(--amber) 30%, transparent); } }
+@keyframes glow { 50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--amber) 60%, transparent)); } }
 @keyframes droop { 50% { transform: scaleY(.86) translateY(3px); } }
+/* What it says under the character: a small pill that stays readable on any wallpaper. */
+.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-pill); font-size: var(--t-caption); font-weight: 500; color: var(--fg); background: color-mix(in srgb, var(--bg) 86%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+/* Flowflow (src/flow/): a canvas the size of the picture plus room to wobble in, over the same spot as the plain picture. It
+   takes no clicks, so the button under it keeps the drag and the click. The plain picture hides once the first frame is drawn. */
+.character .flow { position: absolute; left: -22px; top: -16px; width: 156px; aspect-ratio: 156 / 111; display: block; pointer-events: none; }
+.character .pose.flow-ready { visibility: hidden; }
+.drops { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
 
-/* The card */
-.card { padding: 22px 14px 12px; }
-.row { display: flex; align-items: center; gap: 8px; margin: 6px 0;  flex-wrap: wrap; }
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* Home: one black panel that springs down out of the notch (27 Oct 2026, the founder: "this needs to be fun"; the notch apps'
+   look). Black with white words in both Mac themes, square at the top where it hangs from the notch, round at the bottom.
+   Its window paints nothing (main.rs), so only the shape shows. No side list and no title bar: small round buttons at the
+   top, Flowflow large beside the job in big words, one ask box and three quick actions, then the result as a card. The
+   window is as tall as what shows (card.tsx measures .inner and the strip), from 300 (island.rs HomeSize). */
+:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; }
+@media (prefers-contrast: more) { :root.home-page { --muted: var(--fg); --line: var(--edge); } }
+html.home-page, body.home-page { background: transparent; }
+.card { padding: 0; height: 100vh; box-sizing: border-box; }
+.home { display: flex; flex-direction: column; height: 100vh; overflow-y: auto; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-xl) var(--r-xl); transform-origin: top center; }
+.inner { flex: none; padding: var(--space-3) var(--space-6) var(--space-5); }
+/* The top row. On Now: the folder's name and a small dot for how things are, on the left. In a place: a back arrow and the
+   place's name. The small round buttons on the right, the close button smaller and a little apart. */
+.bar { display: flex; align-items: center; gap: var(--space-2); min-height: calc(28rem / 14); margin: 0 0 var(--space-1); }
+.bar-folder { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; font-size: var(--t-small); font-weight: 600; color: var(--muted); overflow-wrap: anywhere; }
+.bar-dot { flex: none; width: 6px; aspect-ratio: 1; border-radius: 50%; background: color-mix(in srgb, var(--fg) 50%, var(--bg)); }
+.home[data-tone="working"] .bar-dot { background: var(--fg); }
+.home[data-tone="needsYou"] .bar-dot { background: var(--amber-line); }
+.home[data-tone="done"] .bar-dot { background: var(--ok); }
+.home[data-tone="notDone"] .bar-dot { background: var(--danger); }
+.places { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
+.icon-btn, .back { position: relative; flex: none; display: grid; place-items: center; width: calc(28rem / 14); height: calc(28rem / 14); padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.icon-btn.close { width: calc(22rem / 14); height: calc(22rem / 14); margin-left: var(--space-2); }
+.icon-btn:hover, .back:hover { background: color-mix(in srgb, var(--fg) 16%, var(--bg)); }
+.icon-btn:active, .back:active, .chip-btn:active, .pill:active { transform: scale(.92); }
+/* The place open inside Home: its button is filled white (a change of fill, not of colour alone). */
+.icon-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.icon-btn .tabdot, .back .tabdot { position: absolute; top: 0; right: 0; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
+.view-title { font-size: var(--t-title); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 0 var(--space-1); }
+/* Now: the character on the left beside the job in big words; the ask box and the quick actions across the whole width. */
+.hero { display: grid; grid-template-columns: 148px minmax(0, 1fr); grid-template-areas: "char words" "ask ask"; column-gap: var(--space-5); align-items: center; margin: 0 0 var(--space-5); }
+.hero[hidden] { display: none; }
+.hero .home-char { grid-area: char; }
+.hero-words { grid-area: words; min-width: 0; }
+.hero .askwrap { grid-area: ask; min-width: 0; }
+/* The water is drawn with room around it to wobble in, so its box reaches a little past its column on each side. */
+.home-char { position: relative; width: 180px; aspect-ratio: 156 / 111; margin: -12px -16px -8px; }
+.home-flow { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+.home-pose { position: absolute; left: 14%; top: 14%; width: 72%; height: 72%; object-fit: contain; object-position: center bottom; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.home-pose.flow-ready { visibility: hidden; }
+.home-drops { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
+/* The lights stay small marks: a soft glow around the water when it waits for you or is done. */
+.home-char[data-state="needsYou"] { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--amber) 55%, transparent)); }
+.home-char[data-state="done"] { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ok) 55%, transparent)); }
+.headline { font-size: var(--t-display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: var(--space-2) 0 var(--space-1); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.subline { font-size: var(--t-body); line-height: 1.4; color: var(--muted); margin: 0; }
+/* The one ask box: a round field with the mic and the one filled button inside it. Its edge is quiet but still seen (3 to 1,
+   a11y.test.ts); on focus it is white with a soft ring. The send button waits small and grey until there are words, then
+   pops to full size on the spring. */
+.home .ask { align-items: flex-end; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface); border: 1px solid color-mix(in srgb, var(--fg) 45%, var(--bg)); border-radius: var(--r-lg); transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.home .ask:focus-within { border-color: var(--fg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 8%, transparent); }
+.home .ask textarea { border: 0; background: transparent; padding: calc(8rem / 14) calc(12rem / 14); border-radius: var(--r-lg); }
+.home .ask .icon-btn { background: transparent; color: var(--muted); }
+/* How to talk (a click cannot open the microphone, rule 5): a quiet text button inside the box, not a record button. */
+.home .ask .talk-how { align-self: center; flex: none; padding: 4px 10px; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); font-size: var(--t-small); font-weight: 500; }
+.home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+.home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 14%, var(--surface)); color: var(--fg); }
+.btn.primary.send { flex: none; display: grid; place-items: center; width: calc(32rem / 14); min-height: calc(32rem / 14); height: calc(32rem / 14); padding: 0; border-radius: 50%; transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.home .ask:has(textarea:placeholder-shown) .btn.primary.send { transform: scale(.85); background: color-mix(in srgb, var(--fg) 22%, var(--bg)); color: var(--fg); }
+/* Three quick actions, each a drawing and a word. */
+.chips.quick { margin: var(--space-2) 0 0; }
+.chip-btn { display: inline-flex; align-items: center; gap: var(--space-2); min-height: calc(32rem / 14); padding: 0 calc(12rem / 14) 0 calc(10rem / 14); border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); font-size: var(--t-small); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.chip-btn .ic { width: 14px; height: auto; opacity: .7; transition: opacity var(--dur-1) var(--ease-out); }
+.chip-btn:hover .ic { opacity: 1; }
+.chip-btn:hover { background: color-mix(in srgb, var(--fg) 14%, var(--bg)); }
+/* Night and lime (M17): headings, buttons and pills in the Mac's rounded face; Home's quick actions draw in lime and lift a
+   little under the pointer. */
+.headline, .view-title, .chip-btn, .pill, .section-pill, .btn.primary, .dock-label { font-family: var(--round); }
+.home .chip-btn { transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.home .chip-btn .ic { color: var(--key); opacity: 1; }
+.home .chip-btn:hover { transform: translateY(-1px) rotate(-1deg); }
+.home .chip-btn:nth-child(even):hover { transform: translateY(-1px) rotate(1deg); }
+.home details.more { margin: var(--space-3) 0 0; }
+/* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a big readable card that sits on the
+   black: a slightly lighter black, a hairline, a large corner, and it rises in on the spring when it arrives. */
+.home .view .panel { background: var(--card); border-radius: var(--r-lg); padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-3); border: 1px solid rgba(255, 255, 255, .06); animation: card-in var(--dur-3) var(--ease-spring) both; }
+@keyframes card-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+.home .view .panel + .panel { border: 1px solid rgba(255, 255, 255, .06); padding-top: var(--space-4); }
+.home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }
+.home .view .panel .line.muted { font-size: var(--t-small); }
+.home .view .panel .answer { font-size: var(--t-answer); }
+.home .notice, .home .error { margin: 0 0 var(--space-3); }
+/* Changing the folder, quietly at the foot of Now (its name is in the top row). */
+.foot { margin: var(--space-3) 0 0; padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--space-3); }
+.foot > .row { margin: var(--space-1) 0; }
+.foot > :not(.row) { flex-basis: 100%; }
+/* Settings, when it opens inside Home (until it has its own window): its sections as a row of pills. */
+.sections { list-style: none; display: flex; flex-wrap: wrap; gap: calc(8rem / 14); margin: 0 0 var(--space-4); padding: 0; }
+.section-pill { min-height: calc(30rem / 14); padding: 0 calc(12rem / 14); border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 10%, var(--bg)); color: var(--fg); font-size: var(--t-small); cursor: pointer; }
+.section-pill:hover { background: color-mix(in srgb, var(--fg) 20%, var(--bg)); }
+.section-pill[aria-current="page"] { background: var(--fg); color: var(--bg); font-weight: 600; }
+/* It unrolls out of the notch at each opening (card.tsx adds .springing): a squashed scale and a clip that opens from the
+   top, on the island's spring, and what is in it follows, 40 ms apart. Closing (the shell says "closing", main.rs
+   HOME_CLOSE_MS) rolls it back up the same way, quicker, easing in. None with Reduce motion or Less motion (the rules near
+   the end of this file); the shell then closes at once. */
+.home.springing { animation: home-spring var(--dur-4) var(--ease-spring) both; }
+.home.springing .hero-words { animation: home-in var(--dur-3) var(--ease-out) 40ms both; }
+.home.springing .askwrap { animation: home-in var(--dur-3) var(--ease-out) 80ms both; }
+.home.springing .chips.quick { animation: home-in var(--dur-3) var(--ease-out) 120ms both; }
+.home.springing .view { animation: home-in var(--dur-3) var(--ease-out) 160ms both; }
+.home.closing { animation: home-roll-up var(--dur-2) var(--ease-in) both; }
+@keyframes home-spring { from { opacity: 0; transform: scale(0.96, 0.6); clip-path: inset(0 0 100% 0); } 40% { opacity: 1; } to { opacity: 1; transform: none; clip-path: inset(0 0 0 0); } }
+@keyframes home-roll-up { to { opacity: 0; transform: scale(0.96, 0.6); clip-path: inset(0 0 100% 0); } }
+@keyframes home-in { from { opacity: 0; transform: translateY(4px); } }
+/* A finished job: the headline and its line come in again, lifted a little, as the done line replaces the working one. */
+.home[data-tone="done"] .hero-words { animation: hero-done var(--dur-3) var(--ease-out) both; }
+@keyframes hero-done { from { opacity: 0; transform: translateY(4px); } }
+.row { display: flex; align-items: center; gap: var(--space-1) var(--space-2); margin: var(--space-2) 0; flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
-.ask { display: flex; gap: 6px; margin: 8px 0; }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: 1px solid var(--edge); border-radius: 6px; max-width: 100%; }
+.ask { display: flex; gap: var(--space-2); margin: var(--space-2) 0; }
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-1) 0; }
+.chip { display: inline-flex; align-items: center; gap: var(--space-2); padding: 2px 4px 2px 10px; background: var(--surface); border-radius: var(--r-pill); max-width: 100%; }
 .chip .line { margin: 0; }
 .chip .btn { padding: 1px 8px; }
 main.card.dropping { outline: 2px dashed var(--edge); outline-offset: -4px; }
 /* The ask box grows with what is typed (card.tsx fitBox) up to a few lines, then scrolls. Its size, its cap and the search
    box in What I did are in rem, so they follow the text size. */
-.ask textarea { flex: 1; min-width: 0; font: inherit; font-size: 1rem; line-height: 1.35; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; resize: none; max-height: calc(160rem / 14); overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
-.ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: 1rem; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
-.row input[type="search"] { flex: 1; min-width: 0; font-size: 1rem; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; }
-.btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); cursor: pointer; }
+.ask textarea { flex: 1; min-width: 0; font: inherit; font-size: var(--t-answer); line-height: 1.45; padding: calc(12rem / 14) calc(12rem / 14); background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: calc(12rem / 14); resize: none; max-height: calc(160rem / 14); overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
+.ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: var(--t-body); padding: calc(8rem / 14) calc(10rem / 14); background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: var(--r-md); }
+.row input[type="search"] { flex: 1; min-width: 0; font-size: var(--t-body); padding: calc(8rem / 14) calc(10rem / 14); background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: var(--r-md); }
+/* Buttons: words you can press (a quiet text button), and one filled button for the one thing to do next. */
+.btn { padding: calc(8rem / 14) calc(12rem / 14); min-height: calc(32rem / 14); box-sizing: border-box; border-radius: var(--r-md); border: 0; background: transparent; color: var(--fg); font-size: var(--t-body); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
 .btn:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
-.btn:disabled { opacity: .5; cursor: not-allowed; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
-/* The main button keeps its own colour under the pointer (the plain hover tint would put black words on dark grey). */
-.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, #000 12%, var(--accent)); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--key); color: var(--key-ink); padding: calc(8rem / 14) calc(20rem / 14); border-radius: var(--r-pill); font-weight: 700; box-shadow: 0 3px 0 var(--key-edge); transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.btn.primary:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--key-edge); }
+/* The main button keeps its own look under the pointer (the plain hover tint would put its words on a pale patch). */
+.btn.primary:hover:not(:disabled) { background: color-mix(in srgb, var(--key) 88%, #ffffff); }
 .btn.danger { color: var(--danger); }
-.panel { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
-.panel.amber { border-color: var(--amber); }
-.line { font-size: calc(12rem / 14); margin: 2px 0; word-break: break-word; }
+/* A lone text button at the start of a line lines its words up with the text above it. */
+.row > .btn:first-child:not(.primary) { margin-left: calc(-12rem / 14); }
+/* A job on the card: no box, only room and a hairline between two jobs. The headline is the h2. */
+.panel { border: 0; padding: 0; margin: 0 0 var(--space-6); }
+.panel + .panel { border-top: 1px solid var(--line); padding-top: var(--space-4); }
+/* Waiting for your yes: a small amber mark before the headline, never a coloured box. */
+.panel.amber > h2::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: var(--space-2); border-radius: 50%; background: var(--amber-line); vertical-align: middle; }
+.line { font-size: var(--t-body); line-height: 1.5; margin: 0 0 var(--space-2); word-break: break-word; }
 .line.blocked { color: var(--danger); }
-.error { color: var(--danger); margin: 8px 0; }
-.notice { color: var(--muted); margin: 8px 0; }
-h2 { font-size: calc(13rem / 14); margin: 0 0 4px; }
+.line.muted { font-size: var(--t-small); }
+.error { color: var(--danger); margin: var(--space-2) 0; line-height: 1.5; }
+.notice { color: var(--muted); margin: var(--space-2) 0; line-height: 1.5; }
+h2 { font-size: var(--t-title); font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; margin: 0 0 var(--space-2); }
+/* A reply: large and easy to read, in a comfortable line length (about 45 to 70 characters), never a small box. */
+.answer { font-size: var(--t-answer); line-height: 1.5; max-width: 68ch; margin: 0 0 var(--space-3); }
+.folder { margin: 0 0 var(--space-1); gap: var(--space-1) var(--space-2); }
+.folder + .folder { margin-top: 0; }
+.folder .muted { font-size: var(--t-small); }
+.folder .btn { min-height: 0; padding: 2px 8px; font-size: var(--t-small); }
+.folder > .btn:first-child:not(.primary) { margin-left: -8px; }
 
+/* The receipt: one clear block. What changed, whether it was checked (a tick), then what it cost in three small facts. */
+.proof { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--t-body); line-height: 1.5; margin: 0 0 var(--space-2); }
+.proof .ic { margin-top: 3px; }
+.proof.ok .ic { color: var(--ok); }
+.proof.bad .ic { color: var(--danger); }
+.proof.wait .ic { color: var(--muted); }
+.facts { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-4); list-style: none; padding: 0; margin: var(--space-3) 0; font-size: var(--t-small); color: var(--muted); }
+.receipt-shot { margin: var(--space-2) 0 var(--space-1); }
+.receipt-shot img { display: block; width: 100%; height: auto; border-radius: var(--r-md); border: 1px solid var(--line); }
+.receipt-shot figcaption { margin-top: var(--space-2); font-weight: 600; }
+/* The browser check's one time download: how far along it is. */
+.panel progress { display: block; width: 100%; height: 6px; margin: var(--space-2) 0 var(--space-1); accent-color: var(--fg); }
+
+/* Undo and Stop: small pills at the foot of Home, centred, only when they can act (homeHero.ts); nothing at all otherwise.
+   While something works Stop is the one bright thing (white with black words); the key that stops everything is in its
+   name and its tooltip, not a line of its own. Undo turns back on a press, and after an undo "Put back as it was" shows for
+   two seconds while the result settles. */
+.strip { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: center; gap: var(--space-3); margin: auto 0 0; padding: var(--space-2) var(--space-6) var(--space-4); flex-wrap: wrap; background: linear-gradient(to top, var(--bg) 75%, transparent); }
+.strip:empty { display: none; }
+.pill { display: inline-flex; align-items: center; gap: var(--space-2); min-height: calc(32rem / 14); padding: 0 calc(12rem / 14); border: 1px solid var(--line); border-radius: var(--r-pill); background: var(--surface); color: var(--fg); font-size: var(--t-body); font-weight: 600; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.pill:hover { background: color-mix(in srgb, var(--fg) 18%, var(--bg)); }
+.pill.stop { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.pill.stop:hover { background: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+.pill.spin .ic { animation: undo-spin var(--dur-4) var(--ease-spring) both; }
+@keyframes undo-spin { from { rotate: 0deg; } to { rotate: -360deg; } }
+.putback-note { font-size: var(--t-small); font-weight: 500; color: var(--muted); animation: putback 2s var(--ease-out) both; }
+@keyframes putback { 0% { opacity: 0; transform: translateY(4px); } 12%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-in) both; }
+@keyframes card-settle { from { opacity: .6; transform: scaleY(1.04) translateY(-4px); } }
+
+/* The other things you can ask for, kept out of the way until wanted. */
+details.more { margin: var(--space-2) 0 var(--space-3); }
+details.more > summary { cursor: pointer; color: var(--muted); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::after { content: " +"; }
+details.more[open] > summary::after { content: " \2212"; }
+details.more > summary:hover { color: var(--fg); }
 ins.added, del.removed { text-decoration-thickness: 2px; }
 .added { background: rgba(60, 180, 90, 0.25); border-radius: 3px; text-decoration: underline; }
 .removed { background: rgba(220, 70, 70, 0.22); text-decoration: line-through; border-radius: 3px; }
 
 /* High contrast and forced colours: never rely on tint alone. */
-@media (forced-colors: active) { .character { forced-color-adjust: none; border: 2px solid CanvasText; } .badge { border: 1px solid CanvasText; } }
-
-.check { display: flex; align-items: center; gap: 6px; font-size: calc(12rem / 14); margin: 4px 0 8px; }
+@media (forced-colors: active) { .character { forced-color-adjust: none; border: 2px solid CanvasText; } .badge { border: 1px solid CanvasText; } .btn.primary { border: 1px solid CanvasText; } }
+.check { display: flex; align-items: center; gap: var(--space-2); font-size: var(--t-small); margin: var(--space-1) 0 var(--space-2); }
 .check input { width: 16px; height: 16px; }
-pre.diff { white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; font: calc(11rem / 14) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; margin: 6px 0 0; padding: 6px; user-select: text; }
-textarea.export { width: 100%; box-sizing: border-box; font: calc(12rem / 14) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--bg); color: var(--fg); border: 1px solid var(--edge); border-radius: 6px; margin-top: 6px; user-select: text; }
-details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; font-size: calc(12rem / 14); } details.explain ul { margin: 4px 0 4px 18px; padding: 0; }
-.character[data-state="listening"] { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 40%, transparent); }
-
-/* The visual receipt: the page now, with what changed circled. */
-.receipt-shot { margin: 8px 0 4px; }
-.receipt-shot img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line, rgba(127,127,127,.3)); }
-.receipt-shot figcaption { margin-top: 6px; font-weight: 600; }
-/* The browser check's one time download: how far along it is. */
-.panel progress { display: block; width: 100%; height: 6px; margin: 6px 0 4px; accent-color: var(--accent); }
+pre.diff { white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; font: var(--t-caption) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface); color: var(--fg); border: 0; border-radius: var(--r-md); margin: var(--space-2) 0 0; padding: var(--space-2); user-select: text; }
+textarea.export { width: 100%; box-sizing: border-box; font: var(--t-caption) ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface); color: var(--fg); border: 0; border-radius: var(--r-md); margin-top: var(--space-2); user-select: text; }
+details.explain { margin-top: var(--space-2); } details.explain summary { cursor: pointer; font-size: var(--t-small); } details.explain ul { margin: var(--space-1) 0 var(--space-1) 18px; padding: 0; }
+/* Listening is a light that shows first (rule 5): a still glow around the water, with or without motion. */
+.character[data-state="listening"] { filter: drop-shadow(0 0 7px var(--skin-glow, #fff)); }
 
 /* Reactions: one off moves that play over the state's own motion, then stop. */
 .character[data-react="nod"] { animation: nod .6s ease-out 1; }
 .character[data-react="wince"] { animation: wince .7s ease-out 1; }
 .character[data-react="cheer"] { animation: cheer .9s ease-out 1; }
-.character[data-react="cheer"]:not([data-state="needsYou"]) { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 45%, transparent); }
 .character[data-react="party"] { animation: party 1.4s ease-out 1; }
-.character[data-react="party"]:not([data-state="needsYou"]) { box-shadow: 0 0 0 8px color-mix(in srgb, var(--ok) 55%, transparent); }
-@keyframes nod { 30% { transform: translateY(4px); } 60% { transform: translateY(-2px); } }
+@keyframes nod { 30% { transform: translateY(3px); } 60% { transform: translateY(-2px); } }
 @keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
 @keyframes party { 20% { transform: translateY(-14px) rotate(-10deg) scale(1.08); } 45% { transform: translateY(0) rotate(8deg); } 65% { transform: translateY(-6px) rotate(-4deg); } }
@@ -111,85 +287,523 @@ details.explain { margin-top: 6px; } details.explain summary { cursor: pointer; 
 @keyframes roam-surface { from { transform: scale(.72); opacity: .55; } to { transform: scale(.92); opacity: 1; } }
 @keyframes roam-settle { 0% { transform: scale(1.06, .94); } 60% { transform: scale(.98, 1.02); } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion], .character[data-roam] { animation: none; transition: none; } }
+/* Everything else that moves in this file stops with reduced motion too. */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 /* Less motion, Companion's own Motion setting (character.motion; motion.ts marks the page): inside Companion only, nothing
    moves, as with the Mac's own Reduce motion. */
 :root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }
 /* Looking at the screen (Show me, Point at the problem) is a light that must show first (rule 5). Its usual sign is the
    scan, which stops with reduced motion, by the Mac or by Less motion, so then a still ring shows it, as listening's does. */
-@media (prefers-reduced-motion: reduce) { .character[data-state="checking"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--fg) 35%, transparent); } }
-:root[data-less-motion] .character[data-state="checking"] { box-shadow: 0 0 0 6px color-mix(in srgb, var(--fg) 35%, transparent); }
+@media (prefers-reduced-motion: reduce) { .character[data-state="checking"] { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .55)) drop-shadow(0 0 7px rgba(255, 255, 255, .9)); } }
+:root[data-less-motion] .character[data-state="checking"] { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .55)) drop-shadow(0 0 7px rgba(255, 255, 255, .9)); }
 
-/* Home (F18): the card's tabs. */
-.tabs { display: flex; gap: 2px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-.tab { position: relative; font: inherit; font-size: calc(13rem / 14); padding: 5px 9px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: transparent; color: var(--muted); cursor: pointer; border-radius: 6px 6px 0 0; }
-.tab:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 6%, var(--bg)); }
-.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent-line); font-weight: 600; }
-.tabdot { display: inline-block; width: 7px; height: 7px; margin-left: 5px; border-radius: 50%; background: var(--amber-line); vertical-align: middle; }
-@media (forced-colors: active) { .tab[aria-selected="true"] { border-bottom-color: Highlight; } .tabdot { forced-color-adjust: none; border: 1px solid CanvasText; } }
+/* A place that waits for the person: a small amber dot on its round button (VoiceOver hears the words beside it). */
+.tabdot { width: 7px; height: 7px; margin-left: auto; border-radius: 50%; background: var(--amber-line); flex: none; }
+@media (forced-colors: active) { .icon-btn[aria-pressed="true"], .section-pill[aria-current="page"] { outline: 2px solid Highlight; } .tabdot { forced-color-adjust: none; border: 1px solid CanvasText; } }
 
-/* The island in the notch (F18): black like the notch in both themes, white words. The app sizes the window (island.rs);
-   this fills it. It only grows downward, so everything drawn sits at the bottom: the lip under the notch, the status lines. */
+/* Settings: each section a small capitals label over one rounded group of rows; a row is its name and short words on the
+   left and its control on the right; an on or off setting is a switch. */
+.panel.settings { margin: 0; }
+.settings-section { margin: 0 0 var(--space-6); }
+.settings-section > h3, .settings [role="group"] > h3 { font-size: var(--t-caption); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0 0 var(--space-2) var(--space-1); }
+.settings > [role="group"] { margin: 0 0 var(--space-6); }
+.group { background: color-mix(in srgb, var(--fg) 4%, var(--bg)); border: 1px solid var(--line); border-radius: var(--r-md); }
+.setting { padding: var(--space-3) calc(12rem / 14); }
+.group > .setting + .setting { border-top: 1px solid var(--line); }
+.setting > .row:first-child { justify-content: space-between; flex-wrap: nowrap; gap: var(--space-3); margin: 0 0 2px; }
+.setting > .row:first-child > .line { margin: 0; }
+.setting > .row:first-child b { font-weight: 600; }
+.setting > .line.muted { margin: 0; }
+.setting button[role="switch"] { position: relative; flex: none; width: 40px; min-width: 40px; min-height: 24px; padding: 0; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 22%, var(--bg)); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out); }
+.setting button[role="switch"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .35); transition: transform var(--dur-1) var(--ease-out); }
+.setting button[role="switch"][aria-checked="true"] { background: var(--fg); }
+.setting button[role="switch"][aria-checked="true"]::after { transform: translateX(16px); background: var(--bg); }
+.setting button[role="switch"]:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 32%, var(--bg)); }
+.setting button[role="switch"][aria-checked="true"]:hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 85%, var(--bg)); }
+@media (forced-colors: active) { .setting button[role="switch"] { forced-color-adjust: none; border: 1px solid CanvasText; } .setting button[role="switch"][aria-checked="true"] { background: Highlight; } }
+
+/* The island in the notch (F18, made fun on 27 Oct 2026): black like the notch in both themes. Idle it is only the notch
+   (or the small pill, or the thin line), with no words. The app sizes the window (island.rs); the black shape inside it
+   moves on a spring (island.tsx, islandSpring.ts) to the size the app gives, --sw by --sh, centred on the notch, so the
+   wings grow out of the notch and tuck back into it. --wing and --face are island.rs WING and FACE; --core is the notch's
+   (or the pill's) width and --row the height of the row the wings sit in, both given by the app. Pop ins use the one spring
+   (--ease-spring). Sizes come from the same scale as Home, at the island's own 14 px root (it never takes the text size). */
 html.island-page, body.island-page { background: transparent; overflow: hidden; height: 100%; }
-.island { height: 100vh; }
-.island-hit { all: unset; box-sizing: border-box; position: relative; display: flex; align-items: flex-end; justify-content: center; width: 100vw; height: 100vh; padding: 0 10px 6px; background: #000; color: #fff; cursor: pointer; font: 600 12px -apple-system, "SF Pro Text", sans-serif; overflow: hidden; }
-.island.notch .island-hit { border-radius: 0 0 12px 12px; }
-.island.pill .island-hit { border-radius: 999px; align-items: center; padding: 0 10px; }
-.island.pill[data-mode="peek"] .island-hit { border-radius: 10px; align-items: flex-end; padding-bottom: 6px; }
-.island.edge .island-hit { border-radius: 0 0 4px 4px; padding: 0; }
-.island.edge[data-mode="alert"] .island-hit { border-radius: 0 0 10px 10px; align-items: center; padding: 0 10px; }
-.island.edge[data-mode="peek"] .island-hit { border-radius: 0 0 10px 10px; padding: 0 10px 6px; }
+.island { height: 100vh; --wing: 40px; --r: var(--r-md); }
+.island-hit { all: unset; box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; height: var(--row, 100%); min-height: 100%; display: block; color: #fff; cursor: pointer; font: 600 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; }
 .island-hit:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
-.peekline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-height: 15px; overflow: hidden; max-width: 100%; text-align: center; white-space: normal; overflow-wrap: anywhere; }
-.pillrow { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; }
-.lip { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 9px; }
-.mark { width: 8px; height: 8px; border-radius: 50%; background: #8e8e93; flex: none; }
-.lip .mark { width: 6px; height: 6px; }
+.island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: var(--sw, 100%); height: var(--sh, 100%); background: #000; overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
+.island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: 22px; }
+.island.pill { --r: var(--r-pill); }
+.island.pill .island-shape { border-radius: var(--r); }
+.island.pill[data-mode="peek"], .island.pill[data-mode="wingsPeek"] { --r: var(--r-md); }
+.island.edge { --r: 3px; }
+.island.edge[data-mode="wings"], .island.edge[data-mode="peek"], .island.edge[data-mode="wingsPeek"] { --r: var(--r-md); }
+/* The wings: a tiny Flowflow on the left of the notch, one live mark on the right, each --wing wide, in the top row. */
+.island-wing { position: absolute; top: 0; height: var(--row); width: var(--wing); display: flex; align-items: center; justify-content: center; gap: var(--space-1); }
+.island-wing.left { left: calc(50% - var(--core) / 2 - var(--wing)); }
+.island-wing.right { left: calc(50% + var(--core) / 2); }
+.island-wing > * { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both; }
+.island-flow { display: block; height: calc(var(--row) * .85); width: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.island-wing .island-flow { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both, island-swim 1.8s ease-in-out 460ms infinite; }
+.island-count { font: 700 var(--t-caption) -apple-system, "SF Pro Text", sans-serif; color: #fff; }
+@keyframes island-pop { from { scale: .3; opacity: 0; } 40% { opacity: 1; } }
+@keyframes island-swim { 0%, 100% { translate: 0 0; rotate: -4deg; } 50% { translate: 0 -1.5px; rotate: 4deg; } }
+/* The marks, drawn by hand, never a stock spinner and never grey. A plain dot is white at half strength; amber waits for
+   you, green is done, red went wrong. Working (and looking) is a thin round arc that turns; thinking is one dot that
+   breathes; listening is the microphone's bars; done is a tick that draws itself with a brief green glow. */
+.mark { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, .5); flex: none; }
 .mark[data-state="needsYou"] { background: var(--amber); }
-.mark[data-state="listening"] { background: var(--accent); }
+.mark[data-state="listening"] { background: #fff; box-shadow: 0 0 0 2px rgba(255, 255, 255, .35); }
 .mark[data-state="done"] { background: #4cc27f; }
-.mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #f2f2f2; }
-.mark[data-state="error"] { background: #ff7a6e; }
-@media (forced-colors: active) { .island-hit { forced-color-adjust: none; border: 1px solid #fff; } }
+.mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #fff; }
+.mark[data-state="error"] { background: #ff7a6e; box-shadow: 0 0 0 2px rgba(255, 122, 110, .3); }
+.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-4) var(--ease-spring) 60ms both, island-needsYou-pulse 1.6s ease-in-out 460ms infinite; }
+@keyframes island-needsYou-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } }
+.island-wing .mark[data-mark="dots"], .island-wing .mark[data-mark="arc"], .island-wing .mark[data-mark="bars"], .island-wing .mark[data-mark="tick"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 2px; }
+.island-wing .mark[data-mark="dots"] i { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: island-breathe 1.4s ease-in-out infinite; }
+@keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }
+.island-wing .mark[data-mark="arc"] svg { display: block; fill: none; stroke: #fff; stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 12.25 28.6; animation: island-spin .8s cubic-bezier(.45, .05, .55, .95) infinite; }
+@keyframes island-spin { to { rotate: 1turn; } }
+/* Listening: live bars, the microphone's light (rule 5). With no level from the microphone they move on a calm loop; with
+   reduced motion they stand still at different heights, still clearly bars. */
+.island-wing .mark[data-mark="bars"] i { width: 3px; height: 14px; border-radius: 2px; background: #fff; transform-origin: center; animation: island-bar .9s ease-in-out infinite; }
+.island-wing .mark[data-mark="bars"] i:nth-child(1) { scale: 1 .45; animation-delay: -.3s; }
+.island-wing .mark[data-mark="bars"] i:nth-child(2) { scale: 1 .9; animation-delay: -.6s; }
+.island-wing .mark[data-mark="bars"] i:nth-child(3) { scale: 1 .65; animation-delay: -.15s; }
+.island-wing .mark[data-mark="bars"] i:nth-child(4) { scale: 1 .4; animation-delay: -.45s; }
+@keyframes island-bar { 0%, 100% { scale: 1 .3; } 50% { scale: 1 1; } }
+/* Done: a green tick that draws itself, then glows green for a moment (and the wings widen a little, island.tsx). Drawn
+   in full, with no glow, when nothing moves. */
+.island-wing .mark[data-mark="tick"] svg { display: block; fill: none; stroke: #4cc27f; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 0; animation: island-draw var(--dur-3) var(--ease-out) 120ms both, island-glow 900ms var(--ease-out) 400ms 1; }
+@keyframes island-draw { from { stroke-dashoffset: 16; } }
+@keyframes island-glow { 0%, 100% { filter: drop-shadow(0 0 6px rgba(76, 194, 127, 0)); } 20% { filter: drop-shadow(0 0 6px #4cc27f); } }
+/* Resting the pointer on the bare notch: Flowflow pops down from under its edge with a springy overshoot, wobbles, and
+   now and then squashes like a blink. Never sliced: it is not cut by a box, it fades out at its foot into the black (a
+   mask), so it seems to come out of the notch. It tucks back up when the pointer leaves. */
+/* The one line, only under the pointer and only when there is something to say. Cut to one line with an ellipsis. */
+@media (prefers-reduced-motion: reduce) { .island *, .island *::before, .island *::after { animation: none !important; transition: none !important; } }
+@media (forced-colors: active) { .island-shape { forced-color-adjust: none; border: 1px solid #fff; border-top: 0; } .island-hit { forced-color-adjust: none; } }
 
 /* F19, drop a file on the companion: the character lights up while a file is over its window, and a ring of round
    choices opens around it on a drop. With reduced motion (the Mac's, or Companion's own Less motion) it lights without
    growing. The island lights while a file is over it. */
 .dock { position: relative; }
-.character[data-drop="over"] { transform: scale(1.12); transition: transform .15s ease-out; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 50%, transparent); }
-.character[data-drop="menu"] { transform: scale(.7); transition: transform .15s ease-out; }
+.character[data-drop="over"] { transform: scale(1.12); transition: transform var(--dur-1) var(--ease-out); filter: drop-shadow(0 0 7px var(--skin-glow, #fff)); }
+.character[data-drop="menu"] { transform: scale(.55); transition: transform var(--dur-1) var(--ease-out); }
+/* While the ring is open the word under the character gives way to the ring (the word for the target in aim shows in its middle). */
+.dock[data-drop="menu"] .dock-label { display: none; }
 @media (prefers-reduced-motion: reduce) { .character[data-drop] { transform: none; transition: none; } }
 :root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
+/* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, a small lean toward the screen. Its own rotate and
+   translate, so the breathing animation (which sets transform) never cancels it. None with Reduce motion or Less motion. */
+.character[data-peek] { transition: rotate .3s ease-out, translate .3s ease-out; }
+.character[data-peek="peek"][data-peek-edge="right"] { rotate: -7deg; translate: -2px 0; }
+.character[data-peek="peek"][data-peek-edge="left"] { rotate: 7deg; translate: 2px 0; }
+.character[data-peek="peek"][data-peek-edge="top"] { translate: 0 3px; }
+.character[data-peek="peek"][data-peek-edge="bottom"] { translate: 0 -3px; }
+@media (prefers-reduced-motion: reduce) { .character[data-peek] { rotate: none; translate: none; transition: none; } }
+:root[data-less-motion] .character[data-peek] { rotate: none; translate: none; transition: none; }
 .drop-ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.drop-item { position: absolute; width: calc(38rem / 14); min-height: calc(38rem / 14); border-radius: 50%; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); font-weight: 600; font-size: calc(10rem / 14); padding: 0; cursor: pointer; pointer-events: auto; }
-.drop-item:hover, .drop-item:focus-visible { background: var(--accent); color: #000; }
-.drop-close { font-size: calc(16rem / 14); }
-.drop-over-character { position: absolute; inset: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: var(--bg); border-radius: 12px; text-align: center; }
-.drop-over-character .btn { padding: 2px 8px; font-size: calc(11rem / 14); }
-.drop-over-character .line { font-size: calc(11rem / 14); }
-.drop-outcome { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* A target: a round 44 point button with a small drawing and no letters. Its word shows in the middle of the ring. */
+.drop-item { position: absolute; width: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); padding: 0; display: grid; place-items: center; cursor: pointer; pointer-events: auto; box-shadow: 0 2px 10px rgba(0, 0, 0, .22); animation: ring-in var(--dur-2) var(--ease-spring) both; }
+.drop-item:hover, .drop-item:focus-visible { background: var(--fg); color: var(--bg); }
+.drop-close { color: var(--muted); }
+.drop-word { font-size: var(--t-caption); font-weight: 650; letter-spacing: -0.01em; }
+.drop-caption { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 20px); max-width: 64px; text-align: center; font-size: var(--t-caption); font-weight: 600; color: var(--fg); background: color-mix(in srgb, var(--bg) 86%, transparent); border-radius: var(--r-pill); padding: 1px 8px; pointer-events: none; }
+.drop-caption:empty { display: none; }
+@keyframes ring-in { from { opacity: 0; scale: .6; } }
+.drop-over-character { position: absolute; inset: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); background: var(--bg); border-radius: var(--r-md); box-shadow: 0 2px 16px rgba(0, 0, 0, .25); text-align: center; padding: var(--space-2); box-sizing: border-box; }
+.drop-over-character .btn { padding: 2px 8px; min-height: 0; font-size: var(--t-small); }
+.drop-over-character .line { font-size: var(--t-caption); margin: 0; }
+.drop-outcome { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .drop-progress { width: 100%; }
-.drop-trim { display: flex; flex-direction: column; gap: 6px; }
+.drop-trim { display: flex; flex-direction: column; gap: var(--space-2); }
 .drop-trim input { width: 6em; font: inherit; }
-.island[data-drop="over"] .island-hit { box-shadow: inset 0 0 0 2px var(--accent); }
+.island[data-drop="over"] .island-shape { box-shadow: inset 0 0 2px 2px #fff; }
 @media (forced-colors: active) { .drop-item { forced-color-adjust: none; border: 2px solid CanvasText; } }
 
 /* The water creature's pictures (characters.ts; public/characters/water). The button keeps every attribute the circle had,
    so the states, motion, reactions and trips work as before; the picture sits inside it and takes no clicks. A lit ring is
-   a soft glow that follows the creature's own outline, so listening, looking at the screen, waiting for you and done are
-   still shown without a box around the picture (the light that shows first, rule 5, stays on with reduced motion too). */
-.character[data-pose] { box-shadow: none; }
-.character[data-pose][data-state="error"] { background: none; transform: none; }
-.character[data-pose][data-react] { box-shadow: none; }
+   a soft glow that follows the creature's own outline (never a ring or a filled box, M15), so listening, looking at the screen, waiting for you and done are
+   still shown without a box around the picture (the light that shows first, rule 5, stays on with reduced motion too). The
+   glow of listening is the skin's own hue (--skin-glow, set from skins.ts); the others are small semantic marks. */
 .character .pose { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center bottom; pointer-events: none; user-select: none; -webkit-user-select: none; }
-.character[data-pose][data-state="listening"] { box-shadow: none; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 70%, transparent)); }
-.character[data-pose][data-state="checking"] { box-shadow: none; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--fg) 55%, transparent)); }
-.character[data-pose][data-state="needsYou"] { box-shadow: none; filter: drop-shadow(0 0 7px color-mix(in srgb, var(--amber) 80%, transparent)); }
-.character[data-pose][data-state="done"] { box-shadow: none; filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ok) 70%, transparent)); }
-.character[data-pose][data-drop="over"], .character[data-pose][data-drop="menu"] { box-shadow: none; }
-.character[data-pose][data-drop="over"] { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--accent) 70%, transparent)); }
+.character[data-pose][data-state="listening"] { filter: drop-shadow(0 0 7px var(--skin-glow, #fff)); }
+.character[data-pose][data-state="checking"] { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .55)) drop-shadow(0 0 7px rgba(255, 255, 255, .9)); }
+.character[data-pose][data-state="needsYou"] { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--amber) 80%, transparent)); }
+.character[data-pose][data-state="done"] { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ok) 70%, transparent)); }
 /* Thinking tilts a little; the circle's full turn would stand the creature on its head. A needs you glow breathes. */
 .character[data-pose][data-motion="swirl"] { animation: tilt 2.4s ease-in-out infinite; }
 .character[data-pose][data-motion="glow"] { animation: pose-glow 1.8s ease-in-out infinite; }
 @keyframes tilt { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 @keyframes pose-glow { 50% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--amber) 60%, transparent)); } }
+/* With Flowflow drawing (data-flow), the body moves itself (breathing, wobble, lag, squash: physics.ts), so the button's own
+   state motions and reactions stand down. The glows above and the needs you breathing stay. */
+.character[data-flow][data-pose][data-motion="breathe"], .character[data-flow][data-pose][data-motion="swirl"], .character[data-flow][data-pose][data-motion="busy"],
+.character[data-flow][data-pose][data-motion="scan"], .character[data-flow][data-pose][data-motion="droop"], .character[data-flow][data-pose][data-react] { animation: none; }
 @media (forced-colors: active) { .character[data-pose] { border: 0; } .character .pose { forced-color-adjust: none; } }
+/* The live character (flowflow/, character.live): a canvas in place of the picture, the same size, taking no clicks. It is a little
+   taller than the button (120%) so a stretch or a drop has room, and sits on its bottom edge. */
+.character .flowflow { position: absolute; left: 0; bottom: 0; width: 100%; height: 120%; pointer-events: none; }
+.home-char .home-flowflow { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
+
+/* The Settings window (settingswin.rs, 27 Oct 2026): a normal Mac window with the same side list, groups, rows and switches as
+   Settings in Home (the rules above), the side list on the left and one section at a time on the right. */
+.settings-window { display: grid; grid-template-columns: calc(196rem / 14) minmax(0, 1fr); height: 100vh; }
+.settings-window .side { height: 100vh; box-sizing: border-box; }
+.settings-window .inner { max-width: 640px; }
+/* The Settings window's side list and its top (the HeyClicky style layout of 27 Oct 2026). Home no longer has a side list, so
+   these rules belong to the Settings window only. The open section has a fill and a solid bar on its edge (the bar meets 3 to 1). */
+.settings-window .side { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--space-2) var(--space-3); background: color-mix(in srgb, var(--fg) 4%, var(--bg)); border-right: 1px solid var(--line); }
+.settings-window .content { display: flex; flex-direction: column; min-width: 0; height: 100vh; overflow-y: auto; }
+.settings-window .top { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: var(--space-3) 0 var(--space-4); }
+.settings-window .top h1 { font-size: var(--t-display); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: 0; }
+.side-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.side-item { display: block; width: 100%; box-sizing: border-box; padding: calc(8rem / 14) var(--space-2); border: 0; border-left: 3px solid transparent; border-radius: var(--r-sm); background: transparent; color: var(--fg); font-size: var(--t-small); line-height: 1.3; text-align: left; cursor: pointer; }
+.side-item:hover { color: var(--fg); background: color-mix(in srgb, var(--fg) 7%, var(--bg)); }
+.side-item[aria-current="page"] { background: color-mix(in srgb, var(--fg) 11%, var(--bg)); border-left-color: var(--fg); font-weight: 600; }
+@media (forced-colors: active) { .side-item[aria-current="page"] { outline: 2px solid Highlight; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The first run (onboarding.tsx). The recorded fix (firstLook.tsx) is the first thing a new person sees: one big line per
+   step, a small picture of the page and the line of code, the check going from red to green, and Undo. Words stay the
+   star; the picture is decoration for sighted people (the words carry it for VoiceOver). */
+.onboarding .ob-sub { font-size: var(--t-body); margin: var(--space-4) 0 var(--space-1); }
+.onboarding .ob-steps { margin: var(--space-2) 0; padding-left: 1.4em; display: grid; gap: var(--space-1); font-size: var(--t-body); }
+.first-look { display: grid; gap: var(--space-3); }
+.fl-tagline { margin: 0; font-size: var(--t-small); font-weight: 600; color: var(--muted); }
+.fl-say h2 { margin: 0; font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -0.01em; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-say p { margin: var(--space-1) 0 0; font-size: var(--t-body); }
+@keyframes fl-in { from { opacity: 0; transform: translateY(4px); } }
+.fl-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--space-3); align-items: start; }
+.fl-page { border-radius: 12px; background: #f5f5f7; color: #111; overflow-wrap: anywhere; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); transition: box-shadow var(--dur-slow) var(--ease); }
+.fl-page.ok { box-shadow: 0 0 0 2px var(--ok); }
+.fl-chrome { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 7px 10px; border-bottom: 1px solid #e2e2e6; font-size: var(--t-caption); color: #555; background: #f5f5f7; border-radius: 12px 12px 0 0; }
+.fl-chrome span { width: 7px; min-height: 7px; border-radius: 50%; background: #c9c9cf; }
+.fl-chrome b { margin-left: var(--space-2); font-weight: 500; }
+.fl-body { padding: var(--space-3); display: grid; gap: var(--space-2); }
+.fl-h { font-weight: 700; font-size: var(--t-body); }
+.fl-form { display: flex; flex-wrap: wrap; gap: 6px; }
+.fl-input { flex: 1; min-width: 80px; padding: 5px 8px; border: 1px solid #c9c9cf; border-radius: 6px; color: #666; background: #fff; font-size: var(--t-caption); }
+.fl-join { padding: 5px 12px; border-radius: 6px; background: #111; color: #fff; font-size: var(--t-caption); font-weight: 600; }
+.fl-join.press { animation: fl-press 1.4s var(--ease) .4s 2; }
+@keyframes fl-press { 20% { transform: scale(.92); } 40% { transform: none; } }
+.fl-msg { font-size: var(--t-caption); font-weight: 600; }
+.fl-msg.bad { color: #b3261e; background: #f5f5f7; }
+.fl-msg.ok { color: #187a42; background: #f5f5f7; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-caption { padding: 0 var(--space-3) var(--space-2); font-size: var(--t-caption); color: #187a42; background: #f5f5f7; border-radius: 0 0 12px 12px; font-weight: 600; }
+.fl-side { display: grid; gap: var(--space-2); }
+.fl-code, .fl-check, .fl-undo { opacity: .25; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); transform: translateY(4px); }
+.fl-code.in, .fl-check.in, .fl-undo.in { opacity: 1; transform: none; }
+.fl-code { border-radius: 12px; background: var(--surface); padding: var(--space-2) var(--space-3); display: grid; gap: 4px; }
+.fl-file { font-size: var(--t-caption); font-weight: 600; overflow-wrap: anywhere; }
+.fl-line { display: block; font: var(--t-caption) / 1.5 ui-monospace, "SF Mono", Menlo, monospace; padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+.fl-line.bad { background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.fl-line.gone { text-decoration: line-through; color: var(--fg); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.fl-line.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); animation: fl-in var(--dur-slow) var(--ease); }
+.fl-n { display: inline-block; min-width: 1.6em; color: var(--muted); }
+.fl-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-radius: 12px; padding: var(--space-2) var(--space-3); background: var(--surface); font-size: var(--t-small); }
+.fl-check b { margin-left: auto; }
+.fl-check.bad .fl-mark, .fl-check.bad b { color: var(--danger); }
+.fl-check.ok .fl-mark, .fl-check.ok b { color: var(--ok); }
+.fl-check.ok.in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 50%, transparent); }
+.fl-undo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-self: start; padding: 6px 12px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--fg) 10%, transparent); font-size: var(--t-small); font-weight: 600; }
+.fl-undo.in .fl-undo-ic { animation: fl-spin .6s var(--ease) .2s; }
+@keyframes fl-spin { from { transform: rotate(0); } to { transform: rotate(-360deg); } }
+.fl-dots { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fl-dot { width: 22px; min-height: 6px; padding: 0; border: 0; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--fg) 22%, transparent); cursor: pointer; transition: background var(--dur) var(--ease); }
+.fl-dot.on { background: var(--fg); }
+.fl-recorded { margin: 0; }
+@media (max-width: 520px) { .fl-stage { grid-template-columns: 1fr; } }
+.fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); column-gap: var(--space-4); align-items: center; }
+.fl-head .home-char { width: 112px; margin: 0; }
+.fl-say .fl-tagline { margin-bottom: var(--space-1); }
+/* The checks that ran on a fix (proofChipsView.tsx): green or red, each with its tick or cross too. */
+.proof-chips { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.proof-chips li { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: var(--t-small); font-weight: 500; background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.proof-chips li.ok .ic { color: var(--ok); }
+.proof-chips li.bad .ic { color: var(--danger); }
+
+/* The panel under the notch (islandPanel.tsx; 27 Oct 2026, "like HeyClicky's notch hover"; 28 Oct 2026, M17 night and lime):
+   the notch grown down into a small panel, never a character. Lime, the mark's colour, is the one colour that means "do
+   this": the main button is a lime key that sinks when pressed. Pills are dark with a lime drawing, work cards are lit by
+   how they are going (lime while working, green when done), and a faint lime glow sits along the bottom edge. With nothing
+   running it says hello in big rounded words. Always laid out at island.rs PANEL_W so its height is measured before it
+   opens; shown only while the pointer rests on the island. */
+.island-panel { --lime-hi: #E4FF8A; --lime-lo: #8DBA12; --lime-ink: #1A2600; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+/* The notch's black, lifting to a soft grey where the panel hangs. */
+.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
+.island-panel[data-shown] { visibility: visible; opacity: 1; transition-delay: 60ms; }
+.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(198, 244, 50, .22), transparent); pointer-events: none; }
+.island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
+.island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.island-panel .ip-hi { margin: 4px 4px 0; color: #F7F7F2; font: 700 calc(21rem / 14)/1.15 var(--round); letter-spacing: -.01em; }
+.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 18px; color: #1A2600; background-color: #C6F432; background-image: linear-gradient(180deg, var(--lime-hi) 0%, #C6F432 55%, #B5E61F 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 4px 0 var(--lime-lo), 0 12px 30px rgba(198, 244, 50, .3); font: 700 var(--t-answer) var(--round); letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.island-panel .ip-go:hover { transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 5px 0 var(--lime-lo), 0 16px 38px rgba(198, 244, 50, .45); }
+.island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(198, 244, 50, .25); }
+.island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #C6F432; background: #1A2600; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
+.island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform var(--dur-2) var(--ease-spring), background-color var(--dur-2) var(--ease-out); }
+.island-panel .ip-pill:hover { background: #34343A; transform: translateY(-1px); }
+.island-panel .ip-pill:active { transform: scale(.94); }
+.island-panel .ip-pill .ic { color: #C6F432; }
+.island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
+.island-panel .ip-open:hover { background: #34343A; }
+.island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.island-panel .ip-jobs li { animation: ip-in var(--dur-4) var(--ease-spring) both; }
+@keyframes ip-in { from { opacity: 0; translate: 0 -6px; scale: .97; } }
+.island-panel .ip-job { position: relative; overflow: hidden; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 16px; background: #1E1E21; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover { background: #26262A; }
+.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(198, 244, 50, .3); }
+/* While it works, a lime light runs along the card's foot. */
+.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #C6F432, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
+@keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
+.island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
+.island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
+.island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
+.island-panel .ip-text b { font: 600 var(--t-small) var(--round); color: #fff; overflow-wrap: anywhere; }
+.island-panel .ip-text span { color: #c4c4c9; font-size: var(--t-caption); overflow-wrap: anywhere; }
+.island-panel .ip-cost { padding: 3px 8px; border-radius: var(--r-pill); color: #C6F432; background: #2B3313; font: 700 var(--t-caption) var(--round); font-variant-numeric: tabular-nums; }
+.island-panel .ip-job[data-tone="done"] .ip-cost { color: #7BE495; background: #17301F; }
+.island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
+/* The sun beside the notch (M16): Squibby's mark (the smiling pinwheel sun, app/brand) on the menu bar just left of the
+   notch, at rest only (the wings and the panel take its place while they show). One colour like the Mac's own menu bar
+   icons: white on a dark menu bar, black on a light one. The window is island.rs MARK wider each side, see through;
+   resting on it opens the panel. It fades in, and breathes very slowly. */
+.island-sun { position: absolute; top: calc((var(--row) - 15px) / 2); left: calc(50% - var(--core) / 2 - 20.5px); width: 15px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; z-index: 1; }
+.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-3) var(--ease-out) both; }
+@keyframes island-sun-in { from { opacity: 0; scale: .6; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The waterline (M17 step 4, 28 Oct 2026, a frontend-design pass after the founder said the look still fell flat). Home is
+   a cross section of water. Above the line: black, Flowflow floating half in the water, and the question in big heavy
+   rounded type. Below: deep water, where the work happens. It is the one bold thing; everything under it is quiet: a white
+   ask box like paper on the water with the lime key in it, and the quick actions as plain rows with a lime drawing (no
+   cards, no pills). The surface drifts slowly; it is still with reduced motion. */
+.home { background: linear-gradient(180deg, var(--home-sea) 0, var(--home-sea) 200px, var(--home-sea-deep) 460px, var(--sky) 100%); }
+.home .bar { position: relative; z-index: 2; }
+.home .hero { position: relative; grid-template-columns: 132px minmax(0, 1fr); row-gap: var(--space-6); margin-bottom: var(--space-4); }
+/* The sky: black from the top of Home down to the surface. The surface itself is a wave drawn in the page (card.tsx
+   Waterline), black above a thin water blue line, drifting slowly sideways. */
+.home .hero::before { content: ""; position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: -300px; height: calc(300px + 80px); background: var(--sky); pointer-events: none; z-index: 0; }
+.home .waterline { position: absolute; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); top: 76px; height: 22px; overflow: clip; pointer-events: none; z-index: 0; }
+.home .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+@keyframes waterline { to { translate: -160px 0; } }
+.home .hero .home-char, .home .hero .hero-words { position: relative; z-index: 1; }
+.home .hero .hero-words { align-self: start; padding-top: var(--space-3); }
+/* Flowflow floats in the surface: the lower part of it is under the line, seen through the water. */
+.home .hero .home-char { translate: 0 18px; }
+.home .home-char { -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 72%, rgba(0, 0, 0, .55) 100%); }
+.home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
+.home .subline { font-size: var(--t-small); }
+/* The ask box: white paper on the water, the words in black, the lime key to send. */
+.home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
+.home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(198, 244, 50, .55), 0 10px 40px rgba(0, 0, 0, .45); }
+.home .ask textarea { color: #000000; background: #ffffff; caret-color: #000000; }
+.home .ask textarea::placeholder { color: #5f5f66; background: #ffffff; }
+.home .ask .icon-btn { color: #3a3a40; background: #ffffff; }
+.home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: #ececef; color: #000000; }
+.home .ask .talk-how { background: #f0f0f2; color: #000000; }
+.home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: #e2e2e6; }
+.home .ask .btn.primary.send { background: #C6F432; color: #1A2600; box-shadow: 0 2px 0 #8DBA12; }
+.home .ask:has(textarea:placeholder-shown) .btn.primary.send { background: #e8e8ec; color: #5f5f66; box-shadow: none; }
+/* The quick actions: plain rows, a lime drawing and a verb, left aligned, the whole width. */
+.home .chips.quick { display: grid; gap: 0; margin: var(--space-3) 0 0; }
+.home .chips.quick .chip-btn { justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: calc(42rem / 14); padding: 0 var(--space-2); border-radius: var(--r-md); background: transparent; color: var(--fg); font: 600 var(--t-body) var(--round); transform: none; }
+.home .chips.quick .chip-btn:hover { background: rgba(89, 210, 255, .1); transform: none; }
+.home .chips.quick .chip-btn .ic { color: var(--key); width: 16px; }
+/* The top row stays out of the way: the round buttons are only their drawings until the pointer is on them. */
+.home .bar .icon-btn { background: transparent; color: var(--muted); }
+.home .bar .icon-btn:hover { background: rgba(255, 255, 255, .1); color: var(--fg); }
+.home .bar .icon-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.home .foot { border-top: 0; }
+@media (prefers-reduced-motion: reduce) { .home .waterline svg { animation: none; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The first run (M18, onboarding.tsx): Home's black with water at the foot that rises with every step (--level, set by the
+   step; onboarding.ts LEVEL), the hello where a drop falls in and Flowflow rises out of it, and the one lime key always at
+   the bottom. Cards over the water have solid backs so the surface never runs through words. */
+.home:has(.fr) { background: #000000; }
+.fr { position: relative; display: flex; flex-direction: column; min-height: calc(560rem / 14); margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) calc(var(--space-5) * -1); padding: var(--space-5) var(--space-6) var(--space-6); overflow: clip; isolation: isolate; }
+.fr > * { position: relative; z-index: 1; }
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); transition: height 900ms var(--ease-spring); }
+.fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
+.fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.fr-top { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.fr-back { display: grid; place-items: center; width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--fg); font-size: var(--t-body); cursor: pointer; }
+.fr-back:hover { background: rgba(255, 255, 255, .12); }
+.fr-count { margin-left: auto; color: var(--muted); }
+.fr-title { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; }
+.fr-line { margin: 0 0 var(--space-4); max-width: 36ch; color: var(--muted); font-size: var(--t-body); line-height: 1.45; }
+.fr-small { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--t-small); }
+.fr-grow { flex: 1; min-height: var(--space-5); }
+.fr-key { min-height: 52px; padding: 0 var(--space-5); border: 0; border-radius: 18px; color: #1A2600; background: #C6F432; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12, 0 14px 30px rgba(198, 244, 50, .22); font: 700 var(--t-answer) var(--round); cursor: pointer; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.fr-key:active:not(:disabled) { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 1px 0 #8DBA12; }
+.fr-key:disabled { opacity: .45; cursor: not-allowed; }
+.fr-quiet { margin: var(--space-3) auto 0; padding: var(--space-1) var(--space-3); border: 0; background: transparent; color: var(--fg); font: 600 var(--t-small) var(--round); cursor: pointer; }
+.fr-quiet:hover { color: var(--fg); text-decoration: underline; }
+.fr-link { align-self: flex-start; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--fg); font: 600 var(--t-small) var(--round); text-decoration: underline; cursor: pointer; }
+.fr-label { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 var(--t-small) var(--round); }
+/* The hello: a drop falls into the water, a ripple spreads, and Flowflow rises out of it. */
+.fr-hello { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, #ffffff 0 12%, var(--water) 45%, #1676C8); animation: fr-fall 900ms cubic-bezier(.55, 0, 1, .45) 200ms forwards; }
+.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid var(--water); border-radius: 50%; opacity: 0; animation: fr-ripple 1.2s ease-out 1.05s; }
+.fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise 900ms var(--ease-spring) 1.05s forwards; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); }
+@keyframes fr-fall { to { top: calc(100% - var(--level) - 6px); opacity: 0; } }
+@keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
+@keyframes fr-rise { from { opacity: 0; transform: translateY(50px) scale(.7); } to { opacity: 1; transform: none; } }
+.fr[data-step="hello"] .fr-title { margin-top: var(--space-7); }
+/* Who do you want with you: Flowflow chosen, and empty places for the companions to come. */
+.fr-cast { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: color-mix(in srgb, var(--water) 18%, #000000); color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px var(--water); cursor: default; }
+.fr-pick img { width: 64px; height: auto; }
+.fr-pick b { font: 700 var(--t-answer) var(--round); }
+.fr-pick span { color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
+.fr-pick[aria-pressed="true"]::after { content: "\2713"; position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 22px; min-height: 22px; border-radius: 50%; background: #C6F432; color: #1A2600; font: 900 var(--t-caption) var(--round); box-shadow: 0 2px 0 #8DBA12; }
+.fr-pick.slot { background: #0A0A0C; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .18); }
+.fr-pick.slot b { color: var(--muted); }
+.fr-hole { width: 60px; min-height: 48px; border: 1.5px dashed rgba(255, 255, 255, .3); border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%; }
+.fr-soon { padding: 2px 8px; border-radius: var(--r-pill); background: #1E1E22; color: #B4B4BC; font: 600 var(--t-caption) var(--round); }
+/* Make it yours. */
+.fr-name { display: flex; align-items: center; gap: var(--space-3); min-height: 54px; padding: 0 var(--space-4); border-radius: 18px; background: #ffffff; color: #000000; }
+.fr-name img { width: 34px; height: auto; }
+.fr-name input { flex: 1; min-width: 0; border: 0; outline: 0; background: #ffffff; color: #000000; font: 700 calc(20rem / 14) var(--round); }
+.fr-name input::placeholder { color: #5f5f66; background: #ffffff; }
+.fr-name:focus-within { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
+.fr-name input:focus-visible { outline: 2px solid #1A2600; outline-offset: 4px; }
+.fr-seg { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fr-seg button { display: grid; gap: 2px; padding: var(--space-3); border: 0; border-radius: 16px; background: #121216; color: #ffffff; text-align: left; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
+.fr-seg button b { font: 700 var(--t-body) var(--round); }
+.fr-seg button span { color: var(--muted); font-size: var(--t-caption); }
+.fr-seg button[aria-pressed="true"] { background: #ffffff; color: #000000; }
+.fr-seg button[aria-pressed="true"] span { color: #4A4A52; background: #ffffff; }
+.fr-seg.small button { padding: var(--space-2) var(--space-3); font: 600 var(--t-small) var(--round); }
+.fr-edges { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.fr-edge { position: relative; min-height: 56px; border: 0; border-radius: 12px; background: #121216; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
+.fr-edge i { position: absolute; width: 12px; min-height: 10px; border-radius: 50%; background: var(--water); }
+.fr-edge[data-edge="left"] i { left: 4px; top: calc(50% - 5px); }
+.fr-edge[data-edge="right"] i { right: 4px; top: calc(50% - 5px); }
+.fr-edge[data-edge="top"] i { left: calc(50% - 6px); top: 4px; }
+.fr-edge[data-edge="bottom"] i { left: calc(50% - 6px); bottom: 4px; }
+.fr-edge[aria-pressed="true"] { background: color-mix(in srgb, var(--water) 18%, #000000); box-shadow: inset 0 0 0 2px var(--water); }
+/* What should it help with. */
+.fr-powers { display: grid; gap: var(--space-2); }
+.fr-power { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: 18px; background: #101013; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-power b { display: block; font: 700 var(--t-body) var(--round); }
+.fr-power span { display: block; color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
+.fr-power em { display: block; margin-top: 2px; color: #FFCF73; background: #101013; font-style: normal; font-size: var(--t-caption); }
+.fr-tog { position: relative; width: 44px; min-height: 26px; padding: 0; border: 0; border-radius: var(--r-pill); background: #3A3A40; cursor: pointer; transition: background-color var(--dur-2) var(--ease-out); }
+.fr-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform var(--dur-3) var(--ease-spring); }
+.fr-tog[aria-pressed="true"] { background: #C6F432; }
+.fr-tog[aria-pressed="true"]::after { transform: translateX(18px); background: #1A2600; }
+/* Connect and the folder. */
+.fr-steps { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 1.2em); display: grid; gap: var(--space-1); border-radius: 16px; background: #101013; color: #ffffff; font-size: var(--t-small); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-keyrow { display: flex; gap: var(--space-2); }
+.fr-keyrow input { flex: 1; min-width: 0; min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 500 var(--t-body) -apple-system, "SF Pro Text", sans-serif; }
+.fr-keyrow input::placeholder { color: #5f5f66; background: #ffffff; }
+.fr-keyrow input:focus { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
+.fr-save { min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 700 var(--t-body) var(--round); cursor: pointer; }
+.fr-ok { margin: 0; color: var(--key); font: 700 var(--t-answer) var(--round); }
+.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed rgba(255, 255, 255, .35); border-radius: 20px; background: color-mix(in srgb, var(--water) 8%, #000000); color: #ffffff; text-align: left; cursor: pointer; }
+.fr-folder b { font: 700 var(--t-answer) var(--round); }
+.fr-folder span { color: var(--muted); font-size: var(--t-caption); overflow-wrap: anywhere; }
+.fr-folder:hover { border-color: var(--water); }
+/* Ready: the water nearly full, Flowflow pleased, the keys to remember, the optional questions folded away. */
+.fr-done { align-self: center; margin-top: var(--space-2); }
+.fr[data-step="ready"] .fr-title { margin-top: var(--space-2); }
+.fr-tips { display: grid; gap: var(--space-2); }
+.fr-tip { display: flex; align-items: baseline; gap: var(--space-3); color: var(--fg); font-size: var(--t-body); }
+.fr-tip kbd { flex: none; min-width: 64px; padding: 3px 8px; border-radius: 8px; background: #ffffff; color: #000000; font: 700 var(--t-caption) var(--round); text-align: center; }
+.fr-keys { margin-top: var(--space-2); display: grid; gap: var(--space-1); color: var(--fg); font-size: var(--t-small); }
+.fr-more { margin-top: var(--space-4); }
+.fr-more > summary { color: var(--fg); font: 600 var(--t-small) var(--round); cursor: pointer; }
+.fr-q { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.fr-q b { font: 600 var(--t-small) var(--round); }
+@media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* Settings, grouped (M18): the side list under a few headings, each part with a small dot in its group's colour (water for
+   the companion, lime for the powers, grey for the rest), and the character alive
+   on the water at the top of its own part. */
+.side-group { display: flex; flex-direction: column; gap: 1px; }
+.side-group + .side-group { margin-top: var(--space-3); }
+.side-head { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.side-item { display: flex; align-items: center; gap: var(--space-2); }
+.side-dot { flex: none; width: 8px; min-height: 8px; border-radius: 50%; background: var(--muted); }
+.side-group[data-group="companion"] .side-dot { background: var(--water); }
+.side-group[data-group="powers"] .side-dot { background: var(--key); }
+.companion-hero { position: relative; display: grid; place-items: center; min-height: 190px; margin: 0 0 var(--space-4); border-radius: 22px; background: linear-gradient(180deg, #0B0D12, #000000 60%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); overflow: clip; isolation: isolate; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); z-index: 0; }
+.companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
+.companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.companion-hero .ch-char { position: relative; z-index: 1; margin-top: var(--space-5); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
+.companion-hero .ch-name { position: absolute; left: var(--space-5); bottom: var(--space-4); z-index: 2; color: #ffffff; background: var(--sea); font: 800 calc(22rem / 14) var(--round); letter-spacing: -0.02em; }
+.companion-hero .ch-states { position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2; display: flex; gap: var(--space-1); }
+.companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--water) 14%, #000000); color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-states button[aria-pressed="true"] { background: #ffffff; color: #000000; }
+
+/* The recorded fix inside the first run (M18): the same black, one column so the page and the code each get the width,
+   big rounded words, lime step marks, and the same full width lime key at the bottom as every other step. */
+.home:has(.onboarding.look) { background: #000000; }
+.onboarding.look .first-look { gap: var(--space-4); }
+.onboarding.look .fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.onboarding.look .fl-head .home-char { width: 132px; margin: -8px -12px -6px; }
+.onboarding.look .fl-say h2 { font: 800 calc(26rem / 14)/1.08 var(--round); letter-spacing: -0.02em; }
+.onboarding.look .fl-tagline { font-family: var(--round); }
+.onboarding.look .fl-stage { grid-template-columns: minmax(0, 1fr); }
+.onboarding.look .fl-code, .onboarding.look .fl-check { background: #121216; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.onboarding.look .fl-dot.on { background: var(--key); }
+.onboarding.look .fl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
+.companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-again:hover { background: #2A2A30; }
+/* Fluid steps (M18): each screen of the first run slides in on the island's spring, from the right going on and from the
+   left going back, a little blurred until it settles, while the water rises underneath. None with reduced motion. */
+.fr-slide { display: flex; flex-direction: column; flex: 1; animation: fr-slide-on 520ms var(--ease-spring) both; }
+.fr-slide[data-dir="back"] { animation-name: fr-slide-back; }
+.fr-slide > .fr-hello { z-index: 1; }
+@keyframes fr-slide-on { from { opacity: 0; transform: translateX(36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes fr-slide-back { from { opacity: 0; transform: translateX(-36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in 520ms var(--ease-out) 60ms both; }
+.fr-slide .fr-line { animation-delay: 110ms; }
+@keyframes fr-rise-in { from { opacity: 0; transform: translateY(8px); } }
+
+/* Home's theme (M19, look.theme; lookfeel.ts): Night (the usual black), Deep sea (dark blue) or Paper (light). Only Home
+   follows it; the notch stays black like the notch, and the first run is always Night (it comes before any choice). The
+   water's colour (look.water) sets --water and --sea on every page; under Paper the sea is a pale wash of that water. */
+:root.home-page { --home-sea: var(--sea); --home-sea-deep: var(--sea-deep); }
+:root.home-page[data-theme="deep"] { --bg: #071423; --sky: #071423; --surface: #10233A; --card: #0D1E31; --line: #1E3550; }
+:root.home-page[data-theme="paper"] { --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #C6F432; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
+:root.home-page[data-theme="paper"] .home .ask { box-shadow: 0 0 0 1px #DCDAD2, 0 8px 24px rgba(0, 0, 0, .08); }
+:root.home-page[data-theme="paper"] .home .waterline .line { stroke: var(--water-deep); }
+.fr { --fg: #f5f5f7; --muted: #a1a1a6; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; color: #f5f5f7; background: #000000; }
+.home:has(.fr) { background: #000000; }
+.waterline .sky { fill: var(--sky); }
+.waterline .sea { fill: var(--sea); }
+.waterline .line { stroke: var(--water); }
+/* The water's colour (M19) turns Flowflow's pictures too (they are drawn in ocean blue), and its size on the edge scales it
+   inside its window (look.size; lookfeel.ts SIZE_SCALE keeps large inside the 160 point window). */
+.pose, .home-pose, .ip-agent, .fr-pick img, .fr-name img { filter: hue-rotate(var(--water-turn, 0deg)); }
+.character { scale: var(--char-scale, 1); }
+/* The notch panel, compact (M19, panel.size): tighter and smaller words; the main button stays easy to hit. */
+.island-panel[data-size="compact"] { padding: 6px 12px 10px; gap: 8px; font-size: var(--t-caption); }
+.island-panel[data-size="compact"] .ip-hi { font-size: calc(17rem / 14); }
+.island-panel[data-size="compact"] .ip-go { min-height: 40px; border-radius: 14px; font-size: var(--t-body); }
+.island-panel[data-size="compact"] .ip-job { padding: 6px 8px; }
+/* On the character's card (M19): the water colours as drops, one tap each, and how lively, both shown at once above. */
+.ch-look { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); margin: calc(var(--space-2) * -1) 0 var(--space-4); }
+.ch-waters { display: flex; gap: var(--space-2); }
+.ch-water-pick { width: 30px; min-height: 30px; padding: 0; border: 0; border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; background: radial-gradient(circle at 38% 30%, #ffffff 0 10%, var(--pick) 45%, var(--pick-deep)); box-shadow: 0 0 0 2px transparent; cursor: pointer; transition: transform var(--dur-2) var(--ease-spring), box-shadow var(--dur-2) var(--ease-out); }
+.ch-water-pick:hover { transform: translateY(-2px) scale(1.06); }
+.ch-water-pick[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); transform: scale(1.1); }
+.ch-lively { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--surface); }
+.ch-lively button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: var(--surface); color: var(--fg); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.ch-lively button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+/* Settings inside Home (M20): its parts grouped under the same headings as everywhere (settingsGroups.ts), Character first. */
+.sections-grouped { display: grid; gap: var(--space-3); margin: 0 0 var(--space-4); }
+.sections-group .sections { margin: 0; }
+.sections-head { margin: 0 0 var(--space-1); color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.fr-seg.three { grid-template-columns: repeat(3, 1fr); }

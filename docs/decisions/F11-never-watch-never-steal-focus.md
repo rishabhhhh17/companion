@@ -42,3 +42,7 @@ Each happens only while Home has the keyboard and nothing in it does (for the fi
 
 ## Revisit only if
 The founder decides to.
+
+
+## Amendment (27 Oct 2026, the founder, M16)
+Asked whether Squibby may show its own app menu ("Squibby  Edit  View  Window  Help"), which a menu bar app with no Dock icon cannot, the founder said yes, only then: Squibby may become a normal app (its menu shows, and a Dock icon may show) only while a window the person opened themselves is in front (the Settings window, or Home while they type in it), and goes back to an accessory app with no Dock icon as soon as that window closes or another app comes in front. Never while idle, never by itself, never to take the keyboard unasked. Everything else here stands. Whether macOS shows the menu without a Dock icon is checked in a short spike first ([verify]); T01 is amended to match.

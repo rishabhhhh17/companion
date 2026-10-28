@@ -8,8 +8,11 @@ use std::path::Path;
 pub const MAX_BYTES: u64 = 512 * 1024;
 
 /// What is always written: the app starting, the engine starting or failing, the person pressing one of our own hotkeys,
-/// and a second copy of Companion leaving because one was already running.
-const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left"];
+/// a question asked before something risky and how it was answered (the kind and the tool, never the words),
+/// a second copy of Companion leaving because one was already running, and the raw detail of a failure from Squibby's own
+/// machinery (the person reads one plain sentence; the detail, secrets hidden and the home folder written as ~, is kept
+/// here for a report).
+const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail"];
 
 pub fn should_log(ev: &str, verbose: bool) -> bool { verbose || QUIET.contains(&ev) }
 
@@ -47,7 +50,7 @@ mod tests {
     fn dir(name: &str) -> std::path::PathBuf { let d = std::env::temp_dir().join(format!("companion-log-{name}-{}", std::process::id())); let _ = fs::remove_dir_all(&d); fs::create_dir_all(&d).unwrap(); d }
 
     #[test] fn by_default_only_the_few_important_events_are_written() {
-        for ev in ["launch", "runner_failed", "hotkey", "take_the_wheel", "second_copy_left"] { assert!(should_log(ev, false), "{ev}"); }
+        for ev in ["launch", "runner_failed", "hotkey", "take_the_wheel", "second_copy_left", "approval_asked", "approval_answered"] { assert!(should_log(ev, false), "{ev}"); }
         for ev in ["front_app_changed", "runner_event", "click", "native_mousedown", "prompt_help", "prompt_help_step", "card_open", "fullscreen_raw"] { assert!(!should_log(ev, false), "{ev}"); }
     }
     #[test] fn in_debug_mode_everything_is_written() { for ev in ["front_app_changed", "click", "anything"] { assert!(should_log(ev, true)); } }

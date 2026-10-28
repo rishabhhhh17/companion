@@ -33,8 +33,10 @@ Rules for you during the hour:
 | 6 | In `test-shop`, run the page in your browser, click "Show gallery", see nothing happen | (the problem exists) | |
 | 7 | Press **Control+Option+Command+F** (find the problem) | A light comes on first, then a plain sentence about the broken button | No light, wrong place pointed to, or it blames the wrong thing |
 | 8 | Say yes to "fix it with me" | A short plan of one or two steps. A fix. A line saying it was checked | Many steps, jargon, or "fixed" with no check |
-| 9 | Press **Control+Option+Command+E** (explain) | Two short lines of why, and one question | Words like "variable" or "function", or a line longer than a sentence |
-| 10 | Undo the fix | The page is back to broken | Undo changes anything else |
+| 9 | Select an error message with the mouse (for example the red text in a Terminal or a browser console, or paste one into TextEdit and select it), then press **Control+Option+Command+E** (explain a selected error) | A light first, then two short plain lines about what the error means and where it is in your project, with Show me where and Fix it buttons | Words like "variable" or "function", a line longer than a sentence, or nothing on screen at all |
+| 9b | Click in an app with nothing selected (try Cursor or VS Code too), then press **Control+Option+Command+E** again | Always a plain line in the card, never silence: that nothing could be read and to select the text and try again (or that Accessibility is off, or that Squibby itself is in front) | The key does nothing visible, or the card shows a stuck "Reading" line for more than five seconds |
+| 10 | Undo the fix: press Undo on the receipt on Now, or open What I did and press Undo this task on the newest task that changed files | The page is back to broken. Older tasks in What I did show a line saying only the newest task has Undo and why | Undo changes anything else, or an older task has an Undo button |
+| 10b | Ask a plain question, such as "what does this page do?" | The answer sits under a heading called Answer, not What changed | The heading says What changed for an answer that changed no files |
 | 11 | Ask it to "add a setting SITE_NAME=My Shop to the .env file" | **A card** naming `SITE_NAME` and never showing `My Shop`. After yes, the line is added | No card, the value is shown, or it writes the file without asking |
 | 12 | Ask it to "add STRIPE_SECRET_KEY=abc to .env" | It refuses and tells you to add that line yourself | It writes it |
 
@@ -43,7 +45,7 @@ Rules for you during the hour:
 | Step | You do | You should see | Write down if |
 |---|---|---|---|
 | 13 | Hold **Option+Space**, say "what does this button do", let go | A mic permission box the first time (say yes). A light while it listens. A spoken or written answer | No light, no permission box, or the keys do nothing (another app such as Alfred, Raycast or ChatGPT may own Option+Space; Settings can change it) |
-| 14 | Open any app with buttons, press **Control+Option+Command+S** (show me), ask where to click to do something | A screen recording permission box the first time. A ring on the right control | The ring is on the wrong thing, or it never appears |
+| 14 | Open any app with buttons, press **Control+Option+Command+S** (show me), say out loud where to click to do something, then press the same keys again | The light comes on first and the card says it is listening (a microphone permission box the first time, then press again). The second press ends it, then a screen recording permission box the first time, and a ring on the right control. With voice off, no speech model, or the microphone not allowed yet, the key opens the question box instead (type your question there) | The ring is on the wrong thing or never appears, the light is not on while it listens, or the key listens when Stop everything was pressed |
 | 15 | Hold Option+Space and say a question with background noise | A sensible answer or a plain "I did not catch that" | A crash or a stuck light |
 
 ## Part 4: files, and the safety buttons (10 minutes)
@@ -53,7 +55,7 @@ Rules for you during the hour:
 | 16 | Drag a photo (PNG or HEIC) onto the character | A ring of choices such as JPEG, smaller, PDF. Pick one | The ring is cut off, overlaps, or the file lands somewhere surprising |
 | 17 | Start any task, then press **Control+Option+Command+X** (stop everything) | Everything stops within seconds, the mic light goes out | Anything keeps running |
 | 18 | Look in the menu bar for the mic and screen indicators | They are off when you are not using voice or show me | Either stays on |
-| 19 | Change one hotkey in Settings | It works at once, and a clash is explained in plain words | It silently fails |
+| 19 | Change one hotkey in Settings, once from the short list and once by ticking Control, Option, Shift or Command and choosing the key from the list under "Or pick any keys" (it needs two ticks, one of them Control or Command) | It works at once, and a clash is explained in plain words | It silently fails, or a chord with one tick is accepted |
 | 20 | Open Home, drag in a PDF with real text (a bank letter or an invoice), then a Word file and an Excel sheet, and ask "what is the total?" with Start | Each shows as a chip with its KB of text; the answer uses what is in them. A scanned PDF says it has no text to read; a long one says only its start goes | A chip is missing, the answer ignores the file, or anything waits more than a few seconds |
 | 21 | Join a test call in Zoom or FaceTime with Hide from screen sharing on, share your screen, and ask Squibby something with Speak to me on | Your shared screen shows no character, ring or Home; while the call app is in front Squibby does not speak | Any of them shows in the share, or it speaks over the call |
 

@@ -17,7 +17,10 @@ export const KEYS_START: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_D
 
 // A chord's id is keymap.rs's: the modifiers in the Mac's order (Control, Option, Shift, Command), then the key.
 const MODS = ["control", "option", "shift", "command"] as const;
-const KEYS = ["a", "c", "e", "f", "i", "j", "k", "l", "o", "p", "r", "s", "u", "x", "space", "return"];
+/** Every key a chord can end with (keymap.rs KEYS; keypick.test.ts checks), and the ones Settings offers in its list. */
+const LETTERS = "abcdefghijklmnopqrstuvwxyz".split(""), DIGITS = "0123456789".split("");
+const KEYS = [...LETTERS, ...DIGITS, "space", "return"];
+export const CUSTOM_KEYS: readonly string[] = [...LETTERS, ...DIGITS, "space"];
 const keyWord = (k: string): string => (k.length === 1 ? k.toUpperCase() : (S.keyWords as Record<string, string>)[k] ?? "");
 
 /** "Control, Option, Command and K", "Option and Space"; empty for anything not written exactly the way the app writes it. */
@@ -120,10 +123,28 @@ export function choicesFrom(v: unknown, job: Job): Choices {
  *  while a result shows, so keys another app took since show as taken instead of a button that can only fail. */
 export const canPick = (c: Choices, id: string): boolean => c.choices.includes(id) && c.free.includes(id) && !c.ours[id];
 
+// ---- picking any chord (finding L) ----
+// Without reading a key press (rule 8): the person ticks the modifiers and chooses the key from CUSTOM_KEYS. The app checks the
+// same rules again (keymap.rs why_not); these only tell the person why a button cannot be pressed.
+/** The Mac's own shortcuts, never offered: screenshots, log out, lock screen, hide the Dock, emoji picker and Finder search. */
+export const MAC_OWN: readonly string[] = ["shift-command-3", "shift-command-4", "shift-command-5", "shift-command-q", "control-command-q", "option-command-d", "control-command-space", "option-command-space"];
+export type Ticked = Record<(typeof MODS)[number], boolean>;
+/** The chord's id, or why it cannot be one: not_enough (fewer than two modifiers, or neither Control nor Command), reserved
+ *  (the Mac uses it), unknown (not a key in the list). */
+export function customChord(t: Ticked, key: string): { id: string } | { problem: "not_enough" | "reserved" | "unknown" } {
+  if (!CUSTOM_KEYS.includes(key)) return { problem: "unknown" };
+  const mods = MODS.filter((m) => t[m]);
+  if (mods.length < 2 || !(t.control || t.command)) return { problem: "not_enough" };
+  const id = [...mods, key].join("-");
+  return MAC_OWN.includes(id) ? { problem: "reserved" } : { id };
+}
+
 /** Why the keys did not change, from the code the app sends (keymap.rs NotChanged, and the commands in main.rs). */
 export function keyProblem(code: string): string {
   if (code === "taken") return S.keysTaken;
   if (code === "in_use") return S.keysInUse;
   if (code === "not_saved") return S.keysNotSaved;
+  if (code === "not_enough") return S.keysNotEnough;
+  if (code === "reserved") return S.keysReserved;
   return S.keysFailed;
 }

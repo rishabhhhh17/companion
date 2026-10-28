@@ -14,6 +14,7 @@ import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
 import { label } from "./redact.ts";
 import { heldKey } from "./keychain.ts";
+import { testKey } from "./keytest.ts";
 import { TaskLog } from "./tasklog.ts";
 import { FileWalkStore, projectChecker } from "./walk.ts";
 import { WalkService } from "./walkservice.ts";
@@ -29,7 +30,8 @@ import { slowFactor } from "./proof/options.ts";
 import { WATCH_FILE, WatchEngine } from "./watch.ts";
 import { GhCli } from "./connections.ts";
 import { makeChecks, makeEvidence } from "./watchwire.ts";
-import { PRODUCT_S } from "./names.ts";
+import { PRODUCT, PRODUCT_S } from "./names.ts";
+import { failure } from "./plainfail.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -88,7 +90,7 @@ async function announceAuth() {
 try { await announceAuth(); } catch { say({ type: "auth.status", method: "unknown" }); }   // a failed look-up must not stop the engine starting
 
 // One thing going wrong in the background must never take the whole engine (and with it Stop, approvals and every task) down.
-const survive = (what: string) => (e: unknown) => { try { say({ type: "protocol.error", reason: `something went wrong in the background (${label(String((e as Error)?.message ?? e), 120)}); the engine kept running`, line: what }); } catch { /* nowhere to say it */ } };
+const survive = (what: string) => (e: unknown) => { try { say({ type: "protocol.error", ...failure(e), reason: `Something went wrong in the background. ${PRODUCT} kept running.`, line: what }); } catch { /* nowhere to say it */ } };
 process.on("unhandledRejection", survive("unhandledRejection"));
 process.on("uncaughtException", survive("uncaughtException"));
 
@@ -117,7 +119,7 @@ function dispatch(cmd: Command) {
   if (cmd.type === "engine.warm") { void warmer.warm().then((r) => { if (r.read) process.stderr.write(`warm: read the Claude binary (${Math.round(r.bytes / 1048576)} MB) in ${r.ms} ms\n`); }); return; }
   if (cmd.type === "browser.check") { browser.status(); return; }
   if (cmd.type === "browser.install") { const p = browser.install().finally(() => inflight.delete(p)); inflight.add(p); return; }
-  if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", reason: `could not check this Mac: ${e.message}` })); return; }
+  if (cmd.type === "doctor.check") { void doctor().then((items) => say({ type: "doctor.report", items })).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type), reason: `${PRODUCT} could not check this Mac. Try again.` })); return; }
   if (cmd.type.startsWith("metrics.")) {
     if (cmd.type === "metrics.set") metrics.setEnabled(cmd.enabled);
     else if (cmd.type === "metrics.note") { metrics.note(cmd.name); return; }
@@ -126,23 +128,25 @@ function dispatch(cmd: Command) {
     return;
   }
   // Watch routines: the schedule and the checks live in watch.ts; the group switch was checked above.
-  if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", reason: `could not handle ${cmd.type}: ${e.message}` })).finally(() => inflight.delete(p)); inflight.add(p); return; }
+  if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   metrics.observeCommand(cmd);
   if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); }
   const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
-    ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", reason: "Prompt help and Show me how are not available in this mode" })))
+    ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", cmd.type) })))
     : runner.handle(cmd);
   if (cmd.type === "agent.interruptAll" && assist) assist.cancelAll();
-  const p = work.catch((e: Error) => say({ type: "protocol.error", reason: `could not handle ${cmd.type}: ${e.message}` })).finally(() => inflight.delete(p));
+  const p = work.catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p));
   inflight.add(p);
 }
 
 function takeKey(line: string): boolean {
   try {
-    const j = JSON.parse(line) as { type?: string; key?: unknown };
+    const j = JSON.parse(line) as { type?: string; key?: unknown; fresh?: unknown };
     if (j.type !== "auth.key") return false;
     heldKey.set(typeof j.key === "string" ? j.key : null);
-  } catch { say({ type: "protocol.error", reason: "the key from the app could not be read" }); return false; }
+    // A key the person just saved is checked once with Anthropic (free, keytest.ts), so setup can say whether it works.
+    if (j.fresh === true && typeof j.key === "string") { const k = j.key.trim(); void announceAuth().then(async () => say({ type: "auth.status", method: "api_key", source: "keychain", tested: await testKey(k) })); return true; }
+  } catch { say({ type: "protocol.error", ...failure("the key from the app could not be read") }); return false; }
   void announceAuth();
   return true;
 }
@@ -161,8 +165,8 @@ async function main() {
       // or echoed, and a damaged one is dropped without its text ever being repeated.
       if (line.startsWith('{"v":1,"type":"auth.key"')) { takeKey(line); continue; }
       let r: ReturnType<typeof parseCommand>;
-      try { r = parseCommand(line); } catch { say({ type: "protocol.error", reason: "a line could not be read", line: label(line, 200) }); continue; }   // never let one bad line stop the engine
-      if (!r.ok) say({ type: "protocol.error", reason: r.error, line: label(line, 200) });
+      try { r = parseCommand(line); } catch { say({ type: "protocol.error", ...failure("a line could not be read"), line: label(line, 200) }); continue; }   // never let one bad line stop the engine
+      if (!r.ok) say({ type: "protocol.error", ...failure(r.error), line: label(line, 200) });
       else dispatch(r.msg);
     }
   }

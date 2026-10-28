@@ -294,7 +294,7 @@ impl Roamer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // The card's real size (one definition, island.rs): 380 wide, at most 640 tall.
+    // The card's real size (one definition, island.rs): 600 wide, at most 640 tall.
     use crate::island::{CARD, CARD_MAX_H};
 
     const PHASES: [Phase; 6] = [Phase::Home, Phase::Surface, Phase::Travel, Phase::Settle, Phase::Visiting, Phase::Return];
@@ -458,8 +458,11 @@ mod tests {
         let pointer = include_str!("../../src/pointer.ts");
         assert!(pointer.contains("export function ease(t: number): number { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }"));
         assert!(pointer.contains("export function bend(distance: number): number { return Math.min(80, distance / 4); }"));
+        // The water drop (M17) eases the same way (water.ts easeInOut is this formula); its arc is its own, higher for a hop.
         let overlay = include_str!("../../src/overlay.ts");
-        assert!(overlay.contains("e = ease(t)") && overlay.contains("bend(dist)"), "the overlay flies the arrow with the same two");
+        let water = include_str!("../../src/water.ts");
+        assert!(overlay.contains("e = easeInOut(k)"), "the overlay flies the drop with the same easing");
+        assert!(water.contains("return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;"));
     }
     #[test]
     fn the_arc_starts_and_ends_in_place_and_bends_like_the_arrow() {
@@ -830,7 +833,7 @@ mod tests {
         // Kept in dock.json, changed only through the registry (settings_set, card only, T16); off sends it home.
         let set = body(MAIN, "fn come_to_set(");
         assert!(set.contains("save_prefs()") && set.contains("if !on { roam_end(app); }"));
-        assert!(body(MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"));
+        assert!(body(MAIN, "fn settings_set(").contains("settings::card_or_settings(window.label())?"), "Home or the Settings window");
         assert!(body(MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
         for c in ["settings_get", "settings_set", "settings_reset"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
         for c in ["dock_settings", "set_come_to"] { assert!(!MAIN.contains(&format!(", {c},")) && !MAIN.contains(&format!(", {c}]")), "{c} is still a command"); }

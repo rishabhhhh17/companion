@@ -11,7 +11,8 @@ import type { EvalHarness, ModelRole } from "../lib/harness.ts";
 import { changeSize, copyProject, fileTexts, needMet, perTest, removeDir, resolveCmd, runCheck, testPrint, testRegressions, testsChanged, type FixStep } from "../lib/project.ts";
 import type { CaseResult } from "../lib/results.ts";
 import { AGENT, EvalSession, scripted, stepsToTurns } from "../lib/session.ts";
-import { askedFor, classify } from "./score.ts";
+import { fixError } from "../../app/src/commands.ts";
+import { askedFor, classify, saysAlreadyFixed } from "./score.ts";
 
 export const SET_DIR = import.meta.dir;
 export const HIDDEN = join(import.meta.dir, "hidden");
@@ -20,7 +21,7 @@ const FIXTURES = join(import.meta.dir, "fixtures");
 
 export type Hidden = { name: string; kind: "accept" | "guard"; what: string; cmd: string[] };
 export type FixCase = {
-  id: string; source: string; expect: "fix" | "ask"; split: "train" | "test"; hard: boolean;
+  id: string; source: string; expect: "fix" | "ask" | "stale"; split: "train" | "test"; hard: boolean;
   /** What the stand in says it did (one plain sentence); the Explain set uses it too. */
   say: string;
   /** The known good fix, as edits through Companion's own tools. Empty for a case that must be asked about. */
@@ -30,7 +31,9 @@ export type FixCase = {
   /** Files written into the copy first (a .env, which is never committed; the rescue projects' package.json). */
   overlay?: Record<string, string>;
   ask?: { names: string[] };
-  /** Where Point at the problem should find it. For the rescue projects it comes from their expected.json. */
+  /** A stale error case: the error text pasted into Fix it, which names something that works now. */
+  error?: string;
+  /** Where Point at the problem should find it (for a stale error: the place the pasted error names). For the rescue projects it comes from their expected.json. */
   where?: { file: string; line: number };
 };
 export type LoadedCase = FixCase & { src: string; files: Record<string, string> };
@@ -62,7 +65,7 @@ export { FIX_ASK, fixPrompt };
 export type Flow = "task" | "rescue";
 /** The stand in: the known good fix (or, for an ask case, the question), as the agent's turns. Rescue gets a diagnosis first. */
 export function dryAgent(c: FixCase, flow: Flow): Engine {
-  const fix: Step[] = c.expect === "ask" ? [{ text: c.say, costUsd: 0 }] : stepsToTurns(c.fix, c.say);
+  const fix: Step[] = c.expect === "ask" || c.expect === "stale" ? [{ text: c.say, costUsd: 0 }] : stepsToTurns(c.fix, c.say);
   if (flow === "task") return scripted([fix]);
   const diagnosis = { summary: "A small project with one problem.", works: [], broken: c.say, steps: [c.expect === "ask" ? "Ask for the missing setting" : "Fix the failing check"] };
   return scripted([[{ text: JSON.stringify(diagnosis), costUsd: 0 }], fix]);
@@ -109,7 +112,10 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
   const dir = copyProject(c.src, c.files);
   // The runner tells the engine which model each turn is for (Rescue's diagnosis has its own); the stand in plays every part.
   const inner = ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c, flow) : ctx.harness!.agent());
-  const engine = ctx.meter.engine(inner);
+  // What the engine is told, as the runner sent it (a stale error case checks that the rule to look first reached it).
+  const told: string[] = [];
+  const noting: Engine = { executesTools: inner.executesTools, start: (o) => { told.push(o.prompt); return inner.start(o); } };
+  const engine = ctx.meter.engine(noting);
   const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer(), "reviewer") : undefined;
   const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "settings", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });
   try {
@@ -118,6 +124,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     const textsBefore = fileTexts(dir);
     // Each test by name, so a fix that breaks another test of the same failing check is seen (the check failed before too).
     const testsBefore = await perTest(dir);
+    if (c.expect === "stale") return await runStale(c, ctx, { s, dir, t0, notes, timeout, before, textsBefore, told });
     // 1. Point at the problem: the project exactly as it is, no model, nothing changed.
     await s.run({ type: "problem.find", project: dir, agent: AGENT }, timeout);
     const found = s.last("problem.found");
@@ -191,4 +198,39 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
     await s.close();
     removeDir(dir);
   }
+}
+
+/** A stale error: the project works, and the person pastes an error that named something broken once. Fix it (the shipped
+ *  request, app/src/commands.ts fixError) must find that out first, say so in plain words and change nothing. Judged on the
+ *  files (a change is a change, whatever is said) and on the card's words; the project's own checks run again as a guard. */
+async function runStale(c: LoadedCase, ctx: FixContext, w: { s: EvalSession; dir: string; t0: number; notes: string[]; timeout: number; before: { state: CheckState }; textsBefore: Record<string, string>; told: string[] }): Promise<CaseResult> {
+  const { s, dir, t0, notes, timeout } = w;
+  // The project must be fine as it is, or the error is not stale.
+  await s.run({ type: "problem.find", project: dir, agent: AGENT }, timeout);
+  const found = s.last("problem.found");
+  if (!found || found.verdict === "failed") return { ...empty(c.id, "error", [`The project was not working: Point at the problem said ${found?.verdict ?? "nothing"}, so the error is not stale.`]), ms: Date.now() - t0 };
+  const place = c.where && c.error ? { kind: "line", file: c.where.file, line: c.where.line } : undefined;
+  const start = fixError(dir, c.error ?? "", place) as Extract<ReturnType<typeof fixError>, { type: "agent.start" }>;
+  const fixFrom = s.events.length;
+  await s.run({ ...start, agent: AGENT, model: ctx.models.agent, budgetUsd: ctx.meter.capUsd }, timeout);
+  const during = s.events.slice(fixFrom);
+  const receipts = during.filter((e) => e.type === "receipt");
+  const errors = during.filter((e) => e.type === "protocol.error").map((e) => String(e.reason));
+  if (errors.length) notes.push(...errors.slice(0, 3).map((r) => `${PRODUCT} said: ${r}`));
+  notes.push(...s.timeouts);
+  const after = await runHidden(c, dir);
+  const diff = changeSize(w.textsBefore, fileTexts(dir));
+  const regressions = c.hidden.filter((h) => w.before.state[h.name] && !after.state[h.name]).map((h) => `${h.what} (worked before, fails now: ${after.why[h.name] ?? ""})`);
+  const lastReceipt = receipts.at(-1);
+  const said = typeof lastReceipt?.said === "string" && lastReceipt.said ? lastReceipt.said : null;
+  const changed = diff.files > 0;
+  const saidFixed = said ? saysAlreadyFixed(said) : false;
+  const { outcome } = classify({ expect: "stale", ladder: null, accept: [], regressions, asked: false, changed, saidFixed });
+  if (changed) notes.push(`The project changed (${diff.files} ${diff.files === 1 ? "file" : "files"}, ${diff.added} added, ${diff.removed} removed) though the error no longer applied.`);
+  else if (!saidFixed) notes.push(`Nothing changed, but the card did not say the error is already fixed: ${said ? said.slice(0, 200) : "it said nothing"}`);
+  for (const r of regressions) notes.push(`Broke: ${r}`);
+  return {
+    id: c.id, outcome, costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: Date.now() - t0, notes,
+    detail: { flow: "stale", prompt: w.told[0] ?? start.prompt, receipts: receipts.length, diff, said, saidFixed, changed, regressions, firstRound: ctx.meter.firstRound, capped: ctx.meter.capped, hard: c.hard, split: c.split },
+  };
 }

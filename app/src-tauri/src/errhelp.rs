@@ -7,6 +7,7 @@
 #![cfg(target_os = "macos")]
 
 use crate::prompthelp::{self as rules, ReadSession, ReadVerdict};
+use crate::errorsel::Outcome;
 use crate::{ax, errorsel, phelp};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,68 +33,131 @@ fn say(app: &AppHandle, stage: &str, extra: Value) {
 }
 fn note(bundle: &str, ms: u64, chars: usize, outcome: &str) { crate::log("explain_error", errorsel::log_line(bundle, ms, chars, outcome)); }
 
+/// Every way a press ends is shown to the person in plain words (finding D) and logged as one `explain_error` line, never
+/// the text. The reading thread and a five second timer may both answer; the first one to claim the press shows, so a read
+/// that finishes late never overwrites the timeout message (errorsel.rs `Answered`).
+static ANSWERED: errorsel::Answered = errorsel::Answered::new();
+
+/// Shows the end of this press, unless a newer press, Close or Stop everything came, or the timer answered first.
+fn show(app: &AppHandle, gen: u64, o: Outcome, extra: Value) -> bool {
+    if GEN.load(Ordering::SeqCst) != gen || !ANSWERED.claim(gen) { return false; }
+    let mut x = if extra.is_object() { extra } else { json!({}) };
+    if let Some(w) = o.why() { x["why"] = json!(w); }
+    say(app, o.stage(), x);
+    true
+}
+/// `show`, and the log line for it.
+fn finish(app: &AppHandle, gen: u64, o: Outcome, extra: Value, bundle: &str, t0: Instant, chars: usize) -> bool {
+    let shown = show(app, gen, o, extra);
+    if shown { note(bundle, t0.elapsed().as_millis() as u64, chars, &o.code()); }
+    shown
+}
+
+/// If the press has not ended after READ_LIMIT, say so in plain words and drop whatever the reading finds later.
+fn arm_timer(app: &AppHandle, gen: u64, open_card: Option<fn(&AppHandle, &str, bool)>) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(errorsel::READ_LIMIT);
+        if GEN.load(Ordering::SeqCst) != gen || !ANSWERED.claim(gen) { return; }
+        if let Some(open) = open_card { open(&app, "explain_error", false); }   // the card is there even if the thread never got to open it
+        say(&app, Outcome::Slow.stage(), json!({ "why": Outcome::Slow.why() }));
+        note("", READ_MS, 0, &Outcome::Slow.code());
+        GEN.fetch_add(1, Ordering::SeqCst);   // the slow read, when it ends, is dropped unsent
+        ax::let_apps_sleep_soon();
+    });
+}
+const READ_MS: u64 = errorsel::READ_LIMIT.as_millis() as u64;
+
+/// Runs one press's work on this thread; a failure inside it still ends in a plain message.
+fn guarded(app: &AppHandle, gen: u64, work: impl FnOnce()) {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).is_err() {
+        ax::let_apps_sleep();
+        finish(app, gen, Outcome::Crashed, json!({}), "", Instant::now(), 0);
+    }
+}
+
 /// The hotkey (Control, Option, Command and E unless changed in Settings, keymap.rs). Runs on its own thread: waking another app's text can take a few seconds.
 pub fn on_hotkey(app: &AppHandle, open_card: fn(&AppHandle, &str, bool)) {
     let app = app.clone();
-    std::thread::spawn(move || {
-        let t0 = Instant::now();
-        let Some(front) = ax::front_app() else { return };
-        if front.bundle_id.is_empty() || front.bundle_id.starts_with("dev.companion") {
-            say(&app, "error", json!({ "why": "own_app" }));
-            open_card(&app, "explain_error", false);
-            return;
+    *awaiting() = None;
+    let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    arm_timer(&app, gen, Some(open_card));
+    std::thread::spawn(move || guarded(&app.clone(), gen, || press(&app, open_card, gen)));
+}
+
+fn press(app: &AppHandle, open_card: fn(&AppHandle, &str, bool), gen: u64) {
+    let t0 = Instant::now();
+    // Who is in front. The Mac sometimes answers "nobody" for a moment (an app switching, a panel taking the lead): ask again.
+    let mut front = None;
+    for i in 0..3 {
+        if i > 0 { std::thread::sleep(Duration::from_millis(80)); }
+        front = ax::front_app();
+        if errorsel::front_case(front.as_ref().map(|f| f.bundle_id.as_str())) != errorsel::FrontCase::NoFront { break; }
+    }
+    let bundle = front.as_ref().map(|f| f.bundle_id.clone()).unwrap_or_default();
+    match errorsel::front_case(front.as_ref().map(|f| f.bundle_id.as_str())) {
+        errorsel::FrontCase::NoFront => { open_card(app, "explain_error", false); finish(app, gen, Outcome::NoFront, json!({}), &bundle, t0, 0); return; }
+        errorsel::FrontCase::Own => { open_card(app, "explain_error", false); finish(app, gen, Outcome::OwnApp, json!({}), &bundle, t0, 0); return; }
+        errorsel::FrontCase::Read => {}
+    }
+    let Some(front) = front else { return };
+    // The light comes first, and gets a moment to draw, before anything is read (rule 5).
+    let mut session = ReadSession::default();
+    if GEN.load(Ordering::SeqCst) != gen { return; }
+    say(app, "reading", json!({ "app": front.name }));
+    open_card(app, "explain_error", false);
+    std::thread::sleep(INDICATOR_DRAW);
+    session.indicator_on();
+    if !ax::trusted(false) && !ax::trusted(true) {   // the first press shows macOS's own question; nothing is asked before this
+        finish(app, gen, Outcome::NeedsAccessibility, json!({}), &bundle, t0, 0);
+        return;
+    }
+    // Electron apps often show no focused box until woken: wake the app in front, only now, and put it back to sleep after.
+    let focused = ax::focused_waking(front.pid, false);
+    let Some(f) = focused else {
+        ax::let_apps_sleep();
+        finish(app, gen, Outcome::NoField, json!({ "app": front.name }), &bundle, t0, 0);
+        return;
+    };
+    match phelp::shared_verdict(&f.role, &f.subrole, &front.bundle_id) {
+        ReadVerdict::Ok => read_and_send(app, session, gen, front.pid, &front.bundle_id, &front.name, t0),
+        ReadVerdict::NeedConsent => {
+            ax::let_apps_sleep();
+            *awaiting() = Some((front.pid, front.bundle_id.clone(), front.name.clone()));
+            if !finish(app, gen, Outcome::Consent, json!({ "app": front.name }), &bundle, t0, 0) { *awaiting() = None; }
         }
-        *awaiting() = None;
-        let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
-        // The light comes first, and gets a moment to draw, before anything is read (rule 5).
-        let mut session = ReadSession::default();
-        say(&app, "reading", json!({ "app": front.name }));
-        open_card(&app, "explain_error", false);
-        std::thread::sleep(INDICATOR_DRAW);
-        session.indicator_on();
-        if !ax::trusted(false) && !ax::trusted(true) {   // the first press shows macOS's own question; nothing is asked before this
-            say(&app, "needs_accessibility", json!({}));
-            note(&front.bundle_id, 0, 0, "needs_accessibility");
-            return;
-        }
-        let Some(f) = ax::focused(front.pid) else { say(&app, "nothing_selected", json!({ "app": front.name })); note(&front.bundle_id, t0.elapsed().as_millis() as u64, 0, "no_field"); return };
-        match phelp::shared_verdict(&f.role, &f.subrole, &front.bundle_id) {
-            ReadVerdict::Ok => read_and_send(&app, session, gen, front.pid, &front.bundle_id, &front.name, t0),
-            ReadVerdict::NeedConsent => { *awaiting() = Some((front.pid, front.bundle_id.clone(), front.name.clone())); say(&app, "consent", json!({ "app": front.name })); }
-            other => { say(&app, "refused", json!({ "why": other.code() })); note(&front.bundle_id, 0, 0, "refused"); }
-        }
-    });
+        other => { ax::let_apps_sleep(); finish(app, gen, Outcome::Refused(other.code()), json!({}), &bundle, t0, 0); }
+    }
 }
 
 fn read_and_send(app: &AppHandle, mut session: ReadSession, gen: u64, pid: i32, bundle: &str, name: &str, t0: Instant) {
-    if session.begin_read().is_err() { return; }
+    if session.begin_read().is_err() { ax::let_apps_sleep(); finish(app, gen, Outcome::Crashed, json!({}), bundle, t0, 0); return; }
     // The box and the keyboard as they are now (a question about this app may have waited for its answer): never a
     // password box, never during secure typing.
     let now = ax::focused(pid);
     let (role, subrole) = now.as_ref().map(|f| (f.role.as_str(), f.subrole.as_str())).unwrap_or(("", ""));
     if let Some(v) = rules::secure_now(role, subrole, ax::secure_input_enabled()) {
-        session.finish(); say(app, "refused", json!({ "why": v.code() })); note(bundle, 0, 0, "refused"); return;
+        session.finish(); ax::let_apps_sleep(); finish(app, gen, Outcome::Refused(v.code()), json!({}), bundle, t0, 0); return;
     }
     drop(now);
     let read = ax::read_selection(pid);
     ax::let_apps_sleep();   // whatever reading switched on in the other app goes off again at once
     session.finish();
-    // Stop everything, Close or a newer press came while the text was being read: it is dropped here, never sent.
+    // Stop everything, Close, a newer press or the timeout came while the text was being read: it is dropped here, never sent.
     if GEN.load(Ordering::SeqCst) != gen { return; }
-    let ms = t0.elapsed().as_millis() as u64;
-    let Some((raw, rung)) = read else { say(app, "nothing_selected", json!({ "app": name })); note(bundle, ms, 0, "nothing"); return };
+    let Some((raw, rung)) = read else { finish(app, gen, Outcome::Nothing, json!({ "app": name }), bundle, t0, 0); return };
     match errorsel::prepare(&raw) {
         errorsel::Selection::Send(text) => {
             let req = format!("eh_{}", now_ms());
-            note(bundle, ms, text.chars().count(), rung);
-            say(app, "thinking", json!({ "app": name, "req": req }));
+            if !finish(app, gen, Outcome::Sent(rung), json!({ "app": name, "req": req }), bundle, t0, text.chars().count()) { return; }
             // The character comes beside the window the error was in while the card explains it (F18 item 2).
             crate::roam_beside_window_of(app, pid);
             if app.state::<crate::runner::Runner>().send(&errorsel::command(&req, bundle, &text, &crate::current_project())).is_err() {
-                say(app, "error", json!({ "why": "no_engine" }));
+                say(app, Outcome::NoEngine.stage(), json!({ "why": Outcome::NoEngine.why() }));
+                note(bundle, t0.elapsed().as_millis() as u64, 0, &Outcome::NoEngine.code());
             }
         }
-        _ => { say(app, "nothing_selected", json!({ "app": name })); note(bundle, ms, 0, "too_short"); }
+        _ => { finish(app, gen, Outcome::TooShort, json!({ "app": name }), bundle, t0, 0); }
     }
 }
 
@@ -109,15 +173,36 @@ pub fn consent_answer(app: &AppHandle, choice: &str) {
             return;
         }
         let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
-        let mut session = ReadSession::default();
-        say(&app, "reading", json!({ "app": name }));
-        std::thread::sleep(INDICATOR_DRAW);
-        session.indicator_on();
-        read_and_send(&app, session, gen, pid, &bundle, &name, Instant::now());
+        arm_timer(&app, gen, None);
+        let a2 = app.clone();
+        guarded(&a2, gen, || {
+            let mut session = ReadSession::default();
+            say(&app, "reading", json!({ "app": name }));
+            std::thread::sleep(INDICATOR_DRAW);
+            session.indicator_on();
+            read_and_send(&app, session, gen, pid, &bundle, &name, Instant::now());
+        });
     });
 }
 
 /// Close, Cancel or Stop everything: a read under way is dropped, a question about an app is forgotten.
+/// The Explain chip with words in Home's ask box: the person typed or pasted them into Squibby itself, so nothing is read
+/// from another app (rule 5 is untouched, no light is needed) and no Accessibility is used. The same engine path as the
+/// hotkey from there on (secrets hidden, two plain sentences, where it is in the project). A press still under way is
+/// dropped. Err is a plain code: "tooShort" when there is nothing to explain, "noEngine" when the engine is not running.
+pub fn typed(app: &AppHandle, text: &str) -> Result<(), &'static str> {
+    *awaiting() = None;
+    let gen = GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let errorsel::Selection::Send(t) = errorsel::prepare(text) else { return Err("tooShort") };
+    let req = format!("eh_{}", now_ms());
+    ANSWERED.claim(gen);
+    say(app, Outcome::Sent("typed").stage(), json!({ "req": req }));
+    let sent = app.state::<crate::runner::Runner>().send(&errorsel::command(&req, errorsel::ASK_BOX, &t, &crate::current_project()));
+    note(errorsel::ASK_BOX, 0, t.chars().count(), if sent.is_ok() { "typed" } else { "no_engine" });
+    if sent.is_err() { say(app, Outcome::NoEngine.stage(), json!({ "why": Outcome::NoEngine.why() })); return Err("noEngine"); }
+    Ok(())
+}
+
 pub fn dismiss(app: &AppHandle) {
     GEN.fetch_add(1, Ordering::SeqCst);
     *awaiting() = None;

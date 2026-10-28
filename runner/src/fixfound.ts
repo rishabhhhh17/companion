@@ -12,10 +12,13 @@ export const FIX_ASK = "Find the cause and fix it with the smallest change. Do n
 /** What a practice's fix may spend on the person's key, whatever the budget in Settings (the practice costs cents). */
 export const PRACTICE_BUDGET_USD = 0.6;
 
+/** How the request starts (a check Squibby ran itself, so the error in it is fresh: staleerror.ts leaves it alone). */
+export const FOUND_INTRO = `${PRODUCT} checked this project and one of its checks fails.`;
+
 /** The failed check, what happened, the place when there is one, and the request. */
 export function fixFoundPrompt(found: { label?: string; detail?: string; problem?: Problem }): string {
   const e = evidence({ label: found.label ?? "A check", detail: found.detail ?? "" });
   const p = found.problem;
   const where = p?.kind === "line" ? `\nWhere it fails: ${p.file}, line ${p.line}: ${evidence({ label: "", detail: p.lineText }).detail}` : "";
-  return `${PRODUCT} checked this project and one of its checks fails.\n\nFailed check: ${e.label}\nWhat happened: ${e.detail}${where}\n\n${FIX_ASK}`;
+  return `${FOUND_INTRO}\n\nFailed check: ${e.label}\nWhat happened: ${e.detail}${where}\n\n${FIX_ASK}`;
 }

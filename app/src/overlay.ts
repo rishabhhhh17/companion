@@ -1,7 +1,9 @@
-// The pointer: an arrow that flies from the character to the target, then a pulsing ring and a short caption.
+// The pointer: a drop of Flowflow's water that splits off the character, flies to the target and spreads into a ring of
+// water around it, then a short caption (M17, water.ts).
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
-import { at, bend, burst, captionPlace, captionStyle, confetti, CONFETTI_S, ease, flightMs, ringLook, ringMsOf } from "./pointer.ts";
+import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, ringLook, ringMsOf } from "./pointer.ts";
+import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
@@ -28,6 +30,15 @@ const el = (name: string, attrs: Record<string, string | number>) => { const e =
 let drawGen = 0;
 function clear() { drawGen += 1; svg.replaceChildren(); cap.classList.remove("on"); clearTimeout(timer); clearTimeout(markTimer); }
 
+// The water pointer (M17, water.ts): where the last drop landed (a draw starting there is a hop to the next step, not a
+// new split from the character), and the water layer's colours for the ring colour chosen in Settings.
+let lastLanding: { x: number; y: number } | null = null;
+// Where the drop went home to after a right click: the next step then splits off the character again, from there.
+let wentHome: { x: number; y: number } | null = null;
+function tintWater(t: Tint) {
+  for (const [id, c] of [["wg-hi", t.hi], ["wg-mid", t.mid], ["wg-deep", t.deep]] as const) document.getElementById(id)?.setAttribute("stop-color", c);
+}
+
 function show(p: Point) {
   clear();
   const mine = drawGen;
@@ -41,7 +52,10 @@ function show(p: Point) {
   // Ring colour in Settings, for a confirmed target; a guess keeps its soft dashed look whatever the colour (rule 22).
   const look = ringLook(setting("point.colour"), p.exact);
   const color = look.stroke;
-  // The ring and arrow are drawn only inside the window they were confirmed in (nothing lands on a different app).
+  tintWater(waterTint(setting("point.colour"), setting("look.water")));
+  // The pointer's style and size (M19): water (the drop and its ring of water) or a plain ring; the drop small to large.
+  const style = setting("point.style") === "ring" ? "ring" : "water", ks = dropScale(setting("point.dropSize")), R = DROP_R * ks;
+  // The ring and the drop are drawn only inside the window they were confirmed in (nothing lands on a different app).
   let layer: Element = svg;
   if (p.clip) {
     const id = "winclip", cp = el("clipPath", { id });
@@ -50,6 +64,11 @@ function show(p: Point) {
     layer = el("g", { "clip-path": `url(#${id})` });
     svg.appendChild(layer);
   }
+  // The drop leaves the character outside any window, so its split and flight are drawn unclipped; the ring is clipped.
+  const water = el("g", { class: "water", filter: "url(#goo)" });
+  svg.appendChild(water);
+  const ringWater = el("g", { class: "water", filter: "url(#goo)" });
+  layer.appendChild(ringWater);
   // A confirmed target may ask for a hand drawn mark; it is drawn on landing, stays while its line is said or read, then
   // fades and the steady ring takes over. Every point of it is inside the window (marks.ts), and the clip above holds too.
   const kind = markFor(p.mark, p.exact);
@@ -57,11 +76,31 @@ function show(p: Point) {
   // High contrast: a dark edge under the ring and the marks, so a white ring shows on any app.
   const halo = look.halo ? el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: look.halo, "stroke-width": look.width + 4, class: "ring", opacity: reduced && !strokes ? 1 : 0 }) : null;
   if (halo) layer.appendChild(halo);
+  // A confirmed target's ring is the water (the beads below); its line stays as the shape the celebration turns green. A
+  // guess keeps the soft dashed ring and no water (rule 22), and high contrast keeps its solid white ring under the water.
   const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": look.width, "stroke-dasharray": look.dash, class: "ring", "data-main": 1, opacity: reduced && !strokes ? 1 : 0 });
+  if (p.exact && !look.halo && style === "water") ring.setAttribute("data-water", "1");
   layer.appendChild(ring);
-  const arrow = el("path", { d: "M0 0 L-14 -26 L0 -18 L14 -26 Z", fill: color, stroke: "#111", "stroke-width": 2, "stroke-linejoin": "round" });
-  const place = (x: number, y: number, angle: number) => arrow.setAttribute("transform", `translate(${x} ${y}) rotate(${angle})`);
-  layer.appendChild(arrow);
+  // The water ring: beads evenly spaced around the target that spread out like water and wobble gently (still with less
+  // motion). It starts when the plain ring would show.
+  const beads = p.exact && style === "water" ? ringBeads(rx, ry, BEAD_GAP * ks).map((b) => ({ b, c: ringWater.appendChild(el("circle", { cx, cy, r: 0, fill: "url(#wg)" })) })) : [];
+  const placeBeads = (k: number, now: number) => {
+    const sk = reduced ? 1 : settle(k), grow = reduced ? 1 : Math.min(1, k * 2);
+    for (const { b, c } of beads) {
+      const wob = reduced ? 0 : Math.sin(now / 330 + b.ux * 4) * 2.2 + Math.sin(now / 190 + b.uy * 5) * 1.3;
+      c.setAttribute("cx", String(cx + b.ux * rx * sk + b.nx * wob));
+      c.setAttribute("cy", String(cy + b.uy * ry * sk + b.ny * wob));
+      c.setAttribute("r", String(BEAD_R * ks * grow));
+    }
+  };
+  const ringOn = () => {
+    ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1");
+    if (!beads.length) return;
+    if (reduced) { placeBeads(1, 0); return; }
+    const t0 = performance.now();
+    const wobble = (now: number) => { if (mine !== drawGen) return; placeBeads((now - t0) / SPREAD_MS, now); requestAnimationFrame(wobble); };
+    requestAnimationFrame(wobble);
+  };
   const drawMark = (paths: string[]) => {
     const g = el("g", { class: "mark" });
     for (const d of paths) {
@@ -69,7 +108,6 @@ function show(p: Point) {
       g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
     }
     layer.appendChild(g);
-    if (kind === "arrow") arrow.remove();   // the drawn arrow points at it; the flying one would be a second arrow
     if (!reduced) {
       // Each stroke draws itself on, the way a pen would.
       for (const s of Array.from(g.querySelectorAll("path")) as SVGPathElement[]) {
@@ -80,7 +118,7 @@ function show(p: Point) {
     }
     markTimer = setTimeout(() => {
       if (mine !== drawGen) return;
-      ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1");
+      ringOn();
       if (reduced) { g.remove(); return; }
       g.style.transition = "opacity .5s"; g.style.opacity = "0";
       markTimer = setTimeout(() => g.remove(), 550);
@@ -88,8 +126,8 @@ function show(p: Point) {
   };
   const land = () => {
     if (mine !== drawGen) return;
-    if (strokes) drawMark(strokes); else { ring.setAttribute("opacity", "1"); halo?.setAttribute("opacity", "1"); }
-    place(cx, cy - ry - 4, 0);
+    lastLanding = { x: cx, y: cy };
+    if (strokes) drawMark(strokes); else ringOn();
     const side = cx > innerWidth / 2 ? -1 : 1;
     cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
     // Ring lettering and the text size picked in Settings; plain at the usual size is the caption as it always was.
@@ -99,20 +137,57 @@ function show(p: Point) {
     cap.style.font = cs.font; cap.style.maxWidth = `${spot.maxWidth}px`;
     cap.style.left = `${spot.left}px`;
     cap.style.top = `${spot.top}px`;
+    cap.classList.toggle("left", side < 0);
+    cap.classList.toggle("white", setting("point.caption") === "white");
     cap.classList.add("on");
   };
+  if (style === "ring") { land(); return; }   // a plain ring simply appears, as it used to
   if (reduced) { land(); return; }
-  const dx = cx - p.from.x, dy = cy - p.from.y, dist = Math.hypot(dx, dy);
+  // The drop: it splits off the character (a hop from the last step's target skips that), arcs to the target stretched
+  // the way it moves with a few tiny drops dropping behind, squashes on arrival, then the ring spreads from it.
+  const to = { x: cx, y: cy };
+  let hop = isHop(p.from, lastLanding), origin = p.from;
+  if (hop && wentHome) { hop = false; origin = wentHome; }
+  wentHome = null;
+  const dist = Math.hypot(cx - origin.x, cy - origin.y);
   const dur = typeof p.flyMs === "number" && Number.isFinite(p.flyMs) ? Math.min(1600, Math.max(300, p.flyMs)) : flightMs(dist, setting("point.pace"));
-  const lift = bend(dist), mx = (p.from.x + cx) / 2, my = (p.from.y + cy) / 2 - lift;
-  const t0 = performance.now();
+  const drop = water.appendChild(el("ellipse", { cx: origin.x, cy: origin.y, rx: 0, ry: 0, fill: "url(#wg)" }));
+  const neck = water.appendChild(el("circle", { cx: origin.x, cy: origin.y, r: 0, fill: "url(#wg)" }));
+  const trail: { c: Element; r: number; life: number }[] = [];
+  const shape = (x: number, y: number, r: number, along: number, across: number, angle: number) => {
+    drop.setAttribute("cx", String(x)); drop.setAttribute("cy", String(y));
+    drop.setAttribute("rx", String(r * along)); drop.setAttribute("ry", String(r * across));
+    drop.setAttribute("transform", `rotate(${angle} ${x} ${y})`);
+  };
+  const t0 = performance.now(), splitMs = hop ? 0 : SPLIT_MS;
+  let prev = { x: origin.x, y: origin.y, t: t0 }, start = { x: origin.x, y: origin.y };
   const step = (now: number) => {
     if (mine !== drawGen) return;   // cleared or replaced while it flew
-    const t = Math.min(1, (now - t0) / dur), e = ease(t);
-    const x = (1 - e) ** 2 * p.from.x + 2 * (1 - e) * e * mx + e ** 2 * cx, y = (1 - e) ** 2 * p.from.y + 2 * (1 - e) * e * my + e ** 2 * (cy - ry - 4);
-    const ax = 2 * (1 - e) * (mx - p.from.x) + 2 * e * (cx - mx), ay = 2 * (1 - e) * (my - p.from.y) + 2 * e * ((cy - ry - 4) - my);
-    place(x, y, (Math.atan2(ay, ax) * 180) / Math.PI + 90);
-    if (t < 1) requestAnimationFrame(step); else land();
+    const t = now - t0;
+    if (t < splitMs) {
+      const b = bud(origin, to, t / splitMs);
+      shape(b.x, b.y, b.r * ks, 1, 1, 0);
+      neck.setAttribute("cx", String(b.neck.x)); neck.setAttribute("cy", String(b.neck.y)); neck.setAttribute("r", String(b.neck.r));
+      start = { x: b.x, y: b.y }; prev = { x: b.x, y: b.y, t: now };
+      requestAnimationFrame(step); return;
+    }
+    neck.setAttribute("r", "0");
+    const k = Math.min(1, (t - splitMs) / dur), e = easeInOut(k);
+    if (k < 1) {
+      const q = arcAt(start, to, e, hop), dt = Math.max(1, now - prev.t);
+      const vx = ((q.x - prev.x) / dt) * 1000, vy = ((q.y - prev.y) / dt) * 1000, st = stretch(Math.hypot(vx, vy));
+      shape(q.x, q.y, R, st.along, st.across, (Math.atan2(vy, vx) * 180) / Math.PI);
+      if (Math.hypot(vx, vy) > 300 && trail.length < 40 && (Math.round(now / 16) % 2 === 0)) trail.push({ c: water.appendChild(el("circle", { cx: q.x, cy: q.y, r: 5, fill: "url(#wg)" })), r: 5, life: 1 });
+      prev = { x: q.x, y: q.y, t: now };
+    } else {
+      // The squash on arrival, then the drop drains into the ring.
+      const l = Math.min(1, (t - splitMs - dur) / LAND_MS), sq = Math.sin(l * Math.PI);
+      shape(cx, cy, R * (1 - 0.6 * l), 1 + 0.55 * sq, 1 - 0.4 * sq, 0);
+      if (l >= 1) { drop.remove(); land(); }
+    }
+    for (const d of trail) { d.life -= 0.06; d.c.setAttribute("r", String(Math.max(0, d.r * d.life))); }
+    if (k < 1 || t - splitMs - dur < LAND_MS || trail.some((d) => d.life > 0)) requestAnimationFrame(step);
+    else trail.forEach((d) => d.c.remove());
   };
   requestAnimationFrame(step);
 }
@@ -126,33 +201,47 @@ followLessMotion();
 void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
 
-// The person clicked the right thing: the ring turns green with a tick, and a short burst of dots (none with reduced motion
-// or with reactions turned off; the green ring and the tick show either way).
-function celebrate(rect: { x: number; y: number; w: number; h: number }) {
+// The person clicked the right thing: the ring turns green with a tick, and the water ring bursts into a splash of drops
+// (none with reduced motion or with reactions turned off; the green ring and the tick show either way). Then the drop
+// gathers and flies home to the character (`home`, where it is now), which ripples as it lands (the shell tells the dock).
+function celebrate(rect: { x: number; y: number; w: number; h: number }, home: { x: number; y: number } | null) {
   const reduced = reducedMotion();
   drawGen += 1;   // a landing still on its way would cover the tick with the old caption
+  const mine = drawGen;
   clearTimeout(timer); clearTimeout(markTimer);
   svg.querySelectorAll("path").forEach((a) => a.remove());
   svg.querySelectorAll("g.mark").forEach((g) => g.remove());
+  svg.querySelectorAll("g.water").forEach((g) => g.remove());
   // The ring itself (not the dark edge under a high contrast one) turns green, and nothing pulses any more.
   const ring = svg.querySelector("ellipse[data-main]") ?? svg.querySelector("ellipse");
   svg.querySelectorAll("ellipse").forEach((e) => e.classList.remove("ring"));
-  if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); }
-  const cx = rect.x + rect.w / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
+  if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.toggleAttribute("data-water", false); }
+  const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
   svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
   cap.textContent = "That's it."; 
+  wentHome = home;
   if (playful(reactionsOn(), reduced)) {
-    const dots = burst(rect).map((d, i) => { const c = el("circle", { cx: d.x, cy: d.y, r: d.r, fill: i % 2 ? "#ff9a2e" : "#1e8a4c" }); svg.appendChild(c); return { c, d }; });
+    const water = el("g", { class: "splash", filter: "url(#goo)" });
+    svg.appendChild(water);
+    const dots = burst(rect).map((d, i) => { const c = el("circle", { cx: d.x, cy: d.y, r: d.r + 2, fill: i % 3 ? "url(#wg)" : "#C6F432" }); (i % 3 ? water : svg).appendChild(c); return { c, d }; });
     const t0 = performance.now();
+    const drop = home ? water.appendChild(el("circle", { cx, cy, r: 0, fill: "url(#wg)" })) : null;
     const step = (now: number) => {
       const t = Math.min(1, (now - t0) / 650), e = 1 - (1 - t) ** 3;
-      for (const { c, d } of dots) { c.setAttribute("cx", String(d.x + d.dx * e)); c.setAttribute("cy", String(d.y + d.dy * e)); c.setAttribute("opacity", String(1 - t)); }
-      if (t < 1) requestAnimationFrame(step); else dots.forEach(({ c }) => c.remove());
+      for (const { c, d } of dots) { c.setAttribute("cx", String(d.x + d.dx * e)); c.setAttribute("cy", String(d.y + d.dy * e + 30 * t * t)); c.setAttribute("opacity", String(1 - t)); }
+      // The drop gathers where the ring was, then arcs home and is gone as it reaches the character.
+      const h = (now - t0 - HOME_DELAY_MS) / HOME_MS;
+      if (drop && home && mine === drawGen) {
+        if (h < 0) drop.setAttribute("r", String(DROP_R * Math.min(1, (now - t0) / HOME_DELAY_MS)));
+        else if (h < 1) { const q = arcAt({ x: cx, y: cy }, home, easeInOut(h)); drop.setAttribute("cx", String(q.x)); drop.setAttribute("cy", String(q.y)); drop.setAttribute("r", String(DROP_R * (1 - 0.3 * h))); }
+        else drop.remove();
+      }
+      if (t < 1 || (drop && h < 1 && mine === drawGen)) requestAnimationFrame(step); else { dots.forEach(({ c }) => c.remove()); water.remove(); }
     };
     requestAnimationFrame(step);
   }
 }
-void listen("overlay-celebrate", (e) => { const p = e.payload as { rect: { x: number; y: number; w: number; h: number }; settings?: unknown }; takeSnapshot(p.settings); celebrate(p.rect); });
+void listen("overlay-celebrate", (e) => { const p = e.payload as { rect: { x: number; y: number; w: number; h: number }; home?: { x: number; y: number } | null; settings?: unknown }; takeSnapshot(p.settings); celebrate(p.rect, p.home ?? null); });
 
 
 // The big celebration (proof passed on a fix, or the site went live): confetti from the character, once, then gone.
