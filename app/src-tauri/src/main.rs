@@ -411,7 +411,7 @@ thread_local! {
 }
 /// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0 });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
@@ -584,12 +584,13 @@ fn home_closed() {
 /// The page says whether the wings are out (something is happening; home.ts islandWings) and how tall its hover panel's
 /// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>) {
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>) {
     let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
     let cheer = cheer.unwrap_or(false) && on;
+    let ask = ask.unwrap_or(false) && on;
     let _ = app.run_on_main_thread(move || {
         let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || cheer_changed; s.alert = on; s.panel = panel; c };
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }

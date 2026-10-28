@@ -5,7 +5,6 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
-import { poseFor, poseUrl } from "./characters.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, CHEER_SPRING, ISLAND_SPRING, TUCK_MS, springStep, type Spring } from "./islandSpring.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
@@ -24,6 +23,7 @@ import "./style.css";
 // tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
+import { FlowMini } from "./flowflowMini.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
 type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number };
@@ -129,7 +129,9 @@ function Island() {
     return () => { clearTimeout(on); clearTimeout(off); setCheer(false); };
   }, [ticking]);
   const cheering = cheer && out;
-  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering }).catch(() => {}); }, [out, panelH, cheering]);
+  // M23: a question waiting opens the panel under the wings by itself (island.rs mode), with Open the notch for questions on.
+  const ask = useSetting("island.openForQuestions") !== false && out && m.approvals.length > 0;
+  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask }).catch(() => {}); }, [out, panelH, cheering, ask]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
@@ -164,7 +166,7 @@ function Island() {
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
           {showWings && w && <span aria-hidden="true">
-            <span className="island-wing left"><img className="island-flow" src={poseUrl(poseFor(w.state))} alt="" draggable={false} /></span>
+            <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
           </span>}
         </button>

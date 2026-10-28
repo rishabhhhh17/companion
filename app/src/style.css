@@ -560,6 +560,20 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #C6F432, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
 @keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
+/* M23: a question answered right in the notch. The buttons sit under the words and wake up once the card has been seen
+   for a moment (islandPanel.ts ARM_MS), so a pointer resting where the panel opens cannot answer by accident. */
+.island-panel .ip-ask { grid-template-columns: 30px minmax(0, 1fr); row-gap: 8px; }
+.island-panel .ip-ask:hover { background: #1E1E21; }
+.island-panel .ip-answer { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 6px; opacity: .4; transition: opacity .2s ease-out; }
+.island-panel .ip-ask:not([data-armed]) .ip-answer button { cursor: default; }
+.island-panel .ip-ask[data-armed] .ip-answer { opacity: 1; }
+.island-panel .ip-answer button { min-height: 30px; padding: 0 14px; border-radius: 999px; font: 600 12.5px/1 var(--round); }
+.island-panel .ip-answer button:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+.island-panel .ip-no { background: #2C2C31; color: #FFFFFF; }
+.island-panel .ip-no:hover { background: #36363C; }
+.island-panel .ip-yes { background: #C6F432; color: #0A0A0A; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18); }
+.island-panel .ip-yes:hover { background: #D2F85A; }
+.island-panel .ip-yes:active, .island-panel .ip-no:active { transform: scale(.96); }
 .island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
@@ -819,3 +833,14 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-bar i { display: block; min-height: 10px; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--water-deep), var(--water)); transition: width var(--dur-3) var(--ease-out); }
 .fr-bar i[data-unknown] { animation: fr-drift 1.4s ease-in-out infinite alternate; }
 @keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }
+
+/* M24: one Flowflow everywhere. The small live water (flowflowMini.tsx) takes the place of the picture in the notch, its
+   panel and the first run, at the same size; its canvas fills a square box, and its colour already comes from Settings. */
+.ff-mini { position: relative; display: block; aspect-ratio: 1; filter: none; overflow: visible; }
+.ff-mini .ff-mini-canvas { position: absolute; inset: -12%; width: 124%; height: 124%; display: block; pointer-events: none; }
+.island-flow.ff-mini { width: calc(var(--row) * .85); }
+.island-panel .ip-agent.ff-mini { height: 30px; }
+.fr-pick .fr-flow { width: 64px; }
+.fr-name .fr-flow { width: 34px; }
+.fr-flow { display: block; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.fr-flow:not(.ff-mini) { filter: hue-rotate(var(--water-turn, 0deg)); }

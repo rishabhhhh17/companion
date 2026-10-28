@@ -16,7 +16,7 @@ import { FirstLook } from "./firstLook.tsx";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { COMPANIONS } from "./companion.ts";
-import { poseFor, poseUrl } from "./characters.ts";
+import { FlowMini } from "./flowflowMini.tsx";
 
 // The first run (M18, the whole flow; onboarding.ts has the order and the rules). Home's black, with water at the foot that
 // rises with every step (the progress, also said in words), and the one lime button always in the same place at the bottom.
@@ -141,7 +141,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <p className="fr-line">{S.fr.pickLine}</p>
         <div className="fr-cast">
           {COMPANIONS.map((c) => c.ready
-            ? <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><img src={poseUrl(poseFor("idle"))} alt="" draggable={false} /><b>{name}</b><span>{S.fr.pickWater}</span></button>
+            ? <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><FlowMini className="fr-flow" state="idle" /><b>{name}</b><span>{S.fr.pickWater}</span></button>
             : <div key={c.id} className="fr-pick slot"><span className="fr-hole" aria-hidden="true" /><b>{S.groups.names[c.group]}</b><span className="fr-soon">{S.fr.soon}</span></div>)}
         </div>
         <div className="fr-grow" />
@@ -150,7 +150,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
 
       {step === "yours" && (<>
         <h2 className="fr-title">{S.fr.yoursTitle}</h2>
-        <label className="fr-name"><img src={poseUrl(poseFor("idle"))} alt="" draggable={false} /><span className="sr">{S.fr.nameLabel}</span>
+        <label className="fr-name"><FlowMini className="fr-flow" state="idle" /><span className="sr">{S.fr.nameLabel}</span>
           <input type="text" value={yours.name} maxLength={NAME_MAX} placeholder={own} spellCheck={false} autoComplete="off" onChange={(e) => setYours({ ...yours, name: e.target.value })} /></label>
         <div className="fr-label" id="fr-lively">{S.fr.livelyLabel}</div>
         <div className="fr-seg" role="group" aria-labelledby="fr-lively">

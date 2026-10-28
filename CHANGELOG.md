@@ -2,6 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## One Flowflow everywhere: 29 Oct 2026
+
+- **Flowflow now looks the same wherever you see it.** The notch, its cards and the character picker showed a picture of Flowflow, while your screen edge and Home showed the live water. Now it's the live water everywhere, in the colour you picked.
+- If your Mac can't draw the live water, or you turn off Draw live in Settings, the picture shows everywhere instead, still all the same.
+
+## Answer right in the notch: 29 Oct 2026
+
+- **When the AI needs your OK, the notch opens by itself** and asks there. No need to open Squibby for every small question.
+- Questions you can take back (going online, installing something, a file outside your project) get Allow and Don't allow right in the notch. Allow means just this once.
+- Anything that can't be undone, like sending, deleting or going live, and anything that changes your Git history, still says "Look first" and opens Squibby so you can see exactly what it wants.
+- The buttons wait a moment after the notch opens, so a stray click can't say yes for you.
+- Don't want it? Settings, Open the notch for questions.
+
 ## Claude comes straight from Anthropic: 29 Oct 2026
 
 - **Squibby no longer carries Anthropic's Claude inside the app.** On the first run it downloads Anthropic's own build, once, straight from Anthropic's package, and checks it is exactly the build we test and signed by Anthropic before using it. It usually finishes while you're still meeting Flowflow; there's a "Getting Claude ready" step in case it doesn't.
