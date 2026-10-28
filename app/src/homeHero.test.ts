@@ -180,10 +180,11 @@ describe("it springs open from the notch, and not at all with less motion", () =
   test("a short spring from the top centre, played again at each opening", () => {
     const spring = /@keyframes home-spring \{([^\n]*)\}/.exec(css)?.[1] ?? "";
     expect(spring).toContain("transform");
-    expect(css).toMatch(/\.home\.springing \{ animation: home-spring var\(--dur-4\) var\(--ease-spring\) both; \}/);
-    expect(css).toContain("--dur-4: 400ms;");
-    // It unrolls: a squashed scale and a clip that opens from the top.
-    expect(spring).toContain("scale(0.96, 0.6)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
+    // M25: it opens many times a day, so 240 ms on the strong ease out, no bounce, and every part in by 280 ms.
+    expect(css).toMatch(/\.home\.springing \{ animation: home-spring 240ms var\(--ease-out\) both; \}/);
+    expect(css).toContain("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);");
+    // It unrolls: a slightly squashed scale and a clip that opens from the top.
+    expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
     expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
     expect(card).toContain('el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing");');
   });

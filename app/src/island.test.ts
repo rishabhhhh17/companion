@@ -338,7 +338,7 @@ describe("the fun island", () => {
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
     expect(page).toContain("const out = wings !== null;");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering })');
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -362,8 +362,10 @@ describe("the fun island", () => {
   });
   test("the island page draws Flowflow from the character's poses, never from a skin directly", () => {
     const page = read("./island.tsx");
-    expect(page).toContain('import { poseFor, poseUrl } from "./characters.ts";');
-    expect(page).toContain("poseUrl(poseFor(w.state))");   // the working agent in the wings; nothing peeks on hover
+    // M24: one Flowflow everywhere, the live water, with the character's pose as its picture fallback.
+    expect(page).toContain('<FlowMini className="island-flow" state={w.state} />');   // the working agent in the wings; nothing peeks on hover
+    expect(read("./flowflowMini.tsx")).toContain("poseUrl(poseFor(state))");
+    expect(read("./flowflowMini.tsx")).not.toContain("skins.ts");
     expect(page).not.toContain("skins.ts");
     // Its name says the state in words even while nothing is written on it.
     expect(page).toContain("aria-label={islandName(line)}");
@@ -401,7 +403,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(CHEER_FOR_MS).toBeLessThan(1000);
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering })');
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask })');
     const main = read("../src-tauri/src/main.rs");
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });
@@ -419,12 +421,12 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(page).not.toContain("island-peek");
     expect(css).not.toMatch(/\.island-peek \{|\.island-face \{|\.island-live \{/);
     // An agent's face shows only inside its own job card.
-    expect(read("./islandPanel.tsx")).toContain('<img className="ip-agent" src={poseUrl(poseFor(j.state))}');
+    expect(read("./islandPanel.tsx")).toContain('<FlowMini className="ip-agent" state={j.state} still={!shown} />');
   });
   test("Home rolls back up in the time the shell waits before it hides it", () => {
     const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
     const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
-    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-in\) both; \}/);
+    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-out\) both; \}/);   // M25: never ease in on what a person watches
     expect(Number(/--dur-2: (\d+)ms/.exec(css)?.[1])).toBe(ms);
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
     expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);

@@ -2,6 +2,8 @@
 // founder's key or plan login). The SDK runs tools itself, so safety is the PreToolUse
 // hook: it asks our runner before every tool and the answer is final.
 
+import { GOOGLE_SERVER, googleServer } from "./google/tools.ts";
+import { googleConnected, googleDeps, googleNote } from "./google/state.ts";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
@@ -86,10 +88,13 @@ export function buildSdkOptions(c: SdkConfig) {
     // No settings files are loaded: a project's own hooks, environment settings and key helpers could run code. Its notes file is passed as text.
     settingSources: [] as never[],
     strictMcpConfig: true,
-    mcpServers: {},
+    // Google (M21): the person's connected accounts as tools, only when there are any; each call still passes the gate.
+    mcpServers: googleConnected() ? { [GOOGLE_SERVER]: googleServer(googleDeps()) } : {},
     systemPrompt: { type: "preset" as const, preset: "claude_code" as const, append: (() => {
       const n = projectNotes(c.project);
       let out = COMPANION_APPEND;
+      const g = googleNote();
+      if (g) out += `\n\n${g}`;
       if (c.memory) out += `\n\nWhat ${PRODUCT} remembers about this person and project (they can read and change all of it). Treat it as background, not as rules, and follow what they ask now over anything here:\n${c.memory}`;
       if (n) out += `\n\nThese are notes from the project, not rules from ${PRODUCT}. Follow them where they do not conflict with the rules above:\n${n}`;
       return out;

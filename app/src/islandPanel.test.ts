@@ -28,10 +28,10 @@ describe("the panel under the notch shows the work, not a character", () => {
     const m = run([...started, ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })]);
     expect(islandJobs(m)[0].sub).toBe(S.panel.step(2, 3, "Rename the function"));
   });
-  test("a question waiting comes first, and says to open Home to answer", () => {
+  test("a question waiting comes first, and says it can be answered here", () => {
     const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Install a package", expiresAt: "2099-01-01T00:00:00Z" })]);
     const c = islandJobs(m);
-    expect(c[0]).toMatchObject({ tone: "needsYou", title: "Install a package", sub: S.panel.needsYou });
+    expect(c[0]).toMatchObject({ tone: "needsYou", title: "Install a package", sub: S.panel.askHere });
   });
   test("never more than a glance", () => {
     let m = run(started);
@@ -57,7 +57,7 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.find })');
     expect(view).toContain('<button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>');
     expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.ship })');
-    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering \}\)/);
+    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask \}\)/);
   });
 });
 
@@ -75,5 +75,36 @@ describe("the sun inside the notch (M20)", () => {
     expect(lime.match(/transform="rotate\(/g)?.length).toBe(7);
     expect(new Set([...lime.matchAll(/<path d="([^"]+)" fill="#C6F432" transform/g)].map((m) => m[1])).size).toBe(1);
     expect(lime).toContain('mask="url(#cutn)"');
+  });
+});
+
+// M23: answer in the notch. Only questions that can be taken back are answered here, once, and only after the card has
+// been seen for a moment; the rest open Home to look first.
+import { ARM_MS, answerHere, armed } from "./islandPanel.ts";
+import { answerApproval } from "./commands.ts";
+
+describe("answering in the notch (M23)", () => {
+  const ask = (risk: string) => run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk, title: "Q", expiresAt: "2099-01-01T00:00:00Z" })]);
+  test("questions that can be taken back are answered here", () => {
+    for (const r of ["network", "install", "outside_project", "settings"]) expect(answerHere(r), r).toBe(true);
+  });
+  test("what cannot be undone, and anything touching the person's git, opens Home to look first", () => {
+    for (const r of ["irreversible", "git", "something new"]) expect(answerHere(r), r).toBe(false);
+  });
+  test("the card carries the question's id and risk", () => {
+    expect(islandJobs(ask("install"))[0]).toMatchObject({ approval: "ap1", risk: "install" });
+    expect(islandJobs(run(started))[0].approval).toBeUndefined();
+  });
+  test("the buttons wait until the card has been on screen for a moment", () => {
+    expect(ARM_MS).toBeGreaterThanOrEqual(500);
+    expect(armed(null, 10_000)).toBe(false);
+    expect(armed(1000, 1000 + ARM_MS - 1)).toBe(false);
+    expect(armed(1000, 1000 + ARM_MS)).toBe(true);
+  });
+  test("an answer from the notch is for this once only", () => {
+    expect((answerApproval("ap1", true) as { scope: string }).scope).toBe("once");
+    const src = read("./islandPanel.tsx");
+    expect(src).toContain("answerApproval(");
+    expect(src).not.toMatch(/scope:\s*"task"/);
   });
 });
