@@ -426,7 +426,7 @@ describe("the island's motion agrees with the app's timing", () => {
   test("Home rolls back up in the time the shell waits before it hides it", () => {
     const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
     const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
-    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-in\) both; \}/);
+    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-out\) both; \}/);   // M25: never ease in on what a person watches
     expect(Number(/--dur-2: (\d+)ms/.exec(css)?.[1])).toBe(ms);
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
     expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);

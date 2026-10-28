@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Snappier, calmer motion: 29 Oct 2026
+
+- **Everything answers faster.** Home drops from the notch in a quarter of a second without bouncing, and rolls back up just as quickly. The notch panel opens in a blink, from the notch, instead of fading in late.
+- **Every button gives a small squeeze when you press it,** so you feel each press land.
+- **Bounce is saved for the moments that deserve it,** like your first run and a fix that's proven to work. Everyday things just move cleanly.
+- **Lighter on your battery.** Flowflow stays alive while resting but does far less work when nothing is happening, and nothing animates in panels you can't see.
+
 ## One Flowflow everywhere: 29 Oct 2026
 
 - **Flowflow now looks the same wherever you see it.** The notch, its cards and the character picker showed a picture of Flowflow, while your screen edge and Home showed the live water. Now it's the live water everywhere, in the colour you picked.

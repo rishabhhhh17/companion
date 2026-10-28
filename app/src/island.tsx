@@ -43,8 +43,10 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const draw = () => { const s = at.current; if (!s) return; el.style.setProperty("--sw", `${Math.max(0, s.x.x)}px`); el.style.setProperty("--sh", `${Math.max(0, s.y.x)}px`); };
-    if (!w || !h) { at.current = null; el.style.removeProperty("--sw"); el.style.removeProperty("--sh"); return; }
+    // The size goes straight on the shape (M25), not through inherited variables, so a frame restyles the shape alone and not
+    // everything inside it.
+    const draw = () => { const s = at.current; if (!s) return; el.style.width = `${Math.max(0, s.x.x)}px`; el.style.height = `${Math.max(0, s.y.x)}px`; };
+    if (!w || !h) { at.current = null; el.style.removeProperty("width"); el.style.removeProperty("height"); return; }
     if (!at.current || reduced) { at.current = { x: { x: w, v: 0 }, y: { x: h, v: 0 } }; draw(); return; }
     let raf = 0, last = performance.now();
     const tick = (t: number) => {

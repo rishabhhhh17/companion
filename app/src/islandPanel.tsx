@@ -43,7 +43,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const asking = jobs.some((j) => j.approval);
   const list = jobs.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
       {jobs.map((j, i) => j.approval ? (
-        <li key={j.key} style={{ animationDelay: `${60 + i * 50}ms` }}>
+        <li key={j.key}>
           <div className="ip-job ip-ask" data-tone={j.tone} data-armed={armed(seen.current.get(j.key) ?? null, now) ? "yes" : undefined}>
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
             <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>
@@ -56,7 +56,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
           </div>
         </li>
       ) : (
-        <li key={j.key} style={{ animationDelay: `${60 + i * 50}ms` }}>
+        <li key={j.key}>
           <button className="ip-job" type="button" data-tone={j.tone} tabIndex={tab} onClick={() => void invoke("island_click").catch(() => {})}>
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
             <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>

@@ -98,7 +98,14 @@ function show(p: Point) {
     if (!beads.length) return;
     if (reduced) { placeBeads(1, 0); return; }
     const t0 = performance.now();
-    const wobble = (now: number) => { if (mine !== drawGen) return; placeBeads((now - t0) / SPREAD_MS, now); requestAnimationFrame(wobble); };
+    // Once the ring has spread and settled, a held ring (waiting for the click, maybe for minutes) keeps its wobble at 20
+    // frames a second rather than every refresh of the screen (M25): the same look, far less redrawing of the water filter.
+    const wobble = (now: number) => {
+      if (mine !== drawGen) return;
+      placeBeads((now - t0) / SPREAD_MS, now);
+      if (now - t0 > SPREAD_MS + 3000) setTimeout(() => requestAnimationFrame(wobble), 50);
+      else requestAnimationFrame(wobble);
+    };
     requestAnimationFrame(wobble);
   };
   const drawMark = (paths: string[]) => {
