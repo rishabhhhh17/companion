@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Show me how is now a drop of water, and everything is night and lime: 28 Oct 2026
+
+- **Flowflow shows you where to click with its own water.** A drop swells out of its side, pinches off and flies to the button you need. It lands with a squash and spreads into a ring of water around the button, with a lime bubble saying what to do. Click the right thing and the ring bursts into a splash. The drop then flies home and Flowflow catches it with a ripple. The next step starts the same way.
+- **One colour means "do this": lime,** the logo's colour. The main buttons are lime keys that sink when you press them. Headings and buttons use the Mac's rounded type. The notch panel says hello when nothing is running: "Hey. What are we finishing?"
+- Gold and mint are gone from the notch. Water blue belongs only to Flowflow, and amber still means something is waiting for you.
+
 ## A new mark: the smiling sun in motion: 27 Oct 2026
 
 - **Squibby has its logo:** a round sun with a smile cut through it and seven curved rays spinning the same way, like a pinwheel. Fun and warm, and it reads at 16 points. The founder picked the shape and the colours after several rounds and some research on which colours AI and developer tools already own.
