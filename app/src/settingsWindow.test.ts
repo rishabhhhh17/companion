@@ -84,12 +84,14 @@ describe("Home opened from the Settings window", () => {
     const { arrivalFrom } = await import("./home.ts");
     expect(arrivalFrom({ keyboard: true, then: { lesson: "companion-microphone" } })).toEqual({ lesson: "companion-microphone" });
     expect(arrivalFrom({ keyboard: true, then: { place: "learn" } })).toEqual({ place: "learn" });
-    for (const p of [{ keyboard: true }, null, { then: { place: "settings" } }, { then: { lesson: "" } }, { then: "learn" }]) expect(arrivalFrom(p)).toBeNull();
+    // M20: the notch's Settings button opens Settings inside Home.
+    expect(arrivalFrom({ then: { place: "settings" } })).toEqual({ place: "settings" });
+    for (const p of [{ keyboard: true }, null, { then: { place: "elsewhere" } }, { then: { lesson: "" } }, { then: "learn" }]) expect(arrivalFrom(p)).toBeNull();
     // Home does it on arrival, after "opened" (which shows Now), so the lesson or Learn is what stays on screen.
     const card = read("./card.tsx");
     const opened = card.slice(card.indexOf('listen("opened"'), card.indexOf('listen("closed"'));
     expect(opened.indexOf('homeDispatch({ type: "opened", keyboard })')).toBeLessThan(opened.indexOf("onArrival.current(then)"));
-    expect(card).toContain('if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn");');
+    expect(card).toContain('if ("lesson" in t) beginLesson(t.lesson, false); else pickTab(t.place === "settings" ? "settings" : "learn");');
     expect(fnBody("open_card_cmd")).toContain("settingswin::arrival");
   });
 });

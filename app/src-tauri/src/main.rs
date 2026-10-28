@@ -6,6 +6,7 @@
 
 mod docking;
 mod peek;
+mod gaze;
 mod settingswin;
 mod island;
 mod roam;
@@ -1005,6 +1006,26 @@ fn pointer_on_character(mtm: MainThreadMarker) -> Option<bool> {
 
 /// While it is tucked away, often (peek::EDGE_POLL_MS): the pointer reaching the edge brings it in at once, not on the
 /// next tick. Main thread.
+/// The last place of the pointer the character's page was told (gaze.rs), so only a real move is sent.
+static LAST_GAZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
+
+/// Follow my pointer (gaze.rs): while the character is in view and the setting is not Off, where the pointer is from the
+/// middle of the character's window, sent only when it moved. Main thread (the window's frame).
+fn gaze_tick(app: &AppHandle) {
+    if !gaze::follows(&setting_now("character.follow")) { return; }
+    if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { return; }
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    let Some(frame) = with_panels(|dock, _| from_appkit(dock.frame(), primary_h)) else { return };
+    let p = macos_see::pointer();
+    if p.x < 0.0 && p.y < 0.0 { return; }
+    let rel = gaze::relative((p.x, p.y), frame);
+    let mut last = LAST_GAZE.lock().unwrap_or_else(|e| e.into_inner());
+    if !gaze::worth_sending(*last, rel) { return; }
+    *last = Some(rel);
+    let _ = app.emit_to("dock", "gaze", json!({ "dx": rel.0, "dy": rel.1 }));
+}
+
 fn peek_edge_poll(app: &AppHandle) {
     if !home_set().peek { return; }
     let Some(mtm) = MainThreadMarker::new() else { return };
@@ -4032,6 +4053,14 @@ fn main() {
                 if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
+            });
+            // Follow my pointer (gaze.rs): the pointer's place, a few times a second, only while the character is in view.
+            let h = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_millis(gaze::POLL_MS));
+                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { continue; }
+                let h2 = h.clone();
+                let _ = h.run_on_main_thread(move || gaze_tick(&h2));
             });
             // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
             // may already own some of them. That must never stop Companion from opening; the one notice says what to do.

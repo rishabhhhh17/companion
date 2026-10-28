@@ -147,8 +147,9 @@ function Island() {
   const w = wings ?? lastWings.current;
   const [soft, setSoft] = useState(false);
   useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
-  // At rest on a notch the window is wider than the notch (island.rs MARK, room for the sun); the black shape stays the notch.
-  const shapeW = shape.mode === "rest" && shape.kind === "notch" && shape.core > 0 ? shape.core : shape.w;
+  // At rest on a notch the window is wider than the notch (island.rs MARK) and the black grows into it (M20): the sun sits on
+  // that black, in lime, sharp on any wallpaper, like the notch apps do.
+  const shapeW = shape.w;
   const box = useSpringBox(shapeW, shape.h, reduced, soft);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
@@ -157,8 +158,7 @@ function Island() {
       {/* Squibby's mark on the menu bar beside the notch (M16): drawn only, the island's name says what it is. */}
       {/* The mark (app/brand/make_logo.py): white on a dark menu bar, black on a light one, like the Mac's own menu bar icons. */}
       {shape.kind === "notch" && <picture>
-        <source srcSet="./brand/sun-dark.svg" media="(prefers-color-scheme: dark)" />
-        <img className="island-sun" src="./brand/sun-light.svg" alt="" aria-hidden="true" draggable={false} />
+        <img className="island-sun" src="./brand/sun-lime.svg" alt="" aria-hidden="true" draggable={false} />
       </picture>}
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}

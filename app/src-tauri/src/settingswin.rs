@@ -40,7 +40,8 @@ pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
     if let Some(d) = o.get("do") {
         return match d.as_str() { Some("find") => Some(serde_json::json!({ "do": "find" })), Some("shipCheck") => Some(serde_json::json!({ "do": "shipCheck" })), _ => None };
     }
-    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), _ => None }
+    // The notch's Settings button (M20): Settings inside Home.
+    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), Some("settings") => Some(serde_json::json!({ "place": "settings" })), _ => None }
 }
 
 #[cfg(test)]

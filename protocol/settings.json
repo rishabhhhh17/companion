@@ -50,6 +50,7 @@
       "from": { "pageStorage": { "name": "companion.reactions", "map": "notOff" } } },
     { "key": "look.water", "section": "look", "kind": "choice", "default": "ocean", "options": ["ocean", "lagoon", "lime", "berry", "midnight"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "look.theme", "section": "look", "kind": "choice", "default": "night", "options": ["night", "deep", "paper"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "character.follow", "section": "look", "kind": "choice", "default": "eyes", "options": ["eyes", "drop", "off"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "look.size", "section": "look", "kind": "choice", "default": "usual", "options": ["small", "usual", "large"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "sound.on", "section": "look", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "sound.volume", "section": "look", "kind": "choice", "default": "soft", "options": ["soft", "usual", "loud"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

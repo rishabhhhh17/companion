@@ -10,7 +10,6 @@ import { islandJobs, panelNote, PANEL_DO } from "./islandPanel.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
-import { openSettingsWindow } from "./openSettings.ts";
 import { useSetting } from "./settingsStore.ts";
 
 type Props = { m: Model; line: string; shown: boolean };
@@ -43,7 +42,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       {showButtons && <div className="ip-row">
         <button className="ip-pill find" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.find }).catch(() => {})}><Icon name="find" size={13} />{S.look.chipFind}</button>
         <button className="ip-pill live" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.ship }).catch(() => {})}><Icon name="shield" size={13} />{S.look.chipSafe}</button>
-        <button className="ip-pill set" type="button" tabIndex={tab} onClick={() => void openSettingsWindow().catch(() => {})}><Icon name="gear" size={13} />{S.panel.settings}</button>
+        <button className="ip-pill set" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.settings }).catch(() => {})}><Icon name="gear" size={13} />{S.panel.settings}</button>
         <button className="ip-open" type="button" tabIndex={tab} aria-label={S.panel.open} title={S.panel.open} onClick={() => void invoke("island_click").catch(() => {})}><Icon name="resize" size={14} /></button>
       </div>}
     </div>

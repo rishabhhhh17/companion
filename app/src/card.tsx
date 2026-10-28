@@ -25,7 +25,7 @@ import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, key
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
+import { HOME_PLACES, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { useLook } from "./useLook.ts";
@@ -42,6 +42,8 @@ import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
+import { groupPlaces } from "./settingsGroups.ts";
+import { characterName } from "./companion.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
@@ -1176,7 +1178,9 @@ function Card() {
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
   // The gear: Settings in its own window; if the app cannot open it, Settings inside Home as before.
-  const gear = () => { void openSettings(invoke, () => pickTab("settings")); };
+  // Settings lives inside Home (M20, the founder: not in a separate window): the gear, Command comma and the notch's
+  // Settings button all open it here.
+  const gear = () => pickTab("settings");
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
   useEffect(() => {
@@ -1212,7 +1216,7 @@ function Card() {
   onArrival.current = (t: HomeArrival) => {
     // From the panel under the notch: the two things Squibby is for.
     if ("do" in t) { if (t.do === "find") findFromHome(); else shipIt(); return; }
-    if ("lesson" in t) beginLesson(t.lesson, false); else pickTab("learn");
+    if ("lesson" in t) beginLesson(t.lesson, false); else pickTab(t.place === "settings" ? "settings" : "learn");
   };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
   const practiceLesson = () => { const walk = beginLesson(SETTINGS_LESSON_ID, true); dispatch({ type: "ui.practiceLesson", walk }); };
@@ -1413,7 +1417,9 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
-  const viewTitle = home.tab === "settings" ? (settingsPlaces().find((p) => p.id === setPlace)?.title ?? settingsPlaces()[0]?.title ?? tabName("settings")) : tabName(home.tab);
+  const setOpen = setPlace || groupPlaces(settingsPlaces())[0]?.places[0]?.id || "";
+  const placeTitle = (p: { id: string; title: string }) => (p.id === "home" ? characterName(setting("character.name")) : p.title);
+  const viewTitle = home.tab === "settings" ? ((() => { const p = settingsPlaces().find((x) => x.id === setOpen); return p ? placeTitle(p) : tabName("settings"); })()) : tabName(home.tab);
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
@@ -1557,14 +1563,18 @@ function Card() {
         </section>
       )}
       {home.tab === "settings" && (
-        <ul className="sections" aria-label={S.look.settingsPlaces}>
-          {settingsPlaces().map((p) => {
-            const on = (setPlace || settingsPlaces()[0]?.id) === p.id;
-            return <li key={p.id}><button className="section-pill" type="button" aria-current={on ? "page" : undefined} onClick={() => { setSetPlace(p.id); root.current?.scrollTo({ top: 0 }); }}>{p.title}</button></li>;
-          })}
-        </ul>
+        <nav className="sections-grouped" aria-label={S.look.settingsPlaces}>
+          {groupPlaces(settingsPlaces()).map((g) => (
+            <div key={g.group} className="sections-group" data-group={g.group}>
+              <h3 className="sections-head" id={`sg-${g.group}`}>{S.setGroups[g.group]}</h3>
+              <ul className="sections" aria-labelledby={`sg-${g.group}`}>
+                {g.places.map((p) => <li key={p.id}><button className="section-pill" type="button" aria-current={setOpen === p.id ? "page" : undefined} onClick={() => { setSetPlace(p.id); root.current?.scrollTo({ top: 0 }); }}>{placeTitle(p)}</button></li>)}
+              </ul>
+            </div>
+          ))}
+        </nav>
       )}
-      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} place={setPlace || settingsPlaces()[0]?.id || ""} />}
+      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} place={setOpen} />}
       {groups.groupOn("guide") && show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
         const pr = m.practice!, entry = practiceOf(pr.kind)!;
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}

@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow comes alive: 28 Oct 2026
+
+- **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (coming next: a little drop of water that trails your pointer) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.
+- **It has weight.** When it slides in from the edge, travels to a window or is dragged, the water lags behind like jelly, squashes as it stops and wobbles. Coming in from the edge it lands with a splash.
+- **It fidgets.** In Lively it does a little hop now and then when nothing is happening.
+- **The logo lives inside the notch now,** in lime on the notch's black, sharp whatever your wallpaper.
+- **Settings is inside Home.** The gear, Command comma and the notch's Settings button all open it right there, grouped under Character, Powers, Your Mac, Account and More.
+
 ## Make it yours: colours, themes, sounds and more: 28 Oct 2026
 
 - **Pick the water's colour:** Ocean, Lagoon, Lime, Berry or Midnight. Flowflow, the drop that shows you where to click, its ring and the waterline all change together. One tap on the coloured drops at the top of Settings, and you see it at once.

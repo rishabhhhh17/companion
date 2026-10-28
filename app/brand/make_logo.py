@@ -91,6 +91,8 @@ open("logo-white.svg", "w").write(svg(mark("#fff", "w"), (-280, -280, 560, 560))
 tight = (-270, -270, 540, 540)
 open("../public/brand/sun-dark.svg", "w").write(svg(mark("#fff", "d"), tight, 64))
 open("../public/brand/sun-light.svg", "w").write(svg(mark("#000", "l"), tight, 64))
+# The sun inside the notch (M20): on the notch's black, in lime, the same at any wallpaper.
+open("../public/brand/sun-lime.svg", "w").write(svg(mark(LIME, "n"), tight, 64))
 
 # The app icon: macOS grid (an 824 rounded square in 1024, corner about 186), matte black with a faint sheen, the mark
 # in electric lime with a soft lime glow behind it on the black.

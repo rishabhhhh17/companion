@@ -100,13 +100,13 @@ export function need(m: Model): Need | null {
  *  (a11y.ts `liveLine`), since focus does not move there. */
 /** What Home does on arrival when the Settings window opened it (main.rs open_card_cmd's `then`, checked by the shell in
  *  settingswin.rs arrival): start that lesson, or show Learn. Anything else is ignored and Home just opens. */
-export type HomeArrival = { lesson: string } | { place: "learn" } | { do: "find" | "shipCheck" };
+export type HomeArrival = { lesson: string } | { place: "learn" | "settings" } | { do: "find" | "shipCheck" };
 export function arrivalFrom(opened: unknown): HomeArrival | null {
   const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown } | null | undefined;
   if (!t || typeof t !== "object") return null;
   if (t.do === "find" || t.do === "shipCheck") return { do: t.do };
   if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };
-  return t.place === "learn" ? { place: "learn" } : null;
+  return t.place === "learn" ? { place: "learn" } : t.place === "settings" ? { place: "settings" } : null;
 }
 
 export type HomeState = { tab: Tab; needKey: string };

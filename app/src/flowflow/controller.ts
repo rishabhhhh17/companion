@@ -73,6 +73,12 @@ export class FlowflowController {
     this.engine.touch(0, 0.6); this.lastPointer = performance.now(); this.resumeOrPause();
   }
 
+  /** Alive on the side (M20): the pointer anywhere on the screen, its window moving, coming in from the edge, and Lively. */
+  gaze(dx: number, dy: number): void { if (this.disposed || this.reduced) return; this.engine.gaze(dx, dy); this.lastPointer = performance.now(); this.resumeOrPause(); }
+  push(vx: number, vy: number): void { if (this.disposed || this.reduced) return; this.engine.push(vx, vy); this.lastPointer = performance.now(); this.resumeOrPause(); }
+  arrive(fromX: number, fromY = 0): void { if (this.disposed || this.reduced) return; this.engine.arrive(fromX, fromY); this.lastPointer = performance.now(); this.resumeOrPause(); }
+  setLively(on: boolean): void { this.engine.lively = on; if (on) this.resumeOrPause(); }
+
   /** The water's colours (lookfeel.ts flowColours). */
   setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); if (this.reduced) this.still(); else this.resumeOrPause(); }
 
@@ -96,7 +102,7 @@ export class FlowflowController {
   private interval(): number {
     const e = this.engine, st = e.behavior.state;
     if (st === "sleeping") return SLEEP_INTERVAL;
-    const quiet = st === "idle" && e.body.settled && e.droplets.alive === 0 && e.ripples.alive === 0 && performance.now() - this.lastPointer > 4000;
+    const quiet = st === "idle" && !e.lively && e.body.settled && e.droplets.alive === 0 && e.ripples.alive === 0 && performance.now() - this.lastPointer > 4000;
     return quiet ? IDLE_INTERVAL : 0;
   }
 

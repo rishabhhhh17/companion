@@ -78,7 +78,7 @@ describe("the shipped list of settings", () => {
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
       // M19: make it yours.
-      "look.water": "ocean", "look.theme": "night", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "look.water": "ocean", "look.theme": "night", "character.follow": "eyes", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
       "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
     };
