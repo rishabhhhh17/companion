@@ -1457,6 +1457,7 @@ function Card() {
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
+      {onboarded && <ClaudeNotice />}
       {onboarded && (<>
       {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
@@ -2273,3 +2274,22 @@ applyTextSize(textSize());
 // Less motion (character.motion) stops Home's own animations too.
 followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
+
+/** Anthropic's Claude missing or damaged after the first run (M22): one plain line and Get Claude, with the download's
+ *  progress. Shows nothing while Claude is ready. */
+function ClaudeNotice() {
+  const [st, setSt] = useState<{ state: string; received?: number; total?: number | null; message?: string } | null>(null);
+  useEffect(() => {
+    void invoke("claude_status").then((v) => setSt(v as { state: string })).catch(() => {});
+    const off = listen("claude-install", (e) => setSt(e.payload as { state: string }));
+    return () => { off.then((f) => f()); };
+  }, []);
+  if (!st || st.state === "ready") return null;
+  const mb = Math.round((st.received ?? 0) / 1e6), pct = st.total ? Math.min(100, Math.round(((st.received ?? 0) / st.total) * 100)) : null;
+  return (
+    <section className="panel notice claude-notice" role="status">
+      <div className="line">{st.state === "installing" ? S.fr.claudeGetting(mb, pct) : st.state === "failed" ? st.message : S.fr.claudeMissing}</div>
+      {st.state !== "installing" && <div className="row"><button className="btn primary" type="button" onClick={() => { setSt({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{st.state === "failed" ? S.fr.claudeAgain : S.fr.claudeInstall}</button></div>}
+    </section>
+  );
+}

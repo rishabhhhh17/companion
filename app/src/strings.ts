@@ -238,6 +238,13 @@ export const S = {
     asks: { guide: "Asks for screen access the first time", voice: "Asks for the microphone the first time" } as Record<string, string>,
     next: "Next",
     connectTitle: "Connect your Claude",
+    claudeTitle: "Getting Claude ready",
+    claudeLine: "Squibby runs Anthropic's own Claude on your Mac. It downloads straight from Anthropic, once, and is checked before it's used.",
+    claudeGetting: (mb: number, pct: number | null) => (pct === null ? `Downloading, ${mb} MB so far` : `Downloading, ${pct}%`),
+    claudeReady: "Claude is ready.",
+    claudeAgain: "Try again",
+    claudeMissing: "Squibby needs Anthropic's Claude to work. It downloads once, straight from Anthropic.",
+    claudeInstall: "Get Claude",
     folderTitle: "Which project are we finishing?",
     folderNone: "No folder chosen yet.",
     folderGo: (name: string) => `Open ${name}`,
@@ -1368,6 +1375,27 @@ export const S = {
   // Puts back the character's edge, its position along it and Same place on every display together.
   setResetPlace: "Put the character back in its usual place",
   // The parts of Settings that are not settings, found by the search too.
+  // Google (M21, google.rs): sign in with Google, and connect Gmail, Calendar and Drive. Plain words; Google's page opens in
+  // the person's own browser, never here.
+  google: {
+    notSetUp: "Google isn't set up in this build yet. (For the team: add the Google client id to app/google.json and build again.)",
+    signInTitle: "Your account",
+    signInLine: "Sign in with Google to have a Squibby account. Your own Claude key keeps working without one.",
+    signIn: "Sign in with Google",
+    signOut: "Sign out",
+    signedIn: (name: string, email: string) => (name ? `${name}, ${email}` : email),
+    connectTitle: "Connections",
+    connectLine: "Connect a Google account so Squibby can use Gmail, Calendar or Drive when you ask. Sending an email, adding an event or sharing a file always waits for your OK.",
+    apps: { gmail: "Gmail", calendar: "Calendar", drive: "Drive" } as Record<string, string>,
+    appLines: { gmail: "Search, read and draft emails (never sends on its own)", calendar: "See your events, find a free time, add an event after you OK it", drive: "Read the files you open or pick with Squibby" } as Record<string, string>,
+    label: "Name it (Work, Personal)",
+    connect: "Connect a Google account",
+    waiting: "Finish in your browser. Google's own page is open there.",
+    disconnect: "Disconnect",
+    none: "No Google account connected yet.",
+    failed: (why: string) => `Not connected: ${why}`,
+    busy: "A Google sign in is already open in your browser.",
+  },
   // The headings of the Settings side list (settingsGroups.ts).
   setGroups: { companion: "Character", powers: "Powers", mac: "Your Mac", account: "Account", more: "More" } as Record<string, string>,
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
@@ -1379,6 +1407,7 @@ export const S = {
   fixedGroups: {
     permissions: { title: `What ${PRODUCT} may do on this Mac`, also: ["permission", "accessibility", "screen recording", "microphone", "privacy"] },
     key: { title: "Your Claude key", also: ["api key", "anthropic", "keychain", "account"] },
+    google: { title: "Google", also: ["google", "sign in", "account", "gmail", "email", "calendar", "drive", "docs", "connect", "connections"] },
     practice: { title: "Practice", also: ["sample", "try", "learn"] },
     made: { title: `What ${PRODUCT} made`, also: ["new folder", "new folders", "made", "folders", "trash", "remove", "delete", "clean up", "projects", "make me something"] },
     kept: { title: `What ${PRODUCT} keeps on this Mac`, also: ["delete everything", "data", "storage", "erase", "privacy"] },

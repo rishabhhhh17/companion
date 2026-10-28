@@ -807,3 +807,15 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sections-group .sections { margin: 0; }
 .sections-head { margin: 0 0 var(--space-1); color: var(--muted); font: 600 var(--t-caption) var(--round); }
 .fr-seg.three { grid-template-columns: repeat(3, 1fr); }
+/* Google in Settings (M21): who is signed in, and each connected account with its apps. */
+.google-head { margin: var(--space-4) 0 var(--space-1); font: 700 var(--t-body) var(--round); }
+.google-dot { display: inline-grid; place-items: center; width: 28px; min-height: 28px; flex: none; border-radius: 50%; background: var(--fg); color: var(--bg); font: 700 var(--t-small) var(--round); }
+.google-me, .google-acct { align-items: center; gap: var(--space-3); }
+.google-acct .line { flex: 1; }
+.google-new { display: grid; gap: var(--space-1); margin-top: var(--space-3); }
+/* The first run's download of Anthropic's Claude (M22): a water bar that fills; one that does not know the size drifts. */
+.fr-progress { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--t-small); }
+.fr-bar { min-height: 10px; border-radius: var(--r-pill); background: #121216; overflow: clip; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--water-deep), var(--water)); transition: width var(--dur-3) var(--ease-out); }
+.fr-bar i[data-unknown] { animation: fr-drift 1.4s ease-in-out infinite alternate; }
+@keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }

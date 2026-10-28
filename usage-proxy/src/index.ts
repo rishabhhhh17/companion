@@ -1,4 +1,4 @@
-export { createProxy, type Deps, type SafeEvent } from "./proxy.ts";
+export { createProxy, GOOGLE_SIGNIN_PATH, type Deps, type SafeEvent } from "./proxy.ts";
 export { MemoryStore, type Store, type User, type UsageRecord, type SuspensionRecord } from "./store.ts";
 export { newToken, hashToken, tokenFromHeaders } from "./tokens.ts";
 export { PLANS, planOf, budgetCheck, type Plan } from "./plans.ts";
@@ -8,3 +8,4 @@ export { PAYMENT_PROVIDERS, paymentProviderFromSetting, webhookPathFor, webhookR
 export { USER_ID_SECRET_SETTING, MIN_SECRET_CHARS, deriveUserId, findOwnerByUserId, secretProblem } from "./userid.ts";
 export { issueToken } from "./accounts.ts";
 export { runOperator } from "./operator.ts";
+export { createGoogleVerifier, GOOGLE_CLIENT_ID_SETTING, GOOGLE_ISSUERS, GOOGLE_JWKS_URL, type GoogleCheck, type GoogleIdentity } from "./google.ts";

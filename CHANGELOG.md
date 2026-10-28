@@ -2,6 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Claude comes straight from Anthropic: 29 Oct 2026
+
+- **Squibby no longer carries Anthropic's Claude inside the app.** On the first run it downloads Anthropic's own build, once, straight from Anthropic's package, and checks it is exactly the build we test and signed by Anthropic before using it. It usually finishes while you're still meeting Flowflow; there's a "Getting Claude ready" step in case it doesn't.
+- If Claude is ever missing or damaged, Home says so and offers "Get Claude".
+- The app download gets about 230 MB smaller.
+
+## Google: sign in, and connect Gmail, Calendar and Drive: 29 Oct 2026
+
+- **Sign in with Google** in Settings, under Account. Google's own page opens in your browser; Squibby never sees your password. Your own Claude key keeps working without an account.
+- **Connect Google accounts** (Work, Personal, as many as you like) for Gmail, Calendar and Drive. Then ask: "what did Sam email me about the launch?", "find me a free hour on Thursday", "what's in the pricing doc?". Squibby can search and read, and write Gmail drafts; it never sends an email, and adding a calendar event always waits for your OK.
+- **Disconnect** any account in one tap: Google is told to revoke it and nothing of it stays on your Mac.
+- For the team: Google needs a client id from Google's console before this works (see docs/milestones/M21-google-plan.md).
+
 ## Flowflow comes alive: 28 Oct 2026
 
 - **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (a little drop of its water also trails your pointer around, stretching as it goes and settling beside it) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.

@@ -111,7 +111,9 @@ pub fn split_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
 
 /// Where the runner is: a dev settings file, then environment variables.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String> }
+/// `claude`: where Anthropic's Claude build is once installed at first run (claude_install.rs, M22). Each engine start
+/// passes it as COMPANION_CLAUDE_BIN only when the file is there; a development run uses the SDK package's own.
+pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String>, pub claude: Option<PathBuf> }
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
@@ -153,7 +155,7 @@ pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Optio
             _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
-    Ok(Locations { bun, runner, data, env: allowed_env(&dev) })
+    Ok(Locations { bun, runner, data, env: allowed_env(&dev), claude: None })
 }
 
 /// What a person reads when the helper that runs Claude cannot start, is not there yet, or does not answer. Plain words;
@@ -278,6 +280,12 @@ impl Shared {
     pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { kill_group(c); } }
 }
 
+impl Runner {
+    /// Starts the engine again (its supervisor brings it back at once), so a new start picks up what changed, such as
+    /// Claude installed at first run.
+    pub fn restart(&self) { self.shared.kill(); }
+}
+
 /// Runs the engine for as long as the app lives: start it, read its lines, and start it again when it stops.
 /// `spawn` and `emit` are passed in so this can be tested with pretend engines.
 #[cfg(test)]
@@ -367,8 +375,10 @@ impl Runner {
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
             use std::os::unix::process::CommandExt;
             // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
-            Command::new(&loc.bun).arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app")
-                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+            let mut c = Command::new(&loc.bun);
+            c.arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app");
+            if let Some(p) = loc.claude.as_ref().filter(|p| p.is_file()) { c.env("COMPANION_CLAUDE_BIN", p); }
+            c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.
         let first = spawn().map_err(|e| { crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}"))); HELPER_DOWN.to_string() })?;

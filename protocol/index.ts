@@ -48,6 +48,8 @@ export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaT
 export type AssistCancel = Envelope & { type: "assist.cancel"; req: string };
 
 export type RunnerPing = Envelope & { type: "runner.ping" };
+/** The Google accounts connected (M21, from the shell only): who, for which apps, and a short lived access token each. */
+export type GoogleAccounts = Envelope & { type: "google.accounts"; accounts: { label: string; email: string; apps: string[]; token: string; expiresInSecs: number }[] };
 export type ShipCheck = Envelope & { type: "ship.check"; project: string; runChecks?: boolean; confirm?: string[] };
 // offTheRecord: the Off the record box was ticked. Nothing is learned or told from memory, no conversation is saved, Research
 // files no notes, and the steps of a Rescue plan run off the record too.
@@ -160,7 +162,7 @@ export type NewFolderKind = (typeof NEW_FOLDER_KINDS)[number];
 export const MAX_REQUEST_CHARS = 4000;
 export type ProjectNew = { v: 1; id: string; ts?: string; type: "project.new"; kind: NewFolderKind; request: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type ShellCommand = ProjectNew;
-export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
+export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -399,6 +401,7 @@ const COMMANDS: Record<string, Check[]> = {
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
   "drive.approve": [str("agent"), list("steps")],
   "runner.ping": [],
+  "google.accounts": [list("accounts")],
   "engine.warm": [],
   "settings.apply": [obj("values"), opt("project", str("project")), opt("projectValues", obj("projectValues"))],
   "ship.preview": [str("project")],

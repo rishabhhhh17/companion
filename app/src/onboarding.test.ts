@@ -7,7 +7,7 @@ import { S } from "./strings.ts";
 
 describe("moving through the first run", () => {
   test("hello, see it work, choose and make it yours, powers, connect, folder, and a last screen; the ends have nowhere to go", () => {
-    expect([...STEPS]).toEqual(["hello", "look", "pick", "yours", "powers", "connect", "folder", "ready"]);
+    expect([...STEPS]).toEqual(["hello", "look", "pick", "yours", "powers", "claude", "connect", "folder", "ready"]);
     expect(next("hello")).toBe("look"); expect(next("folder")).toBe("ready"); expect(next("ready")).toBeNull();
     expect(back("look")).toBe("hello"); expect(back("hello")).toBeNull();
     expect([...REQUIRED]).toEqual(["connect", "folder"]);
@@ -28,6 +28,9 @@ describe("moving through the first run", () => {
     expect(canContinue("folder", { connected: true, project: "" })).toBe(false);
     expect(canContinue("folder", { connected: true, project: "/p" })).toBe(true);
     for (const s of ["pick", "yours", "powers", "ready"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    // M22: Anthropic's Claude must be installed before Connect; until then Continue waits.
+    expect(canContinue("claude", { connected: false, project: "", claude: false })).toBe(false);
+    expect(canContinue("claude", { connected: false, project: "", claude: true })).toBe(true);
   });
   test("the count in words covers the five steps in the middle", () => {
     expect([...COUNTED]).toEqual(["pick", "yours", "powers", "connect", "folder"]);
