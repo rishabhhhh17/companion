@@ -34,7 +34,7 @@ export function ringLook(colour: unknown, exact: boolean): RingLook {
 /** Ring lettering (point.lettering) and the text size picked in Settings: the caption's font and how much room it needs, so
  *  it is kept inside the window. Plain at the usual size is the caption as it always was. */
 const CAPTION_PX: Record<string, number> = { standard: 15, large: 17, larger: 19, largest: 21 };
-const PLAIN_FONT = '-apple-system, "SF Pro Text", sans-serif';
+const PLAIN_FONT = 'ui-rounded, "SF Pro Rounded", -apple-system, sans-serif';
 const HAND_FONT = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
 export function captionStyle(lettering: unknown, size: unknown): { font: string; maxWidth: number; reserveW: number; reserveH: number } {
   const base = CAPTION_PX[typeof size === "string" && Object.hasOwn(CAPTION_PX, size) ? size : "standard"];
@@ -42,7 +42,7 @@ export function captionStyle(lettering: unknown, size: unknown): { font: string;
   const px = hand ? base + 2 : base;
   const f = px / 15;
   const maxWidth = Math.round(300 * f);
-  return { font: `600 ${px}px ${hand ? HAND_FONT : PLAIN_FONT}`, maxWidth, reserveW: maxWidth + 20, reserveH: Math.round(60 * f) };
+  return { font: `700 ${px}px ${hand ? HAND_FONT : PLAIN_FONT}`, maxWidth, reserveW: maxWidth + 20, reserveH: Math.round(60 * f) };
 }
 /** Where the caption goes beside its ring, and how wide it may be, inside `box` (the window the ring is clipped to, or the
  *  whole screen): the words stay inside the window too (rule 22). In a window narrower than the caption it gets narrower,
@@ -77,7 +77,7 @@ export function burst(rect: { x: number; y: number; w: number; h: number }, n = 
 export type Piece = { vx: number; vy: number; spin: number; color: string };
 export const CONFETTI_S = 1.5;
 export function confetti(n: number, dockedRight: boolean): Piece[] {
-  const colors = ["#ff9a2e", "#1e8a4c", "#ffb020", "#4c8dff", "#e5484d"];
+  const colors = ["#C6F432", "#59D2FF", "#FFFFFF", "#ffb020", "#7BE495"];
   const away = dockedRight ? -1 : 1;
   return Array.from({ length: n }, (_, i) => {
     const a = (10 + (i / Math.max(1, n - 1)) * 70) * (Math.PI / 180);   // 10 to 80 degrees above the horizontal

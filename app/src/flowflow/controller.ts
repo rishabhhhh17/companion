@@ -60,6 +60,19 @@ export class FlowflowController {
     this.resumeOrPause();
   }
 
+  /** The water pointer leaves (M17): the body is poked on the side facing the target and sheds a drop that way. `dx, dy`:
+   *  the way to the target on the screen (y down). Nothing with less motion. */
+  give(dx: number, dy: number): void {
+    if (this.reduced || this.disposed) return;
+    const n = Math.hypot(dx, dy) || 1;
+    this.engine.touch((dx / n) * 0.7, (-dy / n) * 0.7); this.lastPointer = performance.now(); this.resumeOrPause();
+  }
+  /** The drop comes home: it lands on top and ripples through. */
+  catch(): void {
+    if (this.reduced || this.disposed) return;
+    this.engine.touch(0, 0.6); this.lastPointer = performance.now(); this.resumeOrPause();
+  }
+
   setState(s: CharacterState): void { this.engine.applyApp(s); if (this.reduced) this.still(); }
   setTuning(t: Partial<Tuning>): void { this.engine.setTuning(t); if (this.reduced) this.still(); }
   setReduced(r: boolean): void { if (r === this.reduced) return; this.reduced = r; if (r) { this.stop(); this.still(); } else this.resumeOrPause(); }
