@@ -1,7 +1,7 @@
 #!/bin/bash
-# Stage the engine that goes inside Squibby.app: Bun, the runner and its production packages (which include Anthropic's
-# own Claude binary, copied from the pinned SDK package). Everything is copied as is: the Claude binary is never changed or
-# re-signed (rule 4), and a checksum taken here is checked again after the app is signed.
+# Stage the engine that goes inside Squibby.app: Bun, the runner and its production packages. Anthropic's Claude binary is
+# NOT staged (M22, AGENTS.md rule 4: bundling it needs an agreement with Anthropic): the SDK's platform package is left out
+# here, and the app installs Anthropic's own build at first run (claude_install.rs).
 # Output: app/vendor/engine (never committed). Apple Silicon only for now.
 set -eu
 cd "$(dirname "$0")/../.."
@@ -21,13 +21,14 @@ cp protocol/index.ts protocol/settings.ts protocol/settings.json protocol/apps.j
 cp -R lessons "$OUT/lessons"
 # Only what the runner needs to run, exactly as locked.
 (cd "$OUT/runner" && bun install --production --frozen-lockfile --ignore-scripts >/dev/null)
-CLAUDE="$OUT/runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"
-[ -f "$CLAUDE" ] || { echo "FAIL: Anthropic's Claude binary was not installed with the SDK"; exit 1; }
+# Anthropic's Claude binary stays out of the app (M22): the platform package is removed, and nothing named claude may be left.
+rm -rf "$OUT/runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64"
+LEFT="$(find "$OUT" -type f -name claude | head -1)"
+[ -z "$LEFT" ] || { echo "FAIL: a Claude binary is still in the staged engine: $LEFT"; exit 1; }
+echo "Anthropic's Claude binary left out of the app (installed at first run)"
 # The staged Claude binary must be the pinned SDK version's (the SDK package and its platform package move together).
 GOT="$(grep -m1 '"version"' "$OUT/runner/node_modules/@anthropic-ai/claude-agent-sdk/package.json" | sed -E 's/.*: *"([^"]+)".*/\1/')"
 [ "$GOT" = "$SDK_PIN" ] || { echo "FAIL: the staged SDK is $GOT but the runner pins $SDK_PIN"; exit 1; }
-codesign --verify "$CLAUDE" 2>/dev/null && echo "Anthropic's Claude binary has a valid signature (left as it is)" || echo "NOTE: the Claude binary's signature could not be verified here"
-shasum -a 256 "$CLAUDE" | cut -d' ' -f1 > "$OUT/claude.sha256"
 shasum -a 256 "$OUT/bin/bun" | cut -d' ' -f1 > "$OUT/bun.sha256"
 # Test and type files are not needed at run time.
 find "$OUT/runner/src" -name '*.test.ts' -delete

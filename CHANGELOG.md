@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Claude comes straight from Anthropic: 29 Oct 2026
+
+- **Squibby no longer carries Anthropic's Claude inside the app.** On the first run it downloads Anthropic's own build, once, straight from Anthropic's package, and checks it is exactly the build we test and signed by Anthropic before using it. It usually finishes while you're still meeting Flowflow; there's a "Getting Claude ready" step in case it doesn't.
+- If Claude is ever missing or damaged, Home says so and offers "Get Claude".
+- The app download gets about 230 MB smaller.
+
 ## Google: sign in, and connect Gmail, Calendar and Drive: 29 Oct 2026
 
 - **Sign in with Google** in Settings, under Account. Google's own page opens in your browser; Squibby never sees your password. Your own Claude key keeps working without an account.

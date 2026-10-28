@@ -813,3 +813,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .google-me, .google-acct { align-items: center; gap: var(--space-3); }
 .google-acct .line { flex: 1; }
 .google-new { display: grid; gap: var(--space-1); margin-top: var(--space-3); }
+/* The first run's download of Anthropic's Claude (M22): a water bar that fills; one that does not know the size drifts. */
+.fr-progress { display: grid; gap: var(--space-2); color: var(--muted); font-size: var(--t-small); }
+.fr-bar { min-height: 10px; border-radius: var(--r-pill); background: #121216; overflow: clip; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-pill); background: linear-gradient(90deg, var(--water-deep), var(--water)); transition: width var(--dur-3) var(--ease-out); }
+.fr-bar i[data-unknown] { animation: fr-drift 1.4s ease-in-out infinite alternate; }
+@keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }
