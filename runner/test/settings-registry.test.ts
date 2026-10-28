@@ -26,7 +26,8 @@ describe("the shipped list of settings", () => {
   test("sections are in page order and every setting names one of them", () => {
     // Groups of tools come first (F20, M12): the four switches are the first thing Settings shows.
     expect(REGISTRY.sections[0]).toBe("groups");
-    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
+    // M19: Look and feel, right after Home and the character.
+    expect(REGISTRY.sections).toEqual(["groups", "keys", "talking", "home", "look", "pointing", "spending", "work", "checks", "watch", "memory", "otherApps", "files", "sharing", "display", "updates", "numbers"]);
     for (const d of REGISTRY.settings) expect(REGISTRY.sections).toContain(d.section);
   });
   test("every setting the core registers is there, with today's behaviour as its usual value", () => {
