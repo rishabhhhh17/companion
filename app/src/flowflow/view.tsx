@@ -14,11 +14,13 @@ export type FlowflowViewProps = {
   /** Called once if the live character cannot run (no WebGL, or the GPU context was lost): show the pictures instead. */
   onFallback?: () => void;
   className?: string;
+  /** The water's colours (lookfeel.ts flowColours); today's ocean when not given. */
+  colours?: { light: string; deep: string };
   /** Gives the preview a handle to the controller (for its numbers). */
   controllerRef?: { current: FlowflowController | null };
 };
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef }: FlowflowViewProps) {
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours }: FlowflowViewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
@@ -37,6 +39,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
 
   useEffect(() => { ctl.current?.setState(state); }, [state]);
   useEffect(() => { ctl.current?.setReduced(!!reduced); }, [reduced]);
+  useEffect(() => { if (colours) ctl.current?.setColours(colours.light, colours.deep); }, [colours?.light, colours?.deep, ctl.current]);
   useEffect(() => { if (tuning) ctl.current?.setTuning(tuning); }, [tuning]);
 
   if (failed) return null;

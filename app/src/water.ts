@@ -3,6 +3,8 @@
 // ring bursts and the drop hops on to the next step, and after the last one it flies home. The numbers and the shapes are
 // here, with no page, so they can be tested (water.test.ts); overlay.ts draws them.
 
+import { WATER_TINTS, waterOf } from "./lookfeel.ts";
+
 export type Pt = { x: number; y: number };
 
 /** How long each part takes (ms): the bud swells and pinches off, the drop squashes on arrival, and spreads into the ring. */
@@ -90,4 +92,11 @@ const TINTS: Record<string, Tint> = {
   blue: { hi: "#CFE4FF", mid: "#3D8BFF", deep: "#0A4FB8" },
   highContrast: { hi: "#FFFFFF", mid: "#F2F2F2", deep: "#BDBDBD" },
 };
-export function waterTint(colour: unknown): Tint { return typeof colour === "string" && Object.hasOwn(TINTS, colour) ? TINTS[colour] : WATER_TINT; }
+export function waterTint(colour: unknown, water?: unknown): Tint {
+  if (typeof colour === "string" && Object.hasOwn(TINTS, colour)) return TINTS[colour];
+  // The usual ring colour: the water's own colour chosen in Settings (look.water, M19), ocean unless changed.
+  const w = WATER_TINTS[waterOf(water)];
+  return { hi: w.hi, mid: w.mid, deep: w.deep };
+}
+/** The drop's size (point.dropSize, M19): how much bigger or smaller than the usual the drop and its ring's beads are. */
+export function dropScale(v: unknown): number { return v === "small" ? 0.75 : v === "large" ? 1.35 : 1; }

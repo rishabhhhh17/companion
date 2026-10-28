@@ -71,6 +71,12 @@ export class FlowflowRenderer {
     this.drops = new Points(this.dropGeo, this.dropMat); this.drops.frustumCulled = false; this.scene.add(this.drops);
   }
 
+  /** The water's colours (M19, the water colour in Settings): its light and its deep. */
+  setColours(light: string, deep: string): void {
+    this.bodyMat.uniforms.uColA.value = new Color(light); this.bodyMat.uniforms.uColB.value = new Color(deep);
+    this.dropMat.uniforms.uColA.value = new Color(light);
+  }
+
   /** The canvas's size in CSS pixels, and the screen's pixel ratio (it can change when the window moves between screens). */
   setSize(cssW: number, cssH: number, dpr: number): void {
     if (this.disposed || !(cssW > 0) || !(cssH > 0)) return;

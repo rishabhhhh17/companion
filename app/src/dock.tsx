@@ -3,6 +3,9 @@ import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import type { FlowflowController } from "./flowflow/controller.ts";
 import { characterName } from "./companion.ts";
+import { useLook } from "./useLook.ts";
+import { play, wantSound, type Cue } from "./sound.ts";
+import { SIZE_SCALE, sizeOf } from "./lookfeel.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
@@ -12,7 +15,7 @@ import { roamFrom, type Roam } from "./roam.ts";
 import { usePeek } from "./peek.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
-import { startSettings, useSetting } from "./settingsStore.ts";
+import { setting, startSettings, useSetting } from "./settingsStore.ts";
 import { DropRing, useDrop } from "./dropRing.tsx";
 import { SKIN, skinVars } from "./skins.ts";
 import { useFlow } from "./flow/useFlow.ts";
@@ -76,6 +79,9 @@ function Dock() {
   const waiting = m.approvals.length;
   // Its name, as chosen in Settings or the first run (character.name), or its own.
   const nameSet = useSetting("character.name");
+  // The look (M19): the water's colour on this page and the character's size on the edge.
+  const colours = useLook();
+  const sizeSet = useSetting("look.size");
   const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
   // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
   // fluidity mechanics"). Off: the pose pictures,
@@ -133,10 +139,13 @@ function Dock() {
   // The water pointer (M17): a drop splits off the side facing the target, and lands back on top when it comes home.
   // None with reactions off or less motion.
   const ffCtl = useRef<FlowflowController | null>(null);
+  // Sounds (M19, sound.ts): only when turned on, and never while a call app is in front (the shell says only whether to be quiet).
+  const cue = (c: Cue) => { if (setting("sound.on") !== true) return; void invoke("quiet_now").then((q) => { if (wantSound(true, q === true)) play(c, setting("sound.volume")); }, () => {}); };
   useEffect(() => {
     const off = listen("flowflow-move", (e) => {
-      if (!playful(reactionsOn(), reducedMotion())) return;
       const m = (e.payload ?? {}) as { kind?: string; dx?: number; dy?: number };
+      if (m.kind === "give") cue("drop"); else if (m.kind === "catch") cue("catch");
+      if (!playful(reactionsOn(), reducedMotion())) return;
       const live = ffCtl.current;
       if (m.kind === "give") {
         const dx = Number(m.dx) || 0, dy = Number(m.dy) || 0, n = Math.hypot(dx, dy) || 1;
@@ -145,6 +154,9 @@ function Dock() {
     });
     return () => { off.then((f) => f()); };
   }, []);
+  // Done and waiting for you have their own sounds, once each time the state arrives.
+  const lastState = useRef(state);
+  useEffect(() => { if (state !== lastState.current) { if (state === "done") cue("done"); else if (state === "needsYou") cue("needsYou"); } lastState.current = state; }, [state]);
   const wasDone = useRef(false);
   useEffect(() => {
     if (state === "done" && !wasDone.current && playful(reactionsOn(), reducedMotion())) { const c = centre(); flow.api.big(c.x, c.y); }
@@ -152,13 +164,13 @@ function Dock() {
   }, [state]);
   return (
     <main className="dock" data-drop={dropMark}>
-      <button ref={button} className="character" type="button" style={skinVars(SKIN) as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {liveOn && !liveFailed
-          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} onFallback={() => setLiveFailed(true)} /></Suspense>
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
             <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

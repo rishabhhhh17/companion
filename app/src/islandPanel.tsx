@@ -11,16 +11,20 @@ import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { openSettingsWindow } from "./openSettings.ts";
+import { useSetting } from "./settingsStore.ts";
 
 type Props = { m: Model; line: string; shown: boolean };
 
 export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown }, ref) {
-  const jobs = islandJobs(m);
+  // What the panel shows and its size (M19, Look and feel): the hello, the work, the quick actions, usual or compact.
+  const showHello = useSetting("panel.showHello") !== false, showWork = useSetting("panel.showWork") !== false, showButtons = useSetting("panel.showButtons") !== false;
+  const compact = useSetting("panel.size") === "compact";
+  const jobs = showWork ? islandJobs(m) : [];
   const tab = shown ? 0 : -1;
   const note = panelNote(line, jobs);
   return (
-    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
-      {jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
+    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+      {showHello && jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
         <span className="ip-plus" aria-hidden="true">+</span>{S.panel.go}
       </button>
@@ -36,12 +40,12 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         ))}
       </ul>}
       {note && <div className="ip-note" role="status">{note}</div>}
-      <div className="ip-row">
+      {showButtons && <div className="ip-row">
         <button className="ip-pill find" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.find }).catch(() => {})}><Icon name="find" size={13} />{S.look.chipFind}</button>
         <button className="ip-pill live" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.ship }).catch(() => {})}><Icon name="shield" size={13} />{S.look.chipSafe}</button>
         <button className="ip-pill set" type="button" tabIndex={tab} onClick={() => void openSettingsWindow().catch(() => {})}><Icon name="gear" size={13} />{S.panel.settings}</button>
         <button className="ip-open" type="button" tabIndex={tab} aria-label={S.panel.open} title={S.panel.open} onClick={() => void invoke("island_click").catch(() => {})}><Icon name="resize" size={14} /></button>
-      </div>
+      </div>}
     </div>
   );
 });

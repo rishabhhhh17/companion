@@ -76,6 +76,10 @@ describe("the shipped list of settings", () => {
       "make.folder": "home",
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
+      // M19: make it yours.
+      "look.water": "ocean", "look.theme": "night", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
+      "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());

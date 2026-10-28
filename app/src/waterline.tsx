@@ -7,8 +7,8 @@ export function Waterline({ under = false }: { under?: boolean }) {
   return (
     <div className={under ? "waterline under" : "waterline"} aria-hidden="true">
       <svg viewBox="0 0 1280 22" preserveAspectRatio="xMinYMid slice">
-        {under ? <path d={`${WAVE} V22 H0 Z`} fill="#04182A" /> : <path d={`${WAVE} V0 H0 Z`} fill="#000" />}
-        <path d={WAVE} fill="none" stroke="#59D2FF" strokeWidth="1.6" />
+        {under ? <path className="sea" d={`${WAVE} V22 H0 Z`} /> : <path className="sky" d={`${WAVE} V0 H0 Z`} />}
+        <path className="line" d={WAVE} fill="none" strokeWidth="1.6" />
       </svg>
     </div>
   );

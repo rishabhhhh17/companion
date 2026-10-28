@@ -28,6 +28,7 @@ import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
+import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { FirstLook } from "./firstLook.tsx";
@@ -308,6 +309,7 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 }
 
 function Card() {
+  useLook();   // the water's colour and Home's theme chosen in Settings (M19)
   const [m, dispatch] = useModel();
   // A command of a tool whose group is switched off is refused with one plain line (the shell, then the engine). The line is
   // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".

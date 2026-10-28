@@ -4,7 +4,7 @@
 export type GroupId = "companion" | "powers" | "mac" | "account" | "more";
 export const GROUP_ORDER: readonly GroupId[] = ["companion", "powers", "mac", "account", "more"];
 const OF: Record<string, GroupId> = {
-  home: "companion", talking: "companion", display: "companion",
+  home: "companion", look: "companion", talking: "companion", display: "companion",
   groups: "powers", pointing: "powers", files: "powers", checks: "powers", work: "powers", watch: "powers", memory: "powers",
   keys: "mac", otherApps: "mac", sharing: "mac", "fixed:permissions": "mac",
   "fixed:key": "account", spending: "account", updates: "account", numbers: "account",
@@ -12,7 +12,7 @@ const OF: Record<string, GroupId> = {
 };
 export function groupOf(id: string): GroupId { return OF[id] ?? "more"; }
 /** The parts that lead their group (the character's own section opens Settings), the rest in the registry's order. */
-const FIRST = ["home"];
+const FIRST = ["home", "look"];
 /** The parts in their groups, each group in the order the parts came (the registry's order) with a leading part first,
  *  empty groups left out. */
 export function groupPlaces<P extends { id: string }>(places: P[]): { group: GroupId; places: P[] }[] {

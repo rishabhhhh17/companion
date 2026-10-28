@@ -9,6 +9,7 @@ import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { characterName } from "./companion.ts";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
+import { livelyOf, livelySettings, waterOf, WATERS, WATER_TINTS } from "./lookfeel.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
@@ -931,7 +932,10 @@ const HERO_STATES = ["idle", "working", "done"] as const;
 function CompanionHero() {
   const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
   const name = characterName(useSetting("character.name"));
-  return (
+  // One tap changes it, and the character above shows it at once (M19).
+  const water = waterOf(useSetting("look.water"));
+  const lively = livelyOf(useSetting("fun.reactions"), useSetting("character.motion"));
+  return (<>
     <div className="companion-hero">
       <div className="ch-water" aria-hidden="true"><Waterline under /></div>
       <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} /></div>
@@ -941,5 +945,14 @@ function CompanionHero() {
       </div>
       <button className="ch-again" type="button" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.firstRunAgain}</button>
     </div>
-  );
+    <div className="ch-look">
+      <div className="ch-waters" role="group" aria-label={S.set["look.water"].label}>
+        {WATERS.map((w) => <button key={w} type="button" className="ch-water-pick" data-water={w} aria-pressed={water === w} title={S.set["look.water"].options?.[w]} aria-label={S.set["look.water"].options?.[w]}
+          style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => void changeSetting("look.water", w)} />)}
+      </div>
+      <div className="ch-lively" role="group" aria-label={S.livelyLabel}>
+        {(["lively", "calm", "still"] as const).map((l) => <button key={l} type="button" aria-pressed={lively === l} onClick={() => { for (const [k, v] of livelySettings(l)) void changeSetting(k, v); }}>{S.lively[l]}</button>)}
+      </div>
+    </div>
+  </>);
 }
