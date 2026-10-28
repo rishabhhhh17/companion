@@ -1356,6 +1356,7 @@ export const S = {
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
   heroStates: { idle: "Resting", working: "Working", done: "Done" } as Record<string, string>,
   heroStatesLabel: "Show it",
+  firstRunAgain: "Show the first run again",
   fixedGroups: {
     permissions: { title: `What ${PRODUCT} may do on this Mac`, also: ["permission", "accessibility", "screen recording", "microphone", "privacy"] },
     key: { title: "Your Claude key", also: ["api key", "anthropic", "keychain", "account"] },

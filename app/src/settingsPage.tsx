@@ -8,6 +8,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { characterName } from "./companion.ts";
+import { showFirstRunAgain } from "./firstRunAgain.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
@@ -938,6 +939,7 @@ function CompanionHero() {
       <div className="ch-states" role="group" aria-label={S.heroStatesLabel}>
         {HERO_STATES.map((st) => <button key={st} type="button" aria-pressed={as === st} onClick={() => setAs(st)}>{S.heroStates[st]}</button>)}
       </div>
+      <button className="ch-again" type="button" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.firstRunAgain}</button>
     </div>
   );
 }

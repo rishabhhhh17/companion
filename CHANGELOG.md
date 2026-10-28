@@ -7,6 +7,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **The first run feels like meeting someone.** A drop falls into the water and Flowflow rises out of it. Then you watch it fix a real bug (before you connect anything), choose your companion, name it, pick how lively it is and which edge of the screen it lives on, and switch off any power you don't want. Then you connect Claude and choose your project. The water at the bottom rises with every step, so you always know how far along you are.
 - **Choose your companion.** Flowflow is ready today. The places beside it are for the companions still to come.
 - **Rename it.** Call Flowflow whatever you like; Settings uses the new name.
+- **See the first run again** any time: Settings, at the top of your character, "Show the first run again". Your key, folder and settings stay as they are.
 - **Settings is grouped:** Character, Powers, Your Mac, Account and More, instead of a long list. It opens on your companion, alive on the water, so you can see what you change.
 - **Home is a cross section of water:** Flowflow floats in the surface, and the work happens below it, with a white ask box and plain rows for the quick actions.
 

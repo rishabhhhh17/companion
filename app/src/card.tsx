@@ -28,6 +28,7 @@ import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
+import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
@@ -514,6 +515,14 @@ function Card() {
     try { kept = localStorage.getItem(DRAFT_KEY) ?? ""; } catch { /* storage may be unavailable */ }
     if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
   }, [onboarded]);
+  // Show the first run again (Settings, firstRunAgain.ts): from Home's own Settings (an event) or the Settings window (the
+  // storage event), the first run comes back here.
+  useEffect(() => {
+    const again = () => { if (!onboardedNow()) setOnboarded(false); };
+    window.addEventListener(AGAIN_EVENT, again);
+    window.addEventListener("storage", again);
+    return () => { window.removeEventListener(AGAIN_EVENT, again); window.removeEventListener("storage", again); };
+  }, []);
   // A new person sees Home open by itself at launch (first_run_open: once, without the keyboard), so they never have to
   // guess that the notch is where it lives.
   useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);
