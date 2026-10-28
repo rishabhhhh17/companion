@@ -27,6 +27,8 @@ import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { Waterline } from "./waterline.tsx";
+import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
@@ -513,6 +515,14 @@ function Card() {
     try { kept = localStorage.getItem(DRAFT_KEY) ?? ""; } catch { /* storage may be unavailable */ }
     if (kept && !box.current.value) { box.current.value = kept; fitBox(); }
   }, [onboarded]);
+  // Show the first run again (Settings, firstRunAgain.ts): from Home's own Settings (an event) or the Settings window (the
+  // storage event), the first run comes back here.
+  useEffect(() => {
+    const again = () => { if (!onboardedNow()) setOnboarded(false); };
+    window.addEventListener(AGAIN_EVENT, again);
+    window.addEventListener("storage", again);
+    return () => { window.removeEventListener(AGAIN_EVENT, again); window.removeEventListener("storage", again); };
+  }, []);
   // A new person sees Home open by itself at launch (first_run_open: once, without the keyboard), so they never have to
   // guess that the notch is where it lives.
   useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);
@@ -2244,17 +2254,3 @@ applyTextSize(textSize());
 // Less motion (character.motion) stops Home's own animations too.
 followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
-
-// The surface of the water across Home (M17, the waterline): Flowflow floats in it, the work happens below it. Black above
-// a thin water blue line; the stylesheet slides it sideways one wave at a time, still with reduced motion.
-const WAVE = "M0 11 " + Array.from({ length: 16 }, (_, i) => `C ${i * 80 + 20} ${i % 2 ? 19 : 3}, ${i * 80 + 60} ${i % 2 ? 19 : 3}, ${i * 80 + 80} 11`).join(" ");
-function Waterline() {
-  return (
-    <div className="waterline" aria-hidden="true">
-      <svg viewBox="0 0 1280 22" preserveAspectRatio="xMinYMid slice">
-        <path d={`${WAVE} V0 H0 Z`} fill="#000" />
-        <path d={WAVE} fill="none" stroke="#59D2FF" strokeWidth="1.6" />
-      </svg>
-    </div>
-  );
-}

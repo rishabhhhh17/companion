@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A new first run, choosing your companion, and Settings that make sense: 28 Oct 2026
+
+- **The first run feels like meeting someone.** A drop falls into the water and Flowflow rises out of it. Then you watch it fix a real bug (before you connect anything), choose your companion, name it, pick how lively it is and which edge of the screen it lives on, and switch off any power you don't want. Then you connect Claude and choose your project. The water at the bottom rises with every step, so you always know how far along you are.
+- **Choose your companion.** Flowflow is ready today. The places beside it are for the companions still to come.
+- **Rename it.** Call Flowflow whatever you like; Settings uses the new name.
+- **See the first run again** any time: Settings, at the top of your character, "Show the first run again". Your key, folder and settings stay as they are.
+- **Settings is grouped:** Character, Powers, Your Mac, Account and More, instead of a long list. It opens on your companion, alive on the water, so you can see what you change.
+- **Home is a cross section of water:** Flowflow floats in the surface, and the work happens below it, with a white ask box and plain rows for the quick actions.
+
 ## Show me how is now a drop of water, and everything is night and lime: 28 Oct 2026
 
 - **Flowflow shows you where to click with its own water.** A drop swells out of its side, pinches off and flies to the button you need. It lands with a squash and spreads into a ring of water around the button, with a lime bubble saying what to do. Click the right thing and the ring bursts into a splash. The drop then flies home and Flowflow catches it with a ripple. The next step starts the same way.

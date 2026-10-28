@@ -2,6 +2,7 @@ import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import type { FlowflowController } from "./flowflow/controller.ts";
+import { characterName } from "./companion.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
@@ -73,7 +74,9 @@ function Dock() {
   // rules above still apply to every motion.
   const look = groupLook(m, activeGroup(m, running(drop.s)) ?? (groupOn("flow") && (m.receipt || m.character === "error") ? "flow" : null), running(drop.s));
   const waiting = m.approvals.length;
-  const spoken = `${S.characterName}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
+  // Its name, as chosen in Settings or the first run (character.name), or its own.
+  const nameSet = useSetting("character.name");
+  const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
   // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
   // fluidity mechanics"). Off: the pose pictures,
   // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's

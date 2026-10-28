@@ -5,6 +5,10 @@
 // (settings_set), which checks it, keeps it, applies it and tells every window. Every word is in strings.ts. Keyboard and
 // VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { HomeCharacter } from "./homeCharacter.tsx";
+import { Waterline } from "./waterline.tsx";
+import { characterName } from "./companion.ts";
+import { showFirstRunAgain } from "./firstRunAgain.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
@@ -686,6 +690,7 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
     <section aria-labelledby={headId} className="settings-section">
       {/* Shown alone, the section's name is already the title at the top of Home, so its heading is for VoiceOver only. */}
       <h3 id={headId} className={alone ? "sr" : undefined}>{title}</h3>
+      {id === "home" && <CompanionHero />}
       <div className="group">
       {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} facts={facts} pictures={pictures} /> : null; })}
       </div>
@@ -917,5 +922,24 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       {allToast.view}
       <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
     </section>
+  );
+}
+
+/** The character on the water at the top of its own part of Settings (M18): alive, with its name, shown resting, working or
+ *  done on a press so a change here (how lively, the motion) can be seen. A picture, not a control: the states are buttons. */
+const HERO_STATES = ["idle", "working", "done"] as const;
+function CompanionHero() {
+  const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
+  const name = characterName(useSetting("character.name"));
+  return (
+    <div className="companion-hero">
+      <div className="ch-water" aria-hidden="true"><Waterline under /></div>
+      <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} /></div>
+      <b className="ch-name">{name}</b>
+      <div className="ch-states" role="group" aria-label={S.heroStatesLabel}>
+        {HERO_STATES.map((st) => <button key={st} type="button" aria-pressed={as === st} onClick={() => setAs(st)}>{S.heroStates[st]}</button>)}
+      </div>
+      <button className="ch-again" type="button" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.firstRunAgain}</button>
+    </div>
   );
 }

@@ -622,3 +622,142 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .bar .icon-btn[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .home .foot { border-top: 0; }
 @media (prefers-reduced-motion: reduce) { .home .waterline svg { animation: none; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* The first run (M18, onboarding.tsx): Home's black with water at the foot that rises with every step (--level, set by the
+   step; onboarding.ts LEVEL), the hello where a drop falls in and Flowflow rises out of it, and the one lime key always at
+   the bottom. Cards over the water have solid backs so the surface never runs through words. */
+.home:has(.fr) { background: #000000; }
+.fr { position: relative; display: flex; flex-direction: column; min-height: calc(560rem / 14); margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) calc(var(--space-5) * -1); padding: var(--space-5) var(--space-6) var(--space-6); overflow: clip; isolation: isolate; }
+.fr > * { position: relative; z-index: 1; }
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, #04182A, #020C15); transition: height 900ms var(--ease-spring); }
+.fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
+.fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.fr-top { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.fr-back { display: grid; place-items: center; width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--fg); font-size: var(--t-body); cursor: pointer; }
+.fr-back:hover { background: rgba(255, 255, 255, .12); }
+.fr-count { margin-left: auto; color: var(--muted); }
+.fr-title { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; }
+.fr-line { margin: 0 0 var(--space-4); max-width: 36ch; color: var(--muted); font-size: var(--t-body); line-height: 1.45; }
+.fr-small { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--t-small); }
+.fr-grow { flex: 1; min-height: var(--space-5); }
+.fr-key { min-height: 52px; padding: 0 var(--space-5); border: 0; border-radius: 18px; color: #1A2600; background: #C6F432; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12, 0 14px 30px rgba(198, 244, 50, .22); font: 700 var(--t-answer) var(--round); cursor: pointer; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.fr-key:active:not(:disabled) { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 1px 0 #8DBA12; }
+.fr-key:disabled { opacity: .45; cursor: not-allowed; }
+.fr-quiet { margin: var(--space-3) auto 0; padding: var(--space-1) var(--space-3); border: 0; background: transparent; color: var(--fg); font: 600 var(--t-small) var(--round); cursor: pointer; }
+.fr-quiet:hover { color: var(--fg); text-decoration: underline; }
+.fr-link { align-self: flex-start; padding: var(--space-1) 0; border: 0; background: transparent; color: var(--fg); font: 600 var(--t-small) var(--round); text-decoration: underline; cursor: pointer; }
+.fr-label { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 var(--t-small) var(--round); }
+/* The hello: a drop falls into the water, a ripple spreads, and Flowflow rises out of it. */
+.fr-hello { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, #ffffff 0 12%, #59D2FF 45%, #1676C8); animation: fr-fall 900ms cubic-bezier(.55, 0, 1, .45) 200ms forwards; }
+.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid #59D2FF; border-radius: 50%; opacity: 0; animation: fr-ripple 1.2s ease-out 1.05s; }
+.fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise 900ms var(--ease-spring) 1.05s forwards; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .5) 74%); }
+@keyframes fr-fall { to { top: calc(100% - var(--level) - 6px); opacity: 0; } }
+@keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
+@keyframes fr-rise { from { opacity: 0; transform: translateY(50px) scale(.7); } to { opacity: 1; transform: none; } }
+.fr[data-step="hello"] .fr-title { margin-top: var(--space-7); }
+/* Who do you want with you: Flowflow chosen, and empty places for the companions to come. */
+.fr-cast { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: #0d2533; color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px #59D2FF; cursor: default; }
+.fr-pick img { width: 64px; height: auto; }
+.fr-pick b { font: 700 var(--t-answer) var(--round); }
+.fr-pick span { color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
+.fr-pick[aria-pressed="true"]::after { content: "\2713"; position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 22px; min-height: 22px; border-radius: 50%; background: #C6F432; color: #1A2600; font: 900 var(--t-caption) var(--round); box-shadow: 0 2px 0 #8DBA12; }
+.fr-pick.slot { background: #0A0A0C; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .18); }
+.fr-pick.slot b { color: var(--muted); }
+.fr-hole { width: 60px; min-height: 48px; border: 1.5px dashed rgba(255, 255, 255, .3); border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%; }
+.fr-soon { padding: 2px 8px; border-radius: var(--r-pill); background: #1E1E22; color: #B4B4BC; font: 600 var(--t-caption) var(--round); }
+/* Make it yours. */
+.fr-name { display: flex; align-items: center; gap: var(--space-3); min-height: 54px; padding: 0 var(--space-4); border-radius: 18px; background: #ffffff; color: #000000; }
+.fr-name img { width: 34px; height: auto; }
+.fr-name input { flex: 1; min-width: 0; border: 0; outline: 0; background: #ffffff; color: #000000; font: 700 calc(20rem / 14) var(--round); }
+.fr-name input::placeholder { color: #5f5f66; background: #ffffff; }
+.fr-name:focus-within { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
+.fr-name input:focus-visible { outline: 2px solid #1A2600; outline-offset: 4px; }
+.fr-seg { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.fr-seg button { display: grid; gap: 2px; padding: var(--space-3); border: 0; border-radius: 16px; background: #121216; color: #ffffff; text-align: left; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
+.fr-seg button b { font: 700 var(--t-body) var(--round); }
+.fr-seg button span { color: var(--muted); font-size: var(--t-caption); }
+.fr-seg button[aria-pressed="true"] { background: #ffffff; color: #000000; }
+.fr-seg button[aria-pressed="true"] span { color: #4A4A52; background: #ffffff; }
+.fr-seg.small button { padding: var(--space-2) var(--space-3); font: 600 var(--t-small) var(--round); }
+.fr-edges { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-2); }
+.fr-edge { position: relative; min-height: 56px; border: 0; border-radius: 12px; background: #121216; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
+.fr-edge i { position: absolute; width: 12px; min-height: 10px; border-radius: 50%; background: #59D2FF; }
+.fr-edge[data-edge="left"] i { left: 4px; top: calc(50% - 5px); }
+.fr-edge[data-edge="right"] i { right: 4px; top: calc(50% - 5px); }
+.fr-edge[data-edge="top"] i { left: calc(50% - 6px); top: 4px; }
+.fr-edge[data-edge="bottom"] i { left: calc(50% - 6px); bottom: 4px; }
+.fr-edge[aria-pressed="true"] { background: #0d2533; box-shadow: inset 0 0 0 2px #59D2FF; }
+/* What should it help with. */
+.fr-powers { display: grid; gap: var(--space-2); }
+.fr-power { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-radius: 18px; background: #101013; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-power b { display: block; font: 700 var(--t-body) var(--round); }
+.fr-power span { display: block; color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
+.fr-power em { display: block; margin-top: 2px; color: #FFCF73; background: #101013; font-style: normal; font-size: var(--t-caption); }
+.fr-tog { position: relative; width: 44px; min-height: 26px; padding: 0; border: 0; border-radius: var(--r-pill); background: #3A3A40; cursor: pointer; transition: background-color var(--dur-2) var(--ease-out); }
+.fr-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform var(--dur-3) var(--ease-spring); }
+.fr-tog[aria-pressed="true"] { background: #C6F432; }
+.fr-tog[aria-pressed="true"]::after { transform: translateX(18px); background: #1A2600; }
+/* Connect and the folder. */
+.fr-steps { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 1.2em); display: grid; gap: var(--space-1); border-radius: 16px; background: #101013; color: #ffffff; font-size: var(--t-small); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.fr-keyrow { display: flex; gap: var(--space-2); }
+.fr-keyrow input { flex: 1; min-width: 0; min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 500 var(--t-body) -apple-system, "SF Pro Text", sans-serif; }
+.fr-keyrow input::placeholder { color: #5f5f66; background: #ffffff; }
+.fr-keyrow input:focus { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
+.fr-save { min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 700 var(--t-body) var(--round); cursor: pointer; }
+.fr-ok { margin: 0; color: var(--key); font: 700 var(--t-answer) var(--round); }
+.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed rgba(255, 255, 255, .35); border-radius: 20px; background: #08141E; color: #ffffff; text-align: left; cursor: pointer; }
+.fr-folder b { font: 700 var(--t-answer) var(--round); }
+.fr-folder span { color: var(--muted); font-size: var(--t-caption); overflow-wrap: anywhere; }
+.fr-folder:hover { border-color: #59D2FF; }
+/* Ready: the water nearly full, Flowflow pleased, the keys to remember, the optional questions folded away. */
+.fr-done { align-self: center; margin-top: var(--space-2); }
+.fr[data-step="ready"] .fr-title { margin-top: var(--space-2); }
+.fr-tips { display: grid; gap: var(--space-2); }
+.fr-tip { display: flex; align-items: baseline; gap: var(--space-3); color: var(--fg); font-size: var(--t-body); }
+.fr-tip kbd { flex: none; min-width: 64px; padding: 3px 8px; border-radius: 8px; background: #ffffff; color: #000000; font: 700 var(--t-caption) var(--round); text-align: center; }
+.fr-keys { margin-top: var(--space-2); display: grid; gap: var(--space-1); color: var(--fg); font-size: var(--t-small); }
+.fr-more { margin-top: var(--space-4); }
+.fr-more > summary { color: var(--fg); font: 600 var(--t-small) var(--round); cursor: pointer; }
+.fr-q { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.fr-q b { font: 600 var(--t-small) var(--round); }
+@media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* Settings, grouped (M18): the side list under a few headings, each part with a small dot in its group's colour (water for
+   the companion, lime for the powers, grey for the rest), and the character alive
+   on the water at the top of its own part. */
+.side-group { display: flex; flex-direction: column; gap: 1px; }
+.side-group + .side-group { margin-top: var(--space-3); }
+.side-head { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--muted); font: 600 var(--t-caption) var(--round); }
+.side-item { display: flex; align-items: center; gap: var(--space-2); }
+.side-dot { flex: none; width: 8px; min-height: 8px; border-radius: 50%; background: var(--muted); }
+.side-group[data-group="companion"] .side-dot { background: #59D2FF; }
+.side-group[data-group="powers"] .side-dot { background: var(--key); }
+.companion-hero { position: relative; display: grid; place-items: center; min-height: 190px; margin: 0 0 var(--space-4); border-radius: 22px; background: linear-gradient(180deg, #0B0D12, #000000 60%); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); overflow: clip; isolation: isolate; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; background: linear-gradient(180deg, #04182A, #020C15); z-index: 0; }
+.companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
+.companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.companion-hero .ch-char { position: relative; z-index: 1; margin-top: var(--space-5); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
+.companion-hero .ch-name { position: absolute; left: var(--space-5); bottom: var(--space-4); z-index: 2; color: #ffffff; background: #04182A; font: 800 calc(22rem / 14) var(--round); letter-spacing: -0.02em; }
+.companion-hero .ch-states { position: absolute; right: var(--space-4); bottom: var(--space-4); z-index: 2; display: flex; gap: var(--space-1); }
+.companion-hero .ch-states button { min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #0B2232; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-states button[aria-pressed="true"] { background: #ffffff; color: #000000; }
+
+/* The recorded fix inside the first run (M18): the same black, one column so the page and the code each get the width,
+   big rounded words, lime step marks, and the same full width lime key at the bottom as every other step. */
+.home:has(.onboarding.look) { background: #000000; }
+.onboarding.look .first-look { gap: var(--space-4); }
+.onboarding.look .fl-head { display: grid; grid-template-columns: 112px minmax(0, 1fr); align-items: center; gap: var(--space-3); }
+.onboarding.look .fl-head .home-char { width: 132px; margin: -8px -12px -6px; }
+.onboarding.look .fl-say h2 { font: 800 calc(26rem / 14)/1.08 var(--round); letter-spacing: -0.02em; }
+.onboarding.look .fl-tagline { font-family: var(--round); }
+.onboarding.look .fl-stage { grid-template-columns: minmax(0, 1fr); }
+.onboarding.look .fl-code, .onboarding.look .fl-check { background: #121216; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.onboarding.look .fl-dot.on { background: var(--key); }
+.onboarding.look .fl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
+.companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
+.companion-hero .ch-again:hover { background: #2A2A30; }
