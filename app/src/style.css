@@ -761,3 +761,13 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
 .companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-again:hover { background: #2A2A30; }
+/* Fluid steps (M18): each screen of the first run slides in on the island's spring, from the right going on and from the
+   left going back, a little blurred until it settles, while the water rises underneath. None with reduced motion. */
+.fr-slide { display: flex; flex-direction: column; flex: 1; animation: fr-slide-on 520ms var(--ease-spring) both; }
+.fr-slide[data-dir="back"] { animation-name: fr-slide-back; }
+.fr-slide > .fr-hello { z-index: 1; }
+@keyframes fr-slide-on { from { opacity: 0; transform: translateX(36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes fr-slide-back { from { opacity: 0; transform: translateX(-36px) scale(.985); filter: blur(4px); } 45% { opacity: 1; filter: blur(0); } to { opacity: 1; transform: none; filter: none; } }
+.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in 520ms var(--ease-out) 60ms both; }
+.fr-slide .fr-line { animation-delay: 110ms; }
+@keyframes fr-rise-in { from { opacity: 0; transform: translateY(8px); } }

@@ -1175,6 +1175,13 @@ function Card() {
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
   // The gear: Settings in its own window; if the app cannot open it, Settings inside Home as before.
   const gear = () => { void openSettings(invoke, () => pickTab("settings")); };
+  // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
+  const gearRef = useRef(gear); gearRef.current = gear;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key === "," && !e.isComposing) { e.preventDefault(); gearRef.current(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   // What each tab shows is asked for whenever it is the one showing (picked, or shown by itself), and again for a new folder:
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
