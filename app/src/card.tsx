@@ -873,9 +873,11 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
       homeShown.current = true; setHomeOpen(true);
-      // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion).
+      // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion), except
+      // when a keyboard shortcut opened it (M26, island.rs animates_open): then it is simply there.
+      const instant = !!(e.payload as { instant?: boolean } | null)?.instant;
       const el = root.current;
-      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing"); }
+      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); } }
       homeDispatch({ type: "opened", keyboard });
       // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
       const then = arrivalFrom(e.payload);

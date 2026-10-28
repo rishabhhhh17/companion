@@ -12,6 +12,7 @@ mod claude_install;
 mod follow;
 mod settingswin;
 mod island;
+mod esc;
 mod roam;
 mod fullscreen;
 mod anchor;
@@ -1325,7 +1326,7 @@ fn groups_applied(app: &AppHandle) {
                 // Let go of what is registered for the job, then mark it held (so nothing registers it again meanwhile).
                 if let Some(c) = key_registered(a) { let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()); }
                 KEYS_HELD[a.index()].store(true, Ordering::SeqCst);
-                if a == keymap::Action::Accept && ACCEPT_ARMED.swap(false, Ordering::SeqCst) { let _ = gs.unregister(sc_esc()); }
+                if a == keymap::Action::Accept && ACCEPT_ARMED.swap(false, Ordering::SeqCst) { esc_apply(app, esc::RESULT, false); }
                 log("keys_held", json!({ "action": a.id() }));
             } else {
                 KEYS_HELD[a.index()].store(false, Ordering::SeqCst);
@@ -1479,6 +1480,34 @@ fn replay_events(app: AppHandle) -> Vec<serde_json::Value> { app.state::<runner:
 // fixed, and it is on no list.
 fn sc_esc() -> Shortcut { Shortcut::new(None, Code::Escape) }
 static ARMED: AtomicU64 = AtomicU64::new(0);
+/// Why Esc is borrowed from the person's apps now (esc.rs).
+static ESC: Mutex<esc::Holds> = Mutex::new(esc::Holds::new());
+static ESC_SCREEN_GEN: AtomicU64 = AtomicU64::new(0);
+/// Takes or gives back Esc for one reason. Main thread, with the keys lock held by the caller (as every change of keys).
+fn esc_apply(app: &AppHandle, why: u8, on: bool) {
+    let change = ESC.lock().unwrap_or_else(|e| e.into_inner()).set(why, on);
+    let gs = app.global_shortcut();
+    match change { esc::Change::Take => { let _ = gs.register(sc_esc()); } esc::Change::GiveBack => { let _ = gs.unregister(sc_esc()); } esc::Change::Keep => {} }
+}
+/// Squibby started or stopped drawing on the screen (M26): Esc clears it while it shows, with Esc stops what Squibby shows
+/// on (home.escStops). A drawing nothing cleared gives Esc back after esc::SCREEN_MAX_SECS.
+fn esc_screen(app: &AppHandle, on: bool) {
+    if on && !home_set().esc_stops { return; }
+    let gen = ESC_SCREEN_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || { let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner()); esc_apply(&a, esc::SCREEN, on); });
+    if on {
+        let a = app.clone();
+        std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(esc::SCREEN_MAX_SECS)); if ESC_SCREEN_GEN.load(Ordering::SeqCst) == gen { esc_screen(&a, false); } });
+    }
+}
+/// Esc while Squibby draws on the screen: the drawing, a Show me walk and anything being said all stop, at once.
+fn esc_take_back(app: &AppHandle) {
+    log("esc_take_back", json!({}));
+    point_cancel(); turn_cancel(); speech_off(app); showme_end_answer(app);
+    hide_overlay(app); showme_pending().end(); say_showme(app, "done", "", json!({}));
+    let _ = app.emit("hush", ());
+}
 
 /// Use a suggestion and Esc exist only while a result is showing, and give themselves up after a minute and a half. Esc
 /// is taken from the person's apps only for that long (T11). The work runs on the main thread, like every change of keys
@@ -1504,13 +1533,13 @@ fn arm_now(app: &AppHandle, on: bool) {
             if got != was { set_key_using(accept, got); log("accept_keys", json!({ "id": got.map(keymap::id) })); }
             ACCEPT_ARMED.store(got.is_some(), Ordering::SeqCst);
         }
-        let _ = gs.register(sc_esc());
+        esc_apply(app, esc::RESULT, true);
         let a = app.clone();
         std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(90)); if ARMED.load(Ordering::SeqCst) == gen { arm_result_keys(&a, false); } });
     } else {
         ARMED.fetch_add(1, Ordering::SeqCst);
         if ACCEPT_ARMED.swap(false, Ordering::SeqCst) { if let Some(c) = key_using(accept) { let _ = gs.unregister(keymap::shortcut(c)); } }
-        let _ = gs.unregister(sc_esc());
+        esc_apply(app, esc::RESULT, false);
     }
 }
 
@@ -1560,6 +1589,7 @@ fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app
 fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<serde_json::Value>) {
     log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
+    let src = source.to_string();
     let _ = app.run_on_main_thread(move || {
         let mtm = MainThreadMarker::new().unwrap();
         HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
@@ -1572,7 +1602,7 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             // Opening (not already open): a short drop from just under the island while it fades in (island.rs home_drop),
             // unless Reduce motion or Less motion is on. A resize while it is open is never animated.
             let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-            match island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion()) {
+            match island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion()) {
                 Some(start) => { let end = c.frame(); c.setAlphaValue(0.0); c.setFrame_display(to_appkit(start, ph), false); c.orderFrontRegardless(); set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES); }
                 None => { c.setAlphaValue(1.0); c.orderFrontRegardless(); }
             }
@@ -1580,7 +1610,8 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             log("card_shown", json!({ "card_key": c.isKeyWindow(), "app_active": active(mtm) }));
         });
         if !was_open && home_set().click_away { watch_click_away(&a); }
-        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "then": t }), None => json!({ "keyboard": keyboard }) });
+        let instant = !island::animates_open(&src);
+        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) });
     });
 }
 
@@ -2102,6 +2133,7 @@ fn say_showme(app: &AppHandle, stage: &str, message: &str, extra: Value) {
 }
 
 fn hide_overlay(app: &AppHandle) {
+    esc_screen(app, false);
     OVERLAY_BUSY_UNTIL.store(0, std::sync::atomic::Ordering::SeqCst);
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to("overlay", "overlay-clear", ());
@@ -2284,6 +2316,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
+        esc_screen(&a, true);
     });
     Some((watched, ring))
 }
@@ -3065,6 +3098,7 @@ fn show_diagram(app: AppHandle, diagram: Value) -> Result<(), String> {
         let d = coords::R { x: scr.origin.x, y: primary_h - scr.origin.y - scr.size.height, w: scr.size.width, h: scr.size.height };
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        esc_screen(&a, true);
         let _ = a.emit_to("overlay", "overlay-diagram", json!({ "diagram": diagram, "dockX": cx - d.x, "ms": diagram::shown_ms(&chosen), "settings": settings }));
         let _ = tx.send(true);
     });
@@ -4097,8 +4131,13 @@ fn main() {
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, s, e| {
                     // Esc dismisses a Prompt help result while one shows (it is registered only then, and is on no list).
+                    // M26: and it takes back control while Squibby draws on the screen (registered only then too, esc.rs).
                     if s == &sc_esc() {
-                        if e.state == ShortcutState::Pressed { let a = app.clone(); std::thread::spawn(move || { arm_result_keys(&a, false); phelp::dismiss(&a); }); }
+                        if e.state == ShortcutState::Pressed {
+                            let (result, screen) = { let h = ESC.lock().unwrap_or_else(|e| e.into_inner()); (h.has(esc::RESULT), h.has(esc::SCREEN)) };
+                            let a = app.clone();
+                            std::thread::spawn(move || { if result { arm_result_keys(&a, false); phelp::dismiss(&a); } if screen { esc_take_back(&a); } });
+                        }
                         return;
                     }
                     // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.

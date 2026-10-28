@@ -186,7 +186,9 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // It unrolls: a slightly squashed scale and a clip that opens from the top.
     expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
     expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
-    expect(card).toContain('el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing");');
+    expect(card).toContain('el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); }');
+    // M26: opened by a keyboard shortcut it is simply there (the shell says so, island.rs animates_open).
+    expect(card).toContain('const instant = !!(e.payload as { instant?: boolean } | null)?.instant;');
   });
   test("reduced motion and Less motion stop it (the rules that stop every animation in the file)", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }");

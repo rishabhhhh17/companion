@@ -303,6 +303,10 @@ impl Follow {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool }
 
+/// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
+/// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
+pub fn animates_open(source: &str) -> bool { source != "hotkey" }
+
 /// Home open shows everything the line or the wings would, right below, so the island stays the bare notch over it.
 /// A question waiting for the person (`ask`, M23: the page says so only with Open the notch for questions on) opens the
 /// panel under the wings without the pointer, so it can be answered there.
@@ -1023,5 +1027,11 @@ mod tests {
         assert_eq!(s(true, false, true), Mode::WingsPeek);
         assert_eq!(s(false, true, true), Mode::Rest);
         assert_eq!(s(false, false, false), Mode::Alert);
+    }
+
+    #[test]
+    fn home_opened_by_a_key_is_there_at_once() {
+        assert!(!animates_open("hotkey"));
+        for s in ["button", "island", "dock", "drop", "first_run", "reopen"] { assert!(animates_open(s), "{s}"); }
     }
 }

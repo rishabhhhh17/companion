@@ -248,7 +248,7 @@ describe("the island and Home open with a short motion", () => {
   });
   test("Home drops open only when it opens, never on a resize, and is never left see through", () => {
     const open = fnBody("open_card");
-    expect(open).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
+    expect(open).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion())");
     expect(open).toContain("c.setAlphaValue(0.0);");
     expect(open).toContain("set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES)");
     // A resize goes through the same helper, at once (never a motion), so it replaces a drop still running.
