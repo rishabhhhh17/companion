@@ -2048,7 +2048,11 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         // The flight starts at the last target of the same answer on this display, or else where the character is now,
         // read before it sets off: it follows the arrow to the window.
         let here = roam::arrow_start(with_panels(|dock, _| from_appkit(dock.frame(), primary_h)), (d.x + d.w - 40.0, d.y + d.h / 2.0));
-        let from = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y)).unwrap_or(here);
+        let hop = look.from.filter(|p| d.contains(*p)).map(|p| (p.x, p.y));
+        let from = hop.unwrap_or(here);
+        // The water pointer (M17): a drop splits off Flowflow's side facing the target (the overlay draws it from `from`),
+        // so the character is poked on that side; a hop from the last step's target leaves it be.
+        if hop.is_none() { let _ = a.emit_to("dock", "flowflow-move", json!({ "kind": "give", "dx": rect.x + rect.w / 2.0 - from.0, "dy": rect.y + rect.h / 2.0 - from.1 })); }
         // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
         roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
@@ -2215,10 +2219,21 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
                     *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None;
                     log("your_turn_hit", json!({ "misses": w.misses }));
                     let r = json!({ "x": target.x - display.x, "y": target.y - display.y, "w": target.w, "h": target.h });
-                    // The overlay only listens (its capability), so it is given the settings in force with the event.
-                    let _ = app.emit_to("overlay", "overlay-celebrate", json!({ "rect": r, "settings": settings_snapshot(&[]) }));
+                    // The overlay only listens (its capability), so it is given the settings in force with the event, and
+                    // where the character is now (read on the main thread), for the water drop's trip home (M17).
+                    let settings = settings_snapshot(&[]);
+                    let a2 = app.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        let mtm = MainThreadMarker::new().unwrap();
+                        let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+                        let home = with_panels(|dock, _| from_appkit(dock.frame(), primary_h)).map(|f| roam::arrow_start(Some(f), (0.0, 0.0))).map(|(x, y)| json!({ "x": x - display.x, "y": y - display.y }));
+                        let _ = a2.emit_to("overlay", "overlay-celebrate", json!({ "rect": r, "home": home, "settings": settings }));
+                    });
                     say_showme(&app, "your_turn_done", "That's it.", json!({}));
-                    std::thread::sleep(Duration::from_millis(1400));
+                    // The drop lands back on the character (water.ts HOME_DELAY_MS + HOME_MS), which ripples as it does.
+                    std::thread::sleep(Duration::from_millis(980));
+                    if alive() { let _ = app.emit_to("dock", "flowflow-move", json!({ "kind": "catch" })); }
+                    std::thread::sleep(Duration::from_millis(420));
                     if alive() { hide_overlay(&app); }
                     return;
                 }

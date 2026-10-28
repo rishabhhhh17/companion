@@ -1,6 +1,6 @@
 // The panel under the notch (islandPanel.ts decides what is in it). It hangs from the notch like the notch grown down, the
-// way the best notch apps do it: one glowing button for the main thing ("Fix something", in the sunset of Squibby's mark),
-// a card for each piece of work while there is some, then a row of small pills and a button to open Home in full. Every
+// way the best notch apps do it: a hello in big words while nothing runs, one lime key for the main thing ("Fix
+// something"), a card for each piece of work while there is some, then a row of small pills and a button to open Home in full. Every
 // press opens Home, where the answer, the plan and Undo are; nothing here acts on the project by itself. It never takes the
 // keyboard (the island is a borderless panel); Home does, when Fix something opens it. Its height is measured (island.tsx).
 import { forwardRef } from "react";
@@ -19,6 +19,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const note = panelNote(line, jobs);
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+      {jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
         <span className="ip-plus" aria-hidden="true">+</span>{S.panel.go}
       </button>

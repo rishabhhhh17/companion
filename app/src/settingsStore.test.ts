@@ -106,7 +106,8 @@ describe("the one migration from page storage", () => {
     expect(o).toContain("startSettings({ ask: false });");
     for (const ev of ["overlay-celebrate", "overlay-party"]) expect(o.slice(o.indexOf(`void listen("${ev}"`)).split("\n")[0], ev).toContain("takeSnapshot(p.settings)");
     const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
-    expect(rs).toContain('"overlay-celebrate", json!({ "rect": r, "settings": settings_snapshot(&[]) })');
+    expect(rs).toContain('"overlay-celebrate", json!({ "rect": r, "home": home, "settings": settings })');
+    expect(rs).toContain("let settings = settings_snapshot(&[]);");
     expect(rs).toMatch(/"overlay-party", json!\(\{ "x": [^\n]*"settings": settings_snapshot\(&\[\]\) \}\)/);
     const cap = readFileSync(new URL("../src-tauri/capabilities/overlay.json", import.meta.url), "utf8");
     expect(JSON.parse(cap).permissions).toEqual(["core:event:allow-listen", "core:event:allow-unlisten"]);

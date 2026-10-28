@@ -458,8 +458,11 @@ mod tests {
         let pointer = include_str!("../../src/pointer.ts");
         assert!(pointer.contains("export function ease(t: number): number { return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; }"));
         assert!(pointer.contains("export function bend(distance: number): number { return Math.min(80, distance / 4); }"));
+        // The water drop (M17) eases the same way (water.ts easeInOut is this formula); its arc is its own, higher for a hop.
         let overlay = include_str!("../../src/overlay.ts");
-        assert!(overlay.contains("e = ease(t)") && overlay.contains("bend(dist)"), "the overlay flies the arrow with the same two");
+        let water = include_str!("../../src/water.ts");
+        assert!(overlay.contains("e = easeInOut(k)"), "the overlay flies the drop with the same easing");
+        assert!(water.contains("return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;"));
     }
     #[test]
     fn the_arc_starts_and_ends_in_place_and_bends_like_the_arrow() {

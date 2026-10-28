@@ -1,6 +1,7 @@
 import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
+import type { FlowflowController } from "./flowflow/controller.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
@@ -126,6 +127,21 @@ function Dock() {
     else if (react.r === "cheer") flow.api.touchAt(0.5, 0.6, 0.8);
     else { const c = centre(); flow.api.big(c.x, c.y); }
   }, [react?.id]);
+  // The water pointer (M17): a drop splits off the side facing the target, and lands back on top when it comes home.
+  // None with reactions off or less motion.
+  const ffCtl = useRef<FlowflowController | null>(null);
+  useEffect(() => {
+    const off = listen("flowflow-move", (e) => {
+      if (!playful(reactionsOn(), reducedMotion())) return;
+      const m = (e.payload ?? {}) as { kind?: string; dx?: number; dy?: number };
+      const live = ffCtl.current;
+      if (m.kind === "give") {
+        const dx = Number(m.dx) || 0, dy = Number(m.dy) || 0, n = Math.hypot(dx, dy) || 1;
+        if (live) live.give(dx, dy); else flow.api.touchAt(0.5 + (0.4 * dx) / n, 0.5 + (0.4 * dy) / n, 0.9);
+      } else if (m.kind === "catch") { if (live) live.catch(); else flow.api.touchAt(0.5, 0.2, 1); }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   const wasDone = useRef(false);
   useEffect(() => {
     if (state === "done" && !wasDone.current && playful(reactionsOn(), reducedMotion())) { const c = centre(); flow.api.big(c.x, c.y); }
@@ -139,7 +155,7 @@ function Dock() {
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {liveOn && !liveFailed
-          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} onFallback={() => setLiveFailed(true)} /></Suspense>
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
             <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

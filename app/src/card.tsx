@@ -1435,6 +1435,7 @@ function Card() {
       {onboarded && (<>
       {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
+        <Waterline />
         <HomeCharacter m={m} />
         <div className="hero-words">
           <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
@@ -2243,3 +2244,17 @@ applyTextSize(textSize());
 // Less motion (character.motion) stops Home's own animations too.
 followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
+
+// The surface of the water across Home (M17, the waterline): Flowflow floats in it, the work happens below it. Black above
+// a thin water blue line; the stylesheet slides it sideways one wave at a time, still with reduced motion.
+const WAVE = "M0 11 " + Array.from({ length: 16 }, (_, i) => `C ${i * 80 + 20} ${i % 2 ? 19 : 3}, ${i * 80 + 60} ${i % 2 ? 19 : 3}, ${i * 80 + 80} 11`).join(" ");
+function Waterline() {
+  return (
+    <div className="waterline" aria-hidden="true">
+      <svg viewBox="0 0 1280 22" preserveAspectRatio="xMinYMid slice">
+        <path d={`${WAVE} V0 H0 Z`} fill="#000" />
+        <path d={WAVE} fill="none" stroke="#59D2FF" strokeWidth="1.6" />
+      </svg>
+    </div>
+  );
+}

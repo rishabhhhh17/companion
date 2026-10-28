@@ -829,7 +829,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 describe("Home stays usable with bigger text (part 4)", () => {
   const css = rules(read("./style.css"));
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after"];
+  const NO_WORDS = [".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after", ".home .hero::before", ".home .waterline", ".home .waterline svg", ".island-panel .ip-job[data-tone=\"working\"]::after"];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";

@@ -1,10 +1,15 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Squibby pointer</title>
 <style>html,body{margin:0;background:transparent;overflow:hidden}svg{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none}
-.cap{position:fixed;font:600 15px -apple-system,"SF Pro Text",sans-serif;background:#111;color:#fff;padding:7px 11px;border-radius:9px;max-width:300px;box-shadow:0 4px 18px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .25s}
-.cap.on{opacity:1}
+.cap{position:fixed;font:700 15px ui-rounded,"SF Pro Rounded",-apple-system,sans-serif;background:#C6F432;color:#1A2600;padding:9px 13px 10px;border-radius:16px 16px 16px 4px;max-width:300px;box-shadow:0 3px 0 #8DBA12,0 12px 30px rgba(0,0,0,.4);pointer-events:none;opacity:0;transform:scale(.7) translateY(6px);transform-origin:0 100%;transition:opacity .15s,transform .4s cubic-bezier(.34,1.56,.64,1)}
+.cap.left{border-radius:16px 16px 4px 16px;transform-origin:100% 100%}
+.cap.on{opacity:1;transform:none}
+ellipse[data-water]{visibility:hidden}
 @keyframes pulse{0%{transform:scale(1);opacity:.95}70%{transform:scale(1.18);opacity:.35}100%{transform:scale(1);opacity:.95}}
 .ring{transform-box:fill-box;transform-origin:center;animation:pulse 1.4s ease-out infinite}
-@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none}}
+@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none;transform:none}}
 :root[data-less-motion] *,:root[data-less-motion] *::before,:root[data-less-motion] *::after{animation:none!important;transition:none!important}</style></head>
-<body><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><script type="module" src="/src/overlay.ts"></script></body></html>
+<body><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<radialGradient id="wg" cx="38%" cy="32%" r="75%"><stop id="wg-hi" offset="0" stop-color="#C9F1FF"/><stop id="wg-mid" offset=".35" stop-color="#59D2FF"/><stop id="wg-deep" offset="1" stop-color="#1676C8"/></radialGradient>
+<filter id="goo" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -11" result="g"/><feGaussianBlur in="g" stdDeviation="2.2" result="gb"/><feSpecularLighting in="gb" surfaceScale="5" specularConstant="1" specularExponent="28" lighting-color="#ffffff" result="spec"><feDistantLight azimuth="225" elevation="48"/></feSpecularLighting><feComposite in="spec" in2="g" operator="in" result="si"/><feComposite in="g" in2="si" operator="arithmetic" k1="0" k2="1" k3=".85" k4="0"/></filter>
+</defs></svg><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><script type="module" src="/src/overlay.ts"></script></body></html>

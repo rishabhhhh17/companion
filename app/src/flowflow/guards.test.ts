@@ -49,7 +49,7 @@ describe("how it reaches the app", () => {
   test("the dock draws it only when character.live is on, and keeps the pictures as the fallback", () => {
     const dock = readFileSync(join(dir, "..", "dock.tsx"), "utf8");
     expect(dock).toContain('useSetting("character.live") === true'); expect(dock).toContain("liveOn && !liveFailed"); expect(dock).toContain("poseUrl(pose)");
-    expect(dock).toContain('import("./flowflow/view.tsx")'); expect(dock).not.toMatch(/^import .* from "\.\/flowflow\//m);   // loaded on demand only: nothing of it is fetched while the setting is off
+    expect(dock).toContain('import("./flowflow/view.tsx")'); expect(dock).not.toMatch(/^import (?!type ).* from "\.\/flowflow\//m);   // loaded on demand only: nothing of it is fetched while the setting is off (a type import is erased)
   });
   test("the preview page is not part of the built app", () => {
     const vite = readFileSync(join(dir, "..", "..", "vite.config.ts"), "utf8");
