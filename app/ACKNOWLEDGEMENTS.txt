@@ -12,7 +12,7 @@ SHIPPED WITH SQUIBBY
 - The idea of pointing through the Computer Use tool, and of looking at other displays, was prompted by Clicky
   (https://github.com/farzaa/clicky, MIT licence, Copyright (c) 2026 Farza). No Clicky code is included.
 
-354 LIBRARIES, GROUPED BY LICENCE TEXT (214 groups)
+355 LIBRARIES, GROUPED BY LICENCE TEXT (215 groups)
 
 ====================================================================================================
 Licence group 1: MIT OR Apache-2.0
@@ -15648,6 +15648,32 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ====================================================================================================
 Licence group 104: MIT
+Used by: perfect-freehand 1.2.3 (JavaScript)
+----------------------------------------------------------------------------------------------------
+MIT License
+
+Copyright (c) 2021 Stephen Ruiz Ltd
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+====================================================================================================
+Licence group 105: MIT
 Used by: plist 1.10.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2015 Edward Barnard
@@ -15671,7 +15697,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 105: MIT
+Licence group 106: MIT
 Used by: precomputed-hash 0.1.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -15697,7 +15723,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 106: MIT
+Licence group 107: MIT
 Used by: quick-xml 0.42.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 The MIT License (MIT)
@@ -15725,7 +15751,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 107: MIT
+Licence group 108: MIT
 Used by: simd-adler32 0.3.10 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -15751,7 +15777,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 108: MIT
+Licence group 109: MIT
 Used by: slab 0.4.12 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2019 Carl Lerche
@@ -15781,7 +15807,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 109: MIT
+Licence group 110: MIT
 Used by: strsim 0.11.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 The MIT License (MIT)
@@ -15809,7 +15835,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 110: MIT
+Licence group 111: MIT
 Used by: synstructure 0.14.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright 2016 Nika Layzell
@@ -15821,7 +15847,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 111: MIT
+Licence group 112: MIT
 Used by: tauri-winres 0.3.6 (Rust)
 ----------------------------------------------------------------------------------------------------
 The MIT License (MIT)
@@ -15854,7 +15880,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 112: MIT
+Licence group 113: MIT
 Used by: three 0.170.0 (JavaScript)
 ----------------------------------------------------------------------------------------------------
 The MIT License
@@ -15880,7 +15906,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 113: MIT
+Licence group 114: MIT
 Used by: tower-http 0.6.11 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2019-2021 Tower Contributors
@@ -15910,7 +15936,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 114: MIT
+Licence group 115: MIT
 Used by: try-lock 0.2.5 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2018-2023 Sean McArthur
@@ -15935,7 +15961,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 115: MIT
+Licence group 116: MIT
 Used by: urlpattern 0.6.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -15961,7 +15987,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 116: MIT
+Licence group 117: MIT
 Used by: want 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2018-2019 Sean McArthur
@@ -15985,7 +16011,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 117: MIT
+Licence group 118: MIT
 Used by: winnow 1.0.4 (Rust)
 ----------------------------------------------------------------------------------------------------
 Permission is hereby granted, free of charge, to any person obtaining
@@ -16008,7 +16034,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 118: MIT
+Licence group 119: MIT
 Used by: zod 4.6.5 (JavaScript)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -16034,7 +16060,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 119: MIT OR Apache-2.0
+Licence group 120: MIT OR Apache-2.0
 Used by: base64 0.23.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -16262,7 +16288,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 120: MIT OR Apache-2.0
+Licence group 121: MIT OR Apache-2.0
 Used by: block-buffer 0.10.4 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -16494,7 +16520,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 121: MIT OR Apache-2.0
+Licence group 122: MIT OR Apache-2.0
 Used by: block-buffer 0.12.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -16726,7 +16752,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 122: MIT OR Apache-2.0
+Licence group 123: MIT OR Apache-2.0
 Used by: cargo-platform 0.1.9 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -16956,7 +16982,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 123: MIT OR Apache-2.0
+Licence group 124: MIT OR Apache-2.0
 Used by: chrono 0.4.45 (Rust)
 ----------------------------------------------------------------------------------------------------
 Rust-chrono is dual-licensed under The MIT License [1] and
@@ -17200,7 +17226,7 @@ limitations under the License.
 ~~~~
 
 ====================================================================================================
-Licence group 124: MIT OR Apache-2.0
+Licence group 125: MIT OR Apache-2.0
 Used by: cookie 0.18.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -17434,7 +17460,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 125: MIT OR Apache-2.0
+Licence group 126: MIT OR Apache-2.0
 Used by: cpufeatures 0.2.17 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -17666,7 +17692,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 126: MIT OR Apache-2.0
+Licence group 127: MIT OR Apache-2.0
 Used by: crc32fast 1.5.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -17894,7 +17920,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 127: MIT OR Apache-2.0
+Licence group 128: MIT OR Apache-2.0
 Used by: crossbeam-channel 0.5.17 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -18722,7 +18748,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 ====================================================================================================
-Licence group 128: MIT OR Apache-2.0
+Licence group 129: MIT OR Apache-2.0
 Used by: crossbeam-utils 0.8.23 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -18956,7 +18982,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 129: MIT OR Apache-2.0
+Licence group 130: MIT OR Apache-2.0
 Used by: crypto-common 0.1.7 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -19188,7 +19214,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 130: MIT OR Apache-2.0
+Licence group 131: MIT OR Apache-2.0
 Used by: crypto-common 0.2.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -19420,7 +19446,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 131: MIT OR Apache-2.0
+Licence group 132: MIT OR Apache-2.0
 Used by: dasp_sample 0.11.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -19434,7 +19460,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 132: MIT OR Apache-2.0
+Licence group 133: MIT OR Apache-2.0
 Used by: defmt-parser 1.0.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -19448,7 +19474,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 133: MIT OR Apache-2.0
+Licence group 134: MIT OR Apache-2.0
 Used by: deranged 0.5.8 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -19674,7 +19700,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 134: MIT OR Apache-2.0
+Licence group 135: MIT OR Apache-2.0
 Used by: digest 0.10.7 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -19906,7 +19932,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 135: MIT OR Apache-2.0
+Licence group 136: MIT OR Apache-2.0
 Used by: digest 0.11.3 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -20139,7 +20165,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 136: MIT OR Apache-2.0
+Licence group 137: MIT OR Apache-2.0
 Used by: embed_plist 1.2.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -20367,7 +20393,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 137: MIT OR Apache-2.0
+Licence group 138: MIT OR Apache-2.0
 Used by: errno 0.3.14 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -20599,7 +20625,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 138: MIT OR Apache-2.0
+Licence group 139: MIT OR Apache-2.0
 Used by: flate2 1.1.10 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -20831,7 +20857,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 139: MIT OR Apache-2.0
+Licence group 140: MIT OR Apache-2.0
 Used by: form_urlencoded 1.2.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -21063,7 +21089,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 140: MIT OR Apache-2.0
+Licence group 141: MIT OR Apache-2.0
 Used by: getrandom 0.2.17 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -21296,7 +21322,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 141: MIT OR Apache-2.0
+Licence group 142: MIT OR Apache-2.0
 Used by: getrandom 0.3.4 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -21529,7 +21555,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 142: MIT OR Apache-2.0
+Licence group 143: MIT OR Apache-2.0
 Used by: getrandom 0.4.3 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -21762,7 +21788,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 143: MIT OR Apache-2.0
+Licence group 144: MIT OR Apache-2.0
 Used by: hex 0.4.3 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -21989,7 +22015,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 144: MIT OR Apache-2.0
+Licence group 145: MIT OR Apache-2.0
 Used by: http 1.5.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -22221,7 +22247,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 145: MIT OR Apache-2.0
+Licence group 146: MIT OR Apache-2.0
 Used by: httparse 1.10.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -22447,7 +22473,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 146: MIT OR Apache-2.0
+Licence group 147: MIT OR Apache-2.0
 Used by: hybrid-array 0.4.15 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -22679,7 +22705,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 147: MIT OR Apache-2.0
+Licence group 148: MIT OR Apache-2.0
 Used by: iana-time-zone 0.1.65 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -22911,7 +22937,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 148: MIT OR Apache-2.0
+Licence group 149: MIT OR Apache-2.0
 Used by: ipnet 2.12.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -23125,7 +23151,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 149: MIT OR Apache-2.0
+Licence group 150: MIT OR Apache-2.0
 Used by: jsonptr 0.7.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -23353,7 +23379,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 150: MIT OR Apache-2.0
+Licence group 151: MIT OR Apache-2.0
 Used by: libc 0.2.190 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -23560,7 +23586,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 151: MIT OR Apache-2.0
+Licence group 152: MIT OR Apache-2.0
 Used by: mime 0.3.17 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -23786,7 +23812,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 152: MIT OR Apache-2.0
+Licence group 153: MIT OR Apache-2.0
 Used by: num-conv 0.2.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -23987,7 +24013,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 153: MIT OR Apache-2.0
+Licence group 154: MIT OR Apache-2.0
 Used by: osakit 0.3.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -24194,7 +24220,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 154: MIT OR Apache-2.0
+Licence group 155: MIT OR Apache-2.0
 Used by: powerfmt 0.2.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -24420,7 +24446,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 155: MIT OR Apache-2.0
+Licence group 156: MIT OR Apache-2.0
 Used by: reqwest 0.13.5 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -24646,7 +24672,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ====================================================================================================
-Licence group 156: MIT OR Apache-2.0
+Licence group 157: MIT OR Apache-2.0
 Used by: rustls-pki-types 1.15.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -24878,7 +24904,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 157: MIT OR Apache-2.0
+Licence group 158: MIT OR Apache-2.0
 Used by: rustls-platform-verifier 0.7.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -25106,7 +25132,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 158: MIT OR Apache-2.0
+Licence group 159: MIT OR Apache-2.0
 Used by: scopeguard 1.2.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -25338,7 +25364,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 159: MIT OR Apache-2.0
+Licence group 160: MIT OR Apache-2.0
 Used by: sha2 0.10.9 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -25572,7 +25598,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 160: MIT OR Apache-2.0
+Licence group 161: MIT OR Apache-2.0
 Used by: sha2 0.11.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -25807,7 +25833,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 161: MIT OR Apache-2.0
+Licence group 162: MIT OR Apache-2.0
 Used by: siphasher 1.0.4 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright 2012-2016 The Rust Project Developers.
@@ -26039,7 +26065,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 162: MIT OR Apache-2.0
+Licence group 163: MIT OR Apache-2.0
 Used by: smallvec 1.16.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -26271,7 +26297,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 163: MIT OR Apache-2.0
+Licence group 164: MIT OR Apache-2.0
 Used by: stable_deref_trait 1.2.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -26503,7 +26529,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 164: MIT OR Apache-2.0
+Licence group 165: MIT OR Apache-2.0
 Used by: swift-rs 1.0.8 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -26729,7 +26755,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 165: MIT OR Apache-2.0
+Licence group 166: MIT OR Apache-2.0
 Used by: tar 0.4.46 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -26961,7 +26987,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 166: MIT OR Apache-2.0
+Licence group 167: MIT OR Apache-2.0
 Used by: tendril 0.5.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -27193,7 +27219,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 167: MIT OR Apache-2.0
+Licence group 168: MIT OR Apache-2.0
 Used by: tokio-rustls 0.26.6 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -27425,7 +27451,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 168: MIT OR Apache-2.0
+Licence group 169: MIT OR Apache-2.0
 Used by: tray-icon 0.25.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -27673,7 +27699,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tray-icon.git
 Creator: Person: Daniel Thompson-Yvetot
 
 ====================================================================================================
-Licence group 169: MIT OR Apache-2.0
+Licence group 170: MIT OR Apache-2.0
 Used by: typenum 1.20.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT OR Apache-2.0
@@ -27903,7 +27929,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 170: MIT OR Apache-2.0
+Licence group 171: MIT OR Apache-2.0
 Used by: web-time 1.1.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -28131,7 +28157,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 171: MIT OR Apache-2.0 OR Zlib
+Licence group 172: MIT OR Apache-2.0 OR Zlib
 Used by: raw-window-handle 0.6.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -28346,7 +28372,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ====================================================================================================
-Licence group 172: MIT/Apache-2.0
+Licence group 173: MIT/Apache-2.0
 Used by: bs58 0.5.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -28573,7 +28599,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 173: MIT/Apache-2.0
+Licence group 174: MIT/Apache-2.0
 Used by: ident_case 1.0.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -28597,7 +28623,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 174: MIT/Apache-2.0
+Licence group 175: MIT/Apache-2.0
 Used by: json-patch 4.2.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -28825,7 +28851,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ====================================================================================================
-Licence group 175: MIT/Apache-2.0
+Licence group 176: MIT/Apache-2.0
 Used by: minimal-lexical 0.2.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -29093,7 +29119,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ====================================================================================================
-Licence group 176: MIT/Apache-2.0
+Licence group 177: MIT/Apache-2.0
 Used by: version_check 0.9.5 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -29319,7 +29345,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 177: MPL-2.0
+Licence group 178: MPL-2.0
 Used by: dtoa-short 0.3.5 (Rust)
 ----------------------------------------------------------------------------------------------------
 Mozilla Public License Version 2.0
@@ -29697,7 +29723,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 
 ====================================================================================================
-Licence group 178: MPL-2.0
+Licence group 179: MPL-2.0
 Used by: option-ext 0.2.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Mozilla Public License Version 2.0
@@ -30075,13 +30101,13 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 
 ====================================================================================================
-Licence group 179: MPL-2.0
+Licence group 180: MPL-2.0
 Used by: selectors 0.38.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 (these packages declare the licence MPL-2.0 and ship no separate text in their download; the text is on each project's page, for a Rust crate at https://crates.io/crates/<name>)
 
 ====================================================================================================
-Licence group 180: Unlicense
+Licence group 181: Unlicense
 Used by: whisper-rs 0.16.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 This is free and unencumbered software released into the public domain.
@@ -30110,13 +30136,13 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <https://unlicense.org>
 
 ====================================================================================================
-Licence group 181: Unlicense
+Licence group 182: Unlicense
 Used by: whisper-rs-sys 0.15.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 (these packages declare the licence Unlicense and ship no separate text in their download; the text is on each project's page, for a Rust crate at https://crates.io/crates/<name>)
 
 ====================================================================================================
-Licence group 182: Unlicense OR MIT
+Licence group 183: Unlicense OR MIT
 Used by: byteorder-lite 0.1.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 The MIT License (MIT)
@@ -30167,7 +30193,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 
 ====================================================================================================
-Licence group 183: Unlicense/MIT
+Licence group 184: Unlicense/MIT
 Used by: same-file 1.0.6 (Rust)
 ----------------------------------------------------------------------------------------------------
 This project is dual-licensed under the Unlicense and MIT licenses.
@@ -30222,7 +30248,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 
 ====================================================================================================
-Licence group 184: Zlib
+Licence group 185: Zlib
 Used by: foldhash 0.2.0 (Rust)
 ----------------------------------------------------------------------------------------------------
 Copyright (c) 2024 Orson Peters
@@ -30246,7 +30272,7 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ====================================================================================================
-Licence group 185: Zlib
+Licence group 186: Zlib
 Used by: zlib-rs 0.6.8 (Rust)
 ----------------------------------------------------------------------------------------------------
 (C) 2024 Trifecta Tech Foundation 
@@ -30270,7 +30296,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 
 ====================================================================================================
-Licence group 186: Zlib OR Apache-2.0 OR MIT
+Licence group 187: Zlib OR Apache-2.0 OR MIT
 Used by: bytemuck 1.25.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License
@@ -30358,7 +30384,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 ====================================================================================================
-Licence group 187: Zlib OR Apache-2.0 OR MIT
+Licence group 188: Zlib OR Apache-2.0 OR MIT
 Used by: dispatch2 0.3.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30372,7 +30398,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 188: Zlib OR Apache-2.0 OR MIT
+Licence group 189: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-app-kit 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30386,7 +30412,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 189: Zlib OR Apache-2.0 OR MIT
+Licence group 190: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-audio-toolbox 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30400,7 +30426,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 190: Zlib OR Apache-2.0 OR MIT
+Licence group 191: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-av-foundation 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30414,7 +30440,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 191: Zlib OR Apache-2.0 OR MIT
+Licence group 192: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-avf-audio 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30428,7 +30454,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 192: Zlib OR Apache-2.0 OR MIT
+Licence group 193: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-cloud-kit 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30442,7 +30468,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 193: Zlib OR Apache-2.0 OR MIT
+Licence group 194: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-audio 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30456,7 +30482,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 194: Zlib OR Apache-2.0 OR MIT
+Licence group 195: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-audio-types 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30470,7 +30496,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 195: Zlib OR Apache-2.0 OR MIT
+Licence group 196: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-data 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30484,7 +30510,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 196: Zlib OR Apache-2.0 OR MIT
+Licence group 197: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-foundation 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30498,7 +30524,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 197: Zlib OR Apache-2.0 OR MIT
+Licence group 198: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-graphics 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30512,7 +30538,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 198: Zlib OR Apache-2.0 OR MIT
+Licence group 199: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-image 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30526,7 +30552,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 199: Zlib OR Apache-2.0 OR MIT
+Licence group 200: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-media 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30540,7 +30566,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 200: Zlib OR Apache-2.0 OR MIT
+Licence group 201: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-ml 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30554,7 +30580,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 201: Zlib OR Apache-2.0 OR MIT
+Licence group 202: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-text 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30568,7 +30594,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 202: Zlib OR Apache-2.0 OR MIT
+Licence group 203: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-core-video 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30582,7 +30608,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 203: Zlib OR Apache-2.0 OR MIT
+Licence group 204: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-exception-helper 0.1.1 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30596,7 +30622,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 204: Zlib OR Apache-2.0 OR MIT
+Licence group 205: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-image-io 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30610,7 +30636,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 205: Zlib OR Apache-2.0 OR MIT
+Licence group 206: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-io-surface 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30624,7 +30650,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 206: Zlib OR Apache-2.0 OR MIT
+Licence group 207: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-media-toolbox 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30638,7 +30664,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 207: Zlib OR Apache-2.0 OR MIT
+Licence group 208: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-metal 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30652,7 +30678,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 208: Zlib OR Apache-2.0 OR MIT
+Licence group 209: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-osa-kit 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30666,7 +30692,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 209: Zlib OR Apache-2.0 OR MIT
+Licence group 210: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-quartz-core 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30680,7 +30706,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 210: Zlib OR Apache-2.0 OR MIT
+Licence group 211: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-screen-capture-kit 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30694,7 +30720,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 211: Zlib OR Apache-2.0 OR MIT
+Licence group 212: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-uniform-type-identifiers 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30708,7 +30734,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 212: Zlib OR Apache-2.0 OR MIT
+Licence group 213: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-vision 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30722,7 +30748,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 213: Zlib OR Apache-2.0 OR MIT
+Licence group 214: Zlib OR Apache-2.0 OR MIT
 Used by: objc2-web-kit 0.3.2 (Rust)
 ----------------------------------------------------------------------------------------------------
 MIT License
@@ -30736,7 +30762,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
-Licence group 214: Zlib OR Apache-2.0 OR MIT
+Licence group 215: Zlib OR Apache-2.0 OR MIT
 Used by: tinyvec 1.13.3 (Rust)
 ----------------------------------------------------------------------------------------------------
 Apache License

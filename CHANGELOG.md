@@ -7,8 +7,9 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Questions say exactly what will happen.** When Squibby needs your OK, the card asks a plain question ("Install something?", "Change your project's Git history?"), shows the exact command or file, says why, and tells you whether Undo can take it back. The same in the notch.
 - **One press fixes the two dead ends.** If Squibby's engine keeps stopping, there's a Restart button instead of "quit and open again". If Claude isn't connected, there's an Add your key button that takes you straight there.
 - **Nothing unfinished in sight.** The Google section stays hidden until Google is set up in your version. The first run introduces Flowflow on its own instead of showing empty "Coming soon" boxes. Lessons say where they came from instead of "Draft".
-- **The usual ring colour is honest.** It was labelled "Orange" but showed your water colour; it's now called "Usual" and draws in Squibby lime with a dark edge when it isn't water.
+- **The usual ring colour is honest.** It was labelled "Orange" but showed your water colour; it's now called "Usual" and draws in Squibby lime when it isn't water.
 - **No error codes in your face.** If the screen or the microphone can't be used, you get a plain sentence and what to try; the technical detail goes to the log.
+- **Drawing on your screen looks hand made.** Rings, arrows, underlines and boxes are now drawn like real pen ink: thicker in the middle, tapering as the pen lifts, drawn in the order a hand would at a hand's speed. A ring closes a little past where it started, an arrow gets its head after its shaft, and every mark has a soft edge so it shows on light and dark apps alike. A ring never covers what it's pointing at.
 - **Pricing is set:** Free, and Pro at $10 a month ($8 a month yearly), with a 14 day trial and half price for students. You pay Anthropic directly for Claude; we never mark it up. Payments aren't switched on yet.
 
 ## Flowflow comes alive: 29 Oct 2026

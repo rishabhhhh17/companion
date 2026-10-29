@@ -95,7 +95,7 @@ describe("every page that moves something checks the setting", () => {
     const show = o.slice(o.indexOf("function show("), o.indexOf('void listen("overlay-point"'));
     expect(show).toContain("const reduced = p.reduced ?? reducedMotion();");
     expect(show).toContain("if (reduced) { land(); return; }");
-    expect(show).toContain("if (!reduced) {");
+    expect(show).toContain("if (reduced) {\n      parts.forEach((_, i) => paint(i, 1));");   // M28: the whole mark at once, faded in
   });
   test("the burst of dots and the confetti follow the reactions setting and reduced motion", () => {
     const o = read("./overlay.ts");

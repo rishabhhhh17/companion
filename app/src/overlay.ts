@@ -6,7 +6,8 @@ import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, 
 import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
-import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
+import { fadeMs, markFor, ringRadii } from "./marks.ts";
+import { INK, haloFor, inkMark, inkPath, penEase, type InkMark } from "./ink.ts";
 import { followLessMotion, playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
@@ -72,7 +73,7 @@ function show(p: Point) {
   // A confirmed target may ask for a hand drawn mark; it is drawn on landing, stays while its line is said or read, then
   // fades and the steady ring takes over. Every point of it is inside the window (marks.ts), and the clip above holds too.
   const kind = markFor(p.mark, p.exact);
-  const strokes = kind ? markStrokes(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
+  const strokes = kind ? inkMark(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
   // High contrast: a dark edge under the ring and the marks, so a white ring shows on any app.
   const halo = look.halo ? el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: look.halo, "stroke-width": look.width + 4, class: "ring", opacity: reduced && !strokes ? 1 : 0 }) : null;
   if (halo) layer.appendChild(halo);
@@ -108,27 +109,45 @@ function show(p: Point) {
     };
     requestAnimationFrame(wobble);
   };
-  const drawMark = (paths: string[]) => {
+  // M28 drawing v2 (ink.ts): tapered ink over a halo, each stroke drawn in pen order at pen speed by growing its outline,
+  // the next stroke starting after its pause. With less motion the whole mark simply fades in.
+  const drawMark = (mark: InkMark) => {
     const g = el("g", { class: "mark" });
-    for (const d of paths) {
-      if (look.halo) g.appendChild(el("path", { d, fill: "none", stroke: look.halo, "stroke-width": 7.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-      g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-    }
+    const halo = look.halo ?? haloFor(color);
+    const parts = mark.strokes.map((s) => {
+      const h = el("path", { d: "", fill: halo });
+      const k = el("path", { d: "", fill: color });
+      g.appendChild(h); g.appendChild(k);
+      return { s, h, k };
+    });
     layer.appendChild(g);
-    if (!reduced) {
-      // Each stroke draws itself on, the way a pen would.
-      for (const s of Array.from(g.querySelectorAll("path")) as SVGPathElement[]) {
-        const len = s.getTotalLength?.() ?? 0; if (!len) continue;
-        s.style.strokeDasharray = `${len}`; s.style.strokeDashoffset = `${len}`; s.getBoundingClientRect();
-        s.style.transition = "stroke-dashoffset .45s ease-out"; s.style.strokeDashoffset = "0";
-      }
+    const paint = (i: number, progress: number) => {
+      const { s, h, k } = parts[i];
+      h.setAttribute("d", inkPath(s.points, INK.size + INK.halo, progress));
+      k.setAttribute("d", inkPath(s.points, INK.size, progress));
+    };
+    if (reduced) {
+      parts.forEach((_, i) => paint(i, 1));
+      g.style.opacity = "0"; g.getBoundingClientRect(); g.style.transition = "opacity 150ms linear"; g.style.opacity = "1";
+    } else {
+      // When each stroke starts and ends, from the first touch of the pen.
+      let at = 0;
+      const plan = mark.strokes.map((s) => { at += s.gap; const from = at; at += s.ms; return { from, to: at }; });
+      const t0 = performance.now();
+      const step = (now: number) => {
+        if (mine !== drawGen) return;
+        const t = now - t0;
+        plan.forEach((w, i) => { if (t >= w.from) paint(i, penEase((t - w.from) / (w.to - w.from))); });
+        if (t < at) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
     markTimer = setTimeout(() => {
       if (mine !== drawGen) return;
       ringOn();
       if (reduced) { g.remove(); return; }
-      g.style.transition = "opacity .5s"; g.style.opacity = "0";
-      markTimer = setTimeout(() => g.remove(), 550);
+      g.style.transition = "opacity 280ms cubic-bezier(0.3, 0, 0.8, 0.15)"; g.style.opacity = "0";
+      markTimer = setTimeout(() => g.remove(), 320);
     }, fadeMs(p.fadeMs));
   };
   const land = () => {
