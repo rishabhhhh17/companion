@@ -22,6 +22,8 @@ const REST_Y = -0.15;
 const AQUA = new Color("#6fe3ff"), OCEAN = new Color("#1d72d8");
 /** M37: the drop's shader writes colour straight out, so it is given the colours as written (sRGB), not three.js's linear copy. */
 const asWritten = (c: Color): Color => c.clone().convertLinearToSRGB();
+/** Which way each surface lies from the drop (y up). */
+const SIDE_NORMAL = { left: [-1, 0], right: [1, 0], top: [0, 1], bottom: [0, -1], below: [0, -1] } as const;
 
 export class FlowflowRenderer {
   private gl: WebGLRenderer; private scene = new Scene(); private cam: OrthographicCamera;
@@ -48,7 +50,7 @@ export class FlowflowRenderer {
       uniforms: {
         uHalf: { value: [1.6, FRAME_HEIGHT / 2] }, uCenter: { value: [0, 0] }, uScale: { value: BODY_SCALE }, uPx: { value: 0.01 },
         uPose: { value: new Vector4() }, uMove: { value: [1, 0, 0] }, uEyes: { value: new Vector4() }, uOpen: { value: 1 },
-        uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
+        uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uSurf: { value: new Vector4() }, uPress: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
       },
     });
     // One quad over the whole canvas: the drop and its eyes are worked out per pixel (shaders.ts).
@@ -100,6 +102,16 @@ export class FlowflowRenderer {
     (u.uEyes.value as Vector4).set(eyes.lx, eyes.ly, eyes.rx, eyes.ry);
     u.uOpen.value = Math.max(0, eyes.open);
     u.uCloud.value = look.cloud; u.uGlow.value = look.glow;
+    // M37c: the surface it clings to, as a plane in the drop's own units (shaders.ts drop).
+    const sf = s.surface, sv = u.uSurf.value as Vector4;
+    if (!sf.side) sv.set(0, 0, 0, 0);
+    else {
+      const [nx, ny] = SIDE_NORMAL[sf.side];
+      const cx = pose.x, cy = pose.y + s.float + REST_Y;
+      const plane = sf.side === "below" ? -(this.halfH - sf.at * 2 * this.halfH) : nx !== 0 ? this.halfW : this.halfH;
+      sv.set(nx, ny, (plane - (cx * nx + cy * ny)) / BODY_SCALE, sf.cling);
+    }
+    u.uPress.value = sf.press;
     for (let i = 0; i < MAX_DROPLETS; i++) { this.dropPos[i * 3] = s.droplets.x[i]; this.dropPos[i * 3 + 1] = s.droplets.y[i]; this.dropPos[i * 3 + 2] = 0; this.dropSize[i] = s.droplets.size[i]; }
     this.dropGeo.attributes.position.needsUpdate = true; this.dropGeo.attributes.aSize.needsUpdate = true;
     this.gl.render(this.scene, this.cam);

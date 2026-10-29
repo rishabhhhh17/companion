@@ -143,6 +143,18 @@ function Dock() {
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
   };
+  // M37c: dragged into its edge, the water flattens against it, harder the harder it is pushed, and wobbles back when let
+  // go (the shell measures the press: docking.rs press_of). Let go in the middle of the screen, nothing to cling to.
+  useEffect(() => {
+    const off = listen("dock-press", (e) => {
+      const p = (e.payload ?? {}) as { edge?: unknown; press?: unknown };
+      const c = ffCtl.current; if (!c) return;
+      if (p.edge === null) c.setSurface(null);
+      else if (typeof p.edge === "string" && ["left", "right", "top", "bottom"].includes(p.edge)) c.setSurface(p.edge as "left" | "right" | "top" | "bottom", 1, 0);
+      c.press(typeof p.press === "number" ? p.press : 0);
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   // A trip across the screen leans the body the way it goes; surfacing and settling are a soft touch.
   useEffect(() => {
     const lean = 320, dir = { left: [-lean, 0], right: [lean, 0], up: [0, -lean], down: [0, lean] } as const;

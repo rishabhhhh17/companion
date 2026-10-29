@@ -4,7 +4,7 @@ import type { CharacterState } from "../model.ts";
 import { Behavior, type BehaviorState, type Look } from "./behavior.ts";
 import { Face, rng, type Eyes } from "./face.ts";
 import { Droplets, Ripples } from "./particles.ts";
-import { type BodyPose, SoftBody, type Tuning, clampTuning, frameDelta } from "./physics.ts";
+import { type BodyPose, SoftBody, Spring, type Tuning, clampTuning, frameDelta } from "./physics.ts";
 
 /** How long after the pointer last moved the eyes keep looking at it, and the body keeps following (seconds). */
 export const LOOK_HOLD = 3;
@@ -36,16 +36,30 @@ const ACT_WEIGHT: Record<IdleAct, number> = { hop: 3, double: 1, look: 3, shake:
 
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
+  /** M37c: the surface it clings to, and how hard it is pressed into it. */
+  surface: Surface;
   /** The float added on top of the body's height (a slow bob). */
   float: number;
   droplets: Droplets; ripples: Ripples;
 };
+
+/** M37c (the founder: "when it gets close to the water it sticks to the sides… the more I push it towards it, the flatter
+ *  it gets"): a surface the water clings to. A side of its frame (the screen's edge it is docked on), or the water below
+ *  (Home's waterline, `at` from the frame's top, 0 to 1). `cling`: how much it joins the surface at rest. `press`: how hard
+ *  it is pushed into it, through a soft spring, so it flattens as it is pushed and wobbles back when let go. */
+export type Side = "left" | "right" | "top" | "bottom" | "below";
+export type Surface = { side: Side | null; at: number; cling: number; press: number };
+export const SIDES: readonly Side[] = ["left", "right", "top", "bottom", "below"];
+/** The press spring: soft and under damped, so letting go wobbles back like water (about 3 wobbles a second). */
+export const PRESS_SPRING = { hz: 3.2, zeta: 0.3 } as const;
 
 export class FlowflowEngine {
   readonly behavior = new Behavior();
   readonly body: SoftBody;
   readonly face: Face;
   readonly droplets = new Droplets();
+  readonly surface: Surface = { side: null, at: 1, cling: 0, press: 0 };
+  private pressSpring = new Spring(0, 0); private pressTo = 0;
   readonly ripples = new Ripples();
   private tuning: Tuning;
   private rand: () => number;
@@ -65,6 +79,7 @@ export class FlowflowEngine {
     this.tuning = clampTuning(tuning);
     this.body = new SoftBody(this.tuning); this.face = new Face(seed); this.rand = rng(seed + 101);
     this.body.bounds = { halfW: this.halfW, halfH: this.halfH, r: BODY_RADIUS };
+    this.pressSpring.set(PRESS_SPRING.hz, PRESS_SPRING.zeta);
     this.behavior.snap();
   }
 
@@ -108,6 +123,16 @@ export class FlowflowEngine {
     this.body.impulse("burst", 0.5);
   }
 
+  /** The surface it clings to (none: `null`), where (for the water below), and how much it joins it at rest. */
+  setSurface(side: Side | null, at = 1, cling = 0): void {
+    const ok = side === null || SIDES.includes(side);
+    this.surface.side = ok ? side : null;
+    this.surface.at = Number.isFinite(at) ? Math.max(0, Math.min(1, at)) : 1;
+    this.surface.cling = Number.isFinite(cling) ? Math.max(0, Math.min(1, cling)) : 0;
+  }
+  /** How hard it is pushed into its surface now, 0 to 1 (a drag into the screen's edge). */
+  press(amount: number): void { this.pressTo = Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : 0; }
+
   /** The pointer left, or the window lost focus: the eyes and the body drift back. */
   pointerLeft(): void { this.lastLook = -Infinity; this.lastMove = -Infinity; this.body.setTarget(0, 0); }
 
@@ -122,7 +147,7 @@ export class FlowflowEngine {
   }
 
   /** A pose for one frame of reduced motion: the body at rest in the state's look, no sliding. */
-  still(): Snapshot { this.behavior.snap(); this.body.reset(0, 0); this.face.update(1 / 60, this.behavior.look, false); return this.snapshot(); }
+  still(): Snapshot { this.behavior.snap(); this.body.reset(0, 0); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo; this.face.update(1 / 60, this.behavior.look, false); return this.snapshot(); }
 
   update(dt: number): Snapshot {
     const d = frameDelta(dt);
@@ -135,6 +160,8 @@ export class FlowflowEngine {
     this.idleLife(d);
     this.body.setBreath(look.breathAmp, look.breathRate);
     this.body.advance(d);
+    { const n = Math.min(8, Math.max(1, Math.ceil(d / (1 / 120)))), h = d / n; for (let i = 0; i < n; i++) this.pressSpring.step(h, this.pressTo); }
+    this.surface.press = Math.max(-0.2, Math.min(1.15, this.pressSpring.x));
     this.face.update(d, look, this.time - this.lastLook < LOOK_HOLD);
     // Droplets leave in proportion to how fast the body moves and how readily this mood sheds them: no dice.
     this.credit += look.droplets * Math.min(2, this.body.pose.speed) * 0.9 * d;
@@ -221,7 +248,7 @@ export class FlowflowEngine {
 
   private snap: Snapshot | null = null;
   private snapshot(): Snapshot {
-    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, droplets: this.droplets, ripples: this.ripples });
+    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface });
     s.state = this.behavior.state; s.tuning = this.tuning; s.time = this.time;
     s.float = this.behavior.look.floatAmp * Math.sin(this.time * 0.9);
     return s;

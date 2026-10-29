@@ -367,7 +367,9 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
 fn drag_dock(app: AppHandle, x: f64, y: f64) {
     // While the person drags it nothing else moves it (F18 item 2).
     DRAG_AT.store(now() as u64, Ordering::SeqCst);
+    let a = app.clone();
     let _ = app.run_on_main_thread(move || {
+        let app = a;
         let mtm = MainThreadMarker::new().unwrap();
         let list = screens_now(mtm);
         let Some(first) = list.first() else { return };
@@ -377,6 +379,9 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
         *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
         // With Same place on every display on, the place dragged to is the one copied to displays with no place yet.
         // M37: away from every edge it stays where it is let go; near one it snaps to it, as before.
+        // M37c: how hard it is pushed into its edge, for the water to flatten against it (none when it is let go free).
+        let press = if free.is_some() { 0.0 } else { docking::press_of(&target, DOCK, edge, (x, y)) };
+        let _ = app.emit_to("dock", "dock-press", json!({ "edge": if free.is_some() { Value::Null } else { json!(edge.word()) }, "press": press }));
         with_prefs(|p| {
             p.last_screen = target.id.clone();
             match free { Some(at) => { p.free.insert(target.id.clone(), at); } None => { p.free.remove(&target.id); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } } }
@@ -401,6 +406,8 @@ fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLAC
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
     DRAG_AT.store(0, Ordering::SeqCst);
+    // Let go: the water springs back from the edge (the page's spring does the wobble).
+    let _ = app.emit_to("dock", "dock-press", json!({ "press": 0.0 }));
     save_prefs();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -1092,13 +1099,15 @@ fn follow_loop(app: AppHandle) {
         if first { FOLLOW_QUEUED.store(true, Ordering::SeqCst); }
         last_fr = fr;
         shown = true;
-        let (w, h) = (fr[2], fr[3]);
+        let (w, h, vx, vy) = (fr[2], fr[3], d.vx, d.vy);
         let _ = app.run_on_main_thread(move || {
             FOLLOW_QUEUED.store(false, Ordering::SeqCst);
             let Some(mtm) = MainThreadMarker::new() else { return };
             let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
             let p = macos_see::pointer();
-            let (x, y) = if p.x < 0.0 && p.y < 0.0 { (fr[0], fr[1]) } else { (p.x + follow::OFFSET.0 - follow::SIZE / 2.0, p.y + follow::OFFSET.1 - follow::SIZE / 2.0) };
+            // Placed a touch ahead of a moving pointer, so it lands on the cursor when the screen shows it (follow::led).
+            let (lx, ly) = follow::led((p.x, p.y), (vx, vy));
+            let (x, y) = if p.x < 0.0 && p.y < 0.0 { (fr[0], fr[1]) } else { (lx + follow::OFFSET.0 - follow::SIZE / 2.0, ly + follow::OFFSET.1 - follow::SIZE / 2.0) };
             FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
                 if (pn.frame().size.width - w).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(x, primary_h - (y + h)), NSSize::new(w, h)), true); }
                 else { pn.setFrameOrigin(NSPoint::new(x, primary_h - (y + h))); }

@@ -19,6 +19,22 @@ pub const MAX_SPEED: f64 = 6_000.0;
 pub const SPEED_EASE: f64 = 20.0;
 /// A jump this far (another display) reports no speed at all.
 pub const LEAP: f64 = 900.0;
+/// M37c (the founder, sweeping fast: "not working"): a window that follows the pointer is always shown a frame or two after
+/// the pointer got there, so on a fast sweep it sits behind the cursor. The ring is placed ahead along the way the pointer
+/// moves by this long (seconds), about the time from reading the pointer to the screen showing the move, so it lands on
+/// the cursor. Only the place is led; when the pointer stops, the speed eases to nothing and the ring settles exactly on it.
+pub const LEAD_S: f64 = 0.024;
+/// The most it leads by (points), so a sudden flick never throws it far ahead.
+pub const LEAD_MAX: f64 = 60.0;
+
+/// Where to put the ring's middle for a pointer at `p` moving at `v` (points a second): ahead by the time a move takes to show.
+pub fn led(p: (f64, f64), v: (f64, f64)) -> (f64, f64) {
+    let (mut dx, mut dy) = (v.0 * LEAD_S, v.1 * LEAD_S);
+    let m = dx.hypot(dy);
+    if !m.is_finite() { return p; }
+    if m > LEAD_MAX { dx *= LEAD_MAX / m; dy *= LEAD_MAX / m; }
+    (p.0 + dx, p.1 + dy)
+}
 
 /// M33: how wide the window grows to say a short line beside the pointer, and how long a line stays.
 pub const SAY_W: f64 = 260.0;
@@ -130,5 +146,14 @@ mod tests {
         let d = Drop { x: 100.0, y: 50.0, vx: 0.0, vy: 0.0, placed: true };
         assert_eq!(&d.frame_saying()[..2], &d.frame()[..2]);
         assert_eq!(d.frame_saying()[2], SAY_W);
+    }
+    #[test]
+    fn it_leads_a_fast_pointer_by_the_time_a_move_takes_and_sits_exactly_on_a_still_one() {
+        assert_eq!(led((100.0, 100.0), (0.0, 0.0)), (100.0, 100.0));
+        let (x, y) = led((100.0, 100.0), (1000.0, 0.0));
+        assert!((x - 124.0).abs() < 1e-9 && y == 100.0);
+        let (fx, fy) = led((0.0, 0.0), (100_000.0, 100_000.0));
+        assert!((fx.hypot(fy) - LEAD_MAX).abs() < 1e-9, "a flick never throws it far ahead");
+        assert_eq!(led((5.0, 5.0), (f64::NAN, 1.0)), (5.0, 5.0));
     }
 }

@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow clings like water, and the ring lands on your cursor: 30 Oct 2026
+
+- **Push it into the edge and it squashes.** Drag Flowflow into the side of the screen and it slides up against it, flattens and spreads along it. The harder you push, the flatter it gets. Let go and it springs back into shape with a little wobble, like water.
+- **It joins the water in Home.** Where Home's waterline meets Flowflow, the two join in a soft curve, like a drop meeting water, instead of a shape floating on a line.
+- **The ring lands on your cursor.** A window that follows the pointer always shows a frame or two late, so on a fast sweep it used to sit behind. The ring now aims a touch ahead along the way you're moving, and settles exactly on the cursor when you stop.
+
 ## Flowflow flows, goes anywhere, and the ring keeps up: 30 Oct 2026
 
 - **Flowflow is liquid now.** Its point sways like poured water, slow waves run up its sides and its base spreads and gathers. When it moves it stretches and pours a smooth tail of water behind it that melts back in as it slows.

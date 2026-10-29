@@ -20,7 +20,9 @@ uniform vec4 uPose;        // breath, squash, lean, expand
 uniform vec3 uMove;        // direction x, direction y, stretch
 uniform vec4 uEyes;        // left x, left y, right x, right y (where each looks, -1 to 1)
 uniform float uOpen;       // 0 shut, 1 open
-uniform float uCloud, uGlow, uTime, uPour;   // uPour: 0 still, 1 moving at its fastest (the tail it pours)
+uniform float uCloud, uGlow, uTime, uPour;
+uniform vec4 uSurf;        // M37c: the surface it clings to, in body units: normal x, y (zero: none), how far, cling at rest
+uniform float uPress;      // how hard it is pushed into it (a spring: a little past 1, or below 0, as it wobbles back)   // uPour: 0 still, 1 moving at its fastest (the tail it pours)
 uniform vec3 uColA, uColB;
 varying vec2 vWorld;
 
@@ -42,14 +44,14 @@ vec3 unpose(vec3 p){
 // M37b (the founder: "it does not look flowy… melts and reshapes"): it is liquid. At rest the point sways and slow
 // waves run up its sides; moving, it stretches and pours a soft tail behind it that melts back in as it slows. Every
 // change is low and smooth, so it never turns lumpy.
-float drop(vec3 p){
+float body(vec3 p){
   vec3 q = unpose(p) - vec3(0.0, -0.18, 0.0); q.z *= 1.06;
-  float up = smoothstep(-0.3, 1.1, q.y);
-  q.x -= (0.06 * sin(uTime * 0.9) + 0.025 * sin(uTime * 1.7 + 1.3)) * up * up;          // the point sways like poured liquid
+  float up = smoothstep(-0.3, 1.1, q.y), calmed = 1.0 - 0.85 * clamp(uPress, 0.0, 1.0);   // pressed flat, it holds still
+  q.x -= calmed * (0.06 * sin(uTime * 0.9) + 0.025 * sin(uTime * 1.7 + 1.3)) * up * up;          // the point sways like poured liquid
   float d = sdRoundCone(q, 0.80, 0.16, 1.02);
   d = smin(d, sdEll(q, vec3(0.86, 0.74, 0.82)), 0.18);
   float a = atan(q.z, q.x);
-  d += 0.024 * sin(q.y * 4.2 - uTime * 1.8 + a) * smoothstep(1.0, 0.1, abs(q.y - 0.05)); // slow waves running up its sides
+  d += calmed * 0.024 * sin(q.y * 4.2 - uTime * 1.8 + a) * smoothstep(1.0, 0.1, abs(q.y - 0.05)); // slow waves running up its sides
   d -= 0.03 * (0.5 + 0.5 * sin(uTime * 1.1)) * smoothstep(-0.2, -0.75, q.y);              // the base spreads and gathers, like settling water
   d = max(d, -(q.y + 0.68));   // the calm flat underside where it sits
   // Moving: the water pours out behind it in one smooth, tapering tail that melts back in as it slows.
@@ -59,6 +61,37 @@ float drop(vec3 p){
     d = smin(d, taper(q, from, to, 0.5, 0.1 + 0.08 * (1.0 - pour)), 0.32);
   }
   return d * 0.8;
+}
+// M37c (the founder: "when it gets close to the water it sticks to the sides… the more I push it towards it, the flatter it
+// gets"): near a surface (the screen's edge it is docked on, or Home's water) the water reaches for it and joins it in a soft
+// fillet, and pushed into it the drop slides up to it and flattens against it, spreading along it, harder the harder it is
+// pushed. Nothing is drawn past the surface: the screen ends there, or Home's own water takes over.
+// Where a point of the picture is on the undeformed drop, once it has slid up to its surface and flattened against it.
+float squeeze(){ return 1.0 - 0.45 * clamp(uPress, -0.2, 1.0); }   // flatter the harder it is pushed, never thinner than about half
+vec3 toBody(vec3 p){
+  vec2 sn = uSurf.xy;
+  if (dot(sn, sn) < 0.25) return p;
+  float pr = clamp(uPress, -0.2, 1.15);
+  float slide = max(0.0, uSurf.z - 0.84) * clamp(pr * 1.5, 0.0, 1.0);   // pressed, it slides up to the surface
+  vec3 b = p; b.xy -= sn * slide;
+  float face = uSurf.z - slide;                                           // the surface, seen from the drop
+  float s = dot(b.xy, sn); vec2 perp = b.xy - s * sn;
+  s = face - (face - s) / squeeze();                                      // squashed against the surface
+  perp /= 1.0 + 0.4 * max(pr, 0.0);                                       // and spread along it, as water does
+  b.xy = s * sn + perp; b.z /= 1.0 + 0.25 * max(pr, 0.0);
+  return b;
+}
+float drop(vec3 p){
+  vec2 sn = uSurf.xy;
+  if (dot(sn, sn) < 0.25) return body(p);
+  float pl = uSurf.z, pr = clamp(uPress, -0.2, 1.15), m = clamp(max(pr, uSurf.w), 0.0, 1.0);
+  float d = body(toBody(p)) * min(1.0, squeeze());
+  // It joins the surface in a soft fillet, and a thin film of it spreads along the surface.
+  d = smin(d, pl - dot(p.xy, sn), 0.02 + 0.42 * m);
+  vec2 t = vec2(-sn.y, sn.x), c = sn * pl;
+  float len = 0.15 + 0.4 * max(pr, 0.0) + 0.3 * uSurf.w;
+  d = smin(d, taper(p, vec3(c - t * len, 0.0), vec3(c + t * len, 0.0), 0.03 + 0.12 * m, 0.03 + 0.12 * m), 0.12 + 0.25 * m);
+  return max(d, dot(p.xy, sn) - pl);
 }
 vec3 nrm(vec3 p){ vec2 e = vec2(0.002, 0.0); return normalize(vec3(drop(p+e.xyy)-drop(p-e.xyy), drop(p+e.yxy)-drop(p-e.yxy), drop(p+e.yyx)-drop(p-e.yyx))); }
 
@@ -83,7 +116,7 @@ void main(){
   if (cover <= 0.0) { gl_FragColor = vec4(0.0); return; }
   vec3 p = ro + rd*tBest, n = nrm(p), v = -rd, r = reflect(rd, n);
   float ndv = clamp(dot(n, v), 0.0, 1.0), fres = pow(1.0 - ndv, 4.0);
-  vec3 q = unpose(p);
+  vec3 q = unpose(toBody(p));   // the face rides with the body as it slides and flattens
   // Clear water: deeper where it is thick, glowing where light passes through the rim and gathers at the base.
   vec3 rf = refract(rd, n, 0.75);
   float g = smoothstep(-0.9, 1.45, q.y + rf.y * 0.5);

@@ -238,6 +238,21 @@ pub fn nearest_edge(frame: Rect, work: Rect) -> Edge {
         .into_iter().min_by(|a, b| a.1.total_cmp(&b.1)).map(|(e, _)| e).unwrap_or(Edge::Right)
 }
 
+/// M37c (the founder: "the more I push it towards it, the flatter it gets"): how hard a drag presses the character into
+/// its edge, 0 to 1. Nothing while the pointer is at the character's middle or further from the edge; all of it once the
+/// pointer reaches the edge of the screen itself. The page flattens the water against that side by this much.
+pub fn press_of(s: &Screen, size: (f64, f64), edge: Edge, cursor: (f64, f64)) -> f64 {
+    let w = s.work;
+    let (dist, half) = match edge {
+        Edge::Left => (cursor.0 - w[0], size.0 / 2.0),
+        Edge::Right => (w[0] + w[2] - cursor.0, size.0 / 2.0),
+        Edge::Top => (cursor.1 - w[1], size.1 / 2.0),
+        Edge::Bottom => (w[1] + w[3] - cursor.1, size.1 / 2.0),
+    };
+    if !dist.is_finite() || half <= 0.0 { return 0.0; }
+    (1.0 - dist / half).clamp(0.0, 1.0)
+}
+
 pub fn inside(frame: Rect, work: Rect) -> bool {
     let e = 1.0;
     frame[0] >= work[0] - e && frame[1] >= work[1] - e && frame[0] + frame[2] <= work[0] + work[2] + e && frame[1] + frame[3] <= work[1] + work[3] + e
@@ -737,5 +752,16 @@ mod tests {
         assert_eq!(p.free.get("b"), None);
         assert_eq!(p.free.get("c"), Some(&(0.1, 0.2)));
         assert!(!serde_json::to_string(&Prefs::default()).unwrap().contains("free"), "nothing written when it is always on an edge");
+    }
+    #[test]
+    fn the_harder_it_is_pushed_into_its_edge_the_more_it_presses() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        let size = (160.0, 160.0);
+        assert_eq!(press_of(&s, size, Edge::Right, (1300.0, 400.0)), 0.0, "pointer at or past its middle: no press");
+        assert!((press_of(&s, size, Edge::Right, (1400.0, 400.0)) - 0.5).abs() < 1e-9);
+        assert_eq!(press_of(&s, size, Edge::Right, (1440.0, 400.0)), 1.0, "at the screen's edge: all of it");
+        assert_eq!(press_of(&s, size, Edge::Left, (-5.0, 400.0)), 1.0);
+        assert!((press_of(&s, size, Edge::Top, (700.0, 65.0)) - 0.5).abs() < 1e-9);
+        assert_eq!(press_of(&s, size, Edge::Bottom, (700.0, f64::NAN)), 0.0);
     }
 }

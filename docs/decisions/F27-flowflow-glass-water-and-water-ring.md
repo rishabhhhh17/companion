@@ -37,3 +37,16 @@ The founder supplies or picks other character art.
   - Let go at least 120 points from every edge, it stays there (`docking::free_on`, `place_free`, kept per display in `dock.json` `free`). It is moved sideways out of the notch and Home's zone, it does not peek, and it faces the nearest edge.
   - A drop near an edge, or an edge or position chosen in Settings, takes it back to an edge.
 - **The ring no longer lags.** At most one move waits on the main thread, and it reads the pointer when it runs (`FOLLOW_QUEUED`).
+
+## Added after the founder saw a demo of water reaching for water and clinging to an edge ("exactly that… the more I push it towards it, the flatter it gets")
+- **A surface it clings to** (`engine.ts` `Surface`):
+  - The screen edge it is docked on.
+  - Home's waterline (`below`, two thirds down its box).
+- **How hard it is pushed:**
+  - The shell measures it during a drag (`docking::press_of`: none with the pointer at its middle, all of it at the screen's edge) and sends `dock-press`.
+  - A soft under damped spring (`PRESS_SPRING`, 3.2 Hz, damping 0.3) turns it into how much it slides up to the surface, flattens (to about half) and spreads along it.
+  - Letting go wobbles back past its shape before it settles.
+- **The drawing:**
+  - It joins the surface in a fillet with a thin film along it, and nothing is drawn past the surface.
+  - The face rides with the body (`toBody`).
+- **The water ring now leads a moving pointer** by about the time a move takes to show (`follow::led`, 24 ms, at most 60 points), so it lands on the cursor on a fast sweep.
