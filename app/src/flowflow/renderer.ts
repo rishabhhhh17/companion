@@ -108,7 +108,9 @@ export class FlowflowRenderer {
     else {
       const [nx, ny] = SIDE_NORMAL[sf.side];
       const cx = pose.x, cy = pose.y + s.float + REST_Y;
-      const plane = sf.side === "below" ? -(this.halfH - sf.at * 2 * this.halfH) : nx !== 0 ? this.halfW : this.halfH;
+      // `at`: where the surface is across the canvas (from its left for a side, from its top otherwise), 0 to 1 or past it.
+      const x = (sf.at - 0.5) * 2 * this.halfW, y = this.halfH - sf.at * 2 * this.halfH;
+      const plane = nx !== 0 ? nx * x : ny * y;
       sv.set(nx, ny, (plane - (cx * nx + cy * ny)) / BODY_SCALE, sf.cling);
     }
     u.uPress.value = sf.press;

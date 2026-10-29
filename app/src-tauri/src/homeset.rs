@@ -15,7 +15,7 @@ use serde_json::Value;
 pub const KEYS: &[&str] = &[
     "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
     "home.closeOnClickAway", "home.size", "character.linger", "character.motion", "character.overFullScreen",
-    "character.peek", "character.peekIdle", "home.escStops",
+    "character.peek", "character.stick", "character.peekIdle", "home.escStops",
 ];
 
 /// What the shell does about Home, the island and the character, as the settings say now.
@@ -41,6 +41,8 @@ pub struct HomeSet {
     pub over_full_screen: bool,
     /// character.peek: the character rests tucked away past the edge of the screen and comes in at the pointer (peek.rs).
     pub peek: bool,
+    /// character.stick (M37d): while tucked, half of it stays stuck to the edge instead of hiding fully past it.
+    pub stick: bool,
     /// character.peekIdle ("Peek in on its own"): it also peeks in when something happens, and now and then while nothing does.
     pub peek_idle: bool,
     /// home.escStops (M26): Esc clears what Squibby draws on the screen and stops it talking, while it draws (esc.rs).
@@ -48,11 +50,12 @@ pub struct HomeSet {
 }
 
 impl HomeSet {
-    /// Today's behaviour: the constants these settings replaced. Peeking (27 Oct 2026) is off since M31: the founder found the
-    /// character hidden past the edge when they wanted it there.
+    /// Today's behaviour: the constants these settings replaced. Peeking (27 Oct 2026) was off from M31 (the founder found the
+    /// character hidden past the edge when they wanted it there); since M37d (30 Oct 2026, the founder: "it needs to stick…
+    /// it just needs to dwell there… when I pull it, it needs to come out") it is on, stuck half in view at the edge.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: false, peek_idle: false, esc_stops: true,
+        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, stick: true, peek_idle: false, esc_stops: true,
     };
 }
 
@@ -76,6 +79,7 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
         less_motion: word("character.motion") == "less",
         over_full_screen: on("character.overFullScreen", u.over_full_screen),
         peek: on("character.peek", u.peek),
+        stick: on("character.stick", u.stick),
         esc_stops: on("home.escStops", u.esc_stops),
         peek_idle: on("character.peekIdle", u.peek_idle),
     }
@@ -93,7 +97,7 @@ mod tests {
         let u = HomeSet::USUAL;
         assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::STANDARD, false, false));
-        assert_eq!((u.peek, u.peek_idle), (false, false), "M31: always on its edge in view unless peeking is turned on");
+        assert_eq!((u.peek, u.stick, u.peek_idle), (true, true, false), "M37d: stuck half in view at its edge, out when the pointer comes");
     }
     #[test]
     fn each_one_is_read_from_settings_json_at_both_ends_of_its_range() {

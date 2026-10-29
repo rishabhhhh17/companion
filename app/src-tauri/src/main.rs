@@ -381,7 +381,8 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
         // M37: away from every edge it stays where it is let go; near one it snaps to it, as before.
         // M37c: how hard it is pushed into its edge, for the water to flatten against it (none when it is let go free).
         let press = if free.is_some() { 0.0 } else { docking::press_of(&target, DOCK, edge, (x, y)) };
-        let _ = app.emit_to("dock", "dock-press", json!({ "edge": if free.is_some() { Value::Null } else { json!(edge.word()) }, "press": press }));
+        let at = docking::screen_at(edge, &target, docking::place(&target, DOCK, edge, pct, home_size()));
+        let _ = app.emit_to("dock", "dock-press", json!({ "edge": if free.is_some() { Value::Null } else { json!(edge.word()) }, "press": press, "screenAt": at }));
         with_prefs(|p| {
             p.last_screen = target.id.clone();
             match free { Some(at) => { p.free.insert(target.id.clone(), at); } None => { p.free.remove(&target.id); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } } }
@@ -994,7 +995,7 @@ fn peek_apply(app: &AppHandle, light: bool) {
     let hs = home_set();
     let calm = reduce_motion();
     let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
-    let n = peek::Now { now: now() as u64, on: hs.peek, idle_on: hs.peek_idle, calm, at_home };
+    let n = peek::Now { now: now() as u64, on: hs.peek, stick: hs.stick, idle_on: hs.peek_idle, calm, at_home };
     // M37: a character let go in the middle of the screen has no edge to tuck into, so it stays fully in.
     let pose = if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In } else { peeker().pose(&n, quiet) };
     let was = *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner());
@@ -1012,7 +1013,8 @@ fn peek_apply(app: &AppHandle, light: bool) {
     *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;
     // The page leans toward the screen while it peeks (dock.tsx data-peek). Where it may not hide, it is simply in.
     let shown = if f == home { peek::Pose::In } else { pose };
-    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word() }));
+    // M37d: and where the screen's edge is from the window's own top left, so the water flattens against the real edge.
+    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word(), "screenAt": docking::screen_at(edge, s, f) }));
 }
 
 /// Each tick: the pointer on the character (its place only), then the pose.

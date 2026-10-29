@@ -47,7 +47,7 @@ describe("the shipped list of settings", () => {
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
-      "character.peek": false, "character.peekIdle": false,
+      "character.peek": true, "character.stick": true, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
@@ -103,7 +103,7 @@ describe("the shipped list of settings", () => {
     // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
     for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
     // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.
-    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen", "character.peek", "character.peekIdle", "home.escStops"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
+    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen", "character.peek", "character.stick", "character.peekIdle", "home.escStops"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
     expect(defOf("home.closeOnClickAway")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("character.motion")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("home.goToNeeds")!.applies).toEqual(["pages"]);

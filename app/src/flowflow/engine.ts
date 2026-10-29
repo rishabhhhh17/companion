@@ -123,11 +123,12 @@ export class FlowflowEngine {
     this.body.impulse("burst", 0.5);
   }
 
-  /** The surface it clings to (none: `null`), where (for the water below), and how much it joins it at rest. */
+  /** The surface it clings to (none: `null`), where across the canvas (0 to 1 from its left for a side, from its top
+   *  otherwise, a little past either end when the screen's edge is past the canvas), and how much it joins it at rest. */
   setSurface(side: Side | null, at = 1, cling = 0): void {
     const ok = side === null || SIDES.includes(side);
     this.surface.side = ok ? side : null;
-    this.surface.at = Number.isFinite(at) ? Math.max(0, Math.min(1, at)) : 1;
+    this.surface.at = Number.isFinite(at) ? Math.max(-1, Math.min(2, at)) : 1;   // it may lie a little past the canvas
     this.surface.cling = Number.isFinite(cling) ? Math.max(0, Math.min(1, cling)) : 0;
   }
   /** How hard it is pushed into its surface now, 0 to 1 (a drag into the screen's edge). */

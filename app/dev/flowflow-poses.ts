@@ -17,6 +17,8 @@ const poses: [string, { dirX: number; dirY: number; stretch: number; lean: numbe
   ["pushed a little", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "right", at: 1, cling: 0, press: 0.35 }],
   ["pushed hard", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "right", at: 1, cling: 0, press: 0.75 }],
   ["pushed all the way", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "right", at: 1, cling: 0, press: 1 }],
+  ["stuck to the edge (half tucked)", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "right", at: 0.62, cling: 0.9, press: 0.5 }],
+  ["out on hover", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "right", at: 0.95, cling: 0.2, press: 0 }],
   ["Home's water", { dirX: 1, dirY: 0, stretch: 0, lean: 0, squash: 0 }, { side: "below", at: 0.67, cling: 0.6, press: 0 }],
 ];
 const row = document.getElementById("row")!;

@@ -185,6 +185,8 @@ pub struct Now {
     pub now: u64,
     /// character.peek: off, the character is always fully in, as before the setting.
     pub on: bool,
+    /// character.stick (M37d): at rest it stays stuck half in view at the edge (a peek) instead of fully past it.
+    pub stick: bool,
     /// character.peekIdle ("Peek in on its own"): the half way peeks when something happens and the curious ones while
     /// nothing does. Off, it stays tucked away until the pointer, a question or a light brings it in.
     pub idle_on: bool,
@@ -275,7 +277,7 @@ impl Peeker {
             }
             _ => {}
         }
-        Pose::Hidden
+        if n.stick { Pose::Peek } else { Pose::Hidden }
     }
 }
 
@@ -439,7 +441,18 @@ mod tests {
 
     // ---- the timing ----
 
-    fn now(t: u64) -> Now { Now { now: t, on: true, idle_on: true, calm: false, at_home: true } }
+    fn now(t: u64) -> Now { Now { now: t, on: true, stick: false, idle_on: true, calm: false, at_home: true } }
+    #[test]
+    fn stuck_to_the_edge_it_rests_half_in_view_and_comes_out_for_the_pointer() {
+        let mut p = Peeker::new();
+        let stuck = |t: u64| Now { stick: true, idle_on: false, ..now(t) };
+        assert_eq!(p.pose(&stuck(1_000), LOUD), Pose::Peek, "at rest: stuck half in view, never gone");
+        p.pointer(true, 2_000);
+        assert_eq!(p.pose(&stuck(2_000), LOUD), Pose::In, "the pointer on it: it comes out");
+        p.pointer(false, 3_000);
+        assert_eq!(p.pose(&stuck(3_000 + LEAVE_MS + 1), LOUD), Pose::Peek, "and goes back to stick");
+        assert_eq!(p.pose(&Now { on: false, ..stuck(9_000) }, LOUD), Pose::In, "tucking off: in view");
+    }
     const LOUD: fn() -> bool = || false;
     fn state(agent: &str, s: &str) -> Value { json!({ "type": "agent.state", "agent": agent, "state": s }) }
 

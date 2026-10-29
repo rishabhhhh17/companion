@@ -145,15 +145,34 @@ function Dock() {
   };
   // M37c: dragged into its edge, the water flattens against it, harder the harder it is pushed, and wobbles back when let
   // go (the shell measures the press: docking.rs press_of). Let go in the middle of the screen, nothing to cling to.
+  // M37d (the founder: "it needs to stick… it just needs to dwell there… when I pull it, it needs to come out"): tucked
+  // into its edge it stays stuck half in view, flattened against the screen's real edge like a drop on glass; the pointer
+  // on it brings it out and it springs back into shape; dragged, it pulls away from the edge.
   useEffect(() => {
-    const off = listen("dock-press", (e) => {
-      const p = (e.payload ?? {}) as { edge?: unknown; press?: unknown };
+    const EDGES = ["left", "right", "top", "bottom"] as const;
+    type Edge = (typeof EDGES)[number];
+    const across = (edge: Edge, screenAt: unknown): number => {
+      const r = document.querySelector(".character .flowflow")?.getBoundingClientRect();
+      if (!r || typeof screenAt !== "number" || !Number.isFinite(screenAt)) return edge === "left" || edge === "top" ? 0 : 1;
+      return edge === "left" || edge === "right" ? (screenAt - r.left) / Math.max(1, r.width) : (screenAt - r.top) / Math.max(1, r.height);
+    };
+    const edgeOf = (v: unknown): Edge | null => (typeof v === "string" && (EDGES as readonly string[]).includes(v) ? (v as Edge) : null);
+    const offPress = listen("dock-press", (e) => {
+      const p = (e.payload ?? {}) as { edge?: unknown; press?: unknown; screenAt?: unknown };
       const c = ffCtl.current; if (!c) return;
+      const edge = edgeOf(p.edge);
       if (p.edge === null) c.setSurface(null);
-      else if (typeof p.edge === "string" && ["left", "right", "top", "bottom"].includes(p.edge)) c.setSurface(p.edge as "left" | "right" | "top" | "bottom", 1, 0);
+      else if (edge) c.setSurface(edge, across(edge, p.screenAt), 0.2);
       c.press(typeof p.press === "number" ? p.press : 0);
     });
-    return () => { off.then((f) => f()); };
+    const offPeek = listen("peek", (e) => {
+      const p = (e.payload ?? {}) as { pose?: unknown; edge?: unknown; screenAt?: unknown };
+      const c = ffCtl.current, edge = edgeOf(p.edge); if (!c || !edge) return;
+      const stuck = p.pose === "peek" || p.pose === "hidden";
+      c.setSurface(edge, across(edge, p.screenAt), stuck ? 0.9 : 0.2);
+      c.press(stuck ? 0.5 : 0);
+    });
+    return () => { offPress.then((f) => f()); offPeek.then((f) => f()); };
   }, []);
   // A trip across the screen leans the body the way it goes; surfacing and settling are a soft touch.
   useEffect(() => {

@@ -50,3 +50,12 @@ The founder supplies or picks other character art.
   - It joins the surface in a fillet with a thin film along it, and nothing is drawn past the surface.
   - The face rides with the body (`toBody`).
 - **The water ring now leads a moving pointer** by about the time a move takes to show (`follow::led`, 24 ms, at most 60 points), so it lands on the cursor on a fast sweep.
+
+## Added: it sticks to the edge (the founder: "it needs to stick… it just needs to dwell there… when I pull it, it needs to come out")
+- **Tucking is on by default again** (`character.peek` true, a change from M31).
+- **A new `character.stick`** (on unless turned off): at rest it is stuck half in view (`peek::Pose::Peek`) rather than fully past the edge. The pointer on it brings it out, and it goes back after it leaves.
+- **What the page draws:**
+  - Stuck, it flattens against the screen's real edge (`docking::screen_at`, sent with the pose and with each drag) and joins it.
+  - Out, the spring takes it back to its shape with a wobble.
+  - Dragged, the press from `press_of` decides how flat it is.
+- **Placed free,** it now keeps clear of the notch only; Home may drop over it.

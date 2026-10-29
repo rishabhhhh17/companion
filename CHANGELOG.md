@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow sticks to the edge until you need it: 30 Oct 2026
+
+- **It lives stuck to the edge.** Flowflow now waits half tucked into the edge of your screen, flattened against it like a drop of water on glass. You can always see where it is, but it stays out of your way.
+- **Hover to bring it out.** Move your pointer onto it and it comes out and springs back into shape with a wobble. Move away and it sticks back to the edge.
+- **Pull it out.** Drag it away from the edge and it peels off like water. The closer to the edge you hold it, the flatter it squashes.
+- **No invisible box.** It flattens against the real edge of your screen now, not the edge of its own little window.
+- **Leave it in the middle.** Drop it anywhere away from the edges and it stays right there. Only the notch is kept clear.
+- **Your choice.** On Settings, Flowflow, "Tuck into the edge of the screen" turns this off. Under Advanced, "Stick to the edge" off hides it fully past the edge instead.
+
 ## Flowflow clings like water, and the ring lands on your cursor: 30 Oct 2026
 
 - **Push it into the edge and it squashes.** Drag Flowflow into the side of the screen and it slides up against it, flattens and spreads along it. The harder you push, the flatter it gets. Let go and it springs back into shape with a little wobble, like water.

@@ -218,12 +218,13 @@ pub fn free_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64) -> Op
     Some((along((cursor_x - size.0 / 2.0 - w[0]) / room(w[2], size.0)), along((cursor_y - size.1 / 2.0 - w[1]) / room(w[3], size.1))))
 }
 
-/// A free place on a display: inside the work area and, like an edge place, out of the island's and Home's zone (moved
-/// sideways out of it).
+/// A free place on a display: inside the work area, and out of the notch's zone (moved sideways out of it).
 pub fn place_free(s: &Screen, size: (f64, f64), at: (f64, f64), home: island::HomeSize) -> Rect {
     let w = s.work;
     let f = [w[0] + along(at.0) * (w[2] - size.0).max(0.0), w[1] + along(at.1) * (w[3] - size.1).max(0.0), size.0, size.1];
-    let z = dock_zone(s, home);
+    // M37d (the founder: "it still can't go in the middle"): free, it keeps clear of the notch only; Home may drop over it.
+    let _ = home;
+    let z = notch_zone(s);
     if !overlaps(f, z) { return f; }
     // Out of the zone sideways, to the nearer side that fits; on a display too narrow for either, below it.
     let (lo, hi) = (w[0], w[0] + w[2] - size.0);
@@ -251,6 +252,12 @@ pub fn press_of(s: &Screen, size: (f64, f64), edge: Edge, cursor: (f64, f64)) ->
     };
     if !dist.is_finite() || half <= 0.0 { return 0.0; }
     (1.0 - dist / half).clamp(0.0, 1.0)
+}
+
+/// M37d: where the display's own edge on `edge` is, in points from the window's top left (its left for a side edge, its
+/// top for the top or bottom), so the character's page flattens the water against the real edge, not its window's.
+pub fn screen_at(edge: Edge, s: &Screen, win: Rect) -> f64 {
+    match edge { Edge::Right => s.frame[0] + s.frame[2] - win[0], Edge::Left => s.frame[0] - win[0], Edge::Top => s.frame[1] - win[1], Edge::Bottom => s.frame[1] + s.frame[3] - win[1] }
 }
 
 pub fn inside(frame: Rect, work: Rect) -> bool {
@@ -730,17 +737,17 @@ mod tests {
         let (fx, fy) = free_on(&s, size, 300.0, 500.0).expect("away from every edge: stays");
         let f = place_free(&s, size, (fx, fy), island::HomeSize::STANDARD);
         assert!(((f[0] + 80.0) - 300.0).abs() < 1.0 && ((f[1] + 80.0) - 500.0).abs() < 1.0, "{f:?}");
-        // Let go where Home drops down: it moves sideways out of Home's way, at the same height.
+        // Let go in the very middle of the screen: it stays right there (M37d), Home may drop over it.
         let mid = place_free(&s, size, free_on(&s, size, 720.0, 500.0).unwrap(), island::HomeSize::STANDARD);
-        assert!(!overlaps(mid, dock_zone(&s, island::HomeSize::STANDARD)) && (mid[1] + 80.0 - 500.0).abs() < 1.0, "{mid:?}");
+        assert!(((mid[0] + 80.0) - 720.0).abs() < 1.0 && (mid[1] + 80.0 - 500.0).abs() < 1.0, "{mid:?}");
         assert!(inside(f, s.work));
         assert_eq!(free_on(&s, size, f64::NAN, 500.0), None);
     }
     #[test]
-    fn a_free_place_keeps_out_of_the_notch_and_home() {
+    fn a_free_place_keeps_out_of_the_notch() {
         let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
         let f = place_free(&s, (160.0, 160.0), (0.5, 0.0), island::HomeSize::STANDARD);
-        assert!(!overlaps(f, dock_zone(&s, island::HomeSize::STANDARD)), "{f:?}");
+        assert!(!overlaps(f, notch_zone(&s)), "{f:?}");
         assert!(inside(f, s.work));
         assert_eq!(nearest_edge([10.0, 400.0, 100.0, 100.0], s.work), Edge::Left);
         assert_eq!(nearest_edge([600.0, 760.0, 100.0, 100.0], s.work), Edge::Bottom);
@@ -763,5 +770,13 @@ mod tests {
         assert_eq!(press_of(&s, size, Edge::Left, (-5.0, 400.0)), 1.0);
         assert!((press_of(&s, size, Edge::Top, (700.0, 65.0)) - 0.5).abs() < 1e-9);
         assert_eq!(press_of(&s, size, Edge::Bottom, (700.0, f64::NAN)), 0.0);
+    }
+    #[test]
+    fn the_screen_edge_is_found_from_the_window() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        assert_eq!(screen_at(Edge::Right, &s, [1280.0, 300.0, 160.0, 160.0]), 160.0);
+        assert_eq!(screen_at(Edge::Right, &s, [1360.0, 300.0, 160.0, 160.0]), 80.0, "half past the edge");
+        assert_eq!(screen_at(Edge::Left, &s, [-80.0, 300.0, 160.0, 160.0]), 80.0);
+        assert_eq!(screen_at(Edge::Bottom, &s, [600.0, 740.0, 160.0, 160.0]), 160.0);
     }
 }
