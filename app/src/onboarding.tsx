@@ -117,6 +117,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // The one lime button, always at the bottom in the same place.
   const main = (label: string, onClick: () => void, disabled = false) => <button className="fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;
 
+  const cast = COMPANIONS.filter((c) => c.ready);   // M28: only the ready ones
   return (
     <section className="panel onboarding fr" data-step={step} aria-label={S.obTitle} ref={box} style={level}>
       <div className="fr-tank" aria-hidden="true"><Waterline under /></div>
@@ -136,13 +137,13 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {main(S.fr.helloGo, () => go(next(step)))}
       </>)}
 
+      {/* M28 (founder, 29 Oct 2026): only companions that are ready show; the empty slots come back with the founder's art. With
+          one ready, the step introduces it rather than offering a choice of one. */}
       {step === "pick" && (<>
-        <h2 className="fr-title">{S.fr.pickTitle}</h2>
-        <p className="fr-line">{S.fr.pickLine}</p>
-        <div className="fr-cast">
-          {COMPANIONS.map((c) => c.ready
-            ? <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><FlowMini className="fr-flow" state="idle" /><b>{name}</b><span>{S.fr.pickWater}</span></button>
-            : <div key={c.id} className="fr-pick slot"><span className="fr-hole" aria-hidden="true" /><b>{S.groups.names[c.group]}</b><span className="fr-soon">{S.fr.soon}</span></div>)}
+        <h2 className="fr-title">{cast.length > 1 ? S.fr.pickTitle : S.fr.meetTitle(name)}</h2>
+        <p className="fr-line">{cast.length > 1 ? S.fr.pickLine : S.fr.meetLine}</p>
+        <div className={`fr-cast${cast.length === 1 ? " one" : ""}`}>
+          {cast.map((c) => <button key={c.id} className="fr-pick" type="button" aria-pressed="true"><FlowMini className="fr-flow" state="idle" /><b>{name}</b><span>{S.fr.pickWater}</span></button>)}
         </div>
         <div className="fr-grow" />
         {main(S.fr.pickGo(name), () => go(next(step)))}

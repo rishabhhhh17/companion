@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Clearer, calmer, nothing half finished: 29 Oct 2026
+
+- **Questions say exactly what will happen.** When Squibby needs your OK, the card asks a plain question ("Install something?", "Change your project's Git history?"), shows the exact command or file, says why, and tells you whether Undo can take it back. The same in the notch.
+- **One press fixes the two dead ends.** If Squibby's engine keeps stopping, there's a Restart button instead of "quit and open again". If Claude isn't connected, there's an Add your key button that takes you straight there.
+- **Nothing unfinished in sight.** The Google section stays hidden until Google is set up in your version. The first run introduces Flowflow on its own instead of showing empty "Coming soon" boxes. Lessons say where they came from instead of "Draft".
+- **The usual ring colour is honest.** It was labelled "Orange" but showed your water colour; it's now called "Usual" and draws in Squibby lime with a dark edge when it isn't water.
+- **No error codes in your face.** If the screen or the microphone can't be used, you get a plain sentence and what to try; the technical detail goes to the log.
+- **Pricing is set:** Free, and Pro at $10 a month ($8 a month yearly), with a 14 day trial and half price for students. You pay Anthropic directly for Claude; we never mark it up. Payments aren't switched on yet.
+
 ## Flowflow comes alive: 29 Oct 2026
 
 - **Flowflow doesn't just sit there any more.** Every few seconds it does something small: looks around, shakes water off, stretches, bounces, blows a bubble. Never the same thing twice in a row, never while it's working, and never with less motion.

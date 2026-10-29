@@ -27,6 +27,7 @@ import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { approvalWords } from "./approvals.ts";
 import { Waterline } from "./waterline.tsx";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
@@ -1542,7 +1543,8 @@ function Card() {
       </section>
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
-      {m.notice && <div className="notice" role="status">{m.notice}</div>}
+      {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
+      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("fixed:key"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
@@ -1551,7 +1553,8 @@ function Card() {
           {updateNote && <div className="line">{updateNote}</div>}
         </div>
       )}
-      {m.error && <div className="error">{m.error}</div>}
+      {/* M28: when the engine has stopped, the fix is one press away, never "quit and open again". */}
+      {m.error && <div className="error">{m.error}{!m.runnerUp && <button className="btn fix-it" type="button" onClick={() => void invoke("restart_engine").catch(() => {})}>{S.restartEngine}</button>}</div>}
       </>}
       <div className="view" role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title">
       {show("whatsNew") && changes && (
@@ -1719,17 +1722,20 @@ function Card() {
           </div>
         </section>
       )}
-      {m.approvals.map((a) => (
-        <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
-          <h2>{S.needsYouTitle}</h2>
+      {m.approvals.map((a) => { const w = approvalWords(a); return (
+        <section className="panel amber ask-card" key={a.id} aria-label={S.needsYouTitle}>
+          <h2>{w.question}</h2>
           {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
-          <div className="line">{a.title}</div>
+          {/* M28: exactly what will happen, why it asks, and whether Undo covers it (approvals.ts). */}
+          {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
+          <div className="line muted">{w.why}</div>
+          {w.undo && <div className={`line ask-undo${a.undoable ? "" : " no"}`}>{w.undo}</div>}
           <div className="row">
             <button className="btn primary" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
             <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
           </div>
         </section>
-      ))}
+      ); })}
 
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>

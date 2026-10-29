@@ -1658,6 +1658,10 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     app.state::<runner::Runner>().send(&cmd)
 }
 
+/// M28: Home's Restart, beside "Squibby keeps stopping": the engine starts again now (runner.rs Runner::retry).
+#[tauri::command]
+fn restart_engine(app: AppHandle) { log("engine_restart_pressed", json!({})); app.state::<runner::Runner>().retry(); }
+
 #[tauri::command]
 fn open_card_cmd(app: AppHandle, then: Option<serde_json::Value>) {
     // Only the two known shapes pass (a lesson to start, or Learn to show); anything else just opens Home.
@@ -2243,8 +2247,8 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }
             Err(showme::Refusal::NeedsScreenRecording) => say_showme(&app, "needs_permission", concat!("Allow Screen Recording for ", crate::product!(), " in System Settings, then press Show me again."), json!({})),
             Err(showme::Refusal::SecureInput) => say_showme(&app, "error", "A password box is active, so I did not look at your screen. Click away from it and try again.", json!({})),
-            Err(showme::Refusal::CaptureFailed(e)) => say_showme(&app, "error", &format!("I could not look at your screen ({e})."), json!({})),
-            Err(showme::Refusal::PictureFailed(e)) => say_showme(&app, "error", &format!("I could not prepare the picture ({e})."), json!({})),
+            Err(showme::Refusal::CaptureFailed(e)) => { log("failure_detail", json!({ "what": "capture", "detail": e.to_string() })); say_showme(&app, "error", "I could not look at your screen just now. Try again in a moment.", json!({})) }
+            Err(showme::Refusal::PictureFailed(e)) => { log("failure_detail", json!({ "what": "picture", "detail": e.to_string() })); say_showme(&app, "error", "I could not prepare the picture just now. Try again in a moment.", json!({})) }
             // Stop everything or a newer question already said what happens next: nothing more is said. Still current, it
             // was ended because Companion was hidden meanwhile, and the person is told why.
             Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); } }
@@ -3295,7 +3299,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             match showme::look_for(&plat, &find) {
                 Ok((d, hit)) => { display = Some(d); found = hit; if found.is_some() { break; } }
                 Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
-                Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { say_showme(&app, "error", format!("{said} I could not look at your screen ({e}).").trim(), json!({})); return; }
+                Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { log("failure_detail", json!({ "what": "capture", "detail": e.to_string() })); say_showme(&app, "error", format!("{said} I could not look at your screen just now. Try again in a moment.").trim(), json!({})); return; }
                 Err(showme::Refusal::NeedsScreenRecording) => break,
                 // Hidden meanwhile (not Stop or a newer run, which said what happens next): the person is told why.
                 Err(showme::Refusal::Stopped) => { if alive() { say_showme(&app, "error", format!("{said} {}", showme::HIDDEN_WORDS).trim(), json!({})); } return; }
@@ -3769,7 +3773,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                             std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } });
                         }
                     }
-                    Err(e) => { hold.cancel(); listening(false); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
+                    Err(e) => { hold.cancel(); listening(false); log("failure_detail", json!({ "what": "microphone", "detail": e.to_string() })); say_voice(&app, "error", "I could not use the microphone just now. Check it is connected, then try again.", json!({})); }
                 }
             }
             Ok(VoiceMsg::Up(t)) => {
@@ -3780,7 +3784,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 listening(false);
                 if !long_enough { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
                 match heard {
-                    Err(e) => { hold.finished(); say_voice(&app, "error", &format!("I could not use the microphone ({e})."), json!({})); }
+                    Err(e) => { hold.finished(); log("failure_detail", json!({ "what": "microphone", "detail": e.to_string() })); say_voice(&app, "error", "I could not use the microphone just now. Check it is connected, then try again.", json!({})); }
                     Ok(h) => {
                         let mono = h.mono;
                         // Another microphone took over while the keys were held, or the one in use went away: the page says so in one line.
@@ -4248,7 +4252,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

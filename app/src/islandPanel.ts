@@ -4,6 +4,7 @@
 // then its result. Plain decisions only; islandPanel.tsx draws them and island.rs sizes the window to what is drawn.
 import { characterWords, formatUsd, receiptProofWords, visualState, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
+import { approvalWords } from "./approvals.ts";
 
 export type JobTone = "working" | "needsYou" | "done" | "failed";
 export type JobCard = { key: string; state: CharacterState; tone: JobTone; title: string; sub: string; cost: string | null; approval?: string; risk?: string };
@@ -26,7 +27,8 @@ const title = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** The cards, most urgent first: questions waiting for the person, then the work going on, then the last result. */
 export function islandJobs(m: Model): JobCard[] {
-  const out: JobCard[] = m.approvals.map((a) => ({ key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: a.title, sub: answerHere(a.risk) ? S.panel.askHere : S.panel.needsYou, cost: null, approval: a.id, risk: a.risk }));
+  // M28: the plain question, and exactly what will happen under it (approvals.ts), never the safety rule's own words.
+  const out: JobCard[] = m.approvals.map((a) => { const w = approvalWords(a); return { key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: w.question, sub: w.what ?? (answerHere(a.risk) ? S.panel.askHere : S.panel.needsYou), cost: null, approval: a.id, risk: a.risk }; });
   const v = visualState(m);
   if (m.task && BUSY.includes(v)) {
     const d = m.drive && !m.drive.finished ? m.drive : null;

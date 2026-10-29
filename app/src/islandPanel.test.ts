@@ -31,7 +31,7 @@ describe("the panel under the notch shows the work, not a character", () => {
   test("a question waiting comes first, and says it can be answered here", () => {
     const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Install a package", expiresAt: "2099-01-01T00:00:00Z" })]);
     const c = islandJobs(m);
-    expect(c[0]).toMatchObject({ tone: "needsYou", title: "Install a package", sub: S.panel.askHere });
+    expect(c[0]).toMatchObject({ tone: "needsYou", title: S.approval.question.install, sub: S.panel.askHere });   // M28: the plain question
   });
   test("never more than a glance", () => {
     let m = run(started);

@@ -201,3 +201,14 @@ describe("tools: only Second Look's capped web search", () => {
     expect(costOf("claude-sonnet-5-5", s.usage())).toBeGreaterThanOrEqual(3 * WEB_SEARCH_USD);
   });
 });
+
+describe("F25 pricing", () => {
+  test("Pro is $10 a month or $96 a year, and its model allowance stays under its price", () => {
+    expect(PLANS.pro.priceUsdMonthly).toBe(10);
+    expect(PLANS.pro.priceUsdYearly).toBe(96);
+    for (const p of Object.values(PLANS)) expect(p.monthlyUsd, p.name).toBeLessThan(Math.max(p.priceUsdMonthly, 2.01));
+  });
+  test("a plan sold before F25 is never more than Pro now", () => {
+    expect(PLANS.max.monthlyUsd).toBeLessThanOrEqual(PLANS.pro.monthlyUsd);
+  });
+});

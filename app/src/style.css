@@ -872,3 +872,19 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .foot > .line, .home .foot > .error, .home .foot > .notice, .home .foot > .row:not(.folder) { flex-basis: 100%; }
 .home .foot .row.folder .btn, .home .foot .row.folder select { margin: 0; min-height: 30px; padding: 0 12px; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 8%, transparent); color: color-mix(in srgb, var(--fg) 80%, transparent); font-size: var(--t-small); font-weight: 500; }
 .home .foot .row.folder .btn:hover { background: color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); }
+
+/* M28: an approval card says exactly what will happen, in a quiet code box, and whether Undo covers it. */
+.ask-card h2 { font: 700 var(--t-body) var(--round); }
+.ask-what { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-md); background: color-mix(in srgb, var(--fg) 8%, transparent); overflow-wrap: anywhere; }
+.ask-what code { font: 500 var(--t-small)/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); white-space: pre-wrap; }
+.ask-undo { font-size: var(--t-small); color: color-mix(in srgb, var(--fg) 80%, transparent); }
+.ask-undo.no { color: var(--fg); font-weight: 700; }
+.island-panel .ip-ask .ip-text span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+
+/* M28: the one button that fixes a notice or an error sits right after its words. */
+.notice .fix-it, .error .fix-it { margin-left: var(--space-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+
+/* M28: with one companion, its card stands alone, wide, instead of beside empty slots. */
+.fr-cast.one { grid-template-columns: 1fr; }
+.fr-cast.one .fr-pick { align-items: center; text-align: center; padding: var(--space-5) var(--space-4); }
+.fr-cast.one .fr-pick .fr-flow { width: 96px; }

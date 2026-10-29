@@ -715,9 +715,16 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
 // onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
 /** The parts of Settings, in page order, for the side list: each section of settings, then the parts that are not settings
  *  (what it may do on this Mac, your key, practice and the rest). An id is a section's id, or "fixed:" and the part's name. */
+/** M28: Google shows in Settings only once this build has Google set up (or an account is already kept), so nobody meets a
+ *  section whose buttons cannot work. Learned once from the shell when the page loads. */
+let googleShown = false;
+export const googleInSettings = (): boolean => googleShown;
+void invoke("google_accounts").then((v) => { const o = v as { ready?: boolean; accounts?: unknown[] } | null; googleShown = !!o?.ready || (o?.accounts?.length ?? 0) > 0; }).catch(() => {});
+export const placeShown = (fixed: string, google = googleShown): boolean => fixed !== "google" || google;
+
 export function settingsPlaces(): { id: string; title: string }[] {
   const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
-  return [...all.sections.map((s) => ({ id: s.id, title: s.title })), ...all.fixed.map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title }))];
+  return [...all.sections.map((s) => ({ id: s.id, title: s.title })), ...all.fixed.filter((g) => placeShown(g)).map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title }))];
 }
 
 // place: the part open in the side list. A search looks through every part, as before.
@@ -804,7 +811,7 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const onePart = !q && !!place;
-  const fixedShown = (g: FixedGroup) => results.fixed.includes(g) && (!onePart || place === `fixed:${g}`);
+  const fixedShown = (g: FixedGroup) => results.fixed.includes(g) && placeShown(g) && (!onePart || place === `fixed:${g}`);
   const sectionsShown = onePart ? results.sections.filter((s) => s.id === place) : results.sections;
   // The character's place (its edge, its position and Same place on every display) put back with one press.
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));

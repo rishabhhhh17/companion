@@ -445,7 +445,7 @@ describe("Home says what needs the person, politely, without moving the keyboard
     const asks = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.stuck && ("));
     expect(asks).toContain("S.needsYouTitle");
     expect(asks).not.toContain('role="alert"');
-    expect(card).toMatch(/\{m\.error && <div className="error">\{m\.error\}<\/div>\}/);
+    expect(card).toMatch(/\{m\.error && <div className="error">\{m\.error\}/);   // M28: plus Restart when the engine stopped
   });
   // Changed in the M11 audit (A62): a question used to take the keyboard from any button the person was on (Stop, a tab),
   // and put it on its first button, Allow, so the Return they pressed for Stop said yes. Now it takes the keyboard only when
@@ -456,10 +456,10 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(effect).toContain('takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));');
     expect(effect).not.toContain(".focus()");
     // The safe choice of each question that holds work up: Don't allow, No (AGENTS.md), Stop here (the loop card).
-    const approval = card.slice(card.indexOf("{m.approvals.map((a) => ("), card.indexOf("{m.stuck && ("));
+    const approval = card.slice(card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a); return ("), card.indexOf("{m.stuck && ("));
     expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.dontAllow\}/);
     expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.allow\}/);
-    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => ("));
+    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a); return ("));
     expect(agents).toContain('data-safe onClick={() => { void send(answerAgents(project, "no"))');
     const stuck = card.slice(card.indexOf("{m.stuck && ("), card.indexOf("{m.paused && ("));
     expect(stuck).toContain('data-safe={o.id === "stop" || undefined}');

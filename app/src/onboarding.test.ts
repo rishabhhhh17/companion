@@ -200,3 +200,12 @@ describe("the last screen's keys", () => {
     expect(ui).toContain("<kbd aria-label={r.keys}>{keySymbols(r.keys)}</kbd>");
   });
 });
+
+describe("the first run shows only what is ready (M28)", () => {
+  test("no empty Coming soon slots; one ready companion is introduced, not offered as a choice of one", () => {
+    const src = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(src).toContain("const cast = COMPANIONS.filter((c) => c.ready);");
+    expect(src).not.toContain("fr-soon");
+    expect(S.fr.meetTitle("Flowflow")).toBe("Meet Flowflow.");
+  });
+});

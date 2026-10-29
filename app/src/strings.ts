@@ -85,6 +85,21 @@ export const S = {
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",
   allow: "Allow",
+  // M28: what an approval card says, in plain words (approvals.ts).
+  approval: {
+    question: {
+      irreversible: "Do something that can't be undone?",
+      git: "Change your project's Git history?",
+      outside_project: "Use a file outside your project?",
+      install: "Install something?",
+      network: "Go online?",
+      settings: "Change a settings file?",
+    } as Record<string, string>,
+    what: "What will happen",
+    why: "Why I'm asking",
+    undoYes: "Undo can take this back.",
+    undoNo: "Undo can't take this back.",
+  },
   dontAllow: "Don't allow",
   needsYouTitle: "Needs your OK",
   undo: "Undo everything this task did",
@@ -202,7 +217,8 @@ export const S = {
   stepStoppedRestart: `Stopped when ${PRODUCT} restarted.`,
   // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
   restartedStopped: `${PRODUCT} restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.`,
-  notConnectedNotice: "Not connected. Add your API key, or sign in with your Claude plan, to start a task.",
+  notConnectedNotice: "Add your Claude key to start fixing things.",
+  addYourKey: "Add your key",
   restartedNothing: `${PRODUCT} restarted. Nothing was running, so nothing was stopped.`,
   restartedTurn: (file: string, line: number) => `${PRODUCT} restarted, so what was running was stopped. ${file}, line ${line} still has the code from before my fix: Put my fix back on Now puts it back.`,
   // A task that keeps going in the folder Home showed before (model.ts away).
@@ -218,6 +234,8 @@ export const S = {
     helloGo: "Say hello",
     count: (n: number, of: number) => `${n} of ${of}`,
     pickTitle: "Who do you want with you?",
+    meetTitle: (name: string) => `Meet ${name}.`,
+    meetLine: "Your water friend. It lives at the edge of your screen and drops in when you need it.",
     pickLine: "Each companion has its own powers. You can change this any time in Settings.",
     pickWater: "Water. Finds what broke, fixes it, proves it works.",
     soon: "Coming soon",
@@ -436,7 +454,8 @@ export const S = {
   lessonsButton: "Lessons",
   lessonsTitle: "Guided lessons",
   lessonsNone: "No lessons yet.",
-  lessonDraft: "Draft: written from the maker's own help pages, not tried by a person yet. Tell me if a step is wrong.",
+  // M28: honest about where a lesson came from without the alarm of "Draft" on every lesson.
+  lessonDraft: "New lesson, written from the app's own help pages. If a step doesn't match your screen, tell me and I'll fix it.",
   lessonFromProject: "Made from this project, for the setting names its code reads. Values are never asked for, kept or shown.",
   lessonStart: "Start",
   lessonContinue: "Continue",
@@ -508,7 +527,8 @@ export const S = {
   },
   checkDidNotPass: "It did not pass.",
   checkDetails: "Details",
-  helperStopped: `${PRODUCT} stopped working. Quit and open ${PRODUCT} again.`,
+  helperStopped: `${PRODUCT} stopped working. Press Restart to try again.`,
+  restartEngine: "Restart",
   explainChipHint: "Paste an error in the box and press Explain an error. Or select it in any app and press {keys}.",
   explainChipHintNoKeys: "Paste an error in the box and press Explain an error.",
   showMeHint: "Type what you want to find or do on your screen, then press Show me. I look once, with a light on first.",
@@ -1270,7 +1290,7 @@ export const S = {
     "showme.allScreens": { label: "Show me on all screens", help: "With more than one screen, Show me looks only at the one your mouse pointer is on. Turn this on and the same press looks at all of them, with the light on first and private text covered on each before anything is sent.", also: ["display", "monitor", "screens", "second screen"] },
     "point.ringSeconds": { label: "How long a ring stays", help: "How long a ring around something stays on your screen when it is not waiting for your click.", also: ["circle", "highlight", "pointer", "time"] },
     "point.yourTurnSeconds": { label: "How long a your turn ring waits for your click", help: `When ${PRODUCT} shows you where to click and waits for you to do it, it waits this long, then the ring goes away.`, also: ["click", "wait", "your turn", "time"] },
-    "point.colour": { label: "Ring colour", help: `The colour of a ring around something ${PRODUCT} is sure about. Pick another if the usual one is hard to see in your apps.`, also: ["color", "colour blind", "contrast", "highlight"], options: { orange: "Orange", red: "Red", yellow: "Yellow", blue: "Blue", highContrast: "High contrast, white with a dark edge" } },
+    "point.colour": { label: "Ring colour", help: `The colour of a ring around something ${PRODUCT} is sure about. Pick another if the usual one is hard to see in your apps.`, also: ["color", "colour blind", "contrast", "highlight"], options: { orange: "Usual (lime, or your water colour)", red: "Red", yellow: "Yellow", blue: "Blue", highContrast: "High contrast, white with a dark edge" } },
     "point.lettering": { label: "Ring lettering", help: "How the words beside a ring look. They also follow the text size you picked.", also: ["font", "caption", "handwriting", "words"], options: { plain: "Plain", handwritten: "Handwritten" } },
     "point.guesses": { label: `When ${PRODUCT} is only guessing`, help: `When ${PRODUCT} cannot confirm where something is, it can draw a dashed ring and call it a guess, or only tell you in words where to look.`, also: ["guess", "unsure", "dashed", "words"], options: { softRing: "A dashed ring, called a guess", wordsOnly: "Words only, no ring" } },
     "point.pace": { label: "Pace of step by step pointing", help: `How quickly ${PRODUCT} moves on to the next thing when it points at several in a row. A line it is saying is never cut short.`, also: ["speed", "slow", "fast", "steps"], options: { slower: "Slower", normal: "Normal", faster: "Faster" } },
@@ -1385,7 +1405,7 @@ export const S = {
   // Google (M21, google.rs): sign in with Google, and connect Gmail, Calendar and Drive. Plain words; Google's page opens in
   // the person's own browser, never here.
   google: {
-    notSetUp: "Google isn't set up in this build yet. (For the team: add the Google client id to app/google.json and build again.)",
+    notSetUp: "Google isn't available in this version yet.",
     signInTitle: "Your account",
     signInLine: "Sign in with Google to have a Squibby account. Your own Claude key keeps working without one.",
     signIn: "Sign in with Google",
