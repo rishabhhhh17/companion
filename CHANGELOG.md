@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Silver Settings and a count in the notch: 29 Oct 2026
+
+- **Settings is silver now.** The page you're on is a polished chrome pill, switches turn chrome when on, the size and speed pickers have a chrome choice, and each page sits on a dark brushed metal card. Pickers with four choices drop under their label so the words stay easy to read.
+- **The notch counts what you haven't seen.** When work finishes while Home is closed, a small silver number sits in the notch until you open it.
+
 ## Pictures, a hello, and a word at your pointer: 29 Oct 2026
 
 - **Draw it draws real pictures.** Ask it to explain something and Squibby draws a friendly picture on a sheet of dotted paper, with a handwritten title, stroke by stroke the way a hand would, then a caption underneath. When there's a problem on screen it still draws the diagram of what broke.

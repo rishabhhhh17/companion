@@ -303,6 +303,10 @@ impl Follow {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool }
 
+/// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 9;
+/// any result while Home is open is seen at once.
+pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(9) } }
+
 /// M33: the first name for the notch's greeting ("Evening, Rishabh."), from the Mac account's full name, on this Mac only.
 /// Only letters (and an inside hyphen or apostrophe), at most 24 of them; anything else gives no name and a plain greeting.
 pub fn first_name(full: &str) -> Option<String> {
@@ -1048,5 +1052,13 @@ mod tests {
         assert_eq!(first_name("Rishabh Kapadia").as_deref(), Some("Rishabh"));
         assert_eq!(first_name("  Ana-María  López ").as_deref(), Some("Ana-María"));
         for bad in ["", "   ", "123 Main", "root@mac", "x".repeat(30).as_str()] { assert_eq!(first_name(bad), None, "{bad}"); }
+    }
+
+    #[test]
+    fn results_finished_while_home_is_closed_are_counted_up_to_nine() {
+        assert_eq!(unseen_next(0, false), 1);
+        assert_eq!(unseen_next(8, false), 9);
+        assert_eq!(unseen_next(9, false), 9);
+        assert_eq!(unseen_next(4, true), 0);
     }
 }

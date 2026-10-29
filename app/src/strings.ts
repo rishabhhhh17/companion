@@ -329,6 +329,7 @@ export const S = {
     hiWord: "finishing",
     // M33: the notch's greeting and how to talk, as HeyClicky greets ("Evening, Rishabh.").
     morning: "Morning", afternoon: "Afternoon", evening: "Evening", hi: "Hi",
+    unseen: (n: number) => (n === 1 ? "1 new result" : `${n} new results`),
     talkLine: "Hold {keys} and tell me what to fix.",
     open: `Open ${PRODUCT}`,
     label: `${PRODUCT}: what is happening`,

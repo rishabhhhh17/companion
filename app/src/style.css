@@ -939,6 +939,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 /* M30: inside a page's card, a choice is a compact segmented control (HeyClicky's speed picker), a menu a quiet pill, and a
    text box dark like the card. */
 .sp-row > [role="radiogroup"].row { flex: none; flex-wrap: nowrap; gap: 2px; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
+.sp-row:has(> [role="radiogroup"].row > :nth-child(4)) { flex-wrap: wrap; row-gap: var(--space-2); }
+.sp-row:has(> [role="radiogroup"].row > :nth-child(4)) > :first-child { flex: 1 1 100%; }
 .sp-row > [role="radiogroup"].row .btn, .sp-row > [role="radiogroup"].row .btn.primary { min-height: calc(26rem / 14); padding: 0 calc(12rem / 14); border-radius: 999px; background: transparent; color: color-mix(in srgb, var(--fg) 75%, transparent); box-shadow: none; font-size: var(--t-small); font-weight: 600; transform: none; }
 .sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: var(--fg); color: var(--bg); }
 .sp-row > select, .sp-row > input[type="text"], .sp-row > .row > input, .sp-row input:not([type]) { max-width: 46%; min-height: calc(30rem / 14); padding: 0 var(--space-3); border-radius: var(--r-md); border: 0; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); font-size: var(--t-small); }
@@ -965,3 +967,25 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-hello { display: grid; gap: 4px; text-align: center; padding: 6px 0 2px; }
 .island-panel .ip-hello .ip-hi { margin: 0; font: 700 22px/1.15 -apple-system, "SF Pro Display", system-ui, sans-serif; letter-spacing: -0.01em; background-image: var(--chrome-text); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .island-panel .ip-hello .ip-talk { margin: 0; font-size: 13px; color: #A1A1A6; }
+
+/* M34: new results finished while Home was closed: a small chrome count at the notch's right end. */
+.island-unseen { position: absolute; right: 10px; top: 50%; translate: 0 -50%; min-width: 16px; min-height: 16px; padding: 0 4px; box-sizing: border-box; display: grid; place-items: center; border-radius: 999px; background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; font: 700 10px/1 -apple-system, system-ui, sans-serif; pointer-events: none; }
+
+/* M34 (the founder: "make the settings interface silver"): Settings in chrome on black. The page you are on is a polished
+   chrome pill; each card is dark brushed metal with a silver hairline and a bright top edge; a switch that is on, and the
+   chosen part of a choice, are chrome; the small words are silver. Only where Home is black (the paper theme stays ink). */
+:root.home-page:not([data-theme="paper"]) .sp-nav:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+:root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(0, 0, 0, .25), 0 2px 0 #4E535A; }
+:root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] svg { opacity: 1; }
+:root.home-page:not([data-theme="paper"]) .sp-group-head { color: var(--muted); }
+:root.home-page:not([data-theme="paper"]) .sp-head p { color: var(--muted); }
+:root.home-page:not([data-theme="paper"]) .sp-card { background: linear-gradient(180deg, #1C1E23 0%, #131418 100%); box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .16), inset 0 1px 0 rgba(255, 255, 255, .12), 0 10px 30px rgba(0, 0, 0, .35); }
+:root.home-page:not([data-theme="paper"]) .sp-card > .setting + .setting { box-shadow: inset 0 1px 0 rgba(220, 226, 235, .10); }
+:root.home-page:not([data-theme="paper"]) .sp-text span { color: var(--muted); }
+:root.home-page:not([data-theme="paper"]) .setting button[role="switch"] { background: #2A2D33; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .18); }
+:root.home-page:not([data-theme="paper"]) .setting button[role="switch"]::after { background: #C9CDD4; background-image: var(--chrome); }
+:root.home-page:not([data-theme="paper"]) .setting button[role="switch"][aria-checked="true"] { background: #E9ECF1; background-image: var(--chrome); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .3); }
+:root.home-page:not([data-theme="paper"]) .setting button[role="switch"][aria-checked="true"]::after { background: #0A0A0B; background-image: none; }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row { background: #1E2026; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+:root.home-page:not([data-theme="paper"]) .home[data-view="settings"] .panel.settings > .row[role="search"] input { background: #16181C; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }

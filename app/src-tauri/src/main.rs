@@ -412,6 +412,8 @@ thread_local! {
 }
 /// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
+/// M34: results finished while Home was closed, shown as a count on the notch (island::unseen_next).
+static UNSEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
@@ -604,6 +606,7 @@ fn island_state() -> Value {
     let mut v = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner()).clone();
     if !v.is_object() { v = json!({ "mode": "rest", "kind": "pill" }); }
     v["update"] = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|u| json!({ "version": u })).unwrap_or(Value::Null);
+    v["unseen"] = json!(UNSEEN.load(Ordering::SeqCst));
     v
 }
 
@@ -1619,6 +1622,7 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         });
         if !was_open && home_set().click_away { watch_click_away(&a); }
         let instant = !island::animates_open(&src);
+        if UNSEEN.swap(0, Ordering::SeqCst) > 0 { let _ = a.emit_to("island", "unseen", json!({ "n": 0 })); }
         let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) });
     });
 }
@@ -3975,6 +3979,8 @@ fn start_runner(app: &AppHandle) {
             // An engine that has just (re)started knows no question, so an answer is not coming: what was seen is forgotten.
             if t == "runner.hello" { showme_pending().end(); }
             WHEEL.lock().unwrap().get_or_insert_with(wheel::Wheel::default).on_runner_event(t);
+            // M34: a result finished while Home is closed is counted on the notch until Home opens.
+            if t == "receipt" { let n = island::unseen_next(UNSEEN.load(Ordering::SeqCst), HOME_OPEN.load(Ordering::SeqCst) && card_visible()); UNSEEN.store(n, Ordering::SeqCst); let _ = handle.emit_to("island", "unseen", json!({ "n": n })); }
         } }, || Some(settings_line())));
     match result {
         Ok(()) => log("runner_started", json!({})),
