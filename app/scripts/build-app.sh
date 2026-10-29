@@ -14,10 +14,10 @@ cargo tauri build --bundles app
 TARGET="${CARGO_TARGET_DIR:-target}"   # cargo puts the bundle under CARGO_TARGET_DIR when it is set
 APP="$TARGET/release/bundle/macos/Squibby.app"
 xattr -cr "$APP"
-CLAUDE="$APP/Contents/Resources/engine/runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude"
-[ -f "$CLAUDE" ] || { echo "FAIL: the engine did not get into the app"; exit 1; }
-BEFORE="$(shasum -a 256 "$CLAUDE" | cut -d' ' -f1)"
-[ "$BEFORE" = "$(cat ../vendor/engine/claude.sha256)" ] || { echo "FAIL: the Claude binary in the app is not the one that was staged"; exit 1; }
+[ -f "$APP/Contents/Resources/engine/runner/src/main.ts" ] || { echo "FAIL: the engine did not get into the app"; exit 1; }
+# Anthropic's Claude binary must never be inside the app (M22, AGENTS.md rule 4): it is installed at first run.
+INSIDE="$(find "$APP" -type f -name claude | head -1)"
+[ -z "$INSIDE" ] || { echo "FAIL: a Claude binary is inside the app: $INSIDE"; exit 1; }
 if [ -n "${COMPANION_SIGN_ID:-}" ]; then
   # The app's own program and its seal only: nested programs (Bun, Claude) keep their makers' signatures.
   codesign --force --sign "$COMPANION_SIGN_ID" --options runtime --timestamp --entitlements Entitlements.plist --identifier dev.companion.app "$APP"
@@ -30,9 +30,7 @@ elif [ "${COMPANION_NO_DEV_SIGN:-}" != "1" ]; then
     echo "no Apple Development certificate found: using the throwaway signature (permissions will be forgotten on each rebuild)"
   fi
 fi
-AFTER="$(shasum -a 256 "$CLAUDE" | cut -d' ' -f1)"
-[ "$BEFORE" = "$AFTER" ] || { echo "FAIL: signing changed Anthropic's Claude binary"; exit 1; }
-echo "Anthropic's Claude binary is unchanged"
+echo "no Claude binary inside the app (Anthropic's build is installed at first run)"
 codesign --verify --deep --strict "$APP" && echo "signature verifies"
 if [ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist" 2>/dev/null)" = "true" ]; then echo "LSUIElement true (no Dock icon)"; else echo "FAIL: the app would show a Dock icon (LSUIElement is missing)"; exit 1; fi
 plutil -extract NSMicrophoneUsageDescription raw "$APP/Contents/Info.plist" >/dev/null 2>&1 || { echo "FAIL: the microphone sentence is missing"; exit 1; }

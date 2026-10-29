@@ -26,7 +26,7 @@ const IDLE_INTERVAL = 1 / 30, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
 export class FlowflowController {
   readonly engine: FlowflowEngine; private renderer: FlowflowRenderer;
   private opts: ControllerOptions;
-  private raf = 0; private last = 0; private acc = 0;
+  private raf = 0; private timer: ReturnType<typeof setTimeout> | null = null; private last = 0; private acc = 0;
   private visible = true; private disposed = false; private reduced: boolean;
   private ro: ResizeObserver | null = null; private io: IntersectionObserver | null = null;
   private dprMql: MediaQueryList | null = null;
@@ -82,7 +82,7 @@ export class FlowflowController {
   /** The water's colours (lookfeel.ts flowColours). */
   setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); if (this.reduced) this.still(); else this.resumeOrPause(); }
 
-  setState(s: CharacterState): void { this.engine.applyApp(s); if (this.reduced) this.still(); }
+  setState(s: CharacterState): void { this.engine.applyApp(s); if (this.reduced) this.still(); else this.resumeOrPause(); }
   setTuning(t: Partial<Tuning>): void { this.engine.setTuning(t); if (this.reduced) this.still(); }
   setReduced(r: boolean): void { if (r === this.reduced) return; this.reduced = r; if (r) { this.stop(); this.still(); } else this.resumeOrPause(); }
 
@@ -96,8 +96,13 @@ export class FlowflowController {
 
   private active(): boolean { return !this.disposed && !this.reduced && this.visible && !document.hidden; }
   private resumeOrPause(): void { if (this.active()) this.start(); else this.stop(); }
-  private start(): void { if (this.raf || this.disposed) return; this.last = performance.now(); this.raf = requestAnimationFrame(this.loop); }
-  private stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } }
+  private start(): void {
+    if (this.raf || this.disposed) return;
+    // Resting between frames: anything that happens draws on the next refresh, not when the rest would have ended.
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; this.raf = requestAnimationFrame(this.loop); return; }
+    this.last = performance.now(); this.raf = requestAnimationFrame(this.loop);
+  }
+  private stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
 
   private interval(): number {
     const e = this.engine, st = e.behavior.state;
@@ -118,7 +123,11 @@ export class FlowflowController {
       if (this.lastDrawn > 0 && now - this.lastDrawn < RESUME_GAP_MS) { this.gaps[this.ftIdx] = now - this.lastDrawn; this.costs[this.ftIdx] = t1 - t0; this.ftIdx = (this.ftIdx + 1) % 120; }
       this.lastDrawn = now;
     }
-    this.raf = requestAnimationFrame(this.loop);
+    // Resting (M25): wake only when the next frame is due, not at every refresh of the screen (up to 120 a second), so the
+    // same calm water costs a fraction of the work in a window that is on all day. Anything that happens wakes it at once.
+    const iv = this.interval();
+    if (iv > 0) this.timer = setTimeout(() => { this.timer = null; if (this.active()) this.raf = requestAnimationFrame(this.loop); }, Math.max(0, iv * 1000 - 4));
+    else this.raf = requestAnimationFrame(this.loop);
   };
 
   private still(): void { if (!this.disposed) this.renderer.render(this.engine.still()); }

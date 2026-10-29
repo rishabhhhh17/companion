@@ -6,11 +6,14 @@
 .cap.on{opacity:1;transform:none}
 .cap.white{background:#fff;color:#000;box-shadow:0 3px 0 #c9c9cf,0 12px 30px rgba(0,0,0,.4)}
 ellipse[data-water]{visibility:hidden}
+.talk{position:fixed;left:50%;bottom:9vh;max-width:min(680px,80vw);box-sizing:border-box;padding:12px 18px 13px;border-radius:18px;background:rgba(14,14,16,.9);color:#fff;font:600 18px/1.35 ui-rounded,"SF Pro Rounded",-apple-system,sans-serif;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 12px 32px rgba(0,0,0,.35);pointer-events:none;opacity:0;transform:translate(-50%,6px);transition:opacity .16s cubic-bezier(.23,1,.32,1),transform .16s cubic-bezier(.23,1,.32,1)}
+.talk.on{opacity:1;transform:translate(-50%,0)}
+.talk:empty{display:none}
 @keyframes pulse{0%{transform:scale(1);opacity:.95}70%{transform:scale(1.18);opacity:.35}100%{transform:scale(1);opacity:.95}}
 .ring{transform-box:fill-box;transform-origin:center;animation:pulse 1.4s ease-out infinite}
-@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none;transform:none}}
+@media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none;transform:none}.talk{transition:none}}
 :root[data-less-motion] *,:root[data-less-motion] *::before,:root[data-less-motion] *::after{animation:none!important;transition:none!important}</style></head>
 <body><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
 <radialGradient id="wg" cx="38%" cy="32%" r="75%"><stop id="wg-hi" offset="0" stop-color="#C9F1FF"/><stop id="wg-mid" offset=".35" stop-color="#59D2FF"/><stop id="wg-deep" offset="1" stop-color="#1676C8"/></radialGradient>
 <filter id="goo" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur in="SourceGraphic" stdDeviation="6" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 24 -11" result="g"/><feGaussianBlur in="g" stdDeviation="2.2" result="gb"/><feSpecularLighting in="gb" surfaceScale="5" specularConstant="1" specularExponent="28" lighting-color="#ffffff" result="spec"><feDistantLight azimuth="225" elevation="48"/></feSpecularLighting><feComposite in="spec" in2="g" operator="in" result="si"/><feComposite in="g" in2="si" operator="arithmetic" k1="0" k2="1" k3=".85" k4="0"/></filter>
-</defs></svg><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><script type="module" src="/src/overlay.ts"></script></body></html>
+</defs></svg><svg id="s" aria-hidden="true"></svg><div id="cap" class="cap" role="status"></div><div id="talk" class="talk" role="status" aria-live="polite"></div><script type="module" src="/src/overlay.ts"></script></body></html>

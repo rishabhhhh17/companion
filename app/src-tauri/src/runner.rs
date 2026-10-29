@@ -111,7 +111,9 @@ pub fn split_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
 
 /// Where the runner is: a dev settings file, then environment variables.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String> }
+/// `claude`: where Anthropic's Claude build is once installed at first run (claude_install.rs, M22). Each engine start
+/// passes it as COMPANION_CLAUDE_BIN only when the file is there; a development run uses the SDK package's own.
+pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String>, pub claude: Option<PathBuf> }
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
@@ -153,12 +155,14 @@ pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Optio
             _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
-    Ok(Locations { bun, runner, data, env: allowed_env(&dev) })
+    Ok(Locations { bun, runner, data, env: allowed_env(&dev), claude: None })
 }
 
 /// What a person reads when the helper that runs Claude cannot start, is not there yet, or does not answer. Plain words;
 /// the raw reason goes to the log (take_detail).
-pub const HELPER_DOWN: &str = concat!(crate::product!(), " could not start the helper that runs Claude. Quit and open ", crate::product!(), " again.");
+pub const HELPER_DOWN: &str = concat!(crate::product!(), " could not start the helper that runs Claude. Press Restart to try again.");
+/// M28: what the person reads when the engine keeps stopping; Home offers Restart beside it (Runner::retry).
+pub const KEEPS_STOPPING: &str = concat!(crate::product!(), " keeps stopping. Press Restart to try again.");
 pub const NOT_READY: &str = concat!(crate::product!(), " is not ready yet. Try again in a moment.");
 pub const NOT_ANSWERING: &str = concat!(crate::product!(), " is busy and did not answer. Try again in a moment.");
 
@@ -263,11 +267,13 @@ pub struct Shared {
     /// How many Stop key checks have ended, and how many of them found the engine not answering and stopped it by force.
     stop_checks: AtomicU64,
     forced_stops: AtomicU64,
+    /// M28: the person pressed Restart: a supervisor that gave up starts again, and one waiting between tries stops waiting.
+    retry: AtomicBool,
 }
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> { m.lock().unwrap_or_else(|e| e.into_inner()) }   // one panic must never poison everything after it
 
 impl Shared {
-    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), events_read: AtomicU64::new(0), stop_checks: AtomicU64::new(0), forced_stops: AtomicU64::new(0) }) }
+    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), events_read: AtomicU64::new(0), stop_checks: AtomicU64::new(0), forced_stops: AtomicU64::new(0), retry: AtomicBool::new(false) }) }
     /// Queue one line for the engine. Never waits: a full queue or a missing engine is an immediate, plain error.
     pub fn send_line(&self, line: String) -> Result<(), String> {
         match lock(&self.tx).as_ref() {
@@ -276,6 +282,14 @@ impl Shared {
         }
     }
     pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { kill_group(c); } }
+}
+
+impl Runner {
+    /// Starts the engine again (its supervisor brings it back at once), so a new start picks up what changed, such as
+    /// Claude installed at first run.
+    pub fn restart(&self) { self.shared.kill(); }
+    /// M28: Restart pressed: the engine is started again now, even after its supervisor gave up.
+    pub fn retry(&self) { self.shared.retry.store(true, Ordering::SeqCst); self.shared.kill(); }
 }
 
 /// Runs the engine for as long as the app lives: start it, read its lines, and start it again when it stops.
@@ -329,11 +343,20 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
             if shared.quitting.load(Ordering::SeqCst) { return; }
             failures = if started.elapsed() >= t.healthy { 0 } else { failures + 1 };
             let Some(wait) = backoff(failures.max(1), &t).filter(|_| failures < t.give_up_after) else {
-                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": concat!(crate::product!(), " keeps stopping. Quit and open ", crate::product!(), " again.") }));
-                return;
+                emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "reason": KEEPS_STOPPING }));
+                // Given up: nothing more is tried until the person presses Restart (or the app quits).
+                shared.retry.store(false, Ordering::SeqCst);
+                while !shared.retry.load(Ordering::SeqCst) {
+                    if shared.quitting.load(Ordering::SeqCst) { return; }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                shared.retry.store(false, Ordering::SeqCst);
+                failures = 0;
+                continue;
             };
             let until = Instant::now() + wait;
-            while Instant::now() < until && !shared.quitting.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(20).min(wait)); }
+            while Instant::now() < until && !shared.quitting.load(Ordering::SeqCst) && !shared.retry.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(20).min(wait)); }
+            shared.retry.store(false, Ordering::SeqCst);
         }
     })
 }
@@ -367,8 +390,10 @@ impl Runner {
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
             use std::os::unix::process::CommandExt;
             // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
-            Command::new(&loc.bun).arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app")
-                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+            let mut c = Command::new(&loc.bun);
+            c.arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app");
+            if let Some(p) = loc.claude.as_ref().filter(|p| p.is_file()) { c.env("COMPANION_CLAUDE_BIN", p); }
+            c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.
         let first = spawn().map_err(|e| { crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}"))); HELPER_DOWN.to_string() })?;
@@ -873,6 +898,19 @@ mod tests {
         assert!(n <= 6, "it kept restarting: {n}");
         std::thread::sleep(Duration::from_millis(300));
         assert_eq!(r.spawns.load(Ordering::SeqCst), n, "it kept trying after giving up");
+    }
+    #[test]
+    fn restart_brings_back_an_engine_that_was_given_up_on() {
+        let shared = Shared::new(); let spawns = Arc::new(AtomicU64::new(0)); let s2 = spawns.clone();
+        let events = Arc::new(Mutex::new(Vec::new())); let e2 = events.clone();
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); Err(io::Error::new(io::ErrorKind::NotFound, "no bun")) }), Arc::new(move |v| e2.lock().unwrap().push(v)), Arc::new(|_| {}), quick());
+        assert!(wait_for(|| events.lock().unwrap().iter().any(|e| e["reason"] == KEEPS_STOPPING), 5000));
+        let n = spawns.load(Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(200));
+        assert_eq!(spawns.load(Ordering::SeqCst), n, "nothing is tried after giving up");
+        shared.retry.store(true, Ordering::SeqCst);
+        assert!(wait_for(|| spawns.load(Ordering::SeqCst) > n, 3000), "Restart starts it again");
+        shared.quitting.store(true, Ordering::SeqCst);
     }
     #[test]
     fn an_engine_that_cannot_be_started_at_all_is_reported_not_fatal() {

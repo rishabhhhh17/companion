@@ -6,7 +6,8 @@ import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, 
 import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
-import { fadeMs, markFor, markStrokes, ringRadii } from "./marks.ts";
+import { fadeMs, markFor, ringRadii } from "./marks.ts";
+import { INK, haloFor, inkMark, inkPath, penEase, type InkMark } from "./ink.ts";
 import { followLessMotion, playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
@@ -72,7 +73,7 @@ function show(p: Point) {
   // A confirmed target may ask for a hand drawn mark; it is drawn on landing, stays while its line is said or read, then
   // fades and the steady ring takes over. Every point of it is inside the window (marks.ts), and the clip above holds too.
   const kind = markFor(p.mark, p.exact);
-  const strokes = kind ? markStrokes(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
+  const strokes = kind ? inkMark(kind, p.rect, p.clip ?? null, p.caption, { x: 0, y: 0, w: innerWidth, h: innerHeight }) : null;
   // High contrast: a dark edge under the ring and the marks, so a white ring shows on any app.
   const halo = look.halo ? el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: look.halo, "stroke-width": look.width + 4, class: "ring", opacity: reduced && !strokes ? 1 : 0 }) : null;
   if (halo) layer.appendChild(halo);
@@ -98,30 +99,55 @@ function show(p: Point) {
     if (!beads.length) return;
     if (reduced) { placeBeads(1, 0); return; }
     const t0 = performance.now();
-    const wobble = (now: number) => { if (mine !== drawGen) return; placeBeads((now - t0) / SPREAD_MS, now); requestAnimationFrame(wobble); };
+    // Once the ring has spread and settled, a held ring (waiting for the click, maybe for minutes) keeps its wobble at 20
+    // frames a second rather than every refresh of the screen (M25): the same look, far less redrawing of the water filter.
+    const wobble = (now: number) => {
+      if (mine !== drawGen) return;
+      placeBeads((now - t0) / SPREAD_MS, now);
+      if (now - t0 > SPREAD_MS + 3000) setTimeout(() => requestAnimationFrame(wobble), 50);
+      else requestAnimationFrame(wobble);
+    };
     requestAnimationFrame(wobble);
   };
-  const drawMark = (paths: string[]) => {
+  // M28 drawing v2 (ink.ts): tapered ink over a halo, each stroke drawn in pen order at pen speed by growing its outline,
+  // the next stroke starting after its pause. With less motion the whole mark simply fades in.
+  const drawMark = (mark: InkMark) => {
     const g = el("g", { class: "mark" });
-    for (const d of paths) {
-      if (look.halo) g.appendChild(el("path", { d, fill: "none", stroke: look.halo, "stroke-width": 7.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-      g.appendChild(el("path", { d, fill: "none", stroke: color, "stroke-width": 3.4, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-    }
+    const halo = look.halo ?? haloFor(color);
+    const parts = mark.strokes.map((s) => {
+      const h = el("path", { d: "", fill: halo });
+      const k = el("path", { d: "", fill: color });
+      g.appendChild(h); g.appendChild(k);
+      return { s, h, k };
+    });
     layer.appendChild(g);
-    if (!reduced) {
-      // Each stroke draws itself on, the way a pen would.
-      for (const s of Array.from(g.querySelectorAll("path")) as SVGPathElement[]) {
-        const len = s.getTotalLength?.() ?? 0; if (!len) continue;
-        s.style.strokeDasharray = `${len}`; s.style.strokeDashoffset = `${len}`; s.getBoundingClientRect();
-        s.style.transition = "stroke-dashoffset .45s ease-out"; s.style.strokeDashoffset = "0";
-      }
+    const paint = (i: number, progress: number) => {
+      const { s, h, k } = parts[i];
+      h.setAttribute("d", inkPath(s.points, INK.size + INK.halo, progress));
+      k.setAttribute("d", inkPath(s.points, INK.size, progress));
+    };
+    if (reduced) {
+      parts.forEach((_, i) => paint(i, 1));
+      g.style.opacity = "0"; g.getBoundingClientRect(); g.style.transition = "opacity 150ms linear"; g.style.opacity = "1";
+    } else {
+      // When each stroke starts and ends, from the first touch of the pen.
+      let at = 0;
+      const plan = mark.strokes.map((s) => { at += s.gap; const from = at; at += s.ms; return { from, to: at }; });
+      const t0 = performance.now();
+      const step = (now: number) => {
+        if (mine !== drawGen) return;
+        const t = now - t0;
+        plan.forEach((w, i) => { if (t >= w.from) paint(i, penEase((t - w.from) / (w.to - w.from))); });
+        if (t < at) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
     markTimer = setTimeout(() => {
       if (mine !== drawGen) return;
       ringOn();
       if (reduced) { g.remove(); return; }
-      g.style.transition = "opacity .5s"; g.style.opacity = "0";
-      markTimer = setTimeout(() => g.remove(), 550);
+      g.style.transition = "opacity 280ms cubic-bezier(0.3, 0, 0.8, 0.15)"; g.style.opacity = "0";
+      markTimer = setTimeout(() => g.remove(), 320);
     }, fadeMs(p.fadeMs));
   };
   const land = () => {
@@ -200,6 +226,23 @@ followLessMotion();
 // the lettering and the pace reach them too.
 void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
+
+// Captions while Squibby talks (M26, talk.captions): the words being said, at the bottom of the screen, a page at a time
+// (speak.rs caption_pages paces them); the last page stays until the voice stops and the shell says so.
+const talk = document.getElementById("talk")!;
+let talkGen = 0;
+void listen("overlay-caption", (e) => {
+  const { pages } = e.payload as { pages: { text: string; ms: number }[] };
+  const mine = ++talkGen;
+  const page = (i: number) => {
+    if (mine !== talkGen || i >= pages.length) return;
+    talk.textContent = pages[i].text;
+    talk.classList.add("on");
+    if (i + 1 < pages.length) setTimeout(() => page(i + 1), pages[i].ms);
+  };
+  page(0);
+});
+void listen("overlay-caption-end", () => { talkGen++; talk.classList.remove("on"); });
 
 // The person clicked the right thing: the ring turns green with a tick, and the water ring bursts into a splash of drops
 // (none with reduced motion or with reactions turned off; the green ring and the tick show either way). Then the drop

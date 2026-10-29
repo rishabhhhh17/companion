@@ -183,15 +183,15 @@ describe("the rows for Home, the island and the character", () => {
   test("When something needs me says what really happens: no island means the mark is on the character, and words only with Speak to me", () => {
     const w = S.set["home.goToNeeds"] as { help: string; options: Record<string, string> };
     expect(w.options.markTab).toBe("Only mark the tab");
-    expect(w.help).toContain("or on the character when the island is off");
+    expect(w.help).toContain("or on the character when the notch is off");
     expect(w.help).toContain("With Speak to me on, it also says what is waiting.");
     const floor = floorWords("needsMarked");
     expect(floor).toContain("Prompt help, the error explainer and Second Look you start always open Now");
-    expect(floor).toContain("or on the character when the island is off");
+    expect(floor).toContain("or on the character when the notch is off");
     expect(floor).toContain("is said out loud when Speak to me is on");
     // Close Home when I click another app names the island only as something that may not be there.
     expect(S.set["home.closeOnClickAway"].help).not.toContain("click the island or the character");
-    expect(S.set["home.closeOnClickAway"].help).toContain("click the character, or the island when it is shown, again");
+    expect(S.set["home.closeOnClickAway"].help).toContain("click the character, or the notch when it is shown, again");
   });
   test("search finds them by the words people use", () => {
     for (const [q, key] of [["notch", "island.show"], ["hover", "island.peekOnHover"], ["monitor", "island.display"], ["click away", "home.closeOnClickAway"], ["bigger", "home.size"], ["corner", "character.edge"], ["reduce motion", "character.motion"], ["full screen", "character.overFullScreen"]]) {

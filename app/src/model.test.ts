@@ -91,7 +91,7 @@ describe("errors and sign in, in plain words", () => {
   test("auth none shows a not connected notice, auth api_key clears it", () => {
     const m = run([ev({ type: "auth.status", method: "none" })]);
     expect(m.connected).toBe("none");
-    expect(m.notice).toMatch(/not connected/i);
+    expect(m.notice).toMatch(/add your claude key/i);   // M28: says the fix, with its button in Home
     expect(run([ev({ type: "auth.status", method: "api_key" })], m).notice).toBeNull();
   });
   test("a saved key's check result is kept with when it came; a later status without one keeps it", () => {

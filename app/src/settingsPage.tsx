@@ -23,6 +23,7 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
+import { ADVANCED_PLACE, levelSections } from "./settingsLevel.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
@@ -715,9 +716,16 @@ function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pict
 // onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
 /** The parts of Settings, in page order, for the side list: each section of settings, then the parts that are not settings
  *  (what it may do on this Mac, your key, practice and the rest). An id is a section's id, or "fixed:" and the part's name. */
+/** M28: Google shows in Settings only once this build has Google set up (or an account is already kept), so nobody meets a
+ *  section whose buttons cannot work. Learned once from the shell when the page loads. */
+let googleShown = false;
+export const googleInSettings = (): boolean => googleShown;
+void invoke("google_accounts").then((v) => { const o = v as { ready?: boolean; accounts?: unknown[] } | null; googleShown = !!o?.ready || (o?.accounts?.length ?? 0) > 0; }).catch(() => {});
+export const placeShown = (fixed: string, google = googleShown): boolean => fixed !== "google" || google;
+
 export function settingsPlaces(): { id: string; title: string }[] {
   const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
-  return [...all.sections.map((s) => ({ id: s.id, title: s.title })), ...all.fixed.map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title }))];
+  return [...levelSections(all.sections, false).map((s) => ({ id: s.id, title: s.title })), ...all.fixed.filter((g) => placeShown(g)).map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title })), { id: ADVANCED_PLACE, title: S.advancedTitle }];
 }
 
 // place: the part open in the side list. A search looks through every part, as before.
@@ -804,8 +812,12 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const onePart = !q && !!place;
-  const fixedShown = (g: FixedGroup) => results.fixed.includes(g) && (!onePart || place === `fixed:${g}`);
-  const sectionsShown = onePart ? results.sections.filter((s) => s.id === place) : results.sections;
+  // M28: the main Settings shows the main choices; Advanced shows every other one, grouped as before; search finds all.
+  const advanced = !q && place === ADVANCED_PLACE;
+  const mainSections = levelSections(results.sections, false);
+  const mainIds = new Set(mainSections.map((s) => s.id));
+  const fixedShown = (g: FixedGroup) => !advanced && results.fixed.includes(g) && placeShown(g) && (!onePart || place === `fixed:${g}`);
+  const sectionsShown = q ? results.sections : advanced ? levelSections(results.sections, true) : onePart ? mainSections.filter((s) => s.id === place) : mainSections;
   // The character's place (its edge, its position and Same place on every display) put back with one press.
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
   const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
@@ -852,7 +864,8 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart} />)}
+      {advanced && <div className="line muted">{S.advancedHelp}</div>}
+      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={advanced && mainIds.has(s.id) ? undefined : extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart && !advanced} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
@@ -867,6 +880,7 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       })}
       </Group>}
       {fixedShown("key") && inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
+      {fixedShown("google") && <GoogleSection />}
       {fixedShown("practice") && <Group title={S.fixedGroups.practice.title}>
       <div className="line muted">{S.practiceListHelp}</div>
       {!askPractice && <div className="row">
@@ -955,4 +969,66 @@ function CompanionHero() {
       </div>
     </div>
   </>);
+}
+
+/** Google (M21, google.rs): sign in with Google, and the Google accounts connected for Gmail, Calendar and Drive. The
+ *  shell runs the sign in in the person's browser and keeps the tokens; this page sees only who and what (never a token). */
+type GoogleAccount = { id: string; email: string; name: string; label: string; apps: string[]; signin: boolean };
+const GOOGLE_APPS = ["gmail", "calendar", "drive"] as const;
+function GoogleSection() {
+  const [st, setSt] = useState<{ ready: boolean; busy: boolean; accounts: GoogleAccount[] } | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [pick, setPick] = useState<string[]>([...GOOGLE_APPS]);
+  const [label, setLabel] = useState("");
+  const load = () => void invoke("google_accounts").then((v) => setSt(v as { ready: boolean; busy: boolean; accounts: GoogleAccount[] })).catch(() => {});
+  useEffect(() => {
+    load();
+    const a = listen("google-changed", () => { setWaiting(false); setProblem(""); load(); });
+    const b = listen("google-failed", (e) => { setWaiting(false); setProblem(S.google.failed(String(e.payload ?? ""))); load(); });
+    return () => { a.then((f) => f()); b.then((f) => f()); };
+  }, []);
+  const start = (signin: boolean) => {
+    setProblem("");
+    void invoke("google_start", { signin, apps: signin ? [] : pick, label: signin ? null : label }).then(() => setWaiting(true))
+      .catch((e) => setProblem(String(e) === "busy" ? S.google.busy : String(e) === "notSetUp" ? S.google.notSetUp : S.google.failed(String(e))));
+  };
+  const drop = (id: string, signOutOnly: boolean) => void invoke("google_disconnect", { id, signOutOnly }).then(load).catch(() => load());
+  if (!st) return null;
+  const me = st.accounts.find((a) => a.signin);
+  const connected = st.accounts.filter((a) => a.apps.length > 0);
+  return (
+    <Group title={S.fixedGroups.google.title}>
+      {!st.ready && <div className="line muted">{S.google.notSetUp}</div>}
+      <h3 className="google-head">{S.google.signInTitle}</h3>
+      {me ? (
+        <div className="row google-me"><span className="google-dot" aria-hidden="true">{(me.name || me.email).slice(0, 1).toUpperCase()}</span><span className="line">{S.google.signedIn(me.name, me.email)}</span>
+          <button className="btn" type="button" onClick={() => drop(me.id, true)}>{S.google.signOut}</button></div>
+      ) : (<>
+        <div className="line muted">{S.google.signInLine}</div>
+        <div className="row"><button className="btn primary" type="button" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</button></div>
+      </>)}
+      <h3 className="google-head">{S.google.connectTitle}</h3>
+      <div className="line muted">{S.google.connectLine}</div>
+      {connected.length === 0 && <div className="line muted">{S.google.none}</div>}
+      {connected.map((a) => (
+        <div className="row google-acct" key={a.id}>
+          <span className="google-dot" aria-hidden="true">{(a.name || a.email).slice(0, 1).toUpperCase()}</span>
+          <span className="line"><b>{a.label}</b> {a.email}<br /><span className="muted">{a.apps.map((x) => S.google.apps[x]).join(", ")}</span></span>
+          <button className="btn danger" type="button" onClick={() => drop(a.id, false)}>{S.google.disconnect}</button>
+        </div>
+      ))}
+      <div className="google-new" role="group" aria-label={S.google.connect}>
+        {GOOGLE_APPS.map((x) => (
+          <label className="check" key={x}><input type="checkbox" checked={pick.includes(x)} onChange={(e) => setPick((p) => (e.target.checked ? [...p, x] : p.filter((y) => y !== x)))} /> <b>{S.google.apps[x]}</b> <span className="muted">{S.google.appLines[x]}</span></label>
+        ))}
+        <div className="row">
+          <input type="text" value={label} maxLength={24} placeholder={S.google.label} aria-label={S.google.label} onChange={(e) => setLabel(e.target.value)} />
+          <button className="btn primary" type="button" disabled={!st.ready || waiting || pick.length === 0} onClick={() => start(false)}>{S.google.connect}</button>
+        </div>
+      </div>
+      {waiting && <div className="line" role="status">{S.google.waiting}</div>}
+      {problem && <div className="error" role="alert">{problem}</div>}
+    </Group>
+  );
 }

@@ -14,7 +14,7 @@ import { validView } from "./watch.ts";
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
 export type ToolLine = { id: string; text: string; tool: string; words: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
-export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string };
+export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string; action?: string; undoable?: boolean };
 // summary: a failed step's one plain sentence from the engine; problem: where it failed. The detail (the check's own
 // output) is shown behind Details (checkDetail.tsx).
 export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem };
@@ -714,7 +714,7 @@ function reduceRest(m: Model, e: Ev): Model {
     case "cost.update": return m.task && m.away[e.agent] === undefined ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;
-      return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt }] };
+      return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt, action: e.action, undoable: e.undoable }] };
     case "proof.step": {
       if (!m.task || m.away[e.agent] !== undefined) return m;
       const p = m.task.proof;

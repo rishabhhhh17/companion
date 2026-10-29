@@ -119,6 +119,9 @@ describe("safety is enforced on every step", () => {
     await waitFor(() => !!request(r.events));
     const req = request(r.events);
     expect(req.risk).toBe("git");
+    // M28: the card can say exactly what will happen, and whether Undo covers it.
+    expect(req.action).toBe("Running: git push origin main");
+    expect(req.undoable).toBe(false);
     expect(states(r.events).at(-1)).toBe("needsYou");
     expect(ran).toEqual([]);
     await r.runner.handle({ v: 1, id: "c2", type: "approval.resolve", approval: req.approval, decision: "allow", scope: "once" });

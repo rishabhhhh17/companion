@@ -553,7 +553,7 @@ export class AgentRunner {
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
       const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
-      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString() } as never);
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString(), action: `Running: ${clip(redact(command), 200)}` } as never);
       this.state(agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const yes = await new Promise<boolean>((res) => {
@@ -2204,6 +2204,7 @@ export class AgentRunner {
       this.emit({
         type: "approval.request", approval, agent: cmd.agent, checkpoint, toolUseId, risk: verdict.risk ?? "irreversible",
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
+        action: summary(tool), undoable: verdict.undoable,
       } as never);
       this.state(cmd.agent, "needsYou");
       let how = "denied" as "allowed" | "denied" | "expired" | "cancelled";

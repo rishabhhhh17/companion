@@ -37,11 +37,11 @@ describe("How long a ring stays (point.ringSeconds)", () => {
 });
 
 describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () => {
-  test("the usual colour is today's orange ring, and a guess keeps its dashed look in every colour", () => {
-    expect(ringLook("orange", true)).toEqual({ stroke: "#ff9a2e", width: 4, dash: "", halo: null });
+  test("the usual colour is the brand lime (M28; stored as orange), and a guess keeps its dashed look in every colour", () => {
+    expect(ringLook("orange", true)).toEqual({ stroke: "#C6F432", width: 4, dash: "", halo: null });
     expect(GUESS_LOOK).toEqual({ stroke: "#ffb020", width: 3, dash: "8 6", halo: null });
     for (const c of ["orange", "red", "yellow", "blue", "highContrast", "pink", undefined]) expect(ringLook(c, false), String(c)).toEqual(GUESS_LOOK);
-    // The area's colours, red among them; the usual one stays today's orange (the founder is asked about red as the usual).
+    // The area's colours, red among them; the usual one keeps its stored name so nobody's choice changes.
     expect(defOf("point.colour")!.options).toEqual(["orange", "red", "yellow", "blue", "highContrast"]);
     expect(defOf("point.colour")!.default).toBe("orange");
   });

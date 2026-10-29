@@ -2,6 +2,69 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Clearer, calmer, nothing half finished: 29 Oct 2026
+
+- **Questions say exactly what will happen.** When Squibby needs your OK, the card asks a plain question ("Install something?", "Change your project's Git history?"), shows the exact command or file, says why, and tells you whether Undo can take it back. The same in the notch.
+- **One press fixes the two dead ends.** If Squibby's engine keeps stopping, there's a Restart button instead of "quit and open again". If Claude isn't connected, there's an Add your key button that takes you straight there.
+- **Nothing unfinished in sight.** The Google section stays hidden until Google is set up in your version. The first run introduces Flowflow on its own instead of showing empty "Coming soon" boxes. Lessons say where they came from instead of "Draft".
+- **The usual ring colour is honest.** It was labelled "Orange" but showed your water colour; it's now called "Usual" and draws in Squibby lime when it isn't water.
+- **No error codes in your face.** If the screen or the microphone can't be used, you get a plain sentence and what to try; the technical detail goes to the log.
+- **Drawing on your screen looks hand made.** Rings, arrows, underlines and boxes are now drawn like real pen ink: thicker in the middle, tapering as the pen lifts, drawn in the order a hand would at a hand's speed. A ring closes a little past where it started, an arrow gets its head after its shaft, and every mark has a soft edge so it shows on light and dark apps alike. A ring never covers what it's pointing at.
+- **Settings is short now.** It opens on about 25 choices you'd actually change: how Squibby looks, the notch, which groups are on, talking, keys, your daily spending limit, house rules and privacy. Everything else (timings, budgets per mode, file formats, fine tuning) is under Advanced, and search still finds every setting.
+- **One name for each thing.** The top of the screen is always "the notch", the big panel is always "Home".
+- **No dead end in the first run.** You can skip adding your Claude key and add it later; Home then shows an Add your key button. The confusing "signing in with a Claude plan is not available" line is gone.
+- **Receipts say what the fix cost** on your own Claude ("About 4 cents of your Claude"), and drop the count of commands nobody needed.
+- **Pricing is set:** Free, and Pro at $10 a month ($8 a month yearly), with a 14 day trial and half price for students. You pay Anthropic directly for Claude; we never mark it up. Payments aren't switched on yet.
+
+## Flowflow comes alive: 29 Oct 2026
+
+- **Flowflow doesn't just sit there any more.** Every few seconds it does something small: looks around, shakes water off, stretches, bounces, blows a bubble. Never the same thing twice in a row, never while it's working, and never with less motion.
+- **It breathes and floats** a little more, so it reads as alive even while resting.
+- **Home is tidier.** The ask box no longer cuts its words in half, the line under the headline sits clear of the wave, "More ways to ask" and "Watches" open with a small arrow, and the folder buttons sit in one neat row at the bottom.
+- **It's bigger on the edge of your screen**, and the "Ready" tag under it is gone while it rests. Words show up only when there's something to say.
+
+## Work cards, captions and a real Esc: 29 Oct 2026
+
+- **Work drops from the notch as it happens.** When a job starts, moves to its next step, or finishes with its proof, its card drops from the notch for a few seconds and tucks back. You see progress without opening anything, and nothing stays over your windows.
+- **Captions while Squibby talks.** Anything said out loud also shows at the bottom of your screen, and goes away when it stops.
+- **Esc takes back control.** While Squibby points at something or walks you through steps, Esc clears it and stops it talking. The rest of the time, Esc stays with your other apps.
+- **Your shortcut opens Squibby instantly.** No animation when you open it from the keyboard, so it feels immediate.
+- **The first-run demo shows its progress.** The step playing now fills its own little bar, like stories do.
+- Each of these has a switch in Settings.
+
+## Snappier, calmer motion: 29 Oct 2026
+
+- **Everything answers faster.** Home drops from the notch in a quarter of a second without bouncing, and rolls back up just as quickly. The notch panel opens in a blink, from the notch, instead of fading in late.
+- **Every button gives a small squeeze when you press it,** so you feel each press land.
+- **Bounce is saved for the moments that deserve it,** like your first run and a fix that's proven to work. Everyday things just move cleanly.
+- **Lighter on your battery.** Flowflow stays alive while resting but does far less work when nothing is happening, and nothing animates in panels you can't see.
+
+## One Flowflow everywhere: 29 Oct 2026
+
+- **Flowflow now looks the same wherever you see it.** The notch, its cards and the character picker showed a picture of Flowflow, while your screen edge and Home showed the live water. Now it's the live water everywhere, in the colour you picked.
+- If your Mac can't draw the live water, or you turn off Draw live in Settings, the picture shows everywhere instead, still all the same.
+
+## Answer right in the notch: 29 Oct 2026
+
+- **When the AI needs your OK, the notch opens by itself** and asks there. No need to open Squibby for every small question.
+- Questions you can take back (going online, installing something, a file outside your project) get Allow and Don't allow right in the notch. Allow means just this once.
+- Anything that can't be undone, like sending, deleting or going live, and anything that changes your Git history, still says "Look first" and opens Squibby so you can see exactly what it wants.
+- The buttons wait a moment after the notch opens, so a stray click can't say yes for you.
+- Don't want it? Settings, Open the notch for questions.
+
+## Claude comes straight from Anthropic: 29 Oct 2026
+
+- **Squibby no longer carries Anthropic's Claude inside the app.** On the first run it downloads Anthropic's own build, once, straight from Anthropic's package, and checks it is exactly the build we test and signed by Anthropic before using it. It usually finishes while you're still meeting Flowflow; there's a "Getting Claude ready" step in case it doesn't.
+- If Claude is ever missing or damaged, Home says so and offers "Get Claude".
+- The app download gets about 230 MB smaller.
+
+## Google: sign in, and connect Gmail, Calendar and Drive: 29 Oct 2026
+
+- **Sign in with Google** in Settings, under Account. Google's own page opens in your browser; Squibby never sees your password. Your own Claude key keeps working without an account.
+- **Connect Google accounts** (Work, Personal, as many as you like) for Gmail, Calendar and Drive. Then ask: "what did Sam email me about the launch?", "find me a free hour on Thursday", "what's in the pricing doc?". Squibby can search and read, and write Gmail drafts; it never sends an email, and adding a calendar event always waits for your OK.
+- **Disconnect** any account in one tap: Google is told to revoke it and nothing of it stays on your Mac.
+- For the team: Google needs a client id from Google's console before this works (see docs/milestones/M21-google-plan.md).
+
 ## Flowflow comes alive: 28 Oct 2026
 
 - **It watches you.** Flowflow's eyes and body follow your pointer anywhere on the screen, not only when you are right next to it. Choose "Its eyes", "A drop" (a little drop of its water also trails your pointer around, stretching as it goes and settling beside it) or "No" in the first run or in Settings. Only where the pointer is, a few times a second, while Flowflow is in view; never what is on your screen, never kept.

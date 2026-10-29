@@ -1,5 +1,6 @@
 // The runner program. The app starts it, writes commands to stdin and reads events from
 // stdout, one JSON line each. stderr is for logs only and never carries secrets.
+import { setGoogleAccounts } from "./google/state.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,6 +103,8 @@ function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, b
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
+  // The shell's Google accounts (M21): kept in memory for the Google tools; nothing is said back, and no token is ever logged.
+  if (cmd.type === "google.accounts") { setGoogleAccounts(cmd.accounts); return; }
   // After a key is saved the app asks again who we are signed in as.
   if (cmd.type === "auth.check") { void announceAuth(); return; }
   // The settings line from the shell: each value checked again, names (never values) in the answer.
@@ -165,8 +168,10 @@ async function main() {
       // or echoed, and a damaged one is dropped without its text ever being repeated.
       if (line.startsWith('{"v":1,"type":"auth.key"')) { takeKey(line); continue; }
       let r: ReturnType<typeof parseCommand>;
-      try { r = parseCommand(line); } catch { say({ type: "protocol.error", ...failure("a line could not be read"), line: label(line, 200) }); continue; }   // never let one bad line stop the engine
-      if (!r.ok) say({ type: "protocol.error", ...failure(r.error), line: label(line, 200) });
+      // A Google accounts line carries access tokens (M21): if it is damaged, only its type is ever repeated, never its text.
+      const shown = line.includes('"google.accounts"') ? "google.accounts" : label(line, 200);
+      try { r = parseCommand(line); } catch { say({ type: "protocol.error", ...failure("a line could not be read"), line: shown }); continue; }   // never let one bad line stop the engine
+      if (!r.ok) say({ type: "protocol.error", ...failure(r.error), line: shown });
       else dispatch(r.msg);
     }
   }

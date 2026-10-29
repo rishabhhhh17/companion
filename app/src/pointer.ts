@@ -19,13 +19,15 @@ export type RingLook = { stroke: string; width: number; dash: string; halo: stri
 /** A guess (rule 22): the soft dashed ring, the same in every colour, so it is always told apart from a confirmed one. */
 export const GUESS_LOOK: RingLook = { stroke: "#ffb020", width: 3, dash: "8 6", halo: null };
 const SOLID: Record<string, RingLook> = {
-  orange: { stroke: "#ff9a2e", width: 4, dash: "", halo: null },
+  // M28: the usual ring (still stored as "orange" so nobody's choice changes) is the brand lime; drawn marks get a dark edge (ink.ts), readable
+  // on light and dark apps alike; with the water pointer its beads take the water colour. No orange is drawn any more.
+  orange: { stroke: "#C6F432", width: 4, dash: "", halo: null },
   red: { stroke: "#ff3b30", width: 4, dash: "", halo: null },
   yellow: { stroke: "#ffd60a", width: 4, dash: "", halo: null },
   blue: { stroke: "#0a84ff", width: 4, dash: "", halo: null },
   highContrast: { stroke: "#ffffff", width: 4, dash: "", halo: "#000000" },
 };
-/** Ring colour (point.colour): the confirmed ring in the chosen colour, orange unless changed; a guess always the soft ring. */
+/** Ring colour (point.colour): the confirmed ring in the chosen colour, the usual one unless changed; a guess always the soft ring. */
 export function ringLook(colour: unknown, exact: boolean): RingLook {
   if (!exact) return GUESS_LOOK;
   return SOLID[typeof colour === "string" && Object.hasOwn(SOLID, colour) ? colour : "orange"];

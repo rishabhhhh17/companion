@@ -95,7 +95,7 @@ describe("every page that moves something checks the setting", () => {
     const show = o.slice(o.indexOf("function show("), o.indexOf('void listen("overlay-point"'));
     expect(show).toContain("const reduced = p.reduced ?? reducedMotion();");
     expect(show).toContain("if (reduced) { land(); return; }");
-    expect(show).toContain("if (!reduced) {");
+    expect(show).toContain("if (reduced) {\n      parts.forEach((_, i) => paint(i, 1));");   // M28: the whole mark at once, faded in
   });
   test("the burst of dots and the confetti follow the reactions setting and reduced motion", () => {
     const o = read("./overlay.ts");
@@ -231,7 +231,7 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(main).toContain("let calm = reduce_motion();");
     expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::retract_ms(from, f, reduce_motion())");
-    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open, reduce_motion())");
+    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion())");
   });
 });
 

@@ -27,6 +27,7 @@ import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { approvalWords } from "./approvals.ts";
 import { Waterline } from "./waterline.tsx";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
@@ -873,9 +874,11 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
       homeShown.current = true; setHomeOpen(true);
-      // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion).
+      // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion), except
+      // when a keyboard shortcut opened it (M26, island.rs animates_open): then it is simply there.
+      const instant = !!(e.payload as { instant?: boolean } | null)?.instant;
       const el = root.current;
-      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); void el.offsetWidth; el.classList.add("springing"); }
+      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); } }
       homeDispatch({ type: "opened", keyboard });
       // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
       const then = arrivalFrom(e.payload);
@@ -1457,6 +1460,7 @@ function Card() {
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
+      {onboarded && <ClaudeNotice />}
       {onboarded && (<>
       {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
@@ -1539,7 +1543,8 @@ function Card() {
       </section>
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
-      {m.notice && <div className="notice" role="status">{m.notice}</div>}
+      {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
+      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("fixed:key"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
@@ -1548,7 +1553,8 @@ function Card() {
           {updateNote && <div className="line">{updateNote}</div>}
         </div>
       )}
-      {m.error && <div className="error">{m.error}</div>}
+      {/* M28: when the engine has stopped, the fix is one press away, never "quit and open again". */}
+      {m.error && <div className="error">{m.error}{!m.runnerUp && <button className="btn fix-it" type="button" onClick={() => void invoke("restart_engine").catch(() => {})}>{S.restartEngine}</button>}</div>}
       </>}
       <div className="view" role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title">
       {show("whatsNew") && changes && (
@@ -1716,17 +1722,20 @@ function Card() {
           </div>
         </section>
       )}
-      {m.approvals.map((a) => (
-        <section className="panel amber" key={a.id} aria-label={S.needsYouTitle}>
-          <h2>{S.needsYouTitle}</h2>
+      {m.approvals.map((a) => { const w = approvalWords(a); return (
+        <section className="panel amber ask-card" key={a.id} aria-label={S.needsYouTitle}>
+          <h2>{w.question}</h2>
           {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
-          <div className="line">{a.title}</div>
+          {/* M28: exactly what will happen, why it asks, and whether Undo covers it (approvals.ts). */}
+          {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
+          <div className="line muted">{w.why}</div>
+          {w.undo && <div className={`line ask-undo${a.undoable ? "" : " no"}`}>{w.undo}</div>}
           <div className="row">
             <button className="btn primary" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
             <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
           </div>
         </section>
-      ))}
+      ); })}
 
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
@@ -1925,8 +1934,8 @@ function Card() {
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <ul className="facts" aria-label={S.look.factsLabel}>
             {m.receipt.changed.length > 0 && <li>{S.look.files(m.receipt.changed.length)}</li>}
-            <li>{S.cost}: {formatUsd(m.receipt.usdEstimate)}</li>
-            <li>{m.receipt.commands} {S.commands}</li>
+            {/* M28: what the fix cost, on the person's own Claude (we never mark it up); the count of commands is for the log. */}
+            <li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
@@ -2273,3 +2282,22 @@ applyTextSize(textSize());
 // Less motion (character.motion) stops Home's own animations too.
 followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
+
+/** Anthropic's Claude missing or damaged after the first run (M22): one plain line and Get Claude, with the download's
+ *  progress. Shows nothing while Claude is ready. */
+function ClaudeNotice() {
+  const [st, setSt] = useState<{ state: string; received?: number; total?: number | null; message?: string } | null>(null);
+  useEffect(() => {
+    void invoke("claude_status").then((v) => setSt(v as { state: string })).catch(() => {});
+    const off = listen("claude-install", (e) => setSt(e.payload as { state: string }));
+    return () => { off.then((f) => f()); };
+  }, []);
+  if (!st || st.state === "ready") return null;
+  const mb = Math.round((st.received ?? 0) / 1e6), pct = st.total ? Math.min(100, Math.round(((st.received ?? 0) / st.total) * 100)) : null;
+  return (
+    <section className="panel notice claude-notice" role="status">
+      <div className="line">{st.state === "installing" ? S.fr.claudeGetting(mb, pct) : st.state === "failed" ? st.message : S.fr.claudeMissing}</div>
+      {st.state !== "installing" && <div className="row"><button className="btn primary" type="button" onClick={() => { setSt({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{st.state === "failed" ? S.fr.claudeAgain : S.fr.claudeInstall}</button></div>}
+    </section>
+  );
+}

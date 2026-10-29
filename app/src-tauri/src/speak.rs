@@ -42,6 +42,30 @@ pub fn prepare_reply(text: &str, rest: &str) -> Option<String> {
     match cut_to(rest, REST_MAX_CHARS) { Some((r, _)) => Some(format!("{line} {r}")), None => Some(line) }
 }
 
+/// Captions while Squibby talks (M26, talk.captions): the words said, shown at the bottom of the screen. A long line is
+/// shown a page at a time, each at most this many characters, broken at the end of a sentence where it can be, else at a
+/// word, so a page is one or two short lines.
+pub const CAPTION_CHARS: usize = 110;
+pub fn caption_pages(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = line.trim().to_string();
+    while rest.chars().count() > CAPTION_CHARS {
+        let head: String = rest.chars().take(CAPTION_CHARS).collect();
+        let at = head.rfind(|c| c == '.' || c == '!' || c == '?').filter(|&i| i >= CAPTION_CHARS / 3).map(|i| i + 1)
+            .or_else(|| head.rfind(' ')).filter(|&i| i > 0).unwrap_or(head.len());
+        out.push(head[..at].trim().to_string());
+        rest = rest[at..].trim().to_string();
+    }
+    if !rest.is_empty() { out.push(rest); }
+    out
+}
+/// About how long a page takes to say at `speed` (0.5 to 1.5): the Mac's voices say about 15 characters a second at the
+/// usual speed. Only to pace the pages; the caption goes when the voice actually stops.
+pub fn caption_ms(chars: usize, speed: f64) -> u64 {
+    let speed = if speed.is_finite() { speed.clamp(0.5, 1.5) } else { 1.0 };
+    ((chars as f64 / (15.0 * speed)) * 1000.0).round().max(900.0) as u64
+}
+
 /// The same line twice in a row within this many milliseconds is said once (a card that redraws must not stutter).
 pub const REPEAT_MS: u64 = 2_000;
 #[derive(Default)]
@@ -96,6 +120,8 @@ pub mod mac {
             }
         });
     }
+    /// Main thread only. Whether the voice is saying something now (the caption stays up exactly as long).
+    pub fn speaking() -> bool { SYNTH.with(|s| s.borrow().as_ref().is_some_and(|synth| unsafe { synth.isSpeaking() })) }
     /// Main thread only. Cuts off at once.
     pub fn silence() {
         SYNTH.with(|s| { if let Some(synth) = s.borrow().as_ref() { unsafe { synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate); } } });
@@ -133,6 +159,26 @@ pub mod mac {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_caption_is_paged_at_sentences_and_never_mid_word() {
+        assert_eq!(caption_pages("Fixed it."), vec!["Fixed it."]);
+        let long = "I found the problem in the signup page, where the Join button sends the wrong address. I changed it and the tests now pass. You can try it again.";
+        let pages = caption_pages(long);
+        assert!(pages.len() >= 2);
+        for p in &pages { assert!(p.chars().count() <= CAPTION_CHARS, "{p}"); assert!(!p.starts_with(' ') && !p.ends_with(' ')); }
+        assert!(pages[0].ends_with('.'), "the first page ends at a sentence: {}", pages[0]);
+        assert_eq!(pages.join(" "), long, "nothing is lost or changed");
+        let one_word = "a".repeat(300);
+        assert!(caption_pages(&one_word).iter().all(|p| p.chars().count() <= CAPTION_CHARS));
+        assert!(caption_pages("   ").is_empty());
+    }
+    #[test]
+    fn a_caption_page_is_paced_by_the_voice_speed() {
+        assert!(caption_ms(150, 1.0) > caption_ms(150, 1.5));
+        assert_eq!(caption_ms(1, 1.0), 900, "a short page still stays long enough to read");
+        assert_eq!(caption_ms(150, f64::NAN), caption_ms(150, 1.0));
+    }
+
     use super::*;
 
     #[test]

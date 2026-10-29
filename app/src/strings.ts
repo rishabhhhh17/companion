@@ -13,7 +13,7 @@ export const S = {
   characterName: names.character,
   askPlaceholder: "What should I do?",
   askKeysHint: "Return sends. For a new line, hold Shift as you press Return.",
-  // Files into the ask box (attachfiles.ts, runner/src/attach.ts has the rules and the caps these words name).
+  // Files into the box in Home (attachfiles.ts, runner/src/attach.ts has the rules and the caps these words name).
   attachHint: "You can drag or paste a text file, a code file, a PDF, a Word or Excel document, or a picture here.",
   attachDrop: "Drop it to add it to your request.",
   attachTitle: "Added to your request",
@@ -60,8 +60,8 @@ export const S = {
     back: "Back",
     close: `Close ${PRODUCT}`,
     settingsPlaces: "Settings sections",
-    // Home as one black panel under the notch (27 Oct 2026): the job in big words, one ask box, three quick actions.
-    ask: "Ask anything or describe the problem",
+    // Home as one black panel under the notch (27 Oct 2026): the job in big words, one box to ask, three quick actions.
+    ask: "Describe the problem",   // M27: short enough to fit beside How to talk at Home's width
     send: "Start",
     talk: "Hold to talk",
     chipFind: "Find the problem",
@@ -85,6 +85,21 @@ export const S = {
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",
   allow: "Allow",
+  // M28: what an approval card says, in plain words (approvals.ts).
+  approval: {
+    question: {
+      irreversible: "Do something that can't be undone?",
+      git: "Change your project's Git history?",
+      outside_project: "Use a file outside your project?",
+      install: "Install something?",
+      network: "Go online?",
+      settings: "Change a settings file?",
+    } as Record<string, string>,
+    what: "What will happen",
+    why: "Why I'm asking",
+    undoYes: "Undo can take this back.",
+    undoNo: "Undo can't take this back.",
+  },
   dontAllow: "Don't allow",
   needsYouTitle: "Needs your OK",
   undo: "Undo everything this task did",
@@ -125,6 +140,7 @@ export const S = {
   cannotUndo: "Cannot be undone",
   cost: "Cost",
   commands: "commands run",
+  fixCost: (usd: string) => `About ${usd} of your Claude`,
   modified: "changed",
   deleted: "removed",
   blocked: "Blocked",
@@ -202,7 +218,11 @@ export const S = {
   stepStoppedRestart: `Stopped when ${PRODUCT} restarted.`,
   // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
   restartedStopped: `${PRODUCT} restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.`,
-  notConnectedNotice: "Not connected. Add your API key, or sign in with your Claude plan, to start a task.",
+  notConnectedNotice: "Add your Claude key to start fixing things.",
+  addYourKey: "Add your key",
+  // M28: the second level of Settings.
+  advancedTitle: "Advanced",
+  advancedHelp: `Fine tuning for every part of ${PRODUCT}. The usual values are good for almost everyone.`,
   restartedNothing: `${PRODUCT} restarted. Nothing was running, so nothing was stopped.`,
   restartedTurn: (file: string, line: number) => `${PRODUCT} restarted, so what was running was stopped. ${file}, line ${line} still has the code from before my fix: Put my fix back on Now puts it back.`,
   // A task that keeps going in the folder Home showed before (model.ts away).
@@ -218,6 +238,9 @@ export const S = {
     helloGo: "Say hello",
     count: (n: number, of: number) => `${n} of ${of}`,
     pickTitle: "Who do you want with you?",
+    meetTitle: (name: string) => `Meet ${name}.`,
+    skipKey: "Skip for now, I'll add it later",
+    meetLine: "Your water friend. It lives at the edge of your screen and drops in when you need it.",
     pickLine: "Each companion has its own powers. You can change this any time in Settings.",
     pickWater: "Water. Finds what broke, fixes it, proves it works.",
     soon: "Coming soon",
@@ -238,6 +261,13 @@ export const S = {
     asks: { guide: "Asks for screen access the first time", voice: "Asks for the microphone the first time" } as Record<string, string>,
     next: "Next",
     connectTitle: "Connect your Claude",
+    claudeTitle: "Getting Claude ready",
+    claudeLine: "Squibby runs Anthropic's own Claude on your Mac. It downloads straight from Anthropic, once, and is checked before it's used.",
+    claudeGetting: (mb: number, pct: number | null) => (pct === null ? `Downloading, ${mb} MB so far` : `Downloading, ${pct}%`),
+    claudeReady: "Claude is ready.",
+    claudeAgain: "Try again",
+    claudeMissing: "Squibby needs Anthropic's Claude to work. It downloads once, straight from Anthropic.",
+    claudeInstall: "Get Claude",
     folderTitle: "Which project are we finishing?",
     folderNone: "No folder chosen yet.",
     folderGo: (name: string) => `Open ${name}`,
@@ -256,7 +286,10 @@ export const S = {
     hiWord: "finishing",
     open: `Open ${PRODUCT}`,
     label: `${PRODUCT}: what is happening`,
-    needsYou: "Needs your OK. Open to answer.",
+    needsYou: "Needs your OK. Look at it first.",
+    // M23: a question answered right in the notch (islandPanel.ts answerHere), this once only.
+    askHere: "Needs your OK, just this once.",
+    lookFirst: "Look first",
     step: (i: number, n: number, title: string) => `Step ${i} of ${n}: ${title}`,
     jobs: "Work going on",
   },
@@ -345,7 +378,7 @@ export const S = {
   talkKeysOff: "Another app is already using {keys}, so hold to talk is off. Press Change to pick other keys.",
   talkKeysFellBack: "Another app is already using {picked}, so hold to talk uses {using} for now. Keep them, or press Change to pick others.",
   // Keys to remember in Settings (M11 wave 4): every job's keys, each changeable from a short list (keymap.rs).
-  keyJobs: { card: "Open the ask box", problem: "Point at the problem", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", stop: "Stop everything" },
+  keyJobs: { card: "Open Home", problem: "Point at the problem", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", stop: "Stop everything" },
   // How a chord is named: the modifiers in the Mac's order, then the key (keymap.rs MODS and KEYS use the same words).
   keyWords: { control: "Control", option: "Option", shift: "Shift", command: "Command", space: "Space", return: "Return" },
   keysSettingsHelp: "Each job has its own keys. Press Change to pick others from a short list of keys that are free on this Mac, or to pick any keys you like.",
@@ -426,7 +459,8 @@ export const S = {
   lessonsButton: "Lessons",
   lessonsTitle: "Guided lessons",
   lessonsNone: "No lessons yet.",
-  lessonDraft: "Draft: written from the maker's own help pages, not tried by a person yet. Tell me if a step is wrong.",
+  // M28: honest about where a lesson came from without the alarm of "Draft" on every lesson.
+  lessonDraft: "New lesson, written from the app's own help pages. If a step doesn't match your screen, tell me and I'll fix it.",
   lessonFromProject: "Made from this project, for the setting names its code reads. Values are never asked for, kept or shown.",
   lessonStart: "Start",
   lessonContinue: "Continue",
@@ -498,7 +532,8 @@ export const S = {
   },
   checkDidNotPass: "It did not pass.",
   checkDetails: "Details",
-  helperStopped: `${PRODUCT} stopped working. Quit and open ${PRODUCT} again.`,
+  helperStopped: `${PRODUCT} stopped working. Press Restart to try again.`,
+  restartEngine: "Restart",
   explainChipHint: "Paste an error in the box and press Explain an error. Or select it in any app and press {keys}.",
   explainChipHintNoKeys: "Paste an error in the box and press Explain an error.",
   showMeHint: "Type what you want to find or do on your screen, then press Show me. I look once, with a light on first.",
@@ -531,7 +566,7 @@ export const S = {
   settingsChoices: "Your choices",
   acknowledgements: "Acknowledgements",
   acknowledgementsHelp: `The open source software ${PRODUCT} is built from, and the licences that let us use it.`,
-  speakHelp: `Off until you turn it on. When on, ${PRODUCT} says short lines out loud (the step you are on, what a ring points at) in the voice picked below. Nothing is sent anywhere. Stop everything, closing the card, or holding the talk keys silences it.`,
+  speakHelp: `Off until you turn it on. When on, ${PRODUCT} says short lines out loud (the step you are on, what a ring points at) in the voice picked below. Nothing is sent anywhere. Stop everything, closing Home, or holding the talk keys silences it.`,
   speakSetting: "Speak to me",
   // Voice settings (M11 wave 4, item 2): Settings, Talking and listening (voicesettings.ts, voiceset.rs).
   voiceSettingsTitle: "Talking and listening",
@@ -558,8 +593,8 @@ export const S = {
   voiceLanguageNames: { en: "English", hi: "Hindi", es: "Spanish", fr: "French", de: "German", pt: "Portuguese", it: "Italian", nl: "Dutch", ja: "Japanese", zh: "Chinese", ko: "Korean", ar: "Arabic", ru: "Russian", tr: "Turkish", pl: "Polish", id: "Indonesian", vi: "Vietnamese", uk: "Ukrainian", bn: "Bengali", ta: "Tamil", ur: "Urdu" } as Record<string, string>,
   voiceWordsHelp: "So your project's own names come out right, such as supabase or useAuth, the speech model on this Mac gets a short list of names from the folder you chose: file, folder and package names, and the names of settings your project needs, never their values. Never what is inside your files, and never your settings files.",
   speakRepliesSetting: "Answer out loud when I ask by voice",
-  speakRepliesHelp: `Off until you turn it on. When you ask by holding the talk keys, ${PRODUCT} says its short answer out loud, all of it. A long answer is said up to a point, and the rest is on the card.`,
-  speakRest: "The rest is on the card.",
+  speakRepliesHelp: `Off until you turn it on. When you ask by holding the talk keys, ${PRODUCT} says its short answer out loud, all of it. A long answer is said up to a point, and the rest is in Home.`,
+  speakRest: "The rest is in Home.",
   voicePickLabel: "Voice",
   voiceMacDefault: "Your Mac's own voice",
   voiceQualityEnhanced: "enhanced",
@@ -886,7 +921,7 @@ export const S = {
     scheduleWords: (schedule: string) => (/^daily@(\d+)$/.test(schedule) ? `Once a day at ${schedule.slice(6)}:00` : ({ "5m": "Every 5 minutes", "15m": "Every 15 minutes", "30m": "Every 30 minutes", "1h": "Every hour" } as Record<string, string>)[schedule] ?? schedule),
     today: (hm: string) => hm,
     otherDay: (day: string, hm: string) => `${day} at ${hm}`,
-    // The island: one plain line while a watch is failing. No popup, and it never takes the keyboard.
+    // The notch: one plain line while a watch is failing. No popup, and it never takes the keyboard.
     islandFailing: (name: string) => `${name} is failing`,
     // What a task is told when the person presses Fix it on a failed watch. The evidence was read only, secrets hidden.
     fixPrompt: (what: string, evidence: string) => `Fix this problem with my project. ${what}\n\nWhat ${PRODUCT} saw, read only from my own tools:\n${evidence.slice(0, 4000)}\n\nFind the cause and make the smallest change that fixes it, then check that it works. Do not weaken or delete tests.`,
@@ -948,7 +983,7 @@ export const S = {
   browserStopped: "Stopped. Nothing was set up. Press the button to start again.",
   browserFailed: "The download did not finish. Try again in a moment.",
   browserTryAgain: "Try again",
-  // The error explainer (its keys are Control, Option, Command and E unless changed). The read happens in the app, light first; these are the card's words.
+  // The error explainer (its keys are Control, Option, Command and E unless changed). The read happens in the app, light first; these are Home's words.
   ehTitle: "About this error",
   ehReading: (app: string) => `Reading what you selected in ${app}.`,
   ehThinking: "Reading the error.",
@@ -968,7 +1003,7 @@ export const S = {
   ehFix: "Fix it",
   ehClose: "Close",
   // Second Look (its keys are Control, Option, Command and C unless changed). The read happens in the app, light first,
-  // the same way as the error explainer; these are the card's words. It shows its work and never decides what is true.
+  // the same way as the error explainer; these are Home's words. It shows its work and never decides what is true.
   slTitle: "Second Look",
   slReading: (app: string) => `Reading the answer you selected in ${app}.`,
   slThinking: "Checking the answer.",
@@ -1089,7 +1124,7 @@ export const S = {
   toolRemoving: "Removing files",
   toolFiles: "Moving files around",
   toolCommand: "Running a command",
-  // Home in the notch (F18): the card under the island, in tabs, and the island's own words.
+  // Home in the notch (F18): Home under the notch, in tabs, and the notch's own words.
   homeLabel: "Home",
   homeTabs: { now: "Now", did: "What I did", learn: "Learn", memory: "Memory", settings: "Settings" },
   homeWaiting: (tab: string, why: string) => `${why}, on ${tab}.`,
@@ -1106,7 +1141,7 @@ export const S = {
   homeMemoryLoading: "Looking up what I know…",
   homeMemoryNoProject: "Choose a project folder first, on Now.",
   islandOpen: `Open ${PRODUCT}`,
-  // Only heard (VoiceOver), never shown: idle, the island is the bare notch with no words on it.
+  // Only heard (VoiceOver), never shown: idle, the notch is the bare notch with no words on it.
   islandQuiet: "Nothing needs you right now.",
   islandNotConnected: "Not connected yet. Click to connect Claude.",
   islandUpdate: (version: string) => `Version ${version} is ready. Click to install it.`,
@@ -1202,7 +1237,7 @@ export const S = {
     "guide.on": { label: "Guide", help: `Show me how, lessons, Your turn and practice. Off, none of those tools do anything and ${PRODUCT} never asks for Screen Recording because of them.`, also: ["group", "show me", "lesson", "practice", "your turn", "screen", "point"] },
     "voice.on": { label: "Voice", help: `Hold to talk, spoken answers, Prompt help, the error explainer and Second Look. Off, their keys are let go for other apps to use, and ${PRODUCT} never asks for the microphone or Accessibility because of them.`, also: ["group", "talk", "speak", "microphone", "prompt help", "error", "second look", "accessibility"] },
     "files.on": { label: "Files", help: "Dropping a file on the character to convert it. Off, dropped files are ignored.", also: ["group", "drop", "convert", "file"] },
-    "groups.islandName": { label: "Show the working group on the island", help: "While a tool is at work, the island's line starts with the name of its group.", also: ["island", "notch", "group name"] },
+    "groups.islandName": { label: "Show the working group on the notch", help: "While a tool is at work, the notch's line starts with the name of its group.", also: ["island", "notch", "group name"] },
     "groups.showUntried": { label: "Invite me to tools not tried yet", help: "Home shows one line about a tool that is not tried yet, and the line goes away once it is tried. Off, Home never shows it.", also: ["invite", "suggest", "try", "new", "tip", "not tried"] },
     "groups.tried": { label: "Tools tried", help: "The tools used once, so Home stops inviting you to them. Only tool names, kept on this Mac. Reset empties the list.", also: ["tried", "used"], options: { drive: "Tasks", followUp: "Follow ups", rescue: "Rescue", findProblem: "Point at the problem", proof: "Checks", undo: "Undo", explain: "Explain", whichTask: "Which task broke it", watch: "Watch routines", connections: "Fix it from a watch", whereWasI: "Where was I", showMe: "Show me how", lessons: "Lessons", yourTurn: "Your turn", practice: "Practice", talk: "Hold to talk", speak: "Spoken answers", promptHelp: "Prompt help", errorHelp: "Explain an error", secondLook: "Second Look", convert: "Convert a file" } },
     "keys.hotkeys": { label: "Keys for each job", help: `Pick other keys for any job from a short list of keys that are free on this Mac. ${PRODUCT} never records what you type.`, also: ["hotkey", "shortcut", "keyboard", "chord", "stop everything"], usual: "the usual keys" },
@@ -1213,25 +1248,29 @@ export const S = {
     "talk.maxHold": { label: "Longest hold to talk", help: `${PRODUCT} stops listening after this long, even if you are still holding the keys.`, also: ["microphone", "mic", "listen", "dictation", "limit"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     "speak.alsoSay": { label: "Also say out loud", help: `With Speak to me on, ${PRODUCT} can also say when something needs you and when a task ends.`, also: ["aloud", "announce", "spoken", "task done", "needs you"], options: { needsYou: "When something needs me", taskDone: "When a task ends" } },
     "talk.autoSend": { label: "Send spoken words automatically", help: "When you let go of the talk keys, a request for work of three words or more is sent at once. Words that mean wait or stop, or take it back (wait, hold on, never mind, not yet, don't, I changed my mind, scratch that), a question about your screen, and words in another language than English always wait in the box. Off, your words always wait in the box until you press Start.", also: ["dictation", "send", "hold to talk"] },
-    "talk.followUpByPointing": { label: "Follow up by pointing at a finished task", help: "On, when the mouse pointer is on a finished task's result in Home while you hold the talk keys, your words go into that task's follow up box instead of the ask box. They wait there for Enter, unless Send spoken words automatically is on. Esc empties the box.", also: ["follow up", "hold to talk", "voice", "carry on", "point"] },
-    "talk.shortSteps": { label: "Say steps short, one at a time", help: "With Speak to me on, each step of a Show me answer or a lesson is said as just what to do when its ring lands, leaving out a sentence of explanation after it. A warning, a key to press, a question or a second thing to do (when it opens with an action word like click, submit or continue) is said, and a step is never cut in the middle of a sentence. An answer Answer out loud says is said all of it. The full words stay on the card. Off, the whole step is said.", also: ["speak", "short", "voice", "steps", "read aloud", "tutor"] },
-    "island.show": { label: "Show the island in the notch", help: `The island is ${PRODUCT_S} place at the top of the screen, on the notch or in the middle of the menu bar. Off, Home opens beside the character instead, and its keys still open it.`, also: ["notch", "menu bar", "island", "top of the screen", "hide"] },
-    "island.peekOnHover": { label: "Show status when I point at the island", help: `Rest the pointer on the island to see what ${PRODUCT} is doing. Off, the island opens only when you click it.`, also: ["hover", "peek", "status", "pointer"] },
-    "island.openDelay": { label: "Open the island after pointing at it for", help: "How long the pointer rests on the island before the status shows. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
-    "island.closeDelay": { label: "Close it after moving away for", help: "How long after the pointer leaves the island the status closes, so a small slip off its edge does not close it.", also: ["hover", "delay", "wait"] },
-    "island.display": { label: "Which display the island and Home use", help: "Follow me puts them on the display you are using. Built in keeps them on your Mac's own screen, or on the main display while the lid is closed. Main keeps them on the display with the menu bar.", also: ["monitor", "screen", "second screen", "external"], options: { follow: "Follow me", builtIn: "Built in display", main: "Main display" } },
-    "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the island moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
-    "home.closeOnClickAway": { label: "Close Home when I click another app", help: "Off, Home stays open until you close it, press Esc, or click the character, or the island when it is shown, again. It never closes by itself while something waits for you.", also: ["click away", "close", "keep open"] },
-    "home.stepAside": { label: "Step aside for what Home opens", help: "On, when Home opens a web page, the email for Report a problem, or Finder showing the support log, Home closes so you can see it. Open it again with the island or the character; what it said is still there. It stays open while something on it waits for you, such as a question or a lesson.", also: ["report a problem", "link", "browser", "email", "close", "out of the way"] },
-    "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are, and puts a dot on that tab and a mark on the island, or on the character when the island is off. With Speak to me on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
+    "talk.followUpByPointing": { label: "Follow up by pointing at a finished task", help: "On, when the mouse pointer is on a finished task's result in Home while you hold the talk keys, your words go into that task's follow up box instead of the box at the top of Home. They wait there for Enter, unless Send spoken words automatically is on. Esc empties the box.", also: ["follow up", "hold to talk", "voice", "carry on", "point"] },
+    "talk.shortSteps": { label: "Say steps short, one at a time", help: "With Speak to me on, each step of a Show me answer or a lesson is said as just what to do when its ring lands, leaving out a sentence of explanation after it. A warning, a key to press, a question or a second thing to do (when it opens with an action word like click, submit or continue) is said, and a step is never cut in the middle of a sentence. An answer Answer out loud says is said all of it. The full words stay in Home. Off, the whole step is said.", also: ["speak", "short", "voice", "steps", "read aloud", "tutor"] },
+    "island.show": { label: "Show the notch", help: `The notch is ${PRODUCT_S} place at the top of the screen. Off, Home opens beside the character instead, and its keys still open it.`, also: ["notch", "menu bar", "island", "top of the screen", "hide"] },
+    "island.peekOnHover": { label: "Show status when I point at the notch", help: `Rest the pointer on the notch to see what ${PRODUCT} is doing. Off, the notch opens only when you click it.`, also: ["hover", "peek", "status", "pointer"] },
+    "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before the status shows. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
+    "island.closeDelay": { label: "Close it after moving away for", help: "How long after the pointer leaves the notch the status closes, so a small slip off its edge does not close it.", also: ["hover", "delay", "wait"] },
+    "island.display": { label: "Which display the notch and Home use", help: "Follow me puts them on the display you are using. Built in keeps them on your Mac's own screen, or on the main display while the lid is closed. Main keeps them on the display with the menu bar.", also: ["monitor", "screen", "second screen", "external"], options: { follow: "Follow me", builtIn: "Built in display", main: "Main display" } },
+    "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the notch moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
+    "home.closeOnClickAway": { label: "Close Home when I click another app", help: "Off, Home stays open until you close it, press Esc, or click the character, or the notch when it is shown, again. It never closes by itself while something waits for you.", also: ["click away", "close", "keep open"] },
+    "home.stepAside": { label: "Step aside for what Home opens", help: "On, when Home opens a web page, the email for Report a problem, or Finder showing the support log, Home closes so you can see it. Open it again with the notch or the character; what it said is still there. It stays open while something on it waits for you, such as a question or a lesson.", also: ["report a problem", "link", "browser", "email", "close", "out of the way"] },
+    "talk.captions": { label: "Show my words while I talk", help: "When I say something out loud, the words also show at the bottom of your screen, and go away when I stop.", also: ["captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
+    "home.escStops": { label: "Esc stops what I show on screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["escape", "esc", "stop", "cancel", "take back", "control"] },
+    "island.showWork": { label: "Show work under the notch", help: "When a job starts, moves to its next step or finishes, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["live", "progress", "cards", "jobs", "activity", "notch"] },
+    "island.openForQuestions": { label: "Open the notch for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["approve", "allow", "ask", "question", "notch", "pop up"] },
+    "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are, and puts a dot on that tab and a mark on the notch, or on the character when the notch is off. With Speak to me on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
     "home.size": { label: "Home size", help: "Large makes Home wider and taller, which suits larger text. The character keeps clear of Home at either size.", also: ["bigger", "wider", "taller", "window"], options: { standard: "Standard", large: "Large" } },
     "character.edge": { label: "Edge for the character on this display", help: "Which edge of the screen the character lives on, on the display it is on now. You can also drag it to any edge or corner.", also: ["place", "move", "corner", "side", "position"], options: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" } },
-    "character.position": { label: "Position along that edge", help: "0 is the top or left end of the edge, 100 the bottom or right end. The character always keeps clear of the island and of Home.", also: ["place", "move", "height", "corner"] },
+    "character.position": { label: "Position along that edge", help: "0 is the top or left end of the edge, 100 the bottom or right end. The character always keeps clear of the notch and of Home.", also: ["place", "move", "height", "corner"] },
     "character.sameEverywhere": { label: "Same place on every display", help: "On, a display where you have not placed the character yet gets this display's edge and position. Displays where you placed it keep their own.", also: ["monitor", "screens", "external", "place"] },
     "character.comeTo": { label: "Come to what it is about", help: `When ${PRODUCT} points at something in a window, or has an answer about one, the character moves next to that window, never on top of it, and goes back to its place when you are done.`, also: ["move", "follow", "character", "roam"] },
     "character.linger": { label: "Stay beside a window for", help: "After a ring or an answer about a window goes away, how long the character waits there before it goes back to its place. It still goes back at once when the window or the app in front changes, or when you press Stop everything.", also: ["wait", "come to", "go home", "delay"] },
     "character.motion": { label: "Motion", help: `Less motion makes the character appear in place instead of flying, and stops ${PRODUCT_S} own animations. It changes only ${PRODUCT}, never the rest of your Mac.`, also: ["animation", "reduce motion", "accessibility", "fly", "move"], options: { followMac: "Follow my Mac", less: "Less motion" } },
-    "character.overFullScreen": { label: `Show ${PRODUCT} over full screen apps`, help: `Off, the character, the island and Home step aside while a full screen app is in front, such as a video or a presentation. Hold to talk still waits until you can see ${PRODUCT}.`, also: ["full screen", "video", "presentation", "game", "hide"] },
+    "character.overFullScreen": { label: `Show ${PRODUCT} over full screen apps`, help: `Off, the character, the notch and Home step aside while a full screen app is in front, such as a video or a presentation. Hold to talk still waits until you can see ${PRODUCT}.`, also: ["full screen", "video", "presentation", "game", "hide"] },
     "character.peek": { label: "Tuck away past the edge of the screen", help: "On, the character waits out of sight just past the edge of your screen. Move the pointer to that edge, beside where it waits, and it comes in. It also comes in when something needs you, and always before it listens or looks at your screen. Off, it stays in view.", also: ["peek", "hide", "edge", "out of the way", "tuck", "auto hide"] },
     "character.peekIdle": { label: "Peek in on its own", help: "Off, the character stays tucked away until you call it with the pointer. On, it also peeks in for a moment when work starts or finishes, and now and then while nothing happens (never more often than every 3 minutes). Never with less motion, and never during a presentation or a call.", also: ["peek", "idle", "fun", "motion", "curious"] },
     "look.water": { label: "Water colour", help: "The colour of the water: the character, the drop that shows you where to click, its ring and the waterline in Home, together. Ocean is the usual.", also: ["colour", "color", "theme", "tint", "blue", "green", "pink", "purple", "water"], options: { ocean: "Ocean", lagoon: "Lagoon", lime: "Lime", berry: "Berry", midnight: "Midnight" } },
@@ -1256,7 +1295,7 @@ export const S = {
     "showme.allScreens": { label: "Show me on all screens", help: "With more than one screen, Show me looks only at the one your mouse pointer is on. Turn this on and the same press looks at all of them, with the light on first and private text covered on each before anything is sent.", also: ["display", "monitor", "screens", "second screen"] },
     "point.ringSeconds": { label: "How long a ring stays", help: "How long a ring around something stays on your screen when it is not waiting for your click.", also: ["circle", "highlight", "pointer", "time"] },
     "point.yourTurnSeconds": { label: "How long a your turn ring waits for your click", help: `When ${PRODUCT} shows you where to click and waits for you to do it, it waits this long, then the ring goes away.`, also: ["click", "wait", "your turn", "time"] },
-    "point.colour": { label: "Ring colour", help: `The colour of a ring around something ${PRODUCT} is sure about. Pick another if the usual one is hard to see in your apps.`, also: ["color", "colour blind", "contrast", "highlight"], options: { orange: "Orange", red: "Red", yellow: "Yellow", blue: "Blue", highContrast: "High contrast, white with a dark edge" } },
+    "point.colour": { label: "Ring colour", help: `The colour of a ring around something ${PRODUCT} is sure about. Pick another if the usual one is hard to see in your apps.`, also: ["color", "colour blind", "contrast", "highlight"], options: { orange: "Usual (lime, or your water colour)", red: "Red", yellow: "Yellow", blue: "Blue", highContrast: "High contrast, white with a dark edge" } },
     "point.lettering": { label: "Ring lettering", help: "How the words beside a ring look. They also follow the text size you picked.", also: ["font", "caption", "handwriting", "words"], options: { plain: "Plain", handwritten: "Handwritten" } },
     "point.guesses": { label: `When ${PRODUCT} is only guessing`, help: `When ${PRODUCT} cannot confirm where something is, it can draw a dashed ring and call it a guess, or only tell you in words where to look.`, also: ["guess", "unsure", "dashed", "words"], options: { softRing: "A dashed ring, called a guess", wordsOnly: "Words only, no ring" } },
     "point.pace": { label: "Pace of step by step pointing", help: `How quickly ${PRODUCT} moves on to the next thing when it points at several in a row. A line it is saying is never cut short.`, also: ["speed", "slow", "fast", "steps"], options: { slower: "Slower", normal: "Normal", faster: "Faster" } },
@@ -1302,7 +1341,7 @@ export const S = {
     "secondLook.searches": { label: "Web searches per Second Look", help: "How many times one check may search the web for facts, quotes and citations, and show where it found them. Each search costs about 1 cent on top of the check. Some ways of connecting to Claude cannot search; Second Look then says so. At 0, it never searches.", also: ["search", "web", "sources", "citations", "cost", "second look"] },
     "ph.appAnswers": { label: "Apps Prompt help, the error explainer and Second Look may read", help: "Each app you answered for, and what you said. Change an answer, forget one, or add the app in front to the apps never to read.", also: ["permission", "consent", "allow", "never read", "privacy"], usual: `no answers yet, so ${PRODUCT} asks in each app` },
     "pointat.editor": { label: "Open files in", help: `Where Point at the problem opens the failing file. If the editor you pick is not on this Mac, ${PRODUCT} uses another one and says so.`, also: ["editor", "cursor", "vs code", "vscode", "windsurf"], options: { editorInFront: "The editor in front", cursor: "Cursor", vscode: "VS Code", windsurf: "Windsurf", macDefault: "Your Mac's default app" } },
-    "drop.on": { label: "Drop a file on the character to convert it", help: "Drop a picture, PDF, document, sound or video on the character or the island in the notch, and a ring shows what can be done with it here on this Mac.", also: ["drag", "drop", "convert", "file", "png", "jpeg", "heic", "pdf", "merge", "resize", "compress", "trim", "word"] },
+    "drop.on": { label: "Drop a file on the character to convert it", help: "Drop a picture, PDF, document, sound or video on the character or the notch, and a ring shows what can be done with it here on this Mac.", also: ["drag", "drop", "convert", "file", "png", "jpeg", "heic", "pdf", "merge", "resize", "compress", "trim", "word"] },
     "drop.imageFormat": { label: "Picture format to offer first", help: "The first choice in the ring for a picture. Every other format is still there.", also: ["image", "photo", "png", "jpeg", "heic", "tiff"], options: { png: "PNG", jpeg: "JPEG", heic: "HEIC", tiff: "TIFF", gif: "GIF", bmp: "BMP", jp2: "JPEG 2000" } },
     "drop.docFormat": { label: "Document format to offer first", help: "The first choice in the ring for a document. Pictures inside a document are left out of the new file.", also: ["word", "docx", "rtf", "html", "text", "pdf"], options: { pdf: "PDF", txt: "Plain text", docx: "Word", rtf: "RTF", html: "Web page (HTML)", doc: "Old Word (.doc)", odt: "OpenDocument text" } },
     "drop.audioFormat": { label: "Sound format to offer first", help: "The first choice in the ring for a sound file.", also: ["audio", "music", "m4a", "wav", "aiff"], options: { m4a: "M4A", wav: "WAV", aiff: "AIFF", alac: "M4A, no loss (ALAC)", caf: "CAF", flac: "FLAC" } },
@@ -1329,7 +1368,7 @@ export const S = {
     "check.pageSize": { label: "Page size for the browser check", help: "The size the page is opened at. Both opens it twice, so the browser check takes about twice as long.", also: ["phone", "mobile", "desktop", "screen size", "responsive"], options: { desktop: "Desktop (1280 by 800)", phone: "Phone (390 by 844)", both: "Both" } },
     "net.slow": { label: "My internet is slow: allow longer", help: `Doubles how long ${PRODUCT} waits to put a site online, make it live or roll it back, install packages when you press Install, copy a project from a link, download the browser check, and save a snapshot.`, also: ["slow", "internet", "wifi", "timeout", "network", "connection"] },
     "pictures.make": { label: "Make before and after pictures", help: "After a proven change, a picture of the page with what changed circled. Off the record never makes one. The check is the same either way.", also: ["picture", "screenshot", "receipt", "before", "after", "image"] },
-    "pictures.keep": { label: "Pictures to keep", help: "The newest pictures are kept, and older ones go when the next picture is made. At 0, a picture is shown on the card and then not kept.", also: ["pictures", "storage", "disk", "space", "receipts"] },
+    "pictures.keep": { label: "Pictures to keep", help: "The newest pictures are kept, and older ones go when the next picture is made. At 0, a picture is shown in Home and then not kept.", also: ["pictures", "storage", "disk", "space", "receipts"] },
     "rescue.readDeployLog": { label: "Read my last Vercel deploy log when looking for a problem", help: "Rescue and Point at the problem read why your last Vercel deploy failed, through your own Vercel tool, only reading. Off, they look only at the project.", also: ["vercel", "deploy", "log", "rescue", "build", "online"] },
     "rescue.readCiRun": { label: "Read my last failed GitHub run when looking for a problem", help: `Rescue reads why your latest GitHub Actions run failed, through your own GitHub tool (gh), only reading. Off, it does not look. ${PRODUCT} never holds your GitHub sign in, and never changes anything there.`, also: ["github", "ci", "actions", "run", "log", "rescue", "build"] },
     "watch.on": { label: "Watch routines", help: `Checks you set up for a project, such as whether your site answers or your last deploy worked, run on their schedule while ${PRODUCT} is open. They only read, they never use Claude, and they stop when you press Stop everything. Off, nothing is checked on a schedule, and Check now still works.`, also: ["watch", "monitor", "uptime", "alert", "schedule", "site", "deploy", "ci"] },
@@ -1342,8 +1381,8 @@ export const S = {
   },
   // The fixed part of a setting that can never change, shown under its row, by the id its definition names (floor).
   floors: {
-    islandOff: `With the island off, Home opens beside the character and its keys still open it. Before ${PRODUCT} looks at your screen or listens, the character lights up, and before it reads your text, Home opens.`,
-    needsMarked: "A question a task waits on opens Now, unless you are typing in Home: then Now gets a dot instead, and VoiceOver says it. Prompt help, the error explainer and Second Look you start always open Now too. Anything else that needs you puts a dot on its tab and a mark on the island, or on the character when the island is off, and is said out loud when Speak to me is on.",
+    islandOff: `With the notch off, Home opens beside the character and its keys still open it. Before ${PRODUCT} looks at your screen or listens, the character lights up, and before it reads your text, Home opens.`,
+    needsMarked: "A question a task waits on opens Now, unless you are typing in Home: then Now gets a dot instead, and VoiceOver says it. Prompt help, the error explainer and Second Look you start always open Now too. Anything else that needs you puts a dot on its tab and a mark on the notch, or on the character when the notch is off, and is said out loud when Speak to me is on.",
     budgetDay: "Never more than what is left of today's daily spending limit.",
     rulesStricter: `House rules can only add care: ${PRODUCT_S} own safety rules always apply, and no reset ever removes a rule.`,
     pressNeverRisky: "A button whose words sound like it sends, pays, deletes or publishes is never pressed, whatever this says.",
@@ -1368,6 +1407,27 @@ export const S = {
   // Puts back the character's edge, its position along it and Same place on every display together.
   setResetPlace: "Put the character back in its usual place",
   // The parts of Settings that are not settings, found by the search too.
+  // Google (M21, google.rs): sign in with Google, and connect Gmail, Calendar and Drive. Plain words; Google's page opens in
+  // the person's own browser, never here.
+  google: {
+    notSetUp: "Google isn't available in this version yet.",
+    signInTitle: "Your account",
+    signInLine: "Sign in with Google to have a Squibby account. Your own Claude key keeps working without one.",
+    signIn: "Sign in with Google",
+    signOut: "Sign out",
+    signedIn: (name: string, email: string) => (name ? `${name}, ${email}` : email),
+    connectTitle: "Connections",
+    connectLine: "Connect a Google account so Squibby can use Gmail, Calendar or Drive when you ask. Sending an email, adding an event or sharing a file always waits for your OK.",
+    apps: { gmail: "Gmail", calendar: "Calendar", drive: "Drive" } as Record<string, string>,
+    appLines: { gmail: "Search, read and draft emails (never sends on its own)", calendar: "See your events, find a free time, add an event after you OK it", drive: "Read the files you open or pick with Squibby" } as Record<string, string>,
+    label: "Name it (Work, Personal)",
+    connect: "Connect a Google account",
+    waiting: "Finish in your browser. Google's own page is open there.",
+    disconnect: "Disconnect",
+    none: "No Google account connected yet.",
+    failed: (why: string) => `Not connected: ${why}`,
+    busy: "A Google sign in is already open in your browser.",
+  },
   // The headings of the Settings side list (settingsGroups.ts).
   setGroups: { companion: "Character", powers: "Powers", mac: "Your Mac", account: "Account", more: "More" } as Record<string, string>,
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
@@ -1379,6 +1439,7 @@ export const S = {
   fixedGroups: {
     permissions: { title: `What ${PRODUCT} may do on this Mac`, also: ["permission", "accessibility", "screen recording", "microphone", "privacy"] },
     key: { title: "Your Claude key", also: ["api key", "anthropic", "keychain", "account"] },
+    google: { title: "Google", also: ["google", "sign in", "account", "gmail", "email", "calendar", "drive", "docs", "connect", "connections"] },
     practice: { title: "Practice", also: ["sample", "try", "learn"] },
     made: { title: `What ${PRODUCT} made`, also: ["new folder", "new folders", "made", "folders", "trash", "remove", "delete", "clean up", "projects", "make me something"] },
     kept: { title: `What ${PRODUCT} keeps on this Mac`, also: ["delete everything", "data", "storage", "erase", "privacy"] },
