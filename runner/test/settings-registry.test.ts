@@ -47,7 +47,7 @@ describe("the shipped list of settings", () => {
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
-      "character.peek": true, "character.peekIdle": false,
+      "character.peek": false, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
       "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
@@ -78,7 +78,7 @@ describe("the shipped list of settings", () => {
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
       // M19: make it yours.
-      "look.water": "ocean", "look.theme": "night", "character.follow": "eyes", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "look.water": "ocean", "look.theme": "night", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
       "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
     };
