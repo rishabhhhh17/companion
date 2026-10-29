@@ -23,7 +23,7 @@ export function gazeOf(dx: number, dy: number, span = GAZE_SPAN): { nx: number; 
 }
 /** How far the body lags behind its window per point a second of the window's speed (world units), and the most it lags. */
 export const PUSH_PER = 0.0011;
-export const PUSH_MAX = 0.55;
+export const PUSH_MAX = 0.2;   // M29: it leans a little as its window moves, never smears
 /** Life when nothing happens (Lively): something small every few seconds, on the seeded schedule (the same every run). */
 export const HOP_EVERY = [4, 8] as const;
 export const HOP_S = 0.5;

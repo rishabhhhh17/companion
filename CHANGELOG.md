@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Fixes from the founder's own screen: 29 Oct 2026
+
+- **Flowflow is firmer and clearer.** No more squashed, bulgy jelly: it leans and settles instead of smearing, its surface is smooth, it renders sharp, and its eyes are bigger.
+- **The drop that follows your pointer keeps up.** It sticks to the pointer (it catches up in about a tenth of a second) and stays a crisp little droplet instead of stretching into a blob.
+- **The file menu around Flowflow looks finished.** Neat dark glass buttons that read on any wallpaper, lime when you point at one, and a smaller close button.
+- **Buttons you can't press right now are a calm grey,** not a muddy faded lime.
+- **Nothing shows through the Stop button** at the bottom of Home any more.
+
 ## Clearer, calmer, nothing half finished: 29 Oct 2026
 
 - **Questions say exactly what will happen.** When Squibby needs your OK, the card asks a plain question ("Install something?", "Change your project's Git history?"), shows the exact command or file, says why, and tells you whether Undo can take it back. The same in the notch.

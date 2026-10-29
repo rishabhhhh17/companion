@@ -1059,8 +1059,11 @@ fn follow_loop(app: AppHandle) {
         last = now;
         let p = macos_see::pointer();
         if p.x < 0.0 && p.y < 0.0 { continue; }
+        let before = d.frame();
         d.step((p.x, p.y), dt);
         let (fr, first) = (d.frame(), !shown);
+        // Still: nothing to move (no work for the main thread while the pointer rests).
+        if !first && (fr[0] - before[0]).abs() < 0.25 && (fr[1] - before[1]).abs() < 0.25 { continue; }
         shown = true;
         let _ = app.run_on_main_thread(move || {
             let Some(mtm) = MainThreadMarker::new() else { return };
@@ -1070,7 +1073,7 @@ fn follow_loop(app: AppHandle) {
                 if first { pn.orderFrontRegardless(); }
             } });
         });
-        if tick % 3 == 0 { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); }
+        if tick % 2 == 0 { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); }
     }
 }
 

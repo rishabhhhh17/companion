@@ -67,9 +67,10 @@ export type BodyPose = {
   speed: number;
 };
 
-const MAX_STRETCH = 0.38;
+// M29 (the founder: "I don't want bulgy water"): a firm droplet that leans and settles, never a squashed jelly.
+const MAX_STRETCH = 0.12;
 /** The most it may squash (+) or rebound (-). Hits stack, and at 1 the shape would fold flat, so it stops here and loses that energy. */
-export const MAX_SQUASH = 0.45;
+export const MAX_SQUASH = 0.14;
 
 export class SoftBody {
   private px: Spring; private py: Spring;
@@ -100,7 +101,7 @@ export class SoftBody {
     const f = (hz: number) => Math.min(MAX_HZ, hz * Math.sqrt(s) * sp);
     const z = (zeta: number) => Math.min(2.5, zeta * d);
     this.px.set(f(1.6), z(0.62)); this.py.set(f(1.6), z(0.62));
-    this.stretchS.set(f(5), z(0.55)); this.squashS.set(f(3.2), z(0.22)); this.leanS.set(f(3), z(0.5));
+    this.stretchS.set(f(5), z(0.55)); this.squashS.set(f(3.2), z(0.55)); this.leanS.set(f(3), z(0.5));
     this.w2.set(f(5.5), z(0.16)); this.w3.set(f(8.5), z(0.2)); this.contactS.set(f(3.2), z(0.6));
   }
 
@@ -115,9 +116,9 @@ export class SoftBody {
   /** A sudden event: land (squash then rebound), poke (a dent at a point), burst (every wobble mode shaken). */
   impulse(kind: "land" | "poke" | "burst", strength = 1, x = 0, y = 0): void {
     const s = Math.max(0, Math.min(2, strength));
-    if (kind === "land") { this.squashS.v += 3.2 * s; this.w2.v += 1.2 * s; }
-    else if (kind === "poke") { this.cx = x; this.cy = y; this.contactS.v += 5 * s; this.w2.v += 0.8 * s; this.squashS.v += 0.9 * s; }
-    else { this.w2.v += 2.4 * s; this.w3.v += 1.6 * s; this.squashS.v -= 1.2 * s; }
+    if (kind === "land") { this.squashS.v += 2.6 * s; this.w2.v += 0.45 * s; }
+    else if (kind === "poke") { this.cx = x; this.cy = y; this.contactS.v += 2.5 * s; this.w2.v += 0.3 * s; this.squashS.v += 0.4 * s; }
+    else { this.w2.v += 0.9 * s; this.w3.v += 0.6 * s; this.squashS.v -= 0.5 * s; }
   }
 
   /** Move the body on by dt seconds. Fixed slices inside, so the result does not depend on the frame rate. */
@@ -132,7 +133,7 @@ export class SoftBody {
     const vx = this.px.v, vy = this.py.v, speed = Math.hypot(vx, vy);
     if (speed > 0.02) { this.dirX = vx / speed; this.dirY = vy / speed; }
     // Stretch along the movement; slowing down sharply squashes it, and it rebounds.
-    this.stretchS.step(h, Math.min(MAX_STRETCH, speed * 0.16));
+    this.stretchS.step(h, Math.min(MAX_STRETCH, speed * 0.06));
     const slowing = (this.lastSpeed - speed) / h;
     if (slowing > 3.5) { this.squashS.v += Math.min(2, (slowing - 3.5) * 0.03) * Math.min(1, this.lastSpeed); }
     this.lastSpeed = speed;

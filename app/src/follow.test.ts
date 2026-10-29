@@ -3,11 +3,11 @@ import { readFileSync } from "node:fs";
 import { dropLook } from "./follow.ts";
 
 describe("the drop that follows the pointer", () => {
-  test("round when still or slow, stretched along the way it goes when fast", () => {
+  test("a crisp droplet at every speed, never squashed or stretched (M29); moving fast its point trails behind", () => {
     expect(dropLook(0, 0)).toEqual({ angle: 0, sx: 1, sy: 1 });
-    expect(dropLook(10, 10)).toEqual({ angle: 0, sx: 1, sy: 1 });
+    expect(dropLook(200, 10)).toEqual({ angle: 0, sx: 1, sy: 1 });
     const fast = dropLook(1200, 0);
-    expect(fast.sy).toBeGreaterThan(1); expect(fast.sx).toBeLessThan(1);
+    expect(fast.sy).toBe(1); expect(fast.sx).toBe(1);
     expect(fast.angle).toBeCloseTo(-90, 5);   // moving right: the pointed top turns to stream back to the left
     expect(dropLook(0, 900).angle).toBeCloseTo(0, 5);   // moving down: the point trails above
     expect(dropLook(NaN, 3)).toEqual({ angle: 0, sx: 1, sy: 1 });

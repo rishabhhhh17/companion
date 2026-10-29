@@ -7,15 +7,16 @@
 //! The spring is plain code here, so it can be tested: it settles beside the pointer, never runs away, and jumps straight
 //! there the first time or after the pointer leaps (another display).
 
-/// How often the drop moves (milliseconds): about sixty times a second.
-pub const TICK_MS: u64 = 16;
+/// How often the drop moves (milliseconds): about 120 times a second, so it keeps up with a ProMotion screen (M29).
+pub const TICK_MS: u64 = 8;
 /// The drop's window, square, in points.
 pub const SIZE: f64 = 44.0;
 /// Where the drop rests from the pointer's tip: a little below and to the right, never under it.
 pub const OFFSET: (f64, f64) = (16.0, 18.0);
-/// The spring: stiffness and damping per second (a touch under critical, so it wobbles once as it settles).
-pub const K: f64 = 170.0;
-pub const C: f64 = 20.0;
+/// The spring (M29, the founder: "there is a lag to it"): stiff and just under critical damping, so the drop sticks to the
+/// pointer, catching up in about a tenth of a second, with no wobble when it stops.
+pub const K: f64 = 1600.0;
+pub const C: f64 = 76.0;
 /// The fastest it may go (points a second) and the leap that makes it jump instead of fly (points).
 pub const MAX_SPEED: f64 = 6_000.0;
 pub const LEAP: f64 = 900.0;
@@ -89,6 +90,16 @@ mod tests {
         assert!((d.x - (1195.0 + OFFSET.0)).abs() < 0.5);
     }
 
+    #[test]
+    fn it_keeps_up_with_the_pointer_with_no_lag_you_can_see() {
+        let mut d = Drop::default();
+        d.step((100.0, 100.0), 0.008);
+        for _ in 0..19 { d.step((300.0, 100.0), 0.008); }   // 0.15 s after the pointer moved 200 points
+        assert!((d.x - (300.0 + OFFSET.0)).abs() < 6.0, "{d:?}");
+        let mut over: f64 = 0.0;
+        for _ in 0..100 { d.step((300.0, 100.0), 0.008); over = over.max(d.x - (300.0 + OFFSET.0)); }
+        assert!(over < 3.0, "it does not wobble past where it stops: {over}");
+    }
     #[test]
     fn a_leap_to_another_display_jumps_instead_of_flying_across() {
         let mut d = Drop::default();
