@@ -220,6 +220,7 @@ export const S = {
   restartedStopped: `${PRODUCT} restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.`,
   notConnectedNotice: "Add your Claude key to start fixing things.",
   addYourKey: "Add your key",
+  followDone: "Fixed. Checks pass.",
   // M28: the second level of Settings.
   advancedTitle: "Advanced",
   // M30: Settings as a few pages, each a title and one line, and each main setting one short line (settingsPages.ts).
@@ -326,6 +327,9 @@ export const S = {
     // The hello with nothing running (M17): "Hey. What are we finishing?"
     hiLead: "Hey. What are we",
     hiWord: "finishing",
+    // M33: the notch's greeting and how to talk, as HeyClicky greets ("Evening, Rishabh.").
+    morning: "Morning", afternoon: "Afternoon", evening: "Evening", hi: "Hi",
+    talkLine: "Hold {keys} and tell me what to fix.",
     open: `Open ${PRODUCT}`,
     label: `${PRODUCT}: what is happening`,
     needsYou: "Needs your OK. Look at it first.",

@@ -810,7 +810,8 @@ function Card() {
   useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
   const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
     if (!projectRef.current || asked.current || !toolOn("explain")) return;
-    const cmd = askDiagram(projectRef.current, question, problem);
+    // M33: with no problem on screen, Draw it draws a picture of the question (HeyClicky style); with one, the diagram.
+    const cmd = askDiagram(projectRef.current, question, problem, problem ? undefined : "sketch");
     asked.current = true; askedId.current = (cmd as { id: string }).id; dispatch({ type: "ui.diagramAsked", ask: (cmd as { id: string }).id, project: projectRef.current });
     void sendOrExplain(cmd, () => { asked.current = false; dispatch({ type: "ui.diagramClosed" }); });
   };
@@ -821,6 +822,10 @@ function Card() {
       // An answer to an earlier ask (before Stop, or before the project changed) is not this ask's answer.
       if (ev.ask && ev.ask !== askedId.current) return;
       asked.current = false;
+      if (ev.made && (ev as { sketch?: unknown }).sketch && ev.project === projectRef.current) {
+        void invoke("show_diagram", { diagram: { sketch: (ev as { sketch: unknown }).sketch } }).catch((err) => dispatch({ type: "ui.diagramFailed", reason: String(err) === "busy" ? "Something else is pointing at the screen right now. Try again in a moment." : "I could not show that on your screen. Try again." }));
+        return;
+      }
       if (ev.made && ev.diagram && ev.project === projectRef.current) {
         const laid = layoutDiagram(ev.diagram, 720);
         void invoke("show_diagram", { diagram: { ...laid, caption: ev.diagram.caption, reason: ev.diagram.broken.reason } }).catch((err) => dispatch({ type: "ui.diagramFailed", reason: String(err) === "busy" ? "Something else is pointing at the screen right now. Try again in a moment." : "I could not show that on your screen. Try again." }));
@@ -1184,6 +1189,9 @@ function Card() {
   // Settings lives inside Home (M20, the founder: not in a separate window): the gear, Command comma and the notch's
   // Settings button all open it here.
   const gear = () => pickTab("settings");
+  // M33: a fix just proven is said beside the pointer too (the drop that follows it), as HeyClicky announces at the cursor.
+  const provenAt = m.receipt?.proof === "passed" && !m.receipt.gone ? m.receipt.checkpoint : null;
+  useEffect(() => { if (provenAt) void invoke("follow_say", { text: S.followDone }).catch(() => {}); }, [provenAt]);
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
   useEffect(() => {

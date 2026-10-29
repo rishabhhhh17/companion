@@ -1042,6 +1042,7 @@ fn follow_loop(app: AppHandle) {
     let (mut shown, mut want, mut tick) = (false, false, 0u64);
     let mut water = Value::Null;
     let mut last = std::time::Instant::now();
+    let mut last_fr = [f64::NAN; 4];
     loop {
         std::thread::sleep(Duration::from_millis(follow::TICK_MS));
         if tick % 30 == 0 { want = follow::wanted(&setting_now("character.follow")); water = setting_now("look.water"); }
@@ -1059,17 +1060,19 @@ fn follow_loop(app: AppHandle) {
         last = now;
         let p = macos_see::pointer();
         if p.x < 0.0 && p.y < 0.0 { continue; }
-        let before = d.frame();
         d.step((p.x, p.y), dt);
-        let (fr, first) = (d.frame(), !shown);
-        // Still: nothing to move (no work for the main thread while the pointer rests).
-        if !first && (fr[0] - before[0]).abs() < 0.25 && (fr[1] - before[1]).abs() < 0.25 { continue; }
+        let saying = { let mut g = FOLLOW_SAY.lock().unwrap_or_else(|e| e.into_inner()); if g.as_ref().is_some_and(|(_, at)| at.elapsed() > Duration::from_millis(follow::SAY_MS)) { *g = None; let _ = app.emit_to("follow", "follow-say", json!({ "text": "" })); } g.is_some() };
+        let (fr, first) = (if saying { d.frame_saying() } else { d.frame() }, !shown);
+        // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
+        if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
+        last_fr = fr;
         shown = true;
         let _ = app.run_on_main_thread(move || {
             let Some(mtm) = MainThreadMarker::new() else { return };
             let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
             FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
-                pn.setFrameOrigin(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3])));
+                if (pn.frame().size.width - fr[2]).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3])), NSSize::new(fr[2], fr[3])), true); }
+                else { pn.setFrameOrigin(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3]))); }
                 if first { pn.orderFrontRegardless(); }
             } });
         });
@@ -1660,6 +1663,21 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     if let Some(line) = groups::refuse_runner(&group_off, &cmd) { return Err(line.into()); }
     app.state::<runner::Runner>().send(&cmd)
 }
+
+/// M33: a short line beside the pointer (a fix just proven), said by the drop that follows it, for follow::SAY_MS. Never
+/// during a call or screen sharing (quiet), and only while the drop is shown.
+static FOLLOW_SAY: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
+#[tauri::command]
+fn follow_say(app: AppHandle, text: String) {
+    let Some(line) = follow::say_line(&text) else { return };
+    if quiet() || companion_hidden() { return; }
+    *FOLLOW_SAY.lock().unwrap_or_else(|e| e.into_inner()) = Some((line.clone(), std::time::Instant::now()));
+    let _ = app.emit_to("follow", "follow-say", json!({ "text": line }));
+}
+
+/// M33: the first name for the notch's greeting, from this Mac's account (island::first_name). Read on this Mac only.
+#[tauri::command]
+fn first_name() -> Option<String> { island::first_name(&objc2_foundation::NSFullUserName().to_string()) }
 
 /// M28: Home's Restart, beside "Squibby keeps stopping": the engine starts again now (runner.rs Runner::retry).
 #[tauri::command]
@@ -4255,7 +4273,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, first_name, follow_say, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

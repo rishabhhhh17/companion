@@ -115,8 +115,8 @@ export const fixFound = (project: string, found: { label?: string; detail?: stri
   return o.practice ? { ...c, model: DEFAULT_MODEL, budgetUsd: PRACTICE_BUDGET_USD, practice: o.practice } : c;
 };
 // Draw it for me: why did this break, as a small diagram (from the project and the failing place, never the screen).
-export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }): Command =>
-  ({ v: 1, id: id(), type: "diagram.ask", project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
+export const askDiagram = (project: string, question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }, style?: "sketch"): Command =>
+  ({ v: 1, id: id(), type: "diagram.ask", ...(style ? { style } : {}), project, question: question.replace(/\s+/g, " ").trim().slice(0, 300) || "Why did this break?", ...(problem ? { problem: { ...(problem.kind ? { kind: problem.kind } : {}), ...(problem.file ? { file: problem.file } : {}), ...(typeof problem.line === "number" ? { line: problem.line } : {}), ...(problem.message ? { message: problem.message } : {}) } } : {}) });
 
 // Show me what changed: the first changed line, opened and rung the same way Point at the problem does (point_problem in
 // Rust: the editor at that line, the light on first, a solid ring only where the line is confirmed on screen).

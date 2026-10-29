@@ -138,3 +138,14 @@ describe("work cards drop from the notch on each change (M26)", () => {
     expect(read("./island.tsx")).toContain('useSetting("island.showWork") !== false');
   });
 });
+
+import { greeting } from "./islandPanel.ts";
+describe("the notch greets you (M33)", () => {
+  test("by the time of day, with your first name when the Mac has one", () => {
+    expect(greeting(8, "Rishabh")).toBe("Morning, Rishabh.");
+    expect(greeting(14, "Rishabh")).toBe("Afternoon, Rishabh.");
+    expect(greeting(19, null)).toBe("Evening.");
+    expect(greeting(23, "Rishabh")).toBe("Hi, Rishabh.");
+    expect(greeting(3, null)).toBe("Hi.");
+  });
+});

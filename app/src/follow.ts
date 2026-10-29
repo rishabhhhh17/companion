@@ -24,4 +24,11 @@ if (el) {
     st.setProperty("--a", `${l.angle}deg`); st.setProperty("--sx", String(l.sx)); st.setProperty("--sy", String(l.sy));
     st.setProperty("--mid", t.mid); st.setProperty("--deep", t.deep);
   });
+  // M33: a short line beside the pointer when work is proven (the shell widens the window to the right for it).
+  const say = document.getElementById("say");
+  void listen("follow-say", (e) => {
+    const text = String((e.payload as { text?: unknown } | null)?.text ?? "");
+    if (say) say.textContent = text;
+    if (text) document.documentElement.setAttribute("data-saying", ""); else document.documentElement.removeAttribute("data-saying");
+  });
 }

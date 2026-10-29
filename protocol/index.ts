@@ -101,7 +101,7 @@ export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
 export type ProblemFind = Envelope & { type: "problem.find"; project: string; agent: string };
-export type DiagramAsk = Envelope & { type: "diagram.ask"; project: string; question: string; problem?: { kind?: string; file?: string; line?: number; message?: string } };
+export type DiagramAsk = Envelope & { type: "diagram.ask"; project: string; question: string; problem?: { kind?: string; file?: string; line?: number; message?: string }; /** M33: a drawn picture (sketch.ts) instead of boxes and arrows. */ style?: "sketch" };
 export type ProjectInspect = Envelope & { type: "project.inspect"; project: string };
 export type ProjectInstall = Envelope & { type: "project.install"; project: string };
 export type ProjectClone = Envelope & { type: "project.clone"; url: string; parent: string };
@@ -277,7 +277,7 @@ export type ProjectReportEvent = Envelope & { type: "project.report"; project: s
 export type ProjectInstallEvent = Envelope & { type: "project.install"; project: string; stage: "installing" | "done" | "failed" | "cancelled"; detail: string };
 export type ProjectCloned = Envelope & { type: "project.cloned"; url: string; ok: boolean; path?: string; detail: string };
 // The diagram is data: the page lays it out and the overlay draws it. made: false means none could be made.
-export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; ask?: string; made: boolean; reason?: string; diagram?: { nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[]; broken: { node: string; reason: string } | { edge: [string, string]; reason: string }; caption: string }; usdEstimate?: number };
+export type DiagramReady = Envelope & { type: "diagram.ready"; project: string; ask?: string; made: boolean; reason?: string; diagram?: { nodes: { id: string; label: string }[]; edges: { from: string; to: string; label?: string }[]; broken: { node: string; reason: string } | { edge: [string, string]; reason: string }; caption: string }; usdEstimate?: number; /** M33: a drawn picture, checked (runner/src/sketch.ts). */ sketch?: { title: string; caption: string; shapes: Record<string, unknown>[] } };
 // fromProject: made from this project's own setting names (runner/src/lessongen.ts), not a lesson file.
 export type WalkLessons = Envelope & { type: "walk.lessons"; project: string; lessons: { id: string; title: string; app: string; goal: string; status: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean }[]; problems?: number };
 // already: after a pause, the person is first asked "Did you already do this?" and nothing is pointed at until they answer
@@ -415,7 +415,7 @@ const COMMANDS: Record<string, Check[]> = {
   "auth.check": [],
   "doctor.check": [],
   "problem.find": [str("project"), str("agent")],
-  "diagram.ask": [str("project"), str("question")],
+  "diagram.ask": [str("project"), str("question"), opt("style", oneOf("style", ["sketch"]))],
   "metrics.set": [bool("enabled")],
   "metrics.note": [str("name")],
   "metrics.show": [],

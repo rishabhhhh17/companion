@@ -21,6 +21,15 @@ pub const C: f64 = 76.0;
 pub const MAX_SPEED: f64 = 6_000.0;
 pub const LEAP: f64 = 900.0;
 
+/// M33: how wide the window grows to say a short line beside the pointer, and how long a line stays.
+pub const SAY_W: f64 = 260.0;
+pub const SAY_MS: u64 = 3_500;
+/// A line said beside the pointer: kept short so it fits in one line of the bubble.
+pub fn say_line(text: &str) -> Option<String> {
+    let t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!t.is_empty() && t.chars().count() <= 40).then_some(t)
+}
+
 /// Whether the drop is wanted: only with A drop of water chosen.
 pub fn wanted(v: &serde_json::Value) -> bool { v.as_str() == Some("drop") }
 
@@ -50,6 +59,9 @@ impl Drop {
     }
     /// The window's frame for the drop now (global top left points).
     pub fn frame(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SIZE, SIZE] }
+    /// M33: while it says something beside the pointer, the window widens to the right to hold the words; the drop stays
+    /// exactly where it was, at the left of the window.
+    pub fn frame_saying(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SAY_W, SIZE] }
 }
 
 #[cfg(test)]
@@ -126,5 +138,15 @@ mod tests {
         let make = &main[main.find("let follow_w = ").unwrap()..];
         assert!(make[..make.find(";\n").unwrap()].contains("\"follow\""));
         assert!(main.contains("FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.setSharingType(t); } });"), "it hides from screen sharing like the rest");
+    }
+
+    #[test]
+    fn a_line_beside_the_pointer_is_short_and_the_drop_does_not_move() {
+        assert_eq!(say_line("  Fixed.   Checks pass. ").as_deref(), Some("Fixed. Checks pass."));
+        assert_eq!(say_line(""), None);
+        assert_eq!(say_line(&"x".repeat(41)), None);
+        let d = Drop { x: 100.0, y: 50.0, vx: 0.0, vy: 0.0, placed: true };
+        assert_eq!(&d.frame_saying()[..2], &d.frame()[..2]);
+        assert_eq!(d.frame_saying()[2], SAY_W);
     }
 }

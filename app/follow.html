@@ -5,5 +5,8 @@
 .drop i{position:absolute;top:40%;width:4.5px;height:5.5px;border-radius:50%;background:radial-gradient(circle at 55% 58%,#0d2240 0 42%,#fff 46%)}
 .drop i:first-child{left:26%}.drop i:last-child{right:26%}
 @media (prefers-reduced-motion:reduce){.drop{transition:none;transform:none}}
-:root[data-less-motion] .drop{transition:none;transform:none}</style></head>
-<body><div class="drop" id="d" aria-hidden="true"><i></i><i></i></div><script type="module" src="/src/follow.ts"></script></body></html>
+:root[data-less-motion] .drop{transition:none;transform:none}html[data-saying] .drop{left:22px}
+.say{position:absolute;left:40px;top:50%;transform:translateY(-50%);max-width:210px;white-space:nowrap;padding:6px 12px;border-radius:999px;background:linear-gradient(180deg,#ffffff,#d9dde3 55%,#f4f6f8);color:#0A0A0B;font:600 12.5px/1 -apple-system,"SF Pro Text",system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 #fff;opacity:0;transition:opacity 160ms cubic-bezier(.23,1,.32,1)}
+html[data-saying] .say{opacity:1}
+@media (prefers-reduced-motion:reduce){.say{transition:none}}</style></head>
+<body><div class="drop" id="d" aria-hidden="true"><i></i><i></i></div><div class="say" id="say" role="status" aria-live="polite"></div><script type="module" src="/src/follow.ts"></script></body></html>

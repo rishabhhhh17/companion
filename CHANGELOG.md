@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Pictures, a hello, and a word at your pointer: 29 Oct 2026
+
+- **Draw it draws real pictures.** Ask it to explain something and Squibby draws a friendly picture on a sheet of dotted paper, with a handwritten title, stroke by stroke the way a hand would, then a caption underneath. When there's a problem on screen it still draws the diagram of what broke.
+- **The notch says hello.** Hovering the notch greets you by name for the time of day ("Evening, Rishabh.") and tells you which keys to hold to talk.
+- **A word at your pointer.** When a fix is proven, the little Flowflow following your pointer says "Fixed. Checks pass." for a few seconds. Never during a call.
+
 ## Chrome on black: 29 Oct 2026
 
 - **Squibby is polished silver now.** Every main button (Fix something, Allow, Start, the first run's keys) is glossy chrome on black, with a bright top edge like cast metal. Big titles get a chrome sheen, the mark in the notch is chrome, and the pointer's usual ring and captions are silver. Lime is gone.

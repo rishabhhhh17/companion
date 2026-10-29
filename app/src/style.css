@@ -960,3 +960,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel { --lime-hi: #ffffff; --lime-lo: #7d838c; --lime-ink: #0A0A0B; }
 .drop-item:hover, .drop-item:focus-visible { background-color: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; }
 .setting button[role="switch"][aria-checked="true"] { background-image: var(--chrome); }
+
+/* M33: the notch's hello, as HeyClicky greets: a bold chrome line and one quiet line on how to talk. */
+.island-panel .ip-hello { display: grid; gap: 4px; text-align: center; padding: 6px 0 2px; }
+.island-panel .ip-hello .ip-hi { margin: 0; font: 700 22px/1.15 -apple-system, "SF Pro Display", system-ui, sans-serif; letter-spacing: -0.01em; background-image: var(--chrome-text); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.island-panel .ip-hello .ip-talk { margin: 0; font-size: 13px; color: #A1A1A6; }
