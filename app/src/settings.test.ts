@@ -167,7 +167,7 @@ describe("the Keys section in Settings", () => {
   test("one row for every job, in the order the hints use, with its name and the keys it uses now", () => {
     const rows = keyRows(KEYS_START);
     expect(rows.map((r) => r.job)).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"]);
-    expect(rows.map((r) => r.name)).toEqual(["Open the ask box", "Point at the problem", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Second Look", "Hold to talk", "Stop everything"]);
+    expect(rows.map((r) => r.name)).toEqual(["Open Home", "Point at the problem", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Second Look", "Hold to talk", "Stop everything"]);
     expect(rows[0].keys).toBe("Control, Option, Command and K");
     expect(rows.find((r) => r.job === "talk")!.keys).toBe("Option and Space");
     expect(rows.filter((r) => r.problem)).toEqual([]);

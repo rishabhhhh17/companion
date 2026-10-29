@@ -23,6 +23,7 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
+import { ADVANCED_PLACE, levelSections } from "./settingsLevel.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
@@ -724,7 +725,7 @@ export const placeShown = (fixed: string, google = googleShown): boolean => fixe
 
 export function settingsPlaces(): { id: string; title: string }[] {
   const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
-  return [...all.sections.map((s) => ({ id: s.id, title: s.title })), ...all.fixed.filter((g) => placeShown(g)).map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title }))];
+  return [...levelSections(all.sections, false).map((s) => ({ id: s.id, title: s.title })), ...all.fixed.filter((g) => placeShown(g)).map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title })), { id: ADVANCED_PLACE, title: S.advancedTitle }];
 }
 
 // place: the part open in the side list. A search looks through every part, as before.
@@ -811,8 +812,12 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
   const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const onePart = !q && !!place;
-  const fixedShown = (g: FixedGroup) => results.fixed.includes(g) && placeShown(g) && (!onePart || place === `fixed:${g}`);
-  const sectionsShown = onePart ? results.sections.filter((s) => s.id === place) : results.sections;
+  // M28: the main Settings shows the main choices; Advanced shows every other one, grouped as before; search finds all.
+  const advanced = !q && place === ADVANCED_PLACE;
+  const mainSections = levelSections(results.sections, false);
+  const mainIds = new Set(mainSections.map((s) => s.id));
+  const fixedShown = (g: FixedGroup) => !advanced && results.fixed.includes(g) && placeShown(g) && (!onePart || place === `fixed:${g}`);
+  const sectionsShown = q ? results.sections : advanced ? levelSections(results.sections, true) : onePart ? mainSections.filter((s) => s.id === place) : mainSections;
   // The character's place (its edge, its position and Same place on every display) put back with one press.
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
   const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
@@ -859,7 +864,8 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart} />)}
+      {advanced && <div className="line muted">{S.advancedHelp}</div>}
+      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={advanced && mainIds.has(s.id) ? undefined : extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart && !advanced} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
       {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
