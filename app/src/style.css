@@ -928,11 +928,20 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sp-text b { font-weight: 600; font-size: var(--t-body); color: var(--fg); }
 .sp-text span { font-size: var(--t-small); color: var(--muted); line-height: 1.35; }
-.sp-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
-.sp-swatch { width: calc(26rem / 14); min-height: calc(26rem / 14); padding: 0; border: 0; border-radius: 50%; background: radial-gradient(circle at 38% 30%, #ffffff 0 9%, var(--pick) 46%, var(--pick-deep)); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); cursor: pointer; transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
-.sp-swatch:hover { transform: scale(1.08); }
-.sp-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); }
-.sp-swatch:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+/* M35: the character picks, one card per water with the live water in it. They sit under the row's name. */
+.sp-row:has(> .sp-picks) { flex-wrap: wrap; row-gap: var(--space-3); }
+.sp-row:has(> .sp-picks) > :first-child { flex: 1 1 100%; }
+.sp-picks { flex: 1 1 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(96rem / 14), 1fr)); gap: var(--space-2); }
+.sp-pick { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; padding: var(--space-2) var(--space-2) var(--space-3); border: 0; border-radius: var(--r-lg); background: color-mix(in srgb, var(--fg) 5%, transparent); color: var(--fg); font: inherit; text-align: center; cursor: pointer; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent); transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out), background-color 160ms var(--ease-out); }
+.sp-pick:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.sp-pick:active { transform: scale(.97); }
+.sp-pick:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.sp-pick[aria-checked="true"] { box-shadow: inset 0 0 0 2px var(--fg); }
+.sp-pick-stage { display: grid; place-items: center; width: 100%; aspect-ratio: 1.25; border-radius: var(--r-md); background: radial-gradient(120% 90% at 50% 100%, color-mix(in srgb, var(--pick-deep) 45%, transparent), transparent 70%); }
+.sp-pick-flow { width: 62%; }
+img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
+.sp-pick b { font-size: var(--t-small); font-weight: 650; }
+.sp-pick > span:last-child { font-size: var(--t-small); color: var(--muted); line-height: 1.3; }
 
 .home[data-view="settings"] .panel.settings > .row[role="search"] { margin-bottom: var(--space-3); }
 .home[data-view="settings"] .panel.settings > .row[role="search"] input { min-height: calc(30rem / 14); padding: 0 var(--space-3); border-radius: var(--r-md); border: 0; background: color-mix(in srgb, var(--fg) 7%, var(--bg)); color: var(--fg); font-size: var(--t-small); }
@@ -977,6 +986,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 :root.home-page:not([data-theme="paper"]) .sp-nav:hover { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
 :root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(0, 0, 0, .25), 0 2px 0 #4E535A; }
 :root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] svg { opacity: 1; }
+:root.home-page:not([data-theme="paper"]) .sp-pick[aria-checked="true"] { box-shadow: inset 0 0 0 2px #E9ECF1, 0 0 0 1px #5C6168, 0 6px 18px rgba(0, 0, 0, .45); background: linear-gradient(180deg, #24272D 0%, #16181C 100%); }
+:root.home-page:not([data-theme="paper"]) .companion-hero .ch-states button[aria-pressed="true"], :root.home-page:not([data-theme="paper"]) .ch-lively button[aria-pressed="true"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), inset 0 -1px 0 rgba(0, 0, 0, .2); }
 :root.home-page:not([data-theme="paper"]) .sp-group-head { color: var(--muted); }
 :root.home-page:not([data-theme="paper"]) .sp-head p { color: var(--muted); }
 :root.home-page:not([data-theme="paper"]) .sp-card { background: linear-gradient(180deg, #1C1E23 0%, #131418 100%); box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .16), inset 0 1px 0 rgba(255, 255, 255, .12), 0 10px 30px rgba(0, 0, 0, .35); }

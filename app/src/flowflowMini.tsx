@@ -5,20 +5,22 @@
 // that is not on screen, or a small mark that should not pull the eye).
 import { Suspense, lazy, useEffect, useState } from "react";
 import { poseFor, poseUrl } from "./characters.ts";
-import { flowColours, waterOf } from "./lookfeel.ts";
+import { flowColours, hueTurn, waterOf, type Water } from "./lookfeel.ts";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
 import { useSetting } from "./settingsStore.ts";
 
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
 
-export function FlowMini({ state, className, still }: { state: CharacterState; className: string; still?: boolean }) {
+/** `water`: show this water colour instead of the chosen one (the character picks in Settings, M35). */
+export function FlowMini({ state, className, still, water }: { state: CharacterState; className: string; still?: boolean; water?: Water }) {
   const liveOn = useSetting("character.live") === true;
-  const colours = flowColours(waterOf(useSetting("look.water")));
+  const chosen = waterOf(useSetting("look.water"));
+  const colours = flowColours(water ?? chosen);
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   const [failed, setFailed] = useState(false);
-  const picture = <img className={className} src={poseUrl(poseFor(state))} alt="" draggable={false} />;
+  const picture = <img className={className} src={poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
   if (!liveOn || failed) return picture;
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">

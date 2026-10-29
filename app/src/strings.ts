@@ -227,7 +227,7 @@ export const S = {
   pages: {
     account: { title: "Account", sub: `Your Claude key, and how much ${PRODUCT} may spend.` },
     general: { title: "General", sub: `How ${PRODUCT} behaves on your Mac.` },
-    character: { title: "Flowflow", sub: "How your water friend looks and moves." },
+    character: { title: "Flowflow", sub: "Pick how it looks and moves." },
     voice: { title: "Voice", sub: "Talking out loud, and showing the words." },
     shortcuts: { title: "Shortcuts", sub: "The keys that call each job, from any app." },
     powers: { title: "Powers", sub: `What ${PRODUCT} may do for you.` },
@@ -248,8 +248,8 @@ export const S = {
     "calls.quiet": "Stay quiet while you're on a call.",
     "display.textSize": "Make every word bigger.",
     "updates.daily": "Check for a new version once a day.",
-    "character.name": "What your friend is called.",
-    "look.water": "The colour of the water.",
+    "character.name": "What it's called.",
+    "look.water": "Pick the water it's made of.",
     "look.size": "How big it is on the edge of your screen.",
     "character.edge": "Which side of the screen it lives on.",
     "character.follow": "What follows your pointer around.",
@@ -283,7 +283,7 @@ export const S = {
     pickTitle: "Who do you want with you?",
     meetTitle: (name: string) => `Meet ${name}.`,
     skipKey: "Skip for now, I'll add it later",
-    meetLine: "Your water friend. It lives at the edge of your screen and drops in when you need it.",
+    meetLine: "Made of water. It lives at the edge of your screen and drops in when you need it.",
     pickLine: "Each companion has its own powers. You can change this any time in Settings.",
     pickWater: "Water. Finds what broke, fixes it, proves it works.",
     soon: "Coming soon",
@@ -1480,6 +1480,14 @@ export const S = {
   // The character on the water at the top of its own part of Settings (M18), shown in each state.
   heroStates: { idle: "Resting", working: "Working", done: "Done" } as Record<string, string>,
   heroStatesLabel: "Show it",
+  /** M35: the character picks in Settings, one card per water, a name and one line each. */
+  waterPicks: {
+    ocean: "Clear blue, the usual.",
+    lagoon: "Bright and fresh.",
+    lime: "Loud and zesty.",
+    berry: "Warm and playful.",
+    midnight: "Quiet, for late work.",
+  } as Record<string, string>,
   firstRunAgain: "Show the first run again",
   livelyLabel: "How lively",
   lively: { lively: "Lively", calm: "Calm", still: "Still" } as Record<string, string>,

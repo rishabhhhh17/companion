@@ -6,6 +6,7 @@
 // VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
 import { characterName } from "./companion.ts";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
@@ -961,11 +962,28 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
 
 /** M30: the water's colours as swatches, the chosen one ringed and ticked. */
 function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
+  // M35 (the founder, 29 Oct 2026: "character select has different names and options"): a card for each water, with the
+  // live water in that colour, its name and one line. Arrow keys move the choice, as in any radio group.
   const now = waterOf(value);
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const step = (e: KeyboardEvent, i: number) => {
+    const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const n = (i + d + WATERS.length) % WATERS.length;
+    onChange(WATERS[n]);
+    refs.current[n]?.focus();
+  };
   return (
-    <div className="sp-swatches" role="radiogroup" aria-labelledby={labelId}>
-      {WATERS.map((w) => <button key={w} type="button" role="radio" className="sp-swatch" aria-checked={now === w} title={S.set["look.water"].options?.[w]} aria-label={S.set["look.water"].options?.[w]}
-        style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => onChange(w)} />)}
+    <div className="sp-picks" role="radiogroup" aria-labelledby={labelId}>
+      {WATERS.map((w, i) => (
+        <button key={w} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" className="sp-pick" aria-checked={now === w} tabIndex={now === w ? 0 : -1}
+          style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => onChange(w)} onKeyDown={(e) => step(e, i)}>
+          <span className="sp-pick-stage" aria-hidden="true"><FlowMini state="idle" className="sp-pick-flow" water={w} still /></span>
+          <b>{S.set["look.water"].options?.[w]}</b>
+          <span>{S.waterPicks[w]}</span>
+        </button>
+      ))}
     </div>
   );
 }

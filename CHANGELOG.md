@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Pick your Flowflow: 29 Oct 2026
+
+- **Choose Flowflow from cards.** Settings, Flowflow page: each water is its own card with the live Flowflow in that colour, its name and a line about it (Ocean, Lagoon, Lime, Berry, Midnight). Click one, or use the arrow keys.
+- **More silver.** Lively, Calm and Still, and Resting, Working and Done, are chrome when chosen, like the rest of Settings.
+- **Plainer words.** Squibby no longer calls itself your "friend" anywhere in Settings or the first run. It's a tool.
+
 ## Silver Settings and a count in the notch: 29 Oct 2026
 
 - **Settings is silver now.** The page you're on is a polished chrome pill, switches turn chrome when on, the size and speed pickers have a chrome choice, and each page sits on a dark brushed metal card. Pickers with four choices drop under their label so the words stay easy to read.
