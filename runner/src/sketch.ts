@@ -72,4 +72,4 @@ export function parseSketch(raw: string): Sketch | null {
 }
 
 /** The request for a picture of `question`: plain words only, no project content. */
-export const sketchRequest = (question: string): string => `${SKETCH_SYSTEM}\n\nDraw: ${plain(question, 300)}`;
+export const sketchRequest = (question: string): { system: string; text: string } => ({ system: SKETCH_SYSTEM, text: `Draw: ${plain(question, 300)}` });

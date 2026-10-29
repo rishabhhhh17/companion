@@ -51,6 +51,6 @@ describe("drawn pictures (M33)", () => {
     expect(many.shapes.length).toBe(MAX_SHAPES);
   });
   test("the request carries only the question", () => {
-    expect(sketchRequest("draw a sun")).toContain("Draw: draw a sun");
+    expect(sketchRequest("draw a sun")).toEqual({ system: expect.stringContaining("DRAWING"), text: "Draw: draw a sun" });
   });
 });
