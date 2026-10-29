@@ -1039,14 +1039,15 @@ fn gaze_tick(app: &AppHandle) {
     let _ = app.emit_to("dock", "gaze", json!({ "dx": rel.0, "dy": rel.1 }));
 }
 
-/// A drop that follows you (follow.rs): about sixty times a second, while A drop of water is chosen and no pointer ring is
-/// up, the drop's spring moves toward the pointer and its window follows; otherwise the window is put away. Its own thread.
+/// The water ring around the pointer (follow.rs, M37): about 120 times a second, while it is chosen and no pointer ring is
+/// up, its window is put on the pointer; otherwise the window is put away. Its own thread.
 fn follow_loop(app: AppHandle) {
     let mut d = follow::Drop::default();
     let (mut shown, mut want, mut tick) = (false, false, 0u64);
     let mut water = Value::Null;
     let mut last = std::time::Instant::now();
     let mut last_fr = [f64::NAN; 4];
+    let mut sent_speed = 0.0f64;
     loop {
         std::thread::sleep(Duration::from_millis(follow::TICK_MS));
         if tick % 30 == 0 { want = follow::wanted(&setting_now("character.follow")); water = setting_now("look.water"); }
@@ -1067,6 +1068,9 @@ fn follow_loop(app: AppHandle) {
         d.step((p.x, p.y), dt);
         let saying = { let mut g = FOLLOW_SAY.lock().unwrap_or_else(|e| e.into_inner()); if g.as_ref().is_some_and(|(_, at)| at.elapsed() > Duration::from_millis(follow::SAY_MS)) { *g = None; let _ = app.emit_to("follow", "follow-say", json!({ "text": "" })); } g.is_some() };
         let (fr, first) = (if saying { d.frame_saying() } else { d.frame() }, !shown);
+        // The speed goes to the page while it moves and until it has eased back to nothing (M37: the ring's stretch).
+        let speed = d.vx.hypot(d.vy);
+        if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); sent_speed = speed; }
         // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
         if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
         last_fr = fr;
@@ -1080,7 +1084,8 @@ fn follow_loop(app: AppHandle) {
                 if first { pn.orderFrontRegardless(); }
             } });
         });
-        if tick % 2 == 0 { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); }
+        // The first time it shows, the page learns the water colour.
+        if first { let _ = app.emit_to("follow", "follow-move", json!({ "vx": 0.0, "vy": 0.0, "water": water })); }
     }
 }
 

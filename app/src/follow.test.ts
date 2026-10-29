@@ -1,16 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { dropLook } from "./follow.ts";
+import { RING_FRAGMENT, rgb, ringStretch } from "./follow.ts";
 
-describe("the drop that follows the pointer", () => {
-  test("a crisp droplet at every speed, never squashed or stretched (M29); moving fast its point trails behind", () => {
-    expect(dropLook(0, 0)).toEqual({ angle: 0, sx: 1, sy: 1 });
-    expect(dropLook(200, 10)).toEqual({ angle: 0, sx: 1, sy: 1 });
-    const fast = dropLook(1200, 0);
-    expect(fast.sy).toBe(1); expect(fast.sx).toBe(1);
-    expect(fast.angle).toBeCloseTo(-90, 5);   // moving right: the pointed top turns to stream back to the left
-    expect(dropLook(0, 900).angle).toBeCloseTo(0, 5);   // moving down: the point trails above
-    expect(dropLook(NaN, 3)).toEqual({ angle: 0, sx: 1, sy: 1 });
+describe("the water ring around the pointer (M37)", () => {
+  test("it keeps its ring shape: no stretch when slow, a gentle one along the way it moves when fast, never more than a third", () => {
+    expect(ringStretch(0, 0)).toEqual({ x: 0, y: 0 });
+    expect(ringStretch(40, 10)).toEqual({ x: 0, y: 0 });
+    const fast = ringStretch(1100, 0);
+    expect(fast.x).toBeCloseTo(1100 / 4000, 5); expect(fast.y).toBeCloseTo(0, 5);
+    expect(Math.hypot(ringStretch(9000, 9000).x, ringStretch(9000, 9000).y)).toBeCloseTo(0.35, 5);
+    expect(ringStretch(0, 1100).y).toBeLessThan(0);   // the page's y points up
+    expect(ringStretch(NaN, 3)).toEqual({ x: 0, y: 0 });
+  });
+  test("water colours become numbers the shader takes", () => {
+    expect(rgb("#FF0080")).toEqual([1, 0, 128 / 255]);
+    expect(rgb("nope")).toEqual([0.35, 0.82, 1]);
+  });
+  test("it is a ring centred on the pointer, drawn live, calm with Reduce motion", () => {
+    const page = readFileSync(new URL("./follow.ts", import.meta.url), "utf8");
+    expect(RING_FRAGMENT).toContain("sdTorus");
+    expect(page).toContain("const calm = still();");
+    const html = readFileSync(new URL("../follow.html", import.meta.url), "utf8");
+    expect(html).toContain('<canvas class="ring" id="d"');
+    expect(html).not.toMatch(/\.(png|jpe?g|gif|svg)\b/);
   });
   test("its page only listens, in the water's colours, and is built with the others", () => {
     const page = readFileSync(new URL("./follow.ts", import.meta.url), "utf8");

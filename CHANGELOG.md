@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow, rebuilt as clear water, and a water ring at your pointer: 30 Oct 2026
+
+- **Flowflow looks premium now.** It's one clean drop of clear water, lit like a studio product shot. It has a soft point on top, two calm eyes with a glint, and light gathering at its base. No more lumps or wobble: it leans, breathes and settles.
+- **It's sharp.** A bug meant Flowflow had been drawn small and stretched up. It's crisp now at every size.
+- **A water ring rides your pointer.** A small ring of Flowflow's water sits right on your cursor's tip, open in the middle so it never covers anything. It moves with the cursor with no lag, stretches a little when you move fast, and has small waves running round it. It stays still if your Mac asks for less motion. You can turn it off in Settings, Flowflow.
+
 ## Type by voice in any app: 30 Oct 2026
 
 - **Talk instead of type, anywhere.** Click into any text box, in any app. Hold Option, Shift and Space, speak, and let go. Your words appear where the cursor is.
