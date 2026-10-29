@@ -43,7 +43,7 @@ import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
-import { groupPlaces } from "./settingsGroups.ts";
+import { FIRST_PAGE, PAGES, PAGE_GROUPS, isPage } from "./settingsPages.ts";
 import { characterName } from "./companion.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
@@ -1420,9 +1420,8 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
-  const setOpen = setPlace || groupPlaces(settingsPlaces())[0]?.places[0]?.id || "";
-  const placeTitle = (p: { id: string; title: string }) => (p.id === "home" ? characterName(setting("character.name")) : p.title);
-  const viewTitle = home.tab === "settings" ? ((() => { const p = settingsPlaces().find((x) => x.id === setOpen); return p ? placeTitle(p) : tabName("settings"); })()) : tabName(home.tab);
+  const setOpen = isPage(setPlace) ? setPlace : FIRST_PAGE;
+  const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
@@ -1544,7 +1543,7 @@ function Card() {
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
-      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("fixed:key"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
+      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("account"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
@@ -1569,12 +1568,14 @@ function Card() {
         </section>
       )}
       {home.tab === "settings" && (
-        <nav className="sections-grouped" aria-label={S.look.settingsPlaces}>
-          {groupPlaces(settingsPlaces()).map((g) => (
-            <div key={g.group} className="sections-group" data-group={g.group}>
-              <h3 className="sections-head" id={`sg-${g.group}`}>{S.setGroups[g.group]}</h3>
-              <ul className="sections" aria-labelledby={`sg-${g.group}`}>
-                {g.places.map((p) => <li key={p.id}><button className="section-pill" type="button" aria-current={setOpen === p.id ? "page" : undefined} onClick={() => { setSetPlace(p.id); root.current?.scrollTo({ top: 0 }); }}>{placeTitle(p)}</button></li>)}
+        // M30: Settings' side list, as HeyClicky's: an icon and a name for each page, in three short groups.
+        <nav className="sp-side" aria-label={S.look.settingsPlaces}>
+          {PAGE_GROUPS.map((g) => (
+            <div key={g.head || "first"} className="sp-group">
+              {g.head && <h3 className="sp-group-head">{S.pageHeads[g.head]}</h3>}
+              <ul>
+                {g.pages.map((id) => <li key={id}><button className="sp-nav" type="button" aria-current={setOpen === id ? "page" : undefined} onClick={() => { setSetPlace(id); root.current?.scrollTo({ top: 0 }); }}>
+                  <Icon name={PAGES[id].icon} size={16} /><span>{id === "character" ? characterName(setting("character.name")) : S.pages[id].title}</span></button></li>)}
               </ul>
             </div>
           ))}

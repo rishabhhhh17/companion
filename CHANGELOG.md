@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Settings, made simple: 29 Oct 2026
+
+- **Settings is a few clear pages now.** A side list with an icon for each page (Account, General, Flowflow, Voice, Shortcuts, Powers, Privacy, Advanced, About). Each page has a title, one line saying what it's for, and one card of settings: a name, one short line, and the switch or choice on the right.
+- **Choices you can see.** Water colours are swatches, sizes and edges are small segmented buttons, and your friend's look sits right at the top of the Flowflow page.
+- **No walls of text.** The long explanations are still there when you search, but pages show one short line per setting.
+
 ## Fixes from the founder's own screen: 29 Oct 2026
 
 - **Flowflow is firmer and clearer.** No more squashed, bulgy jelly: it leans and settles instead of smearing, its surface is smooth, it renders sharp, and its eyes are bigger.

@@ -905,3 +905,40 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .drop-item.drop-close:hover, .drop-item.drop-close:focus-visible { background: #F5F5F7; color: #111111; }
 .drop-word { font-family: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif; font-weight: 650; line-height: 1; letter-spacing: 0; }
 .drop-caption { color: #F5F5F7; background: rgba(22, 24, 28, .9); box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .2); padding: 3px 9px; }
+
+/* M30: Settings as HeyClicky shows it (the founder, 29 Oct 2026): a quiet side list with an icon per page, and on the right
+   one page at a time: a title, one line, then a single rounded card of rows, each a name, one short line and its control. */
+.home[data-view="settings"] .view { display: grid; grid-template-columns: 168px minmax(0, 1fr); column-gap: var(--space-5); align-items: start; }
+.home[data-view="settings"] .view > :not(.sp-side):not(.settings) { grid-column: 1 / -1; }
+.sp-side { position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-1) 0; }
+.sp-side ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.sp-group-head { margin: var(--space-2) 0 var(--space-1) var(--space-3); font-size: var(--t-caption); font-weight: 600; color: var(--muted); }
+.sp-nav { display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: calc(32rem / 14); padding: 0 var(--space-3); border: 0; border-radius: var(--r-md); background: transparent; color: color-mix(in srgb, var(--fg) 82%, transparent); font: 500 var(--t-body) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; cursor: pointer; }
+.sp-nav:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+.sp-nav[aria-current="page"] { background: color-mix(in srgb, var(--fg) 12%, transparent); color: var(--fg); font-weight: 600; }
+.sp-nav svg { flex: none; opacity: .85; }
+.home .panel.settings { background: transparent; border: 0; padding: 0; margin: 0; }
+.sp-head { margin: var(--space-1) 0 var(--space-4); }
+.sp-head h2 { margin: 0; font: 700 calc(22rem / 14)/1.2 -apple-system, "SF Pro Display", system-ui, sans-serif; letter-spacing: -0.01em; color: var(--fg); }
+.sp-head p { margin: var(--space-1) 0 0; font-size: var(--t-small); color: var(--muted); }
+.sp-card { border-radius: 14px; background: color-mix(in srgb, var(--fg) 6%, var(--bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent); overflow: clip; margin-bottom: var(--space-4); }
+.sp-card > .setting { margin: 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: 0; background: transparent; }
+.sp-card > .setting + .setting { box-shadow: inset 0 1px 0 color-mix(in srgb, var(--fg) 8%, transparent); }
+.sp-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.sp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sp-text b { font-weight: 600; font-size: var(--t-body); color: var(--fg); }
+.sp-text span { font-size: var(--t-small); color: var(--muted); line-height: 1.35; }
+.sp-swatches { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+.sp-swatch { width: calc(26rem / 14); min-height: calc(26rem / 14); padding: 0; border: 0; border-radius: 50%; background: radial-gradient(circle at 38% 30%, #ffffff 0 9%, var(--pick) 46%, var(--pick-deep)); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2); cursor: pointer; transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
+.sp-swatch:hover { transform: scale(1.08); }
+.sp-swatch[aria-checked="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--fg); }
+.sp-swatch:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+
+.home[data-view="settings"] .panel.settings > .row[role="search"] { margin-bottom: var(--space-3); }
+.home[data-view="settings"] .panel.settings > .row[role="search"] input { min-height: calc(30rem / 14); padding: 0 var(--space-3); border-radius: var(--r-md); border: 0; background: color-mix(in srgb, var(--fg) 7%, var(--bg)); color: var(--fg); font-size: var(--t-small); }
+/* M30: inside a page's card, a choice is a compact segmented control (HeyClicky's speed picker), a menu a quiet pill, and a
+   text box dark like the card. */
+.sp-row > [role="radiogroup"].row { flex: none; flex-wrap: nowrap; gap: 2px; padding: 3px; border-radius: 999px; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); }
+.sp-row > [role="radiogroup"].row .btn, .sp-row > [role="radiogroup"].row .btn.primary { min-height: calc(26rem / 14); padding: 0 calc(12rem / 14); border-radius: 999px; background: transparent; color: color-mix(in srgb, var(--fg) 75%, transparent); box-shadow: none; font-size: var(--t-small); font-weight: 600; transform: none; }
+.sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: var(--fg); color: var(--bg); }
+.sp-row > select, .sp-row > input[type="text"], .sp-row > .row > input, .sp-row input:not([type]) { max-width: 46%; min-height: calc(30rem / 14); padding: 0 var(--space-3); border-radius: var(--r-md); border: 0; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); font-size: var(--t-small); }

@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
-type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield";
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders";
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
@@ -18,6 +18,13 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   settings: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
   // Home's round buttons, the ask box and its quick actions (27 Oct 2026)
   // Settings as sliders (28 Oct 2026): the old cog, a circle with eight rays, read as the sun of the mark.
+  // M30: the Settings side list.
+  person: <><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5" /></>,
+  drop: <path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 01-12 0c0-3.2 2.8-6.5 6-10.5z" />,
+  keyboard: <><rect x="3" y="6.5" width="18" height="11" rx="2" /><path d="M7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17 10.5h.01M8 14h8" /></>,
+  lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></>,
+  info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></>,
+  sliders: <><path d="M5 7h9M18 7h1M5 17h3M12 17h7" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,
   gear: <><path d="M4 7h10M18 7h2M4 17h2M10 17h10" /><circle cx="16" cy="7" r="2" /><circle cx="8" cy="17" r="2" /></>,
   mic: <><rect x="9" y="3.5" width="6" height="11" rx="3" /><path d="M5.5 11.5a6.5 6.5 0 0013 0M12 18v2.5" /></>,
   send: <><path d="M12 19V5.5" /><path d="M6.5 11L12 5.5 17.5 11" /></>,
