@@ -74,29 +74,40 @@ varying vec3 vP;
 
 void main(){
   vec3 nFlat = normalize(cross(dFdx(vView), dFdy(vView)));
-  vec3 N = normalize(mix(normalize(vObjN), nFlat, 0.1));
+  vec3 N = normalize(mix(normalize(vObjN), nFlat, 0.08));
   vec3 V = vec3(0.0, 0.0, 1.0);
   if (dot(N, V) < 0.0) N = -N;
   float ndv = clamp(dot(N, V), 0.0, 1.0);
-  float fres = pow(1.0 - ndv, 2.6);
-  // Inside the water: a gradient looked up through a window shifted by the surface (the refraction), a glow low in the body, moving caustic bands.
+  float fres = pow(1.0 - ndv, 3.0);
+  // M32 (the founder: "fix the water… it needs to look premium"): lit like a glass product shot. Inside: deep at the base,
+  // lighter at the top, light gathering low in the body; the old caustic stripes are only a faint shimmer now.
   vec2 uv = vP.xy * 0.62 + N.xy * uRefract * 0.3;
   float h = clamp(uv.y * 0.5 + 0.55, 0.0, 1.0);
-  vec3 body = mix(uColB, uColA, pow(h, 0.8));
-  float glowC = smoothstep(0.95, 0.0, length(uv - vec2(0.12, -0.28)));
-  float caustic = pow(abs(sin(uv.x * 7.0 + sin(uv.y * 5.0 + uTime * 0.6) * 1.6 + uTime * 0.3)), 6.0) * 0.16;
-  body += glowC * 0.3 * vec3(0.55, 0.95, 1.0) + caustic * vec3(0.7, 1.0, 1.0);
-  // Highlights: a bright window-light top left, a soft rim bottom right.
+  vec3 body = mix(uColB * 0.72, uColA, smoothstep(0.0, 1.0, h));
+  float core = smoothstep(0.9, 0.0, length(uv - vec2(0.05, -0.32)));
+  body += core * 0.22 * mix(uColA, vec3(1.0), 0.35);
+  float caustic = pow(abs(sin(uv.x * 6.0 + sin(uv.y * 4.0 + uTime * 0.5) * 1.4 + uTime * 0.25)), 10.0) * 0.05;
+  body += caustic * vec3(0.8, 1.0, 1.0);
+  // Studio reflections read off the surface's direction: a big soft window top left, a thin strip of light on the right,
+  // a faint horizon, a crisp key highlight, a small second one, and a glassy rim.
+  vec2 r = N.xy;
+  float win = smoothstep(0.24, 0.02, length((r - vec2(-0.5, 0.62)) * vec2(1.0, 1.5)));
+  float strip = smoothstep(0.03, 0.0, abs(r.x - 0.46) - 0.03) * smoothstep(0.1, 0.0, abs(r.y - 0.35) - 0.2);
+  float horizon = smoothstep(0.05, 0.0, abs(r.y + 0.05)) * 0.12;
   vec3 L = normalize(vec3(-0.45, 0.65, 0.62));
-  float spec = pow(max(dot(N, normalize(L + V)), 0.0), mix(120.0, 28.0, uRough));
-  float rim = pow(max(dot(N, normalize(vec3(0.5, -0.5, 0.7) + V)), 0.0), 40.0) * 0.28;
+  float spec = pow(max(dot(N, normalize(L + V)), 0.0), mix(220.0, 40.0, uRough));
+  float spec2 = pow(max(dot(N, normalize(normalize(vec3(0.6, 0.4, 0.7)) + V)), 0.0), 90.0) * 0.35;
+  float rim = pow(max(dot(N, normalize(vec3(0.5, -0.5, 0.7) + V)), 0.0), 30.0) * 0.35;
   // An error clouds and darkens the water; a success lifts it.
   body = mix(body, vec3(0.27, 0.36, 0.42) * (0.55 + 0.45 * h), uCloud * 0.78);
   body += uGlow * vec3(0.16, 0.34, 0.3);
   // Clarity: 1 is clear glass, 0 is dense.
-  float a = mix(0.96, 0.58, uClarity);
-  a = clamp(a + fres * 0.45 + glowC * 0.06 + uCloud * 0.3 + spec * 0.5, 0.0, 1.0);
-  vec3 col = body + fres * vec3(0.75, 0.95, 1.0) * 0.85 + spec * vec3(1.0) + rim * vec3(0.6, 0.9, 1.0);
+  float a = mix(0.97, 0.62, uClarity);
+  a = clamp(a + fres * 0.5 + uCloud * 0.3 + (spec + win * 0.6) * 0.5, 0.0, 1.0);
+  vec3 col = body * (0.85 + 0.15 * ndv)
+    + fres * mix(vec3(0.7, 0.9, 1.0), vec3(1.0), 0.4) * 0.9
+    + (win * 0.6 + strip * 0.4 + horizon) * vec3(1.0)
+    + spec * vec3(1.0) + spec2 * vec3(1.0) + rim * mix(uColA, vec3(1.0), 0.5);
   gl_FragColor = vec4(col * a, a);
 }`;
 

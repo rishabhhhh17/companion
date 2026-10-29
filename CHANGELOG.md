@@ -5,6 +5,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 ## Chrome on black: 29 Oct 2026
 
 - **Squibby is polished silver now.** Every main button (Fix something, Allow, Start, the first run's keys) is glossy chrome on black, with a bright top edge like cast metal. Big titles get a chrome sheen, the mark in the notch is chrome, and the pointer's usual ring and captions are silver. Lime is gone.
+- **Flowflow's water looks premium.** It's lit like a glass product shot: a soft studio highlight, a bright glassy rim, a deep base with light gathering inside, and no more streaky stripes.
 - **Flowflow follows your pointer by default** as a tiny Flowflow with eyes, and stays in view on its edge instead of hiding past it.
 
 ## Settings, made simple: 29 Oct 2026
