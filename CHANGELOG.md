@@ -2,6 +2,43 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Pick your Flowflow: 29 Oct 2026
+
+- **Choose Flowflow from cards.** Settings, Flowflow page: each water is its own card with the live Flowflow in that colour, its name and a line about it (Ocean, Lagoon, Lime, Berry, Midnight). Click one, or use the arrow keys.
+- **More silver.** Lively, Calm and Still, and Resting, Working and Done, are chrome when chosen, like the rest of Settings.
+- **Plainer words.** Squibby no longer calls itself your "friend" anywhere in Settings or the first run. It's a tool.
+
+## Silver Settings and a count in the notch: 29 Oct 2026
+
+- **Settings is silver now.** The page you're on is a polished chrome pill, switches turn chrome when on, the size and speed pickers have a chrome choice, and each page sits on a dark brushed metal card. Pickers with four choices drop under their label so the words stay easy to read.
+- **The notch counts what you haven't seen.** When work finishes while Home is closed, a small silver number sits in the notch until you open it.
+
+## Pictures, a hello, and a word at your pointer: 29 Oct 2026
+
+- **Draw it draws real pictures.** Ask it to explain something and Squibby draws a friendly picture on a sheet of dotted paper, with a handwritten title, stroke by stroke the way a hand would, then a caption underneath. When there's a problem on screen it still draws the diagram of what broke.
+- **The notch says hello.** Hovering the notch greets you by name for the time of day ("Evening, Rishabh.") and tells you which keys to hold to talk.
+- **A word at your pointer.** When a fix is proven, the little Flowflow following your pointer says "Fixed. Checks pass." for a few seconds. Never during a call.
+
+## Chrome on black: 29 Oct 2026
+
+- **Squibby is polished silver now.** Every main button (Fix something, Allow, Start, the first run's keys) is glossy chrome on black, with a bright top edge like cast metal. Big titles get a chrome sheen, the mark in the notch is chrome, and the pointer's usual ring and captions are silver. Lime is gone.
+- **Flowflow's water looks premium.** It's lit like a glass product shot: a soft studio highlight, a bright glassy rim, a deep base with light gathering inside, and no more streaky stripes.
+- **Flowflow follows your pointer by default** as a tiny Flowflow with eyes, and stays in view on its edge instead of hiding past it.
+
+## Settings, made simple: 29 Oct 2026
+
+- **Settings is a few clear pages now.** A side list with an icon for each page (Account, General, Flowflow, Voice, Shortcuts, Powers, Privacy, Advanced, About). Each page has a title, one line saying what it's for, and one card of settings: a name, one short line, and the switch or choice on the right.
+- **Choices you can see.** Water colours are swatches, sizes and edges are small segmented buttons, and your friend's look sits right at the top of the Flowflow page.
+- **No walls of text.** The long explanations are still there when you search, but pages show one short line per setting.
+
+## Fixes from the founder's own screen: 29 Oct 2026
+
+- **Flowflow is firmer and clearer.** No more squashed, bulgy jelly: it leans and settles instead of smearing, its surface is smooth, it renders sharp, and its eyes are bigger.
+- **The drop that follows your pointer keeps up.** It sticks to the pointer (it catches up in about a tenth of a second) and stays a crisp little droplet instead of stretching into a blob.
+- **The file menu around Flowflow looks finished.** Neat dark glass buttons that read on any wallpaper, lime when you point at one, and a smaller close button.
+- **Buttons you can't press right now are a calm grey,** not a muddy faded lime.
+- **Nothing shows through the Stop button** at the bottom of Home any more.
+
 ## Clearer, calmer, nothing half finished: 29 Oct 2026
 
 - **Questions say exactly what will happen.** When Squibby needs your OK, the card asks a plain question ("Install something?", "Change your project's Git history?"), shows the exact command or file, says why, and tells you whether Undo can take it back. The same in the notch.

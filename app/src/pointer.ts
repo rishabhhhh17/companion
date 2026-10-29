@@ -21,7 +21,7 @@ export const GUESS_LOOK: RingLook = { stroke: "#ffb020", width: 3, dash: "8 6", 
 const SOLID: Record<string, RingLook> = {
   // M28: the usual ring (still stored as "orange" so nobody's choice changes) is the brand lime; drawn marks get a dark edge (ink.ts), readable
   // on light and dark apps alike; with the water pointer its beads take the water colour. No orange is drawn any more.
-  orange: { stroke: "#C6F432", width: 4, dash: "", halo: null },
+  orange: { stroke: "#E9ECF1", width: 4, dash: "", halo: null },
   red: { stroke: "#ff3b30", width: 4, dash: "", halo: null },
   yellow: { stroke: "#ffd60a", width: 4, dash: "", halo: null },
   blue: { stroke: "#0a84ff", width: 4, dash: "", halo: null },
@@ -79,7 +79,7 @@ export function burst(rect: { x: number; y: number; w: number; h: number }, n = 
 export type Piece = { vx: number; vy: number; spin: number; color: string };
 export const CONFETTI_S = 1.5;
 export function confetti(n: number, dockedRight: boolean): Piece[] {
-  const colors = ["#C6F432", "#59D2FF", "#FFFFFF", "#ffb020", "#7BE495"];
+  const colors = ["#E9ECF1", "#59D2FF", "#FFFFFF", "#ffb020", "#7BE495"];
   const away = dockedRight ? -1 : 1;
   return Array.from({ length: n }, (_, i) => {
     const a = (10 + (i / Math.max(1, n - 1)) * 70) * (Math.PI / 180);   // 10 to 80 degrees above the horizontal

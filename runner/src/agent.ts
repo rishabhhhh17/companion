@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { parseSketch, sketchRequest } from "./sketch.ts";
 import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -1931,9 +1932,17 @@ export class AgentRunner {
     const slow = "That took too long. Try again.";
     try {
       const gone = new Promise<never>((_, no) => ac.signal.addEventListener("abort", () => no(new Error("aborted")), { once: true }));
-      const r = await Promise.race([this.o.explainer(diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal), gone]);
+      // M33: a drawn picture asks with only the question (no project content) and is checked as drawing data.
+      const sketching = cmd.style === "sketch";
+      const r = await Promise.race([this.o.explainer(sketching ? sketchRequest(cmd.question) : diagramRequest(diagramContext(cmd.project, { question: cmd.question, problem: cmd.problem })), ac.signal), gone]);
       this.bookSpend(cmd.project, r.costUsd);
       if (ac.signal.aborted) { done(false, { reason: timedOut ? slow : "Stopped." }); return; }
+      if (sketching) {
+        const s = parseSketch(r.text);
+        if (!s) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words." }); return; }
+        done(true, { sketch: s, usdEstimate: r.costUsd });
+        return;
+      }
       const d = parseDiagram(r.text);
       if (!d) { done(false, { reason: "I could not draw a clear picture of that. Try asking in different words, or press the key when the problem is on screen." }); return; }
       done(true, { diagram: d, usdEstimate: r.costUsd });

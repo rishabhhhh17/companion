@@ -48,10 +48,11 @@ pub struct HomeSet {
 }
 
 impl HomeSet {
-    /// Today's behaviour: the constants these settings replaced. Peeking is new (27 Oct 2026) and on, as the founder asked.
+    /// Today's behaviour: the constants these settings replaced. Peeking (27 Oct 2026) is off since M31: the founder found the
+    /// character hidden past the edge when they wanted it there.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, peek_idle: false, esc_stops: true,
+        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: false, peek_idle: false, esc_stops: true,
     };
 }
 
@@ -92,7 +93,7 @@ mod tests {
         let u = HomeSet::USUAL;
         assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::STANDARD, false, false));
-        assert_eq!((u.peek, u.peek_idle), (true, false), "tucked away unless turned off; peeking in on its own only when turned on");
+        assert_eq!((u.peek, u.peek_idle), (false, false), "M31: always on its edge in view unless peeking is turned on");
     }
     #[test]
     fn each_one_is_read_from_settings_json_at_both_ends_of_its_range() {

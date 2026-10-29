@@ -6,6 +6,7 @@
 // VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
 import { characterName } from "./companion.ts";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
@@ -23,7 +24,8 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { ADVANCED_PLACE, levelSections } from "./settingsLevel.ts";
+import { levelSections } from "./settingsLevel.ts";
+import { FIRST_PAGE, PAGES, isPage, type PageId } from "./settingsPages.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
 import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
@@ -584,7 +586,7 @@ function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem 
 
 /** One setting: its name, its control, one or two lines of help, the usual value, Reset when it differs, when it takes
  *  effect, the fixed part, and for a project setting which project. */
-function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: string; keys: Keys; facts: CheckFacts | null; pictures: number | undefined }) {
+function SettingRow({ d, project, keys, facts, pictures, compact = false }: { d: Def; project: string; keys: Keys; facts: CheckFacts | null; pictures: number | undefined; compact?: boolean }) {
   useSetting(d.key);
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
@@ -618,6 +620,8 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
   const notes = [...fromFile, ...(launchWins ? [S.chkLaunchFile] : []), ...(d.key === "check.install" ? [installNote(value, rulesNow)].filter((x): x is string => !!x) : [])];
   const control = (() => {
     if (d.key === "rules.house") return null;
+    // M30: the water's colour is a row of swatches, as HeyClicky shows its cursor colours.
+    if (d.key === "look.water") return <WaterSwatches value={String(value)} onChange={change} labelId={labelId} />;
     if (d.key === "check.skip") return null;
     if (d.key === "check.start") return <ChoiceControl value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
     if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
@@ -639,8 +643,13 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
     : d.key === "calls.apps" ? <CallApps value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} /> : null;
   return (
     <div role="group" aria-labelledby={labelId} className="setting">
-      <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
-      <div className="line muted" id={helpId}>{r.help}</div>
+      {/* M30: on a page each row is its name and one short line, the control on the right; the long help is for search. */}
+      {compact ? (
+        <div className="sp-row"><span className="sp-text"><b id={labelId}>{S.shortLabel[d.key] ?? r.label}</b>{S.short[d.key] ? <span id={helpId}>{S.short[d.key]}</span> : null}</span>{control}</div>
+      ) : (<>
+        <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
+        <div className="line muted" id={helpId}>{r.help}</div>
+      </>)}
       {hint && <div className="line">{hint}</div>}
       {editor}
       {notes.map((n) => <div className="line muted" key={n}>{n}</div>)}
@@ -657,7 +666,7 @@ function SettingRow({ d, project, keys, facts, pictures }: { d: Def; project: st
         </ConfirmStep>
       )}
       {r.later && <div className="line muted">{S.setNextTask}</div>}
-      {r.floor && <div className="line muted">{floorWords(r.floor)}</div>}
+      {r.floor && !compact && <div className="line muted">{floorWords(r.floor)}</div>}
       {problem && <div className="error" role="alert">{problem}</div>}
     </div>
   );
@@ -725,7 +734,8 @@ export const placeShown = (fixed: string, google = googleShown): boolean => fixe
 
 export function settingsPlaces(): { id: string; title: string }[] {
   const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
-  return [...levelSections(all.sections, false).map((s) => ({ id: s.id, title: s.title })), ...all.fixed.filter((g) => placeShown(g)).map((g) => ({ id: `fixed:${g}`, title: S.fixedGroups[g].title })), { id: ADVANCED_PLACE, title: S.advancedTitle }];
+  void all;
+  return (Object.keys(PAGES) as PageId[]).map((id) => ({ id, title: S.pages[id].title }));
 }
 
 // place: the part open in the side list. A search looks through every part, as before.
@@ -813,11 +823,15 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   const onePart = !q && !!place;
   // M28: the main Settings shows the main choices; Advanced shows every other one, grouped as before; search finds all.
-  const advanced = !q && place === ADVANCED_PLACE;
-  const mainSections = levelSections(results.sections, false);
-  const mainIds = new Set(mainSections.map((s) => s.id));
-  const fixedShown = (g: FixedGroup) => !advanced && results.fixed.includes(g) && placeShown(g) && (!onePart || place === `fixed:${g}`);
-  const sectionsShown = q ? results.sections : advanced ? levelSections(results.sections, true) : onePart ? mainSections.filter((s) => s.id === place) : mainSections;
+  // M30: one page at a time (settingsPages.ts); a search looks through every setting, Advanced shows the rest by section.
+  const page: PageId = isPage(place) ? place : FIRST_PAGE;
+  const advanced = !q && page === "advanced";
+  const onPage = !q && !advanced;
+  const mainIds = new Set(levelSections(results.sections, false).map((s) => s.id));
+  const pageKeys = onPage ? PAGES[page].keys.filter((k) => { const d = defOf(k); return !!d && !d.hidden && shownNow(k, setting); }) : [];
+  const fixedShown = (g: FixedGroup) => placeShown(g) && (q ? results.fixed.includes(g) : !advanced && PAGES[page].fixed.includes(g));
+  const sectionsShown = q ? results.sections : advanced ? levelSections(results.sections, true) : [];
+  void onePart;
   // The character's place (its edge, its position and Same place on every display) put back with one press.
   const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
   const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
@@ -864,7 +878,13 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       </div>
       <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
       {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {advanced && <div className="line muted">{S.advancedHelp}</div>}
+      {!q && <header className="sp-head"><h2>{S.pages[page].title}</h2><p>{S.pages[page].sub}</p></header>}
+      {onPage && page === "character" && <CompanionHero />}
+      {pageKeys.length > 0 && <div className="sp-card">
+        {pageKeys.map((k) => <SettingRow key={k} d={defOf(k)!} project={project} keys={keys} facts={facts} pictures={inv?.receiptPictures} compact />)}
+      </div>}
+      {onPage && page === "account" && extras.spending}
+      {onPage && page === "general" && extras.updates}
       {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={advanced && mainIds.has(s.id) ? undefined : extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart && !advanced} />)}
       {fixedShown("permissions") && <Group title={S.settingsPermissions}>
       <div className="line muted">{S.settingsPermissionsHelp}</div>
@@ -924,8 +944,8 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
       {exported && <div className="line" role="status">{exported}</div>}
       </Group>}
-      {results.all && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}
-      {results.all && changedAll.length === 0 && <div className="line muted">{S.setResetAllNone}</div>}
+      {results.all && advanced && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}
+      {results.all && advanced && changedAll.length === 0 && <div className="line muted">{S.setResetAllNone}</div>}
       {askAll && (
         <ConfirmStep className="line" label={S.setResetAll} back={resetAllId} onCancel={() => setAskAll(false)}>
           <div className="line">{S.setResetAllSure(names(changedAll))}</div>
@@ -935,8 +955,36 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
         </ConfirmStep>
       )}
       {allToast.view}
-      <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>
+      {q && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
     </section>
+  );
+}
+
+/** M30: the water's colours as swatches, the chosen one ringed and ticked. */
+function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
+  // M35 (the founder, 29 Oct 2026: "character select has different names and options"): a card for each water, with the
+  // live water in that colour, its name and one line. Arrow keys move the choice, as in any radio group.
+  const now = waterOf(value);
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const step = (e: KeyboardEvent, i: number) => {
+    const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const n = (i + d + WATERS.length) % WATERS.length;
+    onChange(WATERS[n]);
+    refs.current[n]?.focus();
+  };
+  return (
+    <div className="sp-picks" role="radiogroup" aria-labelledby={labelId}>
+      {WATERS.map((w, i) => (
+        <button key={w} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" className="sp-pick" aria-checked={now === w} tabIndex={now === w ? 0 : -1}
+          style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => onChange(w)} onKeyDown={(e) => step(e, i)}>
+          <span className="sp-pick-stage" aria-hidden="true"><FlowMini state="idle" className="sp-pick-flow" water={w} still /></span>
+          <b>{S.set["look.water"].options?.[w]}</b>
+          <span>{S.waterPicks[w]}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -947,7 +995,6 @@ function CompanionHero() {
   const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
   const name = characterName(useSetting("character.name"));
   // One tap changes it, and the character above shows it at once (M19).
-  const water = waterOf(useSetting("look.water"));
   const lively = livelyOf(useSetting("fun.reactions"), useSetting("character.motion"));
   return (<>
     <div className="companion-hero">
@@ -960,10 +1007,6 @@ function CompanionHero() {
       <button className="ch-again" type="button" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.firstRunAgain}</button>
     </div>
     <div className="ch-look">
-      <div className="ch-waters" role="group" aria-label={S.set["look.water"].label}>
-        {WATERS.map((w) => <button key={w} type="button" className="ch-water-pick" data-water={w} aria-pressed={water === w} title={S.set["look.water"].options?.[w]} aria-label={S.set["look.water"].options?.[w]}
-          style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => void changeSetting("look.water", w)} />)}
-      </div>
       <div className="ch-lively" role="group" aria-label={S.livelyLabel}>
         {(["lively", "calm", "still"] as const).map((l) => <button key={l} type="button" aria-pressed={lively === l} onClick={() => { for (const [k, v] of livelySettings(l)) void changeSetting(k, v); }}>{S.lively[l]}</button>)}
       </div>

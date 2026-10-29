@@ -390,4 +390,79 @@ function drawDiagram(d: Laid, dockX: number, ms: number | null) {
   // It fades after its time; one kept until closed stays until Close in Home or Stop everything (the shell clears it).
   if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, ms);
 }
-void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid; dockX: number; ms?: number | null; settings?: unknown }; takeSnapshot(p.settings); drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });
+// M33, Draw it as a picture (HeyClicky's drawn illustrations, made ours): a sheet of dotted paper with a handwritten title,
+// the picture drawn the way a hand would, outline first and then its colour, shape after shape in the model's order, all
+// within about seven seconds, and its caption under it. The shapes were checked twice (the engine's sketch.ts, the
+// shell's diagram.rs); here they are only drawn, never as markup.
+type SketchShape = { k: string; x?: number; y?: number; r?: number; rx?: number; ry?: number; width?: number; height?: number; x1?: number; y1?: number; x2?: number; y2?: number; d?: string; s?: string; size?: number; stroke?: string; fill?: string; w?: number };
+const INKS: Record<string, string> = { ink: "#1f2430", white: "#ffffff", gray: "#9aa1ad", blue: "#3b82f6", sky: "#7cc4fa", navy: "#1e3a8a", yellow: "#fbbf24", orange: "#fb923c", red: "#ef4444", pink: "#f472b6", purple: "#8b5cf6", green: "#22c55e", teal: "#14b8a6", brown: "#92400e", skin: "#e8b48a" };
+const inkOf = (c: unknown, fallback: string) => (c === "none" ? "none" : INKS[String(c)] ?? fallback);
+export function drawSketch(sk: { title: string; caption: string; shapes: SketchShape[] }, dockX: number, ms: number | null) {
+  clear();
+  const reduced = reducedMotion();
+  const S2 = 1.3, W = 400 * S2 + 56, H = 300 * S2 + 96;
+  const away = dockX > innerWidth / 2 ? -1 : 1;
+  const left = Math.max(12, Math.min(innerWidth - W - 12, innerWidth / 2 - W / 2 + away * 60)), top = Math.max(12, Math.min(innerHeight - H - 80, innerHeight * 0.2));
+  const g = el("g", { transform: `translate(${left} ${top})` });
+  svg.appendChild(g);
+  // The paper: soft white with a dot grid, a hairline edge and a long soft shadow.
+  const defs = el("defs", {});
+  const pat = el("pattern", { id: "dots", width: 16, height: 16, patternUnits: "userSpaceOnUse" });
+  pat.appendChild(el("circle", { cx: 2, cy: 2, r: 1.1, fill: "#c9ced8" }));
+  defs.appendChild(pat); g.appendChild(defs);
+  g.appendChild(el("rect", { x: 0, y: 6, width: W, height: H, rx: 18, fill: "rgba(0,0,0,.28)", filter: "none" }));
+  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 18, fill: "#f4f5f8", stroke: "#d9dde4", "stroke-width": 1 }));
+  g.appendChild(el("rect", { x: 0, y: 0, width: W, height: H, rx: 18, fill: "url(#dots)" }));
+  const title = el("text", { x: 28, y: 48, fill: "#1f2430", "font-size": 30, "font-weight": 700, "font-family": HAND });
+  title.textContent = sk.title; g.appendChild(title);
+  const board = el("g", { transform: `translate(28 66) scale(${S2})`, "stroke-linecap": "round", "stroke-linejoin": "round" });
+  g.appendChild(board);
+  const made: { node: SVGElement; stroked: boolean; filled: boolean; len: number }[] = [];
+  for (const sh of sk.shapes) {
+    const stroke = inkOf(sh.stroke, INKS.ink), fill = inkOf(sh.fill, "none"), w = sh.w ?? 2.5;
+    let node: SVGElement | null = null;
+    if (sh.k === "circle") node = el("circle", { cx: sh.x!, cy: sh.y!, r: sh.r! });
+    else if (sh.k === "ellipse") node = el("ellipse", { cx: sh.x!, cy: sh.y!, rx: sh.rx!, ry: sh.ry! });
+    else if (sh.k === "rect") node = el("rect", { x: sh.x!, y: sh.y!, width: sh.width!, height: sh.height!, rx: (sh as { r?: number }).r ?? 0 });
+    else if (sh.k === "line") node = el("line", { x1: sh.x1!, y1: sh.y1!, x2: sh.x2!, y2: sh.y2! });
+    else if (sh.k === "path") node = el("path", { d: sh.d! });
+    else if (sh.k === "text") { const t = el("text", { x: sh.x!, y: sh.y!, fill: inkOf(sh.fill, INKS.ink), "font-size": sh.size ?? 14, "font-weight": 700, "font-family": HAND, "text-anchor": "middle" }); t.textContent = sh.s ?? ""; node = t; }
+    if (!node) continue;
+    if (sh.k !== "text") { node.setAttribute("stroke", stroke); node.setAttribute("stroke-width", String(w)); node.setAttribute("fill", sh.k === "line" ? "none" : fill); }
+    board.appendChild(node);
+    const geo = node as unknown as SVGGeometryElement;
+    made.push({ node, stroked: sh.k !== "text" && stroke !== "none", filled: sh.k !== "text" && sh.k !== "line" && fill !== "none", len: sh.k === "text" ? 0 : (geo.getTotalLength?.() ?? 0) });
+  }
+  // The caption under the paper, in the same dark pill as the words said out loud.
+  const capW = Math.min(W, 640);
+  const cap = el("g", { transform: `translate(${left + (W - capW) / 2} ${top + H + 14})`, opacity: 0 });
+  cap.appendChild(el("rect", { x: 0, y: 0, width: capW, height: 44, rx: 22, fill: "rgba(14,14,16,.92)" }));
+  const ct = el("text", { x: capW / 2, y: 28, fill: "#ffffff", "font-size": 16, "font-weight": 600, "text-anchor": "middle", "font-family": '-apple-system, "SF Pro Text", system-ui, sans-serif' });
+  ct.textContent = sk.caption; cap.appendChild(ct);
+  if (sk.caption) svg.appendChild(cap);
+  if (reduced) cap.setAttribute("opacity", "1");
+  if (!reduced) {
+    // Pen order at pen speed, but the whole picture within about seven seconds however many shapes it has.
+    const own = made.map((m) => Math.min(900, Math.max(220, m.len * 1.4)));
+    const total = own.reduce((a, b) => a + b + 60, 0), squeeze = Math.min(1, 7000 / Math.max(1, total));
+    let at = 200;
+    made.forEach((m, i) => {
+      const dur = own[i] * squeeze;
+      const n = m.node as SVGElement & { style: CSSStyleDeclaration };
+      if (m.stroked && m.len > 0) { n.style.strokeDasharray = `${m.len}`; n.style.strokeDashoffset = `${m.len}`; }
+      if (m.filled) n.style.fillOpacity = "0";
+      if (!m.stroked && !m.filled) n.style.opacity = "0";
+      const start = at;
+      setTimeout(() => {
+        n.getBoundingClientRect();
+        if (m.stroked && m.len > 0) { n.style.transition = `stroke-dashoffset ${dur}ms cubic-bezier(.33,0,.2,1)`; n.style.strokeDashoffset = "0"; }
+        if (!m.stroked && !m.filled) { n.style.transition = "opacity 200ms ease-out"; n.style.opacity = "1"; }
+      }, start);
+      if (m.filled) setTimeout(() => { n.style.transition = `${n.style.transition ? n.style.transition + ", " : ""}fill-opacity 260ms ease-out`; n.style.fillOpacity = "1"; }, start + dur * 0.8);
+      at += (dur + 60) * squeeze;
+    });
+    setTimeout(() => { cap.style.transition = "opacity 220ms ease-out"; cap.setAttribute("opacity", "1"); }, Math.min(at, 2500));
+  }
+  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; cap.style.transition = "opacity .6s"; cap.setAttribute("opacity", "0"); timer = setTimeout(clear, 700); }, Math.max(ms, 12_000));
+}
+void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid & { sketch?: { title: string; caption: string; shapes: SketchShape[] } }; dockX: number; ms?: number | null; settings?: unknown }; takeSnapshot(p.settings); if (p.diagram.sketch) drawSketch(p.diagram.sketch, p.dockX, diagramMsOf(p.ms)); else drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });

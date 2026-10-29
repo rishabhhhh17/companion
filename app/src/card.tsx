@@ -43,7 +43,7 @@ import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
-import { groupPlaces } from "./settingsGroups.ts";
+import { FIRST_PAGE, PAGES, PAGE_GROUPS, isPage } from "./settingsPages.ts";
 import { characterName } from "./companion.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
@@ -810,7 +810,8 @@ function Card() {
   useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
   const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
     if (!projectRef.current || asked.current || !toolOn("explain")) return;
-    const cmd = askDiagram(projectRef.current, question, problem);
+    // M33: with no problem on screen, Draw it draws a picture of the question (HeyClicky style); with one, the diagram.
+    const cmd = askDiagram(projectRef.current, question, problem, problem ? undefined : "sketch");
     asked.current = true; askedId.current = (cmd as { id: string }).id; dispatch({ type: "ui.diagramAsked", ask: (cmd as { id: string }).id, project: projectRef.current });
     void sendOrExplain(cmd, () => { asked.current = false; dispatch({ type: "ui.diagramClosed" }); });
   };
@@ -821,6 +822,10 @@ function Card() {
       // An answer to an earlier ask (before Stop, or before the project changed) is not this ask's answer.
       if (ev.ask && ev.ask !== askedId.current) return;
       asked.current = false;
+      if (ev.made && (ev as { sketch?: unknown }).sketch && ev.project === projectRef.current) {
+        void invoke("show_diagram", { diagram: { sketch: (ev as { sketch: unknown }).sketch } }).catch((err) => dispatch({ type: "ui.diagramFailed", reason: String(err) === "busy" ? "Something else is pointing at the screen right now. Try again in a moment." : "I could not show that on your screen. Try again." }));
+        return;
+      }
       if (ev.made && ev.diagram && ev.project === projectRef.current) {
         const laid = layoutDiagram(ev.diagram, 720);
         void invoke("show_diagram", { diagram: { ...laid, caption: ev.diagram.caption, reason: ev.diagram.broken.reason } }).catch((err) => dispatch({ type: "ui.diagramFailed", reason: String(err) === "busy" ? "Something else is pointing at the screen right now. Try again in a moment." : "I could not show that on your screen. Try again." }));
@@ -1184,6 +1189,9 @@ function Card() {
   // Settings lives inside Home (M20, the founder: not in a separate window): the gear, Command comma and the notch's
   // Settings button all open it here.
   const gear = () => pickTab("settings");
+  // M33: a fix just proven is said beside the pointer too (the drop that follows it), as HeyClicky announces at the cursor.
+  const provenAt = m.receipt?.proof === "passed" && !m.receipt.gone ? m.receipt.checkpoint : null;
+  useEffect(() => { if (provenAt) void invoke("follow_say", { text: S.followDone }).catch(() => {}); }, [provenAt]);
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
   useEffect(() => {
@@ -1420,9 +1428,8 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
-  const setOpen = setPlace || groupPlaces(settingsPlaces())[0]?.places[0]?.id || "";
-  const placeTitle = (p: { id: string; title: string }) => (p.id === "home" ? characterName(setting("character.name")) : p.title);
-  const viewTitle = home.tab === "settings" ? ((() => { const p = settingsPlaces().find((x) => x.id === setOpen); return p ? placeTitle(p) : tabName("settings"); })()) : tabName(home.tab);
+  const setOpen = isPage(setPlace) ? setPlace : FIRST_PAGE;
+  const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
@@ -1544,7 +1551,7 @@ function Card() {
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
-      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("fixed:key"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
+      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("account"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
@@ -1569,12 +1576,14 @@ function Card() {
         </section>
       )}
       {home.tab === "settings" && (
-        <nav className="sections-grouped" aria-label={S.look.settingsPlaces}>
-          {groupPlaces(settingsPlaces()).map((g) => (
-            <div key={g.group} className="sections-group" data-group={g.group}>
-              <h3 className="sections-head" id={`sg-${g.group}`}>{S.setGroups[g.group]}</h3>
-              <ul className="sections" aria-labelledby={`sg-${g.group}`}>
-                {g.places.map((p) => <li key={p.id}><button className="section-pill" type="button" aria-current={setOpen === p.id ? "page" : undefined} onClick={() => { setSetPlace(p.id); root.current?.scrollTo({ top: 0 }); }}>{placeTitle(p)}</button></li>)}
+        // M30: Settings' side list, as HeyClicky's: an icon and a name for each page, in three short groups.
+        <nav className="sp-side" aria-label={S.look.settingsPlaces}>
+          {PAGE_GROUPS.map((g) => (
+            <div key={g.head || "first"} className="sp-group">
+              {g.head && <h3 className="sp-group-head">{S.pageHeads[g.head]}</h3>}
+              <ul>
+                {g.pages.map((id) => <li key={id}><button className="sp-nav" type="button" aria-current={setOpen === id ? "page" : undefined} onClick={() => { setSetPlace(id); root.current?.scrollTo({ top: 0 }); }}>
+                  <Icon name={PAGES[id].icon} size={16} /><span>{id === "character" ? characterName(setting("character.name")) : S.pages[id].title}</span></button></li>)}
               </ul>
             </div>
           ))}

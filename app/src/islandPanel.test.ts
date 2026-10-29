@@ -70,10 +70,10 @@ describe("the sun inside the notch (M20)", () => {
     expect(css).toMatch(/\.island\.notch\[data-mode="rest"\]:not\(\[data-tuck\]\) \.island-sun \{ display: block;/);
     expect(css).not.toContain("island-sun-breathe");   // it holds still: no fading in and out on the black
     const lime = readFileSync(new URL("../public/brand/sun-lime.svg", import.meta.url), "utf8");
-    expect(lime).toContain('fill="#C6F432"');
+    expect(lime).toContain('fill="url(#chr)"');   // M32: polished chrome, not lime
     // The mark is exactly seven identical rays (make_logo.py rotates one path 360/7 degrees) and a sun with its smile cut out.
     expect(lime.match(/transform="rotate\(/g)?.length).toBe(7);
-    expect(new Set([...lime.matchAll(/<path d="([^"]+)" fill="#C6F432" transform/g)].map((m) => m[1])).size).toBe(1);
+    expect(new Set([...lime.matchAll(/<path d="([^"]+)" fill="url\(#chr\)" transform/g)].map((m) => m[1])).size).toBe(1);
     expect(lime).toContain('mask="url(#cutn)"');
   });
 });
@@ -136,5 +136,16 @@ describe("work cards drop from the notch on each change (M26)", () => {
     const view = read("./islandPanel.tsx");
     expect(view).toContain("brief");
     expect(read("./island.tsx")).toContain('useSetting("island.showWork") !== false');
+  });
+});
+
+import { greeting } from "./islandPanel.ts";
+describe("the notch greets you (M33)", () => {
+  test("by the time of day, with your first name when the Mac has one", () => {
+    expect(greeting(8, "Rishabh")).toBe("Morning, Rishabh.");
+    expect(greeting(14, "Rishabh")).toBe("Afternoon, Rishabh.");
+    expect(greeting(19, null)).toBe("Evening.");
+    expect(greeting(23, "Rishabh")).toBe("Hi, Rishabh.");
+    expect(greeting(3, null)).toBe("Hi.");
   });
 });

@@ -303,6 +303,18 @@ impl Follow {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool }
 
+/// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 9;
+/// any result while Home is open is seen at once.
+pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(9) } }
+
+/// M33: the first name for the notch's greeting ("Evening, Rishabh."), from the Mac account's full name, on this Mac only.
+/// Only letters (and an inside hyphen or apostrophe), at most 24 of them; anything else gives no name and a plain greeting.
+pub fn first_name(full: &str) -> Option<String> {
+    let w = full.split_whitespace().next()?;
+    let ok = w.chars().count() <= 24 && w.chars().next()?.is_alphabetic() && w.chars().all(|c| c.is_alphabetic() || c == '-' || c == '\'');
+    ok.then(|| w.to_string())
+}
+
 /// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
 /// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
 pub fn animates_open(source: &str) -> bool { source != "hotkey" }
@@ -1033,5 +1045,20 @@ mod tests {
     fn home_opened_by_a_key_is_there_at_once() {
         assert!(!animates_open("hotkey"));
         for s in ["button", "island", "dock", "drop", "first_run", "reopen"] { assert!(animates_open(s), "{s}"); }
+    }
+
+    #[test]
+    fn the_greeting_uses_only_a_plain_first_name() {
+        assert_eq!(first_name("Rishabh Kapadia").as_deref(), Some("Rishabh"));
+        assert_eq!(first_name("  Ana-María  López ").as_deref(), Some("Ana-María"));
+        for bad in ["", "   ", "123 Main", "root@mac", "x".repeat(30).as_str()] { assert_eq!(first_name(bad), None, "{bad}"); }
+    }
+
+    #[test]
+    fn results_finished_while_home_is_closed_are_counted_up_to_nine() {
+        assert_eq!(unseen_next(0, false), 1);
+        assert_eq!(unseen_next(8, false), 9);
+        assert_eq!(unseen_next(9, false), 9);
+        assert_eq!(unseen_next(4, true), 0);
     }
 }

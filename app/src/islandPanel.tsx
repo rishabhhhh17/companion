@@ -6,7 +6,8 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
-import { ARM_MS, answerHere, armed, islandJobs, panelNote, PANEL_DO, type JobCard } from "./islandPanel.ts";
+import { ARM_MS, answerHere, armed, greeting, islandJobs, panelNote, PANEL_DO, type JobCard } from "./islandPanel.ts";
+import { keyHint, keysFrom, setKeysNow } from "./keys.ts";
 import { answerApproval } from "./commands.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
@@ -16,6 +17,11 @@ import { useSetting } from "./settingsStore.ts";
 /** `brief` (M26): the panel opened by itself (a question, or a moment of work), so it shows only the cards; the pointer
  *  opens the whole panel. */
 type Props = { m: Model; line: string; shown: boolean; brief?: boolean };
+
+// M33: the Mac account's first name for the greeting, asked once.
+let firstName: string | null = null;
+void invoke("first_name").then((v) => { firstName = typeof v === "string" && v ? v : null; }).catch(() => {});
+void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
 export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief }, ref) {
   // What the panel shows and its size (M19, Look and feel): the hello, the work, the quick actions, usual or compact.
@@ -70,7 +76,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {brief ? list : <>
-      {showHello && jobs.length === 0 && !note && <p className="ip-hi">{S.panel.hiLead} {S.panel.hiWord}?</p>}
+      {showHello && jobs.length === 0 && !note && <div className="ip-hello"><p className="ip-hi">{greeting(new Date().getHours(), firstName)}</p><p className="ip-talk">{keyHint("talk", S.panel.talkLine)}</p></div>}
       {asking && list}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
         <span className="ip-plus" aria-hidden="true">+</span>{S.panel.go}

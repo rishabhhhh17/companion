@@ -82,13 +82,16 @@ function Island() {
   const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0, hover: true });
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);
+  const [unseen, setUnseen] = useState(0);
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(9, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
-    return () => { off.then((f) => f()); offUp.then((f) => f()); };
+    // M34: results finished while Home was closed, counted on the notch until Home opens.
+    const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(9, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
+    return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); };
   }, []);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
   const drop = useDrop();
@@ -179,7 +182,8 @@ function Island() {
       </picture>}
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
-        <button className="island-hit" type="button" aria-label={islandName(line)} onClick={() => void invoke("island_click")}>
+        <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={() => void invoke("island_click")}>
+          {unseen > 0 && !showWings && <b className="island-unseen" aria-hidden="true">{unseen}</b>}
           {showWings && w && <span aria-hidden="true">
             <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>

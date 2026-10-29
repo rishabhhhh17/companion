@@ -29,6 +29,7 @@ pub fn timing(v: &Value) -> Timing {
 pub fn holds_a_visit(overlay_busy: bool, kept_until_closed: bool) -> bool { overlay_busy && !kept_until_closed }
 
 pub fn validate(d: &Value) -> Result<(), String> {
+    if d.get("sketch").is_some() { return validate_sketch(&d["sketch"]); }
     let o = d.as_object().ok_or("not a diagram")?;
     let nodes = o.get("nodes").and_then(Value::as_array).ok_or("no boxes")?;
     let edges = o.get("edges").and_then(Value::as_array).ok_or("no arrows")?;
@@ -42,6 +43,32 @@ pub fn validate(d: &Value) -> Result<(), String> {
         if !(text_ok(&e["from"], 24) && text_ok(&e["to"], 24) && (e["label"].is_null() || text_ok(&e["label"], 40)) && e["broken"].is_boolean()) { return Err("an arrow is not valid".into()); }
     }
     if !(num_ok(&o["width"], 20.0, MAX_COORD) && num_ok(&o["height"], 20.0, MAX_COORD) && text_ok(&o["caption"], 200) && text_ok(&o["reason"], 200)) { return Err("the words are not valid".into()); }
+    Ok(())
+}
+
+/// M33: a drawn picture, checked again in the shell before it reaches the overlay (the engine's sketch.ts checked it first):
+/// a title, a caption, 3 to 80 shapes of known kinds, numbers near the 400 by 300 board, colours from the palette, a pen
+/// path of drawing commands and numbers only, plain short labels.
+pub const SKETCH_PALETTE: &[&str] = &["ink", "white", "gray", "blue", "sky", "navy", "yellow", "orange", "red", "pink", "purple", "green", "teal", "brown", "skin", "none"];
+pub fn validate_sketch(s: &Value) -> Result<(), String> {
+    let o = s.as_object().ok_or("not a picture")?;
+    if !(text_ok(&o["title"], 48) && text_ok(&o["caption"], 160)) { return Err("the words are not valid".into()); }
+    let shapes = o.get("shapes").and_then(Value::as_array).ok_or("no shapes")?;
+    if shapes.len() < 3 || shapes.len() > 80 { return Err("too many or too few shapes".into()); }
+    let colour = |v: &Value| v.is_null() || v.as_str().is_some_and(|c| SKETCH_PALETTE.contains(&c));
+    let n = |v: &Value, hi: f64| num_ok(v, -1.0, hi);
+    for sh in shapes {
+        let ok = colour(&sh["stroke"]) && colour(&sh["fill"]) && (sh["w"].is_null() || num_ok(&sh["w"], 0.5, 6.0)) && match sh["k"].as_str() {
+            Some("circle") => n(&sh["x"], 401.0) && n(&sh["y"], 301.0) && n(&sh["r"], 201.0),
+            Some("ellipse") => n(&sh["x"], 401.0) && n(&sh["y"], 301.0) && n(&sh["rx"], 201.0) && n(&sh["ry"], 151.0),
+            Some("rect") => n(&sh["x"], 401.0) && n(&sh["y"], 301.0) && n(&sh["width"], 401.0) && n(&sh["height"], 301.0),
+            Some("line") => n(&sh["x1"], 401.0) && n(&sh["y1"], 301.0) && n(&sh["x2"], 401.0) && n(&sh["y2"], 301.0),
+            Some("path") => sh["d"].as_str().is_some_and(|d| d.len() <= 800 && d.trim_start().starts_with(['M', 'm']) && d.chars().all(|c| "MmLlHhVvCcSsQqTtZz0123456789.,eE+- ".contains(c))),
+            Some("text") => n(&sh["x"], 401.0) && n(&sh["y"], 301.0) && text_ok(&sh["s"], 40),
+            _ => false,
+        };
+        if !ok { return Err("a shape is not valid".into()); }
+    }
     Ok(())
 }
 
@@ -120,4 +147,20 @@ mod tests {
         let mut d = good(); d["reason"] = json!("x".repeat(201)); assert!(validate(&d).is_err());
     }
     #[test] fn not_an_object_is_refused() { assert!(validate(&json!("hi")).is_err()); assert!(validate(&json!(null)).is_err()); }
+
+    #[test]
+    fn a_drawn_picture_is_checked_again_in_the_shell() {
+        use serde_json::json;
+        let ok = json!({ "sketch": { "title": "Sun", "caption": "A sun.", "shapes": [
+            { "k": "circle", "x": 80, "y": 150, "r": 40, "fill": "yellow", "stroke": "orange", "w": 3 },
+            { "k": "path", "d": "M 1 2 C 3 4 5 6 7 8 Z", "fill": "blue", "stroke": "ink", "w": 2 },
+            { "k": "text", "x": 200, "y": 40, "s": "Day", "size": 18, "fill": "ink" } ] } });
+        assert!(validate(&ok).is_ok());
+        for bad in [
+            json!({ "sketch": { "title": "S", "caption": "", "shapes": [{ "k": "image", "href": "x" }, { "k": "circle", "x": 1, "y": 1, "r": 1 }, { "k": "circle", "x": 1, "y": 1, "r": 1 }] } }),
+            json!({ "sketch": { "title": "S", "caption": "", "shapes": [{ "k": "path", "d": "M1 2 url(x)" }, { "k": "circle", "x": 1, "y": 1, "r": 1 }, { "k": "circle", "x": 1, "y": 1, "r": 1 }] } }),
+            json!({ "sketch": { "title": "S", "caption": "", "shapes": [{ "k": "circle", "x": 1, "y": 1, "r": 1, "fill": "url(#x)" }, { "k": "circle", "x": 1, "y": 1, "r": 1 }, { "k": "circle", "x": 1, "y": 1, "r": 1 }] } }),
+            json!({ "sketch": { "title": "<b>", "caption": "", "shapes": [] } }),
+        ] { assert!(validate(&bad).is_err(), "{bad}"); }
+    }
 }

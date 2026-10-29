@@ -7,18 +7,28 @@
 //! The spring is plain code here, so it can be tested: it settles beside the pointer, never runs away, and jumps straight
 //! there the first time or after the pointer leaps (another display).
 
-/// How often the drop moves (milliseconds): about sixty times a second.
-pub const TICK_MS: u64 = 16;
+/// How often the drop moves (milliseconds): about 120 times a second, so it keeps up with a ProMotion screen (M29).
+pub const TICK_MS: u64 = 8;
 /// The drop's window, square, in points.
 pub const SIZE: f64 = 44.0;
 /// Where the drop rests from the pointer's tip: a little below and to the right, never under it.
 pub const OFFSET: (f64, f64) = (16.0, 18.0);
-/// The spring: stiffness and damping per second (a touch under critical, so it wobbles once as it settles).
-pub const K: f64 = 170.0;
-pub const C: f64 = 20.0;
+/// The spring (M29, the founder: "there is a lag to it"): stiff and just under critical damping, so the drop sticks to the
+/// pointer, catching up in about a tenth of a second, with no wobble when it stops.
+pub const K: f64 = 1600.0;
+pub const C: f64 = 76.0;
 /// The fastest it may go (points a second) and the leap that makes it jump instead of fly (points).
 pub const MAX_SPEED: f64 = 6_000.0;
 pub const LEAP: f64 = 900.0;
+
+/// M33: how wide the window grows to say a short line beside the pointer, and how long a line stays.
+pub const SAY_W: f64 = 260.0;
+pub const SAY_MS: u64 = 3_500;
+/// A line said beside the pointer: kept short so it fits in one line of the bubble.
+pub fn say_line(text: &str) -> Option<String> {
+    let t: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!t.is_empty() && t.chars().count() <= 40).then_some(t)
+}
 
 /// Whether the drop is wanted: only with A drop of water chosen.
 pub fn wanted(v: &serde_json::Value) -> bool { v.as_str() == Some("drop") }
@@ -49,6 +59,9 @@ impl Drop {
     }
     /// The window's frame for the drop now (global top left points).
     pub fn frame(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SIZE, SIZE] }
+    /// M33: while it says something beside the pointer, the window widens to the right to hold the words; the drop stays
+    /// exactly where it was, at the left of the window.
+    pub fn frame_saying(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SAY_W, SIZE] }
 }
 
 #[cfg(test)]
@@ -90,6 +103,16 @@ mod tests {
     }
 
     #[test]
+    fn it_keeps_up_with_the_pointer_with_no_lag_you_can_see() {
+        let mut d = Drop::default();
+        d.step((100.0, 100.0), 0.008);
+        for _ in 0..19 { d.step((300.0, 100.0), 0.008); }   // 0.15 s after the pointer moved 200 points
+        assert!((d.x - (300.0 + OFFSET.0)).abs() < 6.0, "{d:?}");
+        let mut over: f64 = 0.0;
+        for _ in 0..100 { d.step((300.0, 100.0), 0.008); over = over.max(d.x - (300.0 + OFFSET.0)); }
+        assert!(over < 3.0, "it does not wobble past where it stops: {over}");
+    }
+    #[test]
     fn a_leap_to_another_display_jumps_instead_of_flying_across() {
         let mut d = Drop::default();
         d.step((100.0, 100.0), 0.016);
@@ -115,5 +138,15 @@ mod tests {
         let make = &main[main.find("let follow_w = ").unwrap()..];
         assert!(make[..make.find(";\n").unwrap()].contains("\"follow\""));
         assert!(main.contains("FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.setSharingType(t); } });"), "it hides from screen sharing like the rest");
+    }
+
+    #[test]
+    fn a_line_beside_the_pointer_is_short_and_the_drop_does_not_move() {
+        assert_eq!(say_line("  Fixed.   Checks pass. ").as_deref(), Some("Fixed. Checks pass."));
+        assert_eq!(say_line(""), None);
+        assert_eq!(say_line(&"x".repeat(41)), None);
+        let d = Drop { x: 100.0, y: 50.0, vx: 0.0, vy: 0.0, placed: true };
+        assert_eq!(&d.frame_saying()[..2], &d.frame()[..2]);
+        assert_eq!(d.frame_saying()[2], SAY_W);
     }
 }

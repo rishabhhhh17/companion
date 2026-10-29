@@ -46,7 +46,7 @@ export class FlowflowRenderer {
       blending: CustomBlending, blendSrc: OneFactor, blendDst: OneMinusSrcAlphaFactor, // premultiplied alpha
       uniforms: {
         uTime: { value: 0 }, uShape: { value: [0, 0, 0] }, uMove: { value: new Vector4(0, 0, 0, 0) }, uWobble: { value: new Vector4() }, uContact: { value: new Vector4() },
-        uRipple: { value: this.ripple }, uRippleGain: { value: 1 }, uNoise: { value: 0.035 },
+        uRipple: { value: this.ripple }, uRippleGain: { value: 1 }, uNoise: { value: 0.008 },
         uCloud: { value: 0 }, uGlow: { value: 0 }, uClarity: { value: 0.5 }, uRefract: { value: 0.5 }, uRough: { value: 0.1 }, uColA: { value: AQUA }, uColB: { value: OCEAN },
       },
     });
@@ -81,7 +81,7 @@ export class FlowflowRenderer {
   setSize(cssW: number, cssH: number, dpr: number): void {
     if (this.disposed || !(cssW > 0) || !(cssH > 0)) return;
     this.cssW = cssW; this.cssH = cssH;
-    this.gl.setPixelRatio(Math.min(2, Math.max(1, dpr || 1))); this.gl.setSize(cssW, cssH, false);
+    this.gl.setPixelRatio(Math.min(3, Math.max(2, dpr || 1)));   // M29: always at least 2x, so the water is crisp, never soft this.gl.setSize(cssW, cssH, false);
     this.halfH = FRAME_HEIGHT / 2; this.halfW = this.halfH * (cssW / cssH);
     this.cam.left = -this.halfW; this.cam.right = this.halfW; this.cam.top = this.halfH; this.cam.bottom = -this.halfH; this.cam.updateProjectionMatrix();
     (this.dropMat.uniforms.uPixels as { value: number }).value = (cssH / FRAME_HEIGHT) * this.gl.getPixelRatio();
@@ -108,7 +108,7 @@ export class FlowflowRenderer {
     for (let i = 0; i < 4; i++) this.ripple[i].set((this.rippleData[i * 4] - pose.x) / BODY_SCALE, (this.rippleData[i * 4 + 1] - pose.y - REST_Y) / BODY_SCALE, this.rippleData[i * 4 + 2], this.rippleData[i * 4 + 3]);
     u.uRippleGain.value = tuning.ripple * look.rippleGain;
     u.uCloud.value = look.cloud; u.uGlow.value = look.glow; u.uClarity.value = tuning.clarity;
-    u.uNoise.value = 0.03 * (1 - 0.5 * look.cloud);
+    u.uNoise.value = 0.008 * (1 - 0.5 * look.cloud);   // M29: a smooth surface, not a lumpy one
     this.placeEyes(s, cx, cy);
     for (let i = 0; i < MAX_DROPLETS; i++) { this.dropPos[i * 3] = s.droplets.x[i]; this.dropPos[i * 3 + 1] = s.droplets.y[i]; this.dropPos[i * 3 + 2] = 0; this.dropSize[i] = s.droplets.size[i]; }
     this.dropGeo.attributes.position.needsUpdate = true; this.dropGeo.attributes.aSize.needsUpdate = true;
@@ -121,9 +121,9 @@ export class FlowflowRenderer {
     for (const e of this.eyeParts) {
       const gx = e.side < 0 ? eyes.lx : eyes.rx, gy = e.side < 0 ? eyes.ly : eyes.ry;
       // The eye sits on the front of the body at a fixed spot of the sphere, so it rides wherever the body is bent.
-      const sx = e.side * 0.36, sy = 0.2, sz = Math.sqrt(Math.max(0.05, 1 - sx * sx - sy * sy));
+      const sx = e.side * 0.34, sy = 0.18, sz = Math.sqrt(Math.max(0.05, 1 - sx * sx - sy * sy));
       const p = surfacePoint(sx, sy, sz, pose, pose.breath, look.expand, this.tmp);
-      const open = Math.max(0, eyes.open), w = 0.205 * BODY_SCALE, h = 0.24 * BODY_SCALE * Math.max(0.07, open);
+      const open = Math.max(0, eyes.open), w = 0.25 * BODY_SCALE, h = 0.3 * BODY_SCALE * Math.max(0.07, open);   // M29: bigger, clearer eyes
       const group = e.sclera.parent!; group.position.set(cx + p[0] * BODY_SCALE, cy + p[1] * BODY_SCALE, 1);
       e.sclera.scale.set(w, h, 0.05);
       const shut = open < 0.14;   // closed: a thin dark line

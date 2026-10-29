@@ -52,3 +52,10 @@ export const panelNote = (line: string, jobs: JobCard[]): string => (jobs.length
 
 /** What the two quick buttons ask Home to do when it opens (main.rs open_card_cmd, settingswin.rs arrival). */
 export const PANEL_DO = { find: { do: "find" }, ship: { do: "shipCheck" }, settings: { place: "settings" } } as const;
+
+/** M33 (HeyClicky's notch: "Evening, Rishabh."): the greeting for the time of day, with the Mac account's first name when
+ *  there is one. Morning from 5, afternoon from 12, evening from 17, and after 22 just Hi. */
+export function greeting(hour: number, name: string | null): string {
+  const part = hour >= 5 && hour < 12 ? S.panel.morning : hour >= 12 && hour < 17 ? S.panel.afternoon : hour >= 17 && hour < 22 ? S.panel.evening : S.panel.hi;
+  return name ? `${part}, ${name}.` : `${part}.`;
+}
