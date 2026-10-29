@@ -68,7 +68,7 @@ export type BodyPose = {
 };
 
 // M29 (the founder: "I don't want bulgy water"): a firm droplet that leans and settles, never a squashed jelly.
-const MAX_STRETCH = 0.12;
+export const MAX_STRETCH = 0.12;
 /** The most it may squash (+) or rebound (-). Hits stack, and at 1 the shape would fold flat, so it stops here and loses that energy. */
 export const MAX_SQUASH = 0.14;
 

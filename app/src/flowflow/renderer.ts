@@ -6,6 +6,7 @@ import {
 } from "three";
 import type { Snapshot } from "./engine.ts";
 import { MAX_DROPLETS } from "./particles.ts";
+import { MAX_STRETCH } from "./physics.ts";
 import { BODY_FRAGMENT, BODY_VERTEX, DROP_FRAGMENT, DROP_VERTEX } from "./shaders.ts";
 
 /** The frame's height in world units: the body is about 1.7 of it at rest, so it fills most of the canvas. */
@@ -13,8 +14,8 @@ export const FRAME_HEIGHT = 2.2;
 /** The drop is drawn at this size (M37): its widest part is then about 0.69 either side of its centre and it stands about
  *  1.5 tall, so it fits the frame with room to lean and settle. */
 export const BODY_SCALE = 0.8;
-/** M37: how much of the physics' bend the drop shows. A clean drop leans and settles; it never wobbles into lumps. */
-const BEND = { stretch: 0.35, squash: 0.5, lean: 0.6 };
+/** M37: how much of the physics' bend the drop shows. It leans, stretches and settles like liquid; it never wobbles into lumps. */
+const BEND = { stretch: 0.5, squash: 0.6, lean: 0.7 };   // M37b: more give, now that it pours like liquid (shaders.ts drop)
 /** Lifts or drops the body so its whole shape (from the flat base to the top) sits in the middle of the frame. */
 const REST_Y = -0.15;
 // The colours: aqua at the top of the water, ocean blue below.
@@ -47,7 +48,7 @@ export class FlowflowRenderer {
       uniforms: {
         uHalf: { value: [1.6, FRAME_HEIGHT / 2] }, uCenter: { value: [0, 0] }, uScale: { value: BODY_SCALE }, uPx: { value: 0.01 },
         uPose: { value: new Vector4() }, uMove: { value: [1, 0, 0] }, uEyes: { value: new Vector4() }, uOpen: { value: 1 },
-        uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
+        uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
       },
     });
     // One quad over the whole canvas: the drop and its eyes are worked out per pixel (shaders.ts).
@@ -95,6 +96,7 @@ export class FlowflowRenderer {
     u.uTime.value = s.time;
     (u.uPose.value as Vector4).set(pose.breath, pose.squash * BEND.squash, pose.lean * BEND.lean, look.expand);
     u.uMove.value = [pose.dirX, pose.dirY, pose.stretch * BEND.stretch];
+    u.uPour.value = Math.min(1, Math.max(0, pose.stretch / MAX_STRETCH));   // M37b: the tail grows with how far it stretches
     (u.uEyes.value as Vector4).set(eyes.lx, eyes.ly, eyes.rx, eyes.ry);
     u.uOpen.value = Math.max(0, eyes.open);
     u.uCloud.value = look.cloud; u.uGlow.value = look.glow;

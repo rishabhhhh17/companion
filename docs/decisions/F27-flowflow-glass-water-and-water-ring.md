@@ -27,3 +27,13 @@ The founder found the old Flowflow cheap, lumpy, badly moving and odd in the fac
 
 ## Revisit only if
 The founder supplies or picks other character art.
+
+## Added the same day, after the founder tried it ("it does not look flowy… melts and reshapes"; "make sure the water can go anywhere in the display")
+- **It is liquid.**
+  - At rest, the point sways, slow waves run up its sides and the base spreads and gathers.
+  - Moving, it stretches and pours one smooth tapering tail of water behind it (`uPour`, from how far the physics stretches it) that melts back in.
+  - All of it stays low and smooth, never lumpy.
+- **It can be put anywhere.**
+  - Let go at least 120 points from every edge, it stays there (`docking::free_on`, `place_free`, kept per display in `dock.json` `free`). It is moved sideways out of the notch and Home's zone, it does not peek, and it faces the nearest edge.
+  - A drop near an edge, or an edge or position chosen in Settings, takes it back to an edge.
+- **The ring no longer lags.** At most one move waits on the main thread, and it reads the pointer when it runs (`FOLLOW_QUEUED`).

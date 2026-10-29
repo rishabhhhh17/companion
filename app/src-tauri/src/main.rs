@@ -340,8 +340,12 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     // Another display, or the launch, can change the place Settings shows: the pages are told (a drag tells them once, on
     // the drop).
     if reason != "drag" && place_shown_changed() { if let Some(app) = APP.get() { place_told(app); } }
-    // On its edge, inside the work area, out of the clear zone at the top centre (the notch island).
-    let f = docking::place(&target, DOCK, edge, pct, home_size());
+    // On its edge, inside the work area, out of the clear zone at the top centre (the notch island). M37: or where it was
+    // let go, away from every edge; it then faces the nearest edge and does not peek.
+    let free = with_prefs(|p| p.free.get(&target.id).copied());
+    let f = match free { Some(at) => docking::place_free(&target, DOCK, at, home_size()), None => docking::place(&target, DOCK, edge, pct, home_size()) };
+    let edge = if free.is_some() { docking::nearest_edge(f, target.work) } else { edge };
+    HOME_FREE.store(free.is_some(), Ordering::SeqCst);
     // This is home now. A drag or a display change also ends any visit beside a window, with no trip back, and stops a
     // trip that was under way where it is.
     ROAM_GEN.fetch_add(1, Ordering::SeqCst);
@@ -369,9 +373,14 @@ fn drag_dock(app: AppHandle, x: f64, y: f64) {
         let Some(first) = list.first() else { return };
         let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
         let (edge, pct) = snap_on(&target, DOCK, x, y, home_size());
+        let free = docking::free_on(&target, DOCK, x, y);
         *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
         // With Same place on every display on, the place dragged to is the one copied to displays with no place yet.
-        with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } });
+        // M37: away from every edge it stays where it is let go; near one it snaps to it, as before.
+        with_prefs(|p| {
+            p.last_screen = target.id.clone();
+            match free { Some(at) => { p.free.insert(target.id.clone(), at); } None => { p.free.remove(&target.id); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } } }
+        });
         apply_dock(mtm, "drag", true);
     });
 }
@@ -755,6 +764,8 @@ static ROAM_GEN: AtomicU64 = AtomicU64::new(0);
 static ROAM_AT: Mutex<Option<Rect>> = Mutex::new(None);
 /// The edge home is on, and the named state the character's page was last told.
 static HOME_EDGE: Mutex<docking::Edge> = Mutex::new(docking::Edge::Right);
+/// M37: the character was let go away from every edge and stays there (docking::Prefs::free); it never peeks then.
+static HOME_FREE: AtomicBool = AtomicBool::new(false);
 static ROAM_PHASE: Mutex<roam::Phase> = Mutex::new(roam::Phase::Home);
 /// When the person last dragged the character (ms since 1970), 0 once they let go.
 static DRAG_AT: AtomicU64 = AtomicU64::new(0);
@@ -977,7 +988,8 @@ fn peek_apply(app: &AppHandle, light: bool) {
     let calm = reduce_motion();
     let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
     let n = peek::Now { now: now() as u64, on: hs.peek, idle_on: hs.peek_idle, calm, at_home };
-    let pose = peeker().pose(&n, quiet);
+    // M37: a character let go in the middle of the screen has no edge to tuck into, so it stays fully in.
+    let pose = if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In } else { peeker().pose(&n, quiet) };
     let was = *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner());
     if pose == was || !at_home { if !at_home { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; } return; }
     let Some(home) = roamer().home() else { return };
@@ -1073,14 +1085,23 @@ fn follow_loop(app: AppHandle) {
         if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); sent_speed = speed; }
         // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
         if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
+        // M37 (the founder: "it lags a bit"): one move waits on the main thread at most. A move that is still queued is not
+        // queued again (they used to pile up behind other work and the ring fell behind), and the move reads where the
+        // pointer is at the moment it runs, so it is always the latest place, never an old one.
+        if !first && FOLLOW_QUEUED.swap(true, Ordering::SeqCst) { continue; }
+        if first { FOLLOW_QUEUED.store(true, Ordering::SeqCst); }
         last_fr = fr;
         shown = true;
+        let (w, h) = (fr[2], fr[3]);
         let _ = app.run_on_main_thread(move || {
+            FOLLOW_QUEUED.store(false, Ordering::SeqCst);
             let Some(mtm) = MainThreadMarker::new() else { return };
             let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+            let p = macos_see::pointer();
+            let (x, y) = if p.x < 0.0 && p.y < 0.0 { (fr[0], fr[1]) } else { (p.x + follow::OFFSET.0 - follow::SIZE / 2.0, p.y + follow::OFFSET.1 - follow::SIZE / 2.0) };
             FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
-                if (pn.frame().size.width - fr[2]).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3])), NSSize::new(fr[2], fr[3])), true); }
-                else { pn.setFrameOrigin(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3]))); }
+                if (pn.frame().size.width - w).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(x, primary_h - (y + h)), NSSize::new(w, h)), true); }
+                else { pn.setFrameOrigin(NSPoint::new(x, primary_h - (y + h))); }
                 if first { pn.orderFrontRegardless(); }
             } });
         });
@@ -1677,6 +1698,8 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
 /// M33: a short line beside the pointer (a fix just proven), said by the drop that follows it, for follow::SAY_MS. Never
 /// during a call or screen sharing (quiet), and only while the drop is shown.
 static FOLLOW_SAY: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
+/// M37: a move of the water ring is waiting on the main thread (never more than one at a time).
+static FOLLOW_QUEUED: AtomicBool = AtomicBool::new(false);
 #[tauri::command]
 fn follow_say(app: AppHandle, text: String) {
     let Some(line) = follow::say_line(&text) else { return };

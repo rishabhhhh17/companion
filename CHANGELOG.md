@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow flows, goes anywhere, and the ring keeps up: 30 Oct 2026
+
+- **Flowflow is liquid now.** Its point sways like poured water, slow waves run up its sides and its base spreads and gathers. When it moves it stretches and pours a smooth tail of water behind it that melts back in as it slows.
+- **Put Flowflow anywhere.** Drag it away from the screen's edges and let go: it stays right there. Drop it near an edge and it snaps to the edge as before. It always keeps out of the notch and the space Home drops into.
+- **The water ring keeps up.** Moves of the ring no longer queue up behind other work, and each one uses where your pointer is at that moment, so it doesn't lag behind anywhere on the screen.
+
 ## Flowflow, rebuilt as clear water, and a water ring at your pointer: 30 Oct 2026
 
 - **Flowflow looks premium now.** It's one clean drop of clear water, lit like a studio product shot. It has a soft point on top, two calm eyes with a glint, and light gathering at its base. No more lumps or wobble: it leans, breathes and settles.

@@ -611,6 +611,7 @@ pub fn dock_with(p: &crate::docking::Prefs, key: &str, v: &Value) -> Option<crat
     let mut next = p.clone();
     let here = p.last_screen.clone();
     let place = |next: &mut crate::docking::Prefs, at: (crate::docking::Edge, f64)| {
+        next.free.remove(&here);   // M37: choosing an edge or a position in Settings takes it back to an edge
         next.per_screen.insert(here.clone(), at);
         if next.same_everywhere.is_some() { next.same_everywhere = Some(at); }
     };

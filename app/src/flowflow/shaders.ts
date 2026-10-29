@@ -20,11 +20,12 @@ uniform vec4 uPose;        // breath, squash, lean, expand
 uniform vec3 uMove;        // direction x, direction y, stretch
 uniform vec4 uEyes;        // left x, left y, right x, right y (where each looks, -1 to 1)
 uniform float uOpen;       // 0 shut, 1 open
-uniform float uCloud, uGlow, uTime;
+uniform float uCloud, uGlow, uTime, uPour;   // uPour: 0 still, 1 moving at its fastest (the tail it pours)
 uniform vec3 uColA, uColB;
 varying vec2 vWorld;
 
 float smin(float a, float b, float k){ float h = clamp(0.5 + 0.5*(b-a)/k, 0.0, 1.0); return mix(b, a, h) - k*h*(1.0-h); }
+float taper(vec3 p, vec3 a, vec3 b, float ra, float rb){ vec3 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-5), 0.0, 1.0); return length(pa - ba * h) - mix(ra, rb, h); }
 float sdEll(vec3 p, vec3 r){ float k0 = length(p/r), k1 = length(p/(r*r)); return k0*(k0-1.0)/k1; }
 float sdRoundCone(vec3 p, float r1, float r2, float h){ float b = (r1-r2)/h, a = sqrt(1.0-b*b); vec2 q = vec2(length(p.xz), p.y); float k = dot(q, vec2(-b, a)); if (k < 0.0) return length(q) - r1; if (k > a*h) return length(q - vec2(0.0, h)) - r2; return dot(q, vec2(a, b)) - r1; }
 
@@ -38,11 +39,26 @@ vec3 unpose(vec3 p){
   p.y /= (1.0 + uPose.x) * (1.0 - uPose.y); p.xz /= 1.0 + 0.5 * uPose.y;
   return p / (1.0 + uPose.w);
 }
+// M37b (the founder: "it does not look flowy… melts and reshapes"): it is liquid. At rest the point sways and slow
+// waves run up its sides; moving, it stretches and pours a soft tail behind it that melts back in as it slows. Every
+// change is low and smooth, so it never turns lumpy.
 float drop(vec3 p){
   vec3 q = unpose(p) - vec3(0.0, -0.18, 0.0); q.z *= 1.06;
+  float up = smoothstep(-0.3, 1.1, q.y);
+  q.x -= (0.06 * sin(uTime * 0.9) + 0.025 * sin(uTime * 1.7 + 1.3)) * up * up;          // the point sways like poured liquid
   float d = sdRoundCone(q, 0.80, 0.16, 1.02);
   d = smin(d, sdEll(q, vec3(0.86, 0.74, 0.82)), 0.18);
-  return max(d, -(q.y + 0.68)) * 0.85;
+  float a = atan(q.z, q.x);
+  d += 0.024 * sin(q.y * 4.2 - uTime * 1.8 + a) * smoothstep(1.0, 0.1, abs(q.y - 0.05)); // slow waves running up its sides
+  d -= 0.03 * (0.5 + 0.5 * sin(uTime * 1.1)) * smoothstep(-0.2, -0.75, q.y);              // the base spreads and gathers, like settling water
+  d = max(d, -(q.y + 0.68));   // the calm flat underside where it sits
+  // Moving: the water pours out behind it in one smooth, tapering tail that melts back in as it slows.
+  float pour = clamp(uPour, 0.0, 1.0);
+  if (pour > 0.01) {
+    vec3 from = vec3(0.0, -0.05, 0.0), to = from + vec3(-uMove.xy, 0.0) * (0.8 * pour);
+    d = smin(d, taper(q, from, to, 0.5, 0.1 + 0.08 * (1.0 - pour)), 0.32);
+  }
+  return d * 0.8;
 }
 vec3 nrm(vec3 p){ vec2 e = vec2(0.002, 0.0); return normalize(vec3(drop(p+e.xyy)-drop(p-e.xyy), drop(p+e.yxy)-drop(p-e.yxy), drop(p+e.yyx)-drop(p-e.yyx))); }
 
