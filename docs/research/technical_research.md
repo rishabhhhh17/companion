@@ -546,6 +546,22 @@ Claude's supported inputs are images, PDFs and text, not audio ([Files](https://
 * **Later engine.** Apple's SpeechAnalyzer and SpeechTranscriber need macOS 26, download their own assets, and launched with about 10 languages (no Hindi) ([Apple](https://developer.apple.com/documentation/speech/speechtranscriber.md)); one third party benchmark found them more accurate and faster than Whisper Small on English (secondhand). Add as an optional engine on macOS 26 after v1.
 * **Wispr Flow and macOS Dictation.** Both insert text by pasting into the focused field. The ask box must be a plain text input that accepts paste and never swallows Cmd+V; test both. Wispr Flow's MCP server (meeting notes, transcripts, calendar; read only; not dictation history) can be offered as a connector ([Wispr Flow MCP](https://docs.wisprflow.ai/articles/9551372685-connect-an-mcp-client-to-wispr-flow-remote-mcp-server)).
 * **Speaking back.** Off by default. An opt in reads short status lines with `AVSpeechSynthesizer` system voices on Mac.
+* **Type by voice in any app (F26, M36, 30 Oct 2026).**
+  * **The key.** A second held chord, the Type key: Option, Shift and Space by default, with Control, Option and Return and Control, Shift and Return on its list. Control, Option and Space is left out because it is the Mac's "next keyboard language" key.
+  * **One microphone.** Hold to talk and the Type key share the one worker (`talkkeys::Holding`): while one is held, the other does nothing.
+  * **At the press, in order:**
+    1. Accessibility is checked (`ax::trusted(true)`, which asks the first time).
+    2. The light comes on.
+    3. The app in front and the identity of its focused element are noted, never the text.
+    4. A password box, secure typing or a never-read app is refused before the microphone opens (`dictate::target_verdict`).
+  * **After transcription,** the words go in through Prompt help's paste: Edit > Paste through Accessibility, Cmd+V only if that item could not be pressed. The clipboard is saved and put back only under T11's rules.
+  * **What is not read.** The box is not read back to confirm the paste. The clipboard comes back after a short wait instead (250 ms after the menu, 600 ms after Cmd+V).
+  * **If the person moved** to another app or box, the words are copied and the person is told. Return is never pressed.
+  * **[verify] on a real Mac:**
+    * That the words land at the cursor in TextEdit, Notes, Chrome (a Google Doc and a plain input), Slack or Messages, the Claude desktop app and an Electron app that shows no focused element.
+    * That the waits are long enough before the clipboard comes back.
+    * That a password box is refused.
+    * That Stop everything mid hold drops the words.
 
 ## 16. Notice for you: Loop Closer, Pattern Catcher and saved tasks (v1.1, designed now)
 

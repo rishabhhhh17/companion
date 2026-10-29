@@ -255,6 +255,7 @@ export const S = {
     "character.follow": "What follows your pointer around.",
     "sound.on": "Little sounds as things happen.",
     "talk.speak": "Say short answers out loud.",
+    "talk.dictate": "Hold its keys in any app and speak to type.",
     "talk.captions": "Show my words while I talk.",
     "talk.voice": "The voice I use.",
     "keys.hotkeys": "",
@@ -416,6 +417,7 @@ export const S = {
   voiceTitle: `Talk to ${PRODUCT}`,
   voiceHint: "Hold {keys}, talk, and let go. The words appear in the box; nothing is sent until you press Start (or turn on auto send).",
   voiceHintOff: "Hold to talk is off because another app is using its keys. Pick other keys in Settings, under Keys to remember.",
+  dictateHint: "In any app's text box, hold {keys}, speak, and let go. Your words are typed where the cursor is, never sent.",
   // What each other hold to talk chord gives up while it is hold to talk (macOS's own text keys; talkkeys.rs lists them).
   talkKeyCosts: { "option-return": "Option and Return: while picked, it no longer adds a new line in Messages and other apps.", "control-return": "Control and Return: while picked, it no longer adds a line break in text boxes." },
   // macOS refuses keys only when another app took them alone, so these apps can share Option and Space with no notice.
@@ -425,7 +427,7 @@ export const S = {
   talkKeysOff: "Another app is already using {keys}, so hold to talk is off. Press Change to pick other keys.",
   talkKeysFellBack: "Another app is already using {picked}, so hold to talk uses {using} for now. Keep them, or press Change to pick others.",
   // Keys to remember in Settings (M11 wave 4): every job's keys, each changeable from a short list (keymap.rs).
-  keyJobs: { card: "Open Home", problem: "Point at the problem", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", stop: "Stop everything" },
+  keyJobs: { card: "Open Home", problem: "Point at the problem", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", dictate: "Type by voice", stop: "Stop everything" },
   // How a chord is named: the modifiers in the Mac's order, then the key (keymap.rs MODS and KEYS use the same words).
   keyWords: { control: "Control", option: "Option", shift: "Shift", command: "Command", space: "Space", return: "Return" },
   keysSettingsHelp: "Each job has its own keys. Press Change to pick others from a short list of keys that are free on this Mac, or to pick any keys you like.",
@@ -1267,6 +1269,7 @@ export const S = {
       yourTurn: { name: "Your turn", invite: "Try Your turn: make a small change yourself after a fix." },
       practice: { name: "Practice", invite: "Try a practice project on the Learn tab." },
       talk: { name: "Hold to talk", invite: "Try hold to talk: hold the keys and say what you want." },
+      dictate: { name: "Type by voice", invite: "Try Type by voice: click into any text box, hold its keys and speak." },
       speak: { name: "Spoken answers", invite: "Try Speak to me in Settings to hear short answers." },
       promptHelp: { name: "Prompt help", invite: "Try Prompt help: press its key in another app's text box." },
       errorHelp: { name: "Explain an error", invite: "Try the error explainer: select an error and press its key." },
@@ -1286,7 +1289,7 @@ export const S = {
     "files.on": { label: "Files", help: "Dropping a file on the character to convert it. Off, dropped files are ignored.", also: ["group", "drop", "convert", "file"] },
     "groups.islandName": { label: "Show the working group on the notch", help: "While a tool is at work, the notch's line starts with the name of its group.", also: ["island", "notch", "group name"] },
     "groups.showUntried": { label: "Invite me to tools not tried yet", help: "Home shows one line about a tool that is not tried yet, and the line goes away once it is tried. Off, Home never shows it.", also: ["invite", "suggest", "try", "new", "tip", "not tried"] },
-    "groups.tried": { label: "Tools tried", help: "The tools used once, so Home stops inviting you to them. Only tool names, kept on this Mac. Reset empties the list.", also: ["tried", "used"], options: { drive: "Tasks", followUp: "Follow ups", rescue: "Rescue", findProblem: "Point at the problem", proof: "Checks", undo: "Undo", explain: "Explain", whichTask: "Which task broke it", watch: "Watch routines", connections: "Fix it from a watch", whereWasI: "Where was I", showMe: "Show me how", lessons: "Lessons", yourTurn: "Your turn", practice: "Practice", talk: "Hold to talk", speak: "Spoken answers", promptHelp: "Prompt help", errorHelp: "Explain an error", secondLook: "Second Look", convert: "Convert a file" } },
+    "groups.tried": { label: "Tools tried", help: "The tools used once, so Home stops inviting you to them. Only tool names, kept on this Mac. Reset empties the list.", also: ["tried", "used"], options: { drive: "Tasks", followUp: "Follow ups", rescue: "Rescue", findProblem: "Point at the problem", proof: "Checks", undo: "Undo", explain: "Explain", whichTask: "Which task broke it", watch: "Watch routines", connections: "Fix it from a watch", whereWasI: "Where was I", showMe: "Show me how", lessons: "Lessons", yourTurn: "Your turn", practice: "Practice", talk: "Hold to talk", dictate: "Type by voice", speak: "Spoken answers", promptHelp: "Prompt help", errorHelp: "Explain an error", secondLook: "Second Look", convert: "Convert a file" } },
     "keys.hotkeys": { label: "Keys for each job", help: `Pick other keys for any job from a short list of keys that are free on this Mac. ${PRODUCT} never records what you type.`, also: ["hotkey", "shortcut", "keyboard", "chord", "stop everything"], usual: "the usual keys" },
     "talk.voice": { label: "Voice, speed and microphone", help: `Your voice and ${PRODUCT_S} are handled on this Mac. Nothing you say or hear is sent anywhere.`, also: ["microphone", "mic", "speed", "language", "voice", "headphones"], usual: "your Mac's own voice and microphone" },
     "talk.speak": { label: "Speak to me", help: `${PRODUCT} says short lines out loud (the step you are on, what a ring points at) in the voice picked here. Stop everything, closing Home, or holding the talk keys silences it.`, also: ["read aloud", "say", "sound", "spoken"] },
@@ -1305,6 +1308,7 @@ export const S = {
     "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the notch moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
     "home.closeOnClickAway": { label: "Close Home when I click another app", help: "Off, Home stays open until you close it, press Esc, or click the character, or the notch when it is shown, again. It never closes by itself while something waits for you.", also: ["click away", "close", "keep open"] },
     "home.stepAside": { label: "Step aside for what Home opens", help: "On, when Home opens a web page, the email for Report a problem, or Finder showing the support log, Home closes so you can see it. Open it again with the notch or the character; what it said is still there. It stays open while something on it waits for you, such as a question or a lesson.", also: ["report a problem", "link", "browser", "email", "close", "out of the way"] },
+    "talk.dictate": { label: "Type by voice in any app", help: `Hold the Type keys (Option, Shift and Space unless you change them in Shortcuts), speak, and let go: your words are typed where the cursor is, in any app. ${PRODUCT} turns your voice into text on this Mac and never presses Return, so nothing is sent. It never types into a password box. It needs the microphone and Accessibility, asked the first time. Off, the keys type nothing.`, also: ["dictation", "dictate", "type", "voice typing", "speech to text", "wispr", "any app"] },
     "talk.captions": { label: "Show my words while I talk", help: "When I say something out loud, the words also show at the bottom of your screen, and go away when I stop.", also: ["captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
     "home.escStops": { label: "Esc stops what I show on screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["escape", "esc", "stop", "cancel", "take back", "control"] },
     "island.showWork": { label: "Show work under the notch", help: "When a job starts, moves to its next step or finishes, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["live", "progress", "cards", "jobs", "activity", "notch"] },

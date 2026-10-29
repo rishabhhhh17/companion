@@ -291,7 +291,7 @@ mod tests {
         let rest = body("fn showme_stop_rest(");
         assert!(rest.find("VOICE_STOPS.fetch_add(1, Ordering::SeqCst);").expect("Stop counts itself") < rest.find("voice_send(app, VoiceMsg::Cancel)").unwrap(), "{rest}");
         let w = body("fn voice_worker(");
-        let down = &w[w.find("Ok(VoiceMsg::Down(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()];
+        let down = &w[w.find("Ok(VoiceMsg::Down(t, mode)) => {").unwrap()..w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()];
         let up = &w[w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Cancel) =>").unwrap()];
         let stopped = "if VOICE_STOPS.load(Ordering::SeqCst) != stops_at {";
         assert!(down.find("stops_at = VOICE_STOPS.load(Ordering::SeqCst);").unwrap() < down.find("voice_mac::model_ready(").unwrap(), "noted as the keys go down");
@@ -302,6 +302,11 @@ mod tests {
         let (said, heard) = (up.find("say_voice(&app, \"transcribing\"").unwrap(), up.find("say_voice(&app, \"heard\"").unwrap());
         assert!(up[said..heard].contains(stopped), "a Stop while the words were turned into text: they are dropped");
         assert!(up[..said].contains(stopped), "and none are turned into text after a Stop");
+        // M36: the Type key's words are pasted only if no Stop came since the keys went down, asked right before the paste
+        // (dictate.rs checks it before pressing paste), and its target is chosen under the light, before the microphone opens.
+        assert!(up.contains("dictate::insert_at_cursor(&target, &text, || VOICE_STOPS.load(Ordering::SeqCst) != stops_at)"));
+        let target = down.find("dictate::target_verdict(").unwrap();
+        assert!(light < target && target < mic, "the box is chosen with the light on and before the microphone opens");
     }
     #[test]
     fn the_speech_model_downloads_once_at_a_time() {

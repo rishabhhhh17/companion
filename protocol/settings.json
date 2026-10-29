@@ -8,7 +8,7 @@
     { "key": "files.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 21, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 22, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "dictate", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
 
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
 
@@ -24,6 +24,7 @@
     { "key": "showme.listen", "section": "talking", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "showme.listen" },
     { "key": "talk.maxHold", "section": "talking", "kind": "choice", "default": "60", "options": ["30", "60", "120"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "talk.maxHold" },
     { "key": "talk.captions", "section": "talking", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
+    { "key": "talk.dictate", "section": "talking", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "speak.alsoSay", "section": "talking", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["needsYou", "taskDone"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "speak.alsoSay" },
 
     { "key": "character.name", "section": "home", "kind": "text", "default": "", "maxLength": 24, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

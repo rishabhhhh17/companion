@@ -9,10 +9,10 @@ afterEach(() => setKeysNow(KEYS_START));
 
 describe("the usual keys", () => {
   test(`are the ones ${PRODUCT} always had, one per job`, () => {
-    expect(JOBS).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"]);
+    expect(JOBS).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"]);
     expect(KEY_DEFAULTS).toEqual({
       card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
-      accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", stop: "control-option-command-x",
+      accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", dictate: "option-shift-space", stop: "control-option-command-x",
     });
     expect(KEYS_START).toEqual({ using: KEY_DEFAULTS, picked: KEY_DEFAULTS });
     expect(new Set(Object.values(KEY_DEFAULTS)).size).toBe(JOBS.length);

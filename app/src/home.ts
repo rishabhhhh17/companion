@@ -64,7 +64,9 @@ const SHOWME_NEEDS = ["needs_permission", "pointing", "pointing_roughly", "your_
 // Show me during a lesson: the pointer is the lesson's own step, but these say why no pointer came, so they are new.
 const SHOWME_PROBLEMS = ["needs_permission", "your_turn_miss", "window_changed", "error", "not_sure"];
 const EVERYDAY_NEEDS = ["found", "none", "fixed", "still", "ask"];
-const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "blocked", "error"];
+/** M36: the Type key's results (dictate.rs), said in the notch line for a few seconds and never sent to the ask box. */
+export const TYPED = ["typed", "copied", "refused"];
+const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "needs_access", "blocked", "error"];
 // Prompt help and the error explainer start from a hotkey and answer on Now: each step there, a refusal included.
 const PH_NEEDS = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
 const EH_NEEDS = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
@@ -270,6 +272,8 @@ export function islandLine(m: Model, o: { update?: string | null; group?: string
 function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
+  // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.
+  if (m.voice && TYPED.includes(m.voice.stage) && m.voice.message) return cut(m.voice.message);
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));
   const n = need(m);
   if (waiting(m) && n) return cut(S.islandNeedsYou(n.why));

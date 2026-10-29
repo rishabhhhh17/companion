@@ -101,7 +101,7 @@ export const talkSharedNote = (k: Keys = keysNow()): string => (k.using.talk ===
  *  hotkeys.test.ts checks that each names the keys keymap.rs registers for its job. */
 export const keyHints = (k: Keys = keysNow()): string[] => [
   keyHint("card", S.cardHint, k), keyHint("problem", S.pointHint, k), keyHint("showme", S.showMeKeyHint, k),
-  keyHint("read", S.phKeyHint, k), keyHint("explain", S.errKeyHint, k), keyHint("secondlook", S.slKeyHint, k), voiceHint(k), keyHint("stop", S.stopHint, k),
+  keyHint("read", S.phKeyHint, k), keyHint("explain", S.errKeyHint, k), keyHint("secondlook", S.slKeyHint, k), voiceHint(k), keyHint("dictate", S.dictateHint, k), keyHint("stop", S.stopHint, k),
 ];
 
 /** One row of Keys to remember in Settings: the job, its keys now, and a line when something needs saying. `problem` when

@@ -60,6 +60,7 @@ mod voice_mac;
 mod voiceset;
 mod voicewords;
 mod talkkeys;
+mod dictate;
 mod keymap;
 mod visibility;
 mod wheel;
@@ -3437,7 +3438,8 @@ static KEYS_SWITCH: Mutex<()> = Mutex::new(());
 /// Whether use a suggestion's keys are registered now (only while a Prompt help result shows).
 static ACCEPT_ARMED: AtomicBool = AtomicBool::new(false);
 /// Key repeats while the hold to talk keys are held restart nothing (talkkeys::Held).
-static TALK_HELD: Mutex<talkkeys::Held> = Mutex::new(talkkeys::Held::new());
+/// M36: the Type key shares it, so only one hold uses the microphone at a time (talkkeys::Holding).
+static TALK_HELD: Mutex<talkkeys::Holding> = Mutex::new(talkkeys::Holding::new());
 
 fn keys_path() -> PathBuf { data_dir().join(keymap::FILE) }
 fn key_using(a: keymap::Action) -> Option<keymap::Chord> { keymap::decode(KEYS_USING[a.index()].load(Ordering::SeqCst)) }
@@ -3458,6 +3460,12 @@ fn key_action(s: &Shortcut) -> Option<keymap::Action> {
 }
 /// Whether a shortcut the plugin reports is the hold to talk chord in use right now.
 fn is_talk(s: &Shortcut) -> bool { key_action(s) == Some(keymap::Action::Talk) }
+/// Whether it is one of the two held chords in use now, and which: hold to talk, or the Type key (M36).
+fn hold_mode(s: &Shortcut) -> Option<talkkeys::Mode> {
+    if is_talk(s) { Some(talkkeys::Mode::Ask) } else if key_action(s) == Some(keymap::Action::Dictate) { Some(talkkeys::Mode::Type) } else { None }
+}
+/// A job held like hold to talk.
+fn is_hold_job(a: keymap::Action) -> bool { matches!(a, keymap::Action::Talk | keymap::Action::Dictate) }
 /// Saves what the person picked. Only one file keeps the keys: hold to talk's old one goes once the new one is written.
 fn save_keys(m: &keymap::Map) -> bool {
     let _ = std::fs::create_dir_all(data_dir());
@@ -3538,7 +3546,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
             *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
             set_key_using(a, Some(wanted));
             // The old hold to talk keys no longer reach it, so a hold still going on them is ended here, not left open.
-            if a == keymap::Action::Talk && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
+            if is_hold_job(a) && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
             log("key_set", json!({ "action": a.id(), "id": keymap::id(wanted) }));
             settings_told(&app, &["keys.hotkeys".to_string()]);
             Ok(keymap::state_json(&keys_using(), &next))
@@ -3571,8 +3579,8 @@ fn keys_to_usual(app: &AppHandle) -> Result<Value, &'static str> {
         Ok(done) => {
             *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = done.picked;
             for a in keymap::ACTIONS { set_key_using(a, done.using[a.index()]); }
-            let talk = keymap::Action::Talk.index();
-            if using[talk] != done.using[talk] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+            let (talk, typing) = (keymap::Action::Talk.index(), keymap::Action::Dictate.index());
+            if using[talk] != done.using[talk] || using[typing] != done.using[typing] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             let kept: Vec<&str> = done.kept.iter().map(|a| a.id()).collect();
             log("keys_reset", json!({ "kept": kept }));
             let mut v = keymap::state_json(&done.using, &done.picked);
@@ -3599,7 +3607,7 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
             Ok(next) => {
                 *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
                 set_key_using(a, Some(want));
-                if a == keymap::Action::Talk && was != Some(want) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+                if is_hold_job(a) && was != Some(want) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             }
             Err(_) => failed.push(a),
         }
@@ -3641,7 +3649,7 @@ fn show_me_key(app: &AppHandle) {
             SHOWME_LISTENING.store(true, Ordering::SeqCst);
             // As hold to talk starts: nothing talks over the person, a Show me answer still playing ends.
             speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ());
-            voice_send(app, VoiceMsg::Down(now() as u64));
+            voice_send(app, VoiceMsg::Down(now() as u64, talkkeys::Mode::Ask));
         }
         voice::ShowMeKey::Finish => {
             SHOWME_LISTENING.store(false, Ordering::SeqCst);
@@ -3654,7 +3662,8 @@ fn show_me_key(app: &AppHandle) {
 
 /// Hidden: Companion was just hidden (a full screen app came forward, or Hide from the menu bar). It only wakes the worker,
 /// which then closes an open microphone at once instead of at its next one second check.
-enum VoiceMsg { Down(u64), Up(u64), Cancel, Hidden }
+/// Down carries what the hold is for (M36): talking to Squibby, or typing into the app in front.
+enum VoiceMsg { Down(u64, talkkeys::Mode), Up(u64), Cancel, Hidden }
 const LISTENING: &str = "Listening. Let go of the keys when you are done.";
 /// Hold to talk is listening: from just before the light comes on until the microphone is closed (let go, Stop everything,
 /// the cap running out, Companion being hidden, or a microphone that would not start). Nothing is said meanwhile (`speak`).
@@ -3665,6 +3674,16 @@ static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(N
 /// How many times Stop everything was pressed. Bumped before its Cancel is queued, so the worker sees a Stop that came while
 /// it was busy: the microphone never opens after one, and words heard before one are dropped (rule 11).
 static VOICE_STOPS: AtomicU64 = AtomicU64::new(0);
+/// M36: how many holds began, so a Type key result line ("Typed into Notes.") is cleared a few seconds later only if no
+/// new hold has started since.
+static VOICE_HOLDS: AtomicU64 = AtomicU64::new(0);
+/// A Type key result: in Home's line and as a word at the pointer, then cleared after a few seconds.
+fn say_typed(app: &AppHandle, stage: &'static str, line: &str, extra: Value) {
+    say_voice(app, stage, line, extra);
+    if let Some(w) = dictate::pointer_word(stage) { follow_say(app.clone(), w.to_string()); }
+    let (a, holds) = (app.clone(), VOICE_HOLDS.load(Ordering::SeqCst));
+    std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(4)); if VOICE_HOLDS.load(Ordering::SeqCst) == holds && !listening_now() { say_voice(&a, "idle", "", json!({})); } });
+}
 
 fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
     let mut v = json!({ "v": 1, "id": format!("vo{}", now()), "type": "app.voice", "stage": stage, "message": message });
@@ -3729,6 +3748,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let mut quiet_mic = false;
     // Stop everything's count as the keys went down: any Stop since then ends this hold.
     let mut stops_at = VOICE_STOPS.load(Ordering::SeqCst);
+    // M36: where the words go when the Type key started this hold (the app in front and its focused element at the press).
+    // None for hold to talk: the words go to Home's ask box.
+    let mut typing: Option<dictate::Target> = None;
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
@@ -3745,10 +3767,18 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
             say_voice(&app, "error", &words, json!({}));
         }
         match msg {
-            Ok(VoiceMsg::Down(t)) => {
+            Ok(VoiceMsg::Down(t, mode)) => {
                 // The cap is read as the keys go down and kept for this hold (there is always one, at most two minutes).
                 let cap = voice::max_hold_ms(&setting_now("talk.maxHold"));
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
+                typing = None;
+                VOICE_HOLDS.fetch_add(1, Ordering::SeqCst);
+                // The Type key (M36): switched off in Settings, or no Accessibility yet (asked here, the first time it is
+                // used, rule 8). Nothing listens either way.
+                if mode == talkkeys::Mode::Type {
+                    if setting_now("talk.dictate") == json!(false) { hold.cancel(); say_voice(&app, "error", "Typing by voice is off. Turn it on in Settings, Voice.", json!({})); continue; }
+                    if !ax::trusted(true) { hold.cancel(); say_voice(&app, "needs_access", concat!("To type for you, ", crate::product!(), " needs Accessibility. Allow it in the box macOS shows (or System Settings, Privacy and Security, Accessibility), then hold the keys again."), json!({})); continue; }
+                }
                 stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
                 if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", concat!("To talk to ", crate::product!(), ", it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac."), json!({})); } continue; }
@@ -3776,6 +3806,21 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
                 // Stop everything meanwhile: the microphone never opens.
                 if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.cancel(); listening(false); say_voice(&app, "idle", "", json!({})); continue; }
+                // The Type key, with the light on: which app and box the words go to (never what the box holds). A password
+                // box, secure typing or a never-read app is refused here and the microphone never opens. With Squibby
+                // itself in front, the words go to its own ask box as with hold to talk.
+                if mode == talkkeys::Mode::Type {
+                    if let Some(front) = ax::front_app().filter(|f| f.pid != std::process::id() as i32) {
+                        let f = ax::focused(front.pid);
+                        let (role, subrole) = f.as_ref().map_or((String::new(), String::new()), |f| (f.role.clone(), f.subrole.clone()));
+                        if let Err(v) = dictate::target_verdict(&role, &subrole, ax::secure_input_enabled(), &front.bundle_id, &prompthelp::Denylist::empty()) {
+                            hold.cancel(); listening(false); log("dictate_refused", json!({ "why": v.code() }));
+                            say_typed(&app, "refused", dictate::refused_words(v), json!({}));
+                            continue;
+                        }
+                        typing = Some(dictate::Target { pid: front.pid, bundle: front.bundle_id, name: front.name, element: f.map_or(0, |f| f.element.id()) });
+                    }
+                }
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
@@ -3842,6 +3887,14 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     // The language picked in Settings goes with the words: the page sends by itself only in English for now.
+                                    // The Type key (M36): into the box in front, at the cursor, never sent. Stop is checked
+                                    // again right before the paste.
+                                    Ok(text) if !text.is_empty() && typing.is_some() => {
+                                        let target = typing.take().unwrap_or_else(|| unreachable!());
+                                        let (stage, line) = dictate::insert_at_cursor(&target, &text, || VOICE_STOPS.load(Ordering::SeqCst) != stops_at);
+                                        say_typed(&app, stage, &line, mic);
+                                        if stage == "typed" { mark_tried(&app, "dictate") }
+                                    }
                                     Ok(text) if !text.is_empty() => { mic["text"] = json!(text); mic["language"] = json!(voice_now().language); say_voice(&app, "heard", "", mic); mark_tried(&app, "talk") }
                                     Ok(_) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     Err(e) => say_voice(&app, "error", &e, mic),
@@ -4224,17 +4277,18 @@ fn main() {
                         }
                         return;
                     }
-                    // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.
-                    if is_talk(s) {
+                    // Hold to talk and the Type key (M36) need to know when the keys come up as well as down.
+                    if let Some(mode) = hold_mode(s) {
                         let down = e.state == ShortcutState::Pressed;
-                        // A key repeat while held, or a let go that ends no press, restarts nothing and is not logged.
-                        let counts = { let mut h = TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()); if down { h.press(now() as u64) } else { h.release() } };
+                        // A key repeat while held, a let go that ends no press, or the other hold key while one is held,
+                        // restarts nothing and is not logged (one microphone, talkkeys::Holding).
+                        let counts = { let mut h = TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()); if down { h.press(mode, now() as u64) } else { h.release(mode) } };
                         if !counts { return; }
-                        log("hotkey", json!({ "id": "talk", "down": down }));
+                        log("hotkey", json!({ "id": if mode == talkkeys::Mode::Type { "dictate" } else { "talk" }, "down": down }));
                         // Never talk over the person: what is being said stops, a Show me answer still playing ends (no
                         // later step is drawn or said), and the page drops any line still waiting to be said.
                         if down { SHOWME_LISTENING.store(false, Ordering::SeqCst); speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
-                        voice_send(app, if down { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
+                        voice_send(app, if down { VoiceMsg::Down(now() as u64, mode) } else { VoiceMsg::Up(now() as u64) });
                         return;
                     }
                     if e.state != ShortcutState::Pressed { return; }
@@ -4272,7 +4326,7 @@ fn main() {
                             let _ = app.emit("runner-event", stop);
                             showme_stop(&app);
                         }
-                        keymap::Action::Talk => {}
+                        keymap::Action::Talk | keymap::Action::Dictate => {}
                     }
                 })
                 .build(),

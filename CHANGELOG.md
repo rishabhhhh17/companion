@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Type by voice in any app: 30 Oct 2026
+
+- **Talk instead of type, anywhere.** Click into any text box, in any app. Hold Option, Shift and Space, speak, and let go. Your words appear where the cursor is.
+- **On this Mac only.** Your voice is turned into text on this Mac, never sent anywhere. Squibby never presses Return, so nothing is sent for you.
+- **It stays out of private places.** It never types into a password box or into password managers. It never reads what's already in the box. If you moved to another box while it was working, it copies your words instead and says so.
+- **You'll see what happened.** The little Flowflow at your pointer says "Typed." or "Copied. Press Cmd+V."
+- **Your choice.** There's a switch on the Voice page in Settings, and you can change the keys in Shortcuts. Hold to talk still sends your words to Squibby, as before.
+
 ## Pick your Flowflow: 29 Oct 2026
 
 - **Choose Flowflow from cards.** Settings, Flowflow page: each water is its own card with the live Flowflow in that colour, its name and a line about it (Ocean, Lagoon, Lime, Berry, Midnight). Click one, or use the arrow keys.

@@ -53,7 +53,7 @@ describe("the catalog is complete and consistent", () => {
   test("every hotkey is in exactly one tool, and the stop key and the ask box are in the core", () => {
     const src = read("../src-tauri/src/keymap.rs");
     const ids = [...src.slice(src.indexOf("pub fn id(self)"), src.indexOf("pub fn from_id(s: &str) -> Option<Action>")).matchAll(/Action::\w+ => "(\w+)"/g)].map((m) => m[1]);
-    expect(ids.length).toBe(9);
+    expect(ids.length).toBe(10);
     const listed = TOOLS.flatMap((t) => t.hotkeys ?? []);
     expect(dup(listed)).toEqual([]);
     expect(listed.sort()).toEqual([...ids].sort());
