@@ -83,11 +83,12 @@ describe("the chrome does not read a skin", () => {
     const uses = css.split("\n").filter((l) => /var\(--amber(-line)?\)/.test(l) && !/^--|^:root|^@media/.test(l.trim()) && !l.trim().startsWith("/*"));
     for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|@keyframes (glow|pose-glow)|:root \{|prefers-color-scheme/);
   });
-  test("the filled button is the lime key: lime with dark words on black, black with lime words on white", () => {
+  test("the filled button is polished chrome on black (M32, the founder: shiny silver, bold, with black)", () => {
     expect(css).toMatch(/\.btn\.primary \{ background: var\(--key\); color: var\(--key-ink\);/);
-    expect(css).toMatch(/:root \{[^}]*--lime: #C6F432;[^}]*--key: #111111; --key-ink: #C6F432;/);
-    expect(css).toMatch(/prefers-color-scheme: dark\) \{ :root \{[^}]*--key: #C6F432; --key-ink: #1A2600;/);
-    // The lime is the mark's own (app/brand/make_logo.py LIME), so the button and the logo are the same colour.
-    expect(read("../brand/make_logo.py")).toContain('LIME = "#C6F432"');
+    expect(css).toMatch(/prefers-color-scheme: dark\) \{ :root \{[^}]*--key: #E9ECF1; --key-ink: #0A0A0B;/);
+    expect(css).toContain("--chrome: linear-gradient(180deg,");
+    expect(css).toMatch(/\.btn\.primary, \.fr-key, \.island-panel \.ip-go[^{]*\{[^}]*background-image: var\(--chrome\)/);
+    expect(css).not.toContain("#C6F432");
   });
+
 });

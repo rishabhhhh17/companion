@@ -13,7 +13,7 @@
    400 ms, and nothing a person sees often over 280 ms. Every press answers at once with a small squeeze (scale .97).
    Interruptible, none with reduced motion. */
 :root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
-  --lime: #C6F432; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #C6F432; --key-edge: #000000;
+  --lime: #E9ECF1; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #E9ECF1; --key-edge: #000000;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
   --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
@@ -29,7 +29,7 @@
 :root[data-text="large"] { font-size: 16px; }
 :root[data-text="larger"] { font-size: 18px; }
 :root[data-text="largest"] { font-size: 20px; }
-@media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; } }
+@media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; } }
 @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-top-width: 2px; } }
 html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; -webkit-font-smoothing: antialiased; }
 /* What a person may want to copy (an error, a path, a plan step) can be selected. */
@@ -77,7 +77,7 @@ html.dock-page, body.dock-page { background: transparent; }
    Its window paints nothing (main.rs), so only the shape shows. No side list and no title bar: small round buttons at the
    top, Flowflow large beside the job in big words, one ask box and three quick actions, then the result as a card. The
    window is as tall as what shows (card.tsx measures .inner and the strip), from 300 (island.rs HomeSize). */
-:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; }
+:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; }
 @media (prefers-contrast: more) { :root.home-page { --muted: var(--fg); --line: var(--edge); } }
 html.home-page, body.home-page { background: transparent; }
 .card { padding: 0; height: 100vh; box-sizing: border-box; }
@@ -550,24 +550,24 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    how they are going (lime while working, green when done), and a faint lime glow sits along the bottom edge. With nothing
    running it says hello in big rounded words. Always laid out at island.rs PANEL_W so its height is measured before it
    opens; shown only while the pointer rests on the island. */
-.island-panel { --lime-hi: #E4FF8A; --lime-lo: #8DBA12; --lime-ink: #1A2600; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity 120ms var(--ease-out), scale 120ms var(--ease-out), visibility 0s linear 120ms; }
+.island-panel { --lime-hi: #FFFFFF; --lime-lo: #5C6168; --lime-ink: #0A0A0B; --lift: #1E1E21; --chip: #2A2A2E; position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) -apple-system, "SF Pro Text", sans-serif; visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity 120ms var(--ease-out), scale 120ms var(--ease-out), visibility 0s linear 120ms; }
 /* The notch's black, lifting to a soft grey where the panel hangs. */
 .island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
 .island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity 160ms var(--ease-out), scale 160ms var(--ease-out), visibility 0s; }
-.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(198, 244, 50, .22), transparent); pointer-events: none; }
+.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(220, 226, 235, .22), transparent); pointer-events: none; }
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .island-panel .ip-hi { margin: 4px 4px 0; color: #F7F7F2; font: 700 calc(21rem / 14)/1.15 var(--round); letter-spacing: -.01em; }
-.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 18px; color: #1A2600; background-color: #C6F432; background-image: linear-gradient(180deg, var(--lime-hi) 0%, #C6F432 55%, #B5E61F 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 4px 0 var(--lime-lo), 0 12px 30px rgba(198, 244, 50, .3); font: 700 var(--t-answer) var(--round); letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
-.island-panel .ip-go:hover { transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 5px 0 var(--lime-lo), 0 16px 38px rgba(198, 244, 50, .45); }
-.island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(198, 244, 50, .25); }
-.island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #C6F432; background: #1A2600; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
+.island-panel .ip-go { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 48px; border-radius: 18px; color: #0A0A0B; background-color: #E9ECF1; background-image: linear-gradient(180deg, var(--lime-hi) 0%, #E9ECF1 55%, #B5E61F 100%); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 4px 0 var(--lime-lo), 0 12px 30px rgba(220, 226, 235, .3); font: 700 var(--t-answer) var(--round); letter-spacing: -.01em; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.island-panel .ip-go:hover { transform: translateY(-1px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -3px 0 rgba(60, 90, 0, .35), 0 5px 0 var(--lime-lo), 0 16px 38px rgba(220, 226, 235, .45); }
+.island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(220, 226, 235, .25); }
+.island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #E9ECF1; background: #0A0A0B; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
 .island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
 .island-panel .ip-pill:hover { background: #34343A; }
 .island-panel .ip-pill:active, .island-panel .ip-open:active, .island-panel .ip-job:active { transform: scale(.97); }
 .island-panel .ip-open, .island-panel .ip-job, .island-panel .ip-answer button { transition: transform 160ms var(--ease-out), background-color var(--dur-1) var(--ease-out); }
-.island-panel .ip-pill .ic { color: #C6F432; }
+.island-panel .ip-pill .ic { color: #E9ECF1; }
 .island-panel .ip-open { display: grid; place-items: center; width: 30px; min-height: 30px; margin-left: auto; border-radius: 50%; color: #e6e6ea; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); }
 .island-panel .ip-open:hover { background: #34343A; }
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
@@ -579,9 +579,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel:not([data-shown]) *, .island-panel:not([data-shown]) *::after { animation-play-state: paused; }
 .island-panel .ip-job { position: relative; overflow: hidden; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 16px; background: #1E1E21; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
 .island-panel .ip-job:hover { background: #26262A; }
-.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(198, 244, 50, .3); }
+.island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(220, 226, 235, .3); }
 /* While it works, a lime light runs along the card's foot. */
-.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #C6F432, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
+.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, #E9ECF1, transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
 @keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
 /* M23: a question answered right in the notch. The buttons sit under the words and wake up once the card has been seen
@@ -595,8 +595,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-answer button:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
 .island-panel .ip-no { background: #2C2C31; color: #FFFFFF; }
 .island-panel .ip-no:hover { background: #36363C; }
-.island-panel .ip-yes { background: #C6F432; color: #0A0A0A; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18); }
-.island-panel .ip-yes:hover { background: #D2F85A; }
+.island-panel .ip-yes { background: #E9ECF1; color: #0A0A0A; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, .18); }
+.island-panel .ip-yes:hover { background: #FFFFFF; }
 .island-panel .ip-yes:active, .island-panel .ip-no:active { transform: scale(.97); }
 .island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
@@ -604,7 +604,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
 .island-panel .ip-text b { font: 600 var(--t-small) var(--round); color: #fff; overflow-wrap: anywhere; }
 .island-panel .ip-text span { color: #c4c4c9; font-size: var(--t-caption); overflow-wrap: anywhere; }
-.island-panel .ip-cost { padding: 3px 8px; border-radius: var(--r-pill); color: #C6F432; background: #2B3313; font: 700 var(--t-caption) var(--round); font-variant-numeric: tabular-nums; }
+.island-panel .ip-cost { padding: 3px 8px; border-radius: var(--r-pill); color: #E9ECF1; background: #2A2C30; font: 700 var(--t-caption) var(--round); font-variant-numeric: tabular-nums; }
 .island-panel .ip-job[data-tone="done"] .ip-cost { color: #7BE495; background: #17301F; }
 .island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
 /* The sun beside the notch (M16): Squibby's mark (the smiling pinwheel sun, app/brand) on the menu bar just left of the
@@ -641,14 +641,14 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .hero .hero-words .subline { margin-top: 24px; color: color-mix(in srgb, var(--fg) 72%, transparent); }
 /* The ask box: white paper on the water, the words in black, the lime key to send. */
 .home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
-.home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(198, 244, 50, .55), 0 10px 40px rgba(0, 0, 0, .45); }
+.home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(220, 226, 235, .55), 0 10px 40px rgba(0, 0, 0, .45); }
 .home .ask textarea { color: #000000; background: #ffffff; caret-color: #000000; }
 .home .ask textarea::placeholder { color: #5f5f66; background: #ffffff; }
 .home .ask .icon-btn { color: #3a3a40; background: #ffffff; }
 .home .ask .icon-btn:hover, .home .ask .icon-btn[aria-pressed="true"] { background: #ececef; color: #000000; }
 .home .ask .talk-how { background: #f0f0f2; color: #000000; }
 .home .ask .talk-how:hover, .home .ask .talk-how[aria-expanded="true"] { background: #e2e2e6; }
-.home .ask .btn.primary.send { background: #C6F432; color: #1A2600; box-shadow: 0 2px 0 #8DBA12; }
+.home .ask .btn.primary.send { background: #E9ECF1; color: #0A0A0B; box-shadow: 0 2px 0 #5C6168; }
 .home .ask:has(textarea:placeholder-shown) .btn.primary.send { background: #e8e8ec; color: #5f5f66; box-shadow: none; }
 /* The quick actions: plain rows, a lime drawing and a verb, left aligned, the whole width. */
 .home .chips.quick { display: grid; gap: 0; margin: var(--space-3) 0 0; }
@@ -680,8 +680,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-line { margin: 0 0 var(--space-4); max-width: 36ch; color: var(--muted); font-size: var(--t-body); line-height: 1.45; }
 .fr-small { margin: var(--space-2) 0 0; color: var(--muted); font-size: var(--t-small); }
 .fr-grow { flex: 1; min-height: var(--space-5); }
-.fr-key { min-height: 52px; padding: 0 var(--space-5); border: 0; border-radius: 18px; color: #1A2600; background: #C6F432; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12, 0 14px 30px rgba(198, 244, 50, .22); font: 700 var(--t-answer) var(--round); cursor: pointer; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
-.fr-key:active:not(:disabled) { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 1px 0 #8DBA12; }
+.fr-key { min-height: 52px; padding: 0 var(--space-5); border: 0; border-radius: 18px; color: #0A0A0B; background: #E9ECF1; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #5C6168, 0 14px 30px rgba(220, 226, 235, .22); font: 700 var(--t-answer) var(--round); cursor: pointer; transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.fr-key:active:not(:disabled) { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 1px 0 #5C6168; }
 .fr-key:disabled { opacity: .45; cursor: not-allowed; }
 .fr-quiet { margin: var(--space-3) auto 0; padding: var(--space-1) var(--space-3); border: 0; background: transparent; color: var(--fg); font: 600 var(--t-small) var(--round); cursor: pointer; }
 .fr-quiet:hover { color: var(--fg); text-decoration: underline; }
@@ -702,7 +702,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-pick img { width: 64px; height: auto; }
 .fr-pick b { font: 700 var(--t-answer) var(--round); }
 .fr-pick span { color: var(--muted); font-size: var(--t-caption); line-height: 1.35; }
-.fr-pick[aria-pressed="true"]::after { content: "\2713"; position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 22px; min-height: 22px; border-radius: 50%; background: #C6F432; color: #1A2600; font: 900 var(--t-caption) var(--round); box-shadow: 0 2px 0 #8DBA12; }
+.fr-pick[aria-pressed="true"]::after { content: "\2713"; position: absolute; top: 12px; right: 12px; display: grid; place-items: center; width: 22px; min-height: 22px; border-radius: 50%; background: #E9ECF1; color: #0A0A0B; font: 900 var(--t-caption) var(--round); box-shadow: 0 2px 0 #5C6168; }
 .fr-pick.slot { background: #0A0A0C; box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .18); }
 .fr-pick.slot b { color: var(--muted); }
 .fr-hole { width: 60px; min-height: 48px; border: 1.5px dashed rgba(255, 255, 255, .3); border-radius: 50% 50% 46% 46% / 58% 58% 42% 42%; }
@@ -712,8 +712,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-name img { width: 34px; height: auto; }
 .fr-name input { flex: 1; min-width: 0; border: 0; outline: 0; background: #ffffff; color: #000000; font: 700 calc(20rem / 14) var(--round); }
 .fr-name input::placeholder { color: #5f5f66; background: #ffffff; }
-.fr-name:focus-within { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
-.fr-name input:focus-visible { outline: 2px solid #1A2600; outline-offset: 4px; }
+.fr-name:focus-within { box-shadow: 0 0 0 4px rgba(220, 226, 235, .55); }
+.fr-name input:focus-visible { outline: 2px solid #0A0A0B; outline-offset: 4px; }
 .fr-seg { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .fr-seg button { display: grid; gap: 2px; padding: var(--space-3); border: 0; border-radius: 16px; background: #121216; color: #ffffff; text-align: left; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); cursor: pointer; }
 .fr-seg button b { font: 700 var(--t-body) var(--round); }
@@ -737,14 +737,14 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr-power em { display: block; margin-top: 2px; color: #FFCF73; background: #101013; font-style: normal; font-size: var(--t-caption); }
 .fr-tog { position: relative; width: 44px; min-height: 26px; padding: 0; border: 0; border-radius: var(--r-pill); background: #3A3A40; cursor: pointer; transition: background-color var(--dur-2) var(--ease-out); }
 .fr-tog::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; transition: transform var(--dur-1) var(--ease-out); }
-.fr-tog[aria-pressed="true"] { background: #C6F432; }
-.fr-tog[aria-pressed="true"]::after { transform: translateX(18px); background: #1A2600; }
+.fr-tog[aria-pressed="true"] { background: #E9ECF1; }
+.fr-tog[aria-pressed="true"]::after { transform: translateX(18px); background: #0A0A0B; }
 /* Connect and the folder. */
 .fr-steps { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 1.2em); display: grid; gap: var(--space-1); border-radius: 16px; background: #101013; color: #ffffff; font-size: var(--t-small); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
 .fr-keyrow { display: flex; gap: var(--space-2); }
 .fr-keyrow input { flex: 1; min-width: 0; min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 500 var(--t-body) -apple-system, "SF Pro Text", sans-serif; }
 .fr-keyrow input::placeholder { color: #5f5f66; background: #ffffff; }
-.fr-keyrow input:focus { box-shadow: 0 0 0 4px rgba(198, 244, 50, .55); }
+.fr-keyrow input:focus { box-shadow: 0 0 0 4px rgba(220, 226, 235, .55); }
 .fr-save { min-height: 50px; padding: 0 var(--space-4); border: 0; border-radius: 16px; background: #ffffff; color: #000000; font: 700 var(--t-body) var(--round); cursor: pointer; }
 .fr-ok { margin: 0; color: var(--key); font: 700 var(--t-answer) var(--round); }
 .fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed rgba(255, 255, 255, .35); border-radius: 20px; background: color-mix(in srgb, var(--water) 8%, #000000); color: #ffffff; text-align: left; cursor: pointer; }
@@ -797,7 +797,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .onboarding.look .fl-code, .onboarding.look .fl-check { background: #121216; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
 .onboarding.look .fl-dot.on, .onboarding.look .fl-dot.now::after { background: var(--key); }
 .onboarding.look .fl-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #C6F432; color: #1A2600; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #8DBA12; font: 700 var(--t-answer) var(--round); }
+.onboarding.look .btn.primary.fl-go { order: 9; flex: 1 1 100%; min-height: 52px; border-radius: 18px; background: #E9ECF1; color: #0A0A0B; box-shadow: inset 0 2px 0 rgba(255, 255, 255, .7), 0 5px 0 #5C6168; font: 700 var(--t-answer) var(--round); }
 .companion-hero .ch-again { position: absolute; top: var(--space-3); right: var(--space-4); z-index: 2; min-height: 28px; padding: 0 var(--space-3); border: 0; border-radius: var(--r-pill); background: #1C1C20; color: #ffffff; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18); font: 600 var(--t-caption) var(--round); cursor: pointer; }
 .companion-hero .ch-again:hover { background: #2A2A30; }
 /* Fluid steps (M18): each screen of the first run slides in on the island's spring, from the right going on and from the
@@ -816,10 +816,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    water's colour (look.water) sets --water and --sea on every page; under Paper the sea is a pale wash of that water. */
 :root.home-page { --home-sea: var(--sea); --home-sea-deep: var(--sea-deep); }
 :root.home-page[data-theme="deep"] { --bg: #071423; --sky: #071423; --surface: #10233A; --card: #0D1E31; --line: #1E3550; }
-:root.home-page[data-theme="paper"] { --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #C6F432; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
+:root.home-page[data-theme="paper"] { --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #E9ECF1; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
 :root.home-page[data-theme="paper"] .home .ask { box-shadow: 0 0 0 1px #DCDAD2, 0 8px 24px rgba(0, 0, 0, .08); }
 :root.home-page[data-theme="paper"] .home .waterline .line { stroke: var(--water-deep); }
-.fr { --fg: #f5f5f7; --muted: #a1a1a6; --key: #C6F432; --key-ink: #1A2600; --key-edge: #8DBA12; color: #f5f5f7; background: #000000; }
+.fr { --fg: #f5f5f7; --muted: #a1a1a6; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; color: #f5f5f7; background: #000000; }
 .home:has(.fr) { background: #000000; }
 .waterline .sky { fill: var(--sky); }
 .waterline .sea { fill: var(--sea); }
@@ -899,7 +899,7 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    light edge and a soft shadow; lime under the pointer or the keyboard; the close button smaller and quieter. Same places,
    same sizes the window allows (dropmenu.ts arcSpots). */
 .drop-item { width: 42px; min-width: 42px; min-height: 42px; border: 0; background: rgba(22, 24, 28, .9); color: #F5F5F7; box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .22), 0 6px 16px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .4); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out), scale 120ms var(--ease-out); animation: ring-in var(--dur-2) var(--ease-out) both; }
-.drop-item:hover, .drop-item:focus-visible { background: #C6F432; color: #1A2600; scale: 1.06; }
+.drop-item:hover, .drop-item:focus-visible { background: #E9ECF1; color: #0A0A0B; scale: 1.06; }
 .drop-item:active { scale: .97; }
 .drop-item.drop-close { width: 32px; min-width: 32px; min-height: 32px; margin: 5px; color: rgba(245, 245, 247, .72); background: rgba(22, 24, 28, .78); }
 .drop-item.drop-close:hover, .drop-item.drop-close:focus-visible { background: #F5F5F7; color: #111111; }
@@ -942,3 +942,21 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sp-row > [role="radiogroup"].row .btn, .sp-row > [role="radiogroup"].row .btn.primary { min-height: calc(26rem / 14); padding: 0 calc(12rem / 14); border-radius: 999px; background: transparent; color: color-mix(in srgb, var(--fg) 75%, transparent); box-shadow: none; font-size: var(--t-small); font-weight: 600; transform: none; }
 .sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: var(--fg); color: var(--bg); }
 .sp-row > select, .sp-row > input[type="text"], .sp-row > .row > input, .sp-row input:not([type]) { max-width: 46%; min-height: calc(30rem / 14); padding: 0 var(--space-3); border-radius: var(--r-md); border: 0; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); font-size: var(--t-small); }
+
+
+/* M32 chrome (the founder, 29 Oct 2026: "a shiny silver, glossy type of silver that looks really good with black. It needs
+   to be bold and out loud"). One polished chrome for every main key and the big titles, on black. The chrome is a
+   vertical metal gradient with a bright top lip and a dark bottom edge, like lettering cast in silver. */
+:root { --chrome: linear-gradient(180deg, #ffffff 0%, #eef0f3 16%, #b9bec6 44%, #7d838c 52%, #c9cdd3 70%, #f4f6f8 92%, #ffffff 100%);
+  --chrome-text: linear-gradient(180deg, #ffffff 0%, #f3f5f8 38%, #a3a9b2 54%, #dfe2e7 76%, #ffffff 100%);
+  --chrome-ink: #0A0A0B; --chrome-edge: #4E535A; }
+.btn.primary, .fr-key, .island-panel .ip-go, .island-panel .ip-yes, .home .ask .btn.primary.send {
+  background-color: #E9ECF1; background-image: var(--chrome); color: #0A0A0B;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95), inset 0 -1px 0 rgba(0, 0, 0, .28), 0 2px 0 var(--chrome-edge), 0 8px 22px rgba(220, 226, 235, .10); }
+.btn.primary:hover:not(:disabled), .fr-key:hover:not(:disabled), .island-panel .ip-go:hover, .island-panel .ip-yes:hover { background-color: #ffffff; filter: brightness(1.06); }
+/* The chrome titles only where the page is black: on the paper theme titles stay plain ink. */
+@media (prefers-color-scheme: dark) { .home .headline, .sp-head h2, .fr-title { background-image: var(--chrome-text); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; } }
+:root.home-page:not([data-theme="paper"]) .home .headline, :root.home-page:not([data-theme="paper"]) .sp-head h2, :root.home-page .fr-title { background-image: var(--chrome-text); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+.island-panel { --lime-hi: #ffffff; --lime-lo: #7d838c; --lime-ink: #0A0A0B; }
+.drop-item:hover, .drop-item:focus-visible { background-color: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; }
+.setting button[role="switch"][aria-checked="true"] { background-image: var(--chrome); }

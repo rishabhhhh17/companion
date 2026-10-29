@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Chrome on black: 29 Oct 2026
+
+- **Squibby is polished silver now.** Every main button (Fix something, Allow, Start, the first run's keys) is glossy chrome on black, with a bright top edge like cast metal. Big titles get a chrome sheen, the mark in the notch is chrome, and the pointer's usual ring and captions are silver. Lime is gone.
+- **Flowflow follows your pointer by default** as a tiny Flowflow with eyes, and stays in view on its edge instead of hiding past it.
+
 ## Settings, made simple: 29 Oct 2026
 
 - **Settings is a few clear pages now.** A side list with an icon for each page (Account, General, Flowflow, Voice, Shortcuts, Powers, Privacy, Advanced, About). Each page has a title, one line saying what it's for, and one card of settings: a name, one short line, and the switch or choice on the right.
