@@ -1934,8 +1934,8 @@ function Card() {
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <ul className="facts" aria-label={S.look.factsLabel}>
             {m.receipt.changed.length > 0 && <li>{S.look.files(m.receipt.changed.length)}</li>}
-            <li>{S.cost}: {formatUsd(m.receipt.usdEstimate)}</li>
-            <li>{m.receipt.commands} {S.commands}</li>
+            {/* M28: what the fix cost, on the person's own Claude (we never mark it up); the count of commands is for the log. */}
+            <li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>

@@ -217,7 +217,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           {check === "refused" && <div className="error" role="alert">{S.obKeyCheck.refused}</div>}
           {keyNote && <div className="error" role="alert">{keyNote}</div>}
           <button className="fr-link" type="button" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.obGetKey}</button>
-          <p className="fr-small">{S.obPlanLater}</p>
+          {/* M28: no dead end without a key. Home then says "Add your Claude key" with a button that goes straight there. */}
+          <button className="fr-link fr-skip" type="button" onClick={() => go(next(step))}>{S.fr.skipKey}</button>
         </>)}
         <div className="fr-grow" />
         {main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || (step === "connect" && check === "refused"))}

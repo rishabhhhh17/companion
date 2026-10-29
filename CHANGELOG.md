@@ -12,6 +12,8 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Drawing on your screen looks hand made.** Rings, arrows, underlines and boxes are now drawn like real pen ink: thicker in the middle, tapering as the pen lifts, drawn in the order a hand would at a hand's speed. A ring closes a little past where it started, an arrow gets its head after its shaft, and every mark has a soft edge so it shows on light and dark apps alike. A ring never covers what it's pointing at.
 - **Settings is short now.** It opens on about 25 choices you'd actually change: how Squibby looks, the notch, which groups are on, talking, keys, your daily spending limit, house rules and privacy. Everything else (timings, budgets per mode, file formats, fine tuning) is under Advanced, and search still finds every setting.
 - **One name for each thing.** The top of the screen is always "the notch", the big panel is always "Home".
+- **No dead end in the first run.** You can skip adding your Claude key and add it later; Home then shows an Add your key button. The confusing "signing in with a Claude plan is not available" line is gone.
+- **Receipts say what the fix cost** on your own Claude ("About 4 cents of your Claude"), and drop the count of commands nobody needed.
 - **Pricing is set:** Free, and Pro at $10 a month ($8 a month yearly), with a 14 day trial and half price for students. You pay Anthropic directly for Claude; we never mark it up. Payments aren't switched on yet.
 
 ## Flowflow comes alive: 29 Oct 2026

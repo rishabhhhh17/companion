@@ -209,3 +209,11 @@ describe("the first run shows only what is ready (M28)", () => {
     expect(S.fr.meetTitle("Flowflow")).toBe("Meet Flowflow.");
   });
 });
+
+describe("the first run has no dead end without a key (M28)", () => {
+  test("the connect step offers Skip for now, which goes on to the next step", () => {
+    const src = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(src).toContain('<button className="fr-link fr-skip" type="button" onClick={() => go(next(step))}>{S.fr.skipKey}</button>');
+    expect(src).not.toContain("S.obPlanLater");
+  });
+});
