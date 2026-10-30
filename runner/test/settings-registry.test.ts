@@ -245,7 +245,7 @@ describe("a broken list of settings is caught", () => {
   });
   test("a choice with the same option twice, or a usual value that is not an option", () => {
     expect(one({ options: ["standard", "standard", "large"] }, "display.textSize").length).toBeGreaterThan(0);
-    expect(one({ default: "huge" }, "display.textSize").length).toBeGreaterThan(0);
+    expect(one({ default: "giant" }, "display.textSize").length).toBeGreaterThan(0);
   });
   test("a section, a store, a kind or a reader that does not exist", () => {
     expect(one({ section: "nowhere" }).length).toBeGreaterThan(0);

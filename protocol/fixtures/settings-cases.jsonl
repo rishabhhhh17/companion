@@ -7,7 +7,7 @@
 {"key": "fun.reactions", "value": 1, "ok": false, "reason": "notSwitch"}
 {"key": "talk.speak", "value": null, "ok": false, "reason": "notSwitch"}
 {"key": "display.textSize", "value": "large", "ok": true, "normalized": "large"}
-{"key": "display.textSize", "value": "huge", "ok": false, "reason": "notChoice"}
+{"key": "display.textSize", "value": "giant", "ok": false, "reason": "notChoice"}
 {"key": "display.textSize", "value": 2, "ok": false, "reason": "notChoice"}
 {"key": "display.textSize", "value": "Large", "ok": false, "reason": "notChoice"}
 {"key": "island.show", "value": false, "ok": true, "normalized": false}
