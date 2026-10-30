@@ -655,6 +655,14 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .chips.quick .chip-btn { justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: calc(42rem / 14); padding: 0 var(--space-2); border-radius: var(--r-md); background: transparent; color: var(--fg); font: 600 var(--t-body) var(--round); transform: none; }
 .home .chips.quick .chip-btn:hover { background: rgba(89, 210, 255, .1); transform: none; }
 .home .chips.quick .chip-btn .ic { color: var(--key); width: 16px; }
+/* M40 (Granola): the step under way turns a thin arc beside it; finished steps are quiet with a small tick. */
+.panel .line.step { display: flex; align-items: center; gap: var(--space-2); }
+.panel .line.step.done { color: var(--muted); }
+.panel .line.step.done .ic { width: 12px; height: auto; opacity: .7; }
+.spin { flex: none; width: calc(12rem / 14); min-height: calc(12rem / 14); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--fg) 18%, transparent); border-top-color: var(--fg); animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; border-top-color: color-mix(in srgb, var(--fg) 60%, transparent); } }
+:root[data-less-motion] .spin { animation: none; }
 /* M40 (Raycast): each action's keys as small keycaps at the end of its row, quiet until the row is under the pointer. */
 .home .chips.quick .caps { margin-left: auto; display: inline-flex; gap: 3px; opacity: .55; transition: opacity var(--dur-1) var(--ease-out); }
 .home .chips.quick .chip-btn:hover .caps, .home .chips.quick .chip-btn:focus-visible .caps { opacity: 1; }

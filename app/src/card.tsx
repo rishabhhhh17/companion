@@ -1899,7 +1899,17 @@ function Card() {
         <section className="panel" aria-label={m.task.label || "Task"}>
           {/* The task's name is Home's headline above (homeHero.ts), so here only its latest steps. */}
           {/* The latest one or two steps, in plain words: never the raw command. */}
-          {activityNow(m).map((l, i) => <div key={i} className={`line ${l.outcome === "blocked" || l.outcome === "denied" ? "blocked" : ""}`}>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</div>)}
+          {/* M40 (Granola shows progress in place): the step under way has a thin turning arc, the one before it a quiet tick. */}
+          {activityNow(m).map((l, i, all) => {
+            const odd = l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval";
+            const now = !odd && i === all.length - 1 && !m.receipt;
+            return (
+              <div key={i} className={`line step ${odd ? "blocked" : now ? "now" : "done"}`}>
+                {!odd && (now ? <span className="spin" aria-hidden="true" /> : <Icon name="tick" size={12} />)}
+                <span>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</span>
+              </div>
+            );
+          })}
         </section>
       )}
 

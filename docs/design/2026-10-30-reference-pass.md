@@ -16,6 +16,7 @@ Looked at live, on their own sites and product demos: Raycast, Linear, Granola, 
 - **M39, the receipt.** The result's own words as a paragraph, then one changes card: "Changed 3 files", a mark for each file (+ added, ● changed, − removed), the name in bold and its folder in grey (`changesCard.tsx`). Linear's pattern, without numbers we do not have.
 
 - **M40, keycaps.** Home's actions that have keys show them as small keycaps at the end of the row, with the keys in use now (`keys.ts` `keycaps`).
+- **M40, progress in place (Granola).** While a task works, the step under way has a thin turning arc and the step before it a quiet tick; still with Reduce motion or Less motion.
 
 ## Next candidates, not built
 - **Two tone empty states:** the bold statement, then the grey line.
