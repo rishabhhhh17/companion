@@ -184,8 +184,8 @@ function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boo
       <div className="line">{r.teaches}</div>
       <div className="line muted">{r.time} · {r.cost}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
       {!ask && <div className="row">
-        {(r.state === "notStarted" || (r.state === "done" && !r.there)) && <button className="btn primary" type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
-        {r.state === "inProgress" && !open && <button className="btn primary" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
+        {(r.state === "notStarted" || (r.state === "done" && !r.there)) && <button className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
+        {r.state === "inProgress" && !open && <button className="btn" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
         {r.there && <button id={overId} className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStartOver}: ${r.title}`} onClick={() => setAsk("startOver")}>{S.practiceStartOver}</button>}
         {r.there && <button id={removeId} className="btn" type="button" disabled={busy} aria-label={`${S.practiceRemove}: ${r.title}`} onClick={() => setAsk("remove")}>{S.practiceRemove}</button>}
       </div>}

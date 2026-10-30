@@ -112,9 +112,10 @@ describe("the words", () => {
 describe("the page asks the shell by a folder's name only", () => {
   const panel = read("./madePanel.tsx"), settings = read("./settingsPage.tsx"), main = read("../src-tauri/src/main.rs");
   test("it is in Settings with the setting that says where new folders go, and waits while anything works", () => {
-    expect(settings).toContain('{fixedShown("made") && <Group title={S.fixedGroups.made.title}><MadePanel busy={practiceBusy} project={project} /></Group>}');
-    expect(settings.indexOf('fixedShown("made")')).toBeGreaterThan(settings.indexOf('fixedShown("practice")'));
-    expect(settings.indexOf('fixedShown("made")')).toBeLessThan(settings.indexOf('fixedShown("kept")'));
+    // About, Help: What Squibby made opens a sheet with the panel, after Practice projects.
+    expect(settings).toContain('<Sheet title={S.setRows.made} dirty={false} instant onSave={() => setOpen(false)} onClose={() => setOpen(false)}><MadePanel busy={c.practiceBusy} project={c.project} /></Sheet>');
+    const pages = read("./settingsPages.ts");
+    expect(pages).toContain('{ id: "about.help", items: [f("replay"), f("practice"), f("made"), f("logs")] }');
   });
   test("the four commands are sent with a name (and the page's own busy and git answer), never a path or a parent folder", () => {
     for (const [cmd, args] of [["list_made", "{ busy }"], ["open_made", "{ name: f.name, busy }"], ["reveal_made", "{ name: f.name }"], ["trash_made", "{ name: f.name, git: trashAsk(f).git, busy }"]]) {

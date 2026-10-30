@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { MAX_JOBS, PANEL_DO, islandJobs, panelNote } from "./islandPanel.ts";
+import { MAX_JOBS, PANEL_DO, islandJobs, panelNote, panelView } from "./islandPanel.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
@@ -10,7 +10,7 @@ const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 const started = [ev({ type: "checkpoint.created", project: "/p", agent: "a", checkpoint: "cp_1", label: "Before: fix the join button", files: 3, skipped: [] }), ev({ type: "agent.state", agent: "a", state: "working" })];
 
 describe("the panel under the notch shows the work, not a character", () => {
-  test("nothing going on: no cards (the ask bar and the two quick buttons are always there)", () => {
+  test("nothing going on: no cards", () => {
     expect(islandJobs(initial())).toEqual([]);
   });
   test("work going on: one card with what it is doing, and the cost once there is one", () => {
@@ -38,26 +38,75 @@ describe("the panel under the notch shows the work, not a character", () => {
     for (let i = 0; i < 6; i++) m = run([ev({ type: "approval.request", approval: `ap${i}`, agent: "a", checkpoint: "cp_1", toolUseId: `t${i}`, risk: "install", title: `Q${i}`, expiresAt: "2099-01-01T00:00:00Z" })], m);
     expect(islandJobs(m).length).toBe(MAX_JOBS);
   });
-  test("the quick buttons ask Home for the two things Squibby is for and for Settings inside it, and the shell lets only those through", () => {
-    expect(PANEL_DO).toEqual({ find: { do: "find" }, ship: { do: "shipCheck" }, settings: { place: "settings" } });
-    expect(read("../src-tauri/src/settingswin.rs")).toContain('Some("settings") => Some(serde_json::json!({ "place": "settings" }))');
-    expect(read("./islandPanel.tsx")).toContain('invoke("open_card_cmd", { then: PANEL_DO.settings })');
-    expect(read("./islandPanel.tsx")).not.toContain("openSettingsWindow");
-    const win = read("../src-tauri/src/settingswin.rs");
-    expect(win).toContain('Some("find") => Some(serde_json::json!({ "do": "find" }))');
-    expect(win).toContain('Some("shipCheck") => Some(serde_json::json!({ "do": "shipCheck" }))');
-    const card = read("./card.tsx");
-    expect(card).toContain('if ("do" in t) { if (t.do === "find") findFromHome(); else shipIt(); return; }');
+  test("its buttons ask Home for Undo's question and for Settings at the key, and the shell lets only those through", () => {
+    expect(PANEL_DO).toEqual({ undo: { do: "undo" }, key: { set: "account.claude" } });
+    const win = read("../src-tauri/src/arrival.rs");
+    expect(win).toContain('Some("undo") => Some(serde_json::json!({ "do": "undo" })),');
+    expect(win).toContain('return ok.then(|| serde_json::json!({ "set": id }));');
+    const view = read("./islandPanel.tsx");
+    expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.undo })');
+    expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.key })');
+    expect(view).not.toContain("openSettingsWindow");
   });
   test("the island draws the panel and no live character any more; it tells the app the panel's measured height", () => {
     const page = read("./island.tsx");
     expect(page).not.toContain("FlowflowView");
     expect(page).toContain("<IslandPanel");
-    const view = read("./islandPanel.tsx");
-    expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.find })');
-    expect(view).toContain('<button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>');
-    expect(view).toContain('invoke("open_card_cmd", { then: PANEL_DO.ship })');
     expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask \}\)/);
+  });
+});
+
+// F28, the overhaul spec 4.3: the hover panel shows exactly one live thing, and never a greeting or a launcher button.
+describe("the hover panel shows only what is live (F28, 4.3)", () => {
+  const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "join.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.05, ended: "done", ...o });
+  const finished = (o: Record<string, unknown> = {}, state = "done") => run([...started, receipt(o), ev({ type: "agent.state", agent: "a", state })]);
+  const ask = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Q", expiresAt: "2099-01-01T00:00:00Z" })]);
+  const o = { note: "", status: "test-shop works. Last fix proven 2 hours ago." };
+  test("a question comes first, then a job, then a result, then Add your key, then one true line", () => {
+    expect(panelView(ask, islandJobs(ask), o).kind).toBe("questions");
+    const working = run(started);
+    expect(panelView(working, islandJobs(working), o)).toMatchObject({ kind: "job", job: { tone: "working", title: "Fix the join button" } });
+    const proven = finished();
+    expect(panelView(proven, islandJobs(proven), o)).toMatchObject({ kind: "result", canUndo: true, verdict: { proven: true } });
+    const off = run([ev({ type: "auth.status", method: "none" })]);
+    expect(off.connected).toBe("none");
+    expect(panelView(off, islandJobs(off), o).kind).toBe("connect");
+    expect(panelView(initial(), [], o)).toEqual({ kind: "line", line: o.status });
+    // A line the island already has to say (the engine stopped, an update) comes before the project's line.
+    expect(panelView(initial(), [], { ...o, note: S.islandOff })).toEqual({ kind: "line", line: S.islandOff });
+  });
+  test("Undo shows only where the result offers it, and never while an undo is under way", () => {
+    const stopped = finished({ ended: "stopped", proof: "skipped", changed: [] }, "idle");
+    expect(panelView(stopped, islandJobs(stopped), o)).toMatchObject({ kind: "result", canUndo: false });
+    const asked = run([ev({ type: "ui.undoAsked", checkpoint: "cp_1" })], finished());
+    expect(panelView(asked, islandJobs(asked), o)).toMatchObject({ kind: "result", canUndo: false });
+  });
+  test("the panel draws each: Stop on a job, Undo this fix and See proof on a result, Add your key as the one silver", () => {
+    const view = read("./islandPanel.tsx");
+    expect(view).toContain('onClick={() => void invoke("send_command", { cmd: stopAgent() }).catch(() => {})}><Icon name="stop" size={12} />{S.stop}</Button>');
+    expect(view).toContain("<VerdictLine verdict={view.verdict} sub={view.job.title} />");
+    expect(view).toContain("<ProofChips m={m} />");
+    expect(view).toContain("{view.canUndo && <Button size=\"sm\" tabIndex={tab} onClick={click(view.job.key,");
+    expect(view).toContain('<Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd").catch(() => {}))}>{S.home.seeProof}</Button>');
+    expect(view).toContain('<Button kind="primary" size="lg" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.key }).catch(() => {})}>{S.home.addKey}</Button>');
+    expect(view.match(/kind="primary"/g)?.length).toBe(1);
+    expect(view).toContain('<p className="ip-status" role="status">{view.line || S.home.notchNothing}</p>');
+  });
+  test("no greeting, no launcher buttons, no Settings or Open Home button: a click on the notch opens Home", () => {
+    const view = read("./islandPanel.tsx");
+    for (const gone of ["greeting(", "ip-hello", "ip-hi", "ip-go", "ip-pill", "ip-open", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello", "panel.showButtons"]) expect(view, gone).not.toContain(gone);
+    const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const gone of [".ip-hello", ".ip-hi", ".ip-go", ".ip-pill", ".ip-open", ".ip-row", ".ip-plus"]) expect(css, gone).not.toContain(gone);
+    // Their settings are kept in the registry, hidden, so a value already set does nothing and nothing offers it.
+    const reg = JSON.parse(read("../../protocol/settings.json")).settings as { key: string; hidden?: boolean }[];
+    for (const k of ["panel.showHello", "panel.showButtons"]) expect(reg.find((d) => d.key === k)?.hidden, k).toBe(true);
+    // With the greeting gone, nothing reads the Mac account's full name: the command is neither defined, registered nor
+    // allowed (review, 31 Oct), so no page can ask for personal data that nothing needs.
+    const main = read("../src-tauri/src/main.rs"), groups = read("../../protocol/groups.json"), island = read("../src-tauri/src/island.rs");
+    for (const [name, src] of [["main.rs", main], ["groups.json", groups], ["island.rs", island]] as const) {
+      expect(src, name).not.toMatch(/\bfirst_name\b/);
+      expect(src, name).not.toContain("NSFullUserName");
+    }
   });
 });
 
@@ -163,7 +212,7 @@ describe("a self opened panel is armed after a moment (M46)", () => {
     const view = read("./islandPanel.tsx");
     expect(view).toContain("const openedAt = useRef<number | null>(null);");
     expect(view).toContain('data-armed={ready() ? "yes" : undefined}');
-    for (const b of ['className="ip-yes" type="button" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}', 'className="ip-job" type="button" data-tone={j.tone} data-armed={cardOk(j.key, now) ? "yes" : undefined} tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}']) expect(view, b).toContain(b);
+    for (const b of ['<Button size="sm" className="ip-yes" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>', '<div className="ip-result" data-armed={cardOk(view.job.key, now) ? "yes" : undefined}>', 'onClick={click(view.job.key, () => void invoke("open_card_cmd", { then: PANEL_DO.undo }).catch(() => {}))}']) expect(view, b).toContain(b);
     expect(view).toContain("const click = (key: string, f: () => void) => () => { if (!ready() || !cardOk(key, Date.now())) return; f(); };");
     expect(view).toContain("const keys = jobs.map((j) => j.key).join(\" \");");   // every card's first sight, not only questions'
     expect(read("./style.css")).toContain(".island-panel button.ip-job:not([data-armed]) { cursor: default; }");
@@ -183,17 +232,6 @@ describe("a card that drops into a panel already open by itself waits its own mo
   test("opened by the pointer, every card is ready at once", () => {
     expect(cardReady(null, null, 0)).toBe(true);
     expect(cardReady(null, 5000, 5001)).toBe(true);
-  });
-});
-
-import { greeting } from "./islandPanel.ts";
-describe("the notch greets you (M33)", () => {
-  test("by the time of day, with your first name when the Mac has one", () => {
-    expect(greeting(8, "Rishabh")).toBe("Morning, Rishabh.");
-    expect(greeting(14, "Rishabh")).toBe("Afternoon, Rishabh.");
-    expect(greeting(19, null)).toBe("Evening.");
-    expect(greeting(23, "Rishabh")).toBe("Hi, Rishabh.");
-    expect(greeting(3, null)).toBe("Hi.");
   });
 });
 

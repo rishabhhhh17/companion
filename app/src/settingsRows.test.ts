@@ -142,7 +142,10 @@ describe("the rows for Home, the island and the character", () => {
     expect(shownNow("island.followDelay", with_("main"))).toBe(false);
     for (const def of REGISTRY.settings.filter((x) => x.key !== "island.followDelay")) expect(shownNow(def.key, with_("main")), def.key).toBe(true);
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(page).toContain("const results = searchSettings(q, shownSettings().filter((x) => shownNow(x.key, setting)));");
+    // Search (settingsSearch.ts) and every page's rows (ItemRows) leave it out the same way.
+    expect(page).toContain("const shown = shownSettings().filter((x) => shownNow(x.key, setting));");
+    expect(page).toContain("const results = searchSettingsFor(q, shown);");
+    expect(page).toContain("!shownNow(item, setting)) return null;");
   });
   test("Home size suggests Large when the text is larger than usual, and only then", () => {
     expect(homeSizeHint("larger", "standard")).toBe(S.setHomeLarger);
@@ -165,7 +168,7 @@ describe("the rows for Home, the island and the character", () => {
     expect([...PLACE_KEYS]).toEqual(["character.edge", "character.position", "character.sameEverywhere"]);
     for (const k of PLACE_KEYS) expect(d(k).store, k).toBe("dock");
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(page).toContain('const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));');
+    expect(page).toContain("const placeChanged = changedNow().filter((k) => (PLACE_KEYS as readonly string[]).includes(k));");
     expect(page).toContain("for (const k of placeChanged) await resetSetting(k);");
     expect(page).toContain("{S.setResetPlace}");
     expect(S.setResetPlace.length).toBeGreaterThan(0);
@@ -184,11 +187,11 @@ describe("the rows for Home, the island and the character", () => {
     const w = S.set["home.goToNeeds"] as { help: string; options: Record<string, string> };
     expect(w.options.markTab).toBe("Only mark the tab");
     expect(w.help).toContain("or on the character when the notch is off");
-    expect(w.help).toContain("With Speak to me on, it also says what is waiting.");
+    expect(w.help).toContain("With Say answers out loud on, it also says what is waiting.");
     const floor = floorWords("needsMarked");
     expect(floor).toContain("Prompt help, the error explainer and Second Look you start always open Now");
     expect(floor).toContain("or on the character when the notch is off");
-    expect(floor).toContain("is said out loud when Speak to me is on");
+    expect(floor).toContain("is said out loud when Say answers out loud is on");
     // Close Home when I click another app names the island only as something that may not be there.
     expect(S.set["home.closeOnClickAway"].help).not.toContain("click the island or the character");
     expect(S.set["home.closeOnClickAway"].help).toContain("click the character, or the notch when it is shown, again");

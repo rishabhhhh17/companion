@@ -1,9 +1,9 @@
-// The panel that hangs from the notch while the pointer rests on it (27 Oct 2026, the founder: "like HeyClicky's notch
-// hover", "Flowflow is not the main guy, he is the water agent"). Not a character: the ask bar, the two things Squibby is
-// for, and each piece of work as a little card, its agent's face, what it is doing (the plan's step while it works) and
-// then its result. Plain decisions only; islandPanel.tsx draws them and island.rs sizes the window to what is drawn.
+// The panel that hangs from the notch while the pointer rests on it (F28, the overhaul spec 4.3): only what is live, one
+// thing at a time. A job with Stop, a result with Undo and See proof, a question, "Add your key" when Claude is not
+// connected, or one true line about the project. No greeting and no launcher buttons: a click on the notch always opens
+// Home. Plain decisions only; islandPanel.tsx draws them and island.rs sizes the window to what is drawn.
 import { characterWords, formatUsd, receiptVerdict, visualState, type CharacterState, type Model } from "./model.ts";
-import type { Tone } from "./verdict.ts";
+import type { Tone, Verdict } from "./verdict.ts";
 import { S } from "./strings.ts";
 import { approvalWords } from "./approvals.ts";
 
@@ -69,12 +69,25 @@ export const RESULT_PEEK_MS = 4000;
  *  happening, so nothing is said twice. */
 export const panelNote = (line: string, jobs: JobCard[]): string => (jobs.length ? "" : line);
 
-/** What the two quick buttons ask Home to do when it opens (main.rs open_card_cmd, settingswin.rs arrival). */
-export const PANEL_DO = { find: { do: "find" }, ship: { do: "shipCheck" }, settings: { place: "settings" } } as const;
+/** What the panel's buttons ask Home to do when it opens (main.rs open_card_cmd, arrival.rs): ask Undo's own question
+ *  on the result (Home's receipt asks "are you sure" first), and open Settings on Account at the key. */
+export const PANEL_DO = { undo: { do: "undo" }, key: { set: "account.claude" } } as const;
 
-/** M33 (HeyClicky's notch: "Evening, Rishabh."): the greeting for the time of day, with the Mac account's first name when
- *  there is one. Morning from 5, afternoon from 12, evening from 17, and after 22 just Hi. */
-export function greeting(hour: number, name: string | null): string {
-  const part = hour >= 5 && hour < 12 ? S.panel.morning : hour >= 12 && hour < 17 ? S.panel.afternoon : hour >= 17 && hour < 22 ? S.panel.evening : S.panel.hi;
-  return name ? `${part}, ${name}.` : `${part}.`;
+/** The one live thing the hover panel shows (4.3), most urgent first. `line`: the true sentence when nothing is live. */
+export type PanelView =
+  | { kind: "questions" }
+  | { kind: "job"; job: JobCard }
+  | { kind: "result"; job: JobCard; verdict: Verdict; canUndo: boolean }
+  | { kind: "connect" }
+  | { kind: "line"; line: string };
+export function panelView(m: Model, jobs: JobCard[], o: { note: string; status: string }): PanelView {
+  if (jobs.some((j) => j.approval)) return { kind: "questions" };
+  const job = jobs.find((j) => j.key.startsWith("task:"));
+  if (job) return { kind: "job", job };
+  const done = jobs.find((j) => j.key.startsWith("done:"));
+  const v = done ? receiptVerdict(m) : null;
+  // Undo only where the result offers it and no undo is under way (the question itself is asked in Home).
+  if (done && v) return { kind: "result", job: done, verdict: v, canUndo: v.offer === "undo" && !m.undo };
+  if (m.connected === "none") return { kind: "connect" };
+  return { kind: "line", line: o.note || o.status };
 }

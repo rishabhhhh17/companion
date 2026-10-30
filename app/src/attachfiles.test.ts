@@ -310,7 +310,7 @@ describe("Home takes files only from a drop or a paste the person makes", () => 
     expect(mk).toContain('if label == "card" { b.disable_drag_drop_handler() } else { b }');
   });
   test("each chip has a Remove button that names the file, and Start sends what is added", () => {
-    expect(card).toContain("aria-label={S.attachRemove(a.name)}");
+    expect(card).toContain("label={S.attachRemove(a.name)}");   // the Button part names it (aria-label)
     expect(card).toMatch(/const added = forRequest\(attachedNow\.current\);/);
     expect(card).toMatch(/startTask\(project, prompt, off, added\)/);
   });

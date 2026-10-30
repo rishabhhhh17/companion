@@ -26,6 +26,14 @@ impl HomeSize {
     /// The size a home.size word names; anything else is the usual one.
     pub fn of(word: &str) -> HomeSize { if word == "large" { HomeSize::LARGE } else { HomeSize::STANDARD } }
 }
+/// Settings' fixed height inside Home (the overhaul spec, 3.1): its sidebar stays put and its pages scroll.
+pub const SETTINGS_H: f64 = 640.0;
+/// The size Home takes while Settings is open in it: at least the Large width (its 184 sidebar and 520 column fit), and one
+/// fixed height, so moving between pages never makes Home jump. The display still bounds it (card_spot). Closed: as set.
+pub fn with_settings(base: HomeSize, open: bool) -> HomeSize {
+    if !open { return base; }
+    HomeSize { w: base.w.max(HomeSize::LARGE.w), min_h: SETTINGS_H, max_h: SETTINGS_H }
+}
 /// The usual size, as Home's window is made at launch (before any setting is read) and as the tests name it.
 pub const CARD: (f64, f64) = (HomeSize::STANDARD.w, HomeSize::STANDARD.min_h);
 #[cfg_attr(not(test), allow(dead_code))]   // the tests name the usual tallest; the app reads the size in force
@@ -306,14 +314,6 @@ pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub pa
 /// hover panel says "9+" past nine, M46); any result while Home is open is seen at once.
 pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(99) } }
 
-/// M33: the first name for the notch's greeting ("Evening, Rishabh."), from the Mac account's full name, on this Mac only.
-/// Only letters (and an inside hyphen or apostrophe), at most 24 of them; anything else gives no name and a plain greeting.
-pub fn first_name(full: &str) -> Option<String> {
-    let w = full.split_whitespace().next()?;
-    let ok = w.chars().count() <= 24 && w.chars().next()?.is_alphabetic() && w.chars().all(|c| c.is_alphabetic() || c == '-' || c == '\'');
-    ok.then(|| w.to_string())
-}
-
 /// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
 /// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
 pub fn animates_open(source: &str) -> bool { source != "hotkey" }
@@ -401,6 +401,20 @@ pub fn last_json(id: &str) -> String { serde_json::json!({ "screen": id }).to_st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn settings_in_home_is_large_and_one_fixed_height() {
+        assert_eq!(with_settings(HomeSize::STANDARD, false), HomeSize::STANDARD);
+        assert_eq!(with_settings(HomeSize::LARGE, false), HomeSize::LARGE);
+        for base in [HomeSize::STANDARD, HomeSize::LARGE] {
+            let s = with_settings(base, true);
+            assert_eq!((s.w, s.min_h, s.max_h), (HomeSize::LARGE.w, SETTINGS_H, SETTINGS_H));
+        }
+        // The page tells the shell (card.tsx), and every place the size is read goes through home_size (main.rs).
+        let main = include_str!("main.rs");
+        assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
+        assert!(main.contains("fn resize_card(app: AppHandle, height: f64, settings: Option<bool>) {"));
+        assert!(!main.contains("hs.size.min_h"), "the size in force is home_size(), Settings included");
+    }
     use super::*;
 
     // Real Macs, in points at their default "looks like" size (top left origin).
@@ -622,7 +636,8 @@ mod tests {
         assert_eq!(main.matches("card_frame(").count(), 0, "and only card_spot puts it beside the character");
         // One size definition (island.rs HomeSize), and the size in force comes from one place (home.size, home_size()).
         assert!(main.contains("use island::CARD;") && !main.contains("const CARD:") && !main.contains("CARD_MAX_H") && !main.contains("HomeSize { w:"), "one card size, defined here");
-        assert!(main.contains("fn home_size() -> island::HomeSize { home_set().size }"));
+        // While Settings is open, Large and one fixed height (with_settings); otherwise the size home.size names.
+        assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
         let rc = main_body("fn resize_card(");
         assert!(rc.contains("let hs = home_size();") && rc.contains("height.clamp(hs.min_h, hs.max_h)"), "Home never grows past what the character keeps clear of");
         assert!(main_body("fn card_room(").contains("card_spot(mtm, d, home_size().max_h)"), "trips keep clear of Home where card_spot says, at its tallest");
@@ -630,9 +645,10 @@ mod tests {
         assert!(pc.contains("card_spot(mtm, d, CARD_H.load(") && pc.contains("card_spot(mtm, d, home_size().max_h)"), "placed, then the visit checked against the tallest");
         // Home is placed at its width in force, its height held inside its range, and the character keeps clear of it at
         // the same size, on its own place and when dragged.
-        assert!(spot.contains("(hs.size.w, h.clamp(hs.size.min_h, hs.size.max_h))"), "{spot}");
+        assert!(spot.contains("let size = home_size();") && spot.contains("(size.w, h.clamp(size.min_h, size.max_h))"), "{spot}");
         assert!(main_body("fn apply_dock(").contains("docking::place(&target, DOCK, edge, pct, home_size())"));
-        assert!(main_body("fn drag_dock(").contains("snap_on(&target, DOCK, x, y, home_size())"));
+        // M47: the let go decides snap or stay (docking::Drag::release calls snap_on with the size in force).
+        assert!(main_body("fn drop_dock(").contains(".release(home_size())"));
     }
     #[test]
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
@@ -1077,13 +1093,6 @@ mod tests {
     fn home_opened_by_a_key_is_there_at_once() {
         assert!(!animates_open("hotkey"));
         for s in ["button", "island", "dock", "drop", "first_run", "reopen"] { assert!(animates_open(s), "{s}"); }
-    }
-
-    #[test]
-    fn the_greeting_uses_only_a_plain_first_name() {
-        assert_eq!(first_name("Rishabh Kapadia").as_deref(), Some("Rishabh"));
-        assert_eq!(first_name("  Ana-María  López ").as_deref(), Some("Ana-María"));
-        for bad in ["", "   ", "123 Main", "root@mac", "x".repeat(30).as_str()] { assert_eq!(first_name(bad), None, "{bad}"); }
     }
 
     #[test]

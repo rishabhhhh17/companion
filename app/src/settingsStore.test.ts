@@ -5,7 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { REGISTRY, PAGE_STORAGE_MARK } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
-import { _invokeForTests, _resetForTests, changedNow, engineEvent, MIGRATED_FLAG, migrateFromPageStorage, migrationValues, notHeard, resetAll, resetSection, resetSetting, resetWithUndo, setting, settingsReady, startSettings, takeSnapshot, undoReset, undoValues, usualOf } from "./settingsStore.ts";
+import { _invokeForTests, _resetForTests, changedNow, engineEvent, MIGRATED_FLAG, migrateFromPageStorage, migrationValues, notHeard, resetAll, resetKeysWithUndo, resetSection, resetSetting, resetWithUndo, setting, settingsReady, startSettings, takeSnapshot, undoReset, undoValues, usualOf } from "./settingsStore.ts";
 
 afterEach(() => { _resetForTests(); _invokeForTests(null); });
 const storage = (m: Record<string, string>) => ({ getItem: (k: string) => (k in m ? m[k] : null), setItem: (k: string, v: string) => { m[k] = v; } });
@@ -198,6 +198,26 @@ describe("what changed, and Undo after Reset all", () => {
     await undoReset(back);
     expect(calls.slice(1)).toEqual([{ cmd: "settings_set", args: { key: "memory.paused", value: true } }, { cmd: "settings_set", args: { key: "teach.yourTurn", value: false } }]);
   });
+  test("Restore usual settings for one page resets only that page's changed keys, one at a time, and Undo puts exactly those back", async () => {
+    takeSnapshot(snap({ "fun.reactions": false, "character.linger": 4, "work.maxTurns": 120 }));
+    const calls = shell((cmd, args) => (cmd === "settings_reset" ? snap({ "work.maxTurns": 120 }) : cmd === "settings_set" ? snap({ [String(args!.key)]: args!.value }) : undefined));
+    const { done, back } = await resetKeysWithUndo(["character.linger", "fun.reactions", "character.position"]);
+    expect(done.ok).toBe(true);
+    // Unchanged keys and other pages' keys are left alone; nothing protective is ever in it.
+    // In the registry's order, as Undo puts them back.
+    expect(calls.map((c) => [c.cmd, c.args?.key])).toEqual([["settings_reset", "character.linger"], ["settings_reset", "fun.reactions"]]);
+    expect(back).toEqual([["character.linger", 4], ["fun.reactions", false]]);
+    calls.length = 0;
+    await undoReset(back);
+    expect(calls.map((c) => [c.cmd, c.args?.key, c.args?.value])).toEqual([["settings_set", "character.linger", 4], ["settings_set", "fun.reactions", false]]);
+  });
+  test("a page restore that the shell refuses says so, and still tries the rest", async () => {
+    takeSnapshot(snap({ "fun.reactions": false, "character.linger": 4 }));
+    const calls = shell((cmd, args) => { if (cmd === "settings_reset" && args?.key === "fun.reactions") throw "other"; return snap({}); });
+    const { done } = await resetKeysWithUndo(["fun.reactions", "character.linger"]);
+    expect(done).toEqual({ ok: false, code: "other" });
+    expect(calls.length).toBe(2);
+  });
   // A reset or its Undo is for the project the page showed. If another folder is open by then, the shell refuses (projectChanged).
   test("a reset names the project the page showed, and Undo writes a project's own settings only back to that project", async () => {
     takeSnapshot({ ...snap({ "check.skip": ["lint"], "fun.reactions": false }), project: "/a" });
@@ -240,13 +260,17 @@ describe("the page's Reset this section and Reset all", () => {
   const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
   const fn = (name: string) => page.slice(page.indexOf(name), page.indexOf("\n}\n", page.indexOf(name)));
   test("both name every setting that changes before, and both offer Undo for ten seconds after", () => {
-    const sec = fn("function SettingsSection(");
-    for (const t of ["resetWithUndo(id)", "toast.show(done, back)", "{toast.view}", "S.setResetSectionSure(names(changed))", "S.setNotHeard(names(unheard))"]) expect(sec, t).toContain(t);
-    const all = fn("export function SettingsPage(");
-    for (const t of ["resetWithUndo()", "allToast.show(done, back)", "{allToast.view}", "S.setResetAllSure(names(changedAll))", "S.setNotHeard(names(unheardAll))"]) expect(all, t).toContain(t);
-    const hook = fn("function useUndoToast(");
-    expect(hook).toContain("10_000");
-    expect(hook).toContain("undoReset(back)");
+    // Restore usual settings for a page (More options) and Reset all settings (the danger zone), each with Undo in a toast
+    // for ten seconds (the Toast part, TOAST_MS).
+    const sec = fn("function MoreSection(");
+    for (const t of ["resetKeysWithUndo(keys)", "c.say(S.setFrame.restoreDone(back.length), () => void undoReset(back)", "S.setResetSectionSure(names(changed))", "S.setNotHeard(names(unheard))",
+      "const unheard = notHeard().filter((k) => keys.includes(k));", "onClick={changed.length > 0 ? () => setAsking(true) : restore}"]) expect(sec, t).toContain(t);
+    // The confirm comes before the reset: restore() runs only from its Reset them button (or when nothing has changed).
+    expect(sec.indexOf("<ConfirmStep")).toBeLessThan(sec.indexOf("onClick={restore}>{S.setResetSectionYes}"));
+    const all = fn("function DangerZone(");
+    for (const t of ["resetWithUndo()", "() => void undoReset(back)", "S.setResetAllSure(names(changedAll))", "S.setNotHeard(names(unheardAll))"]) expect(all, t).toContain(t);
+    expect(fn("export function SettingsView(")).toContain("<Toast key={toast.n} text={toast.text} action={toast.undo ? S.setUndo : undefined}");
+    expect(readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8")).toContain("export const TOAST_MS = 10_000;");
     // Nothing resets without keeping Undo's values first.
     expect(page).not.toMatch(/\b(resetAll|resetSection)\(/);
   });
@@ -255,7 +279,7 @@ describe("the page's Reset this section and Reset all", () => {
     heard("memory.paused", true);
     const list = changedNow().map((k) => S.set[k as keyof typeof S.set].label).join(", ");
     const w = S.setResetAllSure(list);
-    expect(w).toContain("Pause learning");
+    expect(w).toContain("Pause memory");
     expect(w).not.toMatch(/\bmemory\b[^.]*not touched/i);
     expect(S.setNotHeard("Daily spending limit")).toContain("Daily spending limit");
     for (const t of [w, S.setNotHeard("x"), S.setUnreadable]) expect(/[–—]/.test(t), t).toBe(false);

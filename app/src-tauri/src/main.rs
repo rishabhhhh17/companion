@@ -1,8 +1,7 @@
 //! Companion shell. Tauri's web pages inside NSPanels that we create ourselves,
 //! non activating from the start (T01: no tauri-nspanel, no convert after creation).
 //! Rule 9: never steal keyboard focus. Nothing here calls show(), set_focus() or
-//! makeKeyAndOrderFront on a panel. The one window that takes the keyboard is the Settings window, a normal window the
-//! person opens on purpose (settingswin.rs).
+//! makeKeyAndOrderFront on a panel. Settings lives inside Home (F28, T17: the separate Settings window is retired).
 
 mod docking;
 mod peek;
@@ -11,7 +10,7 @@ mod google;
 mod claude_install;
 mod follow;
 mod rest;
-mod settingswin;
+mod arrival;
 mod island;
 mod esc;
 mod roam;
@@ -82,7 +81,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::{
     NSApplication, NSBackingStoreType, NSColor, NSPanel, NSScreen, NSView, NSWindow,
     NSWindowButton, NSWindowCollectionBehavior as B, NSWindowStyleMask as M, NSWindowTitleVisibility,
-    NSWorkspace, NSEvent, NSEventMask,
+    NSWorkspace, NSEvent, NSEventMask, NSEventType,
 };
 use block2::RcBlock;
 use std::ptr::NonNull;
@@ -90,7 +89,7 @@ use objc2_foundation::{NSNumber, NSPoint, NSRect, NSSize, NSString};
 use serde_json::{json, Value};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use docking::{choice, inside, pick, signature, snap_on, Prefs, Rect, Screen};
+use docking::{choice, inside, pick, signature, Prefs, Rect, Screen};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -143,6 +142,9 @@ static DIAGRAM_KEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBo
 static PARTY_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn turn_cancel() { TURN_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); *TURN.lock().unwrap_or_else(|e| e.into_inner()) = None; }
 static CARD_H: AtomicU64 = AtomicU64::new(150);
+/// Settings is open in Home (the page says so with its height): Home uses the Large width and a fixed height (island.rs
+/// `with_settings`, the overhaul spec 3.1).
+static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
 static FS_SMOOTH: Mutex<Option<visibility::Debounce>> = Mutex::new(None);
@@ -251,7 +253,8 @@ fn card_spot(mtm: MainThreadMarker, d: &NSPanel, h: f64) -> Option<(Rect, f64)> 
     // With the island turned off in Settings there is no island to drop from: Home opens beside the character.
     let on = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).clone().filter(|_| hs.island_show);
     let home = roamer().home().unwrap_or_else(|| from_appkit(d.frame(), ph));
-    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), (hs.size.w, h.clamp(hs.size.min_h, hs.size.max_h)))?;
+    let size = home_size();
+    let spot = island::card_spot(on.as_ref(), home, &list, |id| with_prefs(|p| choice(p, id).0), (size.w, h.clamp(size.min_h, size.max_h)))?;
     Some((spot, ph))
 }
 
@@ -314,7 +317,6 @@ fn data_dir() -> PathBuf { PathBuf::from(std::env::var("HOME").unwrap_or_default
 fn prefs_path() -> PathBuf { data_dir().join("dock.json") }
 static PREFS: Mutex<Option<Prefs>> = Mutex::new(None);
 static SIG: Mutex<String> = Mutex::new(String::new());
-static LAST_DRAG: Mutex<(f64, f64, f64, f64)> = Mutex::new((0.0, 0.0, 0.0, 0.0)); // x, y, work x, work width
 
 fn with_prefs<R>(f: impl FnOnce(&mut Prefs) -> R) -> R {
     let mut g = PREFS.lock().unwrap_or_else(|e| e.into_inner());
@@ -360,8 +362,12 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner()) = edge;
     if let Some(app) = APP.get() { if roam_phase() != roam::Phase::Home { roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, f, f, None, edge)); } }
+    // M47: let go near an edge, a short spring onto it (at once with Reduce motion or Less motion); let go in the middle
+    // it is already where it belongs, and every other reason puts it there at once.
+    let landing = match free { Some(at) => docking::Landing::Free(at), None => docking::Landing::Edge(edge, pct) };
+    let secs = if reason == "drag" { docking::land_secs(&landing, reduce_motion()) } else { None };
     with_panels(|d, c| {
-        set_frame_moving(d, to_appkit(f, ph), None, None, &DOCK_MOVES);
+        set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES);
         if c.isVisible() { place_card(d, c); }
     });
     // Put at its place fully in view; it goes back past the edge on the next look, if it should (peek_apply).
@@ -369,33 +375,64 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }
 }
 
-/// Dragging the character: it snaps to the nearest edge or corner of the display under the cursor.
+/// M47: the drag in progress (docking::Drag), followed by the shell itself from the mouse watch (`drag_follow`). Main thread.
+static DRAG: Mutex<Option<docking::Drag>> = Mutex::new(None);
+/// A drag began and was not let go yet (read off the main thread too, by `dragging()`).
+static DRAG_LIVE: AtomicBool = AtomicBool::new(false);
+
+/// Dragging the character (M47, the founder: "it cannot genuinely move freely in the middle. It just lags"): the page says
+/// once that a drag began. From then on the shell moves the window itself, straight from the mouse watch (`drag_follow`),
+/// with the pointer kept where it took hold; nothing crosses to the page and back on each move, and no placement runs
+/// until the let go (`drop_dock`). Only the character's own page can begin one.
 #[tauri::command]
-fn drag_dock(app: AppHandle, x: f64, y: f64) {
+fn drag_dock(app: AppHandle, window: tauri::WebviewWindow) {
+    if window.label() != "dock" { return; }
+    // A drag left behind by a release that never came is dropped first, so the first moves of this one never follow its
+    // old grab (drag_follow runs as soon as DRAG_LIVE is set, before the new Drag begins on the main thread).
+    *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = None;
     // While the person drags it nothing else moves it (F18 item 2).
     DRAG_AT.store(now() as u64, Ordering::SeqCst);
-    let a = app.clone();
+    DRAG_LIVE.store(true, Ordering::SeqCst);
     let _ = app.run_on_main_thread(move || {
-        let app = a;
-        let mtm = MainThreadMarker::new().unwrap();
+        let Some(mtm) = MainThreadMarker::new() else { return };
         let list = screens_now(mtm);
         let Some(first) = list.first() else { return };
-        let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
-        let (edge, pct) = snap_on(&target, DOCK, x, y, home_size());
-        let free = docking::free_on(&target, DOCK, x, y);
-        *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
-        // With Same place on every display on, the place dragged to is the one copied to displays with no place yet.
-        // M37: away from every edge it stays where it is let go; near one it snaps to it, as before.
-        // M37c: how hard it is pushed into its edge, for the water to flatten against it (none when it is let go free).
-        let press = if free.is_some() { 0.0 } else { docking::press_of(&target, DOCK, edge, (x, y)) };
-        let at = docking::screen_at(edge, &target, docking::place(&target, DOCK, edge, pct, home_size()));
-        let _ = app.emit_to("dock", "dock-press", json!({ "edge": if free.is_some() { Value::Null } else { json!(edge.word()) }, "press": press, "screenAt": at }));
-        with_prefs(|p| {
-            p.last_screen = target.id.clone();
-            match free { Some(at) => { p.free.insert(target.id.clone(), at); } None => { p.free.remove(&target.id); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } } }
-        });
-        apply_dock(mtm, "drag", true);
+        let ph = first.frame[3];
+        let m = NSEvent::mouseLocation();
+        // A trip under way stops where it is, and a peek still moving is replaced by where the window is now, so nothing
+        // pulls the window away from the pointer.
+        ROAM_GEN.fetch_add(1, Ordering::SeqCst);
+        let Some(win) = with_panels(|d, _| { let f = d.frame(); set_frame_moving(d, f, None, None, &DOCK_MOVES); from_appkit(f, ph) }) else { return };
+        *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some(docking::Drag::begin((m.x, ph - m.y), win, list));
     });
+}
+
+/// M47: one move of a drag, from the mouse watch on the main thread the moment macOS reports it: only the window's origin
+/// is set, with the pointer kept where it took hold (docking::Drag::follow). How hard it is pushed into an edge goes to the
+/// page at most once a frame (Drag::press_due), for the water to flatten against it (M37c). No displays are read, nothing
+/// is saved and nothing else is placed here. Only a drag on the character's own window: never one in Home or elsewhere.
+fn drag_follow(ev: &NSEvent) {
+    if !DRAG_LIVE.load(Ordering::Relaxed) || ev.r#type() != NSEventType::LeftMouseDragged { return; }
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    if let Some(w) = ev.window(mtm) { if with_panels(|d, _| !std::ptr::eq(&*w, &**d as &NSWindow)).unwrap_or(true) { return; } }
+    let mut g = DRAG.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(drag) = g.as_mut() else { return };
+    let ph = drag.primary_h();
+    let m = NSEvent::mouseLocation();
+    let Some(f) = drag.follow((m.x, ph - m.y)) else { return };
+    let t = now() as u64;
+    DRAG_AT.store(t, Ordering::Relaxed);
+    // Noted as set at once, so a motion that ends now never puts the window back where it was (island::Moves).
+    let at = to_appkit(f, ph);
+    DOCK_MOVES.lock().unwrap_or_else(|e| e.into_inner()).ask([at.origin.x, at.origin.y, at.size.width, at.size.height], false);
+    with_panels(|d, _| d.setFrameOrigin(at.origin));
+    if !drag.press_due(t) { return; }
+    let said = match drag.press() {
+        Some((edge, press, screen_at)) => json!({ "edge": edge.word(), "press": press, "screenAt": screen_at }),
+        None => json!({ "edge": Value::Null, "press": 0.0 }),
+    };
+    drop(g);
+    if let Some(app) = APP.get() { let _ = app.emit_to("dock", "dock-press", said); }
 }
 
 /// The character's place as Settings shows it (dock.json, on the display it is on).
@@ -411,18 +448,26 @@ fn place_shown_changed() -> bool {
 /// so its rows, their Reset, Reset this section and Undo start from where it is.
 fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLACE_KEYS.map(String::from)); }
 
+/// The let go (M47): decided once, on the main thread after the drag's last move. Away from every edge it stays exactly
+/// where it is; near one it snaps to it (docking::Drag::release). The place is saved once, the character is placed once
+/// (apply_dock: home, trips, peeking, Home), and the pages are told where it is. A second let go saves nothing.
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
-    DRAG_AT.store(0, Ordering::SeqCst);
     // Let go: the water springs back from the edge (the page's spring does the wobble).
     let _ = app.emit_to("dock", "dock-press", json!({ "press": 0.0 }));
-    save_prefs();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let (x, y, wx, ww) = *LAST_DRAG.lock().unwrap();
-        log("dock_dropped", with_prefs(|p| json!({ "screen": p.last_screen, "choice": p.per_screen.get(&p.last_screen), "last_pointer": [x, y], "work_x_and_width": [wx, ww] })));
-        // After the drag's last move (each is run on the main thread in turn), the pages are told where it is now.
-        place_told(&a);
+        let landed = DRAG.lock().unwrap_or_else(|e| e.into_inner()).take().and_then(|mut d| d.release(home_size()));
+        if let (Some(l), Some(mtm)) = (&landed, MainThreadMarker::new()) {
+            with_prefs(|p| p.land(&l.screen.id, l.how));
+            save_prefs();
+            apply_dock(mtm, "drag", true);
+            log("dock_dropped", json!({ "screen": l.screen.id, "free": matches!(l.how, docking::Landing::Free(_)), "last_pointer": [l.pointer.0, l.pointer.1], "frame": l.frame, "work": l.screen.work }));
+        }
+        // Only now, with the character at its new home, may anything else move it again.
+        DRAG_LIVE.store(false, Ordering::SeqCst);
+        DRAG_AT.store(0, Ordering::SeqCst);
+        if landed.is_some() { place_told(&a); }
     });
 }
 
@@ -795,8 +840,9 @@ fn roam_say(app: &AppHandle, phase: roam::Phase, toward: &str) {
     let _ = app.emit_to("dock", "roam", json!({ "phase": phase.name(), "toward": toward }));
 }
 
-/// A drag in progress (a drag the page never ended counts for a second and a half after its last move).
-fn dragging() -> bool { let t = DRAG_AT.load(Ordering::SeqCst); t != 0 && (now() as u64).saturating_sub(t) < 1500 }
+/// A drag in progress: while it is held, and for a second and a half after its last move (docking::drag_holds; one the
+/// page never ended stops counting after DRAG_LOST_MS).
+fn dragging() -> bool { docking::drag_holds(DRAG_LIVE.load(Ordering::SeqCst), DRAG_AT.load(Ordering::SeqCst), now() as u64) }
 /// Never while the person drags it, never while the pointer is over it. Only the mouse position is read (no
 /// permission, never keys).
 fn roam_blocked() -> bool {
@@ -1233,7 +1279,7 @@ fn place_set(app: &AppHandle, next: Prefs) {
 fn home_set() -> homeset::HomeSet { with_settings(|s| homeset::read(settings::registry(), &s.file)) }
 /// Home's size in force (home.size): its width, least height and tallest height. The one size for placing Home, for the
 /// character's clear zones and for the trips beside a window.
-fn home_size() -> island::HomeSize { home_set().size }
+fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }
 
 /// What the shell does at once when one of these changes (homeset.rs). The rest are read where they are used (the waits on
 /// the island, the wait beside a window, the motion, full screen apps) and need nothing more.
@@ -1245,7 +1291,8 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
             let _ = app.run_on_main_thread(move || {
                 let Some(mtm) = MainThreadMarker::new() else { return };
                 let hs = home_set();
-                CARD_H.store((CARD_H.load(Ordering::SeqCst) as f64).clamp(hs.size.min_h, hs.size.max_h) as u64, Ordering::SeqCst);
+                let now = home_size();
+                CARD_H.store((CARD_H.load(Ordering::SeqCst) as f64).clamp(now.min_h, now.max_h) as u64, Ordering::SeqCst);
                 reset_hover();
                 place_island(mtm, false, "setting");
                 // Put in place first, then shown (unless Companion is hidden): it never shows where it was.
@@ -1329,7 +1376,7 @@ fn settings_get() -> Value { settings_snapshot(&[]) }
 /// Changes one setting. Only from the card. The error is a code the page puts in words; nothing changed then.
 #[tauri::command]
 fn settings_set(app: AppHandle, window: tauri::WebviewWindow, key: String, value: Value, project: Option<String>) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;
+    settings::only_card(window.label())?;
     let changed = setting_change(&app, &key, &value, project.as_deref()).map_err(|c| { log("setting_not_changed", json!({ "key": key, "why": c })); c.to_string() })?;
     log("setting_changed", json!({ "key": key }));
     settings_told(&app, &changed);
@@ -1503,7 +1550,7 @@ fn tried_mark(app: AppHandle, window: tauri::WebviewWindow, tool: String) -> Res
 /// one it has not heard is left as it is. Only from the card.
 #[tauri::command]
 fn settings_reset(app: AppHandle, window: tauri::WebviewWindow, key: Option<String>, section: Option<String>, all: Option<bool>, engine: Option<Vec<String>>, project: Option<String>) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;
+    settings::only_card(window.label())?;
     // `project`: the folder the page showed this reset for; another folder in Home by now means nothing is reset.
     settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;
     let which = match (key.as_deref(), section.as_deref(), all == Some(true)) {
@@ -1573,7 +1620,7 @@ fn settings_migrate(app: AppHandle, window: tauri::WebviewWindow, from: String, 
 /// id and name are read, never anything in it (rule 7). Companion itself is refused. Only from the card.
 #[tauri::command]
 fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;
+    settings::only_card(window.label())?;
     let id = front_id();
     if id.is_empty() || id.starts_with("dev.companion") { return Err("ownApp".into()); }
     Ok(json!({ "id": id, "name": front() }))
@@ -1583,7 +1630,7 @@ fn front_app(window: tauri::WebviewWindow) -> Result<Value, String> {
 /// Only from the card.
 #[tauri::command]
 fn app_names(window: tauri::WebviewWindow, ids: Vec<String>) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;
+    settings::only_card(window.label())?;
     let ws = NSWorkspace::sharedWorkspace();
     let mut out = serde_json::Map::new();
     for id in ids.into_iter().take(64) {
@@ -1709,7 +1756,7 @@ fn permissions_status() -> permissions::Permissions { permissions::current() }
 /// clicking the character shows the card without taking the keyboard.
 fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app, source, keyboard, None); }
 
-/// Show the card, and tell Home what to do once it is open (`then`, settingswin::arrival): start a lesson, or show Learn.
+/// Show the card, and tell Home what to do once it is open (`then`, arrival::arrival): start a lesson, show Learn or Settings.
 fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<serde_json::Value>) {
     log("card_open", json!({ "source": source, "keyboard": keyboard }));
     let a = app.clone();
@@ -1802,10 +1849,6 @@ fn follow_say(app: AppHandle, text: String) {
     let _ = app.emit_to("follow", "follow-say", json!({ "text": line }));
 }
 
-/// M33: the first name for the notch's greeting, from this Mac's account (island::first_name). Read on this Mac only.
-#[tauri::command]
-fn first_name() -> Option<String> { island::first_name(&objc2_foundation::NSFullUserName().to_string()) }
-
 /// M28: Home's Restart, beside "Squibby keeps stopping": the engine starts again now (runner.rs Runner::retry).
 #[tauri::command]
 fn restart_engine(app: AppHandle) { log("engine_restart_pressed", json!({})); app.state::<runner::Runner>().retry(); }
@@ -1813,7 +1856,7 @@ fn restart_engine(app: AppHandle) { log("engine_restart_pressed", json!({})); ap
 #[tauri::command]
 fn open_card_cmd(app: AppHandle, then: Option<serde_json::Value>) {
     // Only the two known shapes pass (a lesson to start, or Learn to show); anything else just opens Home.
-    open_card_then(&app, "button", true, then.as_ref().and_then(settingswin::arrival));
+    open_card_then(&app, "button", true, then.as_ref().and_then(arrival::arrival));
 }
 
 /// Home's own page asks for this when it loads and the first run has not been finished on this Mac (M15 wave 1: "nothing
@@ -1825,45 +1868,6 @@ fn first_run_open(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), St
     if window.label() != "card" { return Err("only Home opens itself".into()); }
     if FIRST_RUN_OPENED.swap(true, Ordering::SeqCst) { return Ok(()); }
     open_card(&app, "first_run", false);
-    Ok(())
-}
-
-/// Opens the Settings window (settingswin.rs), from Home or the island, on the person's press. The one window a click
-/// gives the keyboard to: the person asked for it (rule 9 is about never taking it unasked). A second call brings the open
-/// one to the front.
-#[tauri::command]
-fn open_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    settingswin::may_open(window.label())?;
-    let a = app.clone();
-    let _ = app.run_on_main_thread(move || settings_window_now(&a));
-    Ok(())
-}
-
-/// Makes the Settings window, or shows the one already open. Main thread.
-fn settings_window_now(app: &AppHandle) {
-    let open = app.get_webview_window(settingswin::LABEL);
-    match settingswin::open(open.is_some()) {
-        settingswin::Open::Focus => { if let Some(w) = open { let _ = w.unminimize(); let _ = w.show(); let _ = w.set_focus(); } }
-        settingswin::Open::Make => {
-            let made = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App(settingswin::PAGE.into()))
-                .title(settingswin::TITLE)
-                .inner_size(settingswin::SIZE.0, settingswin::SIZE.1)
-                .min_inner_size(settingswin::MIN.0, settingswin::MIN.1)
-                .resizable(true)
-                .decorations(true)
-                .center()
-                .focused(true)
-                .build();
-            match made { Ok(w) => { let _ = w.set_focus(); log("settings_window_opened", json!({})); } Err(e) => log("settings_window_failed", json!({ "why": e.to_string() })) }
-        }
-    }
-}
-
-/// The Settings page's own Close button.
-#[tauri::command]
-fn close_settings_window(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    settingswin::may_close(window.label())?;
-    if let Some(w) = app.get_webview_window(settingswin::LABEL) { let _ = w.close(); }
     Ok(())
 }
 
@@ -1905,9 +1909,11 @@ fn toggle_home(app: AppHandle, source: &'static str) {
     });
 }
 
-/// The card page tells us how tall its content is; we resize the panel to fit.
+/// The card page tells us how tall its content is; we resize the panel to fit. `settings`: Settings is open in Home, which
+/// then uses the Large width and a fixed height (island.rs `with_settings`).
 #[tauri::command]
-fn resize_card(app: AppHandle, height: f64) {
+fn resize_card(app: AppHandle, height: f64, settings: Option<bool>) {
+    SETTINGS_OPEN.store(settings.unwrap_or(false), Ordering::SeqCst);
     let hs = home_size();
     let h = height.clamp(hs.min_h, hs.max_h);
     CARD_H.store(h as u64, Ordering::SeqCst);
@@ -2028,7 +2034,7 @@ fn google_forget(sub: &str) {
 /// What the pages may know: whether Google is set up in this build, and each account without its tokens.
 #[tauri::command]
 fn google_accounts(window: tauri::WebviewWindow) -> Result<Value, String> {
-    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    settings::only_card(window.label()).map_err(|e| e.to_string())?;
     Ok(json!({ "ready": google::client(GOOGLE_CONFIG).is_some(), "busy": GOOGLE_BUSY.load(std::sync::atomic::Ordering::SeqCst), "accounts": google_kept().iter().map(google::shown).collect::<Vec<_>>() }))
 }
 
@@ -2036,7 +2042,7 @@ fn google_accounts(window: tauri::WebviewWindow) -> Result<Value, String> {
 /// browser and returns at once; the result comes as "google-changed" to every window (or "google-failed" with plain words).
 #[tauri::command]
 fn google_start(app: AppHandle, window: tauri::WebviewWindow, signin: bool, apps: Vec<String>, label: Option<String>) -> Result<(), String> {
-    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    settings::only_card(window.label()).map_err(|e| e.to_string())?;
     let Some((id, secret)) = google::client(GOOGLE_CONFIG) else { return Err("notSetUp".into()) };
     let apps: Vec<google::App> = apps.iter().filter_map(|a| google::App::from_word(a)).collect();
     if !signin && apps.is_empty() { return Err("noApps".into()); }
@@ -2079,7 +2085,7 @@ fn google_flow(id: &str, secret: &str, signin: bool, apps: &[google::App], label
 /// to Squibby stops being that, but stays connected for its apps when it has any.
 #[tauri::command]
 fn google_disconnect(app: AppHandle, window: tauri::WebviewWindow, id: String, sign_out_only: Option<bool>) -> Result<(), String> {
-    settings::card_or_settings(window.label()).map_err(|e| e.to_string())?;
+    settings::only_card(window.label()).map_err(|e| e.to_string())?;
     let sub = id.strip_prefix("google:").unwrap_or(&id).to_string();
     let Some(mut k) = google_kept().into_iter().find(|k| k.person.sub == sub) else { return Err("gone".into()) };
     if sign_out_only == Some(true) && !k.apps.is_empty() { k.signin = false; google_keep(&k)?; }
@@ -2208,7 +2214,7 @@ fn made_parent() -> Result<(PathBuf, PathBuf), String> {
 /// thread, since a big folder takes a moment.
 #[tauri::command]
 async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;   // only Home, on the person's press
+    settings::only_card(window.label())?;   // only Home, on the person's press
     let (home, parent) = made_parent()?;
     let (current, busy) = (current_project(), busy || updates::running_now());
     tauri::async_runtime::spawn_blocking(move || {
@@ -2219,7 +2225,7 @@ async fn list_made(window: tauri::WebviewWindow, busy: bool) -> Result<Value, St
 /// Open as project: a folder from the list becomes the project (checked like any folder: projects::validate).
 #[tauri::command]
 fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: bool) -> Result<String, String> {
-    settings::card_or_settings(window.label())?;   // only Home, on the person's press
+    settings::only_card(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, busy || updates::running_now())?;
     use_project_inner(app, path.to_string_lossy().to_string())
@@ -2227,7 +2233,7 @@ fn open_made(window: tauri::WebviewWindow, app: AppHandle, name: String, busy: b
 /// Show in Finder: a folder from the list, selected in its place.
 #[tauri::command]
 fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String> {
-    settings::card_or_settings(window.label())?;   // only Home, on the person's press
+    settings::only_card(window.label())?;   // only Home, on the person's press
     let (_, parent) = made_parent()?;
     let path = made::open_path(&parent, &name, false)?;
     std::process::Command::new("/usr/bin/open").arg("-R").arg(&path).env_clear().env("PATH", "/usr/bin:/bin").stdin(std::process::Stdio::null()).spawn().map(|_| ()).map_err(|_| "Finder could not be opened.".to_string())
@@ -2237,7 +2243,7 @@ fn reveal_made(window: tauri::WebviewWindow, name: String) -> Result<(), String>
 /// it can be put back; nothing is deleted. Then it leaves the recent folders. Its undo points stay in Companion's own folder.
 #[tauri::command]
 fn trash_made(window: tauri::WebviewWindow, app: AppHandle, name: String, git: bool, busy: bool) -> Result<String, String> {
-    settings::card_or_settings(window.label())?;   // only Home, on the person's press
+    settings::only_card(window.label())?;   // only Home, on the person's press
     let moved = {
         let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());   // never while a new folder is being made
         let (_, parent) = made_parent()?;
@@ -2714,7 +2720,7 @@ fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse
 #[tauri::command]
 async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
     use tauri_plugin_updater::UpdaterExt;
-    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     let cfg = updates::parse_config(include_str!("../updater.json")).ok_or("Updates are not set up in this build yet.")?;
     let url = tauri::Url::parse(&cfg.endpoint).map_err(|_| "Updates are not set up in this build yet.".to_string())?;
     let upd = app.updater_builder().pubkey(cfg.pubkey).timeout(Duration::from_secs(20)).endpoints(vec![url]).map_err(|e| updates::failure_words(&e.to_string()).to_string())?
@@ -2742,7 +2748,7 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
 /// Downloads the update found by check_update, checks its signature, installs it and restarts. Only on a press.
 #[tauri::command]
 async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
@@ -2813,7 +2819,7 @@ static SOUND_NOTE: Mutex<voiceset::SoundNote> = Mutex::new(voiceset::SoundNote::
 /// then nothing is said, the words stay on the card, and the page is told once so it can say so.
 #[tauri::command]
 fn speak(app: AppHandle, window: tauri::WebviewWindow, text: String, whole: Option<bool>, rest: Option<String>) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("Speaking can only be started from the card.".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("Speaking can only be started from the card.".into()); }
     let line = if whole == Some(true) { speak::prepare_reply(&text, rest.as_deref().unwrap_or("")) } else { speak::prepare(&text) };
     let Some(line) = line else { return Ok(json!({ "said": false, "why": "nothing" })) };
     // The person is talking: the line is dropped, its words stay on the card.
@@ -2871,7 +2877,7 @@ fn voice_state(set: &voiceset::Saved, voices: &[voiceset::VoiceInfo]) -> Value {
 /// card. A sync command, so it runs on the main thread, where the voice list is read. Reads names only; nothing listens.
 #[tauri::command]
 fn voice_settings(window: tauri::WebviewWindow) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
     Ok(voice_state(&voice_now(), &speak::mac::voices()))
 }
 
@@ -2887,7 +2893,7 @@ fn voice_speed(window: tauri::WebviewWindow) -> Result<f64, String> {
 /// was already picked), saved in voice.json in Companion's folder. The error is a code the page turns into words.
 #[tauri::command]
 fn set_voice_settings(app: AppHandle, window: tauri::WebviewWindow, voice: Option<String>, speed: f64, mic: Option<String>, language: String) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
     let voices = speak::mac::voices();
     let (inputs, _) = inputs_now();
     let before = voice_now();
@@ -2976,7 +2982,7 @@ fn cmd_out(c: &str, a: &[&str]) -> String { std::process::Command::new(c).args(a
 /// person's press. Nothing is sent: the person attaches the file and sends it themselves. Returns the saved file's name.
 #[tauri::command]
 async fn report_problem(window: tauri::WebviewWindow, subject: String, body: String) -> Result<String, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
+    if settings::only_card(window.label()).is_err() { return Err(concat!("A report can only be started from ", crate::product_s!(), " own window.").into()); }
     let cfg = report::parse_config(include_str!("../report.json"));
     // The words are checked before anything is written, so a refusal leaves nothing behind.
     report::address(&cfg, &subject, &body, "0", "0")?;
@@ -3156,7 +3162,7 @@ fn remove_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, 
 /// Returns how many went and the names of any that stayed.
 #[tauri::command]
 fn remove_all_practices(window: tauri::WebviewWindow, app: AppHandle, busy: bool) -> Result<Value, String> {
-    settings::card_or_settings(window.label())?;   // only Home, on the person's press
+    settings::only_card(window.label())?;   // only Home, on the person's press
     let (moved, kept) = trash_practice_copies(&current_project(), busy);
     for p in &moved { forget_folder(&app, p); }
     log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() }));
@@ -3658,7 +3664,7 @@ fn key_map() -> Value { keymap::state_json(&keys_using(), &keys_picked()) }
 /// change or check at a time. A sync command, so it runs on the main thread.
 #[tauri::command]
 fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
     let Some(a) = keymap::Action::from_id(&action) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let gs = app.global_shortcut();
@@ -3673,7 +3679,7 @@ fn key_choices(app: AppHandle, window: tauri::WebviewWindow, action: String) -> 
 /// The error is a code the page puts in words.
 #[tauri::command]
 fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: String) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
     let (Some(a), Some(wanted)) = (keymap::Action::from_id(&action), keymap::from_id(&id)) else { return Err("unknown".into()) };
     let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
     let (picked, before, was) = (keys_picked(), key_registered(a), key_using(a));
@@ -3701,7 +3707,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
 /// has, and the answer names it. Only from the card.
 #[tauri::command]
 fn reset_keys(app: AppHandle, window: tauri::WebviewWindow) -> Result<Value, String> {
-    if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
     let v = keys_to_usual(&app).map_err(str::to_string)?;
     settings_told(&app, &["keys.hotkeys".to_string()]);
     Ok(v)
@@ -4520,7 +4526,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, first_name, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -4608,7 +4614,8 @@ fn main() {
             let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); });
             let gm = unsafe { NSEvent::addGlobalMonitorForEventsMatchingMask_handler(follow_moves, &follow_global) };
             std::mem::forget(gm);
-            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); e.as_ptr() });
+            // M47: the same local watch moves the character while the person drags it (drag_follow): our own drags only.
+            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });
             let lm = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(follow_moves, &follow_local) };
             std::mem::forget(lm);
             // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.
@@ -4675,16 +4682,19 @@ fn main() {
                 let _ = std::fs::remove_file(data_dir().join("wipe-note.txt"));
                 runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-wipe-note", "type": "app.notice", "message": note }));
             }
-            // The menu bar icon: hide or show, stop everything, quit. Clicking it never takes your typing.
+            // The menu bar icon: Settings…, hide or show, stop everything, quit. Only Settings… opens anything: Home, on
+            // Settings, at the page last viewed (the overhaul spec, 3.1), because the person clicked it.
+            let settings = MenuItemBuilder::with_id("settings", "Settings…").build(app)?;
             let hide = MenuItemBuilder::with_id("hide", concat!("Hide or show ", crate::product!())).build(app)?;
             let stop = MenuItemBuilder::with_id("stop", "Stop everything").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", concat!("Quit ", crate::product!())).build(app)?;
-            let menu = MenuBuilder::new(app).items(&[&hide, &stop, &quit]).build()?;
+            let menu = MenuBuilder::new(app).items(&[&settings, &hide, &stop, &quit]).build()?;
             TrayIconBuilder::new()
                 .icon(Image::from_bytes(include_bytes!("../icons/32x32.png"))?)
                 .tooltip(crate::product!())
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
+                    "settings" => open_card_then(app, "menu", true, Some(arrival::menu_settings())),
                     "hide" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }
                     "stop" => {
                         let r = app.state::<runner::Runner>().stop_everything("menu");

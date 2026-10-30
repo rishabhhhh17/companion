@@ -21,7 +21,7 @@ describe("the buttons under the ask box", () => {
     expect(card).not.toContain('dispatch({ type: "app.showme", stage: "error", message: S.showMeHint })');
   });
   test("the line can be closed, and typing clears it", () => {
-    expect(card).toContain("{askHint && <div className=\"line muted\" role=\"status\">{askHint} <button className=\"btn\" type=\"button\" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</button></div>}");
+    expect(card).toContain("{askHint && <div className=\"line muted\" role=\"status\">{askHint} <Button size=\"sm\" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}");
     expect(card).toContain("setVoiceHint(null); setAskHint(null);");
   });
   test("Explain an error explains the words in the box; with none it says how, in a line that can be closed", () => {
@@ -37,12 +37,12 @@ describe("the buttons under the ask box", () => {
     expect(typed).toContain("errorsel::command(&req, errorsel::ASK_BOX, &t, &crate::current_project())");
     for (const read of ["ax::", "read_selection", "focused"]) expect(typed).not.toContain(read);
   });
-  test("the talk button says how to talk and shows the keys; a click never opens the microphone (rule 5)", () => {
-    expect(S.look.howToTalk).toBe("How to talk");
-    const btn = card.split("\n").find((l) => l.includes("S.look.howToTalk"))!;
-    expect(btn).toContain('aria-expanded={talkHint} aria-controls="talk-keys" onClick={() => setTalkHint((v) => !v)}');
-    // Not a record button: no pressed state, no microphone drawing, nothing sent.
-    for (const no of ["aria-pressed", 'Icon name="mic"', "send(", "invoke("]) expect(btn).not.toContain(no);
-    expect(card).toContain('{talkHint && <div className="line muted" id="talk-keys" role="status">{talkKeysLine(keys)}</div>}');
+  test("the hold to talk keys sit inside the ask field, shown only; a click never opens the microphone (rule 5)", () => {
+    // F28, the overhaul spec 4.1: the keys' labels inside the field on the right, with what they do in the tooltip. Not a
+    // button at all: no press, no microphone drawing, nothing sent.
+    const keysAt = card.split("\n").find((l) => l.includes('className="ask-keys"'))!;
+    expect(keysAt).toContain('{groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} /></span>}');
+    for (const no of ["<button", "<Button", "onClick", 'Icon name="mic"', "send(", "invoke("]) expect(keysAt).not.toContain(no);
+    expect(card).not.toContain("S.look.howToTalk");
   });
 });

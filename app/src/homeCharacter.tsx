@@ -20,8 +20,9 @@ const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ def
 const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
 
 /** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). `liveliness`:
- *  a choice to show at once instead of the one in force (the Settings hero, while its press reaches the shell). */
-export function HomeCharacter({ m, as, liveliness }: { m?: Model; as?: CharacterState; liveliness?: Liveliness }) {
+ *  a choice to show at once instead of the one in force (the Settings hero, while its press reaches the shell). `rest`:
+ *  out of sight (Home closed, or another place open in it), so it rests as it does during a call: one still frame, no loop. */
+export function HomeCharacter({ m, as, liveliness, rest }: { m?: Model; as?: CharacterState; liveliness?: Liveliness; rest?: boolean }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // A finished task that is not proven is drawn at rest, never with the done look (M45, model.ts lookState).
@@ -35,7 +36,7 @@ export function HomeCharacter({ m, as, liveliness }: { m?: Model; as?: Character
   const live = liveOn && !liveFailed;
   // M46 (F28): how lively it is, and the shell's rest (a call, Low Power Mode).
   const mode = liveliness ?? livelinessOf(useSetting("character.lively"));
-  const resting = useRest();
+  const resting = useRest() || !!rest;
   const flow = useFlow({ pose, state, calm: reduced, off: live });
   const box = useRef<HTMLDivElement>(null);
   // A task that just finished: a ripple and droplets from the middle of the water, once.

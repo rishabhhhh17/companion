@@ -562,8 +562,8 @@ mod tests {
         let body = |s: &str| { let at = main.find(s).unwrap_or_else(|| panic!("{s}")); let rest = &main[at..]; rest[..rest.find("\n}\n").unwrap()].to_string() };
         for f in ["fn list_made(", "fn open_made(", "fn reveal_made(", "fn trash_made("] {
             let b = body(f);
-            // Home, or the Settings window that shows the same list (27 Oct 2026), never another window.
-            assert!(b.contains("settings::card_or_settings(window.label())?"), "{f} must be Home or Settings only");
+            // Home only (Settings lives inside it), never another window.
+            assert!(b.contains("settings::only_card(window.label())?"), "{f} must be Home only");
             // The folder for all of them comes from the setting, never from the page: no command takes a path or a parent.
             assert!(b.contains("made_parent()"), "{f} works the folder out itself");
             let sig = &b[..b.find('{').unwrap()];

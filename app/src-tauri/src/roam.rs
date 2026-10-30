@@ -809,6 +809,37 @@ mod tests {
         assert!(MAIN.contains("accessibilityDisplayShouldReduceMotion()"));
     }
     #[test]
+    fn a_drag_is_followed_by_the_shell_itself_and_placed_once_on_the_let_go() {
+        // M47 (the founder: "it cannot genuinely move freely in the middle. It just lags"): the page says once that a drag
+        // began; the shell moves the window from the mouse watch it already has, setting its origin only.
+        let start = body(MAIN, "fn drag_dock(");
+        assert!(start.contains("if window.label() != \"dock\" { return; }"), "only the character's own page begins one");
+        assert!(start.contains("docking::Drag::begin(") && start.contains("ROAM_GEN.fetch_add(1"), "a trip under way stops where it is");
+        let follow = body(MAIN, "fn drag_follow(");
+        assert!(follow.contains("NSEventType::LeftMouseDragged") && follow.contains("drag.follow(") && follow.contains("setFrameOrigin("));
+        assert!(follow.contains("std::ptr::eq(&*w, &**d as &NSWindow)"), "only a drag on the character's own window");
+        assert!(follow.contains("if !drag.press_due(t) { return; }"), "the press goes to the page at most once a frame");
+        for heavy in ["apply_dock(", "save_prefs(", "with_prefs(", "screens_now(", "run_on_main_thread(", "set_frame_moving(", "place_card(", "invoke"] {
+            assert!(!follow.contains(heavy), "no {heavy} on each move");
+        }
+        // The same local watch as the ring's (follow_moves): no new global watch, never key events (rule 8).
+        assert!(MAIN.contains("follow_to_pointer(); drag_follow(unsafe { e.as_ref() }); e.as_ptr()"));
+        assert_eq!(MAIN.matches("drag_follow(").count(), 2, "defined once, called from the local watch only");
+        assert_eq!(MAIN.matches("addGlobalMonitorForEventsMatchingMask_handler(").count(), 1);
+        // The let go: decided once (Drag::release takes the drag), saved once, placed once.
+        let drop = body(MAIN, "fn drop_dock(");
+        assert!(drop.contains("DRAG.lock().unwrap_or_else(|e| e.into_inner()).take()"), "a second let go finds no drag");
+        assert_eq!(drop.matches("save_prefs();").count(), 1);
+        assert_eq!(drop.matches("apply_dock(").count(), 1);
+        // Nothing else may move it until it is at its new home: the drag ends after it is placed.
+        assert!(drop.find("apply_dock(").unwrap() < drop.find("DRAG_LIVE.store(false").unwrap());
+        assert!(body(MAIN, "fn dragging(").contains("docking::drag_holds(DRAG_LIVE.load("));
+        // Let go in the middle it stays: never peeks there (peek_apply), and its home for trips is that very place.
+        assert!(body(MAIN, "fn peek_apply(").contains("if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In }"));
+        let apply = body(MAIN, "fn apply_dock(");
+        assert!(apply.contains("docking::place_free(&target, DOCK, at, home_size())") && apply.contains("roamer().placed_home(f);"));
+    }
+    #[test]
     fn the_card_opening_or_growing_plans_the_visit_again_and_trips_keep_clear_of_its_tallest() {
         let pc = body(MAIN, "fn place_card(");
         assert!(pc.contains("roam_card_moved(") && pc.contains("home_size().max_h"), "every time the card opens or grows, checked against its tallest");
@@ -833,7 +864,7 @@ mod tests {
         // Kept in dock.json, changed only through the registry (settings_set, card only, T16); off sends it home.
         let set = body(MAIN, "fn come_to_set(");
         assert!(set.contains("save_prefs()") && set.contains("if !on { roam_end(app); }"));
-        assert!(body(MAIN, "fn settings_set(").contains("settings::card_or_settings(window.label())?"), "Home or the Settings window");
+        assert!(body(MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"), "Home only");
         assert!(body(MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
         for c in ["settings_get", "settings_set", "settings_reset"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
         for c in ["dock_settings", "set_come_to"] { assert!(!MAIN.contains(&format!(", {c},")) && !MAIN.contains(&format!(", {c}]")), "{c} is still a command"); }

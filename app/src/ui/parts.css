@@ -1,0 +1,254 @@
+/* The parts (the overhaul spec, 2.3 and 5.1), each defined once: one rule block per part and state, with every colour,
+   size, radius and duration read from ui/tokens.css (ui/styleLint.test.ts fails on a literal here, on a part defined
+   twice, on gradient text and on the old --chrome). React parts with typed props are in ui/parts.tsx. The only main button
+   is .btn.primary, in flat silver; a switch, a knob, a menu's hover, the ring's bubble and an approval are never silver.
+   Reduce motion and Less motion stop every movement here (style.css, the rules for the whole page). */
+
+/* ---------- Base ---------- */
+html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; -webkit-font-smoothing: antialiased; }
+button, select, input, textarea { font: inherit; }
+:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); }
+.sr { position: absolute; width: var(--hair); height: var(--hair); margin: calc(var(--hair) * -1); padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---------- Button: primary, secondary (the usual), quiet, danger, icon; sm, md, lg ----------
+   A button is as wide as its words (flex: none) and never breaks inside a word. Its words go to a second line only when
+   the panel itself is narrower than they are (the biggest text sizes), never a single line that runs off the panel
+   (a11y.test.ts, reflow). A row hands a control that does not fit a line of its own first (Row, below). */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-md); margin: 0; padding: 0 var(--space-btn2-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: center; overflow-wrap: normal; cursor: default; transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:active:not(:disabled) { background: var(--surface-3); transform: scale(var(--press)); }
+.btn:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); }
+.btn:disabled { opacity: .4; }
+.btn.sm { min-height: var(--h-sm); padding: 0 var(--space-3); font-size: var(--t-small); line-height: var(--lh-small); }
+.btn.lg { min-height: var(--h-lg); }
+/* The one main button on a screen: flat silver, one edge of light on top, one darker edge below, and no band. */
+.btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
+.btn.primary:hover:not(:disabled) { background: var(--main-hover); }
+.btn.primary:active:not(:disabled) { background: var(--main-press); box-shadow: var(--main-shadow-press); }
+.btn.primary:disabled { opacity: 1; background: var(--surface-3); color: var(--fg-3); box-shadow: none; }
+.btn.secondary { border-color: var(--line-strong); }
+/* Any button that stays pressed (a chosen key in Change keys): filled, with a full --fg edge, so the choice in use shows by
+   shape and not by a tint alone. A quiet one keeps its own look below. */
+.btn[aria-pressed="true"] { background: var(--surface-3); border-color: var(--fg); }
+.btn.quiet { padding: 0 var(--space-2); border-color: transparent; color: var(--fg-2); }
+.btn.quiet:hover:not(:disabled), .btn.quiet:active:not(:disabled) { background: transparent; color: var(--fg); }
+.btn.quiet:disabled { opacity: 1; color: var(--fg-3); }
+/* A quiet button that opens a place (Home's top bar): the open one is filled, a change of fill and not of colour alone. */
+.btn.quiet[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); }
+.btn.danger { border-color: var(--bad-edge); color: var(--bad); }
+.btn.danger:hover:not(:disabled) { background: var(--bad-hover); }
+.btn.danger:active:not(:disabled) { background: var(--bad-press); }
+.btn.icon { width: var(--h-sm); min-height: var(--h-sm); padding: 0; }
+.btn.icon:not(.primary) { border-color: transparent; color: var(--fg-2); }
+.btn.icon:not(.primary):hover:not(:disabled) { color: var(--fg); }
+.btn.icon:not(.primary):disabled { opacity: 1; color: var(--fg-3); }
+.btn .ic { flex: none; }
+@media (forced-colors: active) { .btn { border-color: ButtonText; } .btn.primary { border: var(--hair) solid CanvasText; } }
+
+/* ---------- Group and Row ---------- */
+.ui-group { margin: 0; }
+.ui-group + .ui-group { margin-top: var(--space-6); }
+.ui-group-title { margin: 0 0 var(--space-2) var(--space-4); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.ui-group-card { container: group / inline-size; background: var(--surface-1); border: var(--hair) solid var(--line); border-radius: var(--r-card); }
+.ui-group-card.pad { padding: var(--space-3) var(--space-4); }
+.ui-group-foot { margin: var(--space-2) var(--space-4) 0; color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.ui-group[data-tone="danger"] .ui-group-card { border-color: var(--bad-edge); }
+.ui-disc { margin: 0; }
+.ui-disc + .ui-disc, .ui-group + .ui-disc { margin-top: var(--space-2); }
+.ui-disc + .ui-group { margin-top: var(--space-6); }
+.ui-disc-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: 0 var(--space-4); border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
+.ui-disc-head:hover { background: var(--surface-2); }
+.ui-disc-head:focus-visible { outline-offset: calc(var(--ring) * -1); }
+.ui-disc-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ui-disc-count { color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
+.ui-disc-chev { display: grid; place-items: center; color: var(--fg-2); transition: transform var(--dur-1) var(--ease-out); }
+.ui-disc[data-open] .ui-disc-chev { transform: rotate(90deg); }
+.ui-disc-body { margin-top: var(--space-2); }
+.ui-disc-note { margin: 0 var(--space-4) var(--space-2); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.ui-page-head { margin: 0 0 var(--space-6); }
+.ui-page-title { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-display) / var(--lh-display) var(--font); letter-spacing: var(--track-display); }
+.ui-page-line { margin: var(--space-1) 0 0; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+
+/* The words take what is left but never less than --w-row-label; a control that does not fit beside them drops under
+   them, so a long menu value never squeezes the label to letters. */
+.ui-row { position: relative; display: flex; flex-wrap: wrap; column-gap: var(--space-4); row-gap: var(--space-2); align-items: center; min-height: var(--h-row); box-sizing: border-box; padding: var(--space-row-y) var(--space-4); }
+.ui-row + .ui-row::before { content: ""; position: absolute; top: 0; left: var(--space-4); right: 0; height: var(--hair); background: var(--line); }
+.ui-row[data-indent] { padding-left: var(--space-indent); }
+.ui-row-text { display: flex; flex: 1 1 var(--w-row-label); flex-direction: column; gap: var(--space-desc); min-width: 0; position: relative; }
+.ui-row-head { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; }
+.ui-row-label { color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); overflow-wrap: break-word; }
+.ui-row-desc { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); overflow-wrap: break-word; }
+.ui-row-control { display: flex; flex: 0 1 auto; justify-content: flex-end; align-items: center; gap: var(--space-1); min-width: 0; max-width: 100%; margin-inline-start: auto; }
+.ui-row-more { display: grid; gap: var(--space-2); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.ui-row-more > p { margin: 0; }
+.ui-row-extra { flex: 1 0 100%; min-width: 0; }
+.ui-row-extra > * + * { margin-top: var(--space-2); }
+/* A short list of switches inside one row (Also say out loud, the checks to leave out): each item a label and a switch. */
+.ui-sublist { display: grid; margin: 0; padding: 0; list-style: none; }
+.ui-sublist > li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--h-md); color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); }
+.ui-sublist > li + li { border-top: var(--hair) solid var(--line); }
+.ui-row[data-disabled] .ui-row-label { color: var(--fg-3); }
+.ui-row[data-disabled] .ui-row-control { opacity: .4; }
+/* Changed from the usual: a small dot before the label, in the row's left padding (its menu holds Restore usual). It is
+   out of the flow, so the label never moves when a setting is changed or restored, and the row never grows a line. */
+.ui-row-dot { position: absolute; top: calc((var(--lh-label) - var(--icon-md)) / 2); inset-inline-start: calc(var(--icon-md) * -1); width: var(--icon-md); height: var(--icon-md); margin: 0; padding: 0; border: 0; border-radius: var(--r-key); background: transparent; }
+.ui-row-dot::before { content: ""; position: absolute; inset: 0; margin: auto; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--fg-2); }
+.ui-pop { position: absolute; top: 100%; left: 0; z-index: 5; min-width: var(--w-menu-min); padding: var(--space-1); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); }
+.ui-pop-item { display: flex; align-items: center; width: 100%; min-height: var(--h-menu-item); padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); text-align: left; }
+.ui-pop-item:hover, .ui-pop-item:focus-visible { background: var(--surface-3); }
+/* A setting kept for this project only: a tag styled like a key label. */
+.ui-tag { display: inline-flex; align-items: center; min-height: var(--h-key); padding: 0 var(--space-key-x); box-sizing: border-box; border: var(--hair) solid var(--line-strong); border-radius: var(--r-key); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+/* Narrow (the biggest text sizes): the control moves under the words, lined up on the left. In rem, so it follows the
+   text size: 392 at Standard, under Settings' 420 column (island.rs with_settings), so Standard rows stay side by side
+   (settingsLayout.test.ts). */
+@container group (width < 28rem) {
+  .ui-row-text { flex-basis: 100%; }
+  .ui-row-control { justify-content: flex-start; margin-inline-start: 0; }
+}
+
+/* ---------- Switch: on is filled, off is hollow ---------- */
+.ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transition: transform var(--dur-2) var(--ease-out), width var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.ui-switch[aria-checked="true"] { background: var(--fg); box-shadow: none; }
+.ui-switch[aria-checked="true"]::after { background: var(--bg); transform: translateX(var(--knob-travel)); }
+.ui-switch:hover:not(:disabled):not([aria-checked="true"]) { box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control-hover); }
+.ui-switch:active:not(:disabled)::after { width: var(--knob-press); }
+.ui-switch[aria-checked="true"]:active:not(:disabled)::after { transform: translateX(calc(var(--knob-travel) - var(--knob-press) + var(--knob))); }
+.ui-switch:disabled { opacity: .4; }
+@media (forced-colors: active) { .ui-switch { forced-color-adjust: none; border: var(--hair) solid CanvasText; } .ui-switch[aria-checked="true"] { background: Highlight; } .ui-switch::after { background: CanvasText; } }
+
+/* ---------- Segmented: two or three options, all the same width ---------- */
+.ui-seg { position: relative; display: inline-grid; grid-template-columns: repeat(var(--n), minmax(var(--w-seg), 1fr)); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-sm); padding: var(--space-seg); background: var(--inset); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
+.ui-seg-thumb { position: absolute; top: var(--space-seg); bottom: var(--space-seg); left: var(--space-seg); width: calc((100% - var(--space-seg) * 2) / var(--n)); box-sizing: border-box; background: var(--surface-3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-2) var(--ease-out); pointer-events: none; }
+.ui-seg[data-none] .ui-seg-thumb { opacity: 0; }
+.ui-seg-opt { position: relative; z-index: 1; min-width: 0; margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); overflow-wrap: normal; transition: color var(--dur-1) var(--ease-out); }
+.ui-seg-opt:hover:not(:disabled), .ui-seg-opt[aria-checked="true"] { color: var(--fg); }
+.ui-seg-opt:focus-visible { outline-offset: 0; }
+.ui-seg[aria-disabled="true"] { opacity: .4; }
+
+/* ---------- Menu: a secondary button with the choice and a chevron; its list ---------- */
+.ui-menu { position: relative; display: inline-flex; max-width: 100%; min-width: 0; }
+.ui-menu-btn { justify-content: space-between; min-width: 0; max-width: 100%; font-weight: var(--w-regular); text-align: left; }
+.ui-menu-btn .ic { color: var(--fg-2); }
+.ui-menu-value { min-width: 0; overflow-wrap: break-word; }
+.ui-menu-list { position: absolute; top: calc(100% + var(--space-1)); right: 0; z-index: 10; min-width: max(100%, var(--w-menu-min)); max-height: calc(var(--h-menu-item) * 10); overflow: auto; margin: 0; padding: var(--space-1); list-style: none; box-sizing: border-box; background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); transform-origin: top center; animation: ui-menu-in var(--dur-1) var(--ease-out) both; }
+.ui-menu-list:focus-visible { outline-offset: calc(var(--ring) * -1); }
+.ui-menu-list[data-up] { top: auto; bottom: calc(100% + var(--space-1)); transform-origin: bottom center; }
+.ui-menu-item { display: flex; align-items: center; gap: var(--space-1); min-height: var(--h-menu-item); padding: 0 var(--space-3) 0 var(--space-1); border-radius: var(--r-thumb); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
+.ui-menu-item[data-active] { background: var(--surface-3); }
+/* The option the arrow keys are on: a ring as well as the fill (the fill alone is near 1.1 to 1, WCAG 2.4.7). */
+.ui-menu-list:focus .ui-menu-item[data-active] { outline: var(--ring) solid var(--focus); outline-offset: calc(var(--ring) * -1); }
+.ui-menu-tick { display: grid; place-items: center; flex: none; width: var(--icon-md); color: var(--fg); }
+@keyframes ui-menu-in { from { opacity: 0; transform: scale(var(--menu-from)); } }
+@media (forced-colors: active) { .ui-menu-item[data-active] { outline: var(--hair) solid Highlight; } }
+
+/* ---------- Stepper: [−][value][+] joined in one 28 tall box, then a unit ---------- */
+.ui-stepper { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; max-width: 100%; }
+.ui-stepper-box { display: inline-flex; align-items: stretch; flex: none; box-sizing: border-box; height: var(--h-sm); border: var(--hair) solid var(--edge-control); border-radius: var(--r-control); background: var(--inset); overflow: clip; }
+.ui-stepper-btn { display: grid; place-items: center; flex: none; width: var(--h-sm); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.ui-stepper-btn:hover:not(:disabled) { background: var(--surface-2); }
+.ui-stepper-btn:active:not(:disabled) { transform: scale(var(--press)); }
+.ui-stepper-btn:disabled { color: var(--fg-3); }
+.ui-stepper-btn:focus-visible { outline-offset: calc(var(--ring) * -1); }
+.ui-stepper-value { width: var(--w-stepper-value); box-sizing: border-box; margin: 0; padding: 0 var(--space-1); border: 0; border-inline: var(--hair) solid var(--line-strong); border-radius: 0; background: transparent; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); font-variant-numeric: tabular-nums; text-align: center; user-select: text; -webkit-user-select: text; }
+.ui-stepper-value:focus-visible { outline-offset: calc(var(--ring) * -1); }
+.ui-stepper-unit { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.ui-stepper[data-disabled] { opacity: .4; }
+
+/* ---------- Field ---------- */
+.ui-field-wrap { display: inline-flex; flex-direction: column; gap: var(--space-1); min-width: 0; max-width: 100%; }
+.ui-field { min-width: 0; max-width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: 0 var(--space-field-x); border: var(--hair) solid var(--edge-control); border-radius: var(--r-control); background: var(--inset); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); user-select: text; -webkit-user-select: text; transition: border-color var(--dur-1) var(--ease-out); }
+.ui-field::placeholder { color: var(--fg-2); }
+.ui-field:hover:not(:disabled) { border-color: var(--edge-control-hover); }
+.ui-field:focus-visible { border-color: var(--fg); outline-offset: 0; }
+.ui-field:disabled { background: var(--surface-1); color: var(--fg-3); }
+.ui-field[aria-invalid="true"] { border-color: var(--bad); }
+.ui-field.ask { min-height: var(--h-ask); border-radius: var(--r-card); font-size: var(--t-answer); line-height: var(--lh-answer); }
+.ui-field-wrap.wide { display: flex; flex: 1; width: 100%; }
+.ui-field-wrap.wide .ui-field { width: 100%; }
+.ui-field-error { color: var(--bad); font: var(--t-caption) / var(--lh-caption) var(--font); }
+
+/* ---------- Picture choice ---------- */
+.ui-pics { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: var(--w-pic); box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.ui-pic:hover:not(:disabled) { border-color: var(--line-strong); }
+.ui-pic:active:not(:disabled) { transform: scale(var(--press-pic)); }
+.ui-pic[aria-checked="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--fg); }
+.ui-pic:disabled { opacity: .4; }
+.ui-pic-stage { display: grid; place-items: center; width: 100%; min-height: var(--h-pic); }
+.ui-pic-label { color: var(--fg); font: var(--t-caption) / var(--lh-caption) var(--font); text-align: center; overflow-wrap: anywhere; }
+.ui-pic-tick { position: absolute; top: var(--space-1); right: var(--space-1); display: grid; place-items: center; width: var(--icon-md); height: var(--icon-md); border-radius: var(--r-round); background: var(--fg); color: var(--bg); }
+
+/* ---------- Card ---------- */
+.ui-card { margin: 0 0 var(--space-3); padding: var(--space-4) var(--space-5); background: var(--surface-1); border: var(--hair) solid var(--line); border-radius: var(--r-card); }
+.ui-card-title { margin: 0 0 var(--space-2); color: var(--fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: 0; }
+
+/* ---------- Key label: each key its own cap ---------- */
+.ui-keys { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-key); }
+.ui-key { display: inline-grid; place-items: center; min-width: var(--h-key); min-height: var(--h-key); box-sizing: border-box; padding: 0 var(--space-key-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-key); background: var(--surface-2); color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-label) var(--font); }
+
+/* ---------- Verdict line: the colour is on the mark only ---------- */
+.ui-verdict { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-2); align-items: center; }
+.ui-verdict-mark { display: grid; place-items: center; color: var(--fg-2); }
+.ui-verdict[data-tone="good"] .ui-verdict-mark { color: var(--ok); }
+.ui-verdict[data-tone="mixed"] .ui-verdict-mark, .ui-verdict[data-tone="ask"] .ui-verdict-mark { color: var(--amber); }
+.ui-verdict[data-tone="bad"] .ui-verdict-mark { color: var(--bad); }
+.ui-verdict-words { color: var(--fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); overflow-wrap: anywhere; }
+.ui-verdict[data-size="headline"] .ui-verdict-words { font: var(--w-bold) var(--t-display) / var(--lh-display) var(--font); letter-spacing: var(--track-display); }
+.ui-verdict[data-size="card"] .ui-verdict-words { font: var(--w-bold) var(--t-verdict) / var(--lh-verdict) var(--font); letter-spacing: var(--track-verdict); }
+.ui-verdict-sub { grid-column: 2; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+
+/* ---------- Proof chip: a fact that cannot be pressed ---------- */
+.ui-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.ui-chip-mark { display: grid; place-items: center; color: var(--fg-2); }
+.ui-chip[data-kind="pass"] .ui-chip-mark, .ui-chip[data-kind="allowed"] .ui-chip-mark { color: var(--ok); }
+.ui-chip[data-kind="fail"] .ui-chip-mark { color: var(--bad); }
+.ui-chip[data-kind="notAllowed"] .ui-chip-mark { color: var(--amber); }
+.ui-chip[data-kind="notRun"] { border-style: dashed; color: var(--fg-2); }
+.ui-chip[data-kind="notNeeded"] { color: var(--fg-2); }
+
+/* ---------- Recent row: the whole row opens its receipt ---------- */
+.ui-recent { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: var(--space-row-y) var(--space-4); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
+.ui-recent:hover { background: var(--surface-2); }
+.ui-recent:active { background: var(--surface-3); }
+.ui-recent:focus-visible { outline-offset: 0; }
+.ui-recent-mark { display: grid; place-items: center; color: var(--fg-2); }
+.ui-recent[data-tone="good"] .ui-recent-mark { color: var(--ok); }
+.ui-recent[data-tone="mixed"] .ui-recent-mark, .ui-recent[data-tone="ask"] .ui-recent-mark { color: var(--amber); }
+.ui-recent[data-tone="bad"] .ui-recent-mark { color: var(--bad); }
+.ui-recent-text { display: flex; flex-direction: column; min-width: 0; }
+.ui-recent-name { color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
+.ui-recent-meta { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+
+/* ---------- Sidebar item: the open page is a filled row; no stripe, no coloured dot ---------- */
+.sb-list { display: grid; gap: var(--hair); margin: 0; padding: 0; list-style: none; }
+.sb-head { margin: var(--space-4) 0 var(--space-1) var(--space-field-x); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.sb-head:first-child { margin-top: 0; }
+.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: 0 var(--space-field-x); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
+.sb-item .ic { flex: none; color: var(--fg-2); }
+.sb-item:hover { background: var(--surface-2); }
+.sb-item:active { background: var(--surface-3); }
+.sb-item:focus-visible { outline-offset: calc(var(--ring) * -1); }
+.sb-item[aria-current="page"] { background: var(--surface-3); font-weight: var(--w-strong); }
+.sb-item[aria-current="page"] .ic { color: var(--fg); }
+.sb-label { min-width: 0; overflow-wrap: anywhere; }
+.sb-dot { flex: none; width: var(--dot); height: var(--dot); margin-left: auto; border-radius: var(--r-round); background: var(--amber); }
+.sb-sep { height: var(--hair); margin: var(--space-2) var(--space-field-x); background: var(--line); list-style: none; }
+@media (forced-colors: active) { .sb-item[aria-current="page"] { outline: var(--ring) solid Highlight; } }
+
+/* ---------- Sheet: slides over the content column from the right ---------- */
+.ui-sheet-layer { position: fixed; inset: 0; z-index: 30; }
+.ui-scrim { position: absolute; inset: 0; background: var(--scrim); animation: ui-fade-in var(--dur-2) var(--ease-out) both; }
+.ui-sheet { position: absolute; top: 0; right: 0; bottom: 0; display: flex; flex-direction: column; width: var(--w-sheet); box-sizing: border-box; background: var(--surface-2); border-radius: var(--r-card) 0 0 var(--r-card); box-shadow: var(--shadow-raised); animation: ui-sheet-in var(--dur-3) var(--ease-out) both; }
+.ui-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-4) var(--space-4) var(--space-3) var(--space-5); border-bottom: var(--hair) solid var(--line); }
+.ui-sheet-title { margin: 0; color: var(--fg); font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
+.ui-sheet-body { flex: 1; min-height: 0; overflow: auto; padding: var(--space-4) var(--space-5); }
+.ui-sheet-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-4); border-top: var(--hair) solid var(--line); }
+.ui-sheet-ask { margin-right: auto; color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); }
+@keyframes ui-sheet-in { from { transform: translateX(100%); } }
+@keyframes ui-fade-in { from { opacity: 0; } }
+
+/* ---------- Toast: bottom centre of the panel ---------- */
+.ui-toast { position: fixed; left: 50%; bottom: var(--space-4); z-index: 40; display: flex; align-items: center; gap: var(--space-2); max-width: min(calc(100% - var(--space-7)), var(--w-toast-max)); box-sizing: border-box; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); transform: translateX(-50%); animation: ui-toast-in var(--dur-2) var(--ease-out) both; }
+.ui-toast-text { min-width: 0; overflow-wrap: anywhere; }
+@keyframes ui-toast-in { from { opacity: 0; transform: translate(-50%, var(--rise)); } }

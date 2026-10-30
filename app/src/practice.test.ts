@@ -668,9 +668,9 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
   // Review fix (20 Oct 2026): Settings' Move all my practice copies to the Trash told the shell only about tasks and checks,
   // so the copy open while its lesson or its proving check ran could go to the Trash under it.
   test("Move all my practice copies to the Trash tells the shell about an open lesson and the practice's own checks too", () => {
-    expect(settings).toContain('invoke("remove_all_practices", { busy: practiceBusy })');
-    expect(settings).not.toContain('invoke("remove_all_practices", { busy: working })');
-    expect(card).toMatch(/<SettingsPage working=\{isBusy\(m\)\} practiceBusy=\{workingOn\(m\)\}/);
+    expect(settings).toContain('invoke("remove_all_practices", { busy: c.practiceBusy })');
+    expect(settings).not.toContain('invoke("remove_all_practices", { busy: c.working })');
+    expect(card).toMatch(/<SettingsView place=\{setPlace\} onPlace=\{setSetPlace\} working=\{isBusy\(m\)\} practiceBusy=\{workingOn\(m\)\}/);
     // and every busy the card sends the shell for a practice is workingOn, never isBusy alone
     for (const call of card.match(/invoke\("(?:restart|remove)_practice"[^)]*\)/g) ?? []) expect(call).toContain("busy: workingOn(nowModel.current)");
   });

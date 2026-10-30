@@ -114,8 +114,8 @@ describe("Undo in What I did", () => {
     expect(panel).toContain('type: "ui.undoAsked", checkpoint: h.checkpoint');
     // Only after a yes, and through the same command as the receipt's Undo (the engine refuses it while a task works).
     expect(panel).toContain("S.undoSure"); expect(panel).toContain("send(undo(project, h.checkpoint!))");
-    // The receipt's own Undo now lives in the pills at the foot of the card: same id, same question, same checkpoint.
-    expect(card).toContain("<button id={undoId} className=\"pill\" type=\"button\" aria-label={S.undo}");
+    // The receipt's own Undo lives in the result card (F28, the overhaul spec 4.2): same id, same question, same checkpoint.
+    expect(card).toContain("{undoCan(m, project) && <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: \"ui.undoAsked\", checkpoint: m.receipt.checkpoint }); }}>");
     expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
   });
   test("its words are in the strings file and say why only the newest task has it", () => {
@@ -159,9 +159,13 @@ describe("M45: an undone task reads Undone everywhere", () => {
     expect(statusGroup({ ...t(1, "a", "done"), changed: null, undone: true })).toBe("undone");
   });
   test("the recent list colours a proven tick green and a failure or a crash red", () => {
-    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
-    expect(css).toContain('.home-side .side-item[data-proof="proven"] .ic { color: var(--ok); }');
-    expect(css).toMatch(/\.home-side \.side-item\[data-proof="failed"\] \.ic, \.home-side \.side-item\[data-proof="error"\] \.ic \{ color: var\(--danger\); \}/);
-    expect(css).not.toContain('[data-proof="passed"]');
+    // F28: Home's recent fixes are Recent rows (ui/parts.tsx RecentRow); the mark's colour is the verdict's tone, so only a
+    // proven fix ("good") is green, and a failed check or a crash ("bad") is red.
+    const parts = readFileSync(new URL("./ui/parts.css", import.meta.url), "utf8");
+    expect(parts).toContain('.ui-recent[data-tone="good"] .ui-recent-mark { color: var(--ok); }');
+    expect(parts).toContain('.ui-recent[data-tone="bad"] .ui-recent-mark { color: var(--bad); }');
+    expect(readFileSync(new URL("./recentList.tsx", import.meta.url), "utf8")).toContain("<RecentRow key={i.id} verdict={");
+    expect(recentMark({ status: "done", proof: "passed", changed: 1 }).kind).toBe("proven");
+    expect(recentMark({ status: "not_done", proof: "failed", changed: 1 }).kind).toBe("failed");
   });
 });

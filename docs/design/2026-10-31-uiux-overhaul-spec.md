@@ -217,6 +217,7 @@ Each part lists its exact values. States are in section 5.
 - **Icon:** 28 square, `--r-control`, 16 px line icon in `--fg-2`.
 - **Cursor:** the default arrow, as on the Mac.
 - **Width:** the label never wraps. A button is as wide as its words.
+  - Built (review, 31 Oct): a button, a segmented option and a menu's value never break inside a word, and a row gives a control that does not fit a line of its own first. Only when the panel itself is narrower than the words (the biggest text sizes) do they go to a second line, because a single line that runs off the panel fails Home's reflow check (`a11y.test.ts`).
 
 **Row** (`<Row label description control indent? changed? scope? />`)
 - Grid: `minmax(0,1fr) auto`, column gap 16, items centred, min height 44, padding 10 16.
@@ -227,6 +228,7 @@ Each part lists its exact values. States are in section 5.
 - **Changed from the usual:** a 6 px `--fg-2` dot, 6 px before the label, with the tooltip "Changed. Usual: {value}". The row's context menu (right click, or a click on the dot) holds "Restore usual". The row never grows an extra line.
 - **Project scope:** a tag styled like a key label, "This project", after the label.
 - **Stacked layout** below 440 px content width (Larger text and up): the control moves under the text, aligned left, 8 below it.
+  - Built (review, 31 Oct): the stacking point is `28rem` (392 at Standard), because Settings' content card is 420 at Standard text (680 window, less the edge, the padding, the 184 sidebar and its gap), and a 440 px point stacked every row at Standard. In rem it follows the text size, so only the biggest sizes stack. A row is also a wrapping line whose words keep at least 12rem: a control too wide for the room beside them (a long microphone name) drops under them instead of squeezing the label to letters.
 - **Hit target:** clicking the label toggles a switch, or focuses the control.
 - **Row editors** (lists, house rules, apps, key recorder): the row shows a summary ("3 rules") and a secondary "Edit" button that opens a Sheet. Editors never sit open inside a card.
 

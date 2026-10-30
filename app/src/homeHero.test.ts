@@ -1,14 +1,17 @@
-// Home as one black panel under the notch (27 Oct 2026): black in both Mac themes, no side list, the job in big words, one
-// ask box with three quick actions, round buttons at the top (Settings in its own window), and Undo and Stop only when they
-// can act. The logic is plain code (homeHero.ts); the page is read as text, since it needs a real Mac to run.
+// Home as one panel under the notch, status first in one column (F28, the overhaul spec 4.1 and 4.2): Flowflow living on
+// its water at the top (the founder, 31 Oct), the project's status from its last check, one main button that status
+// picks, the ask field, the recent fixes, quiet buttons with words at the top, and Undo and Stop only when they can act.
+// The logic is plain code (homeHero.ts); the page is read as text, since it needs a real Mac to run.
 import { describe, expect, test } from "bun:test";
+import { ALL_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
 import { readFileSync } from "node:fs";
-import { initial, reduce, type Model } from "./model.ts";
-import { HOME_PLACES, bringBackCan, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
+import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
+import { agoWords, barPlaces, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, lastResult, mainFor, notchStatusLine, placeAfter, recentOf, stopCan, undoCan, type HomeMode } from "./homeHero.ts";
+import { arrivalFrom } from "./home.ts";
 import { S } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const card = read("./card.tsx"), css = read("./style.css"), html = read("../card.html");
+const card = read("./card.tsx"), css = ALL_CSS(), tokens = TOKENS_CSS(), html = read("../card.html");
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
 const task = (label = "add a sign up page") => [ev({ type: "checkpoint.created", agent: "a", checkpoint: "cp_1", label: `Before: ${label}`, files: 3, skipped: [] }), ev({ type: "agent.state", agent: "a", state: "working" })];
@@ -17,36 +20,44 @@ const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent
 const done = (o: Record<string, unknown> = {}) => run([...task(), receipt(o), ev({ type: "agent.state", agent: "a", state: "done" })]);
 const P = "/Users/me/test-shop";
 
-describe("Home is black in both Mac themes", () => {
-  const home = /:root\.home-page \{([^}]*)\}/.exec(css)?.[1] ?? "";
+describe("Home is Night in both Mac themes (Paper only when chosen)", () => {
+  const night = /\n:root \{([^}]*)\}/.exec(tokens)?.[1] ?? "";
   test("its page carries the mark, on the root and the body", () => {
     expect(html).toContain('<html lang="en" class="home-page">');
     expect(html).toContain('<body class="home-page" data-label="card">');
   });
-  test("one token set for Home, black with white words, that no Mac theme changes", () => {
-    expect(home).toContain("--bg: #000000");
-    expect(home).toContain("--fg: #f5f5f7");
-    // Stronger than the theme rules (a class on the root), and never inside a theme's own rule.
-    for (const m of css.matchAll(/@media \(prefers-color-scheme: (light|dark)\) \{([^\n]*)/g)) expect(m[2], m[0]).not.toContain(".home-page");
+  test("one token set, Night, near black with white words, that no Mac theme changes", () => {
+    // The overhaul spec, 2.1: one token per role in ui/tokens.css; the Mac's light or dark has no rule at all.
+    expect(night).toContain("--bg: #0B0B0C;");
+    expect(night).toContain("--fg: #F5F5F7;");
+    expect(css).not.toMatch(/prefers-color-scheme/);
+    expect(css).not.toMatch(/:root\.home-page \{/);
   });
   test("the window around the shape paints nothing; the shape is black, flush at the top and round at the bottom", () => {
     expect(css).toMatch(/html\.home-page, body\.home-page \{ background: transparent;/);
     const shape = /\n\.home \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(shape).toContain("background: var(--bg)");
     expect(shape).toMatch(/border-radius: 0 0 var\(--r-xl\) var\(--r-xl\)/);
-    expect(css).toContain("--r-xl: 30px;");
+    expect(tokens).toContain("--r-xl: 30px;");
   });
 });
 
-describe("no side list, no title bar: round buttons at the top", () => {
+describe("no side list, no title bar: quiet buttons with words at the top (F28, 4.1)", () => {
   test("the side list, its places and the tab list are gone from Home", () => {
-    for (const gone of ['className="side"', "has-side", 'role="tablist"', 'aria-orientation="vertical"', "side-list", 'className="brand"']) expect(card, gone).not.toContain(gone);
+    for (const gone of ['className="side"', "has-side", 'role="tablist"', 'aria-orientation="vertical"', "side-list", 'className="brand"', 'className="home-side"']) expect(card, gone).not.toContain(gone);
   });
-  test("What I did, Learn and Memory open inside Home; Settings is not one of them", () => {
-    expect([...HOME_PLACES]).toEqual(["did", "learn", "memory"]);
-    expect(card).toContain("HOME_PLACES.map((t) =>");
-    // Each is a round button with its drawing, its name for VoiceOver, and its old id (focus.ts goes back to it).
-    expect(card).toMatch(/<button key=\{t\} id=\{tabId\(t\)\} className="icon-btn"[^>]*aria-label=\{tabName\(t\)\}[^>]*aria-pressed=\{t === home\.tab\}/);
+  test("Learn shows only until the first practice is done (or while it waits for the person, or is open); then History, Memory, Settings", () => {
+    expect(barPlaces({ practiceDone: false })).toEqual(["learn", "did", "memory", "settings"]);
+    expect(barPlaces({ practiceDone: true })).toEqual(["did", "memory", "settings"]);
+    expect(barPlaces({ practiceDone: true, learnWaits: true })).toEqual(["learn", "did", "memory", "settings"]);
+    expect(barPlaces({ practiceDone: true, learnOpen: true })).toEqual(["learn", "did", "memory", "settings"]);
+    expect(barPlaces({ practiceDone: false, learnOn: false })).toEqual(["did", "memory", "settings"]);
+    expect([S.home.places.did, S.home.places.memory, S.home.places.settings]).toEqual(["History", "Memory", "Settings"]);
+  });
+  test("each place is a quiet Button with its word, its old id (focus.ts goes back to it) and whether it is open", () => {
+    expect(card).toContain("places.map((t) =>");
+    expect(card).toMatch(/<Button key=\{t\} id=\{tabId\(t\)\} kind="quiet" size="sm" pressed=\{t === home\.tab\}/);
+    expect(card).toContain("{S.home.places[t]}");
     // A view open inside Home has a back arrow to Now.
     expect(card).toMatch(/className="back"[^>]*onClick=\{\(\) => pickTab\("now"\)\}/);
   });
@@ -56,29 +67,29 @@ describe("no side list, no title bar: round buttons at the top", () => {
     expect(placeAfter("learn", "memory")).toBe("memory");
   });
   test("a place that waits for the person still shows its dot, and says so to VoiceOver", () => {
-    const places = card.slice(card.indexOf("HOME_PLACES.map((t) =>"), card.indexOf("HOME_PLACES.map((t) =>") + 900);
+    const places = card.slice(card.indexOf("places.map((t) =>"), card.indexOf("places.map((t) =>") + 900);
     expect(places).toContain('<span className="tabdot" aria-hidden="true" />');
     expect(places).toContain("S.homeTabWaiting");
   });
+  test("the project's name is a menu: change the folder, open one from a link, or one used before (no buttons at the foot)", () => {
+    expect(card).toContain("<Menu id={linkId} value=\"\" size=\"sm\" label={S.folderLabel}");
+    expect(card).toContain('const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },');
+    expect(card).toContain('if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) useFolder(id.slice(2));');
+    expect(card).not.toContain("{S.folderChange}</button>");
+    expect(card).not.toContain("<select aria-label={S.folderRecent}");
+  });
 });
 
-describe("the gear opens Settings in its own window, with a way back if it cannot", () => {
-  test("it asks for the window", async () => {
-    const asked: string[] = []; let inHome = 0;
-    await openSettings((c) => { asked.push(c); return Promise.resolve(); }, () => { inHome++; });
-    expect(asked).toEqual(["open_settings_window"]);
-    expect(inHome).toBe(0);
-  });
-  test("if the app has no such window yet, Settings opens inside Home", async () => {
-    let inHome = 0;
-    await openSettings(() => Promise.reject(new Error("unknown command")), () => { inHome++; });
-    expect(inHome).toBe(1);
+describe("the gear opens Settings inside Home, the one Settings (F28, T17: the separate window is retired)", () => {
+  test("nothing asks for a Settings window any more", () => {
+    expect(card).not.toContain("open_settings_window");
+    expect(card).not.toContain("openSettings(invoke");
   });
   test("the page's gear opens Settings inside Home (M20: never a separate window), and is named Settings", () => {
     expect(card).toContain('const gear = () => pickTab("settings");');
     expect(card).not.toContain("openSettings(invoke");
     expect(card).toContain('pickTab(t.place === "settings" ? "settings" : "learn")');
-    expect(card).toMatch(/aria-label=\{tabName\("settings"\)\}[^>]*onClick=\{gear\}/);
+    expect(card).toContain('onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}');
   });
 });
 
@@ -89,9 +100,9 @@ describe("the top says the job in big words", () => {
     expect(heroWords(initial(), P).headline).not.toMatch(/ready/i);
     expect(heroWords(initial(), "").line).toBe(S.look.noFolder);
   });
-  test("working: what was asked, and what it cost so far", () => {
+  test("working: what was asked, as an order with its first letter capital (4.2), and what it cost so far", () => {
     const h = heroWords(run(task("add a sign up page")), P);
-    expect(h.headline).toBe("add a sign up page");
+    expect(h.headline).toBe("Add a sign up page");
     expect(h.tone).toBe("working");
     expect(h.line, "never \"free so far so far\"").toBe(S.look.workingFree);
   });
@@ -116,7 +127,7 @@ describe("the top says the job in big words", () => {
     expect(card).toContain('<p className="subline">{hero.line}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
-    expect(css).toContain("--t-display: calc(22rem / 14);");
+    expect(tokens).toContain("--t-display: calc(22rem / 14);");
   });
 });
 
@@ -134,45 +145,41 @@ describe("Undo and Stop show only when they can act", () => {
     expect(stopCan(run(task()))).toBe(true);
     expect(stopCan(done())).toBe(false);
   });
-  test("the page draws each pill only then, keeps Undo's id and name, and names the key that stops everything", () => {
-    const pills = card.slice(card.indexOf('<div className="strip"'), card.indexOf("</div>", card.indexOf("{keyHint(\"stop\"")));
-    expect(pills).toContain("{undoCan(m, project) && (");
-    expect(pills).toContain("id={undoId}");
-    expect(pills).toContain("aria-label={S.undo}");
-    expect(pills).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
-    expect(pills).toContain("{stopCan(m) && (");
-    expect(pills).toContain("onClick={() => void send(stopAgent())}");
-    expect(pills).toContain('keyHint("stop", S.look.stopKeys, keys)');
+  test("the page draws Undo in the result card and Stop in the working card only then, and names the key that stops everything", () => {
+    const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
+    expect(result).toContain("{undoCan(m, project) && <Button id={undoId}");
+    expect(result).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
+    const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
+    expect(job).toContain("{stopCan(m) && <Button");
+    expect(job).toContain("onClick={() => void send(stopAgent())}");
+    expect(job).toContain('keyHint("stop", S.look.stopKeys, keys)');
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);
   });
 });
 
-describe("one ask box and three quick actions that do what the existing paths do", () => {
-  const chips = card.slice(card.indexOf('<div className="chips quick"'), card.indexOf("</div>", card.indexOf('<div className="chips quick"')));
-  test("the ask box keeps its words, its id and its keys; its one filled button starts", () => {
-    expect(card).toContain("placeholder={S.look.ask} aria-label={S.look.ask}");
-    expect(card).toContain('<button className="btn primary send" type="button" aria-label={S.look.send} title={S.look.send} onClick={submit}>');
+describe("one ask field, and the main button does what the existing paths do", () => {
+  const more = card.slice(card.indexOf('<details className="more">'), card.indexOf("</details>", card.indexOf('<details className="more">')));
+  test("the ask field keeps its id and its keys; its placeholder is the spec's; Start is a quiet drawing, never a second silver", () => {
+    expect(card).toContain("placeholder={S.home.ask} aria-label={S.home.ask}");
+    expect(S.home.ask).toBe("Or tell me what's wrong");
+    expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} onClick={submit}>');
+    expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
-  test("Find the problem runs the same check as its key, in the project", () => {
-    expect(chips).toContain("onClick={findFromHome}");
-    expect(chips).toContain('buttonShown("findProblem")');
+  test("Fix it and Check my project run the same check as the Fix it key, in the project; Check before going live runs the ship check", () => {
+    expect(card).toContain('const doMain = (a: MainAct) => { if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome(); };');
     const f = card.slice(card.indexOf("const findFromHome = "), card.indexOf("\n", card.indexOf("const findFromHome = ")));
     expect(f).toContain("latest.current.find(null)");
-    // The key's listener and the chip share one path.
     expect(card).toContain("latest.current.find(e.payload)");
   });
-  test("Explain an error explains the words in the box, or says how (nodeadbuttons.test.ts)", () => {
-    expect(chips).toContain('toolOn("errorHelp")');
-    expect(chips).toContain("onClick={explainFromBox}");
-  });
-  test("Show me is the Show me button that was behind More: the question in the box, or how to ask one", () => {
-    expect(chips).toContain('buttonShown("showMe")');
-    expect(chips).toContain('sentFromBox("showme"); showMe(q, q, []);');
-    expect(chips).toContain("pressed(); needWords(S.showMeHint);");
-  });
-  test("each chip is a drawing and a word", () => {
-    for (const w of ["S.look.chipFind", "S.look.chipExplain", "S.look.chipShowMe"]) expect(chips, w).toContain(w);
-    expect((chips.match(/<Icon name=/g) ?? []).length).toBeGreaterThanOrEqual(3);
+  test("every other way to ask stays, behind one quiet line: Find the problem, Is it safe, Explain, Show me and the rest", () => {
+    expect(more).toContain("onClick={findFromHome}");
+    expect(more).toContain('buttonShown("findProblem")');
+    expect(more).toContain('toolOn("errorHelp")');
+    expect(more).toContain("onClick={explainFromBox}");
+    expect(more).toContain('buttonShown("showMe")');
+    expect(more).toContain('sentFromBox("showme"); showMe(q, q, []);');
+    expect(more).toContain("pressed(); needWords(S.showMeHint);");
+    for (const w of ["S.look.chipFind", "S.look.chipSafe", "S.look.chipExplain", "S.look.chipShowMe"]) expect(more, w).toContain(w);
   });
 });
 
@@ -182,7 +189,7 @@ describe("it springs open from the notch, and not at all with less motion", () =
     expect(spring).toContain("transform");
     // M25: it opens many times a day, so 240 ms on the strong ease out, no bounce, and every part in by 280 ms.
     expect(css).toMatch(/\.home\.springing \{ animation: home-spring 240ms var\(--ease-out\) both; \}/);
-    expect(css).toContain("--ease-out: cubic-bezier(0.23, 1, 0.32, 1);");
+    expect(tokens).toContain("--ease-out: cubic-bezier(.2, .8, .2, 1);");
     // It unrolls: a slightly squashed scale and a clip that opens from the top.
     expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
     expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
@@ -209,9 +216,11 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // A finished task: the water splashes, only with reactions on and motion allowed.
     expect(ch).toContain("playful(reactionsOn(), reducedMotion())");
     expect(ch).not.toContain("skins.ts");
-    // M46: Home's hidden Flowflow is gone (it drew, out of sight, on every refresh); the first run and Settings keep theirs.
-    expect(card).not.toContain("<HomeCharacter");
-    expect(card).not.toContain("<Waterline");
+    // The founder, 31 Oct: Flowflow lives on its water at the top of Now again, seen (never hidden), and it rests (one still
+    // frame, no loop) while Home is closed or another place is open.
+    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} /></div>');
+    expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
+    expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");
     expect(ch).toContain("liveliness={mode} resting={resting}");
   });
@@ -266,5 +275,222 @@ describe("M45: Home's big words tell the truth", () => {
   });
   test("the page draws the verdict's line under the hero's line", () => {
     expect(card).toContain("{hero.detail && <p className=\"subline muted\">{hero.detail}</p>}");
+  });
+});
+
+// F28, the overhaul spec 4.1: how the project is, in its own name, from the last check only. The words come from M45's
+// verdict and the project's last check, never from anything the page guesses.
+describe("the status headline (F28, 4.1)", () => {
+  const NOW = Date.parse("2026-10-31T12:00:00Z");
+  const row = (o: Partial<HistoryItem>): HistoryItem => ({ id: 1, label: "Fix the join button", status: "done", usd: 0.05, startedAt: "2026-10-31T09:50:00Z", endedAt: "2026-10-31T10:00:00Z", checkpoint: "cp_9", changed: 1, proof: "passed", ...o });
+  const withHistory = (rows: HistoryItem[]): Model => ({ ...initial(), history: rows });
+  test("how long ago, in plain words; a time that cannot be read is just now, never a wrong date", () => {
+    expect(agoWords("2026-10-31T11:59:30Z", NOW)).toBe("just now");
+    expect(agoWords("2026-10-31T11:59:00Z", NOW)).toBe("1 minute ago");
+    expect(agoWords("2026-10-31T11:15:00Z", NOW)).toBe("45 minutes ago");
+    expect(agoWords("2026-10-31T10:00:00Z", NOW)).toBe("2 hours ago");
+    expect(agoWords("2026-10-30T09:00:00Z", NOW)).toBe("yesterday");
+    expect(agoWords("2026-10-27T12:00:00Z", NOW)).toBe("4 days ago");
+    expect(agoWords(null, NOW)).toBe("just now");
+    expect(agoWords("not a date", NOW)).toBe("just now");
+    expect(agoWords("2026-11-01T12:00:00Z", NOW), "a clock that is ahead is never said as the future").toBe("just now");
+  });
+  test("a proven last fix: \"test-shop works\", checked how long ago, with the tick", () => {
+    const s = homeStatus(withHistory([row({})]), P, NOW);
+    expect(s.kind).toBe("works");
+    expect(s.verdict.headline).toBe("test-shop works");
+    expect(s.sub).toBe("Checked 2 hours ago");
+    expect([s.verdict.icon, s.verdict.tone, s.verdict.proven]).toEqual(["tick", "good", true]);
+  });
+  test("a failed check: \"test-shop has a problem\", with the cross", () => {
+    const s = homeStatus(withHistory([row({ status: "not_done", proof: "failed" })]), P, NOW);
+    expect(s.kind).toBe("failing");
+    expect(s.verdict.headline).toBe("test-shop has a problem");
+    expect(s.sub).toBe("A check failed 2 hours ago");
+    expect([s.verdict.icon, s.verdict.tone]).toEqual(["cross", "bad"]);
+  });
+  test("nothing proven yet: Not checked yet with the status dot, never a tick, never green", () => {
+    const never = homeStatus(initial(), P, NOW);
+    expect([never.kind, never.verdict.headline, never.sub]).toEqual(["unchecked", "Not checked yet", "In test-shop"]);
+    for (const r of [row({ status: "interrupted", proof: "skipped" }), row({ proof: "partial" }), row({ proof: null }), row({ undone: true }), row({ status: "no_connection", proof: null })]) {
+      const s = homeStatus(withHistory([r]), P, NOW);
+      expect(s.kind, JSON.stringify(r)).toBe("unchecked");
+      expect([s.verdict.icon, s.verdict.proven, s.verdict.tone], JSON.stringify(r)).toEqual(["wait", false, "plain"]);
+      expect(s.sub.startsWith("Last time: "), s.sub).toBe(true);
+    }
+    // The last row says it; an older proven fix does not make a newer stop or failure read as works.
+    const newer = homeStatus(withHistory([row({}), row({ id: 2, startedAt: "2026-10-31T11:00:00Z", endedAt: "2026-10-31T11:05:00Z", status: "interrupted", proof: "skipped" })]), P, NOW);
+    expect(newer.kind).toBe("unchecked");
+    // A task still running is not a check.
+    expect(homeStatus(withHistory([row({ status: "running", proof: null, endedAt: null })]), P, NOW).kind).toBe("unchecked");
+  });
+  test("the result on Home now is the last check, before any History row; an Undo of it is never works", () => {
+    const m = { ...done(), history: [row({ status: "not_done", proof: "failed" })] };
+    expect(lastResult(m, P)?.verdict.proven).toBe(true);
+    expect(homeStatus(m, P, NOW).kind).toBe("works");
+    const undone = run([ev({ type: "ui.undoAsked", checkpoint: "cp_1" }), ev({ type: "ui.undoSent" }), ev({ type: "checkpoint.restored", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], done());
+    expect(homeStatus(undone, P, NOW).kind).toBe("unchecked");
+  });
+  test("no project yet: say to choose one, and the main button chooses one", () => {
+    const s = homeStatus(initial(), "", NOW);
+    expect([s.kind, s.verdict.headline, s.main]).toEqual(["noProject", S.home.noProject, "folder"]);
+  });
+  test("the notch's one true line says the same, in a sentence", () => {
+    expect(notchStatusLine(homeStatus(withHistory([row({})]), P, NOW), P)).toBe("test-shop works. Last fix proven 2 hours ago.");
+    expect(notchStatusLine(homeStatus(withHistory([row({ status: "not_done", proof: "failed" })]), P, NOW), P)).toBe("test-shop has a problem. A check failed 2 hours ago.");
+    expect(notchStatusLine(homeStatus(initial(), P, NOW), P)).toBe("test-shop is not checked yet.");
+    expect(notchStatusLine(homeStatus(initial(), "", NOW), "")).toBe(S.home.notchNothing);
+  });
+  test("the page draws the status as a Verdict line at display size, as Home's heading, at rest and under a result", () => {
+    expect(card).toContain('<VerdictLine verdict={status.verdict} size="headline" sub={status.sub || undefined} />');
+    expect(card).toContain('className="status-head" role="heading" aria-level={1}');
+    expect(card).toContain('const statusFirst = mode === "rest" || mode === "result";');
+  });
+});
+
+// One main button per state (the overhaul spec 4.1, 7.2): exactly one at rest and under a result, chosen by the status;
+// none while a job works, a question waits, another card needs a look, or an answer is in (that card has the screen).
+describe("one main button per state", () => {
+  const NOW = Date.parse("2026-10-31T12:00:00Z");
+  const proven = { ...initial(), history: [{ id: 1, label: "x", status: "done", usd: 0, startedAt: "2026-10-31T10:00:00Z", endedAt: "2026-10-31T10:00:00Z", checkpoint: "c", changed: 1, proof: "passed" }] } as Model;
+  const failing = { ...proven, history: [{ ...proven.history[0], status: "not_done", proof: "failed" }] } as Model;
+  const cases: [string, Model, HomeMode, string | null][] = [
+    ["at rest, never checked", initial(), "rest", "check"],
+    ["at rest, works", proven, "rest", "shipCheck"],
+    ["at rest, a check failed", failing, "rest", "fix"],
+    ["working", run(task()), "working", null],
+    ["a question", run([...task(), approval]), "question", null],
+    ["an answer", run([ev({ type: "research.done", agent: "a", title: "Taking payments", answer: "Use a hosted checkout page.", notes: [] })]), "answer", null],
+    ["a proven result", done(), "result", "shipCheck"],
+    ["a failed result", done({ ended: "failed", endedWhy: "check_failed", proof: "failed" }), "result", "fix"],
+    ["a stopped result", done({ ended: "stopped", proof: "skipped" }), "result", "check"],
+  ];
+  for (const [name, m, mode, main] of cases) test(name, () => {
+    expect(homeMode(m)).toBe(mode);
+    expect(mainFor(homeMode(m), homeStatus(m, P, NOW))).toBe(main as never);
+  });
+  test("the main button follows the tool switches: with Fix off there is no Fix it or Check my project (F20; review, 31 Oct)", () => {
+    const fixOff = (b: string) => b !== "findProblem";
+    const shipOff = (b: string) => b !== "shipCheck";
+    expect(mainFor("rest", homeStatus(failing, P, NOW), fixOff)).toBeNull();
+    expect(mainFor("rest", homeStatus(initial(), P, NOW), fixOff)).toBeNull();
+    expect(mainFor("result", homeStatus(done({ ended: "failed", endedWhy: "check_failed", proof: "failed" }), P, NOW), fixOff)).toBeNull();
+    expect(mainFor("result", homeStatus(done(), P, NOW), shipOff)).toBeNull();
+    expect(mainFor("result", homeStatus(done(), P, NOW), fixOff)).toBe("shipCheck");
+    // Choose a project needs no tool, so it stays whatever is off.
+    expect(mainFor("rest", homeStatus(initial(), "", NOW), () => false)).toBe("folder");
+    // Home asks the same switch the chips ask (groups.ts buttonShown), and the main buttons' tools are the ask buttons'.
+    expect(card).toContain("const main = mainFor(mode, status, (b) => buttonShown(b));");
+    const groups = read("./groups.ts");
+    for (const b of ["findProblem", "shipCheck"]) expect(groups, b).toContain(`"${b}"`);
+  });
+  test("while a job runs, some Stop is in reach on every place (review, 31 Oct)", () => {
+    // Now: in the hero, or in the working card. Every other place (Settings, History, Memory, Learn): in the top bar.
+    expect(card).toContain("{stopCan(m) && !jobShown && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
+    const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
+    expect(bar).toContain('{home.tab !== "now" && stopCan(m) && <Button kind="secondary" size="sm" className="bar-stop"');
+    expect(bar).toContain("onClick={() => void send(stopAgent())}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
+    // Drawn before the places, and outside the Settings condition, so Settings gets it too.
+    expect(bar.indexOf("bar-stop")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
+  });
+  test("the labels are the spec's, and a project not chosen yet has its own", () => {
+    expect(S.home.main).toEqual({ fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project" });
+    expect(mainFor("rest", homeStatus(initial(), "", NOW))).toBe("folder");
+  });
+  test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
+    const now = card.slice(card.indexOf('<section className="hero"'), card.indexOf('{show("notes") && <>'));
+    expect(now.match(/kind="primary"/g)?.length).toBe(1);
+    expect(now).toContain('{main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}</Button></div>}');
+    expect(now).not.toMatch(/btn primary/);
+    const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
+    const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
+    for (const part of [result, job]) { expect(part).not.toContain('kind="primary"'); expect(part).not.toContain("btn primary"); }
+  });
+  test("what can show beside the hero is never silver too: the update notice, Try again, a watch's Fix it, Learn's rows (review, 31 Oct)", () => {
+    const silver = /kind="primary"|btn primary|btnClass\("primary"/;
+    const between = (src: string, from: string, to: string) => { const a = src.indexOf(from); expect(a, from).toBeGreaterThan(-1); return src.slice(a, src.indexOf(to, a)); };
+    // The notes on every place (the update notice's Install sits beside the hero's main button on Now).
+    expect(between(card, '{show("notes") && <>', "</>}")).not.toMatch(silver);
+    // The receipt's follow up box (a failed result keeps the hero's Fix it, and canRetry is true then too).
+    expect(between(card, "function FollowUpBox(", "\n}\n")).not.toMatch(silver);
+    // The watches on Now.
+    expect(readFileSync(new URL("./watchPanel.tsx", import.meta.url), "utf8")).not.toMatch(silver);
+    // Learn: each lesson's and each practice's Start or Continue (the spec, 2.2: "Learn's Start buttons" are never silver).
+    expect(between(card, "lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).map((l) => (", "))}")).not.toMatch(silver);
+    const practice = readFileSync(new URL("./practicePanel.tsx", import.meta.url), "utf8");
+    for (const w of ["S.practiceStart}: ${r.title}", "S.practiceContinue}: ${r.title}"]) {
+      const at = practice.indexOf(w);
+      expect(at, w).toBeGreaterThan(-1);
+      expect(practice.slice(practice.lastIndexOf("<button", at), at)).not.toMatch(silver);
+    }
+  });
+});
+
+describe("the working card's four steps read only the runner's real states (4.2)", () => {
+  const tool = (t: string, id: string) => ev({ type: "agent.tool", agent: "a", toolUseId: id, tool: t, summary: "x", outcome: "ran" });
+  test("Finding while it reads, Fixing once a file is written, Checking while a check runs, Proven only for a proven fix", () => {
+    expect(jobStep(run(task())).step).toBe(0);
+    expect(jobStep(run([...task(), tool("Read", "t1"), tool("Grep", "t2")])).step).toBe(0);
+    expect(jobStep(run([...task(), tool("Read", "t1"), tool("Edit", "t2")])).step).toBe(1);
+    expect(jobStep(run([...task(), tool("Edit", "t2"), ev({ type: "proof.step", agent: "a", rung: "tests", label: "Running the tests", status: "running", detail: "" })])).step).toBe(2);
+    expect(jobStep(done()).step).toBe(3);
+    expect(jobStep(done({ proof: "partial" })).step, "never Proven for a partly checked fix").not.toBe(3);
+    expect(jobStep(done({ ended: "failed", endedWhy: "check_failed", proof: "failed" })).step).not.toBe(3);
+  });
+  test("a retry steps back to Fixing and says which try", () => {
+    const m = { ...run(task()), character: "working" as const };
+    const retry: Model = { ...m, task: { ...m.task!, proof: { steps: [{ rung: "tests", label: "Tests", status: "failed", detail: "" }], verdict: "failed", tries: 1 } } };
+    expect(jobStep(retry)).toEqual({ step: 1, retry: "Trying again (2 of 3)" });
+    expect(jobStep({ ...retry, task: { ...retry.task!, proof: { ...retry.task!.proof!, tries: 4 } } }, 3).retry).toBe("Trying again (3 of 3)");
+  });
+  test("the time so far as m:ss", () => {
+    expect(clockWords(0)).toBe("0:00");
+    expect(clockWords(65_000)).toBe("1:05");
+    expect(clockWords(3_725_000)).toBe("1:02:05");
+    expect(clockWords(-5)).toBe("0:00");
+  });
+  test("the card says the safety copy only when there is one, and Stop is a secondary button in it", () => {
+    const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
+    expect(job).toContain("{m.task.checkpoint ? <p className=\"job-safe\">");
+    expect(job).toContain('<ol className="job-strip" aria-label={S.home.stepsLabel}>');
+    expect(job).toContain('aria-current={i === js.step ? "step" : undefined}');
+    expect(S.home.steps).toEqual(["Finding", "Fixing", "Checking", "Proven"]);
+  });
+});
+
+describe("the recent fixes (4.1)", () => {
+  test("up to four, newest first, named, each opening its own receipt", () => {
+    const rows = Array.from({ length: 6 }, (_, i) => ({ id: i, label: i === 3 ? "  " : `T${i}`, status: "done", usd: 0, startedAt: `2026-10-2${i}T10:00:00Z`, endedAt: null, checkpoint: `c${i}`, changed: 1, proof: "passed" }));
+    expect(recentOf(rows).map((r) => r.label)).toEqual(["T5", "T4", "T2", "T1"]);
+    expect(card).toContain("<RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />");
+    expect(card).toContain("if (m.receipt && i.checkpoint && i.checkpoint === m.receipt.checkpoint) { pickTab(\"now\");");
+    expect(card).toContain('setHistoryFocus(i.id); pickTab("did");');
+  });
+});
+
+describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follows how lively the person chose (M46)", () => {
+  test("the pond sits beside the words, and the water's drift stops with Still", () => {
+    expect(card).toContain('<div className="home-pond" data-lively={lively} aria-hidden="true">');
+    expect(card).toContain('const lively = livelinessOf(useSetting("character.lively"));');
+    // One water for Home's pond and Settings' preview (review, 31 Oct): the same flat sea, and both hold still with Still.
+    expect(css).toContain('.home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }');
+    // No gradient on the water's flat sea, in Home or in the preview.
+    expect(/\.home-pond \.ch-water, \.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--sea);");
+    expect(css).not.toMatch(/^\.companion-hero \.ch-water \{/m);
+    expect(read("./settingsPage.tsx")).toContain('<div className="companion-hero" id={fixedAnchor("preview")} data-lively={lively}>');
+    // The sky over the water is a token, so Paper never draws a black box on its light page.
+    expect(/\.home-pond, \.companion-hero \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--pond);");
+    expect(tokens).toMatch(/:root\[data-theme="paper"\] \{[^}]*--pond: var\(--surface-1\);/);
+  });
+});
+
+describe("the notch's buttons ask Home for Undo's question and for Settings at the key (4.3)", () => {
+  test("only these shapes pass, in the page as in the shell", () => {
+    expect(arrivalFrom({ then: { do: "undo" } })).toEqual({ do: "undo" });
+    expect(arrivalFrom({ then: { set: "account.claude" } })).toEqual({ set: "account.claude" });
+    for (const bad of [{ do: "delete" }, { set: "" }, { set: "../x" }, { set: "a b" }, { set: "Account" }, { set: "x".repeat(61) }, { set: 3 }]) expect(arrivalFrom({ then: bad }), JSON.stringify(bad)).toBeNull();
+    // Undo from the notch only asks the receipt's question in Home: nothing is undone without the person's yes there.
+    expect(card).toContain('if (t.do === "undo") { pickTab("now"); if (m.receipt && undoCan(m, project)) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); return; }');
+    expect(card).toContain('if ("set" in t) { setSetPlace(t.set); pickTab("settings"); return; }');
   });
 });

@@ -5,11 +5,11 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
-type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders";
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron";
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | HomeIcon, ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "updown" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -22,6 +22,8 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   person: <><circle cx="12" cy="8.5" r="3.5" /><path d="M5 19.5c1.2-3.3 3.9-5 7-5s5.8 1.7 7 5" /></>,
   drop: <path d="M12 3.5c3.2 4 6 7.3 6 10.5a6 6 0 01-12 0c0-3.2 2.8-6.5 6-10.5z" />,
   keyboard: <><rect x="3" y="6.5" width="18" height="11" rx="2" /><path d="M7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17 10.5h.01M8 14h8" /></>,
+  wrench: <path d="M14.5 4.5a4.5 4.5 0 00-4.2 6.1L4.5 16.4a1.8 1.8 0 002.6 2.6l5.8-5.8a4.5 4.5 0 006.1-4.2l-2.7 2.7-2.6-.7-.7-2.6z" />,
+  chevron: <path d="M9.5 6l6 6-6 6" />,
   lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></>,
   info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></>,
   sliders: <><path d="M5 7h9M18 7h1M5 17h3M12 17h7" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,
@@ -35,6 +37,10 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   tick: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   cross: <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
   wait: <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />,
+  // The parts (ui/parts.tsx): partly proven, a check that did not run, and a menu's up and down chevron.
+  half: <><circle cx="12" cy="12" r="7.5" /><path d="M12 4.5a7.5 7.5 0 010 15z" fill="currentColor" stroke="none" /></>,
+  dash: <path d="M7 12h10" />,
+  updown: <><path d="M8 9.5l4-4 4 4" /><path d="M8 14.5l4 4 4-4" /></>,
   // The strip at the bottom of Home
   shield: <><path d="M12 3.5l7 2.8v5.2c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6.3z" /><path d="M9 12l2.2 2.2L15.5 10" /></>,
   undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,

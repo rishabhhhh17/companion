@@ -139,6 +139,15 @@ export async function resetWithUndo(section?: string): Promise<{ done: Done; bac
   lastResetProject = snap?.project ?? "";
   return { done: await (section ? resetSection(section) : resetAll()), back };
 }
+/** Restore usual settings for one page's More section (the spec, 3.9): only these keys, each through the shell, and what
+ *  Undo puts back read just before. Protective settings are never in it (changedNow leaves them out). */
+export async function resetKeysWithUndo(keys: readonly string[]): Promise<{ done: Done; back: [string, unknown][] }> {
+  const back = undoValues().filter(([k]) => keys.includes(k));
+  lastResetProject = snap?.project ?? "";
+  let done: Done = { ok: true };
+  for (const [k] of back) { const r = await resetSetting(k); if (!r.ok && done.ok) done = r; }
+  return { done, back };
+}
 /** Undo after a reset: each value put back, one at a time, through settings_set. A project's own settings go back to the
  *  project they were reset in (`project`, the last reset's by default), never to whichever folder is open now. Says which
  *  could not be put back. */

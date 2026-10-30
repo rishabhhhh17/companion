@@ -30,7 +30,10 @@ describe("proof you can see under a receipt", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain("<ProofChips m={m} />");
     const view = readFileSync(new URL("./proofChipsView.tsx", import.meta.url), "utf8");
-    expect(view).toContain('<Icon name={c.ok ? "tick" : "cross"}');
+    // Each is the Proof chip part: a tick for a pass, a cross for a fail (ui/parts.tsx CHIP_ICON), in their colours.
+    expect(view).toContain('<ProofChip kind={c.ok ? "pass" : "fail"} label={c.word} />');
+    const parts = readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8");
+    expect(parts).toContain('const CHIP_ICON: Partial<Record<ChipKind, IconName>> = { pass: "tick", fail: "cross"');
   });
 });
 

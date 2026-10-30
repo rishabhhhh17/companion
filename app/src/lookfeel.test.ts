@@ -47,15 +47,19 @@ describe("Home's theme", () => {
     expect(themeOf("paper")).toBe("paper"); expect(themeOf(3)).toBe("night");
     expect(def("look.theme")).toMatchObject({ default: "night", options: ["night", "deep", "paper"] });
   });
-  test("paper keeps every word readable (its tokens in style.css)", () => {
-    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
-    const block = /:root\.home-page\[data-theme="paper"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
+  test("paper keeps every word readable (its tokens in ui/tokens.css)", () => {
+    const css = readFileSync(new URL("./ui/tokens.css", import.meta.url), "utf8");
+    const block = /:root\[data-theme="paper"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
     const tok = (n: string) => new RegExp(`--${n}: (#[0-9A-Fa-f]{6})`).exec(block)?.[1] ?? "";
     expect(block).not.toBe("");
     expect(ratio(tok("fg"), tok("bg"))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(tok("muted"), tok("bg"))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(tok("fg"), tok("card"))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(tok("key-ink"), tok("key"))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(tok("fg-2"), tok("bg"))).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(tok("fg"), tok("surface-1"))).toBeGreaterThanOrEqual(4.5);
+    // Paper's main button is ink with the page's colour for its words (silver on white reads as disabled).
+    expect(block).toMatch(/--main: var\(--fg\);[^}]*--main-ink: var\(--bg\);/);
+    expect(ratio(tok("bg"), tok("fg"))).toBeGreaterThanOrEqual(4.5);
+    // The Deep theme is hidden (founder call 3): no rule draws it, so a stored "deep" reads as Night.
+    expect(css).not.toContain('data-theme="deep"');
   });
 });
 
@@ -89,16 +93,18 @@ describe("the character's size", () => {
   });
 });
 
-// M46 (F28): where How lively shows, and its words.
-import { PAGES, PAGE_KEYS } from "./settingsPages.ts";
-import { MAIN } from "./settingsLevel.ts";
+// M46 (F28): where How lively shows, and its words. Since the overhaul (section 3) it is its own group on the Flowflow page;
+// Less motion, reactions and Rest in Low Power Mode are in More options, Flowflow's section.
+import { MAIN, mainKeys, moreKeys } from "./settingsPages.ts";
+import { rowLine } from "./settingsPage.tsx";
+import { controlFor } from "./ui/controlRule.ts";
 import { S } from "./strings.ts";
 describe("How lively in Settings (M46)", () => {
-  test("it sits on the Flowflow page next to Follow my pointer, with Rest in Low Power Mode; Less motion and reactions stay under Advanced", () => {
-    const keys = PAGES.character.keys;
-    expect(keys).toContain("character.lively"); expect(keys).toContain("character.restLowPower");
-    expect(Math.abs(keys.indexOf("character.lively") - keys.indexOf("character.follow"))).toBe(1);
-    expect(MAIN.has("fun.reactions")).toBe(false); expect(MAIN.has("character.motion")).toBe(false);
+  test("it sits on the Flowflow page, in its own group before the look; Less motion, reactions and Low Power Mode are in More options", () => {
+    const keys = mainKeys("flowflow");
+    expect(keys[0]).toBe("character.lively");
+    expect(keys).toContain("character.follow");
+    for (const k of ["character.restLowPower", "character.motion", "fun.reactions"]) { expect(MAIN.has(k), k).toBe(false); expect(moreKeys("flowflow"), k).toContain(k); }
     expect(def("character.restLowPower")).toMatchObject({ default: true, kind: "switch" });
     expect(def("point.fly")).toMatchObject({ default: false, kind: "switch" });
   });
@@ -106,30 +112,39 @@ describe("How lively in Settings (M46)", () => {
     const w = S.set["character.lively"] as { label: string; help: string; options: Record<string, string> };
     expect(w.label).toBe("How lively");
     expect(Object.keys(w.options)).toEqual(["still", "gentle", "lively"]);
-    expect(S.short["character.lively"]).toBe("Still unless it has news. Gentle sways a little. Lively follows your pointer.");
+    expect(S.short["character.lively"]).toBe("Still: moves only when there is news. Gentle: a slow sway. Lively: watches your pointer.");
     for (const t of [w.label, w.help, S.short["character.lively"], ...Object.values(w.options), S.set["character.restLowPower"].help, S.set["point.fly"].help, S.set["character.follow"].help]) expect(t).not.toMatch(/[–—]/);
     expect(S.set["character.live"].help).not.toContain("eyes that follow your pointer");
     expect(S.set["calls.quiet"].help).toContain("The notch does not open by itself during a call either, and the character holds still.");
     expect(S.lively).toEqual({ still: "Still", gentle: "Gentle", lively: "Lively" });
   });
   test("the page rows say only what is true in Still, the usual (page rows show the short line, never the help)", () => {
-    expect(S.short["character.follow"]).toBe("What follows your pointer when How lively is Lively.");
-    expect(S.short["character.restLowPower"]).toBe("Holds still while your Mac saves power.");
+    expect(S.short["character.follow"]).toBe("Still only follows while listening or pointing.");
+    expect(rowLine("character.restLowPower")).toBe("On, the character holds still while your Mac is in Low Power Mode.");
     const follow = S.set["character.follow"] as { help: string; options: Record<string, string> };
     expect(follow.help).toContain(`${follow.options.off}: nothing follows`);   // the option is named as it reads
     expect(follow.help).toContain("never what you type or what is on the screen, and never kept");
     expect(S.set["fun.reactions"].help).not.toContain("Small moves of the character when a check passes or fails");
-    for (const t of [S.short["character.follow"], S.short["character.restLowPower"], S.set["fun.reactions"].help]) expect(t).not.toMatch(/[–—]/);
+    for (const t of [S.short["character.follow"], rowLine("character.restLowPower"), S.set["fun.reactions"].help]) expect(t).not.toMatch(/[–—]/);
   });
-  test("every setting on a page has a short line (Shortcuts has its own editor)", () => {
-    expect(PAGE_KEYS.filter((k) => k !== "keys.hotkeys" && !S.short[k as keyof typeof S.short])).toEqual([]);
+  test("every setting on a page's main level has its one line, or is drawn by rows of its own", () => {
+    const own = ["keys.hotkeys", "talk.voice", "character.peek", "character.stick", "look.water", "character.edge"];
+    expect([...MAIN].filter((k) => !own.includes(k) && !rowLine(k))).toEqual([]);
   });
-  test("the Settings hero's three buttons read and write character.lively only, and its Flowflow shows the choice at once", () => {
+  test("how lively is one row on the Flowflow page, a Picture choice that writes character.lively only, and the preview's Flowflow follows it", () => {
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    const hero = page.slice(page.indexOf("function CompanionHero("), page.indexOf("/** Google (M21"));
+    // The control choice rule (the overhaul spec, 3.5): a visual choice is a Picture choice, never a menu or a second
+    // segmented control in the preview.
+    expect(controlFor(def("character.lively") as unknown as Parameters<typeof controlFor>[0])).toBe("pictures");
+    const pics = page.slice(page.indexOf("function LivelyPictures("), page.indexOf("/** The Flowflow page opens"));
+    expect(pics).toContain("<PictureChoice labelledBy={labelId} value={livelinessOf(value)} onChange={onChange}");
+    expect(pics).toContain("LIVELINESS.map((l) =>");
+    expect(page).toContain('if (d.key === "character.lively") return <LivelyPictures value={String(value)} onChange={change}');
+    const hero = page.slice(page.indexOf("function FlowflowPreview("), page.indexOf("/** Google (M21"));
     expect(hero).toContain('livelinessOf(useSetting("character.lively"))');
-    expect(hero).toContain('changeSetting("character.lively", l)');
     expect(hero).toContain("<HomeCharacter as={as} liveliness={lively} />");
-    expect(hero).not.toMatch(/fun\.reactions|character\.motion/);
+    // Its states are a Segmented control (a part), never buttons of its own.
+    expect(hero).toContain("<Segmented label={S.heroStatesLabel}");
+    expect(hero).not.toMatch(/fun\.reactions|character\.motion|ch-lively|ch-states|<button/);
   });
 });

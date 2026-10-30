@@ -83,7 +83,7 @@ export function FirstLook({ onGo }: { onGo: () => void }) {
         {!done && (reduced || picked !== null) && <button className="btn" type="button" onClick={step}>{W.nextStep}</button>}
         {!done && !reduced && picked === null && <button className="btn" type="button" onClick={() => { setPaused((p) => !p); if (paused) { const t = performance.now() - (now - startedAt); setStartedAt(t); setNow(performance.now()); } }}>{paused ? W.play : W.pause}</button>}
         {done && <button className="btn" type="button" onClick={again}>{W.again}</button>}
-        <button className="btn primary fl-go" type="button" onClick={onGo}>{W.go}</button>
+        <button className="btn primary lg fl-go" type="button" onClick={onGo}>{W.go}</button>
       </div>
     </section>
   );

@@ -25,7 +25,10 @@ import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, key
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { HOME_PLACES, bringBackCan, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
+import { barPlaces, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, stopCan, undoCan, type MainAct } from "./homeHero.ts";
+import { HomeCharacter } from "./homeCharacter.tsx";
+import { Waterline } from "./waterline.tsx";
+import { livelinessOf } from "./lookfeel.ts";
 import { approvalWords } from "./approvals.ts";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
@@ -33,11 +36,9 @@ import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
 
-/** M40: an action's keys, as small keycaps at the end of its row (only to see; the row's own name is what is read out). */
+/** M40: an action's keys, as Key labels at the end of its row (only to see; the row's own name is what is read out). */
 function Caps({ id }: { id: string | null | undefined }) {
-  const caps = keycaps(id);
-  // M42: one compact key holding the whole chord (⌃⌥⌘F), so the side list keeps each name on one line.
-  return caps.length ? <span className="caps" aria-hidden="true"><kbd>{caps.join("")}</kbd></span> : null;
+  return keycaps(id).length ? <span className="caps"><KeyLabel chord={id} hidden /></span> : null;
 }
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
@@ -49,9 +50,7 @@ import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.t
 import { WatchPanel } from "./watchPanel.tsx";
 import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
-import { SettingsPage, settingsPlaces } from "./settingsPage.tsx";
-import { FIRST_PAGE, PAGES, PAGE_GROUPS, isPage } from "./settingsPages.ts";
-import { characterName } from "./companion.ts";
+import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
@@ -61,6 +60,7 @@ import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, historyUn
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
+import { Button, KeyLabel, Menu, ProofChip, Switch, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import "./style.css";
 
@@ -91,7 +91,7 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
     <div className="followup">
       {retry && (
         <div className="row">
-          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
+          <button className="btn" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
           <span className="muted">{S.tryAgainHelp}</span>
         </div>
       )}
@@ -231,7 +231,9 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
 // Without a search the newest 20 show; with one, every match among the tasks the engine sent.
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
 // the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
-function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void }) {
+// focus: the task a recent fix on Now opened (F28): its row is scrolled to and flashes once, as a Settings search hit does.
+function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null }) {
+  useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
   const undoId = useId();
@@ -246,16 +248,14 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
             onChange={(e) => setQ({ ...q, words: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Escape" && !composing(e) && q.words) { e.preventDefault(); e.stopPropagation(); setQ({ ...q, words: "" }); } }} />
-          <select aria-label={S.historyStatusLabel} value={q.status} onChange={(e) => setQ({ ...q, status: e.target.value as HistoryStatus })}>
-            {HISTORY_STATUSES.map((s) => <option key={s} value={s}>{S.historyStatus[s]}</option>)}
-          </select>
+          <Menu label={S.historyStatusLabel} value={q.status} options={HISTORY_STATUSES.map((s) => ({ id: s, label: S.historyStatus[s] }))} onChange={(status: HistoryStatus) => setQ({ ...q, status })} />
           {filtering && <button className="btn" type="button" onClick={() => setQ(NO_FILTER)}>{S.historyClear}</button>}
         </div>
       )}
       {items.length > 0 && <div className={filtering ? "line muted" : "sr"} role="status" aria-live="polite">{filtering ? (shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch) : ""}</div>}
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
       {shown.map((h, i) => { const backId = `${undoId}-${h.id}`; return (
-        <div className="line" key={h.id}>
+        <div className="line" key={h.id} id={`history-${h.id}`} data-flash={focus === h.id || undefined}>
           <div>{h.label} <span className="muted">· {historyWords(h)} · {costWords(h.usd)}</span></div>
           {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
           {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
@@ -367,16 +367,14 @@ function Card() {
   // Where the keyboard goes back to for a place: its round button, or on Now (which has none) the ask box.
   const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);
   // The mic beside the ask box says how to hold to talk (the keys work in any app).
-  const [talkHint, setTalkHint] = useState(false);
   // A gentle line under the ask box when a press needs words first (Start, Show me or Explain with the box empty). It has a
   // Close button, and typing clears it.
   const [askHint, setAskHint] = useState<string | null>(null);
   const needWords = (line: string) => { setAskHint(line); box.current?.focus(); };
   // What is open is measured, not the column it sits in (that column is as tall as the window, so it could never shrink).
   const inner = useRef<HTMLDivElement>(null);
-  const strip = useRef<HTMLDivElement>(null);
-  // Which part of Settings is open in the side list ("" is the first).
-  const [setPlace, setSetPlace] = useState("");
+  // Which page of Settings is open, or what a deep link names (a page, a group, a setting): the last page viewed at first.
+  const [setPlace, setSetPlace] = useState<string>(() => lastPage());
   const box = useRef<HTMLTextAreaElement>(null);
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
   // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
@@ -844,6 +842,8 @@ function Card() {
   }, []);
   const [link, setLink] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
+  // Open from a link is chosen in the project menu (a press of the person's own), so its field takes the keyboard as it appears.
+  const focusOnShow = useRef((el: HTMLInputElement | null) => { el?.focus(); }).current;
   const [copying, setCopying] = useState(false);
   const openLink = () => { const u = link.trim(); if (!u || copying) return; dispatch({ type: "ui.cloneNoteClosed" }); void invoke("clone_project", { url: u }).then(() => { setLinkOpen(false); setLink(""); setCopying(true); }).catch((e) => { if (String(e)) setFolderNote(String(e)); }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
@@ -921,12 +921,13 @@ function Card() {
   useEffect(() => {
     const el = inner.current;
     if (!el) return;
-    const tell = () => void invoke("resize_card", { height: el.offsetHeight + (strip.current?.offsetHeight ?? 0) });
+    const tell = () => void invoke("resize_card", { height: el.offsetHeight, settings: tabNow.current === "settings" });
     const ro = new ResizeObserver(tell);
     ro.observe(el);
-    if (strip.current) ro.observe(strip.current);
     return () => ro.disconnect();
   }, []);
+  // Settings uses the Large width and a fixed height while it is open (the spec, 3.1): told at once when the place changes.
+  useEffect(() => { const el = inner.current; if (el) void invoke("resize_card", { height: el.offsetHeight, settings: home.tab === "settings" }); }, [home.tab]);
 
   // Show me how: the engine chose one or more points in the picture, in order. Each is played in turn (sequence.ts): the
   // Mac side snaps it to a real button and draws the pointer, its line follows, then a short pause and the next one. Only
@@ -1237,7 +1238,13 @@ function Card() {
   };
   onArrival.current = (t: HomeArrival) => {
     // From the panel under the notch: the two things Squibby is for.
-    if ("do" in t) { if (t.do === "find") findFromHome(); else shipIt(); return; }
+    if ("do" in t) {
+      // The notch's Undo this fix: the receipt's own question, on Now (it is never undone without the person's yes there).
+      if (t.do === "undo") { pickTab("now"); if (m.receipt && undoCan(m, project)) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); return; }
+      if (t.do === "find") findFromHome(); else shipIt(); return;
+    }
+    // The notch's Add your key: Settings, at that place (Account, Your Claude).
+    if ("set" in t) { setSetPlace(t.set); pickTab("settings"); return; }
     if ("lesson" in t) beginLesson(t.lesson, false); else pickTab(t.place === "settings" ? "settings" : "learn");
   };
   // The setting practice opens the lesson made from its project, and knows that lesson by its walk id.
@@ -1426,9 +1433,40 @@ function Card() {
   };
 
   const hero = heroWords(m, project, needNow);
-  // Undo's small moment: the pill's drawing turns back once on a press; when the undo is done the result settles and
-  // "Put back as it was" shows for two seconds. Motion only; with Reduce motion or Less motion the words still show.
-  const spin = (b: HTMLElement) => { b.classList.remove("spin"); void b.offsetWidth; b.classList.add("spin"); };
+  // F28, the overhaul spec 4.1: what Now is about, how the project is (from its last check only), and the one main button
+  // that status picks (homeHero.ts). The clock moves each second while a job works (its time so far), else twice a minute
+  // (Checked 2 hours ago), and only while Home is open.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (!homeOpen) return;
+    setClock(Date.now());
+    const id = setInterval(() => setClock(Date.now()), working ? 1000 : 30_000);
+    return () => clearInterval(id);
+  }, [homeOpen, working]);
+  const mode = homeMode(m, needNow);
+  const status = homeStatus(m, project, clock);
+  const statusFirst = mode === "rest" || mode === "result";
+  const main = mainFor(mode, status, (b) => buttonShown(b));
+  const doMain = (a: MainAct) => { if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome(); };
+  const places = barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
+  // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
+  const lively = livelinessOf(useSetting("character.lively"));
+  // The working card: when this job started (its time so far), and whether it is drawn (Stop lives in it then).
+  const jobKey = m.task && working ? `${m.task.agent}:${m.task.checkpoint ?? m.task.label}` : "";
+  const jobStart = useRef<{ key: string; at: number } | null>(null);
+  if (jobKey && jobStart.current?.key !== jobKey) jobStart.current = { key: jobKey, at: Date.now() };
+  const jobShown = home.tab === "now" && !!m.task && working;
+  // The project menu in the top bar: change the folder, open one from a link, or one used before.
+  const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },
+    ...recent.filter((r) => r !== project).map((r) => ({ id: `r:${r}`, label: r.split("/").filter(Boolean).slice(-2).join("/") }))];
+  const pickFromFolderMenu = (id: string) => { if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) useFolder(id.slice(2)); };
+  // A recent fix opens its own receipt: the one on Now when it is the last task, else its row in History.
+  const [historyFocus, setHistoryFocus] = useState<number | null>(null);
+  useEffect(() => { if (home.tab !== "did") setHistoryFocus(null); }, [home.tab]);
+  const openRecent = (i: HistoryItem) => {
+    if (m.receipt && i.checkpoint && i.checkpoint === m.receipt.checkpoint) { pickTab("now"); setTimeout(() => root.current?.querySelector(".panel.receipt")?.scrollIntoView({ block: "start" }), 0); return; }
+    setHistoryQ(NO_FILTER); setHistoryFocus(i.id); pickTab("did");
+  };
   const [putBackShown, setPutBackShown] = useState(false);
   useEffect(() => {
     if (m.undo?.stage !== "done") return;
@@ -1439,7 +1477,6 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
-  const setOpen = isPage(setPlace) ? setPlace : FIRST_PAGE;
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
@@ -1449,29 +1486,32 @@ function Card() {
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="inner" ref={inner}>
-      {/* The top row (27 Oct 2026, the notch apps' look): no title bar and no side list. Small round buttons on the right: What I
-          did, Learn and Memory open inside Home, the gear opens Settings in its own window, and Close. A place open inside
-          Home has a back arrow and its name on the left. A place that waits for the person has a small dot. */}
+      {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
+          link, the folders used before); in a place, a back arrow and its name. On the right, quiet buttons with words
+          (Learn only until the first practice is done, History, Memory, Settings), then Close. A place that waits for the
+          person has a small dot. A hairline under it. */}
       {onboarded && (
         <header className="bar">
-          {/* On Now: the folder's name and a small dot for how things are (style.css .bar-dot, from data-tone). */}
-          {home.tab === "now" && <span className="bar-folder" title={project || undefined}><span className="bar-dot" aria-hidden="true" />{project ? <><span className="sr">{S.folderLabel}: </span>{project.split("/").filter(Boolean).pop() ?? project}</> : S.look.noFolder}</span>}
+          {home.tab === "now" && <Menu id={linkId} value="" size="sm" label={S.folderLabel} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noFolder} options={folderOptions} onChange={pickFromFolderMenu} />}
           {home.tab !== "now" && <>
             <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>
             <h1 id="home-title" className="view-title">{viewTitle}</h1>
           </>}
           <nav className="places" aria-label={S.look.placesLabel}>
-            {HOME_PLACES.map((t) => {
+            {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
+                working card). */}
+            {home.tab !== "now" && stopCan(m) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
+            {/* In Settings the sidebar is the only way around: the place buttons step back (the spec, 3.1). */}
+            {home.tab !== "settings" && places.map((t) => {
               const waits = needNow?.tab === t && t !== home.tab;
               return (
-                <button key={t} id={tabId(t)} className="icon-btn" type="button" aria-label={tabName(t)} title={tabName(t)} aria-pressed={t === home.tab} onClick={() => pickTab(placeAfter(home.tab, t))}>
-                  <Icon name={t} size={16} />
+                <Button key={t} id={tabId(t)} kind="quiet" size="sm" pressed={t === home.tab} onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}>
+                  {S.home.places[t]}
                   {waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
-                </button>
+                </Button>
               );
             })}
-            <button className="icon-btn" type="button" aria-label={tabName("settings")} title={tabName("settings")} aria-pressed={home.tab === "settings"} onClick={gear}><Icon name="gear" size={16} /></button>
-            <button className="icon-btn close" type="button" aria-label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></button>
+            <Button kind="icon" className="close" label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></Button>
           </nav>
         </header>
       )}
@@ -1479,15 +1519,34 @@ function Card() {
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && (<>
-      {/* M42 (the founder picked B, Supabase's dashboard): on Now, the ask box is a command bar across the top, the things to
-          do and the recent fixes are a list on the left, and the job and its results are on the right (style.css .home-side). */}
-          {/* The one ask box, under the job's words (27 Oct 2026). Only hidden on the other places, never taken away: a draft, and
-              the words from hold to talk, stay in the box. Its one filled button starts; the mic says how to hold to talk. */}
+      {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
+          founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
+          that status picks. While a job works, a question waits or an answer is in: that job's own words. */}
+      <section className="hero" hidden={home.tab !== "now"} data-mode={mode} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
+        <div className="home-pond" data-lively={lively} aria-hidden="true">
+          <div className="ch-water"><Waterline under /></div>
+          <div className="ch-char"><HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} /></div>
+        </div>
+        <div className="hero-words">
+          {statusFirst
+            ? <div id={home.tab === "now" ? "home-title" : undefined} className="status-head" role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" sub={status.sub || undefined} /></div>
+            : <>
+              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
+              <p className="subline">{hero.line}</p>
+              {hero.detail && <p className="subline muted">{hero.detail}</p>}
+            </>}
+          {main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}</Button></div>}
+          {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
+          {stopCan(m) && !jobShown && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
+        </div>
+      </section>
+          {/* The one ask field, under the status (27 Oct 2026, F28). Only hidden on the other places, never taken away: a draft,
+              and the words from hold to talk, stay in it. Return starts; the hold to talk keys sit inside it on the right. */}
           <div className="askwrap" hidden={!show("ask")}>
-          {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
+          {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <Button size="sm" onClick={() => setAskMode("task")}>{S.planCancel}</Button></div>}
           <div className="ask">
             <span className="ask-mark" aria-hidden="true"><Icon name="find" size={16} /></span>
-            <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.look.ask} aria-label={S.look.ask} aria-describedby="ask-keys"
+            <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.home.ask} aria-label={S.home.ask} aria-describedby="ask-keys"
               onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
               onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
@@ -1496,12 +1555,11 @@ function Card() {
                 e.preventDefault();
                 if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
               }} />
-            {/* A click may never open the microphone (rule 5): this only says how to hold to talk, with the keys. */}
-            {groups.on("talk") && <button className="btn talk-how" type="button" aria-expanded={talkHint} aria-controls="talk-keys" onClick={() => setTalkHint((v) => !v)}>{S.look.howToTalk}</button>}
-            {!working && buttonShown("start") && <button className="btn primary send" type="button" aria-label={S.look.send} title={S.look.send} onClick={submit}><Icon name="send" size={18} /></button>}
+            {/* A click may never open the microphone (rule 5): the keys to hold are only shown, with what they do in the tooltip. */}
+            {groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} /></span>}
+            {!working && buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} onClick={submit}><Icon name="send" size={16} /></Button>}
           </div>
-          {talkHint && <div className="line muted" id="talk-keys" role="status">{talkKeysLine(keys)}</div>}
-          {askHint && <div className="line muted" role="status">{askHint} <button className="btn" type="button" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</button></div>}
+          {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
           {dragging && <div className="line" role="status">{S.attachDrop}</div>}
           {attached.length > 0 && (
@@ -1509,7 +1567,7 @@ function Card() {
               {attached.map((a, i) => (
                 <span className="chip" role="listitem" key={`${i}:${a.name}`}>
                   <span className="line">{chipLabel(a)}</span>
-                  <button className="btn" type="button" aria-label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</button>
+                  <Button size="sm" label={S.attachRemove(a.name)} onClick={() => { focusBack(askId); setAttachSaid(S.attachRemoved(a.name)); setAttached((l) => removeFile(l, i)); }}>{S.attachRemoveShort}</Button>
                 </span>
               ))}
             </div>
@@ -1520,63 +1578,44 @@ function Card() {
           {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
           <div className="sr" id="ask-keys">{S.askKeysHint}</div>
           {/* The invitation to try a tool, only while nothing else is on Now. */}
-      {hero.tone === "idle" && (() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
-          {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
+      {mode === "rest" && (() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
           {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
-          </div>
-          {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
-          <ClaudeNotice />
-      {/* Now: the job in big words. M46: the hidden Flowflow and its water that stood here are gone (it lives on the edge of
-          the screen); M48's one column Home decides whether a visible one comes back. */}
-      <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
-        <div className="hero-words">
-          <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
-          <p className="subline">{hero.line}</p>
-          {hero.detail && <p className="subline muted">{hero.detail}</p>}
-        </div>
-      </section>
-      {home.tab === "now" && show("ask") && (
-        <aside className="home-side" aria-label={S.look.chipsLabel}>
-          <div className="side-head" aria-hidden="true">{S.sideDo}</div>
-          {/* Three quick actions, each a drawing and a word: what their keys and buttons already do. */}
-          <div className="chips quick" role="group" aria-label={S.look.chipsLabel}>
-            {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}<Caps id={keys.using.problem} /></button>}
-            {buttonShown("shipCheck") && <button className="chip-btn" type="button" onClick={() => shipIt()}><Icon name="shield" size={16} />{S.look.chipSafe}</button>}
-            {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={explainFromBox}><Icon name="explain" size={16} />{S.look.chipExplain}<Caps id={keys.using.explain} /></button>}
-            {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}<Caps id={keys.using.showme} /></button>}
-          </div>
-          {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
-          {!working && (
+          {/* Every other way to ask, and the options, behind one quiet line (customizable everything: nothing is dropped). The
+              check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
+          {home.tab === "now" && !working && (
             <details className="more">
               <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
-              <div className="row">
-                {buttonShown("plan") && <button className="btn" type="button" onClick={plan}>{S.planIt}</button>}
-                {buttonShown("rescue") && <button className="btn" type="button" onClick={rescue}>{S.rescueIt}</button>}
-                {buttonShown("research") && <button className="btn" type="button" onClick={research}>{S.researchIt}</button>}
-                {buttonShown("online") && <button className="btn" type="button" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</button>}
-                {buttonShown("drawIt") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</button>}
+              <div className="more-ways">
+                {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}<Caps id={keys.using.problem} /></Button>}
+                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}</Button>}
+                {toolOn("errorHelp") && <Button size="sm" onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}<Caps id={keys.using.explain} /></Button>}
+                {buttonShown("showMe") && <Button size="sm" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}<Caps id={keys.using.showme} /></Button>}
+                {buttonShown("plan") && <Button size="sm" onClick={plan}>{S.planIt}</Button>}
+                {buttonShown("rescue") && <Button size="sm" onClick={rescue}>{S.rescueIt}</Button>}
+                {buttonShown("research") && <Button size="sm" onClick={research}>{S.researchIt}</Button>}
+                {buttonShown("online") && <Button size="sm" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</Button>}
+                {buttonShown("drawIt") && <Button size="sm" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</Button>}
               </div>
-              {buttonShown("autoSend") && (
-                <label className="check"><input type="checkbox" checked={autoSend} onChange={(e) => setAutoSend(e.target.checked)} /> {S.voiceAutoSend}</label>
-              )}
-              <label className="check"><input type="checkbox" checked={off} onChange={(e) => setOff(e.target.checked)} /> {S.offRecord}</label>
-              {project && (
-                <label className="check"><input type="checkbox" checked={newFolder} onChange={(e) => setNewFolder(e.target.checked)} /> {S.newFolder.tick}</label>
-              )}
+              {buttonShown("autoSend") && <label className="more-opt"><Switch checked={autoSend} onChange={setAutoSend} label={S.voiceAutoSend} /><span aria-hidden="true">{S.voiceAutoSend}</span></label>}
+              <label className="more-opt"><Switch checked={off} onChange={setOff} label={S.offRecord} /><span aria-hidden="true">{S.offRecord}</span></label>
+              {project && <label className="more-opt"><Switch checked={newFolder} onChange={setNewFolder} label={S.newFolder.tick} /><span aria-hidden="true">{S.newFolder.tick}</span></label>}
               {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
             </details>
           )}
-          <RecentList items={project ? m.history : []} onOpen={() => pickTab("did")} />
-        </aside>
-      )}
+          </div>
+          {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
+          <ClaudeNotice />
+      {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
+          right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
+      {home.tab === "now" && show("ask") && mode === "rest" && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
-      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("account"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
+      {m.notice && <div className="notice" role="status">{m.notice}{m.notice === S.notConnectedNotice && <button className="btn fix-it" type="button" onClick={() => { setSetPlace("account.claude"); pickTab("settings"); }}>{S.addYourKey}</button>}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
-          <button className="btn primary" type="button" disabled={!installAllowed(m)} onClick={installUpdate}>{S.updatesInstall}</button>
+          <button className="btn" type="button" disabled={!installAllowed(m)} onClick={installUpdate}>{S.updatesInstall}</button>
           {!installAllowed(m) && <div className="line muted">{S.updatesBusy}</div>}
           {updateNote && <div className="line">{updateNote}</div>}
         </div>
@@ -1596,21 +1635,11 @@ function Card() {
           <div className="row"><button className="btn" type="button" onClick={() => { rememberVersion(changes.remember); setChanges(null); }}>{S.whatsNewClose}</button></div>
         </section>
       )}
-      {home.tab === "settings" && (
-        // M30: Settings' side list, as HeyClicky's: an icon and a name for each page, in three short groups.
-        <nav className="sp-side" aria-label={S.look.settingsPlaces}>
-          {PAGE_GROUPS.map((g) => (
-            <div key={g.head || "first"} className="sp-group">
-              {g.head && <h3 className="sp-group-head">{S.pageHeads[g.head]}</h3>}
-              <ul>
-                {g.pages.map((id) => <li key={id}><button className="sp-nav" type="button" aria-current={setOpen === id ? "page" : undefined} onClick={() => { setSetPlace(id); root.current?.scrollTo({ top: 0 }); }}>
-                  <Icon name={PAGES[id].icon} size={16} /><span>{id === "character" ? characterName(setting("character.name")) : S.pages[id].title}</span></button></li>)}
-              </ul>
-            </div>
-          ))}
-        </nav>
-      )}
-      {show("settings") && <SettingsPage working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside} place={setOpen} />}
+      {/* Settings inside Home (F28, T17: the one Settings; the separate window is retired): its own sidebar with search, and
+          one page at a time, opened on the last page viewed or on what a deep link names. */}
+      {show("settings") && <SettingsView place={setPlace} onPlace={setSetPlace} working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending}
+        onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside}
+        onMemory={() => pickTab("memory")} onPickFolder={pickFolder} />}
       {groups.groupOn("guide") && show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
         const pr = m.practice!, entry = practiceOf(pr.kind)!;
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}
@@ -1658,7 +1687,7 @@ function Card() {
               {l.fromProject && <div className="line muted">{S.lessonFromProject}</div>}
               {l.status !== "tried" && <div className="line muted">{S.lessonDraft}</div>}
               <div className="row">
-                <button className="btn primary" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
+                <button className="btn" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
                 {l.saved && <button className="btn" type="button" onClick={() => beginLesson(l.id, true)}>{S.lessonStartOver}</button>}
               </div>
             </div>
@@ -1911,17 +1940,36 @@ function Card() {
         </section>
       )}
 
-      {show("task") && m.task && m.task.lines.length > 0 && (
+      {/* The working card (F28, the overhaul spec 4.2): the job's name is the headline above, so here the safety copy, the
+          four steps (read only from the runner's real states, homeHero.ts jobStep), the step under way, the time so far
+          and what it has cost, and Stop. A step that was blocked or waits for an OK is said in its own line. */}
+      {show("task") && m.task && working && (() => {
+        const js = jobStep(m, Number(setting("work.tries")) || 3);
+        const lines = activityNow(m);
+        const odd = lines.filter((l) => l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval");
+        return (
+          <section className="panel job" aria-label={m.task.label || S.home.stepsLabel}>
+            <div className="job-top">
+              {m.task.checkpoint ? <p className="job-safe"><Icon name="tick" size={14} />{S.home.safetySaved}</p> : <span />}
+              {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
+            </div>
+            <ol className="job-strip" aria-label={S.home.stepsLabel}>
+              {S.home.steps.map((label, i) => <li key={label} data-state={i < js.step ? "done" : i === js.step ? "now" : undefined} aria-current={i === js.step ? "step" : undefined}><span className="job-bar" aria-hidden="true" /><span className="job-label">{label}</span></li>)}
+            </ol>
+            <p className="job-now">{js.retry ?? lines.at(-1)?.words ?? characterWords(m)}</p>
+            <p className="job-meta"><span>{S.home.timeSoFar(clockWords(clock - (jobStart.current?.at ?? clock)))}</span>{m.task.costUsd > 0 && <ProofChip kind="cost" label={formatUsd(m.task.costUsd)} />}</p>
+            {odd.map((l, i) => <div key={i} className="line blocked">{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : `${S.waiting}: `}{l.words}</div>)}
+          </section>
+        );
+      })()}
+      {/* A task that ended with no result card: its last steps, as they ran. */}
+      {show("task") && m.task && !working && !m.receipt && m.task.lines.length > 0 && (
         <section className="panel" aria-label={m.task.label || "Task"}>
-          {/* The task's name is Home's headline above (homeHero.ts), so here only its latest steps. */}
-          {/* The latest one or two steps, in plain words: never the raw command. */}
-          {/* M40 (Granola shows progress in place): the step under way has a thin turning arc, the one before it a quiet tick. */}
-          {activityNow(m).map((l, i, all) => {
+          {activityNow(m).map((l, i) => {
             const odd = l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval";
-            const now = !odd && i === all.length - 1 && !m.receipt;
             return (
-              <div key={i} className={`line step ${odd ? "blocked" : now ? "now" : "done"}`}>
-                {!odd && (now ? <span className="spin" aria-hidden="true" /> : <Icon name="tick" size={12} />)}
+              <div key={i} className={`line step ${odd ? "blocked" : "done"}`}>
+                {!odd && <Icon name="tick" size={12} />}
                 <span>{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : l.outcome === "needs_approval" ? `${S.waiting}: ` : ""}{l.words}</span>
               </div>
             );
@@ -1951,6 +1999,11 @@ function Card() {
 
       {show("receipt") && m.receipt && (
         <section className="panel receipt" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
+          {/* M45 and the overhaul spec 4.2: the result first, as the verdict says it, at verdict size. A tick only for a
+              proven fix (VerdictLine draws only what verdict.ts said). */}
+          {(() => { const v = receiptVerdict(m)!; return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (
+            <div className="result-verdict" data-verdict={v.kind}><VerdictLine verdict={v} size="card" sub={v.line ?? undefined} /></div>
+          ); })()}
           <h2>{receiptHeading(m.receipt)}</h2>
           {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
             <div className="answer" role={w.help ? "status" : undefined}>
@@ -1962,13 +2015,6 @@ function Card() {
           ); })()}
           {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} />}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {/* M45: the result, as the verdict says it. Green and a tick only for a proven fix. */}
-          {(() => { const v = receiptVerdict(m)!; return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (
-            <div className={`proof ${v.tone === "good" ? "ok" : v.tone === "bad" ? "bad" : "wait"}`} data-verdict={v.kind}>
-              <Icon name={v.icon} size={16} />
-              <span><b>{v.headline}</b>{v.line ? ` ${v.line}` : ""}</span>
-            </div>
-          ); })()}
           <ProofChips m={m} />
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
@@ -1984,6 +2030,14 @@ function Card() {
             <li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
+          {/* Undo inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The
+              receipt's own question follows on a press. "Put back as it was" shows for two seconds once it is done. */}
+          {(undoCan(m, project) || putBackShown) && (
+            <div className="row result-actions">
+              {undoCan(m, project) && <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.home.undoFix}</Button>}
+              {putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}
+            </div>
+          )}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
@@ -2282,31 +2336,24 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} />}
       {show("watch") && project && groups.on("watch") && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
           <summary>{S.watch.title}</summary>
           <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />
         </details>
       )}
-      {/* The folder, quietly at the foot of Now. */}
+      {/* The folder's notes on Now (its name and its menu are in the top bar), and the link field once Open from a link is
+          chosen there. */}
+      {home.tab === "now" && show("ask") && mode !== "rest" && mode !== "working" && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {show("folder") && <div className="foot">
-      <div className="row folder" role="group" aria-label={S.folderLabel}>
-        <button className="btn" type="button" onClick={pickFolder}>{S.folderChange}</button>
-        {recent.length > 1 && (
-          <select aria-label={S.folderRecent} value="" onChange={(e) => { if (e.target.value) useFolder(e.target.value); }}>
-            <option value="">{S.folderRecent}</option>
-            {recent.filter((r) => r !== project).map((r) => <option key={r} value={r}>{r.split("/").filter(Boolean).slice(-2).join("/")}</option>)}
-          </select>
-        )}
-      </div>
       {awayFolder(m) && <div className="line muted" role="status">{S.awayWorking(awayFolder(m)!)}</div>}
       {copying && <div className="line muted" role="status">{S.copying}</div>}
-      {!linkOpen ? !copying && <div className="row folder"><button id={linkId} className="btn" type="button" onClick={() => setLinkOpen(true)}>{S.openLink}</button></div> : (
+      {linkOpen && (
         <div className="row">
-          <input ref={focusIfLost} aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); focusBack(linkId); } }} />
-          <button className="btn primary" type="button" onClick={openLink}>{S.openLinkGo}</button>
-          <button className="btn" type="button" onClick={() => { setLinkOpen(false); focusBack(linkId); }}>{S.planCancel}</button>
+          <input ref={focusOnShow} aria-label={S.openLinkLabel} placeholder="https://github.com/name/project" value={link} onChange={(e) => setLink(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); if (e.key === "Escape") { e.stopPropagation(); setLinkOpen(false); focusBack(linkId); } }} />
+          <Button kind="secondary" onClick={openLink}>{S.openLinkGo}</Button>
+          <Button kind="quiet" onClick={() => { setLinkOpen(false); focusBack(linkId); }}>{S.planCancel}</Button>
         </div>
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
@@ -2316,19 +2363,6 @@ function Card() {
       </div>
       </>)}
       </div>
-      {onboarded && (
-      // Undo and Stop, as small pills at the foot of Home, only when they can act: Undo after a task that changed files (the
-      // receipt asks "are you sure" and keeps the choices), Stop while something works, with the key that stops everything.
-      <div className="strip" ref={strip} role="group" aria-label={S.look.stripLabel}>
-        {undoCan(m, project) && (
-          <button id={undoId} className="pill" type="button" aria-label={S.undo} onClick={(e) => { spin(e.currentTarget); if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.look.undoShort}</button>
-        )}
-        {stopCan(m) && (
-          <button className="pill stop" type="button" aria-label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</button>
-        )}
-        {putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}
-      </div>
-      )}
     </main>
   );
 }

@@ -125,7 +125,8 @@ describe("the key is checked with Anthropic when it is saved", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     const connect = ui.slice(ui.indexOf('{step === "connect" && ('), ui.indexOf('{step === "folder" && ('));
     expect(connect).toContain('main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || (step === "connect" && check === "refused"))');
-    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <button className="fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;');
+    // The one main button of each step is the Button part's primary, large (the flat silver).
+    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <button className="btn primary lg fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;');
     for (const k of ["checking", "works", "refused", "no_connection", "unknown"] as const) { expect(S.obKeyCheck[k].length).toBeGreaterThan(10); expect(S.obKeyCheck[k]).not.toMatch(/40[13]|status|HTTP|models/); }
   });
   test("Get a key opens Anthropic's own page, only on the person's press, and a failure never shows a raw error", () => {

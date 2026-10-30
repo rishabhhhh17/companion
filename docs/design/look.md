@@ -81,6 +81,7 @@ One scale, used everywhere (M15 wave 3); no other sizes. Space: `--space-1` to `
 - Settings also opens in its own normal Mac window, the way notch apps (NotchNook, Alcove) keep their settings out of the notch. It has a title bar with the product's name and "Settings", close and minimise, is 760 by 560 points, can be resized down to 640 by 460, and follows the Mac's light and dark through the same tokens.
 - The same layout as Settings in Home: the side list of Settings' sections on the left (the open one has a fill and a bar), one section at a time on the right, search across everything, grouped rows and real switches. The rules are the same ones in `style.css` (`.side-item`, `.group`, `.setting`, the switches); only the window's grid is its own (`.settings-window`).
 - It is the one window that takes the keyboard when it opens, because the person asked for it. There is only ever one: asking again brings it forward. Home and the island open it (`app/src/openSettings.ts`, the shell's `open_settings_window`); nothing opens it by itself.
+- 31 Oct 2026 (F28, T17): retired. There is one Settings, inside Home: its sidebar (with search) on the left, one page at a time on the right in a column that scrolls on its own while the bar and the sidebar stay put. Home takes at least the Large width and one fixed height while it is open (`island.rs` `with_settings`). The notch's "Add your key" and every deep link open Home at the page they name. `openSettings.ts`, `open_settings_window` and `settingswin.rs` are deleted.
 
 ## 9. Peeking
 

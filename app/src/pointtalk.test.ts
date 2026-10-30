@@ -331,7 +331,9 @@ describe("Apps Prompt help and the error explainer may read (ph.appAnswers)", ()
     expect(problemWords("frontChanged")).toBe(S.setProblem.frontChanged);
     expect(editor).toContain('changeSetting("ph.appAnswers", { op: "forgetAll" })');
     expect(editor).not.toContain("localStorage");
-    expect(page).toContain('d.key === "ph.appAnswers" ? <AppAnswers />');
+    // A summary row whose Edit opens a sheet with the editor (the spec, 3.5).
+    expect(page).toContain('if (d.key === "ph.appAnswers") {');
+    expect(page).toContain("<Sheet title={wordsOf(d.key).label} dirty={false} instant onSave={close} onClose={close}><AppAnswers />");
   });
 });
 
@@ -378,7 +380,8 @@ describe("Apps that count as a call (calls.apps)", () => {
     const d = defOf("calls.apps")!;
     expect(valueWords(d, d.default)).toBe(S.set["calls.apps"].usual);
     const page = src("./settingsPage.tsx");
-    expect(page).toContain('d.key === "calls.apps" ? <CallApps');
+    expect(page).toContain('if (d.key === "calls.apps") {');
+    expect(page).toContain("<CallApps value={list} disabled={off}");
     expect(page).toContain('invoke("front_app")');
   });
 });
@@ -388,6 +391,8 @@ describe("a list from a fixed set shows its words", () => {
     const d = defOf("speak.alsoSay")!;
     expect(valueWords(d, ["taskDone"])).toBe(S.set["speak.alsoSay"].options.taskDone);
     expect(valueWords(d, [])).toBe(S.setNone);
-    expect(src("./settingsPage.tsx")).toContain("d.allowedItems ? <AllowedList");
+    // Each item is a child row with its own switch (the founder, 31 Oct: never squashed round toggles).
+    expect(src("./settingsPage.tsx")).toContain("d.kind === \"list\" && d.allowedItems");
+    expect(src("./settingsPage.tsx")).toContain(": <AllowedList d={d} value={list} disabled={off} onChange={change} />)");
   });
 });

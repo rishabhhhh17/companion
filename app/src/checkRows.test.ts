@@ -133,22 +133,27 @@ describe("house rules are saved only for the project they came from", () => {
 describe("the keyboard and VoiceOver on these rows", () => {
   test("after Pictures to keep asks first, Cancel gives the keyboard back to the number box, which can take it", () => {
     const keep = part("function PicturesKeep(");
-    expect(keep).toContain("const inputId = useId();");
+    expect(part("function SettingRow(")).toContain("const labelId = useId(), helpId = useId(), switchId = useId(), inputId = useId();");
     expect(keep).toContain("back={inputId}");
     expect(keep).toContain("inputId={inputId}");
-    expect(part("function NumberControl(")).toMatch(/<input id=\{inputId\} type="text"/);
+    // Restore usual asks first too, and gives the keyboard back to the same box.
+    expect(part("function SettingRow(")).toContain('label={S.chkPicturesGo(resetGo, Number(usual))} back={inputId}');
+    // The Stepper part puts the id on its number box, so the keyboard lands there.
+    expect(part("function NumberControl(")).toMatch(/<Stepper id=\{inputId\}/);
+    expect(readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8")).toMatch(/<input id=\{id\} className="ui-stepper-value"/);
   });
   test("after a rule is removed, the keyboard goes to the next rule's Remove, or to the Add box", () => {
     const rules = part("function HouseRules(");
     expect(rules).toContain("takeIfLost(() => document.getElementById(id))");
     expect(rules).toMatch(/const remove = \(rule: string\) => \{[^\n]*setFocusTo\(/);
-    expect(rules).toContain("<select id={addId}");
+    // The Menu part puts the id on its button, so the keyboard lands there.
+    expect(rules).toContain("<Menu id={addId}");
   });
   test("what the editor says is one polite region that is always there, so VoiceOver reads each change", () => {
     const rules = part("function HouseRules(");
     expect(rules.match(/role="status"/g)).toHaveLength(1);
     expect(rules).not.toMatch(/\{(?:draft|note)[^}]*&& <div[^>]*role="status"/);
-    expect(rules).toContain('<div className={said ? "line" : "sr"} role="status">{said}</div>');
+    expect(rules).toContain('<div className={said ? "set-note" : "sr"} role="status">{said}</div>');
   });
   test("a switch to leave a check out reads as a sentence", () => {
     expect(S.chkLeaveOut(S.set["check.skip"].options.typecheck)).toBe("Leave out the type check");
@@ -184,13 +189,15 @@ describe("a reset that puts Pictures to keep back to usual says first how many p
   });
   test("each reset asks with that line: the row's own Reset, Reset this section and Reset all", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(src).toContain("const resetGo = d.key === \"pictures.keep\" ? picturesResetGoing([d.key], pictures, value) : 0;");
-    expect(src).toContain("onClick={resetGo > 0 ? () => setAskReset(true) : reset}");
-    expect(src).toContain("<div className=\"line\">{S.chkPicturesGo(resetGo, Number(usual))}</div>");
-    expect(src).toContain("const go = picturesResetGoing(changed, pictures, setting(\"pictures.keep\"));");
-    expect(src).toContain("{go > 0 && <div className=\"line\">{S.setPicturesGo(go, Number(defaultOf(\"pictures.keep\")))}</div>}");
-    expect(src).toContain("const goAll = picturesResetGoing(changedAll, inv?.receiptPictures, setting(\"pictures.keep\"));");
-    expect(src).toContain("{goAll > 0 && <div className=\"line\">{S.setPicturesGo(goAll, Number(defaultOf(\"pictures.keep\")))}</div>}");
+    // The row's own Restore usual (the changed dot's menu), Restore usual settings for a page (More options), and Reset all
+    // settings (the danger zone).
+    expect(src).toContain("const resetGo = d.key === \"pictures.keep\" ? picturesResetGoing([d.key], inv?.receiptPictures, value) : 0;");
+    expect(src).toContain("onRestore: r.canReset ? (resetGo > 0 ? () => setAskReset(true) : reset) : undefined");
+    expect(src).toContain("<p>{S.chkPicturesGo(resetGo, Number(usual))}</p>");
+    expect(src).toContain("const go = picturesResetGoing(changed, c.inv?.receiptPictures, setting(\"pictures.keep\"));");
+    expect(src).toContain("<p>{S.setPicturesGo(go, Number(defaultOf(\"pictures.keep\")))}</p>");
+    expect(src).toContain("const goAll = picturesResetGoing(changedAll, c.inv?.receiptPictures, setting(\"pictures.keep\"));");
+    expect(src).toContain("{goAll > 0 && <p>{S.setPicturesGo(goAll, Number(defaultOf(\"pictures.keep\")))}</p>}");
   });
 });
 

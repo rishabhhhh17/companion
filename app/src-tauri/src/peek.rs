@@ -661,7 +661,10 @@ mod wiring {
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }
         // The character's place and its trips go through the same helper, so a peek still moving never ends on an old target.
-        assert!(body("fn apply_dock(").contains("set_frame_moving(d, to_appkit(f, ph), None, None, &DOCK_MOVES)"));
+        // M47: at once, except a let go near an edge, which springs onto it (docking::land_secs: never with less motion).
+        let apply = body("fn apply_dock(");
+        assert!(apply.contains("set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES)"));
+        assert!(apply.contains("let secs = if reason == \"drag\" { docking::land_secs(&landing, reduce_motion()) } else { None };"), "{apply}");
         assert!(body("fn apply_dock(").contains("peek_placed();"));
         assert!(body("fn roam_set(").contains("set_frame_moving(d, to_appkit(r, ph), None, None, &DOCK_MOVES)"));
         assert!(body("fn set_frame_moving(").contains("let spring = secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);"));

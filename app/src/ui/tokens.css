@@ -1,0 +1,188 @@
+/* The design tokens (docs/design/2026-10-31-uiux-overhaul-spec.md, 2.1). This file is the only place a colour, a size, a
+   radius or a duration is written as a value: parts.css and the pages read these names (ui/styleLint.test.ts checks
+   parts.css). Two themes: Night, the usual one, on :root, and Paper (look.theme = paper) on :root[data-theme="paper"].
+   A stored "deep" has no rule here, so it reads as Night until Deep has a full, tested look (founder call 3, T17). The
+   notch and its panel stay black in every theme, because they are the hardware notch (the island page never takes
+   data-theme="paper": useLook.ts, keepNight). Contrast is computed from these
+   values in a11y.test.ts (4.5 to 1 for words, 3 to 1 for controls and marks). */
+
+:root {
+  color-scheme: dark;
+
+  /* ---------- Colour, Night ---------- */
+  --bg: #0B0B0C;                       /* the page: Home and Settings */
+  --surface-1: #141416;                /* a card */
+  --surface-2: #1A1A1D;                /* hover fill, menus, sheets, toasts */
+  --surface-3: #232327;                /* selected sidebar item, segmented thumb, pressed */
+  --inset: #08080A;                    /* inside a field, a segmented track or a stepper */
+  --fg: #F5F5F7;                       /* primary words and icons */
+  --fg-2: #A1A1A6;                     /* every other readable word */
+  --fg-3: #6E6E73;                     /* disabled words and decoration only, never words that must be read */
+  --line: rgba(255, 255, 255, .08);    /* hairlines, card edges, row separators */
+  --line-strong: rgba(255, 255, 255, .16);   /* a secondary button's or a chip's edge */
+  /* The edge a control is found by when nothing else draws it (a text field, a switch that is off): 3 to 1 on every
+     surface (WCAG 1.4.11; the spec's --line-strong is too faint for that). */
+  --edge-control: rgba(255, 255, 255, .38);
+  --edge-control-hover: rgba(255, 255, 255, .5);
+  --knob-off: rgba(245, 245, 247, .55);
+  --focus: rgba(245, 245, 247, .9);
+  --ok: #4CC27F;                       /* proven only */
+  --amber: #FFB020;                    /* needs you only */
+  --bad: #FF6B5E;                      /* not fixed, refused, the danger zone only */
+  --bad-edge: rgba(255, 107, 94, .45);
+  --bad-hover: rgba(255, 107, 94, .1);
+  --bad-press: rgba(255, 107, 94, .16);
+  --water: #59D2FF;                    /* "Squibby is acting" only */
+  --silver: #E9ECF1;                   /* the one main button's fill */
+  --silver-hover: #F4F6F8;
+  --silver-press: #D9DDE3;
+  --silver-lip: rgba(255, 255, 255, .9);
+  --silver-edge: #5C6168;
+  --silver-ink: #0A0A0B;
+  --scrim: rgba(0, 0, 0, .5);
+  --shadow-raised: 0 12px 32px rgba(0, 0, 0, .45);
+  --added: rgba(60, 180, 90, .25);     /* a line a fix added, behind words */
+  --removed: rgba(220, 70, 70, .22);   /* a line a fix took away, behind words */
+
+  /* The one main button. Night: flat silver with one edge of light and no band (2.2). Paper: ink (below). */
+  --main: var(--silver);
+  --main-hover: var(--silver-hover);
+  --main-press: var(--silver-press);
+  --main-ink: var(--silver-ink);
+  --main-shadow: inset 0 1px 0 var(--silver-lip), 0 1px 0 var(--silver-edge);
+  --main-shadow-press: inset 0 1px 0 var(--silver-lip);
+
+  /* ---------- Type (2.1). -apple-system alone; it picks Text or Display by itself. Sizes in rem, so the text size
+     choice (display.textSize) reaches every word; the values are at Standard, a 14 px root. ---------- */
+  --font: -apple-system, sans-serif;
+  --font-code: ui-monospace, Menlo, monospace;
+  --t-caption: calc(12rem / 14);  --lh-caption: calc(16rem / 14);
+  --t-small: calc(13rem / 14);    --lh-small: calc(18rem / 14);
+  --t-label: calc(14rem / 14);    --lh-label: calc(20rem / 14);
+  --t-body: calc(15rem / 14);     --lh-body: calc(22rem / 14);
+  --t-answer: calc(16rem / 14);   --lh-answer: calc(24rem / 14);
+  --t-display: calc(22rem / 14);  --lh-display: calc(28rem / 14);
+  --t-verdict: calc(28rem / 14);  --lh-verdict: calc(34rem / 14);
+  --w-regular: 400; --w-strong: 590; --w-bold: 700;
+  --track-display: -0.01em; --track-verdict: -0.015em;
+
+  /* ---------- Space: every gap snaps to these ---------- */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
+  --space-row-y: 10px;                 /* a row's padding, top and bottom */
+  --space-field-x: 10px;               /* inside a field, a sidebar item */
+  --space-btn-x: 16px;                 /* a primary button */
+  --space-btn2-x: 14px;                /* a secondary button */
+  --space-key-x: 5px;                  /* inside a key cap */
+  --gap-key: 3px;                      /* between two key caps */
+  --space-seg: 2px;                    /* the segmented track's inside */
+  --space-desc: 2px;                   /* label to description */
+  --space-indent: 32px;                /* a child row's label column (16 more than a row) */
+
+  /* ---------- Radii ---------- */
+  --r-key: 4px;                        /* key labels */
+  --r-thumb: 6px;                      /* segmented thumb, proof chips */
+  --r-control: 8px;                    /* buttons, fields, segmented track, menus, sidebar items, recent rows */
+  --r-card: 12px;                      /* cards, the ask field, sheets */
+  --r-panel: 20px;                     /* Home panel bottom corners (the notch shape keeps its own 30) */
+  --r-round: 50%;                      /* the status dot only */
+  --r-switch: 10px;                    /* a switch's track, half its height */
+
+  /* ---------- Sizes ---------- */
+  --h-sm: 28px;                        /* segmented, menus and steppers in rows, icon buttons, small buttons */
+  --h-md: 32px;                        /* buttons, fields, sidebar items */
+  --h-lg: 40px;                        /* Home's one main button and the notch's buttons */
+  --h-row: 44px;                       /* the least a row is */
+  --h-bar: 44px;                       /* Home's top bar */
+  --h-ask: 44px;                       /* the ask field */
+  --h-chip: 24px;                      /* a proof chip */
+  --h-key: 20px;                       /* a key cap */
+  --h-menu-item: 28px;
+  --w-seg: 56px;                       /* the least a segmented option is */
+  --w-stepper-value: 56px;
+  --w-row-label: 12rem;                /* the least a row's words get beside a control (168 at Standard) */
+  --w-switch: 36px; --h-switch: 20px; --knob: 16px; --knob-press: 20px; --knob-inset: 2px; --knob-travel: 16px;
+  --w-pic: 96px; --h-pic: 80px;        /* a picture choice */
+  --w-menu-min: 160px;                 /* the least a menu's list is */
+  --w-toast-max: 440px;
+  --w-sheet: 100%;                     /* a sheet is as wide as the content column it covers (set by its page) */
+  --icon-sm: 12px; --icon-md: 16px; --icon-lg: 20px;
+  --dot: 6px;                          /* the changed dot, the needs attention dot */
+  --hair: 1px; --hair-2: 1.5px;        /* a hairline; a thick line (switch off edge, picked picture) */
+  --ring: 2px; --ring-offset: 2px;     /* the focus ring */
+  --rise: 8px;                         /* how far a toast rises in */
+
+  /* ---------- Motion ---------- */
+  --dur-1: 120ms; --dur-2: 200ms; --dur-3: 280ms; --dur-4: 400ms; --dur-flash: 1200ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* The island's spring (islandSpring.ts), as a linear() curve: only for rare delight (the first run, a proven fix). */
+  --ease-spring: linear(0, 0.031, 0.111, 0.220, 0.344, 0.470, 0.591, 0.701, 0.796, 0.876, 0.940, 0.989, 1.024, 1.047, 1.061, 1.067, 1.068, 1.064, 1.057, 1.050, 1.041, 1.032, 1.024, 1.017, 1.011, 1.006, 1.003, 1.000, 0.998, 0.996, 0.996, 0.995, 0.995, 0.996, 0.996, 0.997, 1);
+  --press: .97;                        /* buttons only */
+  --press-pic: .98;
+  --menu-from: .98;
+
+  /* ---------- Older names, still read by the screens not yet rebuilt from the parts. Delete a name when nothing reads
+     it. --r-xl is the hardware notch's own corner (Home hangs from it); --r-pill is only the island's pill shape and the
+     character's own label, never a control. ---------- */
+  --danger: var(--bad);
+  --r-xl: 30px;
+  --r-pill: 999px;
+  --dur: var(--dur-2); --dur-slow: var(--dur-3); --ease: var(--ease-out);
+
+  /* ---------- The water (lookfeel.ts sets these on the page for the water chosen; these are Ocean) ---------- */
+  --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15;
+  --pond: #000000;                     /* the sky over Flowflow's water, in Home's pond and Settings' preview */
+
+  font: 14px var(--font);
+}
+
+/* Text size (Settings, textsize.ts): one root size, and every size above is in rem. Standard is the root above. Only
+   Home's page sets data-text; the island keeps its own. */
+:root[data-text="large"] { font-size: 16px; }
+:root[data-text="larger"] { font-size: 18px; }
+:root[data-text="largest"] { font-size: 20px; }
+:root[data-text="huge"] { font-size: 28px; }
+
+/* ---------- Colour, Paper (look.theme = paper): Home and Settings only ---------- */
+:root[data-theme="paper"] {
+  color-scheme: light;
+  --bg: #F2F2F4;
+  --surface-1: #FFFFFF;
+  --surface-2: #F7F7F8;
+  --surface-3: #E6E6EA;
+  --inset: #ECECEF;
+  --fg: #1D1D1F;
+  --fg-2: #636368;                     /* the spec's #6B6B70 falls under 4.5 to 1 on --surface-3 and --inset */
+  --fg-3: #A1A1A6;
+  --line: rgba(0, 0, 0, .08);
+  --line-strong: rgba(0, 0, 0, .18);
+  --edge-control: rgba(0, 0, 0, .46);
+  --edge-control-hover: rgba(0, 0, 0, .58);
+  --knob-off: rgba(29, 29, 31, .6);
+  --focus: rgba(29, 29, 31, .85);
+  --ok: #187A42;
+  --amber: #B87300;
+  --bad: #A93226;                      /* the spec's #C0392B falls under 4.5 to 1 on a danger button's pressed tint */
+  --bad-edge: rgba(169, 50, 38, .45);
+  --bad-hover: rgba(169, 50, 38, .08);
+  --bad-press: rgba(169, 50, 38, .14);
+  --water: #1676C8;
+  --pond: var(--surface-1);            /* a light sky over the same water, never a black box on a light page */
+  --added: rgba(24, 122, 66, .18);
+  --removed: rgba(169, 50, 38, .16);
+  /* Silver on white reads as disabled, so Paper's main button is ink, with no lip and no edge. */
+  --main: var(--fg);
+  --main-hover: #3A3A3D;
+  --main-press: #000000;
+  --main-ink: var(--bg);
+  --main-shadow: none;
+  --main-shadow-press: none;
+  --shadow-raised: 0 12px 32px rgba(0, 0, 0, .16);
+  --scrim: rgba(0, 0, 0, .25);
+}
+
+/* More contrast, from the Mac's own setting. */
+@media (prefers-contrast: more) {
+  :root { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
+  :root[data-theme="paper"] { --line: rgba(0, 0, 0, .24); --line-strong: rgba(0, 0, 0, .4); --fg-2: #4A4A4F; --edge-control: rgba(0, 0, 0, .6); }
+}

@@ -241,8 +241,9 @@ describe("the hints are shown where a person looks", () => {
     const page = read("./settingsPage.tsx");
     expect(onboarding).toContain("keyHints(keys)");
     expect(onboarding).toContain("S.keysTitle");
-    // Settings (settingsPage.tsx, T16): the keys row of the registry embeds the keys editor.
-    expect(body(page, "function SettingRow")).toContain('d.key === "keys.hotkeys" ? <KeysSection keys={keys} />');
-    expect(body(page, "function KeysSection")).toContain("keyRows(keys)");
+    // Settings (settingsPage.tsx; the overhaul spec, 3.4): the registry's keys.hotkeys is drawn as rows, one per job.
+    expect(body(page, "function ItemRows")).toContain('if (item === "keys.hotkeys") return null;');
+    expect(body(page, "function GroupView")).toContain("return <KeysRows keys={c.keys} />;");
+    expect(body(page, "function KeysRows")).toContain("keyRows(keys)");
   });
 });

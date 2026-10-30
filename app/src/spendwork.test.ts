@@ -130,7 +130,8 @@ describe("the model rows in Settings", () => {
   });
   test("the Settings page draws and searches only the rows shown, and only the options offered", () => {
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(page).toMatch(/searchSettings\(q, shownSettings\(\)\.filter\(\(x\) => shownNow\(x\.key, setting\)\)\)/);
+    expect(page).toMatch(/const shown = shownSettings\(\)\.filter\(\(x\) => shownNow\(x\.key, setting\)\);\n\s*const results = searchSettingsFor\(q, shown\);/);
+    expect(page).toContain("!shownSettings().some((x) => x.key === item)");
     expect(page).toMatch(/offeredOptions\(d\.key\)/);
   });
 });

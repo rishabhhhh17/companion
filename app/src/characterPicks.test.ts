@@ -15,9 +15,14 @@ describe("character picks (M35)", () => {
   test("the cards are a radio group with arrow keys, and show the live water in each colour", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const picks = src.slice(src.indexOf("function WaterSwatches("), src.indexOf("function CompanionHero("));
-    expect(picks).toContain('role="radiogroup"');
-    expect(picks).toContain('role="radio"');
-    expect(picks).toContain("ArrowRight");
+    // The Picture choice part (ui/parts.tsx): a radio group whose arrows move the choice (ui/partsLogic.ts moveIndex).
+    expect(picks).toContain("<PictureChoice labelledBy={labelId}");
+    const parts = readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8");
+    const pc = parts.slice(parts.indexOf("export function PictureChoice"), parts.indexOf("// ---------- Home and the notch"));
+    expect(pc).toContain('role="radiogroup"');
+    expect(pc).toContain('role="radio"');
+    expect(pc).toContain("moveIndex(e.key, at, options.length)");
+    expect(readFileSync(new URL("./ui/partsLogic.ts", import.meta.url), "utf8")).toContain("ArrowRight");
     expect(picks).toContain("<FlowMini");
     expect(picks).toContain("water={w}");
     expect(picks).toContain("still");

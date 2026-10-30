@@ -122,17 +122,17 @@ function Dock() {
   const flow = useFlow({ pose, state, calm: reduced, off: liveOn && !liveFailed });
   const button = useRef<HTMLButtonElement>(null);
   const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
-  // A click opens or closes the card; dragging moves the character to any edge or corner of the screen. The window moves
-  // under the pointer, so the screen position gives how fast: the top of the body trails behind it.
+  // A click opens or closes the card; dragging moves the character anywhere on the screen, or to any edge or corner. M47:
+  // the page says once that a drag began and the shell moves the window itself from then on (main.rs drag_follow), so it
+  // keeps up with the pointer; the page only feels the speed: the top of the body trails behind it.
   const press = useRef<{ x: number; y: number; dragging: boolean; at: number } | null>(null);
   const still = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false, at: e.timeStamp }; (e.target as HTMLElement).setPointerCapture(e.pointerId); flow.api.poke(e.clientX, e.clientY); void invoke("char_click"); };
   const move = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p) return;
-    if (!p.dragging && Math.hypot(e.screenX - p.x, e.screenY - p.y) > 5) p.dragging = true;
+    if (!p.dragging && Math.hypot(e.screenX - p.x, e.screenY - p.y) > 5) { p.dragging = true; void invoke("drag_dock"); }
     if (p.dragging) {
-      void invoke("drag_dock", { x: e.screenX, y: e.screenY });
       const dt = (e.timeStamp - p.at) / 1000;
       if (dt > 0.004) vel((e.screenX - p.x) / dt, (e.screenY - p.y) / dt);
       p.x = e.screenX; p.y = e.screenY; p.at = e.timeStamp;
@@ -147,6 +147,16 @@ function Dock() {
     vel(0, 0);
     if (!p) return;
     if (p.dragging) void invoke("drop_dock"); else void invoke("toggle_card");
+  };
+  // The release never reached the page (macOS took the pointer, the capture was lost): a drag still lets go, so its place is
+  // saved and the shell clears its drag; a press that never became a drag opens nothing. After a normal release press is
+  // already empty, so this does nothing (and drop_dock is safe to say twice).
+  const lost = () => {
+    const p = press.current;
+    press.current = null;
+    clearTimeout(still.current);
+    vel(0, 0);
+    if (p?.dragging) void invoke("drop_dock");
   };
   // M37c: dragged into its edge, the water flattens against it, harder the harder it is pushed, and wobbles back when let
   // go (the shell measures the press: docking.rs press_of). Let go in the middle of the screen, nothing to cling to.
@@ -225,7 +235,7 @@ function Dock() {
       <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
-        onPointerDown={down} onPointerMove={move} onPointerUp={up}
+        onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={lost} onLostPointerCapture={lost}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {liveOn && !liveFailed
           ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} onFallback={() => setLiveFailed(true)} /></Suspense>

@@ -418,7 +418,9 @@ describe("the pages are wired to the catalog", () => {
     expect(groupView("files", none).permissions).toEqual([]);
     expect(groupView("guide", off("guide")).on).toBe(false);
     expect(groupView("guide", (k) => (k === "groups.showUntried" ? false : undefined)).untried).toEqual([]);
-    expect(page).toContain("groups: <GroupsPanel />");
+    // In More options, General's Tools topic, behind Learn more: never a wall on the page itself.
+    expect(page).toContain('{topic.id === "more.general.tools" && <ToolsMore />}');
+    expect(page).toContain("{open && <GroupsPanel />}");
   });
   test("the tools tried are kept and reset like any setting but never drawn as a row or found by a search", () => {
     expect(shownSettings().map((d) => d.key)).not.toContain("groups.tried");
@@ -428,6 +430,7 @@ describe("the pages are wired to the catalog", () => {
   });
   test("the first run shows one short line for each group and a switch for it", () => {
     expect(ob).toContain("S.groups.short[id]");
-    expect(ob).toContain("aria-pressed={on}");
+    // The Switch part (ui/parts.tsx): on or off, said to VoiceOver as a switch.
+    expect(ob).toContain("<Switch checked={on} label={S.groups.names[id]}");
   });
 });

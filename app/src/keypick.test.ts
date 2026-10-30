@@ -60,17 +60,24 @@ describe("what the app says when it refuses", () => {
 
 describe("the picker in Settings", () => {
   test("sits under the presets, which stay as they are, and sends only an id to the app", () => {
-    const picker = page.slice(page.indexOf("function KeyPicker("), page.indexOf("// Talking and listening"));
+    const picker = page.slice(page.indexOf("function KeySheet("), page.indexOf("// Talking and listening"));
     expect(picker).toContain("c.choices.map(");              // the presets, as before
     expect(picker).toContain("customChord(");
     expect(picker).toContain('invoke("set_key", { action: job, id })');
     expect(picker).toContain("S.keysCustomUse");
-    // The words: tick boxes and a list, never a box that reads a key press (rule 8).
-    expect(picker).toContain('type="checkbox"'); expect(picker).toContain("<select");
+    // The words: a switch for each of Control, Option, Shift and Command, and a list (the Menu part), never a box that
+    // reads a key press (rule 8).
+    expect(picker).toContain("<Switch checked={t[mod]} label={S.keyWords[mod]}"); expect(picker).toContain("<Menu label={S.keysCustomKey}");
     expect(picker).not.toMatch(/onKeyDown|onKeyUp|keydown|keyup|KeyboardEvent/);
+    // The Menu's own keys only move through its list, inside its own focused window; they never become a chord or reach
+    // the app.
+    const parts = readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8");
+    expect(parts).not.toMatch(/invoke\(|set_key|customChord|addEventListener\("key/);
   });
   test("its words exist, and say what the boxes are for", () => {
     for (const k of ["keysCustomTitle", "keysCustomHelp", "keysCustomKey", "keysCustomUse", "keysNotEnough", "keysReserved"] as const) expect(typeof S[k], k).toBe("string");
     expect(S.keysCustomHelp).toContain("Control or Command");
+    // The modifiers are switches, so the words say turn on, never tick (review, 31 Oct).
+    expect(S.keysCustomHelp).toMatch(/^Turn on at least two/);
   });
 });

@@ -136,7 +136,7 @@ describe("what is said, with the setting", () => {
   test("its help promises no word count (a long instruction is said whole) and says when it is used", () => {
     const help = S.set["talk.shortSteps"].help;
     expect(help).not.toMatch(/\d+ words/);
-    expect(help).toMatch(/Speak to me/);
+    expect(help).toMatch(/Say answers out loud/);
     expect(help).toMatch(/Answer out loud/);
   });
   test("off (the usual value): a lesson step and a Show me step are said whole, as before, with no short line", () => {

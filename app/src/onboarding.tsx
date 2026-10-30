@@ -18,6 +18,7 @@ import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { COMPANIONS } from "./companion.ts";
 import { FlowMini } from "./flowflowMini.tsx";
+import { Switch } from "./ui/parts.tsx";
 
 /** A headline as its first sentence and the rest (M41): "Your AI built it." and "Let's finish it.". One sentence: all first. */
 export function twoTone(text: string): [string, string] {
@@ -120,8 +121,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
 
   if (step === "look") return <section className="panel onboarding look" aria-label={S.obTitle} ref={box}><FirstLook onGo={() => go(next(step))} /></section>;
 
-  // The one lime button, always at the bottom in the same place.
-  const main = (label: string, onClick: () => void, disabled = false) => <button className="fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;
+  // The one main button (the flat silver, ui/parts.css), always at the bottom in the same place.
+  const main = (label: string, onClick: () => void, disabled = false) => <button className="btn primary lg fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;
 
   const cast = COMPANIONS.filter((c) => c.ready);   // M28: only the ready ones
   return (
@@ -181,8 +182,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
             return (
               <div key={id} className="fr-power">
                 <div><b>{S.groups.names[id]}</b><span>{S.groups.short[id]}</span>{S.fr.asks[id] && <em>{S.fr.asks[id]}</em>}</div>
-                <button className="fr-tog" type="button" aria-pressed={on} aria-label={`${S.groups.names[id]}: ${on ? S.groups.isOn : S.groups.isOff}`}
-                  onClick={() => setGroupsOff((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))} />
+                <Switch checked={on} label={S.groups.names[id]} onChange={() => setGroupsOff((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))} />
               </div>
             );
           })}
@@ -215,7 +215,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           <ol className="fr-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>
           <div className="fr-keyrow">
             <input type="password" autoComplete="off" spellCheck={false} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) saveKey(); }} />
-            <button className="fr-save" type="button" onClick={saveKey}>{S.obKeySave}</button>
+            <button className="btn lg fr-save" type="button" onClick={saveKey}>{S.obKeySave}</button>
           </div>
           {check === "refused" && <div className="error" role="alert">{S.obKeyCheck.refused}</div>}
           {keyNote && <div className="error" role="alert">{keyNote}</div>}
@@ -262,8 +262,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <div className="fr-grow" />
         {first.needsNode && noNode && <p className="fr-small" role="status">{S.fr.practiceNeedsNode(noNode.fix ?? "")}</p>}
         {/* Taking it ends the first run here: the practice opens its own folder. The choices made on the way are kept. */}
-        <button className="fr-key" type="button" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.fr.practice}</button>
-        <button className="fr-quiet" type="button" onClick={finish}>{S.fr.goProject}</button>
+        <button className="btn primary lg fr-key" type="button" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.fr.practice}</button>
+        <button className="btn quiet fr-quiet" type="button" onClick={finish}>{S.fr.goProject}</button>
       </>)}
       </div>
     </section>

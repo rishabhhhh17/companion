@@ -80,8 +80,15 @@ function Mark({ w, count }: { w: Wings; count: number }) {
 }
 
 function Island() {
-  useLook();   // the water's colour for the work cards (M19)
-  const [m] = useModel();
+  useLook({ keepNight: true });   // the water's colour for the work cards (M19); the notch keeps Night in every theme
+  const [m, dispatch] = useModel();
+  // The project open now, for the hover panel's one true line when nothing is live (F28, 4.3: "test-shop works. Last fix
+  // proven 2 hours ago."). Its History rows come with the engine's own events, as Home's do.
+  useEffect(() => {
+    void invoke("get_project").then((p) => dispatch({ type: "ui.folderShown", project: String(p ?? "") })).catch(() => {});
+    const off = listen("project-changed", (e) => dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }));
+    return () => { off.then((f) => f()); };
+  }, []);
   const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0, hover: true });
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);

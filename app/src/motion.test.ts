@@ -230,8 +230,11 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     // place and its trips, and a peek's motion only as peek.rs decides it, with the one reader of reduced motion.
     const dock = calls.filter((c) => c.includes("&DOCK_MOVES")).map((c) => c.replace(/\)$/, ""));
     expect(calls.length - dock.length).toBe(3);
-    expect(dock.sort()).toEqual(["d, to_appkit(f, ph), None, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(r, ph), None, None, &DOCK_MOVES"]);
+    // M47: a drag begins by stopping any motion where the window is (at once), and a let go near an edge springs onto it
+    // (docking.rs land_secs), at once with the one reader of reduced motion; its place otherwise is at once.
+    expect(dock.sort()).toEqual(["d, f, None, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(r, ph), None, None, &DOCK_MOVES"]);
     expect(main).toContain("let secs = peek::motion(was, pose, calm, light);");
+    expect(main).toContain('let secs = if reason == "drag" { docking::land_secs(&landing, reduce_motion()) } else { None };');
     expect(main).toContain("let calm = reduce_motion();");
     expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::retract_ms(from, f, reduce_motion())");

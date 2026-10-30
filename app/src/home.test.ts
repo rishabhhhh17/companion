@@ -20,7 +20,7 @@ const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 describe("Home's tabs", () => {
   test("five tabs in a fixed order, named in the strings file", () => {
     expect([...TABS]).toEqual(["now", "did", "learn", "memory", "settings"]);
-    expect(TABS.map(tabName)).toEqual(["Now", "What I did", "Learn", "Memory", "Settings"]);
+    expect(TABS.map(tabName)).toEqual(["Now", "History", "Learn", "Memory", "Settings"]);   // F28, the overhaul spec 4.1: History
     for (const t of TABS) expect(tabName(t)).toBe(S.homeTabs[t]);
   });
   test("every part of the old card has exactly one place (a tab, or every tab), and every tab has something in it", () => {
@@ -56,7 +56,7 @@ describe("Home's tabs", () => {
   test("the card shows each part only on its own tab", () => {
     for (const p of Object.keys(PANEL_TAB)) expect(card, p).toContain(`show("${p}")`);
     // The settings rows (the registry's Settings page, T16) are on the Settings tab.
-    expect(card).toMatch(/\{show\("settings"\) && <SettingsPage /);
+    expect(card).toMatch(/\{show\("settings"\) && <SettingsView /);
     expect(card).not.toMatch(/\bsettingsOpen\b/);
     expect(card).not.toMatch(/\blessonsOpen\b/);
   });
@@ -235,10 +235,10 @@ describe("the tabs from the keyboard", () => {
     expect(tabKey("now", "ArrowUp")).toBe("settings");
     for (const k of ["Enter", " ", "Tab", "a"]) expect(tabKey("learn", k)).toBeNull();
   });
-  test("the places are round buttons in the Tab order, the open one marked, and a back arrow to Now (27 Oct 2026)", () => {
-    // No tab list any more: each place is a plain button, reached with Tab, that says whether it is open.
+  test("the places are quiet buttons with words in the Tab order, the open one marked, and a back arrow to Now (F28)", () => {
+    // No tab list any more: each place is a quiet Button with its name, reached with Tab, that says whether it is open.
     expect(card).not.toContain('role="tablist"');
-    expect(card).toMatch(/aria-pressed=\{t === home\.tab\}/);
+    expect(card).toMatch(/<Button key=\{t\} id=\{tabId\(t\)\} kind="quiet" size="sm" pressed=\{t === home\.tab\}/);
     expect(card).toContain('className="back" type="button" aria-label={S.look.back}');
     expect(card).toContain('role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title"');
     // A place shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
@@ -294,8 +294,8 @@ describe("Home steps aside for what it opens", () => {
     const open = page.slice(page.indexOf("function OpenButton("), page.indexOf("function CopyButton("));
     expect(open).toMatch(/invoke\("open_link", \{ url: l\.url \}\)\.then\(\(\) => \{ onNote\(""\); opened\.stepAside\(\); \}\)\.catch/);
     const settings = read("./settingsPage.tsx");
-    expect(settings).toMatch(/invoke\("report_problem", [^\n]*\.then\(\(n\) => \{ setExported\(S\.reportOpened\(String\(n\)\)\); onStepAside\(\); \}\)\.catch/);
-    expect(settings).toMatch(/invoke\("export_logs"\)\.then\(\(n\) => \{ setExported\(S\.exportLogsDone[^\n]*\); onStepAside\(\); \}\)\.catch/);
+    expect(settings).toMatch(/invoke\("report_problem", [^\n]*\.then\(\(n\) => \{ setExported\(S\.reportOpened\(String\(n\)\)\); c\.onStepAside\(\); \}\)\.catch/);
+    expect(settings).toMatch(/invoke\("export_logs"\)\.then\(\(n\) => \{ setExported\(S\.exportLogsDone[^\n]*\); c\.onStepAside\(\); \}\)\.catch/);
     expect(page).toContain("onStepAside={stepAside}");
   });
 });

@@ -2,6 +2,58 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A cleaner, quieter look everywhere: 31 Oct 2026
+
+- **One look, flat silver.** The striped silver and the line through the middle of it are gone. Each screen has at most one silver button, the thing to do next. Everything else, like Install, Try again, a watch's Fix it and each lesson's Start, is a plain button.
+- **Settings lines up.** Each switch, menu and number sits on the right of its name at the usual text size, and only drops under the name when the text is very big. A long microphone or voice name moves under the name instead of squashing it. A changed setting gets a small dot before its name, and the name no longer jumps sideways.
+- **Steadier controls.** A number is one joined box with minus and plus. An open menu rings the choice the arrow keys are on. The key a job uses is clearly marked in Change keys. History's filter and the Watches form use the same menus and number box as Settings.
+- **Settings stays put.** The top bar and the list of pages stay where they are, and only the page scrolls.
+- **Restore usual asks first.** Restoring a page's usual settings first lists every setting that will change, then offers Undo.
+- **Stop is always one press away.** While Squibby works, Stop shows in the top bar on every place, not only on Now.
+- **Buttons follow your tools.** With Fix turned off, Home no longer offers Fix it or Check my project.
+- **The notch stays readable.** With Paper chosen, the notch panel keeps its light words on black. A job and a result there are a plain line with no box, and Allow and Don't allow are the same buttons as everywhere else.
+- **Big text fits.** At the biggest text size the top bar wraps instead of pushing Close off the edge.
+- **Flowflow's water matches.** The preview in Settings is the same water as Home, and holds still with Still. On Paper its sky is light, not a black box.
+- **Dragging lets go cleanly.** If macOS takes the pointer away mid drag, Flowflow still saves where you left it.
+- **Less read from your Mac.** Nothing reads your Mac account's name any more, now that the greeting is gone.
+
+## Flowflow keeps up when you drag it: 31 Oct 2026
+
+- **Dragging is smooth now.** Flowflow stays right under your pointer, at the spot you took hold of it, instead of lagging behind.
+- **Let go anywhere.** Let go in the middle of the screen and it stays exactly there, with no jump and no drift back to an edge. Let go near an edge and it slides onto it (at once with Less motion or Reduce motion).
+
+## Home says how your project is: 31 Oct 2026
+
+- **Flowflow lives in Home again.** It floats on its water at the top of Home, beside the words. It moves as lively as you chose in Settings, holds still with Still, and stops drawing while Home is closed.
+- **One column, status first.** The top of Home says how your project is, in its own name: "test-shop works, checked 2 hours ago", "test-shop has a problem", or "Not checked yet". It is read only from the last check, so it never says works without proof.
+- **One main button.** Under the status there is one button, picked for you: Fix it, Check before going live, or Check my project. Then the box to type what is wrong, then your recent fixes. Each recent fix opens its own receipt.
+- **Words, not tiny icons, at the top.** History, Memory and Settings are buttons with their names. Learn shows until you finish your first practice. Your project's name is a menu: change folder, open one from a link, or pick one you used before.
+- **Nothing was dropped.** Explain an error, Show me, Plan it, Look it up and the rest are under More ways to ask, and the options there are switches.
+- **The job in one card.** While Squibby works, a card shows that a safety copy is saved, four steps (Finding, Fixing, Checking, Proven) that fill only as they really happen, what it is doing now, the time so far and the cost, with Stop in the card.
+- **The result in one card.** The result comes first in big words, then what changed and which checks ran, with Undo this fix in the card. The Undo and Stop strip at the foot of Home is gone.
+- **The notch shows only what is live.** Rest your pointer on it and you see one thing: the job with Stop, the result with Undo this fix and See proof, a question, Add your key when Claude is not connected, or one plain line like "test-shop works. Last fix proven 2 hours ago." The greeting and the quick buttons are gone; a click on the notch opens Home.
+
+## A calmer Settings, inside Home: 31 Oct 2026
+
+- **One Settings, inside Home.** The separate Settings window is gone. The gear, Command comma, the notch and the menu bar's new Settings… item all open Settings in Home, on the page you looked at last. While it is open, Home is a little wider and keeps one height, so it never jumps between pages.
+- **Eight short pages.** Account, General, Fixing, Flowflow, Keys and voice, Privacy, then About and More options. Each page has a title, one line on what it is for, and a few small groups. Search sits at the top of the list: Command F goes there, and plain words like "mic", "plan" or "zoom" find what you mean, even with a typo.
+- **Every setting is still there.** The ones most people never change are in More options, each page's in its own section, closed until you open it. Search finds every one, and changes them right in the results.
+- **No more walls of text.** Each setting has one short line. The longer explanation is behind a small info button beside it.
+- **Lists open in a sheet.** House rules, the apps that count as a call, the apps Prompt help may read and each job's keys show a short summary with Edit or Change, which slides a sheet in from the right.
+- **Keys show as keys.** Each job shows its keys the way the Mac draws them, with Change beside them. The jobs most people use come first; the rest are under Other jobs.
+- **Flowflow is back on its water** at the top of its page in Settings, and How lively is a row of pictures there.
+- **One danger zone.** Forgetting what Squibby remembers, removing your Claude key, deleting everything Squibby keeps and resetting all settings now sit together at the end of Privacy, each saying exactly what happens. Removing the key and deleting everything ask you to type the words first.
+- **A Plan card on Account.** For now it says Early access: nothing is charged, and you will be told before that changes.
+- **Plainer names.** For example Speak to me is now Say answers out loud, Quiet during calls is Quiet on calls, and Pause learning is Pause memory. Search still finds the old names.
+
+## One look, built from the same parts: 31 Oct 2026
+
+- **The silver is flat now.** No more dark band through the middle of the silver. It is one smooth fill with a thin edge of light, and it sits only on the one main button of a screen. Switches, titles and the drop ring are no longer silver.
+- **Plain titles.** Titles are plain white words, with no metal shine.
+- **Settings controls that look like controls.** Every on and off setting is the same round switch. Two or three choices sit side by side, all the same width. Four or more open a short list with a tick by the one chosen, so a long name never runs off its card. Numbers have a minus, the number and a plus, with the unit after it, and a number past the limit is set to the limit with a short note.
+- **Buttons you can see.** Buttons that used to be bare words now have a thin outline.
+- **Squibby looks the same in light and dark Mac mode.** It always uses its own near black look. Paper, the light look, is still there when you choose it in Settings.
+
 ## Quiet unless something is happening: 30 Oct 2026
 
 - **Flowflow now holds still when nothing is happening.** It moves when it is working, needs you, has finished, could not fix something, or is listening, then settles and stops drawing a few seconds later. To have it sway and follow your pointer again, pick Lively in Settings, Flowflow.

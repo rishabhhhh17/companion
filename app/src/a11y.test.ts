@@ -8,9 +8,11 @@ import { initial, reduce, type Model } from "./model.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { TEXT_SIZES } from "./textsize.ts";
+import { ALL_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const PAGES = readdirSync(new URL("./", import.meta.url).pathname).filter((f) => f.endsWith(".tsx")).sort();
+// The pages, and the parts every page is built from (ui/parts.tsx), so a part's own names are read too.
+const PAGES = [...readdirSync(new URL("./", import.meta.url).pathname).filter((f) => f.endsWith(".tsx")).sort(), "ui/parts.tsx"];
 
 // ---------- a small reader for the pages' elements ----------
 // Bun turns each element into a call, jsxDEV_x("button", { className: "btn", "aria-label": S.x, children: S.allow }, ...),
@@ -270,11 +272,13 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
   });
   test("the reader really reads the pages (it finds their controls)", () => {
     // Home is card.tsx and, since the settings registry (T16), its Settings tab in settingsPage.tsx.
+    // Settings is built from the parts (ui/parts.tsx, the overhaul spec, section 3): its buttons are Button, its boxes Field
+    // and Stepper.
     const els = [...elements(read("./card.tsx")).els, ...elements(read("./settingsPage.tsx")).els];
-    expect(els.filter((e) => e.tag === "button").length).toBeGreaterThan(150);
-    expect(els.filter((e) => e.tag === "input").length).toBeGreaterThan(8);
-    // The round buttons at the top of Home say whether their place is open (27 Oct 2026: no tab list any more).
-    expect(els.some((e) => e.props.has("aria-pressed"))).toBe(true);
+    expect(els.filter((e) => e.tag === "button" || e.tag === "Button").length).toBeGreaterThan(150);
+    expect(els.filter((e) => ["input", "Field", "Stepper"].includes(e.tag)).length).toBeGreaterThan(8);
+    // The quiet buttons with words at the top of Home say whether their place is open (F28: the Button part's `pressed`).
+    expect(els.some((e) => e.props.has("aria-pressed") || (e.tag === "Button" && e.props.has("pressed")))).toBe(true);
   });
   test("a group of controls that has a name is a group VoiceOver can read (aria-label only names things with a role)", () => {
     for (const f of PAGES) {
@@ -566,7 +570,7 @@ describe("Home from the keyboard alone (part 2)", () => {
         expect(back, `${s} has a way back`).toBeTruthy();
         expect(pages, `${s}: the opener carries id={${back}}`).toContain(`id={${back}}`);
         expect(block, `${s} has onCancel`).toMatch(/onCancel=\{/);
-        expect(block, `${s}: the safe choice is marked`).toContain("data-cancel");
+        expect(block, `${s}: the safe choice is marked`).toMatch(/data-cancel|<CancelButton /);
       }
     }
     expect(n).toBe(6);
@@ -581,10 +585,14 @@ describe("Home from the keyboard alone (part 2)", () => {
       const block = card.slice(open, card.indexOf("</ConfirmStep>", at));
       const back = /back=\{(\w+)\}/.exec(block)?.[1];
       expect(back, `${s} has a way back`).toBeTruthy();
-      expect(card, `${s}: the opener carries id={${back}}`).toContain(`id={${back}}`);
+      // The opener carries that id itself, or is a danger zone row given it (settingsPage.tsx DangerZone `row(id, ...)`).
+      expect(card, `${s}: the opener carries id={${back}}`).toMatch(new RegExp(`id=\\{${back}\\}|row\\(${back},`));
       expect(block, `${s} has onCancel`).toMatch(/onCancel=\{/);
-      expect(block, `${s}: the safe choice is marked`).toContain("data-cancel");
+      expect(block, `${s}: the safe choice is marked`).toMatch(/data-cancel|<CancelButton /);
     }
+    // The safe choice part: a Button with `cancel`, which the part marks data-cancel.
+    expect(card).toContain("return <Button cancel disabled={disabled} onClick={onClick}>{S.planCancel}</Button>;");
+    expect(read("./ui/parts.tsx")).toContain("data-cancel={cancel || undefined}");
   });
   test("the confirm step takes the keyboard only after the person's own press, and gives it back", () => {
     const c = read("./confirm.tsx");
@@ -637,16 +645,21 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(card).toContain("useEffect(() => { takeIfLost(() => placeEl(home.tab)); }, [home.tab]);");
   });
   test("a box put away with Esc gives the keyboard back to the button that opened it", () => {
-    for (const box of ["S.openLinkLabel", "S.obKeyLabel", "S.memoryEdit}: ${l.text}"]) {
+    for (const box of ["S.openLinkLabel", "S.memoryEdit}: ${l.text}"]) {
       const at = card.indexOf(box);
       expect(at, box).toBeGreaterThan(-1);
       const line = card.slice(card.lastIndexOf("\n", at), card.indexOf("\n", at));
       expect(line, box).toMatch(/e\.key === "Escape"\) \{ e\.stopPropagation\(\); [^}]*focusBack\(/);
     }
+    // A sheet (the new key in Settings, the lists, the keys) closes with Esc too, and gives the keyboard back to the button
+    // that opened it, by the same rule (focus.ts takeIfLost).
+    const sheet = body(read("./ui/parts.tsx"), "Sheet");
+    expect(sheet).toContain('e.key === "Escape"');
+    expect(sheet).toContain("takeIfLost(() => opener.current");
   });
   test("taking a file off the ask box gives the keyboard back to the box, and what was added or taken away is said", () => {
     // The Remove button goes with its chip, so the keyboard would fall out of Home: it goes back to the box (focus.ts).
-    const remove = card.split("\n").find((l) => l.includes("aria-label={S.attachRemove(a.name)}"))!;
+    const remove = card.split("\n").find((l) => l.includes("label={S.attachRemove(a.name)}"))!;
     expect(remove).toContain("focusBack(askId)");
     expect(remove).not.toContain(".focus(");
     expect(remove).toContain("setAttachSaid(S.attachRemoved(a.name))");
@@ -667,25 +680,35 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(panel).not.toMatch(/\{filtering && <div[^>]*role="status"/);
   });
   test("each settings row is a named group, so VoiceOver and the keyboard know where they are", () => {
-    const page = read("./settingsPage.tsx");
-    // Each setting is a group named by its own label; each section is named by its title; the fixed parts are Groups.
-    const row = page.slice(page.indexOf("function SettingRow("), page.indexOf("\n}\n", page.indexOf("function SettingRow(")));
-    expect(row).toContain('<div role="group" aria-labelledby={labelId} className="setting">');
-    expect(row).toContain('<span className="line" id={labelId}><b>{r.label}</b></span>');
-    const sec = page.slice(page.indexOf("function SettingsSection("), page.indexOf("\n}\n", page.indexOf("function SettingsSection(")));
-    // (Shown alone in the side list's Settings, the heading is kept for VoiceOver only: className "sr".)
-    expect(sec).toMatch(/<section aria-labelledby=\{headId\}[^>]*>\s*(\{\/\*[^]*?\*\/\}\s*)?<h3 id=\{headId\}( className=\{alone \? "sr" : undefined\})?>\{title\}<\/h3>/);
-    const settings = page.slice(page.indexOf("export function SettingsPage("));
-    expect(settings.match(/<Group title=\{S\.[\w.]+\}>/g)?.length ?? 0).toBeGreaterThanOrEqual(5);
-    const g = page.slice(page.indexOf("function Group"), page.indexOf("\n}\n", page.indexOf("function Group")));
-    expect(g).toMatch(/role="group" aria-labelledby=\{id\}/);
-    expect(g).toMatch(/<h3 id=\{id\}>/);
-    // Switches say on or off to VoiceOver; choices are a radio group the arrows move through.
-    expect(row).toContain('role="switch" aria-checked={value === true}');
-    const choice = page.slice(page.indexOf("function ChoiceControl("), page.indexOf("\n}\n", page.indexOf("function ChoiceControl(")));
-    expect(choice).toContain('role="radiogroup" aria-labelledby={labelId}');
-    expect(choice).toContain('role="radio" aria-checked={o.id === value} tabIndex={i === at ? 0 : -1}');
-    for (const k of ["ArrowRight", "ArrowLeft", "Home", "End"]) expect(choice).toContain(k);
+    const page = read("./settingsPage.tsx"), parts = read("./ui/parts.tsx");
+    const fn = (src: string, name: string) => src.slice(src.indexOf(`function ${name}`), src.indexOf("\n}\n", src.indexOf(`function ${name}`)));
+    // Each setting is a Row (ui/parts.tsx), a group named by its own label; each page's group and each More topic is a
+    // Group (named by its title) or a Disclosure; the parts that are not settings are Rows in those Groups.
+    const row = fn(page, "SettingRow(");
+    expect(row).toContain("<Row id={anchor} label={r.label}");
+    expect(row).toContain("labelId={labelId}");
+    expect(fn(parts, "Row(")).toContain('<div role="group" aria-labelledby={lid} className="ui-row"');
+    expect(fn(page, "GroupView(")).toContain("<Group id={id} title={title || undefined} footer={foot}>");
+    expect(fn(page, "TopicView(")).toContain("<Disclosure id={topic.id}");
+    expect(fn(parts, "Disclosure(")).toContain('<button type="button" className="ui-disc-head" aria-expanded={open} aria-controls={bodyId}');
+    const settings = page.slice(page.indexOf("// ---------- the parts that are not settings ----------"));
+    expect(settings.match(/<Row id=\{fixedAnchor\("\w+"\)\}/g)?.length ?? 0).toBeGreaterThanOrEqual(8);
+    expect(page).not.toMatch(/<h3 className="google-head"|className="line"|className="row"/);
+    const g = fn(parts, "Group(");
+    expect(g).toMatch(/<section className="ui-group" id=\{id\} aria-labelledby=\{title \? hid : undefined\}/);
+    expect(g).toMatch(/<h3 className="ui-group-title" id=\{hid\}>/);
+    // Switches say on or off to VoiceOver; choices are a radio group the arrows move through, or a menu past three.
+    expect(row).toContain("<Switch id={switchId} checked={value === true} labelledBy={labelId}");
+    expect(fn(parts, "Switch(")).toContain('role="switch" className="ui-switch" aria-checked={checked}');
+    const choice = fn(page, "ChoiceControl(");
+    expect(choice).toContain("<Segmented labelledBy={labelId}");
+    expect(choice).toContain("<Menu labelledBy={labelId}");
+    const seg = fn(parts, "Segmented<");
+    expect(seg).toContain('role="radiogroup"');
+    expect(seg).toContain('role="radio" className="ui-seg-opt" aria-checked={o.id === value} tabIndex={i === at ? 0 : -1}');
+    expect(seg).toContain("moveIndex(e.key, at, options.length)");
+    const logic = read("./ui/partsLogic.ts");
+    for (const k of ["ArrowRight", "ArrowLeft", "Home", "End"]) expect(logic).toContain(k);
   });
   test("the first run's steps: after Continue or Back the keyboard goes to the new step's heading", () => {
     const ob = read("./onboarding.tsx");
@@ -696,9 +719,10 @@ describe("Home from the keyboard alone (part 2)", () => {
     expect(ob).toContain('setAttribute("tabindex", "-1")');
   });
   test("a focus ring shows on whatever has the keyboard, and nothing takes it away without its own", () => {
-    const css = rules(read("./style.css"));
+    const css = rules(ALL_CSS());
     const ring = css.find((r) => r.sel === ":focus-visible" && !r.media);
-    expect(ring?.decl.outline).toMatch(/^2px solid /);
+    expect(ring?.decl.outline).toBe("var(--ring) solid var(--focus)");
+    expect(rules(TOKENS_CSS()).find((r) => r.sel === ":root" && !r.media)!.decl["--ring"]).toBe("2px");
     for (const r of css) {
       const off = /^(none|0)\b/.test(r.decl.outline ?? "") || r.decl.all === "unset";
       if (!off) continue;
@@ -753,56 +777,88 @@ const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return 
 const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const colourIn = (v: string) => /(var\([^)]+\)|#[0-9a-f]{3,6}\b|rgba?\([^)]+\)|color-mix\(.+\)|\btransparent\b)/i.exec(v)?.[1] ?? null;
 
-describe("text and focus colours meet WCAG AA in light and dark (part 4)", () => {
-  const css = rules(read("./style.css"));
-  const light = Object.fromEntries(Object.entries(css.find((r) => r.sel === ":root" && !r.media)!.decl).filter(([k]) => k.startsWith("--")));
-  const darkRule = css.find((r) => r.sel === ":root" && /prefers-color-scheme: dark/.test(r.media ?? ""));
-  // Home is black in both Mac themes (27 Oct 2026): its own tokens on its page's root, checked as a third theme.
-  const homeRule = css.find((r) => r.sel === ":root.home-page" && !r.media);
-  const paperRule = css.find((r) => r.sel === ':root.home-page[data-theme="paper"]' && !r.media);
-  const deepRule = css.find((r) => r.sel === ':root.home-page[data-theme="deep"]' && !r.media);
-  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }],
-    ["Home on Paper", { ...light, ...homeRule!.decl, ...paperRule!.decl }], ["Home on Deep sea", { ...light, ...homeRule!.decl, ...deepRule!.decl }]];
+describe("text, controls and marks meet WCAG AA in Night and Paper (part 4)", () => {
+  // The look's tokens are in ui/tokens.css: Night on :root (the usual theme, every page), Paper on :root[data-theme="paper"]
+  // (look.theme, Home and Settings only), and each with the Mac's More contrast. Every rule of the three stylesheets is read.
+  const css = rules(ALL_CSS());
+  const tokRules = rules(TOKENS_CSS());
+  const decls = (sel: string, media: RegExp | null) => Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === sel && (media ? media.test(r.media ?? "") : !r.media))?.decl ?? {}).filter(([k]) => k.startsWith("--")));
+  const night = decls(":root", null), paper = { ...night, ...decls(':root[data-theme="paper"]', null) };
+  const more = /prefers-contrast: more/;
+  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper],
+    ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
-  test("Home's black token set is there, and its result cards keep their words readable", () => {
-    expect(homeRule!.decl["--bg"]).toBe("#000000");
-    const t = { ...light, ...homeRule!.decl }, cc = (v: string) => parseColor(v, t);
-    for (const w of ["var(--fg)", "var(--muted)", "var(--danger)"]) expect(ratio(cc(w), cc("var(--card)")), `${w} on a result card`).toBeGreaterThanOrEqual(4.5);
+  // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.
+  const DISABLED = /:disabled|\[data-disabled\]|\[aria-disabled/;
+  test("Night is the usual theme on every page, Paper is the only other, and the Mac's light or dark changes nothing", () => {
+    expect(night["--bg"]).toBe("#0B0B0C");
+    expect(paper["--bg"]).toBe("#F2F2F4");
+    expect(css.some((r) => /prefers-color-scheme/.test(r.media ?? "")), "no rule follows the Mac's light or dark").toBe(false);
+    // Deep is hidden (founder call 3, T17): no rule draws it, so a stored "deep" reads as Night.
+    expect(ALL_CSS()).not.toContain('data-theme="deep"');
+    expect(themes[1][1]["--bg"]).not.toBe(night["--bg"]);
   });
-  test("the test reads both themes from style.css", () => {
-    expect(light["--bg"]).toBeTruthy();
-    expect(darkRule).toBeTruthy();
-    expect(themes[1][1]["--bg"]).not.toBe(light["--bg"]);
+  test("--fg-3 colours only disabled words and marks, never words that must be read", () => {
+    for (const r of css) if (/var\(--fg-3\)/.test(r.decl.color ?? "")) expect(DISABLED.test(r.sel), r.sel).toBe(true);
   });
+  // A drawing (an icon, a tick, a mark) is not words: it reaches 3 to 1, not 4.5 (WCAG 1.4.11).
+  const MARK = /-mark\b|\.ic\b|-tick\b/;
   for (const [theme, tokens] of themes) {
     const c = (v: string) => parseColor(v, tokens);
     const bg = c("var(--bg)");
+    // A value with a size in it ("var(--hair) solid var(--edge-control)"): its tokens read first, then its colour found.
+    const res = (v: string) => v.replace(/var\((--[\w-]+)\)/g, (m, k) => (/^-?[\d.]+(px|rem|em|%)?$/.test(tokens[k] ?? "") ? tokens[k] : m));
+    const col = (v: string) => colourIn(res(v));
+    const SURFACES = ["--bg", "--surface-1", "--surface-2", "--surface-3", "--inset"];
+    test(`${theme}: the readable words reach 4.5 to 1 on every surface, and the main button's words on its fill`, () => {
+      for (const s of SURFACES) for (const w of ["--fg", "--fg-2"]) expect(ratio(c(`var(${w})`), c(`var(${s})`)), `${w} on ${s}`).toBeGreaterThanOrEqual(4.5);
+      for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(c("var(--bad)"), c(`var(${s})`)), `--bad words on ${s}`).toBeGreaterThanOrEqual(4.5);
+      for (const f of ["--main", "--main-hover", "--main-press"]) expect(ratio(c("var(--main-ink)"), c(`var(${f})`)), `the main button's words on ${f}`).toBeGreaterThanOrEqual(4.5);
+      for (const f of ["--silver", "--silver-hover", "--silver-press"]) expect(ratio(c("var(--silver-ink)"), c(`var(${f})`)), `words on ${f}`).toBeGreaterThanOrEqual(4.5);
+    });
+    test(`${theme}: marks, control edges and the focus ring reach 3 to 1`, () => {
+      for (const s of ["--bg", "--surface-1", "--surface-2"]) {
+        const under = c(`var(${s})`);
+        for (const m of ["--ok", "--amber", "--bad", "--water", "--focus", "--fg"]) expect(ratio(over(c(`var(${m})`), under), under), `${m} on ${s}`).toBeGreaterThanOrEqual(3);
+        // A field's edge and a switch that is off are found by their edge; the off knob by its own grey.
+        for (const m of ["--edge-control", "--knob-off"]) expect(ratio(over(c(`var(${m})`), under), under), `${m} on ${s}`).toBeGreaterThanOrEqual(3);
+      }
+      expect(ratio(over(c("var(--edge-control)"), c("var(--inset)")), c("var(--surface-1)")), "a field's edge between its fill and the card").toBeGreaterThanOrEqual(3);
+      // A switch that is on: the filled track against the card, and its knob against the track.
+      expect(ratio(c("var(--fg)"), c("var(--bg)")), "the on knob on its track").toBeGreaterThanOrEqual(3);
+    });
     test(`${theme}: every rule that sets a text colour is readable on what is behind it (4.5 to 1)`, () => {
       let checked = 0;
       for (const r of css) {
-        if (r.media || !r.decl.color || /inherit|currentColor|CanvasText/.test(r.decl.color)) continue;
+        if (r.media || !r.decl.color || /inherit|currentColor|CanvasText/.test(r.decl.color) || DISABLED.test(r.sel)) continue;
         const own = colourIn(r.decl.background ?? r.decl["background-color"] ?? "");
         const behind = own ? over(c(own), ISLAND.test(r.sel) ? c("#000") : bg) : ISLAND.test(r.sel) ? c("#000") : bg;
         const fg = over(c(r.decl.color), behind);
-        expect(ratio(fg, behind), `${theme} ${r.sel}: ${r.decl.color} on ${own ?? "the page"}`).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(fg, behind), `${theme} ${r.sel}: ${r.decl.color} on ${own ?? "the page"}`).toBeGreaterThanOrEqual(MARK.test(r.sel) ? 3 : 4.5);
         checked++;
       }
       expect(checked).toBeGreaterThan(10);
     });
-    test(`${theme}: buttons and tabs under the pointer stay readable`, () => {
-      const hover = c(colourIn(one(".btn:hover:not(:disabled)")!.decl.background)!);
-      const primaryHover = one(".btn.primary:hover:not(:disabled)");
-      expect(primaryHover, "the main button keeps its own colour under the pointer").toBeTruthy();
-      const ph = c(colourIn(primaryHover!.decl.background)!);
-      expect(ratio(c(one(".btn")!.decl.color), over(hover, bg)), "a button").toBeGreaterThanOrEqual(4.5);
-      expect(ratio(c(one(".btn.danger")!.decl.color), over(hover, bg)), "a warning button").toBeGreaterThanOrEqual(4.5);
-      expect(ratio(c(one(".btn.primary")!.decl.color), over(ph, bg)), "the main button").toBeGreaterThanOrEqual(4.5);
-      // Home's round buttons and quick actions, still and under the pointer.
-      for (const [still, hover] of [[".icon-btn, .back", ".icon-btn:hover, .back:hover"], [".chip-btn", ".chip-btn:hover"], [".section-pill", ".section-pill:hover"], [".pill", ".pill:hover"]]) {
-        const fg = c(one(still)!.decl.color);
-        expect(ratio(fg, over(c(colourIn(one(still)!.decl.background)!), bg)), still).toBeGreaterThanOrEqual(4.5);
-        expect(ratio(fg, over(c(colourIn(one(hover)!.decl.background)!), bg)), hover).toBeGreaterThanOrEqual(4.5);
+    test(`${theme}: every button stays readable still, under the pointer and pressed`, () => {
+      const fill = (sel: string) => { const v = colourIn(one(sel)?.decl.background ?? ""); expect(v, `${sel} has a fill`).toBeTruthy(); return over(c(v!), bg); };
+      const words = (sel: string) => c(one(sel)!.decl.color);
+      // The Button part: the usual (secondary) one, quiet, danger, and the one main button.
+      for (const s of [".btn:hover:not(:disabled)", ".btn:active:not(:disabled)"]) expect(ratio(words(".btn"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(words(".btn.quiet"), bg), "a quiet button").toBeGreaterThanOrEqual(4.5);
+      for (const s of [".btn.danger:hover:not(:disabled)", ".btn.danger:active:not(:disabled)"]) expect(ratio(words(".btn.danger"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      for (const s of [".btn.primary", ".btn.primary:hover:not(:disabled)", ".btn.primary:active:not(:disabled)"]) expect(ratio(words(".btn.primary"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      // The sidebar, a menu's items and a recent fix: the words on their hover and selected fills.
+      for (const s of [".sb-item:hover", ".sb-item:active", '.sb-item[aria-current="page"]']) expect(ratio(words(".sb-item"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      expect(ratio(words(".ui-menu-item"), over(c(colourIn(one(".ui-menu-item[data-active]")!.decl.background)!), c("var(--surface-2)"))), "a menu item under the pointer").toBeGreaterThanOrEqual(4.5);
+      for (const s of [".ui-recent:hover", ".ui-recent:active"]) expect(ratio(words(".ui-recent-name"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      // The open place's quiet button in Home's top bar (F28): its words on its fill.
+      expect(ratio(words('.btn.quiet[aria-pressed="true"]'), fill('.btn.quiet[aria-pressed="true"]')), "the open place").toBeGreaterThanOrEqual(4.5);
+      // Home's back arrow, the one button of its own left (the places, Undo, Stop and the quick actions are Buttons now).
+      for (const [still, hover] of [[".back", ".back:hover"]]) {
+        const fg = words(still);
+        expect(ratio(fg, fill(still)), still).toBeGreaterThanOrEqual(4.5);
+        expect(ratio(c(one(hover)!.decl.color ?? one(still)!.decl.color), fill(hover)), hover).toBeGreaterThanOrEqual(4.5);
       }
     });
     test(`${theme}: what was added or removed in a diff is readable on its tint`, () => {
@@ -811,33 +867,40 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
         expect(ratio(c("var(--fg)"), tint), s).toBeGreaterThanOrEqual(4.5);
       }
     });
-    test(`${theme}: the focus ring, a box's edge and the open tab's line stand out (3 to 1)`, () => {
-      expect(ratio(c(colourIn(one(":focus-visible")!.decl.outline)!), bg), "focus ring").toBeGreaterThanOrEqual(3);
+    test(`${theme}: the focus ring, a box's edge and the open place stand out (3 to 1)`, () => {
+      expect(res(one(":focus-visible")!.decl.outline)).toMatch(/^2px solid /);
+      expect(ratio(c(col(one(":focus-visible")!.decl.outline)!), bg), "focus ring").toBeGreaterThanOrEqual(3);
       expect(ratio(c(colourIn(one(".character:focus-visible")!.decl.outline)!), bg), "the character's focus ring").toBeGreaterThanOrEqual(3);
-      // A button is a quiet word (its words are the sign, readable at 4.5 to 1 above) or, for the one main thing, a filled pill.
-      expect(one(".btn")!.decl.border, "a plain button has no edge of its own").toBe("0");
-      expect(ratio(c(colourIn(one(".btn.primary")!.decl.background)!), bg), "the main button's fill").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(colourIn(one(".ask input, .row input[type=\"text\"]")!.decl.border)!), bg), "a text box's edge").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(colourIn(one(".ask textarea")!.decl.border)!), bg), "the ask box's edge").toBeGreaterThanOrEqual(3);
-      expect(ratio(c(colourIn(one('.row input[type="search"]')!.decl.border)!), bg), "the search box's edge").toBeGreaterThanOrEqual(3);
-      // The open place's round button and the open settings section are filled with the words' colour (3 to 1 on the page),
-      // and their own drawing or words read on that fill.
-      for (const s of ['.icon-btn[aria-pressed="true"]', '.section-pill[aria-current="page"]']) {
-        const fill = c(one(s)!.decl.background);
-        expect(ratio(fill, bg), s).toBeGreaterThanOrEqual(3);
-        expect(ratio(c(one(s)!.decl.color), fill), `${s} words`).toBeGreaterThanOrEqual(4.5);
+      // A button is found by its words (4.5 to 1 above), so its edge is a hairline; the main button by its fill.
+      expect(ratio(over(c(colourIn(one(".btn.primary")!.decl.background)!), bg), bg), "the main button's fill").toBeGreaterThanOrEqual(3);
+      // Every box a person types in is found by its edge.
+      for (const s of [".ui-field", ".ui-stepper-box", ".ask textarea", '.ask input, .row input[type="text"]', '.row input[type="search"]', ".home .ask"]) {
+        expect(ratio(over(c(col(one(s)!.decl.border)!), bg), bg), `${s}'s edge`).toBeGreaterThanOrEqual(3);
       }
-      // The ask box's edge in Home.
-      expect(ratio(c(colourIn(one(".home .ask")!.decl.border)!), bg), "Home's ask box edge").toBeGreaterThanOrEqual(3);
-      if (tokens["--ask-edge"]) expect(ratio(c(colourIn(one('.home[data-view="now"] .ask')!.decl.border)!), bg), "the command bar's edge on Now").toBeGreaterThanOrEqual(3);
+      // The open place's button in Home (F28, a quiet Button with words): filled and in full --fg, while the others are
+      // --fg-2 with no fill, so it is never told by a tint alone; the place's own title beside the back arrow names it too.
+      const s = '.btn.quiet[aria-pressed="true"]';
+      expect(one(s)!.decl.color).toBe("var(--fg)");
+      expect(one(s)!.decl.background).toBe("var(--surface-2)");
+      expect(one(".btn.quiet")!.decl.color).toBe("var(--fg-2)");
+      expect(read("./card.tsx")).toContain('<h1 id="home-title" className="view-title">{viewTitle}</h1>');
+      // The open page in Settings is a filled row, and its name is bold too, so it is never shown by a tint alone.
+      expect(one('.sb-item[aria-current="page"]')!.decl["font-weight"]).toBe("var(--w-strong)");
+      // The option the arrow keys are on in an open menu: a ring as well as its fill, 3 to 1 on the fill and on the list
+      // (the fill alone is about 1.1 to 1; review, 31 Oct).
+      const ring = c(col(one(".ui-menu-list:focus .ui-menu-item[data-active]")!.decl.outline)!);
+      for (const s2 of ["--surface-2", "--surface-3"]) expect(ratio(ring, c(`var(${s2})`)), `the active option's ring on ${s2}`).toBeGreaterThanOrEqual(3);
+      // A button kept pressed (the key a job uses, in Change keys) of any kind: filled, and edged in --fg, 3 to 1 on the card
+      // and the sheet; its words stay readable on the fill.
+      const pressed = one('.btn[aria-pressed="true"]')!;
+      for (const s2 of ["--surface-1", "--surface-2"]) expect(ratio(c(pressed.decl["border-color"]), c(`var(${s2})`)), `a pressed button's edge on ${s2}`).toBeGreaterThanOrEqual(3);
+      expect(ratio(c(one(".btn")!.decl.color), c(pressed.decl.background)), "a pressed button's words").toBeGreaterThanOrEqual(4.5);
     });
-    test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
-      // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
+    test(`${theme}: the dot on a place that waits for the person stands out on the place, still or under the pointer (3 to 1)`, () => {
+      // For sighted people the dot is the only sign another place needs them (VoiceOver hears the words beside it).
       const dot = c(one(".tabdot")!.decl.background);
       expect(ratio(dot, bg), "on the page").toBeGreaterThanOrEqual(3);
-      // On a round button it sits in a ring of the page's own colour, so it is always seen against the page, still or under
-      // the pointer.
-      expect(one(".icon-btn .tabdot, .back .tabdot")!.decl["box-shadow"]).toBe("0 0 0 2px var(--bg)");
+      expect(one(".back .tabdot")!.decl["box-shadow"]).toBe("0 0 0 2px var(--bg)");
     });
     test(`${theme}: the island's words, ring and marks stand out on its black`, () => {
       const black = c("#000");
@@ -851,9 +914,9 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
 });
 
 describe("Home stays usable with bigger text (part 4)", () => {
-  const css = rules(read("./style.css"));
+  const css = rules(ALL_CSS());
   // Fixed heights only on things that hold no words, or whose size the shell sets to the point (the island's own window).
-  const NO_WORDS = [".strip::before", "details.more > summary::after", ".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-panel .ip-agent.ff-mini", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="look"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after", ".home .hero::before", ".home .waterline", ".home .waterline svg", ".fr-tank .waterline", ".fr-tank .waterline svg", ".fr-hello .fr-drop", ".fr-hello .fr-ripple", ".fr-tog::after", ".companion-hero .ch-water .waterline", ".companion-hero .ch-water .waterline svg", ".island-panel .ip-job[data-tone=\"working\"]::after"];
+  const NO_WORDS = [".job-bar", ".home-pond .ch-water .waterline, .companion-hero .ch-water .waterline", ".home-pond .ch-water .waterline svg, .companion-hero .ch-water .waterline svg", "details.more > summary::after", ".character", ".tabdot", ".panel.amber > h2::before", ".mark", ".lip .mark", ".check input", ".panel progress", ".sr", ".island", ".island-hit", ".lip", "html.island-page, body.island-page", ".island-flow", ".island-panel .ip-agent.ff-mini", ".island-peek", '.island-wing .mark[data-mark="dots"]', '.island-wing .mark[data-mark="bars"]', '.island-wing .mark[data-mark="tick"]', '.island-wing .mark[data-mark="dots"] i', '.island-wing .mark[data-mark="arc"]', '.island-wing .mark[data-mark="look"]', '.island-wing .mark[data-mark="bars"] i', '.setting button[role="switch"]::after', ".island-panel::after", ".fr-tank .waterline", ".fr-tank .waterline svg", ".fr-hello .fr-drop", ".fr-hello .fr-ripple", ".fr-tog::after", ".companion-hero .ch-water .waterline", ".companion-hero .ch-water .waterline svg", ".island-panel .ip-job[data-tone=\"working\"]::after"];
   test("nothing that holds words has a fixed height that would cut it off", () => {
     for (const r of css) {
       const h = r.decl.height ?? "";
@@ -867,7 +930,8 @@ describe("Home stays usable with bigger text (part 4)", () => {
       expect(r.decl.overflow ?? "", r.sel).not.toMatch(/hidden/);
       expect(r.decl["white-space"] ?? "", r.sel).not.toMatch(/nowrap/);
     }
-    const rows = css.filter((r) => [".row", ".tabs"].includes(r.sel));
+    const rows = css.filter((r) => [".row", ".tabs", ".bar", ".places"].includes(r.sel));
+    expect(rows.map((r) => r.sel), "Home's top bar and its places wrap too (Huge text at 640 wide; review, 31 Oct)").toEqual(expect.arrayContaining([".bar", ".places"]));
     // A row wraps to a new line; the places are a column down the side, where each word wraps inside its own place.
     for (const r of rows) if (r.decl["flex-direction"] !== "column") expect(r.decl["flex-wrap"], `${r.sel} wraps to a new line`).toBe("wrap");
   });
@@ -896,7 +960,7 @@ describe("Home stays usable with bigger text (part 4)", () => {
     }
     expect(sized, "the words in Home that have a size of their own").toBeGreaterThanOrEqual(10);
   });
-  test("each text size is a root size in style.css, bigger at each step; Standard is the size Home always had", () => {
+  test("each text size is a root size in ui/tokens.css, bigger at each step; Standard is the size Home always had", () => {
     const root = css.find((r) => r.sel === ":root" && !r.media)!;
     expect(root.decl.font).toMatch(/^14px /);
     let last = 14;
@@ -921,5 +985,29 @@ describe("Home stays usable with bigger text (part 4)", () => {
     expect(read("./settingsPage.tsx")).toContain('case "choice": return <ChoiceControl');
     // Only Home: the character's window and the island keep their sizes.
     for (const f of ["./dock.tsx", "./island.tsx", "./overlay.ts"]) expect(read(f), f).not.toContain("applyTextSize");
+  });
+});
+
+describe("the notch panel keeps Night's tokens on its black in every theme (review, 31 Oct)", () => {
+  // The notch is the hardware notch, black in every theme. Its panel is drawn from the same parts as Home (Button,
+  // VerdictLine, ProofChips), which read --fg and friends, so the island page must never take Paper's dark words.
+  const tokRules = rules(TOKENS_CSS());
+  const night = Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === ":root" && !r.media)!.decl).filter(([k]) => k.startsWith("--")));
+  const c = (v: string) => parseColor(v, night);
+  test("the island page asks for the notch's look, which pins Night whatever look.theme says", () => {
+    expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
+    const hook = read("./useLook.ts");
+    expect(hook).toContain('const theme = opts.keepNight ? "night" : chosen;');
+    expect(hook).toContain("applyLook(document.documentElement, water, theme);");
+  });
+  test("every part the panel uses reads on the notch black and on its card (#111113)", () => {
+    for (const under of ["#000", "#111113"]) {
+      const u = c(under);
+      for (const w of ["--fg", "--fg-2"]) expect(ratio(c(`var(${w})`), u), `${w} words on ${under}`).toBeGreaterThanOrEqual(4.5);
+      for (const m of ["--ok", "--amber", "--bad", "--focus", "--edge-control"]) expect(ratio(over(c(`var(${m})`), u), u), `${m} on ${under}`).toBeGreaterThanOrEqual(3);
+      // "Add your key", the notch's one main button: silver on black, and its words on the silver.
+      expect(ratio(c("var(--main)"), u), `the main button's fill on ${under}`).toBeGreaterThanOrEqual(3);
+    }
+    expect(ratio(c("var(--main-ink)"), c("var(--main)"))).toBeGreaterThanOrEqual(4.5);
   });
 });

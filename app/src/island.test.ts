@@ -2,6 +2,7 @@
 // non activating panel above the menu bar that can never take the keyboard, hidden in full screen apps, when the person
 // hides Companion and (when that setting is on) from screen sharing, and the pointer noticed only on our own window.
 // The geometry is tested in app/src-tauri/src/island.rs; these read the glue as text, because it needs a real Mac to run.
+import { TOKENS_CSS } from "./ui/cssFiles.ts";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
@@ -27,7 +28,7 @@ describe("the island page", () => {
     expect(page).toContain('invoke("island_click")');
     expect(page).toContain('listen("island-mode"');
     const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((m) => m[1]);
-    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state"]));
+    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project"]));   // F28 (4.3): the open project's name, for the hover panel's one true line
     expect(page).not.toMatch(/send_command|keydown|onKey/i);
   });
   test("is told what the island sits on: the notch, a pill in the menu bar, or the thin line on the top edge", () => {
@@ -218,7 +219,7 @@ describe("the island says what is next", () => {
     expect(page).toContain('listen("update-ready"');
     expect(page).toContain("islandLine(m, { update, group:");
     const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]);
-    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state"]));
+    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project"]));   // F28 (4.3): the open project's name, for the hover panel's one true line
     // The shell tells every window when a check finds (or no longer has) an update, and the island can ask on load.
     const check = fnBody("check_update");
     expect(check).toContain('app.emit("update-ready", json!({ "version": u.version }))');
@@ -231,7 +232,8 @@ describe("the island says what is next", () => {
     // The guard is updates.ts installAllowed, tested on the model there; Home asks it and nothing else, for the button, the
     // busy line and the press (an inverted guard here once offered Install only while a task ran).
     expect(card).not.toMatch(/canInstall\(/);
-    expect(card).toMatch(/<button className="btn primary" type="button" disabled=\{!installAllowed\(m\)\}[^>]*onClick=\{installUpdate\}>\{S\.updatesInstall\}<\/button>/);
+    // A secondary button: the hero's main button is the one silver on Now (the overhaul spec, 2.2; review, 31 Oct).
+    expect(card).toMatch(/<button className="btn" type="button" disabled=\{!installAllowed\(m\)\}[^>]*onClick=\{installUpdate\}>\{S\.updatesInstall\}<\/button>/);
     expect(card).toContain("{!installAllowed(m) && <div className=\"line muted\">{S.updatesBusy}</div>}");
     const install = card.slice(card.indexOf("const installUpdate = () =>"), card.indexOf("\n", card.indexOf("const installUpdate = () =>")));
     expect(install).toContain("if (!installAllowed(nowModel.current)) return;");
@@ -460,7 +462,7 @@ describe("the island's motion agrees with the app's timing", () => {
     const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
     const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
     expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-out\) both; \}/);   // M25: never ease in on what a person watches
-    expect(Number(/--dur-2: (\d+)ms/.exec(css)?.[1])).toBe(ms);
+    expect(Number(/--dur-2: (\d+)ms/.exec(TOKENS_CSS())?.[1])).toBe(ms);
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
     expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);
   });
@@ -511,7 +513,8 @@ describe("the bare notch (M46)", () => {
   test("brief and hover panels are one width, the island's PANEL_W, and plain words under a question use the system font", () => {
     expect(css).not.toMatch(/\.island-panel\[data-brief\] \{[^}]*width:/);
     expect(css).not.toMatch(/\.ip-text span \{[^}]*ui-monospace/);
-    expect(css).toMatch(/\.ip-text span code \{[^}]*ui-monospace/);   // only the exact command or path
+    expect(css).toMatch(/\.ip-text span code \{[^}]*font-family: var\(--font-code\)/);   // only the exact command or path
+    expect(TOKENS_CSS()).toMatch(/--font-code: ui-monospace,/);
   });
   test("needs you pulses three times, then holds steady, on the notch and on the pictures; never forever", () => {
     expect(css).toMatch(/\.island-wing \.mark\[data-state="needsYou"\] \{[^}]*island-needsYou-pulse 1\.6s ease-in-out 200ms 3 both/);
@@ -527,6 +530,18 @@ describe("the bare notch (M46)", () => {
     expect(page).toContain("ARM_MS");
     expect(page).toMatch(/selfGrown/);
     expect(page).toContain("if (!armed(grownAt, Date.now())) return;");
+  });
+  test("the hover panel is as wide as the black behind it: one width, the island's PANEL_W (the overhaul spec, 4.3)", () => {
+    const rs = readFileSync(new URL("../src-tauri/src/island.rs", import.meta.url), "utf8");
+    const w = Number(/pub const PANEL_W: f64 = (\d+)\.0;/.exec(rs)![1]);
+    expect(Number(/\n\.island-panel \{[^}]*width: (\d+)px;/.exec(css)![1])).toBe(w);
+  });
+  test("at rest the notch says nothing; on hover the panel shows one live thing, never a greeting or a launcher (F28)", () => {
+    const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project) });");
+    for (const gone of ["greeting(", "S.panel.go", "ip-pill", "PANEL_DO.find", "PANEL_DO.ship", "PANEL_DO.settings"]) expect(panel, gone).not.toContain(gone);
+    // Opened by itself (brief), only a question or a result: never the line or Add your key.
+    expect(panel).toContain('{brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}');
   });
   test("it never drops by itself for a start, a step or a cost: only a proven fix or a failure (resultPeekKey)", () => {
     expect(page).toContain("resultPeekKey(islandJobs(m))");

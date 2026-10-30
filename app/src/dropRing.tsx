@@ -73,10 +73,10 @@ function Outcome({ s, d }: { s: DropState; d: Dispatch }) {
   return (
     <div className="drop-outcome">
       <div className="line" role="status" aria-live="polite">{jobLine(j)}</div>
-      {j.phase === "running" && <button className="btn" type="button" onClick={() => void invoke("drop_stop")}>{S.drop.stop}</button>}
+      {j.phase === "running" && <button className="btn sm" type="button" onClick={() => void invoke("drop_stop")}>{S.drop.stop}</button>}
       {j.phase === "running" && j.percent !== null && <progress className="drop-progress" max={100} value={j.percent} aria-hidden="true" />}
-      {made.slice(0, 3).map((m) => <button key={m.i} className="btn" type="button" aria-label={`${S.drop.showInFinder}: ${m.name}`} onClick={() => void invoke("drop_reveal", { id, i: m.i })}>{S.drop.showInFinder}</button>)}
-      {j.phase !== "running" && <button className="btn" type="button" onClick={() => close(s, d)}>{S.drop.close}</button>}
+      {made.slice(0, 3).map((m) => <button key={m.i} className="btn sm" type="button" aria-label={`${S.drop.showInFinder}: ${m.name}`} onClick={() => void invoke("drop_reveal", { id, i: m.i })}>{S.drop.showInFinder}</button>)}
+      {j.phase !== "running" && <button className="btn sm" type="button" onClick={() => close(s, d)}>{S.drop.close}</button>}
     </div>
   );
 }
@@ -97,10 +97,10 @@ export function DropRing({ drop }: { drop: Drop }) {
   useEffect(() => { setAim(null); }, [m?.id]);
   if (!m || m.at !== "dock") return null;
   if (m.refused) return (
-    <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{refusedLine(m.refused)}</div><button className="btn" type="button" onClick={() => close(s, d)}>{S.drop.close}</button></div>
+    <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{refusedLine(m.refused)}</div><button className="btn sm" type="button" onClick={() => close(s, d)}>{S.drop.close}</button></div>
   );
   if (s.job) return <div className="drop-over-character"><Outcome s={s} d={d} /></div>;
-  if (said) return <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{said}</div><button className="btn" type="button" onClick={() => d({ type: "trim", open: false })}>{S.drop.trimBack}</button></div>;
+  if (said) return <div className="drop-outcome drop-over-character"><div className="line" role="status" aria-live="polite">{said}</div><button className="btn sm" type="button" onClick={() => d({ type: "trim", open: false })}>{S.drop.trimBack}</button></div>;
   const { shown, more } = ringChoices(m.actions);
   const all = [...shown, ...(more ? ["more"] : []), "close"];
   const spots = arcSpots(all.length, RADIUS);

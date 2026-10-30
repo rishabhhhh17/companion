@@ -1,21 +1,20 @@
-// Settings (the registry, protocol/settings.json, T16): a search box, then every setting in its section, in the
-// registry's order, each row with its usual value and Reset when it differs; Reset this section and Reset all settings
-// to usual (each naming what changes first, then Undo for ten seconds); then the parts that are not settings (permissions, the key, practice, the folders made for you, what
-// Companion keeps with Delete everything, acknowledgements, logs). Every change goes to the shell through settingsStore.ts
-// (settings_set), which checks it, keeps it, applies it and tells every window. Every word is in strings.ts. Keyboard and
-// VoiceOver reach everything: each row is a named group, switches are role switch, choices a radio group with the arrows.
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+// Settings, inside Home (the overhaul spec, section 3; F28 and T17: one Settings, the separate window retired). A sidebar
+// of eight pages with search at its top, and one page at a time: a title, one line, then Groups of Rows built only from
+// the parts (ui/parts.tsx). Every setting in protocol/settings.json has one place (settingsPages.ts) and search finds every
+// one (settingsSearch.ts). Every change goes to the shell through settingsStore.ts (settings_set), which checks it, keeps
+// it, applies it and tells every window. Every word is in strings.ts. Keyboard and VoiceOver reach everything: each row is
+// a named group, switches are role switch, choices a radio group with the arrows or a menu past three.
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
-import { characterName } from "./companion.ts";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
-import { LIVELINESS, livelinessOf, waterOf, WATERS, WATER_TINTS, type Liveliness } from "./lookfeel.ts";
+import { LIVELINESS, livelinessOf, waterOf, WATERS } from "./lookfeel.ts";
 import { ConfirmStep } from "./confirm.tsx";
-import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
-import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { takeIfLost } from "./focus.ts";
+import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
-import { inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
@@ -24,268 +23,87 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { levelSections } from "./settingsLevel.ts";
-import { FIRST_PAGE, PAGES, isPage, type PageId } from "./settingsPages.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
+import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
-import { changedNow, changeSetting, notHeard, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
-import { floorWords, homeSizeHint, numberFrom, PLACE_KEYS, problemWords, rowModel, searchSettings, shownNow, wordsOf, type FixedGroup } from "./settingsRows.ts";
+import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
+import { floorWords, homeSizeHint, PLACE_KEYS, problemWords, rowModel, shownNow, valueWords, wordsOf } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
+import { Button, Card, Disclosure, Field, Group, KeyLabel, Menu, PageHead, PictureChoice, ProofChip, Row, Segmented, Sheet, SidebarItem, Stepper, Switch, Toast, type ChipKind } from "./ui/parts.tsx";
+import { choiceControl, controlFor } from "./ui/controlRule.ts";
 import { GroupsPanel } from "./groupsPanel.tsx";
 import { MadePanel } from "./madePanel.tsx";
 import { buttonShown, permissionNeeded, type Permission } from "./groups.ts";
 import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
 import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
+import { deleteKeeps, planCard, planNow, type PlanButton } from "./plan.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
-// A settings group with a name: VoiceOver says which group it is in, and the keyboard is put back on the group when a
-// control in it goes away (focus.ts).
-function Group({ title, children }: { title: string; children: ReactNode }) {
+// ---------- what every row can reach ----------
+
+type Ctx = {
+  project: string; working: boolean; practiceBusy: boolean; keys: Keys; facts: CheckFacts | null; inv: Inventory | null; spending: Spending | null;
+  /** Go to a page, a group, a topic or a row (scrolls to it and flashes it). */
+  go: (what: string) => void;
+  /** One short line at the foot of the panel, with an optional Undo. */
+  say: (text: string, undo?: () => void) => void;
+  reload: () => void;
+  onLesson: (lesson: string) => void; onPracticeList: () => void; onMemory: () => void; onPickFolder: () => void; onStepAside: () => void;
+};
+const SetCtx = createContext<Ctx | null>(null);
+const useCtx = (): Ctx => useContext(SetCtx)!;
+
+/** One line under a row: the page's own words, or the first sentence of its help when that is short. Never more than about
+ *  two lines (settingsPages.test.ts); the rest is behind Learn more. */
+export const LINE_MAX = 120;
+export function rowLine(key: string): string {
+  const own = (S.short as Record<string, string>)[key];
+  if (own !== undefined) return own;
+  const help = wordsOf(key).help;
+  const first = /^[^]*?[.!?](?=\s|$)/.exec(help)?.[0] ?? help;
+  return first.length <= LINE_MAX ? first : "";
+}
+/** What Learn more shows: the full help and the part that never changes, when they say more than the row's line. */
+export function moreWords(key: string): string[] {
+  const help = wordsOf(key).help, line = rowLine(key), d = defOf(key);
+  return [...(help && help !== line ? [help] : []), ...(d?.floor && floorWords(d.floor) ? [floorWords(d.floor)] : [])];
+}
+/** The words a choice shows: short ones side by side (a Segmented control never wraps), the full ones in a menu. */
+const segWords = (key: string, id: string, full: string): string => (S.setSeg as Record<string, Record<string, string>>)[key]?.[id] ?? full;
+
+/** Learn more: a quiet press that shows the longer words under a row. */
+function LearnMore({ words }: { words: string[] }) {
+  const [open, setOpen] = useState(false);
   const id = useId();
-  return <div role="group" aria-labelledby={id}><h3 id={id}>{title}</h3>{children}</div>;
-}
-
-/// The person's own key: replace it (same checks as the first run, the box emptied at once) or remove it (asked first).
-function KeySection({ keySaved, working, onChanged }: { keySaved: boolean; working: boolean; onChanged: () => void }) {
-  const [step, setStep] = useState<"idle" | "replace" | "confirmRemove" | "working">("idle");
-  const [key, setKey] = useState("");
-  const [note, setNote] = useState("");
-  const [problem, setProblem] = useState("");
-  const save = () => {
-    const r = submitKey(key);
-    setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
-    if (!r.send) { setProblem(r.problem ?? ""); return; }
-    setProblem(""); setStep("working");
-    void invoke("save_api_key", { key: r.send }).then(() => { setNote(S.keySavedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(failNote(e, "key")); setStep("replace"); });
-  };
-  const remove = () => {
-    setProblem(""); setStep("working");
-    void invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE }).then(() => { setNote(S.keyRemovedNote); setStep("idle"); onChanged(); }).catch((e) => { setProblem(String(e)); setStep("confirmRemove"); });
-  };
-  const cancel = () => { setKey(""); setProblem(""); setStep("idle"); };
-  const replaceId = useId(), removeId = useId();
-  return (
-    <Group title={S.keyTitle}>
-      <div className="line">{keyStatus(keySaved)}</div>
-      {note && <div className="line" role="status">{note}</div>}
-      {step === "idle" && <div className="row">
-        <button id={replaceId} className="btn" type="button" onClick={() => { setNote(""); setStep("replace"); }}>{keySaved ? S.keyReplace : S.keyAdd}</button>
-        {keySaved && <button id={removeId} className="btn danger" type="button" disabled={working} onClick={() => { setNote(""); setStep("confirmRemove"); }}>{S.keyRemove}</button>}
-      </div>}
-      {step === "idle" && keySaved && working && <div className="line muted">{S.keyBusy}</div>}
-      {step === "replace" && (<>
-        <div className="line muted">{S.keyNewHelp}</div>
-        <div className="row">
-          <input type="password" autoComplete="off" spellCheck={false} ref={focusIfLost} value={key} aria-label={S.obKeyLabel} placeholder="sk-ant-..." onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); if (e.key === "Escape") { e.stopPropagation(); cancel(); focusBack(replaceId); } }} />
-          <button className="btn primary" type="button" onClick={save}>{S.keySaveNew}</button>
-          <button className="btn" type="button" onClick={() => { cancel(); focusBack(replaceId); }}>{S.planCancel}</button>
-        </div>
-      </>)}
-      {step === "confirmRemove" && (
-        <ConfirmStep className="line" label={S.keyRemoveSure} back={removeId} onCancel={cancel}>
-          <div className="line">{S.keyRemoveSure}</div>
-          <div className="row">
-            <button className="btn danger" type="button" disabled={working} onClick={remove}>{S.keyRemoveYes}</button>
-            <button className="btn" type="button" data-cancel onClick={cancel}>{S.planCancel}</button>
-          </div>
-        </ConfirmStep>
-      )}
-      {problem && <div className="error" role="alert">{problem}</div>}
-    </Group>
-  );
-}
-
-// Keys to remember (M11 wave 4): every job with its keys, and Change for a short list of keys free on this Mac (the app
-// tries each when Change is pressed, keymap::free). The app registers new keys at once and keeps them only if they work,
-// saved on this Mac (keymap.rs); Reset puts every job back on its usual keys. Nothing here reads key presses: the person
-// picks from the list. Hold to talk's other chords each say what they give up.
-function KeysSection({ keys }: { keys: Keys }) {
-  const [open, setOpen] = useState<Job | null>(null);
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  // Each row's Change button, so the keyboard can go back to it when the list closes (the button it was on is gone).
-  const changeButtons = useRef<Partial<Record<Job, HTMLButtonElement | null>>>({});
-  const openNow = useRef(open);
-  openNow.current = open;
-  // The row whose list just closed from inside it (a key picked, or its Cancel).
-  const closedFrom = useRef<Job | null>(null);
-  const close = (job: Job, changed: Keys | null) => {
-    if (changed) setNote(keyChangedLine(job, changed));
-    // A late answer, after another job's list was opened, neither closes that list nor moves the keyboard.
-    if (openNow.current !== job) return;
-    closedFrom.current = job;
-    setOpen(null);
-  };
-  // The button the keyboard was on went with the list, so the keyboard goes back to the row's Change button, only by the
-  // rule every move in Home follows (focus.ts takeIfLost: Home has the keyboard and nothing in it does). Never when the
-  // person has gone on to another control, another app or a box.
-  useLayoutEffect(() => { const job = closedFrom.current; closedFrom.current = null; if (job && open === null) takeIfLost(() => changeButtons.current[job]); }, [open]);
-  const reset = () => {
-    if (busy) return;
-    setBusy(true); setNote(""); setOpen(null);
-    void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); setNote(resetLine(v)); }).catch((e) => setNote(keyProblem(String(e)))).finally(() => setBusy(false));
-  };
-  return (<>
-    <div className="line muted">{S.keysSettingsHelp}</div>
-    {keyRows(keys).map((r) => (
-      <div key={r.job}>
-        <div className="row">
-          <span className="line"><b>{r.name}:</b> {r.keys}</span>
-          <button className="btn" type="button" ref={(b) => { changeButtons.current[r.job] = b; }} disabled={busy} aria-expanded={open === r.job} aria-label={S.keysChangeFor(r.name)} onClick={() => { setNote(""); setOpen(open === r.job ? null : r.job); }}>{S.keysChange}</button>
-        </div>
-        {r.line && <div className={r.problem ? "line" : "line muted"} role={r.problem ? "alert" : undefined}>{r.line}</div>}
-        {open === r.job && <KeyPicker job={r.job} keys={keys} onDone={(changed) => close(r.job, changed)} />}
-      </div>
-    ))}
-    <div className="row"><button className="btn" type="button" disabled={busy} onClick={reset}>{S.keysReset}</button></div>
-    {note && <div className="line" role="status">{note}</div>}
-  </>);
-}
-
-// One job's short list, asked of the app when Change is pressed. Only keys the app says are free on this Mac and that no
-// other job has can be pressed (keys.ts canPick); the app counts the keys registered for the job as free, so the keys in
-// use after a fall back can be pressed again to keep them.
-function KeyPicker({ job, keys, onDone }: { job: Job; keys: Keys; onDone: (changed: Keys | null) => void }) {
-  const [c, setC] = useState<Choices | null>(null);
-  const [problem, setProblem] = useState("");
-  const [busy, setBusy] = useState(false);
-  const live = useRef(true);
-  const load = () => { void invoke("key_choices", { action: job }).then((v) => { if (live.current) setC(choicesFrom(v, job)); }).catch((e) => { if (live.current) setProblem(keyProblem(String(e))); }); };
-  useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, [job]);
-  const pick = (id: string) => {
-    if (busy) return;
-    setBusy(true); setProblem("");
-    void invoke("set_key", { action: job, id }).then((v) => { const k = keysFrom(v); setKeysNow(k); onDone(k); })
-      .catch((e) => {
-        const code = String(e);
-        setProblem(keyProblem(code));
-        // Another app took them since the list was asked for: ask again, so they show as taken.
-        if (code === "taken") load();
-      })
-      .finally(() => setBusy(false));
-  };
-  return (<div>
-    {!c && !problem && <div className="line muted" role="status">{S.keysChecking}</div>}
-    {c && (<>
-      <div className="row" role="group" aria-label={S.keysPickFor((S.keyJobs as Record<Job, string>)[job])}>
-        {c.choices.map((id) => <button key={id} className={keys.using[job] === id ? "btn primary" : "btn"} type="button" disabled={busy || !canPick(c, id)} aria-pressed={keys.using[job] === id} aria-describedby={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}>{chordLabel(id)}</button>)}
-        <button className="btn" type="button" onClick={() => onDone(null)}>{S.planCancel}</button>
-      </div>
-      {pickerLines(c, keys).map((l) => <div className="line muted" key={l}>{l}</div>)}
-      {c.choices.map((id) => talkCost(id) && <div className="line muted" id={`key-cost-${id}`} key={id}>{talkCost(id)}</div>)}
-      <AnyKeys busy={busy} pick={pick} />
-    </>)}
-    {problem && <div className="error" role="alert">{problem}</div>}
+  if (!words.length) return null;
+  return (<div className="set-more">
+    <Button kind="quiet" size="sm" expanded={open} controls={id} onClick={() => setOpen(!open)}>{open ? S.setFrame.learnLess : S.setFrame.learnMore}</Button>
+    {open && <div id={id} className="set-more-words">{words.map((w, i) => <p key={i}>{w}</p>)}</div>}
   </div>);
 }
 
-// Any keys, not only the short list (finding L): tick Control, Option, Shift and Command and choose the key from a list. Nothing
-// here listens to the keyboard (rule 8): the page builds the chord's id, says in plain words why one is not enough, and the
-// app checks it again and tries it like any other (taken by another app, used by another job). The preset buttons stay as they are.
-function AnyKeys({ busy, pick }: { busy: boolean; pick: (id: string) => void }) {
-  const [t, setT] = useState<Ticked>({ control: false, option: false, shift: false, command: false });
-  const [key, setKey] = useState("");
-  const built = key ? customChord(t, key) : null;
-  const id = built && "id" in built ? built.id : "";
-  const why = built && "problem" in built ? (built.problem === "reserved" ? S.keysReserved : built.problem === "not_enough" ? S.keysNotEnough : "") : "";
-  return (<div role="group" aria-label={S.keysCustomTitle}>
-    <div className="line"><b>{S.keysCustomTitle}</b></div>
-    <div className="line muted">{S.keysCustomHelp}</div>
-    <div className="row">
-      {(["control", "option", "shift", "command"] as const).map((mod) => <label key={mod} className="check"><input type="checkbox" checked={t[mod]} disabled={busy} onChange={(e) => setT({ ...t, [mod]: e.target.checked })} /> {S.keyWords[mod]}</label>)}
-      <select aria-label={S.keysCustomKey} value={key} disabled={busy} onChange={(e) => setKey(e.target.value)}>
-        <option value="">{S.keysCustomKey}</option>
-        {CUSTOM_KEYS.map((k) => <option key={k} value={k}>{k.length === 1 ? k.toUpperCase() : S.keyWords.space}</option>)}
-      </select>
-      <button className="btn" type="button" disabled={busy || !id} onClick={() => { if (id) pick(id); }}>{S.keysCustomUse}</button>
-    </div>
-    {id && <div className="line muted" role="status">{chordLabel(id)}</div>}
-    {why && <div className="line" role="status">{why}</div>}
-  </div>);
-}
+/** A problem said under the row it belongs to: what is wrong, then the fix. */
+const Problem = ({ text }: { text: string }) => (text ? <p className="set-problem" role="alert">{text}</p> : null);
+/** A short status line under a row (a mic away, a key fell back). */
+const Note = ({ text, live }: { text: string; live?: boolean }) => (text ? <p className="set-note" role={live ? "status" : undefined}>{text}</p> : null);
 
-// Talking and listening (M11 wave 4, item 2): the microphone, the language, the voice and its speed (the registry's
-// talk.voice; Speak to me and Answer out loud are its own rows now). The app lists the Mac's voices and microphones and keeps the choices on this Mac (voiceset.rs, voice.json); one
-// that is away says so, and when the Mac's sound is off it says spoken lines are shown as words only. Read again whenever
-// the card comes back to the front (headphones may have been switched on or off meanwhile).
-function VoiceRows() {
-  const [v, setV] = useState<VoiceSettings>(VOICE_START);
-  const [problem, setProblem] = useState("");
-  const [tried, setTried] = useState("");
-  const load = () => void invoke("voice_settings").then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch(() => {});
-  useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
-  // Put back by Reset or Undo (the registry's talk.voice): read the lists again.
-  const saved = JSON.stringify(useSetting("talk.voice") ?? null);
-  const first = useRef(true);
-  useEffect(() => { if (first.current) { first.current = false; return; } load(); }, [saved]);
-  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch((e) => setProblem(voiceProblem(String(e)))); };
-  const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
-  return (<>
-    <div className="line muted">{S.voiceSettingsHelp}</div>
-    <div className="row">
-      <select aria-label={S.micPickLabel} value={v.mic ?? ""} onChange={(e) => change({ mic: e.target.value || null })}>
-        <option value="">{S.micPickLabel}: {micDefaultLabel(v)}</option>
-        {v.mic && v.micMissing && <option value={v.mic}>{S.micPickLabel}: {S.notConnected(v.micMissing)}</option>}
-        {v.inputs.map((i) => <option key={i.id} value={i.id}>{S.micPickLabel}: {i.name}</option>)}
-      </select>
-    </div>
-    <div className="line muted">{S.micHelp}</div>
-    {micLine(v) && <div className="line" role="status">{micLine(v)}</div>}
-    <div className="row">
-      <select aria-label={S.voiceLanguageLabel} value={v.language} onChange={(e) => change({ language: e.target.value })}>
-        {v.languages.map((l) => <option key={l} value={l}>{S.voiceLanguageLabel}: {languageLabel(l)}</option>)}
-      </select>
-    </div>
-    <div className="line muted">{S.voiceLanguageHelp}</div>
-    <div className="line muted">{S.voiceWordsHelp}</div>
-    <div className="row">
-      <select aria-label={S.voicePickLabel} value={v.voice ?? ""} onChange={(e) => change({ voice: e.target.value || null })}>
-        <option value="">{S.voicePickLabel}: {S.voiceMacDefault}</option>
-        {v.voice && v.voiceMissing && <option value={v.voice}>{S.voicePickLabel}: {S.notOnThisMac(v.voiceMissing)}</option>}
-        {v.voices.map((x) => <option key={x.id} value={x.id}>{S.voicePickLabel}: {voiceLabel(x)}</option>)}
-      </select>
-      {buttonShown("voiceTry") && <button className="btn" type="button" onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</button>}
-    </div>
-    {voiceLine(v) && <div className="line" role="status">{voiceLine(v)}</div>}
-    <div className="line muted">{S.voiceMoreHelp}</div>
-    <div className="row" role="group" aria-label={S.voiceSpeedGroup}>
-      {v.speeds.map((n) => <button key={n} className={v.speed === n ? "btn primary" : "btn"} type="button" aria-pressed={v.speed === n} onClick={() => change({ speed: n })}>{speedLabel(n)}</button>)}
-    </div>
-    {soundLine(v.sound) && <div className="line" role="status">{soundLine(v.sound)}</div>}
-    {tried && tried !== soundLine(v.sound) && <div className="line" role="status">{tried}</div>}
-    {problem && <div className="error" role="alert">{problem}</div>}
-  </>);
-}
-
-// ---------- one row per setting ----------
+// ---------- the controls of one setting ----------
 
 /** A number, typed or stepped with minus and plus. Kept only when Return is pressed or the box is left, and only when it
  *  passes the setting's rules (then put on its step); otherwise the plain reason shows and nothing is sent. */
 function NumberControl({ d, value, labelId, disabled, onChange, onProblem, inputId }: { d: Def; value: number; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void; inputId?: string }) {
-  const [text, setText] = useState(String(value));
-  const editing = useRef(false);
-  useEffect(() => { if (!editing.current) setText(String(value)); }, [value]);
   const label = wordsOf(d.key).label;
-  const commit = (n: number | null) => {
-    editing.current = false;
-    if (n === null) { onProblem(problemWords("notNumber", d)); return; }
+  // The Stepper part reads the typed number and keeps it inside the range (and says so); the setting's own rules still
+  // decide, and a value they refuse is never sent.
+  const commit = (n: number) => {
     const c = validate(d, n);
     if (!c.ok) { onProblem(problemWords(c.reason, d)); return; }
     onProblem("");
-    setText(String(c.value));
     if (c.value !== value) onChange(c.value as number);
   };
-  const step = (dir: 1 | -1) => commit(Math.min(d.max ?? value, Math.max(d.min ?? value, value + dir * (d.step ?? 1))));
-  return (
-    <span className="row">
-      <button className="btn" type="button" disabled={disabled || value <= (d.min ?? -Infinity)} aria-label={S.setLess(label)} onClick={() => step(-1)}>-</button>
-      <input id={inputId} type="text" inputMode="decimal" autoComplete="off" spellCheck={false} size={6} value={text} disabled={disabled} aria-labelledby={labelId}
-        onChange={(e) => { editing.current = true; setText(e.target.value); }}
-        onBlur={() => { if (editing.current) commit(numberFrom(text)); }}
-        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); commit(numberFrom(text)); } }} />
-      <button className="btn" type="button" disabled={disabled || value >= (d.max ?? Infinity)} aria-label={S.setMore(label)} onClick={() => step(1)}>+</button>
-    </span>
-  );
+  return <Stepper id={inputId} value={value} min={d.min} max={d.max} step={d.step} unit={d.unit ? S.ui.unitWord[d.unit] : undefined} label={label} labelledBy={labelId}
+    disabled={disabled} onChange={commit} onNote={onProblem} />;
 }
 
 /** One line of text, kept on Return or when the box is left, only when it passes the rules. */
@@ -300,62 +118,77 @@ function TextControl({ d, value, labelId, disabled, onChange, onProblem }: { d: 
     onProblem("");
     if (c.value !== value) onChange(c.value as string);
   };
-  return <input type="text" autoComplete="off" value={text} maxLength={d.maxLength} disabled={disabled} aria-labelledby={labelId}
-    onChange={(e) => { editing.current = true; setText(e.target.value); }} onBlur={() => { if (editing.current) commit(); }}
+  return <Field value={text} maxLength={d.maxLength} disabled={disabled} labelledBy={labelId}
+    onChange={(t) => { editing.current = true; setText(t); }} onBlur={() => { if (editing.current) commit(); }}
     onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); commit(); } }} />;
 }
 
-/** A list: each item with Remove (asked first when the list holds protections), and an Add box. */
-function ListControl({ d, value, disabled, onChange, onProblem }: { d: Def; value: string[]; disabled: boolean; onChange: (v: string[]) => void; onProblem: (p: string) => void }) {
+/** A choice, drawn by the control choice rule (ui/controlRule.ts, the spec's 3.5): two or three options side by side (the
+ *  arrows move and pick, as macOS does), four or more as a menu. A choice that grows with the project is always a menu. */
+function ChoiceControl({ d, value, options, labelId, disabled, onChange }: { d?: Def; value: string; options: { id: string; label: string }[]; labelId: string; disabled: boolean; onChange: (v: string) => void }) {
+  const kind = d ? controlFor(d, options.length) : choiceControl(options.length);
+  if (kind === "menu") return <Menu labelledBy={labelId} value={value} options={options} disabled={disabled} onChange={onChange} />;
+  const short = d ? options.map((o) => ({ id: o.id, label: segWords(d.key, o.id, o.label) })) : options;
+  return <Segmented labelledBy={labelId} value={value} options={short} disabled={disabled} onChange={onChange} />;
+}
+
+/** A list from a fixed set (Also say out loud, Checks to leave out): one child row with a switch for each item. */
+function AllowedList({ d, value, items, words, disabled, onChange, switchLabel }: { d: Def; value: string[]; items?: readonly string[]; words?: Record<string, string>; disabled: boolean; onChange: (v: string[]) => void; switchLabel?: (name: string) => string }) {
+  const w = wordsOf(d.key);
+  const all = items ?? d.allowedItems ?? [];
+  const names = words ?? w.options ?? {};
+  return (<>
+    {all.map((id) => {
+      const on = value.includes(id), name = names[id] ?? id;
+      return <Row key={id} indent label={name} disabled={disabled || undefined}
+        control={<Switch checked={on} label={switchLabel ? switchLabel(name) : name} disabled={disabled} onChange={() => onChange(all.filter((x) => (x === id ? !on : value.includes(x))))} />} />;
+    })}
+  </>);
+}
+
+/** A list a person types (check.mustSee): each item with Remove, and an Add box. Inside its sheet; every change applies. */
+function ListEditor({ d, value, disabled, onChange }: { d: Def; value: string[]; disabled: boolean; onChange: (v: string[]) => Promise<Done> }) {
   const [adding, setAdding] = useState("");
   const [asking, setAsking] = useState<string | null>(null);
+  const [problem, setProblem] = useState("");
   const label = wordsOf(d.key).label;
   const baseId = useId();
+  const done = (p: Promise<Done>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code, d)); });
   const add = () => {
     const c = validate(d, [...value, adding]);
-    if (!c.ok) { onProblem(problemWords(c.reason, d)); return; }
-    onProblem(""); setAdding(""); onChange(c.value as string[]);
+    if (!c.ok) { setProblem(problemWords(c.reason, d)); return; }
+    setProblem(""); setAdding(""); done(onChange(c.value as string[]));
   };
-  const remove = (item: string) => { setAsking(null); onChange(value.filter((x) => x !== item)); };
-  return (<div>
-    {value.map((item, i) => (
-      <div className="row" key={item}>
-        <span className="line">{item}</span>
-        {asking !== item && <button id={`${baseId}-${i}`} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(item)} onClick={() => (d.protective ? setAsking(item) : remove(item))}>{S.attachRemoveShort}</button>}
-        {asking === item && (
-          <ConfirmStep className="line" label={S.setRemoveSure(item)} back={`${baseId}-${i}`} onCancel={() => setAsking(null)}>
-            <div className="line">{S.setRemoveSure(item)}</div>
-            <div className="row"><button className="btn danger" type="button" onClick={() => remove(item)}>{S.setRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
-          </ConfirmStep>
-        )}
-      </div>
-    ))}
-    <div className="row">
-      <input type="text" autoComplete="off" value={adding} maxLength={d.item?.maxLength} disabled={disabled || value.length >= (d.maxItems ?? 0)} aria-label={S.setAddLabel(label)} onChange={(e) => setAdding(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />
-      <button className="btn" type="button" disabled={disabled || !adding.trim() || value.length >= (d.maxItems ?? 0)} onClick={add}>{S.setAdd}</button>
+  const remove = (item: string) => { setAsking(null); done(onChange(value.filter((x) => x !== item))); };
+  return (<div className="set-sheet-list">
+    <Group>
+      {value.length === 0 && <Row label={S.setNone} />}
+      {value.map((item, i) => (
+        <Row key={item} label={item} control={asking !== item ? <Button id={`${baseId}-${i}`} size="sm" disabled={disabled} label={S.setRemoveItem(item)} onClick={() => (d.protective ? setAsking(item) : remove(item))}>{S.attachRemoveShort}</Button> : null}>
+          {asking === item && (
+            <ConfirmStep className="set-confirm" label={S.setRemoveSure(item)} back={`${baseId}-${i}`} onCancel={() => setAsking(null)}>
+              <p>{S.setRemoveSure(item)}</p>
+              <div className="set-buttons"><Button kind="danger" onClick={() => remove(item)}>{S.setRemoveYes}</Button><CancelButton onClick={() => setAsking(null)} /></div>
+            </ConfirmStep>
+          )}
+        </Row>
+      ))}
+    </Group>
+    <div className="set-add">
+      <Field value={adding} maxLength={d.item?.maxLength} disabled={disabled || value.length >= (d.maxItems ?? 0)} label={S.setAddLabel(label)} wide
+        onChange={setAdding} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />
+      <Button disabled={disabled || !adding.trim() || value.length >= (d.maxItems ?? 0)} onClick={add}>{S.setAdd}</Button>
     </div>
+    <Problem text={problem} />
   </div>);
 }
 
-/** A list from a fixed set (Also say out loud): each item a switch, in the set's own order. */
-function AllowedList({ d, value, disabled, onChange }: { d: Def; value: string[]; disabled: boolean; onChange: (v: string[]) => void }) {
-  const w = wordsOf(d.key);
-  const all = d.allowedItems ?? [];
-  return (
-    <div className="row" role="group" aria-label={w.label}>
-      {all.map((id) => {
-        const on = value.includes(id);
-        return <button key={id} className={on ? "btn primary" : "btn"} type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange(all.filter((x) => (x === id ? !on : value.includes(x))))}>{w.options?.[id] ?? id}</button>;
-      })}
-    </div>
-  );
-}
-
-/** Apps that count as a call (calls.apps): the call apps Companion knows, each on or off, and apps added with Add the app
- *  in front (the shell names the app in front: its id and name only), each with Remove. Every change goes to the shell. */
-function CallApps({ value, disabled, onChange, onProblem }: { value: string[]; disabled: boolean; onChange: (v: string[]) => void; onProblem: (p: string) => void }) {
+/** Apps that count as a call (calls.apps): the call apps Squibby knows, each on or off, and apps added with Add the app in
+ *  front (the shell names the app in front: its id and name only), each with Remove. Every change goes to the shell. */
+function CallApps({ value, disabled, onChange }: { value: string[]; disabled: boolean; onChange: (v: string[]) => void }) {
   const [names, setNames] = useState<Record<string, string>>({});
   const [note, setNote] = useState("");
+  const [problem, setProblem] = useState("");
   const rows = callAppRows(value, names);
   const addedKey = rows.added.map((a) => a.id).join("|");
   useEffect(() => {
@@ -364,40 +197,29 @@ function CallApps({ value, disabled, onChange, onProblem }: { value: string[]; d
     void invoke("app_names", { ids }).then((v) => setNames((n) => ({ ...n, ...(v as Record<string, string>) }))).catch(() => {});
   }, [addedKey]);
   const addFront = () => {
-    setNote(""); onProblem("");
+    setNote(""); setProblem("");
     void invoke("front_app").then((v) => {
       const f = v as { id: string; name: string };
       const r = addCallApp(value, f.id);
-      if (!r.ok) { onProblem(r.why === "full" ? S.callApps.full : r.why === "already" ? S.callApps.already : S.callApps.ownApp); return; }
+      if (!r.ok) { setProblem(r.why === "full" ? S.callApps.full : r.why === "already" ? S.callApps.already : S.callApps.ownApp); return; }
       setNames((n) => ({ ...n, [f.id]: f.name || f.id }));
       onChange(r.list);
       setNote(S.callApps.addedNote(f.name || f.id));
-    }).catch((e) => onProblem(String(e) === "ownApp" ? S.callApps.ownApp : problemWords(String(e))));
+    }).catch((e) => setProblem(String(e) === "ownApp" ? S.callApps.ownApp : problemWords(String(e))));
   };
-  return (<div>
-    <div role="group" aria-label={S.callApps.builtIn}>
-      <div className="line muted">{S.callApps.builtIn}</div>
-      {rows.builtIn.map((b) => (
-        <div className="row" key={b.id}>
-          <span className="line">{b.name}</span>
-          <button className="btn" type="button" role="switch" aria-checked={b.on} aria-label={b.name} disabled={disabled} onClick={() => onChange(toggleCallApp(value, b.id, !b.on))}>{b.on ? S.on : S.off}</button>
-        </div>
-      ))}
-    </div>
+  return (<>
+    <Group title={S.callApps.builtIn}>
+      {rows.builtIn.map((b) => <Row key={b.id} label={b.name} control={<Switch checked={b.on} label={b.name} disabled={disabled} onChange={() => onChange(toggleCallApp(value, b.id, !b.on))} />} />)}
+    </Group>
     {rows.added.length > 0 && (
-      <div role="group" aria-label={S.callApps.added}>
-        <div className="line muted">{S.callApps.added}</div>
-        {rows.added.map((a) => (
-          <div className="row" key={a.id}>
-            <span className="line">{a.name}</span>
-            <button className="btn" type="button" aria-label={S.callApps.removeFor(a.name)} disabled={disabled} onClick={() => onChange(value.filter((x) => x !== a.id))}>{S.attachRemoveShort}</button>
-          </div>
-        ))}
-      </div>
+      <Group title={S.callApps.added}>
+        {rows.added.map((a) => <Row key={a.id} label={a.name} control={<Button size="sm" label={S.callApps.removeFor(a.name)} disabled={disabled} onClick={() => onChange(value.filter((x) => x !== a.id))}>{S.attachRemoveShort}</Button>} />)}
+      </Group>
     )}
-    <div className="row"><button className="btn" type="button" disabled={disabled} onClick={addFront}>{S.callApps.addFront}</button></div>
-    {note && <div className="line" role="status">{note}</div>}
-  </div>);
+    <div className="set-buttons"><Button disabled={disabled} onClick={addFront}>{S.callApps.addFront}</Button></div>
+    <Note text={note} live />
+    <Problem text={problem} />
+  </>);
 }
 
 /** Apps Prompt help and the error explainer may read (ph.appAnswers): each app the person answered for, with Allow always,
@@ -436,91 +258,56 @@ function AppAnswers() {
   const frontYes = () => { const f = askFront; setAskFront(null); if (f) done(changeSetting("ph.appAnswers", neverFrontOp(f.id)), S.appAnswers.neverFrontDone(f.name)); };
   const options = (["always", "ask", "never"] as const).map((id) => ({ id, label: S.appAnswers.choices[id] }));
   const forgettable = forgetAllCount(rows);
-  return (<div>
-    {rows.length === 0 && <div className="line muted">{S.appAnswers.none}</div>}
-    {rows.map((r, i) => (
-      <div key={r.id} role="group" aria-label={S.appAnswers.answerFor(r.name)}>
-        <div className="row">
-          <span className="line" id={`${baseId}-l${i}`}>{r.name}</span>
-          <ChoiceControl value={r.answer} options={[...options]} labelId={`${baseId}-l${i}`} disabled={!!asking} onChange={(x) => pick(r, x as Answer)} />
-          <button id={`${baseId}-f${i}`} className="btn" type="button" aria-label={S.appAnswers.forgetFor(r.name)} disabled={!!asking} onClick={() => pick(r, "forget")}>{S.appAnswers.forget}</button>
-        </div>
-        {asking?.row.id === r.id && (
-          <ConfirmStep className="line" label={S.appAnswers.loosenSure(r.name)} back={`${baseId}-f${i}`} onCancel={() => setAsking(null)}>
-            <div className="line">{S.appAnswers.loosenSure(r.name)}</div>
-            <div className="row"><button className="btn danger" type="button" onClick={yes}>{S.appAnswers.loosenYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
-          </ConfirmStep>
-        )}
-      </div>
-    ))}
-    <div className="row">
-      {!askFront && <button id={frontId} className="btn" type="button" onClick={front}>{S.appAnswers.neverFront}</button>}
-      {forgettable > 0 && !askAll && <button id={allId} className="btn" type="button" onClick={() => setAskAll(true)}>{S.appAnswers.forgetAll}</button>}
+  return (<>
+    <Group>
+      {rows.length === 0 && <Row label={S.appAnswers.none} />}
+      {rows.map((r, i) => (
+        <Row key={r.id} label={r.name} labelId={`${baseId}-l${i}`}
+          control={<span className="set-pair">
+            <ChoiceControl value={r.answer} options={[...options]} labelId={`${baseId}-l${i}`} disabled={!!asking} onChange={(x) => pick(r, x as Answer)} />
+            <Button id={`${baseId}-f${i}`} kind="quiet" size="sm" label={S.appAnswers.forgetFor(r.name)} disabled={!!asking} onClick={() => pick(r, "forget")}>{S.appAnswers.forget}</Button>
+          </span>}>
+          {asking?.row.id === r.id && (
+            <ConfirmStep className="set-confirm" label={S.appAnswers.loosenSure(r.name)} back={`${baseId}-f${i}`} onCancel={() => setAsking(null)}>
+              <p>{S.appAnswers.loosenSure(r.name)}</p>
+              <div className="set-buttons"><Button kind="danger" onClick={yes}>{S.appAnswers.loosenYes}</Button><CancelButton onClick={() => setAsking(null)} /></div>
+            </ConfirmStep>
+          )}
+        </Row>
+      ))}
+    </Group>
+    <div className="set-buttons">
+      {!askFront && <Button id={frontId} onClick={front}>{S.appAnswers.neverFront}</Button>}
+      {forgettable > 0 && !askAll && <Button id={allId} kind="quiet" onClick={() => setAskAll(true)}>{S.appAnswers.forgetAll}</Button>}
     </div>
     {askFront && (
-      <ConfirmStep className="line" label={S.appAnswers.neverFrontSure(askFront.name)} back={frontId} onCancel={() => setAskFront(null)}>
-        <div className="line">{S.appAnswers.neverFrontSure(askFront.name)}</div>
-        <div className="row"><button className="btn" type="button" onClick={frontYes}>{S.appAnswers.neverFrontYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskFront(null)}>{S.planCancel}</button></div>
+      <ConfirmStep className="set-confirm" label={S.appAnswers.neverFrontSure(askFront.name)} back={frontId} onCancel={() => setAskFront(null)}>
+        <p>{S.appAnswers.neverFrontSure(askFront.name)}</p>
+        <div className="set-buttons"><Button onClick={frontYes}>{S.appAnswers.neverFrontYes}</Button><CancelButton onClick={() => setAskFront(null)} /></div>
       </ConfirmStep>
     )}
     {askAll && (
-      <ConfirmStep className="line" label={S.appAnswers.forgetAll} back={allId} onCancel={() => setAskAll(false)}>
-        <div className="line">{S.appAnswers.forgetAllSure(forgettable)}</div>
-        <div className="row"><button className="btn" type="button" onClick={() => { setAskAll(false); done(changeSetting("ph.appAnswers", { op: "forgetAll" })); }}>{S.appAnswers.forgetAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskAll(false)}>{S.planCancel}</button></div>
+      <ConfirmStep className="set-confirm" label={S.appAnswers.forgetAll} back={allId} onCancel={() => setAskAll(false)}>
+        <p>{S.appAnswers.forgetAllSure(forgettable)}</p>
+        <div className="set-buttons"><Button onClick={() => { setAskAll(false); done(changeSetting("ph.appAnswers", { op: "forgetAll" })); }}>{S.appAnswers.forgetAllYes}</Button><CancelButton onClick={() => setAskAll(false)} /></div>
       </ConfirmStep>
     )}
-    {note && <div className="line" role="status">{note}</div>}
-    {problem && <div className="error" role="alert">{problem}</div>}
-  </div>);
+    <Note text={note} live />
+    <Problem text={problem} />
+  </>);
 }
 // end AppAnswers
 
-/** A choice of up to four as a radio group (the arrows move and pick, as macOS does), more as a menu. */
-function ChoiceControl({ value, options, labelId, disabled, onChange }: { value: string; options: { id: string; label: string }[]; labelId: string; disabled: boolean; onChange: (v: string) => void }) {
-  const box = useRef<HTMLDivElement>(null);
-  if (options.length > 4) {
-    return <select aria-labelledby={labelId} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>{options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>;
-  }
-  const at = Math.max(0, options.findIndex((o) => o.id === value));
-  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
-    const move: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
-    let to: number | null = e.key in move ? (at + move[e.key] + options.length) % options.length : e.key === "Home" ? 0 : e.key === "End" ? options.length - 1 : null;
-    if (to === null || disabled) return;
-    e.preventDefault();
-    onChange(options[to].id);
-    box.current?.querySelectorAll<HTMLButtonElement>("[role=radio]")[to]?.focus();
-  };
-  return (
-    <div className="row" role="radiogroup" aria-labelledby={labelId} ref={box} onKeyDown={onKeyDown}>
-      {options.map((o, i) => <button key={o.id} className={i === at ? "btn primary" : "btn"} type="button" role="radio" aria-checked={o.id === value} tabIndex={i === at ? 0 : -1} disabled={disabled} onClick={() => onChange(o.id)}>{o.label}</button>)}
-    </div>
-  );
+/** The safe choice of an are you sure (ConfirmStep takes the keyboard to it: data-cancel). */
+function CancelButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
+  return <Button cancel disabled={disabled} onClick={onClick}>{S.planCancel}</Button>;
 }
 
-/** Checks to leave out (check.skip): one switch for each check this project has. The start and browser checks are never in
- *  the list: they always run (the row's fixed part says so). */
-function SkipControl({ d, value, facts, disabled, onChange }: { d: Def; value: string[]; facts: CheckFacts | null; disabled: boolean; onChange: (v: string[]) => void }) {
-  const items = skipItems(facts, value);
-  const words = wordsOf(d.key).options ?? {};
-  if (!items.length) return <div className="line muted">{S.chkNoChecks}</div>;
-  return (<div>
-    {items.map((item) => {
-      const out = value.includes(item);
-      return (
-        <div className="row" key={item}>
-          <span className="line">{words[item] ?? item}</span>
-          <button className="btn" type="button" role="switch" aria-checked={out} aria-label={S.chkLeaveOut(words[item] ?? item)} disabled={disabled} onClick={() => onChange(out ? value.filter((x) => x !== item) : [...value, item])}>{out ? S.chkLeftOut : S.chkRun}</button>
-        </div>
-      );
-    })}
-  </div>);
-}
-
-/** House rules (rules.house): the project's own .companion/rules.txt. Rules are built from the five kinds, taken off only
- *  after an inline confirm, and nothing is written until Save; the shell keeps every line of the file it does not
+/** House rules (rules.house): the project's own .companion/rules.txt, in a sheet. Rules are built from the five kinds, taken
+ *  off only after an inline confirm, and nothing is written until Save; the shell keeps every line of the file it does not
  *  understand exactly as it was. No reset ever touches them. Drawn once per project (keyed by it), so a list not saved yet
  *  goes when the folder changes, and Save says which project's list it is: the shell refuses it for any other. */
-function HouseRules({ project, saved, disabled }: { project: string; saved: string[]; disabled: boolean }) {
+function HouseRules({ project, saved, disabled, onClose }: { project: string; saved: string[]; disabled: boolean; onClose: () => void }) {
   const [draft, setDraft] = useState<string[] | null>(null);
   const [kind, setKind] = useState<RuleKind>("never_edit");
   const [what, setWhat] = useState("");
@@ -528,7 +315,7 @@ function HouseRules({ project, saved, disabled }: { project: string; saved: stri
   const [note, setNote] = useState("");
   const [problem, setProblem] = useState("");
   const [focusTo, setFocusTo] = useState<string | null>(null);
-  const baseId = useId(), whatId = useId(), addId = useId();
+  const baseId = useId(), addId = useId();
   const list = draft ?? saved;
   const removeId = (i: number) => `${baseId}-${i}`;
   // A rule taken off, or the list saved or put back, takes its button away: the keyboard goes to the next rule's Remove (or
@@ -536,77 +323,89 @@ function HouseRules({ project, saved, disabled }: { project: string; saved: stri
   useLayoutEffect(() => { if (!focusTo) return; const id = focusTo; setFocusTo(null); takeIfLost(() => document.getElementById(id)); }, [focusTo]);
   const add = () => { setNote(""); const r = addRule(list, kind, what); if (!r.ok) { setProblem(r.problem); return; } setProblem(""); setWhat(""); setDraft(r.list); };
   const remove = (rule: string) => { const at = list.indexOf(rule), rest = removeRule(list, rule); setFocusTo(rest.length ? removeId(Math.min(at, rest.length - 1)) : addId); setAsking(null); setNote(""); setDraft(rest); };
-  const save = () => { setProblem(""); void changeSetting("rules.house", list, project).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); setFocusTo(addId); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
-  const putBack = () => { setDraft(null); setProblem(""); setFocusTo(addId); };
+  const save = () => { setProblem(""); void changeSetting("rules.house", list, project).then((x) => { if (x.ok) { setDraft(null); setNote(S.rulesSaved); onClose(); } else setProblem(problemWords(x.code, defOf("rules.house"))); }); };
   // One polite region, always there, whose words change: VoiceOver reads a region that changes, not always one that appears.
   const said = draft ? S.rulesUnsaved : note;
-  return (<div>
-    {list.length === 0 && <div className="line muted">{S.rulesNone}</div>}
-    {list.map((rule, i) => (
-      <div className="row" key={rule}>
-        <span className="line">{rule}</span>
-        {asking !== rule && <button id={removeId(i)} className="btn" type="button" disabled={disabled} aria-label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</button>}
-        {asking === rule && (
-          <ConfirmStep className="line" label={S.rulesRemoveSure(rule)} back={removeId(i)} onCancel={() => setAsking(null)}>
-            <div className="line">{S.rulesRemoveSure(rule)}</div>
-            <div className="row"><button className="btn danger" type="button" onClick={() => remove(rule)}>{S.setRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(null)}>{S.planCancel}</button></div>
-          </ConfirmStep>
-        )}
+  return (
+    <Sheet title={wordsOf("rules.house").label} dirty={!!draft && !disabled} onSave={save} onClose={onClose} saveLabel={S.rulesSave}>
+      <Group footer={S.rulesKept}>
+        {list.length === 0 && <Row label={S.rulesNone} />}
+        {list.map((rule, i) => (
+          <Row key={rule} label={rule} control={asking !== rule ? <Button id={removeId(i)} size="sm" disabled={disabled} label={S.setRemoveItem(rule)} onClick={() => setAsking(rule)}>{S.attachRemoveShort}</Button> : null}>
+            {asking === rule && (
+              <ConfirmStep className="set-confirm" label={S.rulesRemoveSure(rule)} back={removeId(i)} onCancel={() => setAsking(null)}>
+                <p>{S.rulesRemoveSure(rule)}</p>
+                <div className="set-buttons"><Button kind="danger" onClick={() => remove(rule)}>{S.setRemoveYes}</Button><CancelButton onClick={() => setAsking(null)} /></div>
+              </ConfirmStep>
+            )}
+          </Row>
+        ))}
+      </Group>
+      <div className="set-add">
+        <Menu id={addId} label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(k) => setKind(k as RuleKind)} options={ruleKindOptions()} />
+        {kind !== "ask_install" && <Field value={what} maxLength={200} disabled={disabled} label={S.rulesWhat} placeholder={S.rulesWhat} wide
+          onChange={setWhat} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />}
+        <Button disabled={disabled} onClick={add}>{S.rulesAdd}</Button>
       </div>
-    ))}
-    <div className="row">
-      <select id={addId} aria-label={S.rulesKindLabel} value={kind} disabled={disabled} onChange={(e) => setKind(e.target.value as RuleKind)}>{ruleKindOptions().map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}</select>
-      {kind !== "ask_install" && <input id={whatId} type="text" autoComplete="off" spellCheck={false} value={what} maxLength={200} disabled={disabled} aria-label={S.rulesWhat} placeholder={S.rulesWhat} onChange={(e) => setWhat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); add(); } }} />}
-      <button className="btn" type="button" disabled={disabled} onClick={add}>{S.rulesAdd}</button>
-    </div>
-    <div className={said ? "line" : "sr"} role="status">{said}</div>
-    {draft && <div className="row"><button className="btn primary" type="button" disabled={disabled} onClick={save}>{S.rulesSave}</button><button className="btn" type="button" onClick={putBack}>{S.rulesCancel}</button></div>}
-    <div className="line muted">{S.rulesKept}</div>
-    {problem && <div className="error" role="alert">{problem}</div>}
-  </div>);
+      <div className={said ? "set-note" : "sr"} role="status">{said}</div>
+      <Problem text={problem} />
+    </Sheet>
+  );
 }
 
 /** Pictures to keep (pictures.keep): lowering it below the pictures kept now says first how many will go. */
-function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem }: { d: Def; value: number; count: number | undefined; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void }) {
+function PicturesKeep({ d, value, count, labelId, disabled, onChange, onProblem, inputId }: { d: Def; value: number; count: number | undefined; labelId: string; disabled: boolean; onChange: (v: number) => void; onProblem: (p: string) => void; inputId: string }) {
   const [pending, setPending] = useState<{ to: number; go: number } | null>(null);
   const [fresh, setFresh] = useState(0);   // shows the kept value again when the change is not confirmed
-  // The keyboard comes back to the number box when the question closes: it is the same box after it is drawn again.
-  const inputId = useId();
   const want = (to: number) => { const go = picturesGoing(count, value, to); if (go > 0) setPending({ to, go }); else onChange(to); };
-  return (<span>
+  return (<span className="set-pair">
     <NumberControl key={fresh} inputId={inputId} d={d} value={value} labelId={labelId} disabled={disabled} onChange={want} onProblem={onProblem} />
     {pending && (
-      <ConfirmStep className="line" label={S.chkPicturesGo(pending.go, pending.to)} back={inputId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
-        <div className="line">{S.chkPicturesGo(pending.go, pending.to)}</div>
-        <div className="row"><button className="btn danger" type="button" onClick={() => { const to = pending.to; setPending(null); onChange(to); }}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => { setPending(null); setFresh((n) => n + 1); }}>{S.planCancel}</button></div>
+      <ConfirmStep className="set-confirm" label={S.chkPicturesGo(pending.go, pending.to)} back={inputId} onCancel={() => { setPending(null); setFresh((n) => n + 1); }}>
+        <p>{S.chkPicturesGo(pending.go, pending.to)}</p>
+        <div className="set-buttons"><Button kind="danger" onClick={() => { const to = pending.to; setPending(null); onChange(to); }}>{S.chkPicturesGoYes}</Button><CancelButton onClick={() => { setPending(null); setFresh((n) => n + 1); }} /></div>
       </ConfirmStep>
     )}
   </span>);
 }
 
-/** One setting: its name, its control, one or two lines of help, the usual value, Reset when it differs, when it takes
- *  effect, the fixed part, and for a project setting which project. */
-function SettingRow({ d, project, keys, facts, pictures, compact = false }: { d: Def; project: string; keys: Keys; facts: CheckFacts | null; pictures: number | undefined; compact?: boolean }) {
+/** A list or an editor of its own, as a row: what it holds now, and Edit, which opens a sheet. */
+function EditorRow({ d, summary, disabled, sheet, extra }: { d: Def; summary: string; disabled: boolean; sheet: (close: () => void) => ReactNode; extra?: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const labelId = useId();
+  return (
+    <Row id={rowAnchor(d.key)} label={wordsOf(d.key).label} labelId={labelId} description={summary} scope={d.scope === "project" ? "project" : null} disabled={disabled || undefined} more={moreWords(d.key)}
+      control={<Button size="sm" disabled={disabled} expanded={open} describedBy={labelId} onClick={() => setOpen(true)}>{S.setFrame.edit}</Button>}>
+      {extra}
+      {open && sheet(() => setOpen(false))}
+    </Row>
+  );
+}
+
+/** One setting: its name, one line on what changes, its control on the right; Learn more for the rest. Changed from usual:
+ *  the dot, whose menu holds Restore usual. A project's own setting: the This project tag. */
+function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string; indent?: boolean }) {
+  const c = useCtx();
+  const { project, facts, inv } = c;
   useSetting(d.key);
   const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
-  // Home size: Large is suggested while the text is larger than usual.
-  const hint = d.key === "home.size" ? homeSizeHint(setting("display.textSize"), value) : null;
-  // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always.
+  // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always. A hidden
+  // option (the Deep theme) is not offered, though a value already set to it still works.
   const offered = offeredOptions(d.key);
-  const options = (r.options ?? []).filter((o) => !offered || offered.includes(o.id));
-  const labelId = useId(), helpId = useId();
+  const hidden = HIDDEN_OPTIONS[d.key] ?? [];
+  const options = (r.options ?? []).filter((o) => (!offered || offered.includes(o.id)) && !hidden.includes(o.id));
+  const labelId = useId(), helpId = useId(), switchId = useId(), inputId = useId();
   const [problem, setProblem] = useState("");
-  const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); });
+  const done = (p: Promise<{ ok: boolean; code?: string }>) => void p.then((x) => { if (!x.ok) setProblem(problemWords(x.code ?? "other", d)); else if (r.later) c.say(S.setFrame.nextTask); });
   // A project's setting says which project the page was shown it for; the shell refuses it for any other.
   const shownFor = snapshotNow()?.project ?? project;
-  const change = (v: unknown) => { setProblem(""); done(changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined)); };
+  const change = (v: unknown): Promise<Done> => { setProblem(""); const p = changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined); done(p); return p; };
   const reset = () => { setProblem(""); setAskReset(false); done(resetSetting(d.key)); };
-  // Reset of Pictures to keep while more are kept: says first how many go, as lowering the number does.
+  // Restore usual of Pictures to keep while more are kept: says first how many go, as lowering the number does.
   const [askReset, setAskReset] = useState(false);
-  const resetId = useId();
-  const resetGo = d.key === "pictures.keep" ? picturesResetGoing([d.key], pictures, value) : 0;
+  const resetGo = d.key === "pictures.keep" ? picturesResetGoing([d.key], inv?.receiptPictures, value) : 0;
   // Checking your project: the project's own .claude/proof.json or .claude/launch.json wins, and the row shows that, read
   // only; the words after pressing need a button to press; a house rule can make installing ask first.
   const facts_ = facts && facts.project === project ? facts : null;
@@ -615,169 +414,433 @@ function SettingRow({ d, project, keys, facts, pictures, compact = false }: { d:
   const pressNow = useSetting("check.press");
   const rulesNow = useSetting("rules.house");
   const rulesBlocked = (snapshotNow()?.problems ?? []).some((p) => p.key === "rules.house");
+  // Home size: Large is suggested while the text is larger than usual.
+  const hint = d.key === "home.size" ? homeSizeHint(setting("display.textSize"), value) : null;
   if (d.key === "check.afterPress" && !afterPressShown(pressNow, facts_)) return null;
-  const off = r.disabled || fromFile.length > 0 || launchWins;
-  const notes = [...fromFile, ...(launchWins ? [S.chkLaunchFile] : []), ...(d.key === "check.install" ? [installNote(value, rulesNow)].filter((x): x is string => !!x) : [])];
+  const off = r.disabled || fromFile.length > 0 || launchWins || !!parentOff;
+  const list = Array.isArray(value) ? (value as string[]) : [];
+  // The line under the row: its own words, then what it needs right now (one line each, never a wall). While its parent is
+  // off, a child row's one line becomes "Turn on {parent} to use this" (the spec, 2.3), never that note under its own words.
+  const line = parentOff ? parentOff : d.key === "spend.dailyLimit" ? S.setFrame.limitLine(valueWords(d, value)) : rowLine(d.key);
+  const notes = [
+    ...fromFile, ...(launchWins ? [S.chkLaunchFile] : []), ...(d.key === "check.install" ? [installNote(value, rulesNow)] : []),
+    hint, d.scope === "project" && !project ? S.setNeedsProject : null,
+  ].filter((x): x is string => !!x);
+  const changed = r.changed ? { usual: valueWords(d, usual), onRestore: r.canReset ? (resetGo > 0 ? () => setAskReset(true) : reset) : undefined } : null;
+  const anchor = rowAnchor(d.key);
+
+  // Lists and editors: a summary and Edit, which opens a sheet (the spec, 3.5).
+  if (d.key === "rules.house") {
+    return <EditorRow d={d} summary={S.setFrame.rules(list.length)} disabled={r.disabled || rulesBlocked}
+      sheet={(close) => <HouseRules key={shownFor} project={shownFor} saved={list} disabled={r.disabled || rulesBlocked} onClose={close} />} />;
+  }
+  if (d.key === "calls.apps") {
+    return <EditorRow d={d} summary={valueWords(d, value)} disabled={off}
+      sheet={(close) => <Sheet title={wordsOf(d.key).label} dirty={false} instant onSave={close} onClose={close}><CallApps value={list} disabled={off} onChange={(v) => void change(v)} /><LearnMore words={moreWords(d.key)} /></Sheet>} />;
+  }
+  if (d.key === "ph.appAnswers") {
+    return <EditorRow d={d} summary={S.setFrame.apps(appAnswersFrom(value, {}).length)} disabled={off}
+      sheet={(close) => <Sheet title={wordsOf(d.key).label} dirty={false} instant onSave={close} onClose={close}><AppAnswers /><LearnMore words={moreWords(d.key)} /></Sheet>} />;
+  }
+  if (d.kind === "list" && !d.allowedItems) {
+    return <EditorRow d={d} summary={list.length ? list.join(", ") : S.setFrame.items(0)} disabled={off}
+      sheet={(close) => <Sheet title={wordsOf(d.key).label} dirty={false} instant onSave={close} onClose={close}><ListEditor d={d} value={list} disabled={off} onChange={change} /></Sheet>} />;
+  }
+
   const control = (() => {
-    if (d.key === "rules.house") return null;
-    // M30: the water's colour is a row of swatches, as HeyClicky shows its cursor colours.
+    // M30: the water's colour is a row of pictures, as HeyClicky shows its cursor colours; how lively too (F28).
     if (d.key === "look.water") return <WaterSwatches value={String(value)} onChange={change} labelId={labelId} />;
-    if (d.key === "check.skip") return null;
-    if (d.key === "check.start") return <ChoiceControl value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
-    if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={pictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+    if (d.key === "character.lively") return <LivelyPictures value={String(value)} onChange={change} labelId={labelId} disabled={off} />;
+    if (d.key === "check.start") return <ChoiceControl d={d} value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
+    if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={inv?.receiptPictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} inputId={inputId} />;
     switch (d.kind) {
-      case "switch": return <button className="btn" type="button" role="switch" aria-checked={value === true} aria-labelledby={labelId} aria-describedby={helpId} disabled={off} onClick={() => change(value !== true)}><span className="sr">{r.shown}</span></button>;
-      case "choice": return <ChoiceControl value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
-      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
+      case "switch": return <Switch id={switchId} checked={value === true} labelledBy={labelId} describedBy={helpId} disabled={off} onChange={change} />;
+      case "choice": return <ChoiceControl d={d} value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
+      case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} inputId={inputId} />;
       case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
-      // A list from a fixed set (Also say out loud) is a row of switches; the call apps have their own editor below.
-      case "list": return d.allowedItems ? <AllowedList d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} /> : d.key === "calls.apps" ? null : <ListControl d={d} value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} />;
       default: return null;
     }
   })();
-  // The keys and the voice keep their own editors; the keys' editor has its own Reset to the usual keys.
-  // The per app answers have their own editor too (protective: no Reset), and the call apps their own list.
-  const editor = d.key === "keys.hotkeys" ? <KeysSection keys={keys} /> : d.key === "talk.voice" ? <VoiceRows /> : d.key === "rules.house" ? <HouseRules key={shownFor} project={shownFor} saved={Array.isArray(value) ? (value as string[]) : []} disabled={r.disabled || rulesBlocked} />
-    : d.key === "check.skip" ? <SkipControl d={d} value={Array.isArray(value) ? (value as string[]) : []} facts={facts_} disabled={off} onChange={change} />
-    : d.key === "ph.appAnswers" ? <AppAnswers />
-    : d.key === "calls.apps" ? <CallApps value={Array.isArray(value) ? (value as string[]) : []} disabled={off} onChange={change} onProblem={setProblem} /> : null;
+  // A choice made by looking (the water, how lively) is a row of pictures under the words; every other control sits on
+  // the right of the row (ui/controlRule.ts).
+  const under = controlFor(d) === "pictures";
+  // A list from a fixed set (Also say out loud, Checks to leave out): its items are child rows with a switch each.
+  const children = d.kind === "list" && d.allowedItems
+    ? (d.key === "check.skip"
+      ? (skipItems(facts_, list).length ? <AllowedList d={d} value={list} items={skipItems(facts_, list)} disabled={off} onChange={change} switchLabel={S.chkLeaveOut} /> : <Row indent label={S.chkNoChecks} />)
+      : <AllowedList d={d} value={list} disabled={off} onChange={change} />)
+    : null;
+  const extras = [
+    under && control ? <div key="pictures">{control}</div> : null,
+    ...notes.map((n) => <Note key={`note-${n}`} text={n} />),
+    askReset && resetGo > 0 ? (
+      <ConfirmStep key="ask" className="set-confirm" label={S.chkPicturesGo(resetGo, Number(usual))} back={inputId} onCancel={() => setAskReset(false)}>
+        <p>{S.chkPicturesGo(resetGo, Number(usual))}</p>
+        <div className="set-buttons"><Button kind="danger" onClick={reset}>{S.chkPicturesGoYes}</Button><CancelButton onClick={() => setAskReset(false)} /></div>
+      </ConfirmStep>
+    ) : null,
+    problem ? <Problem key="problem" text={problem} /> : null,
+  ].filter(Boolean);
+  return (<>
+    <Row id={anchor} label={r.label} description={line || undefined} labelId={labelId} descriptionId={helpId} indent={indent}
+      controlId={d.kind === "switch" ? switchId : d.kind === "number" ? inputId : undefined} control={under ? null : control} disabled={off || undefined}
+      changed={changed} scope={d.scope === "project" ? "project" : null} more={moreWords(d.key)}>
+      {extras.length ? extras : null}
+    </Row>
+    {children}
+  </>);
+}
+
+// ---------- rows the page draws itself ----------
+
+/** At rest (the spec, 3.4): Show, Half or Hidden, one control for Tuck into the edge and Stick to the edge. */
+function AtRestRow() {
+  const peek = useSetting("character.peek"), stick = useSetting("character.stick");
+  const labelId = useId();
+  const [problem, setProblem] = useState("");
+  const v = atRestOf(peek, stick);
+  const pick = async (to: AtRest) => {
+    setProblem("");
+    for (const [k, val] of atRestWrites(to)) { const r = await changeSetting(k, val); if (!r.ok) { setProblem(problemWords(r.code)); return; } }
+  };
+  const changed = changedNow().some((k) => k === "character.peek" || k === "character.stick");
+  const usual = atRestOf(defaultOf("character.peek"), defaultOf("character.stick"));
   return (
-    <div role="group" aria-labelledby={labelId} className="setting">
-      {/* M30: on a page each row is its name and one short line, the control on the right; the long help is for search. */}
-      {compact ? (
-        <div className="sp-row"><span className="sp-text"><b id={labelId}>{S.shortLabel[d.key] ?? r.label}</b>{S.short[d.key] ? <span id={helpId}>{S.short[d.key]}</span> : null}</span>{control}</div>
-      ) : (<>
-        <div className="row"><span className="line" id={labelId}><b>{r.label}</b></span>{control}</div>
-        <div className="line muted" id={helpId}>{r.help}</div>
-      </>)}
-      {hint && <div className="line">{hint}</div>}
-      {editor}
-      {notes.map((n) => <div className="line muted" key={n}>{n}</div>)}
-      {r.projectLine && <div className="line muted">{r.projectLine}</div>}
-      {/* What it usually is, and Reset, only once it was changed: an untouched row is its title, its words and its control. */}
-      {r.changed && <div className="row">
-        <span className="line muted">{r.usualLine}</span>
-        {r.canReset && d.key !== "keys.hotkeys" && !askReset && <button id={resetId} className="btn" type="button" aria-label={r.resetLabel} onClick={resetGo > 0 ? () => setAskReset(true) : reset}>{S.setReset}</button>}
-      </div>}
-      {askReset && resetGo > 0 && (
-        <ConfirmStep className="line" label={S.chkPicturesGo(resetGo, Number(usual))} back={resetId} onCancel={() => setAskReset(false)}>
-          <div className="line">{S.chkPicturesGo(resetGo, Number(usual))}</div>
-          <div className="row"><button className="btn danger" type="button" onClick={reset}>{S.chkPicturesGoYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskReset(false)}>{S.planCancel}</button></div>
-        </ConfirmStep>
-      )}
-      {r.later && <div className="line muted">{S.setNextTask}</div>}
-      {r.floor && !compact && <div className="line muted">{floorWords(r.floor)}</div>}
-      {problem && <div className="error" role="alert">{problem}</div>}
-    </div>
+    <Row id={rowAnchor("character.peek")} label={S.setRows.atRest.label} labelId={labelId} description={S.setRows.atRest.desc}
+      changed={changed ? { usual: S.setRows.atRest.options[usual], onRestore: () => { void resetSetting("character.peek").then(() => resetSetting("character.stick")); } } : null}
+      more={[wordsOf("character.peek").help, wordsOf("character.stick").help]}
+      control={<Segmented labelledBy={labelId} value={v} options={AT_REST.map((id) => ({ id, label: S.setRows.atRest.options[id] }))} onChange={(x) => void pick(x)} />}>
+      <Problem text={problem} />
+    </Row>
   );
+}
+
+/** The one line a key row says under the job (the spec, 3.4), then why it has no keys or fell back, when it did. */
+const F28_JOBS: readonly Job[] = ["problem", "talk", "read", "stop", "accept"];
+/** Keys (keys.hotkeys, rendered as rows): each job with its keys as the Mac's own caps and Change, which opens a sheet with
+ *  a short list of keys free on this Mac and any keys you like. The app registers new keys at once and keeps them only if
+ *  they work, saved on this Mac (keymap.rs). Nothing here reads key presses (rule 8): the person picks. */
+function KeysRows({ keys }: { keys: Keys }) {
+  const c = useCtx();
+  const [open, setOpen] = useState<Job | null>(null);
+  const [others, setOthers] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const rows = keyRows(keys);
+  const row = (job: Job) => {
+    const r = rows.find((x) => x.job === job)!;
+    return (
+      <Row key={job} id={`set-key-${job}`} label={r.name} description={(S.keyJobLines as Record<string, string>)[job]} more={r.line && !r.problem ? [r.line] : undefined}
+        control={<span className="set-pair"><KeyLabel chord={keys.using[job]} />{!keys.using[job] && <span className="set-quiet">{S.keysNone}</span>}
+          <Button size="sm" disabled={busy} label={S.keysChangeFor(r.name)} expanded={open === job} onClick={() => setOpen(job)}>{keys.using[job] ? S.keysChange : S.setFrame.addKey}</Button></span>}>
+        {r.line && r.problem && <p className="set-problem" role="alert">{r.line}</p>}
+        {talkCost(keys.using[job] ?? "") && <Note text={talkCost(keys.using[job] ?? "")} />}
+      </Row>
+    );
+  };
+  const reset = () => {
+    if (busy) return;
+    setBusy(true); setOpen(null);
+    void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); c.say(resetLine(v)); }).catch((e) => c.say(keyProblem(String(e)))).finally(() => setBusy(false));
+  };
+  const rest = rows.map((r) => r.job).filter((j) => !F28_JOBS.includes(j));
+  return (<>
+    <Group id="keys.keys" title={S.setGroupTitles["keys.keys"]} footer={<Button kind="quiet" size="sm" disabled={busy} onClick={reset}>{S.setRows.restoreKeys}</Button>}>
+      {F28_JOBS.map(row)}
+    </Group>
+    <Disclosure id="keys.others" title={S.setRows.otherJobs} count={rest.length} open={others} onToggle={setOthers}>
+      <Group>{rest.map(row)}</Group>
+    </Disclosure>
+    {open && <KeySheet job={open} keys={keys} onClose={(changed) => { const job = open; setOpen(null); if (changed) c.say(keyChangedLine(job, changed)); }} />}
+  </>);
+}
+
+/** One job's keys in a sheet: the short list the app says is free on this Mac (keys another job has cannot be picked), and
+ *  any keys you like. A pick applies at once; the sheet closes. */
+function KeySheet({ job, keys, onClose }: { job: Job; keys: Keys; onClose: (changed: Keys | null) => void }) {
+  const [c, setC] = useState<Choices | null>(null);
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  const live = useRef(true);
+  const name = (S.keyJobs as Record<Job, string>)[job];
+  const load = () => { void invoke("key_choices", { action: job }).then((v) => { if (live.current) setC(choicesFrom(v, job)); }).catch((e) => { if (live.current) setProblem(keyProblem(String(e))); }); };
+  useEffect(() => { live.current = true; load(); return () => { live.current = false; }; }, [job]);
+  const pick = (id: string) => {
+    if (busy) return;
+    setBusy(true); setProblem("");
+    void invoke("set_key", { action: job, id }).then((v) => { const k = keysFrom(v); setKeysNow(k); onClose(k); })
+      .catch((e) => {
+        const code = String(e);
+        setProblem(keyProblem(code));
+        // Another app took them since the list was asked for: ask again, so they show as taken.
+        if (code === "taken") load();
+      })
+      .finally(() => setBusy(false));
+  };
+  return (
+    <Sheet title={S.setRows.keyChangeSheet(name)} dirty={false} instant onSave={() => onClose(null)} onClose={() => onClose(null)}>
+      {!c && !problem && <p className="set-note" role="status">{S.keysChecking}</p>}
+      {c && (<>
+        <div className="set-buttons" role="group" aria-label={S.keysPickFor(name)}>
+          {c.choices.map((id) => <Button key={id} pressed={keys.using[job] === id} disabled={busy || !canPick(c, id)} label={chordLabel(id)} describedBy={talkCost(id) ? `key-cost-${id}` : undefined} onClick={() => pick(id)}><KeyLabel chord={id} hidden /></Button>)}
+        </div>
+        {pickerLines(c, keys).map((l) => <Note key={l} text={l} />)}
+        {c.choices.map((id) => talkCost(id) && <p className="set-note" id={`key-cost-${id}`} key={id}>{talkCost(id)}</p>)}
+        <AnyKeys busy={busy} pick={pick} />
+      </>)}
+      <Problem text={problem} />
+    </Sheet>
+  );
+}
+
+// Any keys, not only the short list (finding L): turn on Control, Option, Shift and Command and choose the key from a menu.
+// Nothing here listens to the keyboard (rule 8): the page builds the chord's id, says in plain words why one is not enough,
+// and the app checks it again and tries it like any other (taken by another app, used by another job).
+function AnyKeys({ busy, pick }: { busy: boolean; pick: (id: string) => void }) {
+  const [t, setT] = useState<Ticked>({ control: false, option: false, shift: false, command: false });
+  const [key, setKey] = useState("");
+  const built = key ? customChord(t, key) : null;
+  const id = built && "id" in built ? built.id : "";
+  const why = built && "problem" in built ? (built.problem === "reserved" ? S.keysReserved : built.problem === "not_enough" ? S.keysNotEnough : "") : "";
+  return (
+    <Group title={S.keysCustomTitle} footer={S.keysCustomHelp}>
+      {(["control", "option", "shift", "command"] as const).map((mod) => (
+        <Row key={mod} label={S.keyWords[mod]} control={<Switch checked={t[mod]} label={S.keyWords[mod]} disabled={busy} onChange={(on) => setT({ ...t, [mod]: on })} />} />
+      ))}
+      <Row label={S.keysCustomKey} control={<Menu label={S.keysCustomKey} value={key} placeholder={S.keysCustomKey} disabled={busy} onChange={setKey}
+        options={CUSTOM_KEYS.map((k) => ({ id: k, label: k.length === 1 ? k.toUpperCase() : S.keyWords.space }))} />} />
+      <Row label={id ? <KeyLabel chord={id} /> : S.keysCustomTitle} description={why || undefined}
+        control={<Button disabled={busy || !id} onClick={() => { if (id) pick(id); }}>{S.keysCustomUse}</Button>} />
+    </Group>
+  );
+}
+
+// Talking and listening (M11 wave 4, item 2): the microphone, the language, the voice and its speed (the registry's
+// talk.voice, drawn as rows). The app lists the Mac's voices and microphones and keeps the choices on this Mac (voiceset.rs,
+// voice.json); one that is away says so, and when the Mac's sound is off it says spoken lines are shown as words only. Read
+// again whenever the card comes back to the front (headphones may have been switched on or off meanwhile).
+/** The id a menu uses for "the Mac's own" microphone or voice (the shell's null). */
+const MAC_DEFAULT = "mac-default";
+function VoiceRows({ parentOff }: { parentOff: string }) {
+  const [v, setV] = useState<VoiceSettings>(VOICE_START);
+  const [problem, setProblem] = useState("");
+  const [tried, setTried] = useState("");
+  const micId = useId(), langId = useId(), voiceId = useId();
+  const load = () => void invoke("voice_settings").then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch(() => {});
+  useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
+  // Put back by Restore usual or Undo (the registry's talk.voice): read the lists again.
+  const saved = JSON.stringify(useSetting("talk.voice") ?? null);
+  const first = useRef(true);
+  useEffect(() => { if (first.current) { first.current = false; return; } load(); }, [saved]);
+  const change = (c: Parameters<typeof voiceAsk>[1]) => { setProblem(""); setTried(""); void invoke("set_voice_settings", voiceAsk(v, c)).then((x) => setV(noteSpeed(voiceSettingsFrom(x)))).catch((e) => setProblem(voiceProblem(String(e)))); };
+  const heard = (r: unknown) => { const o = (r ?? {}) as { said?: boolean; why?: string; sound?: Sound }; setTried(o.said === false && o.why === "sound" ? soundLine(o.sound ?? "muted") : o.said === false && o.why === "quiet" ? S.voiceQuietNow : ""); };
+  const off = !!parentOff;
+  // The speeds are a choice like any other: two or three side by side, more in a menu (ui/controlRule.ts).
+  const speeds = v.speeds.map((n) => ({ id: String(n), label: speedLabel(n) }));
+  const speed = (id: string) => change({ speed: Number(id) });
+  return (<>
+    <Row id={rowAnchor("talk.voice")} indent label={S.setRows.microphone} labelId={micId} description={parentOff || micLine(v) || undefined} disabled={off || undefined}
+      control={<Menu labelledBy={micId} value={v.mic ?? MAC_DEFAULT} disabled={off} onChange={(id) => change({ mic: id === MAC_DEFAULT ? null : id })}
+        options={[{ id: MAC_DEFAULT, label: micDefaultLabel(v) }, ...(v.mic && v.micMissing ? [{ id: v.mic, label: S.notConnected(v.micMissing) }] : []), ...v.inputs.map((i) => ({ id: i.id, label: i.name }))]} />}
+      more={[S.micHelp, S.voiceSettingsHelp]} />
+    <Row indent label={S.setRows.language} labelId={langId} description={parentOff || S.voiceLanguageHelp} disabled={off || undefined}
+      control={<Menu labelledBy={langId} value={v.language} disabled={off} onChange={(l) => change({ language: l })} options={v.languages.map((l) => ({ id: l, label: languageLabel(l) }))} />}
+      more={[S.voiceWordsHelp]} />
+    <Row indent label={S.setRows.voiceAndSpeed} labelId={voiceId} description={parentOff || voiceLine(v) || soundLine(v.sound) || undefined} disabled={off || undefined} more={[S.voiceMoreHelp]}
+      control={<span className="set-pair">
+        <Menu labelledBy={voiceId} value={v.voice ?? MAC_DEFAULT} disabled={off} onChange={(id) => change({ voice: id === MAC_DEFAULT ? null : id })}
+          options={[{ id: MAC_DEFAULT, label: S.voiceMacDefault }, ...(v.voice && v.voiceMissing ? [{ id: v.voice, label: S.notOnThisMac(v.voiceMissing) }] : []), ...v.voices.map((x) => ({ id: x.id, label: voiceLabel(x) }))]} />
+        {choiceControl(speeds.length) === "segmented"
+          ? <Segmented label={S.voiceSpeedGroup} value={String(v.speed)} options={speeds} disabled={off} onChange={speed} />
+          : <Menu label={S.voiceSpeedGroup} value={String(v.speed)} options={speeds} disabled={off} onChange={speed} />}
+      </span>}>
+      {buttonShown("voiceTry") && <div className="set-buttons"><Button size="sm" disabled={off} onClick={() => void invoke("speak", { text: S.voiceSample }).then(heard).catch(() => {})}>{S.voiceTry}</Button></div>}
+      {tried && tried !== soundLine(v.sound) && <Note text={tried} live />}
+      <Problem text={problem} />
+    </Row>
+  </>);
+}
+
+/** Reads every key a group's items own, so a change anywhere draws the group again. */
+const keyOf = (i: Item): string | null => (typeof i === "string" ? i : null);
+
+/** One item of a group: a setting's row (or the rows a custom setting draws), or a part that is not a setting. */
+function ItemRows({ item, parentOff = "", indent }: { item: Item; parentOff?: string; indent?: boolean }) {
+  if (typeof item !== "string") return <FixedRows fixed={item.fixed} />;
+  const d = defOf(item);
+  if (!d || d.hidden || !shownSettings().some((x) => x.key === item) || !shownNow(item, setting)) return null;
+  const parentKey = CHILD_OF[item];
+  const parentWords = parentKey && setting(parentKey) !== true ? S.ui.turnOnFirst(wordsOf(parentKey).label) : parentOff;
+  if (item === "keys.hotkeys") return null;   // drawn as its own groups (KeysRows)
+  if (item === "talk.voice") return <VoiceRows parentOff={parentWords} />;
+  if (item === "character.peek") return <AtRestRow />;
+  return <SettingRow d={d} parentOff={parentWords} indent={indent ?? !!parentKey} />;
+}
+
+/** A page's group: its title, its rows, its footer. A group with nothing to show is left out. */
+function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
+  const c = useCtx();
+  for (const i of items) { const k = keyOf(i); if (k) useSetting(k); }
+  if (items.length === 1 && typeof items[0] === "string" && items[0] === "keys.hotkeys") return <KeysRows keys={c.keys} />;
+  const only = items.length === 1 && typeof items[0] !== "string" ? items[0].fixed : null;
+  // A few parts are a whole group on their own, with their own card.
+  if (only === "plan") return <PlanGroup />;
+  if (only === "preview") return <FlowflowPreview />;
+  if (only === "setup") return <SetupGroup />;
+  if (only === "danger") return <DangerZone />;
+  const title = (S.setGroupTitles as Record<string, string>)[id];
+  const foot = (S.setGroupFoot as Record<string, string>)[id];
+  return (
+    <Group id={id} title={title || undefined} footer={foot}>
+      {items.map((i) => <ItemRows key={typeof i === "string" ? i : `fixed:${i.fixed}`} item={i} />)}
+    </Group>
+  );
+}
+
+// ---------- the parts that are not settings ----------
+
+function FixedRows({ fixed }: { fixed: Fixed }) {
+  switch (fixed) {
+    case "key": return <KeyRow />;
+    case "permissions": return <PermissionRows />;
+    case "kept": return <KeptRow />;
+    case "updates": return <UpdatesRow />;
+    case "replay": return <ReplayRow />;
+    case "practice": return <PracticeRow />;
+    case "made": return <MadeRow />;
+    case "logs": return <LogsRow />;
+    case "acknowledgements": return <AckRow />;
+    case "google": return placeShown("google") && setting("watch.on") === true ? <GoogleSection /> : null;
+    default: return null;
+  }
+}
+const fixedAnchor = (fx: Fixed): string => `set-fixed-${fx}`;
+
+/** The Plan card (the spec, 3.10; T17). Payments are off, so it says Early access and offers nothing to buy. */
+function PlanGroup() {
+  const card = planCard(planNow());
+  const [compare, setCompare] = useState(false);
+  const act = (b: PlanButton) => { if (b.id === "compare") setCompare(true); };
+  return (
+    <Group id="account.plan" title={S.setGroupTitles["account.plan"]} footer={S.setGroupFoot["account.plan"]} pad>
+      <div className="plan" id={fixedAnchor("plan")}>
+        <p className="plan-line" data-mark={card.mark === "none" ? undefined : card.mark}>{card.line}</p>
+        {card.facts.map((f) => <p className="plan-fact" key={f}>{f}</p>)}
+        {card.buttons.length > 0 && <div className="set-buttons">{card.buttons.map((b) => <Button key={b.id} kind={b.kind} onClick={() => act(b)}>{b.label}</Button>)}</div>}
+      </div>
+      {compare && <ComparePlans onClose={() => setCompare(false)} />}
+    </Group>
+  );
+}
+/** Compare plans (a sheet): Monthly or Yearly, Free and Pro side by side, and what cancelling means. */
+function ComparePlans({ onClose }: { onClose: () => void }) {
+  const [period, setPeriod] = useState<"month" | "year">("month");
+  return (
+    <Sheet title={S.plan.compareTitle} dirty={false} instant onSave={onClose} onClose={onClose}>
+      <Segmented label={S.plan.compareTitle} value={period} options={[{ id: "month", label: S.plan.monthly }, { id: "year", label: S.plan.yearly }]} onChange={setPeriod} />
+      <p className="plan-fact">{period === "month" ? S.plan.monthPrice : S.plan.yearPrice} {S.plan.usPrices}</p>
+      <div className="plan-compare">
+        <Card title={S.plan.free}>{S.plan.freeLines(10).map((l) => <p className="plan-fact" key={l}>{l}</p>)}</Card>
+        <Card title={S.plan.pro}>{S.plan.proLines.map((l) => <p className="plan-fact" key={l}>{l}</p>)}</Card>
+      </div>
+      <p className="plan-fact">{S.plan.cancelAny}</p>
+    </Sheet>
+  );
+}
+
+/** The person's own key (the spec, 3.4): saved in the Keychain with Replace (a sheet), or a field and Save key when there is
+ *  none. The box is emptied at once, whatever happens next; nothing on the page keeps a copy. Remove is in the danger zone. */
+function KeyRow() {
+  const c = useCtx();
+  const saved = !!c.inv?.keySaved;
+  const [key, setKey] = useState("");
+  const [sheet, setSheet] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
+  const labelId = useId();
+  const save = () => {
+    const r = submitKey(key);
+    setKey("");   // emptied at once, whatever happens next; nothing on the page keeps a copy
+    if (!r.send) { setProblem(r.problem ?? ""); return; }
+    setProblem(""); setBusy(true);
+    void invoke("save_api_key", { key: r.send }).then(() => { setSheet(false); c.say(S.keySavedNote); c.reload(); }).catch((e) => setProblem(failNote(e, "key"))).finally(() => setBusy(false));
+  };
+  const field = <Field type="password" value={key} label={S.obKeyLabel} placeholder="sk-ant-..." disabled={busy} error={problem || undefined}
+    onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(); }} />;
+  if (!c.inv) return null;
+  return (<>
+    <Row id={fixedAnchor("key")} label={S.setRows.keyLabel} labelId={labelId} description={S.setRows.keyDesc}
+      control={saved
+        ? <span className="set-pair"><ProofChip kind="pass" label={S.setRows.keySavedChip} /><Button size="sm" onClick={() => { setProblem(""); setSheet(true); }}>{S.setRows.keyReplace}</Button></span>
+        : <span className="set-pair">{field}<Button kind="primary" size="sm" disabled={busy || !key} onClick={save}>{S.setRows.keySave}</Button></span>} />
+    {sheet && (
+      <Sheet title={S.setRows.keySheet} dirty={!!key} onSave={save} onClose={() => { setKey(""); setProblem(""); setSheet(false); }} saveLabel={S.setRows.keySave}>
+        <p className="set-note">{S.keyNewHelp}</p>
+        {field}
+      </Sheet>
+    )}
+  </>);
 }
 
 const PERM_OF: Record<PermissionKind, Permission> = { screen_recording: "screenRecording", accessibility: "accessibility", microphone: "microphone" };
-const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
-
-/** After Reset this section or Reset all: a line saying what happened, and Undo for ten seconds, which puts back the
- *  values kept just before the reset (exactly what the shell reset, settingsStore.ts undoValues) through the shell. */
-function useUndoToast() {
-  const [toast, setToast] = useState<{ text: string; back: [string, unknown][] | null } | null>(null);
-  useEffect(() => { if (!toast?.back) return; const t = setTimeout(() => setToast((x) => (x && x.back ? { ...x, back: null } : x)), 10_000); return () => clearTimeout(t); }, [toast?.back]);
-  const show = (done: Done, back: [string, unknown][]) => setToast(done.ok ? { text: done.notReset?.length ? S.setNotAllBack : S.setResetDone(back.length), back } : { text: problemWords(done.code), back: null });
-  const undo = (back: [string, unknown][]) => { setToast(null); void undoReset(back).then((failed) => setToast({ text: failed.length ? S.setNotAllBack : S.setUndone, back: null })); };
-  const view = toast && <div className="row" role="status"><span className="line">{toast.text}</span>{toast.back && toast.back.length > 0 && <button className="btn" type="button" onClick={() => undo(toast.back!)}>{S.setUndo}</button>}</div>;
-  return { show, view };
+/** What Squibby may see (the spec, 3.4; rule 8): each permission's state, why it is asked, and Open System Settings when it
+ *  is not allowed. "Not needed yet" until a feature first asks; nothing is asked here. */
+function PermissionRows() {
+  const c = useCtx();
+  const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
+  const load = () => void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)).catch(() => {});
+  useEffect(() => { load(); const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
+  if (!perms) return null;
+  return (<>
+    {(["accessibility", "screen_recording", "microphone"] as PermissionKind[]).map((k) => {
+      const r = permissionRow(k, perms[k]);
+      const chip: ChipKind = perms[k] === "allowed" ? "allowed" : perms[k] === "not_asked" || !permissionNeeded(PERM_OF[k]) ? "notNeeded" : "notAllowed";
+      return (
+        <Row key={k} id={k === "accessibility" ? fixedAnchor("permissions") : undefined} label={r.label} description={r.why}
+          control={<span className="set-pair"><ProofChip kind={chip} />{r.button && <Button size="sm" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</Button>}</span>}>
+          {r.button && <div className="set-buttons"><Button kind="quiet" size="sm" onClick={() => c.onLesson(permissionLesson(k))}>{S.settingsWalkMe}</Button></div>}
+        </Row>
+      );
+    })}
+  </>);
 }
 
-/** A section: its title, its rows (or the ones a search found), what else belongs there, and Reset this section, which
- *  asks first and names what will change, then offers Undo. Protective settings are never in it. */
-function SettingsSection({ id, title, keys, project, allKeys, extra, facts, pictures, alone = false }: { id: string; title: string; keys: string[]; project: string; allKeys: Keys; extra?: ReactNode; facts: CheckFacts | null; pictures: number | undefined; alone?: boolean }) {
-  useSetting(keys[0] ?? "");
-  const headId = useId(), resetId = useId();
-  const [asking, setAsking] = useState(false);
-  const toast = useUndoToast();
-  const changed = changedNow(id);
-  const unheard = notHeard(id);
-  const go = picturesResetGoing(changed, pictures, setting("pictures.keep"));
-  const yes = () => { setAsking(false); void resetWithUndo(id).then(({ done, back }) => toast.show(done, back)); };
+function KeptRow() {
+  const c = useCtx();
+  return <Row id={fixedAnchor("kept")} label={S.setRows.keptLabel} description={S.setRows.keptDesc} control={<Button size="sm" onClick={c.onMemory}>{S.setRows.openMemory}</Button>} />;
+}
+
+/** Finish setting up (Retool): the three things a new person still needs, each with one button, gone for good once done.
+ *  No permission is listed here: each is asked the first time its feature is used (rule 8). */
+const SETUP_DONE = "companion.setupDone", STOP_LEARNED = "companion.stopKeyLearned";
+const stored = (k: string): boolean => { try { return localStorage.getItem(k) === "1"; } catch { return false; } };
+const store = (k: string): void => { try { localStorage.setItem(k, "1"); } catch { /* storage may be unavailable */ } };
+function SetupGroup() {
+  const c = useCtx();
+  const [stop, setStop] = useState(() => stored(STOP_LEARNED));
+  const [gone] = useState(() => stored(SETUP_DONE));
+  if (gone || !c.inv) return null;
+  const items = [
+    { id: "key", label: S.setRows.setupKey, done: c.inv.keySaved, button: S.setRows.setupAdd, act: () => c.go("account.claude") },
+    { id: "folder", label: S.setRows.setupFolder, done: !!c.project, button: S.setRows.setupPick, act: c.onPickFolder },
+    { id: "stop", label: S.setRows.setupStop, done: stop, button: S.setRows.setupLearn, act: () => { store(STOP_LEARNED); setStop(true); c.go("keys.keys"); }, desc: c.keys.using.stop ? S.setRows.setupStopDesc(chordLabel(c.keys.using.stop)) : undefined },
+  ];
+  if (items.every((i) => i.done)) { store(SETUP_DONE); return null; }
   return (
-    <section aria-labelledby={headId} className="settings-section">
-      {/* Shown alone, the section's name is already the title at the top of Home, so its heading is for VoiceOver only. */}
-      <h3 id={headId} className={alone ? "sr" : undefined}>{title}</h3>
-      {id === "home" && <CompanionHero />}
-      <div className="group">
-      {keys.map((k) => { const d = defOf(k); return d ? <SettingRow key={k} d={d} project={project} keys={allKeys} facts={facts} pictures={pictures} /> : null; })}
-      </div>
-      {extra}
-      {changed.length > 0 && !asking && <div className="row"><button id={resetId} className="btn" type="button" onClick={() => setAsking(true)}>{S.setResetSection}</button></div>}
-      {asking && (
-        <ConfirmStep className="line" label={S.setResetSection} back={resetId} onCancel={() => setAsking(false)}>
-          <div className="line">{S.setResetSectionSure(names(changed))}</div>
-          {go > 0 && <div className="line">{S.setPicturesGo(go, Number(defaultOf("pictures.keep")))}</div>}
-          {unheard.length > 0 && <div className="line muted">{S.setNotHeard(names(unheard))}</div>}
-          <div className="row"><button className="btn" type="button" onClick={yes}>{S.setResetSectionYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsking(false)}>{S.planCancel}</button></div>
-        </ConfirmStep>
-      )}
-      {toast.view}
-    </section>
+    <Group id="general.setup" title={S.setGroupTitles["general.setup"]}>
+      {items.map((i) => <Row key={i.id} id={i.id === "key" ? fixedAnchor("setup") : undefined} label={i.label} description={i.desc}
+        control={i.done ? <ProofChip kind="pass" label={S.setRows.setupDone} /> : <Button size="sm" onClick={i.act}>{i.button}</Button>} />)}
+    </Group>
   );
 }
 
-// working: a task or a check works (isBusy). practiceBusy: that, or a lesson or a practice's own checks (practice.ts
-// workingOn), so the practice copy open now is never moved to the Trash under them.
-// onStepAside: the email for Report a problem, or Finder showing the support log, opened (home.stepAside decides).
-/** The parts of Settings, in page order, for the side list: each section of settings, then the parts that are not settings
- *  (what it may do on this Mac, your key, practice and the rest). An id is a section's id, or "fixed:" and the part's name. */
-/** M28: Google shows in Settings only once this build has Google set up (or an account is already kept), so nobody meets a
- *  section whose buttons cannot work. Learned once from the shell when the page loads. */
-let googleShown = false;
-export const googleInSettings = (): boolean => googleShown;
-void invoke("google_accounts").then((v) => { const o = v as { ready?: boolean; accounts?: unknown[] } | null; googleShown = !!o?.ready || (o?.accounts?.length ?? 0) > 0; }).catch(() => {});
-export const placeShown = (fixed: string, google = googleShown): boolean => fixed !== "google" || google;
-
-export function settingsPlaces(): { id: string; title: string }[] {
-  const all = searchSettings("", shownSettings().filter((x) => shownNow(x.key, setting)));
-  void all;
-  return (Object.keys(PAGES) as PageId[]).map((id) => ({ id, title: S.pages[id].title }));
-}
-
-// place: the part open in the side list. A search looks through every part, as before.
-export function SettingsPage({ place = "", working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {} }: { place?: string; working: boolean; practiceBusy: boolean; project: string; spending: Spending | null; onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void }) {
-  useSetting("fun.reactions");   // any change in any window draws the page again
-  const [q, setQ] = useState("");
-  // Every setting, except a model row that could offer only one option so far (modelChoice.ts), and a row that only
-  // means something with another setting's value, which shows only then (settingsRows.ts shownNow).
-  const results = searchSettings(q, shownSettings().filter((x) => shownNow(x.key, setting)));
-  const [inv, setInv] = useState<Inventory | null>(null);
-  const [perms, setPerms] = useState<Record<PermissionKind, PermissionState> | null>(null);
-  const [step, setStep] = useState<"idle" | "confirm" | "deleting">("idle");
-  const [withProjects, setWithProjects] = useState(false);
-  const [withPractice, setWithPractice] = useState(false);
-  // Move all my practice copies to the Trash: asked first, then what happened in one line.
-  const [askPractice, setAskPractice] = useState(false);
-  const [practiceSaid, setPracticeSaid] = useState("");
-  const practiceAllId = useId();
-  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); load(); }).catch((e) => setPracticeSaid(failNote(e, "practice"))); };
-  const [problem, setProblem] = useState("");
-  const [exporting, setExporting] = useState(false);
-  const [exported, setExported] = useState("");
-  // The keys every job uses now, asked again each time Settings opens.
-  const keys = useKeys();
-  // Asked again whenever the keys kept change (a change here, Reset this section, Reset all, Undo).
-  const keysKept = JSON.stringify(useSetting("keys.hotkeys") ?? null);
-  useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, [keysKept]);
-  // The engine's own settings (the daily limit, Explain, pausing, beta numbers) for every project: asked for the project in
-  // use, or the stand in when no folder is chosen. Their answers come back as the engine's events (settingsStore.ts).
-  useEffect(() => { const p = project || NO_PROJECT; void send(showSpending(p)); void send(listMemory(p)); void send(metricsShow()); }, [project]);
-  // What the rows for checking this project need to know (its scripts, its checks, its own .claude files): the engine's
-  // project report, asked for again each time Settings opens, so an edited package.json shows.
-  const [facts, setFacts] = useState<CheckFacts | null>(null);
-  useEffect(() => {
-    setFacts(null);
-    if (project) void send(inspectProject(project));
-    const off = listen("runner-event", (e) => { const f = factsFrom(e.payload); if (f && f.project === project) setFacts(f); });
-    return () => { off.then((f) => f()); };
-  }, [project]);
+/** Updates (About): the state now, Check now, Install once one is found (the one main button), and its notes. */
+function UpdatesRow() {
+  const c = useCtx();
   const [up, setUp] = useState<UpdateState>(found.update ?? { stage: "idle" });
   const [upInfo, setUpInfo] = useState<{ configured: boolean; version: string }>({ configured: false, version: "" });
-  useEffect(() => { void invoke("update_status").then((v) => setUpInfo(v as { configured: boolean; version: string })).catch(() => {}); }, []);
+  const [notes, setNotes] = useState(false);
+  const [upNote, setUpNote] = useState("");
+  useEffect(() => { void invoke("update_status").then((v) => { const o = (v ?? {}) as { configured?: boolean; version?: string }; setUpInfo({ configured: !!o.configured, version: String(o.version ?? "") }); }).catch(() => {}); }, []);
   const checkNow = () => {
     setUp({ stage: "checking" });
     void invoke("check_update").then((v) => {
@@ -787,13 +850,85 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
       setUp(found.update ?? { stage: "none" });
     }).catch((e) => setUp({ stage: "failed", reason: String(e) }));
   };
-  const [upNote, setUpNote] = useState("");
   const installNow = () => {
-    if (!canInstall(working)) return;
+    if (!canInstall(c.working)) return;
     const prev = found.update; setUpNote(""); setUp({ stage: "installing" });
     // The shell keeps the update when an install fails, so it is put back and Install can be pressed again.
     void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUp(r.state); setUpNote(r.note); });
   };
+  return (
+    <Row id={fixedAnchor("updates")} label={<span role="status">{updateLine(up, upInfo.version, upInfo.configured)}</span>}
+      description={up.stage === "found" && !canInstall(c.working) ? S.updatesBusy : undefined} more={[S.updatesHelp]}
+      control={upInfo.configured ? <span className="set-pair">
+        <Button size="sm" disabled={up.stage === "checking" || up.stage === "installing"} onClick={checkNow}>{S.setRows.updatesNow}</Button>
+        {up.stage === "found" && <Button kind="primary" size="sm" disabled={!canInstall(c.working)} onClick={installNow}>{S.updatesInstall}</Button>}
+      </span> : undefined}>
+      {up.stage === "found" && up.notes && <div className="set-buttons"><Button kind="quiet" size="sm" expanded={notes} onClick={() => setNotes(!notes)}>{S.setRows.releaseNotes}</Button></div>}
+      {up.stage === "found" && up.notes && notes && <Note text={up.notes} />}
+      {up.stage === "found" && upNote && <p className="set-problem" role="alert">{upNote}</p>}
+    </Row>
+  );
+}
+
+function ReplayRow() {
+  // The first run comes back in Home (firstRunAgain.ts): Home is open already, so it shows at once.
+  return <Row id={fixedAnchor("replay")} label={S.setRows.replay}
+    control={<Button size="sm" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.setRows.replayButton}</Button>} />;
+}
+
+function PracticeRow() {
+  const c = useCtx();
+  // Move all my practice copies to the Trash: asked first, then what happened in one line.
+  const [askPractice, setAskPractice] = useState(false);
+  const [practiceSaid, setPracticeSaid] = useState("");
+  const practiceAllId = useId();
+  const trashPractice = () => { setAskPractice(false); void invoke("remove_all_practices", { busy: c.practiceBusy }).then((v) => { const r = v as { moved?: number; kept?: string[] }; setPracticeSaid(S.practiceRemovedAll(Number(r.moved) || 0, Array.isArray(r.kept) ? r.kept.map(String) : [])); c.reload(); }).catch((e) => setPracticeSaid(failNote(e, "practice"))); };
+  return (
+    <Row id={fixedAnchor("practice")} label={S.setRows.practice} description={rowLineOf(S.practiceListHelp)}
+      control={<Button size="sm" onClick={c.onPracticeList}>{S.setFrame.open}</Button>}>
+      {!askPractice && (c.inv?.practiceCopies ?? 0) > 0 && <div className="set-buttons"><Button id={practiceAllId} kind="quiet" size="sm" onClick={() => { setPracticeSaid(""); setAskPractice(true); }}>{S.practiceRemoveAll}</Button></div>}
+      {askPractice && (
+        <ConfirmStep className="set-confirm" label={S.practiceRemoveAllSure} back={practiceAllId} onCancel={() => setAskPractice(false)}><p>{S.practiceRemoveAllSure}</p>
+          <div className="set-buttons"><Button kind="danger" onClick={trashPractice}>{S.practiceRemoveAllYes}</Button><CancelButton onClick={() => setAskPractice(false)} /></div>
+        </ConfirmStep>
+      )}
+      <Note text={practiceSaid} live />
+    </Row>
+  );
+}
+/** The first sentence of a longer line, for a row's one line. */
+const rowLineOf = (text: string): string => { const f = /^[^]*?[.!?](?=\s|$)/.exec(text)?.[0] ?? text; return f.length <= LINE_MAX ? f : ""; };
+
+function MadeRow() {
+  const c = useCtx();
+  const [open, setOpen] = useState(false);
+  return (
+    <Row id={fixedAnchor("made")} label={S.setRows.made} control={<Button size="sm" expanded={open} onClick={() => setOpen(true)}>{S.setFrame.open}</Button>}>
+      {open && <Sheet title={S.setRows.made} dirty={false} instant onSave={() => setOpen(false)} onClose={() => setOpen(false)}><MadePanel busy={c.practiceBusy} project={c.project} /></Sheet>}
+    </Row>
+  );
+}
+
+function LogsRow() {
+  const c = useCtx();
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState("");
+  return (
+    <Row id={fixedAnchor("logs")} label={S.setRows.report} more={[S.reportHelp, S.exportLogsHelp]}
+      control={<Button size="sm" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); c.onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</Button>}>
+      <div className="set-buttons"><Button kind="quiet" size="sm" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); c.onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.exportLogs}</Button></div>
+      <Note text={exported} live />
+    </Row>
+  );
+}
+
+function AckRow() {
+  return <Row id={fixedAnchor("acknowledgements")} label={S.setRows.acknowledgements} description={rowLineOf(S.acknowledgementsHelp)}
+    control={<Button kind="quiet" size="sm" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.setFrame.view}</Button>} />;
+}
+
+/** The counts kept on this Mac (numbers.on): shown, copied or erased on a press. Nothing is sent. */
+function NumbersRows() {
   const [nums, setNums] = useState<NumbersSummary | null>(null);
   const [showNums, setShowNums] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -801,227 +936,141 @@ export function SettingsPage({ place = "", working, practiceBusy, project, spend
     const off = listen("runner-event", (e) => { const ev = e.payload as { type?: string } & Partial<NumbersSummary>; if (ev.type === "metrics.summary") setNums({ enabled: !!ev.enabled, totals: ev.totals ?? {}, rates: ev.rates ?? {} }); });
     return () => { off.then((f) => f()); };
   }, []);
-  const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)); void invoke("permission_overview").then((v) => setPerms(v as Record<PermissionKind, PermissionState>)); };
-  useEffect(load, []);
-  // The permission page is where the person changes things; coming back should show the new state.
-  useEffect(() => { const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
-  const busy = useRef(false);   // a second click while macOS is asking must not start a second delete
-  const deleteId = useId(), resetAllId = useId();
+  return (<div className="set-buttons-block">
+    <div className="set-buttons">
+      <Button size="sm" expanded={showNums} onClick={() => { setShowNums((v) => !v); void send(metricsShow()); }}>{S.numbersShow}</Button>
+      {nums && showNums && <Button kind="quiet" size="sm" onClick={() => { setCopied(false); void (navigator.clipboard?.writeText(numbersLines(nums).join("\n")) ?? Promise.reject(new Error("no clipboard"))).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {}); }}>{copied ? S.numbersCopied : S.numbersCopy}</Button>}
+      <Button kind="quiet" size="sm" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</Button>
+    </div>
+    {nums && showNums && numbersLines(nums).map((l, i) => <Note key={i} text={l} />)}
+  </div>);
+}
+
+/** The danger zone, the last group on Privacy (the spec, 3.9): each row says exactly what happens, with one Danger button
+ *  and an are you sure; the two that cannot be taken back ask for their words to be typed. */
+function DangerZone() {
+  const c = useCtx();
+  const [step, setStep] = useState<"" | "forget" | "key" | "delete" | "reset">("");
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState("");
+  const [withProjects, setWithProjects] = useState(false);
+  const [withPractice, setWithPractice] = useState(false);
+  const forgetId = useId(), keyId = useId(), deleteId = useId(), resetAllId = useId();
+  const deleting = useRef(false);   // a second click while macOS is asking must not start a second delete
+  const close = () => { if (busy) return; setStep(""); setTyped(""); setProblem(""); };
+  const open = (s: typeof step) => { setTyped(""); setProblem(""); setStep(s); };
+  const forget = () => {
+    const p = c.project || NO_PROJECT;
+    void send(eraseMemory(p, "project")); void send(eraseMemory(p, "profile"));
+    setStep(""); c.say(S.danger.forgetDone);
+  };
+  const removeKey = () => {
+    setProblem(""); setBusy(true);
+    void invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE }).then(() => { setStep(""); c.say(S.keyRemovedNote); c.reload(); }).catch((e) => setProblem(String(e))).finally(() => setBusy(false));
+  };
   const remove = () => {
-    if (busy.current) return;
-    busy.current = true; setStep("deleting"); setProblem("");
-    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects, withPractice }).catch((e) => { busy.current = false; setProblem(String(e)); setStep("confirm"); });
+    if (deleting.current) return;
+    deleting.current = true; setBusy(true); setProblem("");
+    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects, withPractice }).catch((e) => { deleting.current = false; setBusy(false); setProblem(String(e)); });
   };
   // Reset all settings to usual, asked first, naming every setting that changes; then Undo for ten seconds puts every
   // value back through the shell.
-  const [askAll, setAskAll] = useState(false);
-  const allToast = useUndoToast();
   const changedAll = changedNow();
   const unheardAll = notHeard();
-  const goAll = picturesResetGoing(changedAll, inv?.receiptPictures, setting("pictures.keep"));
-  const resetEverything = () => { setAskAll(false); void resetWithUndo().then(({ done, back }) => allToast.show(done, back)); };
-  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
-  const onePart = !q && !!place;
-  // M28: the main Settings shows the main choices; Advanced shows every other one, grouped as before; search finds all.
-  // M30: one page at a time (settingsPages.ts); a search looks through every setting, Advanced shows the rest by section.
-  const page: PageId = isPage(place) ? place : FIRST_PAGE;
-  const advanced = !q && page === "advanced";
-  const onPage = !q && !advanced;
-  const mainIds = new Set(levelSections(results.sections, false).map((s) => s.id));
-  const pageKeys = onPage ? PAGES[page].keys.filter((k) => { const d = defOf(k); return !!d && !d.hidden && shownNow(k, setting); }) : [];
-  const fixedShown = (g: FixedGroup) => placeShown(g) && (q ? results.fixed.includes(g) : !advanced && PAGES[page].fixed.includes(g));
-  const sectionsShown = q ? results.sections : advanced ? levelSections(results.sections, true) : [];
-  void onePart;
-  // The character's place (its edge, its position and Same place on every display) put back with one press.
-  const placeChanged = changedNow("home").filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
-  const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
-  const extras: Record<string, ReactNode> = {
-    groups: <GroupsPanel />,
-    home: (<>
-      <div className="line muted">{S.dragHint}</div>
-      {placeChanged.length > 0 && <div className="row"><button className="btn" type="button" onClick={() => void resetPlace()}>{S.setResetPlace}</button></div>}
-    </>),
-    spending: (<>
-      {project
-        ? (spending && spending.project === project ? <div className="line" role="status">{spendingLine(spending)}</div> : null)
-        : <div className="line muted">{S.setSpendingNoProject}</div>}
-      {/* Why the engine did not keep a new limit (the limit shown is the one still in force). */}
-      {spending?.problem && spending.project === (project || NO_PROJECT) && <div className="error" role="alert">{spending.problem}</div>}
-    </>),
-    updates: (<>
-      <div className="line muted">{S.updatesHelp}</div>
-      <div className="line" role="status">{updateLine(up, upInfo.version, upInfo.configured)}</div>
-      {up.stage === "found" && up.notes && <div className="line muted">{up.notes}</div>}
-      {up.stage === "found" && upNote && <div className="line" role="alert">{upNote}</div>}
-      {upInfo.configured && <div className="row">
-        <button className="btn" type="button" disabled={up.stage === "checking" || up.stage === "installing"} onClick={checkNow}>{S.updatesCheck}</button>
-        {up.stage === "found" && <button className="btn primary" type="button" disabled={!canInstall(working)} onClick={installNow}>{S.updatesInstall}</button>}
-      </div>}
-      {up.stage === "found" && !canInstall(working) && <div className="line muted">{S.updatesBusy}</div>}
-    </>),
-    numbers: (<>
-      <div className="row">
-        <button className="btn" type="button" onClick={() => { setShowNums((v) => !v); void send(metricsShow()); }}>{S.numbersShow}</button>
-        {nums && showNums && <button className="btn" type="button" onClick={() => { setCopied(false); void (navigator.clipboard?.writeText(numbersLines(nums).join("\n")) ?? Promise.reject(new Error("no clipboard"))).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); }).catch(() => {}); }}>{copied ? S.numbersCopied : S.numbersCopy}</button>}
-        <button className="btn" type="button" onClick={() => { setShowNums(false); void send(metricsErase()); }}>{S.numbersErase}</button>
-      </div>
-      {nums && showNums && numbersLines(nums).map((l, i) => <div className="line" key={i}>{l}</div>)}
-    </>),
+  const goAll = picturesResetGoing(changedAll, c.inv?.receiptPictures, setting("pictures.keep"));
+  const resetEverything = () => {
+    setStep("");
+    void resetWithUndo().then(({ done, back }) => {
+      if (!done.ok) { c.say(problemWords(done.code)); return; }
+      c.say(done.notReset?.length ? S.setNotAllBack : S.setResetDone(back.length), () => void undoReset(back).then((failed) => c.say(failed.length ? S.setNotAllBack : S.setUndone)));
+    });
   };
-  return (
-    <section className="panel settings" aria-label={S.settingsTitle}>
-      <div className="row" role="search">
-        <input type="search" autoComplete="off" spellCheck={false} value={q} placeholder={S.setSearch} aria-label={S.setSearch}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing && q) { e.preventDefault(); e.stopPropagation(); setQ(""); } }} />
-        {q && <button className="btn" type="button" onClick={() => setQ("")}>{S.setSearchClear}</button>}
-      </div>
-      <div className={q ? "line muted" : "sr"} role="status" aria-live="polite">{q ? (results.count ? S.setMatches(results.count) : S.setNoMatch) : ""}</div>
-      {problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
-      {!q && <header className="sp-head"><h2>{S.pages[page].title}</h2><p>{S.pages[page].sub}</p></header>}
-      {onPage && page === "character" && <CompanionHero />}
-      {pageKeys.length > 0 && <div className="sp-card">
-        {pageKeys.map((k) => <SettingRow key={k} d={defOf(k)!} project={project} keys={keys} facts={facts} pictures={inv?.receiptPictures} compact />)}
-      </div>}
-      {onPage && page === "account" && extras.spending}
-      {onPage && page === "general" && extras.updates}
-      {sectionsShown.map((s) => <SettingsSection key={s.id} id={s.id} title={s.title} keys={s.keys} project={project} allKeys={keys} extra={advanced && mainIds.has(s.id) ? undefined : extras[s.id]} facts={facts} pictures={inv?.receiptPictures} alone={onePart && !advanced} />)}
-      {fixedShown("permissions") && <Group title={S.settingsPermissions}>
-      <div className="line muted">{S.settingsPermissionsHelp}</div>
-      {perms && (["screen_recording", "accessibility", "microphone"] as PermissionKind[]).map((k) => {
-        const r = permissionRow(k, perms[k]);
-        return (
-          <div className="line" key={k}>
-            <b>{r.label}:</b> {r.state}.{r.todo ? ` ${r.todo}` : ""} <span className="muted">{r.why}</span>
-            {!permissionNeeded(PERM_OF[k]) && <span className="muted"> {S.groups.permissionNotNeeded}</span>}
-            {r.button && <> <button className="btn" type="button" onClick={() => void invoke("open_permission_page", { which: k })}>{S.settingsOpenSystem}</button> <button className="btn" type="button" onClick={() => onLesson(permissionLesson(k))}>{S.settingsWalkMe}</button></>}
-          </div>
-        );
-      })}
-      </Group>}
-      {fixedShown("key") && inv && <KeySection keySaved={inv.keySaved} working={working} onChanged={load} />}
-      {fixedShown("google") && <GoogleSection />}
-      {fixedShown("practice") && <Group title={S.fixedGroups.practice.title}>
-      <div className="line muted">{S.practiceListHelp}</div>
-      {!askPractice && <div className="row">
-        <button className="btn" type="button" onClick={onPracticeList}>{S.practiceOpenList}</button>
-        {(inv?.practiceCopies ?? 0) > 0 && <button id={practiceAllId} className="btn" type="button" onClick={() => { setPracticeSaid(""); setAskPractice(true); }}>{S.practiceRemoveAll}</button>}
-      </div>}
-      {askPractice && (
-        <ConfirmStep className="line" label={S.practiceRemoveAllSure} back={practiceAllId} onCancel={() => setAskPractice(false)}><div>{S.practiceRemoveAllSure}</div>
-          <div className="row"><button className="btn danger" type="button" onClick={trashPractice}>{S.practiceRemoveAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskPractice(false)}>{S.planCancel}</button></div>
-        </ConfirmStep>
-      )}
-      {practiceSaid && <div className="line" role="status">{practiceSaid}</div>}
-      </Group>}
-      {fixedShown("made") && <Group title={S.fixedGroups.made.title}><MadePanel busy={practiceBusy} project={project} /></Group>}
-      {fixedShown("kept") && <Group title={S.settingsKept}>
-      {inv && inv.items.length === 0 && !inv.keySaved && <div className="line muted">{S.settingsNothingKept}</div>}
-      {inv && deletableLines(inv).map((l, i) => <div className="line" key={i}>{l}</div>)}
-      {step === "idle" && <div className="row"><button id={deleteId} className="btn danger" type="button" onClick={() => setStep("confirm")}>{S.deleteEverything}</button></div>}
-      {step !== "idle" && (
-        <ConfirmStep className="line" label={S.deleteSure} back={deleteId} onCancel={() => { if (step !== "deleting") setStep("idle"); }}>
-          <b>{S.deleteSure}</b>
-          <div className="line">{S.deleteExplain}</div>
-          {inv && inv.projectsWithNotes > 0 && <label className="check"><input type="checkbox" checked={withProjects} onChange={(e) => setWithProjects(e.target.checked)} /> {S.deleteProjects.replace("{n}", String(inv.projectsWithNotes))}</label>}
-          {inv && (inv.practiceCopies ?? 0) > 0 && <label className="check"><input type="checkbox" checked={withPractice} onChange={(e) => setWithPractice(e.target.checked)} /> {S.deletePractice.replace("{n}", String(inv.practiceCopies))}</label>}
-          <div className="row">
-            <button className="btn danger" type="button" disabled={step === "deleting"} onClick={remove}>{step === "deleting" ? S.deleting : S.deleteYes}</button>
-            <button className="btn" type="button" data-cancel disabled={step === "deleting"} onClick={() => setStep("idle")}>{S.planCancel}</button>
-          </div>
-          {problem && <div className="error" role="alert">{problem}</div>}
-        </ConfirmStep>
-      )}
-      </Group>}
-      {fixedShown("acknowledgements") && <Group title={S.acknowledgements}>
-      <div className="line muted">{S.acknowledgementsHelp}</div>
-      <div className="row"><button className="btn" type="button" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.acknowledgements}</button></div>
-      </Group>}
-      {fixedShown("logs") && <Group title={S.exportLogsTitle}>
-      <div className="line muted">{S.exportLogsHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.exportLogs}</button></div>
-      <div className="line muted">{S.reportHelp}</div>
-      <div className="row"><button className="btn" type="button" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</button></div>
-      {exported && <div className="line" role="status">{exported}</div>}
-      </Group>}
-      {results.all && advanced && !askAll && <div className="row"><button id={resetAllId} className="btn" type="button" disabled={changedAll.length === 0} onClick={() => setAskAll(true)}>{S.setResetAll}</button></div>}
-      {results.all && advanced && changedAll.length === 0 && <div className="line muted">{S.setResetAllNone}</div>}
-      {askAll && (
-        <ConfirmStep className="line" label={S.setResetAll} back={resetAllId} onCancel={() => setAskAll(false)}>
-          <div className="line">{S.setResetAllSure(names(changedAll))}</div>
-          {goAll > 0 && <div className="line">{S.setPicturesGo(goAll, Number(defaultOf("pictures.keep")))}</div>}
-          {unheardAll.length > 0 && <div className="line muted">{S.setNotHeard(names(unheardAll))}</div>}
-          <div className="row"><button className="btn danger" type="button" onClick={resetEverything}>{S.setResetAllYes}</button><button className="btn" type="button" data-cancel onClick={() => setAskAll(false)}>{S.planCancel}</button></div>
-        </ConfirmStep>
-      )}
-      {allToast.view}
-      {q && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
-    </section>
-  );
-}
-
-/** M30: the water's colours as swatches, the chosen one ringed and ticked. */
-function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
-  // M35 (the founder, 29 Oct 2026: "character select has different names and options"): a card for each water, with the
-  // live water in that colour, its name and one line. Arrow keys move the choice, as in any radio group.
-  const now = waterOf(value);
-  const refs = useRef<(HTMLButtonElement | null)[]>([]);
-  const step = (e: KeyboardEvent, i: number) => {
-    const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
-    if (!d) return;
-    e.preventDefault();
-    const n = (i + d + WATERS.length) % WATERS.length;
-    onChange(WATERS[n]);
-    refs.current[n]?.focus();
-  };
-  return (
-    <div className="sp-picks" role="radiogroup" aria-labelledby={labelId}>
-      {WATERS.map((w, i) => (
-        <button key={w} ref={(el) => { refs.current[i] = el; }} type="button" role="radio" className="sp-pick" aria-checked={now === w} tabIndex={now === w ? 0 : -1}
-          style={{ "--pick": WATER_TINTS[w].mid, "--pick-deep": WATER_TINTS[w].deep } as React.CSSProperties} onClick={() => onChange(w)} onKeyDown={(e) => step(e, i)}>
-          <span className="sp-pick-stage" aria-hidden="true"><FlowMini state="idle" className="sp-pick-flow" water={w} still /></span>
-          <b>{S.set["look.water"].options?.[w]}</b>
-          <span>{S.waterPicks[w]}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** The character on the water at the top of its own part of Settings (M18): alive, with its name, shown resting, working or
- *  done on a press so a change here (how lively) can be seen. A picture, not a control: the states are buttons. M46 (F28):
- *  Still, Gentle and Lively read and write character.lively only; Less motion and reactions keep their own rows. */
-const HERO_STATES = ["idle", "working", "done"] as const;
-function CompanionHero() {
-  const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
-  const name = characterName(useSetting("character.name"));
-  // One tap changes it, and the character above shows it at once (M19).
-  const inForce = livelinessOf(useSetting("character.lively"));
-  // The press shows on the character at once, before the shell's answer comes back (a press is news: it moves, then
-  // follows the choice's own rule).
-  const [pressed, setPressed] = useState<Liveliness | null>(null);
-  useEffect(() => { if (pressed === inForce) setPressed(null); }, [pressed, inForce]);
-  const lively = pressed ?? inForce;
-  return (<>
-    <div className="companion-hero">
-      <div className="ch-water" aria-hidden="true"><Waterline under /></div>
-      <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} liveliness={lively} /></div>
-      <b className="ch-name">{name}</b>
-      <div className="ch-states" role="group" aria-label={S.heroStatesLabel}>
-        {HERO_STATES.map((st) => <button key={st} type="button" aria-pressed={as === st} onClick={() => setAs(st)}>{S.heroStates[st]}</button>)}
-      </div>
-      <button className="ch-again" type="button" onClick={() => { showFirstRunAgain(); void invoke("open_card_cmd").catch(() => {}); }}>{S.firstRunAgain}</button>
-    </div>
-    <div className="ch-look">
-      <div className="ch-lively" role="group" aria-label={S.livelyLabel}>
-        {LIVELINESS.map((l) => <button key={l} type="button" aria-pressed={lively === l} onClick={() => { setPressed(l); void changeSetting("character.lively", l).then((d) => { if (!d.ok) setPressed(null); }); }}>{S.lively[l]}</button>)}
-      </div>
-    </div>
+  const typeBox = (phrase: string) => (<>
+    <p className="set-note">{S.danger.typeToConfirm(phrase)}</p>
+    <Field value={typed} label={S.danger.typeLabel} disabled={busy} onChange={setTyped} />
   </>);
+  const row = (id: string, label: string, desc: string, button: string, s: typeof step, extra?: ReactNode) => (
+    <Row label={label} description={desc} control={step !== s ? <Button id={id} kind="danger" size="sm" disabled={busy} onClick={() => open(s)}>{button}</Button> : null}>{step === s && extra}</Row>
+  );
+  const keySaved = !!c.inv?.keySaved;
+  return (
+    <Group id="privacy.danger" title={S.setGroupTitles["privacy.danger"]} danger>
+      <span id={fixedAnchor("danger")} />
+      {row(forgetId, S.danger.forgetLabel, S.danger.forgetDesc, S.danger.forgetButton, "forget", (
+        <ConfirmStep className="set-confirm" label={S.danger.forgetSure} back={forgetId} onCancel={close}>
+          <p>{S.danger.forgetSure}</p>
+          <div className="set-buttons"><Button kind="danger" onClick={forget}>{S.danger.forgetYes}</Button><CancelButton onClick={close} /></div>
+        </ConfirmStep>
+      ))}
+      {keySaved && row(keyId, S.danger.removeKeyLabel, S.danger.removeKeyDesc, S.danger.removeKeyButton, "key", (
+        <ConfirmStep className="set-confirm" label={S.keyRemoveSure} back={keyId} onCancel={close}>
+          <p>{S.keyRemoveSure}</p>
+          {c.working && <p className="set-note">{S.keyBusy}</p>}
+          {typeBox(REMOVE_KEY_PHRASE)}
+          <div className="set-buttons"><Button kind="danger" disabled={busy || c.working || typed.trim().toLowerCase() !== REMOVE_KEY_PHRASE} onClick={removeKey}>{S.keyRemoveYes}</Button><CancelButton disabled={busy} onClick={close} /></div>
+          <Problem text={problem} />
+        </ConfirmStep>
+      ))}
+      {row(deleteId, S.danger.deleteLabel, S.danger.deleteDesc, S.danger.deleteButton, "delete", (
+        <ConfirmStep className="set-confirm" label={S.deleteSure} back={deleteId} onCancel={close}>
+          <p><b>{S.deleteSure}</b></p>
+          {c.inv && <p className="set-note">{S.danger.goesTitle} {deletableLines(c.inv).join("; ")}</p>}
+          <p>{S.deleteExplain}</p>
+          <p className="set-note">{S.danger.keptTitle} {deleteKeeps(null).join(" ")}</p>
+          {c.inv && c.inv.projectsWithNotes > 0 && <Row label={S.deleteProjects.replace("{n}", String(c.inv.projectsWithNotes))} control={<Switch checked={withProjects} label={S.deleteProjects.replace("{n}", String(c.inv.projectsWithNotes))} onChange={setWithProjects} />} />}
+          {c.inv && (c.inv.practiceCopies ?? 0) > 0 && <Row label={S.deletePractice.replace("{n}", String(c.inv.practiceCopies))} control={<Switch checked={withPractice} label={S.deletePractice.replace("{n}", String(c.inv.practiceCopies))} onChange={setWithPractice} />} />}
+          {typeBox(DELETE_PHRASE)}
+          <div className="set-buttons"><Button kind="danger" disabled={busy || typed.trim().toLowerCase() !== DELETE_PHRASE} onClick={remove}>{busy ? S.deleting : S.deleteYes}</Button><CancelButton disabled={busy} onClick={close} /></div>
+          <Problem text={problem} />
+        </ConfirmStep>
+      ))}
+      {row(resetAllId, S.danger.resetLabel, changedAll.length ? S.danger.resetDesc : S.setResetAllNone, S.danger.resetButton, "reset", (
+        <ConfirmStep className="set-confirm" label={S.setResetAll} back={resetAllId} onCancel={close}>
+          <p>{S.setResetAllSure(names(changedAll))}</p>
+          {goAll > 0 && <p>{S.setPicturesGo(goAll, Number(defaultOf("pictures.keep")))}</p>}
+          {unheardAll.length > 0 && <p className="set-note">{S.setNotHeard(names(unheardAll))}</p>}
+          <div className="set-buttons"><Button kind="danger" disabled={changedAll.length === 0} onClick={resetEverything}>{S.setResetAllYes}</Button><CancelButton onClick={close} /></div>
+        </ConfirmStep>
+      ))}
+    </Group>
+  );
+}
+const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
+
+/** The water's colour (look.water): a Picture choice, one card per water with the live water in it, its name under it. */
+function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
+  return <PictureChoice labelledBy={labelId} value={waterOf(value)} onChange={onChange}
+    options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <FlowMini state="idle" className="pic-flow" water={w} still /> }))} />;
+}
+
+/** How lively Flowflow is (character.lively, F28): a Picture choice, still at rest for Still and moving for the others. */
+function LivelyPictures({ value, onChange, labelId, disabled }: { value: string; onChange: (v: string) => void; labelId: string; disabled: boolean }) {
+  return <PictureChoice labelledBy={labelId} value={livelinessOf(value)} onChange={onChange} disabled={disabled}
+    options={LIVELINESS.map((l) => ({ id: l, label: S.lively[l], picture: <FlowMini state="idle" className="pic-flow" still={l === "still"} /> }))} />;
+}
+
+/** The Flowflow page opens with the live Flowflow on its water, in the look chosen (the spec, 3.4), shown resting, working
+ *  or done on a press so a change can be seen. A picture, not a control: only the states are a choice. */
+const HERO_STATES = ["idle", "working", "done"] as const;
+function FlowflowPreview() {
+  const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
+  // How lively is its own row on this page (a Picture choice); the character here follows the choice in force (M19).
+  const lively = livelinessOf(useSetting("character.lively"));
+  return (
+    <Group id="flowflow.preview">
+      <div className="companion-hero" id={fixedAnchor("preview")} data-lively={lively}>
+        <div className="ch-water" aria-hidden="true"><Waterline under /></div>
+        <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} liveliness={lively} /></div>
+      </div>
+      <Row label={S.heroStatesLabel} control={<Segmented label={S.heroStatesLabel} value={as} options={HERO_STATES.map((st) => ({ id: st, label: S.heroStates[st] }))} onChange={setAs} />} />
+    </Group>
+  );
 }
 
 /** Google (M21, google.rs): sign in with Google, and the Google accounts connected for Gmail, Calendar and Drive. The
- *  shell runs the sign in in the person's browser and keeps the tokens; this page sees only who and what (never a token). */
+ *  shell runs the sign in in the person's browser and keeps the tokens; this page sees only who and what (never a token).
+ *  Shown in More options with Watch routines, and only while they are on. */
 type GoogleAccount = { id: string; email: string; name: string; label: string; apps: string[]; signin: boolean };
 const GOOGLE_APPS = ["gmail", "calendar", "drive"] as const;
 function GoogleSection() {
@@ -1046,38 +1095,288 @@ function GoogleSection() {
   if (!st) return null;
   const me = st.accounts.find((a) => a.signin);
   const connected = st.accounts.filter((a) => a.apps.length > 0);
+  return (<>
+    <Row id={fixedAnchor("google")} label={S.google.signInTitle} description={me ? S.google.signedIn(me.name, me.email) : (st.ready ? S.google.signInLine : S.google.notSetUp)}
+      control={me ? <Button size="sm" onClick={() => drop(me.id, true)}>{S.google.signOut}</Button> : <Button size="sm" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</Button>} />
+    {connected.map((a) => (
+      <Row key={a.id} label={`${a.label} ${a.email}`} description={a.apps.map((x) => S.google.apps[x]).join(", ")}
+        control={<Button kind="danger" size="sm" onClick={() => drop(a.id, false)}>{S.google.disconnect}</Button>} />
+    ))}
+    <Row label={S.google.connectTitle} description={connected.length === 0 ? S.google.none : undefined} more={[S.google.connectLine]} />
+    {GOOGLE_APPS.map((x) => (
+      <Row key={x} indent label={S.google.apps[x]} description={S.google.appLines[x]}
+        control={<Switch checked={pick.includes(x)} label={S.google.apps[x]} onChange={(on) => setPick((p) => (on ? [...p, x] : p.filter((y) => y !== x)))} />} />
+    ))}
+    <Row indent label={S.google.label} control={<span className="set-pair">
+      <Field value={label} maxLength={24} placeholder={S.google.label} label={S.google.label} onChange={setLabel} />
+      <Button size="sm" disabled={!st.ready || waiting || pick.length === 0} onClick={() => start(false)}>{S.google.connect}</Button>
+    </span>}>
+      {waiting && <Note text={S.google.waiting} live />}
+      <Problem text={problem} />
+    </Row>
+  </>);
+}
+
+/** M28: Google shows in Settings only once this build has Google set up (or an account is already kept), so nobody meets a
+ *  section whose buttons cannot work. Learned once from the shell when the page loads. */
+let googleShown = false;
+export const googleInSettings = (): boolean => googleShown;
+void invoke("google_accounts").then((v) => { const o = v as { ready?: boolean; accounts?: unknown[] } | null; googleShown = !!o?.ready || (o?.accounts?.length ?? 0) > 0; }).catch(() => {});
+export const placeShown = (fixed: string, google = googleShown): boolean => fixed !== "google" || google;
+
+// ---------- pages ----------
+
+/** One page: its title and line, its groups, and at the foot the way into its More options. */
+function PageView({ page }: { page: PageId }) {
+  const c = useCtx();
+  const p = PAGES[page];
+  const n = moreKeys(page).filter((k) => !defOf(k)?.hidden).length;
+  return (<>
+    <PageHead title={S.pages[page].title} line={S.pages[page].sub} />
+    {page === "about" && <AboutHead />}
+    {p.groups.map((g) => <GroupView key={g.id} id={g.id} items={g.items} />)}
+    {n > 0 && <div className="set-buttons set-foot"><Button kind="quiet" onClick={() => c.go(`more:${page}`)}>{S.setFrame.moreLink(S.pages[page].title, n)}</Button></div>}
+  </>);
+}
+
+/** About opens with the app's own card: its drawing, its name and its version. */
+function AboutHead() {
+  const [version, setVersion] = useState("");
+  useEffect(() => { void invoke("update_status").then((v) => setVersion(String((v as { version?: string })?.version ?? ""))).catch(() => {}); }, []);
   return (
-    <Group title={S.fixedGroups.google.title}>
-      {!st.ready && <div className="line muted">{S.google.notSetUp}</div>}
-      <h3 className="google-head">{S.google.signInTitle}</h3>
-      {me ? (
-        <div className="row google-me"><span className="google-dot" aria-hidden="true">{(me.name || me.email).slice(0, 1).toUpperCase()}</span><span className="line">{S.google.signedIn(me.name, me.email)}</span>
-          <button className="btn" type="button" onClick={() => drop(me.id, true)}>{S.google.signOut}</button></div>
-      ) : (<>
-        <div className="line muted">{S.google.signInLine}</div>
-        <div className="row"><button className="btn primary" type="button" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</button></div>
-      </>)}
-      <h3 className="google-head">{S.google.connectTitle}</h3>
-      <div className="line muted">{S.google.connectLine}</div>
-      {connected.length === 0 && <div className="line muted">{S.google.none}</div>}
-      {connected.map((a) => (
-        <div className="row google-acct" key={a.id}>
-          <span className="google-dot" aria-hidden="true">{(a.name || a.email).slice(0, 1).toUpperCase()}</span>
-          <span className="line"><b>{a.label}</b> {a.email}<br /><span className="muted">{a.apps.map((x) => S.google.apps[x]).join(", ")}</span></span>
-          <button className="btn danger" type="button" onClick={() => drop(a.id, false)}>{S.google.disconnect}</button>
+    <Card className="set-about">
+      <span className="set-about-icon" aria-hidden="true"><FlowMini state="idle" className="pic-flow" still /></span>
+      <span className="set-about-words"><b>{S.product}</b><span>{S.setRows.version(version)}</span></span>
+    </Card>
+  );
+}
+
+/** More options: a section per page, in the sidebar's order, each topic closed until opened. A topic whose tool is off is
+ *  dimmed and says how to turn it on. Each section ends with Restore usual settings for that page. */
+function MorePage({ open, setOpen }: { open: ReadonlySet<string>; setOpen: (id: string, on: boolean) => void }) {
+  return (<>
+    <PageHead title={S.pages.more.title} line={S.pages.more.sub} />
+    {MORE_SECTIONS.map((page) => <MoreSection key={page} page={page} open={open} setOpen={setOpen} />)}
+  </>);
+}
+function MoreSection({ page, open, setOpen }: { page: PageId; open: ReadonlySet<string>; setOpen: (id: string, on: boolean) => void }) {
+  const c = useCtx();
+  const keys = moreKeys(page);
+  for (const k of keys) useSetting(k);
+  const changed = changedNow().filter((k) => keys.includes(k));
+  // Asked first, naming every setting that goes back (T16), and the engine's own settings not heard yet, which stay as they
+  // are. Putting Pictures to keep back to usual while more are kept says first how many pictures go, as lowering it does.
+  const unheard = notHeard().filter((k) => keys.includes(k));
+  const go = picturesResetGoing(changed, c.inv?.receiptPictures, setting("pictures.keep"));
+  const [asking, setAsking] = useState(false);
+  const restoreId = useId();
+  const restore = () => {
+    setAsking(false);
+    if (!changed.length) { c.say(S.setFrame.restoreNone); return; }
+    void resetKeysWithUndo(keys).then(({ done, back }) => {
+      if (!done.ok) { c.say(problemWords(done.code)); return; }
+      c.say(S.setFrame.restoreDone(back.length), () => void undoReset(back).then((failed) => c.say(failed.length ? S.setNotAllBack : S.setUndone)));
+    });
+  };
+  return (
+    <section className="set-more-section" id={`more:${page}`} aria-labelledby={`more-head-${page}`}>
+      <h3 className="set-more-head" id={`more-head-${page}`}>{S.pages[page].title}</h3>
+      {PAGES[page].more.map((t) => <TopicView key={t.id} topic={t} open={open.has(t.id)} setOpen={(on) => setOpen(t.id, on)} />)}
+      {!asking && <div className="set-buttons"><Button id={restoreId} kind="quiet" size="sm" onClick={changed.length > 0 ? () => setAsking(true) : restore}>{S.setFrame.restorePage(S.pages[page].title)}</Button></div>}
+      {asking && (
+        <ConfirmStep className="set-confirm" label={S.setFrame.restorePage(S.pages[page].title)} back={restoreId} onCancel={() => setAsking(false)}>
+          <p>{S.setResetSectionSure(names(changed))}</p>
+          {go > 0 && <p>{S.setPicturesGo(go, Number(defaultOf("pictures.keep")))}</p>}
+          {unheard.length > 0 && <p className="set-note">{S.setNotHeard(names(unheard))}</p>}
+          <div className="set-buttons"><Button kind="danger" onClick={restore}>{S.setResetSectionYes}</Button><CancelButton onClick={() => setAsking(false)} /></div>
+        </ConfirmStep>
+      )}
+    </section>
+  );
+}
+function TopicView({ topic, open, setOpen }: { topic: Topic; open: boolean; setOpen: (on: boolean) => void }) {
+  const parent = useSetting(topic.parent ?? "");
+  const off = topic.parent && parent !== true ? S.setFrame.turnOnTool(wordsOf(topic.parent).label) : "";
+  const count = topic.items.filter((i) => typeof i !== "string" || (defOf(i) && !defOf(i)!.hidden)).length;
+  return (
+    <Disclosure id={topic.id} title={(S.setGroupTitles as Record<string, string>)[topic.id] ?? topic.id} count={count} open={open} onToggle={setOpen} disabledNote={off || undefined}>
+      <Group>
+        {topic.items.map((i) => <ItemRows key={typeof i === "string" ? i : `fixed:${i.fixed}`} item={i} parentOff={off} indent={false} />)}
+        {topic.id === "more.privacy.calls" && <Row label={wordsOf("numbers.on").label}>{<NumbersRows />}</Row>}
+      </Group>
+      {topic.id === "more.general.tools" && <ToolsMore />}
+      {topic.id === "more.flowflow.motion" && <UsualPlace />}
+    </Disclosure>
+  );
+}
+/** What each group of tools may do on this Mac (GroupsPanel), behind Learn more: never a wall on the page itself. */
+function ToolsMore() {
+  const [open, setOpen] = useState(false);
+  return (<div className="set-more">
+    <Button kind="quiet" size="sm" expanded={open} onClick={() => setOpen(!open)}>{open ? S.setFrame.learnLess : S.setFrame.learnMore}</Button>
+    {open && <GroupsPanel />}
+  </div>);
+}
+/** Put the character back in its usual place (its edge, its position and Same place on every display), one press. */
+function UsualPlace() {
+  useSetting("character.edge"); useSetting("character.position"); useSetting("character.sameEverywhere");
+  const placeChanged = changedNow().filter((k) => (PLACE_KEYS as readonly string[]).includes(k));
+  if (!placeChanged.length) return null;
+  const resetPlace = async () => { for (const k of placeChanged) await resetSetting(k); };
+  return <Group><Row label={S.setResetPlace} description={S.dragHint} control={<Button size="sm" onClick={() => void resetPlace()}>{S.setRows.putBack}</Button>} /></Group>;
+}
+
+/** Search results (the spec, 3.7): grouped under their page's name; each a live row, so a setting can be changed right
+ *  here. The page name jumps to the row on its page. */
+function SearchResults({ q }: { q: string }) {
+  const c = useCtx();
+  const shown = shownSettings().filter((x) => shownNow(x.key, setting));
+  const results = searchSettingsFor(q, shown);
+  const groups = groupResults(results);
+  const heading = (page: PageId, group: string) => S.setFrame.heading(S.pages[page].title, (S.setGroupTitles as Record<string, string>)[group] ?? "");
+  const hitRow = (h: Hit) => {
+    if ("key" in h) {
+      if (h.key === "keys.hotkeys") return <Row key={h.key} label={wordsOf(h.key).label} control={<Button size="sm" onClick={() => c.go("keys.keys")}>{S.setFrame.show}</Button>} />;
+      return <ItemRows key={h.key} item={h.key} />;
+    }
+    return <Row key={h.fixed} label={S.setFixed[h.fixed].title} control={<Button size="sm" onClick={() => c.go(h.fixed)}>{S.setFrame.show}</Button>} />;
+  };
+  return (<>
+    <div className={results.length ? "sr" : "set-note"} role="status" aria-live="polite">{results.length ? S.setFrame.found(results.length) : S.setFrame.noMatch(q.trim())}</div>
+    {groups.map((g) => (
+      <section key={`${g.page}:${g.group}`} className="set-result">
+        <Button kind="quiet" size="sm" className="set-result-head" onClick={() => c.go(g.group || g.page)}>{heading(g.page, g.group)}</Button>
+        <Group>{g.hits.map(hitRow)}</Group>
+      </section>
+    ))}
+  </>);
+}
+
+// ---------- the frame ----------
+
+const LAST_PAGE = "companion.settingsPage";
+/** The last page viewed, so Settings opens there again (Apple HIG). Only a convenience: it may be missing. */
+export function lastPage(): PageId {
+  try { const p = localStorage.getItem(LAST_PAGE) ?? ""; return isPage(p) ? p : FIRST_PAGE; } catch { return FIRST_PAGE; }
+}
+
+export type SettingsProps = {
+  /** A page, a group, a topic, a row's setting key or a fixed part to open on (a deep link: openSettings). */
+  place?: string; onPlace?: (place: string) => void;
+  working: boolean; practiceBusy: boolean; project: string; spending: Spending | null;
+  onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void; onMemory?: () => void; onPickFolder?: () => void;
+};
+
+/** Settings inside Home: the sidebar with search at its top, and the page (or the search results) beside it. ⌘F goes to
+ *  search; Esc clears the search, and with nothing typed closes Home (Home's own Esc); ⌘[ goes back to Now; the arrows move
+ *  through the sidebar. Changes apply at once; one that waits for the next task says so in a toast. */
+export function SettingsView({ place = "", onPlace = () => {}, working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {}, onMemory = () => {}, onPickFolder = () => {} }: SettingsProps) {
+  useSetting("fun.reactions");   // any change in any window draws the page again
+  const [q, setQ] = useState("");
+  const [inv, setInv] = useState<Inventory | null>(null);
+  const [toast, setToast] = useState<{ text: string; undo?: () => void; n: number } | null>(null);
+  const [openTopics, setOpenTopics] = useState<Set<string>>(new Set());
+  const [flash, setFlash] = useState("");
+  const [jumps, setJumps] = useState(0);   // each jump (a deep link, a result) scrolls once, even to the page already open
+  const search = useRef<HTMLInputElement>(null), content = useRef<HTMLDivElement>(null), side = useRef<HTMLUListElement>(null);
+  const keys = useKeys();
+  // Asked again whenever the keys kept change (a change here, a restore, Undo).
+  const keysKept = JSON.stringify(useSetting("keys.hotkeys") ?? null);
+  useEffect(() => { void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); }, [keysKept]);
+  // The engine's own settings (the daily limit, Explain, pausing, beta numbers) for every project: asked for the project in
+  // use, or the stand in when no folder is chosen. Their answers come back as the engine's events (settingsStore.ts).
+  useEffect(() => { const p = project || NO_PROJECT; void send(showSpending(p)); void send(listMemory(p)); void send(metricsShow()); }, [project]);
+  // What the rows for checking this project need to know (its scripts, its checks, its own .claude files): the engine's
+  // project report, asked for again each time Settings opens, so an edited package.json shows.
+  const [facts, setFacts] = useState<CheckFacts | null>(null);
+  useEffect(() => {
+    setFacts(null);
+    if (project) void send(inspectProject(project));
+    const off = listen("runner-event", (e) => { const f = factsFrom(e.payload); if (f && f.project === project) setFacts(f); });
+    return () => { off.then((f) => f()); };
+  }, [project]);
+  const load = () => { void invoke("data_inventory").then((v) => setInv(v as Inventory)).catch(() => {}); };
+  useEffect(load, []);
+  useEffect(() => { const f = () => load(); window.addEventListener("focus", f); return () => window.removeEventListener("focus", f); }, []);
+  const where = placeOf(place);
+  const page: PageId = where?.page ?? (isPage(place) ? place : FIRST_PAGE);
+  useEffect(() => { try { localStorage.setItem(LAST_PAGE, page); } catch { /* storage may be unavailable */ } }, [page]);
+  // A deep link or a search result: the page opens, the topic opens, and the row is scrolled to and flashes for a moment.
+  const pending = useRef("");
+  const go = (what: string) => {
+    const morePage = what.startsWith("more:") ? (what.slice(5) as PageId) : null;
+    const p = morePage ? { page: "more" as PageId, group: what, more: true } : placeOf(what);
+    if (!p) return;
+    setQ("");
+    if (p.topic) setOpenTopics((s) => new Set(s).add(p.topic!));
+    if (morePage) setOpenTopics((s) => { const n = new Set(s); for (const t of PAGES[morePage].more) n.add(t.id); return n; });
+    pending.current = morePage ? what : defOf(what) ? rowAnchor(what) : (S.setFixed as Record<string, unknown>)[what] ? fixedAnchor(what as Fixed) : p.group;
+    onPlace(p.page);
+    setJumps((n) => n + 1);
+  };
+  const shownPage = useRef(page);
+  useLayoutEffect(() => {
+    const id = pending.current;
+    const moved = shownPage.current !== page;
+    shownPage.current = page;
+    if (!id) { if (moved) content.current?.scrollTo({ top: 0 }); return; }
+    pending.current = "";
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.scrollIntoView({ block: "center" });
+    setFlash(id);
+  }, [page, q, openTopics, jumps]);
+  useEffect(() => { if (!flash) return; const el = document.getElementById(flash); el?.setAttribute("data-flash", ""); const t = setTimeout(() => { el?.removeAttribute("data-flash"); setFlash(""); }, 1200); return () => clearTimeout(t); }, [flash]);
+  // A deep link from Home (the notch's "Add your key", the spending card): open on it once.
+  const seenPlace = useRef("");
+  useEffect(() => { if (place && place !== seenPlace.current && !isPage(place)) { seenPlace.current = place; go(place); } else seenPlace.current = place; }, [place]);
+  // ⌘F searches and ⌘[ goes back to Now, while Settings is open in Home (the person's own keys, in this window only).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+      if (e.key === "f") { e.preventDefault(); search.current?.focus(); }
+      else if (e.key === "[") { e.preventDefault(); onClose(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const say = (text: string, undo?: () => void) => setToast((t) => ({ text, undo, n: (t?.n ?? 0) + 1 }));
+  const ctx: Ctx = { project, working, practiceBusy, keys, facts, inv, spending, go, say, reload: load, onLesson, onPracticeList, onMemory, onPickFolder, onStepAside };
+  const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
+  // Up and down move through the sidebar's pages (the open one follows).
+  const sideKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    const at = SIDEBAR.indexOf(page), to = SIDEBAR[(at + (e.key === "ArrowDown" ? 1 : SIDEBAR.length - 1)) % SIDEBAR.length];
+    e.preventDefault(); setQ(""); onPlace(to);
+    side.current?.querySelectorAll<HTMLButtonElement>(".sb-item")[SIDEBAR.indexOf(to)]?.focus();
+  };
+  const spent = spending && spending.project === (project || NO_PROJECT) ? spending : null;
+  return (
+    <SetCtx.Provider value={ctx}>
+      <div className="settings-frame">
+        <nav className="settings-side" aria-label={S.setFrame.sidebar} data-searching={q ? "" : undefined}>
+          <div className="settings-search" role="search">
+            <Field type="search" wide inputRef={search} value={q} placeholder={S.setFrame.search} label={S.setFrame.search} onChange={setQ}
+              onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing && q) { e.preventDefault(); e.stopPropagation(); setQ(""); } }} />
+          </div>
+          <ul className="sb-list" ref={side} onKeyDown={sideKey}>
+            {SIDEBAR.map((id) => (<li key={id}>
+              {id === HAIRLINE_BEFORE && <div className="sb-sep" role="separator" />}
+              <SidebarItem icon={PAGES[id].icon} label={S.pages[id].title} selected={!q && page === id} onClick={() => { setQ(""); onPlace(id); }} />
+            </li>))}
+          </ul>
+        </nav>
+        <div className="settings-content" ref={content} role="region" aria-label={q ? S.setFrame.search : S.pages[page].title}>
+          {problems.map((p, i) => <p className="set-problem" key={i}>{p}</p>)}
+          {spent?.problem && <p className="set-problem" role="alert">{spent.problem}</p>}
+          {q ? <SearchResults q={q} />
+            : page === "more" ? <MorePage open={openTopics} setOpen={(id, on) => setOpenTopics((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; })} />
+            : <PageView page={page} />}
+          {!q && page === "account" && spent && <p className="set-note" role="status">{spendingLine(spent)}</p>}
+          {!q && page === "account" && !project && <p className="set-note">{S.setSpendingNoProject}</p>}
         </div>
-      ))}
-      <div className="google-new" role="group" aria-label={S.google.connect}>
-        {GOOGLE_APPS.map((x) => (
-          <label className="check" key={x}><input type="checkbox" checked={pick.includes(x)} onChange={(e) => setPick((p) => (e.target.checked ? [...p, x] : p.filter((y) => y !== x)))} /> <b>{S.google.apps[x]}</b> <span className="muted">{S.google.appLines[x]}</span></label>
-        ))}
-        <div className="row">
-          <input type="text" value={label} maxLength={24} placeholder={S.google.label} aria-label={S.google.label} onChange={(e) => setLabel(e.target.value)} />
-          <button className="btn primary" type="button" disabled={!st.ready || waiting || pick.length === 0} onClick={() => start(false)}>{S.google.connect}</button>
-        </div>
+        {toast && <Toast key={toast.n} text={toast.text} action={toast.undo ? S.setUndo : undefined} onAction={() => { const u = toast.undo; setToast(null); u?.(); }} onDone={() => setToast(null)} />}
       </div>
-      {waiting && <div className="line" role="status">{S.google.waiting}</div>}
-      {problem && <div className="error" role="alert">{problem}</div>}
-    </Group>
+    </SetCtx.Provider>
   );
 }

@@ -290,6 +290,145 @@ pub fn signature(list: &[Screen]) -> String {
     list.iter().map(|s| format!("{}[{:.0},{:.0},{:.0},{:.0}]", s.id, s.work[0], s.work[1], s.work[2], s.work[3])).collect::<Vec<_>>().join("|")
 }
 
+// ---------- M47: dragging, followed by the shell itself ----------
+// The founder (31 Oct 2026): "it cannot genuinely move freely in the middle. It just lags." Each pointer move used to cross
+// from the page to the shell and run the whole placement (displays, saved places, trips, peeking, Home). Now the page says
+// once that a drag began; the shell then moves the window itself from the mouse watch it already has, setting only where
+// the window is, with the pointer kept where it took hold. Letting go decides once: stay (free) or snap (an edge), one save.
+
+/// How often (ms) a drag tells the character's page how hard it presses into an edge: about once a frame, never more.
+pub const PRESS_EVERY_MS: u64 = 16;
+/// The short spring onto its edge when it is let go near one. None with Reduce motion or Less motion, and none when it
+/// stays where it was let go (it is already there).
+pub const LAND_SECS: f64 = 0.22;
+/// A drag counts for this long after its last move (ms), as before M47.
+pub const DRAG_QUIET_MS: u64 = 1_500;
+/// A drag whose let go never reached the shell (the page went away mid drag) stops counting after this long (ms), so
+/// nothing that waits for the end of a drag (trips, peeking) waits forever.
+pub const DRAG_LOST_MS: u64 = 20_000;
+
+/// Where a let go puts the character: where it is (0 to 1 across and down its room, as `Prefs::free`), or on an edge.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Landing { Free((f64, f64)), Edge(Edge, f64) }
+
+/// What a let go decided, on the display under the pointer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Let { pub screen: Screen, pub how: Landing, pub pointer: (f64, f64), pub frame: Rect }
+
+/// One drag of the character, from the moment the page says it began to the let go. Top left points.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Drag { offset: (f64, f64), size: (f64, f64), screens: Vec<Screen>, pointer: (f64, f64), frame: Rect, last_press: Option<u64>, done: bool }
+
+impl Drag {
+    /// The pointer took hold of the window at `window`; `screens` are the displays as they are now (read once, not on
+    /// every move).
+    pub fn begin(pointer: (f64, f64), window: Rect, screens: Vec<Screen>) -> Drag {
+        let ok = |v: f64| if v.is_finite() { v } else { 0.0 };
+        let offset = (ok(pointer.0 - window[0]), ok(pointer.1 - window[1]));
+        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false }
+    }
+    /// Where the window goes for the pointer at `p`: the same offset, kept inside the work area of the display under the
+    /// pointer (or the nearest one). Pushed into an edge the window stops there and the pointer goes on: that is the press.
+    /// None once it was let go.
+    pub fn follow(&mut self, p: (f64, f64)) -> Option<Rect> {
+        if self.done { return None; }
+        if !(p.0.is_finite() && p.1.is_finite()) { return Some(self.frame); }
+        let want = [p.0 - self.offset.0, p.1 - self.offset.1, self.size.0, self.size.1];
+        let f = match screen_near(&self.screens, p) { Some(s) => keep_in(want, s.work), None => want };
+        self.pointer = p;
+        self.frame = f;
+        Some(f)
+    }
+    /// Where the window is now.
+    #[cfg(test)]
+    pub fn frame(&self) -> Rect { self.frame }
+    /// The primary display's height, to turn top left points into AppKit's (0 with no display).
+    pub fn primary_h(&self) -> f64 { self.screens.first().map(|s| s.frame[3]).unwrap_or(0.0) }
+    /// Is it time to tell the page the press again? At most once each `PRESS_EVERY_MS`.
+    pub fn press_due(&mut self, now_ms: u64) -> bool {
+        if let Some(t) = self.last_press { if now_ms < t.saturating_add(PRESS_EVERY_MS) { return false; } }
+        self.last_press = Some(now_ms);
+        true
+    }
+    /// The edge it is pushed against, how hard (0 to 1, `press_of`) and where the display's own edge is from the window's
+    /// top left (`screen_at`). None in the middle of the screen, where it would stay if let go.
+    pub fn press(&self) -> Option<(Edge, f64, f64)> {
+        let s = screen_near(&self.screens, self.pointer)?;
+        let (x, y) = self.pointer;
+        if free_on(s, self.size, x, y).is_some() { return None; }
+        let edge = edge_near(s.work, x, y);
+        Some((edge, press_of(s, self.size, edge, self.pointer), screen_at(edge, s, self.frame)))
+    }
+    /// The let go: away from every edge it stays exactly where the window is (`free_on` decides, `free_at` keeps the very
+    /// frame); near one it snaps to it (`snap_on`). Once per drag: asked again, or after, it is None.
+    pub fn release(&mut self, home: island::HomeSize) -> Option<Let> {
+        if self.done { return None; }
+        self.done = true;
+        let s = screen_near(&self.screens, self.pointer)?.clone();
+        let (x, y) = self.pointer;
+        let how = match free_on(&s, self.size, x, y) {
+            Some(_) => Landing::Free(free_at(s.work, self.size, self.frame)),
+            None => { let (e, pct) = snap_on(&s, self.size, x, y, home); Landing::Edge(e, pct) }
+        };
+        Some(Let { screen: s, how, pointer: self.pointer, frame: self.frame })
+    }
+}
+
+/// The display under `p`, else the one nearest it (the pointer can sit on the last point of a screen, or in a gap).
+fn screen_near(list: &[Screen], p: (f64, f64)) -> Option<&Screen> {
+    let gap = |r: Rect| { let dx = (r[0] - p.0).max(p.0 - (r[0] + r[2])).max(0.0); let dy = (r[1] - p.1).max(p.1 - (r[1] + r[3])).max(0.0); dx.hypot(dy) };
+    list.iter().find(|s| island::contains(s.frame, p)).or_else(|| list.iter().min_by(|a, b| gap(a.frame).total_cmp(&gap(b.frame))))
+}
+
+/// `r` moved (never resized) to lie inside `work`; where it cannot fit, at the work area's top left.
+fn keep_in(r: Rect, work: Rect) -> Rect {
+    let x = r[0].min(work[0] + work[2] - r[2]).max(work[0]);
+    let y = r[1].min(work[1] + work[3] - r[3]).max(work[1]);
+    [x, y, r[2], r[3]]
+}
+
+/// The nearest of the four edges of the work area to a point (a tie goes to a side edge, as `snap_on`).
+fn edge_near(w: Rect, x: f64, y: f64) -> Edge {
+    let x = x.clamp(w[0], w[0] + w[2]);
+    let y = y.clamp(w[1], w[1] + w[3]);
+    [(Edge::Left, x - w[0]), (Edge::Right, w[0] + w[2] - x), (Edge::Top, y - w[1]), (Edge::Bottom, w[1] + w[3] - y)].into_iter()
+        .min_by(|a, b| a.1.total_cmp(&b.1)).map(|(e, _)| e).unwrap_or(Edge::Right)
+}
+
+/// A window's frame as a free place (the inverse of `place_free`): put back from it, the window is where it was.
+pub fn free_at(work: Rect, size: (f64, f64), frame: Rect) -> (f64, f64) {
+    let room = |len: f64, sz: f64| (len - sz).max(1.0);
+    (along((frame[0] - work[0]) / room(work[2], size.0)), along((frame[1] - work[1]) / room(work[3], size.1)))
+}
+
+/// How long the move onto its place takes after a let go: a short spring onto an edge, nothing when it stays free (it is
+/// already there) or with Reduce motion or Less motion (`calm`).
+pub fn land_secs(how: &Landing, calm: bool) -> Option<f64> { match how { Landing::Edge(..) if !calm => Some(LAND_SECS), _ => None } }
+
+/// Is a drag on (nothing else moves the character then)? For `DRAG_QUIET_MS` after its last move, and while it is still
+/// held (`live`: begun and not let go), up to `DRAG_LOST_MS` after its last move.
+pub fn drag_holds(live: bool, last_ms: u64, now_ms: u64) -> bool {
+    if last_ms == 0 { return false; }
+    let since = now_ms.saturating_sub(last_ms);
+    since < DRAG_QUIET_MS || (live && since < DRAG_LOST_MS)
+}
+
+impl Prefs {
+    /// A let go, written as a drag always wrote it: the display used last; free there, or on the edge (and copied for
+    /// every display with no place yet when Same place on every display is on).
+    pub fn land(&mut self, screen_id: &str, how: Landing) {
+        self.last_screen = screen_id.to_string();
+        match how {
+            Landing::Free(at) => { self.free.insert(screen_id.to_string(), at); }
+            Landing::Edge(edge, pct) => {
+                self.free.remove(screen_id);
+                self.per_screen.insert(screen_id.to_string(), (edge, pct));
+                if self.same_everywhere.is_some() { self.same_everywhere = Some((edge, pct)); }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -778,5 +917,122 @@ mod tests {
         assert_eq!(screen_at(Edge::Right, &s, [1360.0, 300.0, 160.0, 160.0]), 80.0, "half past the edge");
         assert_eq!(screen_at(Edge::Left, &s, [-80.0, 300.0, 160.0, 160.0]), 80.0);
         assert_eq!(screen_at(Edge::Bottom, &s, [600.0, 740.0, 160.0, 160.0]), 160.0);
+    }
+
+    // ---------- M47: a drag followed by the shell itself ----------
+    const DOCK_SIZE: (f64, f64) = (160.0, 160.0);
+    fn wide() -> Screen { Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None } }
+    fn second() -> Screen { Screen { id: "b".into(), frame: [1440.0, 0.0, 1920.0, 1080.0], work: [1440.0, 0.0, 1920.0, 1080.0], primary: false, notch: None } }
+    #[test]
+    fn a_drag_keeps_the_pointer_where_it_took_hold_of_the_character() {
+        // Taken hold of 30 across and 50 down inside the window.
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide(), second()]);
+        assert_eq!(d.follow((700.0, 420.0)), Some([670.0, 370.0, 160.0, 160.0]));
+        assert_eq!(d.follow((300.5, 600.25)), Some([270.5, 550.25, 160.0, 160.0]), "the same offset wherever it goes, to the point");
+        assert_eq!(d.frame(), [270.5, 550.25, 160.0, 160.0]);
+        // Onto the second display: the same offset there.
+        assert_eq!(d.follow((2000.0, 500.0)), Some([1970.0, 450.0, 160.0, 160.0]));
+    }
+    #[test]
+    fn a_drag_stays_inside_the_work_area_of_the_display_under_the_pointer() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide(), second()]);
+        // Pushed past the right edge: the window stops at it, the pointer goes on (that is the press).
+        assert_eq!(d.follow((1430.0, 350.0)), Some([1280.0, 300.0, 160.0, 160.0]));
+        // Never under the menu bar, never past the bottom.
+        assert_eq!(d.follow((630.0, 10.0)), Some([600.0, 25.0, 160.0, 160.0]));
+        assert_eq!(d.follow((630.0, 899.0)), Some([600.0, 740.0, 160.0, 160.0]));
+        // A pointer that is not a number leaves it where it is.
+        assert_eq!(d.follow((f64::NAN, 400.0)), Some([600.0, 740.0, 160.0, 160.0]));
+        // Off every display (past the last point of the screen, or in a gap between two): kept on the nearest one.
+        let mut d = Drag::begin((80.0, 80.0), [0.0, 25.0, 160.0, 160.0], vec![wide()]);
+        assert_eq!(d.follow((2000.0, 80.0)), Some([1280.0, 25.0, 160.0, 160.0]));
+    }
+    #[test]
+    fn the_press_against_an_edge_goes_to_the_page_at_most_once_a_frame() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        assert!(d.press_due(1_000));
+        assert!(!d.press_due(1_005), "the same frame");
+        assert!(!d.press_due(1_000 + PRESS_EVERY_MS - 1));
+        assert!(d.press_due(1_000 + PRESS_EVERY_MS));
+        // A clock that went back never floods it either.
+        assert!(!d.press_due(900));
+        // A hundred moves in one second: at most one each frame.
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        let sent = (0..1000u64).step_by(2).filter(|t| d.press_due(5_000 + t)).count();
+        assert!(sent <= (1000 / PRESS_EVERY_MS + 1) as usize, "{sent}");
+    }
+    #[test]
+    fn the_press_is_nothing_in_the_middle_and_measured_against_the_real_edge_near_one() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        assert_eq!(d.press(), None, "in the middle there is nothing to press against");
+        d.follow((1440.0, 350.0));
+        let (edge, press, at) = d.press().unwrap();
+        assert_eq!(edge, Edge::Right);
+        assert_eq!(press, 1.0, "the pointer at the screen's edge");
+        assert_eq!(at, 160.0, "the screen's edge from the window it is really in");
+    }
+    #[test]
+    fn let_go_in_the_middle_it_stays_exactly_where_it_is() {
+        let s = wide();
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![s.clone()]);
+        d.follow((513.0, 471.0));
+        let at = d.frame();
+        let l = d.release(island::HomeSize::STANDARD).unwrap();
+        assert_eq!(l.screen.id, "a");
+        let Landing::Free(free) = l.how else { panic!("free, not snapped: {:?}", l.how) };
+        // Placed back from what is saved, it is the very frame it was let go at: no jump, no drift to an edge.
+        let back = place_free(&s, DOCK_SIZE, free, island::HomeSize::STANDARD);
+        for i in 0..4 { assert!((back[i] - at[i]).abs() < 1e-6, "{back:?} vs {at:?}"); }
+        assert_eq!(land_secs(&l.how, false), None, "nothing to move");
+    }
+    #[test]
+    fn let_go_near_an_edge_it_snaps_to_it() {
+        let s = wide();
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![s.clone()]);
+        d.follow((1420.0, 400.0));
+        let l = d.release(island::HomeSize::STANDARD).unwrap();
+        assert_eq!(l.how, Landing::Edge(snap_on(&s, DOCK_SIZE, 1420.0, 400.0, island::HomeSize::STANDARD).0, snap_on(&s, DOCK_SIZE, 1420.0, 400.0, island::HomeSize::STANDARD).1));
+        assert!(matches!(l.how, Landing::Edge(Edge::Right, _)));
+        assert_eq!(land_secs(&l.how, false), Some(LAND_SECS), "a short spring onto the edge");
+        assert_eq!(land_secs(&l.how, true), None, "at once with Reduce motion or Less motion");
+        // On the second display, the one under the pointer.
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![s, second()]);
+        d.follow((3350.0, 500.0));
+        assert_eq!(d.release(island::HomeSize::STANDARD).unwrap().screen.id, "b");
+    }
+    #[test]
+    fn a_drag_lands_and_is_saved_once() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        for i in 0..200 { d.follow((630.0 + i as f64, 350.0)); }
+        let mut saves = 0;
+        let mut p = Prefs::default();
+        for _ in 0..3 { if let Some(l) = d.release(island::HomeSize::STANDARD) { p.land(&l.screen.id, l.how); saves += 1; } }
+        assert_eq!(saves, 1, "one let go, one save, however many times it is asked");
+        assert_eq!(d.follow((900.0, 400.0)), None, "after the let go nothing follows the pointer");
+        assert!(p.free.contains_key("a") && p.last_screen == "a");
+    }
+    #[test]
+    fn landing_writes_the_place_as_a_drag_always_did() {
+        let mut p = Prefs::default();
+        p.land("a", Landing::Free((0.3, 0.6)));
+        assert_eq!(p.free.get("a"), Some(&(0.3, 0.6)));
+        assert_eq!(p.last_screen, "a");
+        // Snapped: off the free place, onto the edge, and copied for other displays when Same place on every display is on.
+        p.same_everywhere = Some((Edge::Left, 0.1));
+        p.land("a", Landing::Edge(Edge::Bottom, 0.25));
+        assert!(p.free.get("a").is_none());
+        assert_eq!(p.per_screen.get("a"), Some(&(Edge::Bottom, 0.25)));
+        assert_eq!(p.same_everywhere, Some((Edge::Bottom, 0.25)));
+        let mut q = Prefs::default();
+        q.land("b", Landing::Edge(Edge::Top, 0.5));
+        assert_eq!(q.same_everywhere, None, "not turned on by a drag");
+    }
+    #[test]
+    fn a_drag_counts_while_it_is_held_and_never_forever() {
+        assert!(!drag_holds(false, 0, 10_000), "no drag");
+        assert!(drag_holds(false, 10_000, 10_000 + DRAG_QUIET_MS - 1), "just moved");
+        assert!(!drag_holds(false, 10_000, 10_000 + DRAG_QUIET_MS));
+        assert!(drag_holds(true, 10_000, 10_000 + 5_000), "held still mid drag: still a drag");
+        assert!(!drag_holds(true, 10_000, 10_000 + DRAG_LOST_MS), "a let go that never arrived stops counting");
     }
 }

@@ -1,32 +1,33 @@
-// The panel under the notch (islandPanel.ts decides what is in it). It hangs from the notch like the notch grown down, the
-// way the best notch apps do it: a hello in big words while nothing runs, one lime key for the main thing ("Fix
-// something"), a card for each piece of work while there is some, then a row of small pills and a button to open Home in full. Every
-// press opens Home, where the answer, the plan and Undo are; nothing here acts on the project by itself. It never takes the
-// keyboard (the island is a borderless panel); Home does, when Fix something opens it. Its height is measured (island.tsx).
+// The panel under the notch (islandPanel.ts decides what is in it). It hangs from the notch like the notch grown down and
+// shows only what is live, one thing (F28, the overhaul spec 4.3): a job with Stop, a result with Undo and See proof, the
+// questions waiting, "Add your key" when Claude is not connected, or one true line about the project. No greeting and no
+// launcher buttons: a click on the notch always opens Home. Stop is the only press that acts here by itself (it stops);
+// Undo asks its question in Home, as the receipt does, and a question is answered here only as M23 allows. It never takes
+// the keyboard (the island is a borderless panel). Its height is measured (island.tsx).
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
-import { Icon } from "./icons.tsx";
-import { ARM_MS, answerHere, armed, cardReady, greeting, islandJobs, panelNote, PANEL_DO, type JobCard } from "./islandPanel.ts";
+import { ARM_MS, answerHere, armed, cardReady, islandJobs, panelNote, panelView, PANEL_DO, type JobCard } from "./islandPanel.ts";
 import { keyHint, keysFrom, setKeysNow } from "./keys.ts";
-import { answerApproval } from "./commands.ts";
+import { answerApproval, stopAgent } from "./commands.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
+import { clockWords, homeStatus, notchStatusLine } from "./homeHero.ts";
+import { ProofChips } from "./proofChipsView.tsx";
+import { Button, VerdictLine } from "./ui/parts.tsx";
+import { Icon } from "./icons.tsx";
 
-/** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only the cards; the
- *  pointer opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line
- *  only (the bare notch shows nothing at rest). */
+/** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
+ *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
+ *  (the bare notch shows nothing at rest). */
 type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?: number };
 
-// M33: the Mac account's first name for the greeting, asked once.
-let firstName: string | null = null;
-void invoke("first_name").then((v) => { firstName = typeof v === "string" && v ? v : null; }).catch(() => {});
 void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
 export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0 }, ref) {
-  // What the panel shows and its size (M19, Look and feel): the hello, the work, the quick actions, usual or compact.
-  const showHello = useSetting("panel.showHello") !== false, showWork = useSetting("panel.showWork") !== false, showButtons = useSetting("panel.showButtons") !== false;
+  // What the panel shows and its size (M19, Look and feel): the work and its results, usual or compact.
+  const showWork = useSetting("panel.showWork") !== false;
   const compact = useSetting("panel.size") === "compact";
   const jobs = showWork || brief ? islandJobs(m) : [];
   const tab = shown ? 0 : -1;
@@ -45,8 +46,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     const id = setTimeout(() => setNow(Date.now()), ARM_MS + 20);
     return () => clearTimeout(id);
   }, [shown, keys]);
-  // M46: opened by itself, the whole panel ignores every click for its first ARM_MS (Look first, a result card, Allow and
-  // Don't allow alike), and keeps that moment if the pointer then rests on it. Opened by the pointer, it is ready at once.
+  // M46: opened by itself, the whole panel ignores every click for its first ARM_MS (Look first, a result's buttons, Allow
+  // and Don't allow alike), and keeps that moment if the pointer then rests on it. Opened by the pointer, it is ready at once.
   const openedAt = useRef<number | null>(null);
   if (!shown) openedAt.current = null;
   else if (brief && openedAt.current === null) openedAt.current = Date.now();
@@ -63,51 +64,59 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     if (!ready() || !j.approval || !armed(seen.current.get(j.key) ?? null, Date.now())) return;
     void invoke("send_command", { cmd: answerApproval(j.approval, allow) }).catch(() => {});
   };
-  // A question waiting comes before the big key: it is the one thing that needs the person now (M23).
-  const asking = jobs.some((j) => j.approval);
-  const list = jobs.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
-      {jobs.map((j, i) => j.approval ? (
+  // The one live thing, and the project's true line when nothing is (homeHero.ts: the same status as Home's headline).
+  const project = m.task?.project ?? m.folder ?? "";
+  const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project) });
+  // A job's time so far: from when this panel first saw it, ticking each second only while it shows.
+  const since = useRef<{ key: string; at: number } | null>(null);
+  const jobKey = view.kind === "job" ? view.job.key : "";
+  if (jobKey && since.current?.key !== jobKey) since.current = { key: jobKey, at: Date.now() };
+  useEffect(() => {
+    if (!shown || !jobKey) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [shown, jobKey]);
+  const questions = jobs.filter((j) => j.approval);
+  const list = questions.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
+      {questions.map((j) => (
         <li key={j.key}>
           <div className="ip-job ip-ask" data-tone={j.tone} data-armed={armed(seen.current.get(j.key) ?? null, now) ? "yes" : undefined}>
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
             <span className="ip-text"><b>{j.title}</b><span>{j.code ? <code>{j.sub}</code> : j.sub}</span></span>
             <span className="ip-answer">
               {j.here ?? answerHere(j.risk ?? "") ? <>
-                <button className="ip-no" type="button" tabIndex={tab} aria-label={`${S.dontAllow}: ${j.title}`} onClick={() => answer(j, false)}>{S.dontAllow}</button>
-                <button className="ip-yes" type="button" tabIndex={tab} aria-label={`${S.allow}: ${j.title}`} onClick={() => answer(j, true)}>{S.allow}</button>
-              </> : <button className="ip-yes" type="button" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>{S.panel.lookFirst}</button>}
+                <Button size="sm" className="ip-no" tabIndex={tab} label={`${S.dontAllow}: ${j.title}`} onClick={() => answer(j, false)}>{S.dontAllow}</Button>
+                <Button size="sm" className="ip-yes" tabIndex={tab} label={`${S.allow}: ${j.title}`} onClick={() => answer(j, true)}>{S.allow}</Button>
+              </> : <Button size="sm" className="ip-yes" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>{S.panel.lookFirst}</Button>}
             </span>
           </div>
         </li>
-      ) : (
-        <li key={j.key}>
-          <button className="ip-job" type="button" data-tone={j.tone} data-armed={cardOk(j.key, now) ? "yes" : undefined} tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>
-            <FlowMini className="ip-agent" state={j.state} still={!shown} />
-            <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>
-            {j.cost && <span className="ip-cost">{j.cost}</span>}
-          </button>
-        </li>
       ))}
     </ul>;
+  const live = view.kind === "questions" ? list
+    : view.kind === "job" ? (
+      <div className="ip-live" data-tone="working">
+        <span className="ip-text"><b>{view.job.title}</b><span>{view.job.sub} · {S.home.timeSoFar(clockWords(now - (since.current?.at ?? now)))}{view.job.cost ? ` · ${view.job.cost}` : ""}</span></span>
+        <Button size="sm" tabIndex={tab} label={`${S.stop}. ${keyHint("stop", S.look.stopKeys)}`} title={keyHint("stop", S.look.stopKeys)} onClick={() => void invoke("send_command", { cmd: stopAgent() }).catch(() => {})}><Icon name="stop" size={12} />{S.stop}</Button>
+      </div>
+    )
+    : view.kind === "result" ? (
+      <div className="ip-result" data-armed={cardOk(view.job.key, now) ? "yes" : undefined}>
+        <VerdictLine verdict={view.verdict} sub={view.job.title} />
+        <ProofChips m={m} />
+        <div className="ip-actions">
+          {view.canUndo && <Button size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd", { then: PANEL_DO.undo }).catch(() => {}))}><Icon name="undo" size={12} />{S.home.undoFix}</Button>}
+          <Button kind="quiet" size="sm" tabIndex={tab} onClick={click(view.job.key, () => void invoke("open_card_cmd").catch(() => {}))}>{S.home.seeProof}</Button>
+        </div>
+      </div>
+    )
+    : view.kind === "connect" ? <Button kind="primary" size="lg" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.key }).catch(() => {})}>{S.home.addKey}</Button>
+    : <p className="ip-status" role="status">{view.line || S.home.notchNothing}</p>;
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
-      {brief ? list : <>
-      {unseen > 0 && <p className="ip-new">{S.panel.newCount(unseen)}</p>}
-      {showHello && jobs.length === 0 && !note && <div className="ip-hello"><p className="ip-hi">{greeting(new Date().getHours(), firstName)}</p><p className="ip-talk">{keyHint("talk", S.panel.talkLine)}</p></div>}
-      {asking && list}
-      <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>
-        <span className="ip-plus" aria-hidden="true">+</span>{S.panel.go}
-      </button>
-      {!asking && list}
-      {note && <div className="ip-note" role="status">{note}</div>}
-      {showButtons && <div className="ip-row">
-        <button className="ip-pill find" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.find }).catch(() => {})}><Icon name="find" size={13} />{S.look.chipFind}</button>
-        <button className="ip-pill live" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.ship }).catch(() => {})}><Icon name="shield" size={13} />{S.look.chipSafe}</button>
-        {/* M40: Settings and Open Home are two quiet round buttons at the end of the one row, so the row never wraps. */}
-        <button className="ip-open ip-set" type="button" tabIndex={tab} aria-label={S.panel.settings} title={S.panel.settings} onClick={() => void invoke("open_card_cmd", { then: PANEL_DO.settings }).catch(() => {})}><Icon name="gear" size={14} /></button>
-        <button className="ip-open" type="button" tabIndex={tab} aria-label={S.panel.open} title={S.panel.open} onClick={() => void invoke("island_click").catch(() => {})}><Icon name="resize" size={14} /></button>
-      </div>}
-      </>}
+      {!brief && unseen > 0 && <p className="ip-new">{S.panel.newCount(unseen)}</p>}
+      {/* Opened by itself, only a question or a result that matters (island.tsx); never the line or the key. */}
+      {brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}
     </div>
   );
 });

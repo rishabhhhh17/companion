@@ -113,15 +113,18 @@ describe("the Settings rows", () => {
     expect(rows).toContain('invoke("voice_settings")');
     expect(rows).toContain('invoke("set_voice_settings", voiceAsk(');
     expect(rows).toContain("voiceSettingsFrom(");
-    const row = card.slice(card.indexOf("function SettingRow"), card.indexOf("\n}\n", card.indexOf("function SettingRow")));
-    expect(row).toContain('d.key === "talk.voice" ? <VoiceRows />');
+    const row = card.slice(card.indexOf("function ItemRows"), card.indexOf("\n}\n", card.indexOf("function ItemRows")));
+    expect(row).toContain('if (item === "talk.voice") return <VoiceRows parentOff={parentWords} />;');
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     for (const c of ["voice_settings", "set_voice_settings"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
   });
   test("every row is labelled for VoiceOver, and the lines about what is away are announced", () => {
-    for (const label of ["S.voicePickLabel", "S.micPickLabel", "S.voiceLanguageLabel", "S.voiceSpeedGroup"]) expect(rows).toContain(label);
+    // Rows of their own (the spec, 3.4): Microphone, Language, and Voice and speed, each control named by its row's label.
+    for (const label of ["S.setRows.microphone", "S.setRows.language", "S.setRows.voiceAndSpeed", "S.voiceSpeedGroup"]) expect(rows).toContain(label);
+    for (const id of ["micId", "langId", "voiceId"]) expect(rows).toContain(`labelledBy={${id}}`);
     expect(rows).toContain("voiceLine(v)"); expect(rows).toContain("micLine(v)"); expect(rows).toContain("soundLine(v.sound)");
-    expect(rows).toMatch(/role="status"/);
+    expect(rows).toContain("<Note text={tried} live />");
+    expect(card).toContain('const Note = ({ text, live }: { text: string; live?: boolean }) => (text ? <p className="set-note" role={live ? "status" : undefined}>{text}</p> : null);');
   });
   test("the sample is said only when the person presses its button, through the same speak command", () => {
     const tries = rows.split("\n").filter((l) => l.includes('invoke("speak"'));

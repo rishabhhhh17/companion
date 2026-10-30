@@ -205,9 +205,12 @@ mod wiring {
         assert!(MAIN.contains("const PLACE_KEYS: [&str; 3] = [\"character.edge\", \"character.position\", \"character.sameEverywhere\"];"));
         assert!(MAIN.contains("fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLACE_KEYS.map(String::from)); }"));
         assert!(body("fn place_shown_changed(").contains("PLACE_KEYS.map(|k| settings::dock_value(p, k))"));
+        // M47: the let go is decided on the main thread after the drag's last move, then saved, placed, and told, in order.
         let drop = body("fn drop_dock(");
         let main_thread = drop.find("app.run_on_main_thread(move || {").expect("on the main thread, after the drag's last move");
-        assert!(drop.find("save_prefs();").unwrap() < main_thread && main_thread < drop.find("place_told(&a);").expect("a drop tells the pages"), "{drop}");
+        let order = ["d.release(home_size())", "p.land(", "save_prefs();", "apply_dock(mtm, \"drag\", true);", "place_told(&a);"];
+        let at: Vec<usize> = order.iter().map(|p| drop.find(p).unwrap_or_else(|| panic!("drop_dock lost {p}: {drop}"))).collect();
+        assert!(main_thread < at[0] && at.windows(2).all(|w| w[0] < w[1]), "in this order: {order:?}");
         // apply_dock is how every display change and the launch move it: it tells the pages whenever what they show of the
         // place is not what they were last told (while dragging, the drop tells them once).
         let apply = body("fn apply_dock(");

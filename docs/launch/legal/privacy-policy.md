@@ -60,7 +60,7 @@ When you use a feature that needs Claude, the app sends the request from your Ma
 | **Prompt help** (hotkey **R**) | The text in the box you are typing in (set-aside code, links and commands are put back after), plus, unless you turn it off, your project's name, script and package names, top-level file and folder names, house rules, and up to 300 words of what the app remembers |
 | **Explain an error** (hotkey **E**) | The text you selected, with keys hidden, and the project line it names |
 | **Tasks, fixes, plans, Rescue, Research** | The files of the project you chose, as Claude needs them, plus your request and the app's memory notes. Research also searches the web through Claude. A task may too, unless you turn "Let tasks search the web" off |
-| **Explain after a task** (on unless you turn it off) | The lines the task changed, with keys hidden. Not sent for "off the record" tasks |
+| **Explain each fix** (on unless you turn it off) | The lines the task changed, with keys hidden. Not sent for "off the record" tasks |
 | **Draw it** | Your question, the failing check's text, a few lines of code near the failure, package names, some folder names |
 | **A file you drop in the ask box**, after you press Start | That file only (key-like text hidden; files such as `.env` are never read) |
 | **Lessons** | A picture of your screen at each step, as for **S**. The "setting practice" lesson does not look at your screen |

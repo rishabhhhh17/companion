@@ -94,12 +94,16 @@ describe("replacing and removing the key in Settings", () => {
   });
   test("the Settings key box is a password box that the page empties, and removing asks first", () => {
     const card = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    const keys = card.slice(card.indexOf("function KeySection"), card.indexOf("\n}\n", card.indexOf("function KeySection")));
-    expect(keys).toMatch(/<input type="password" autoComplete="off"/);
+    const keys = card.slice(card.indexOf("function KeyRow"), card.indexOf("\n}\n", card.indexOf("function KeyRow")));
+    expect(keys).toContain('<Field type="password" value={key}');
+    expect(keys).toContain('setKey("");   // emptied at once');
     expect(keys).toContain('invoke("save_api_key"');
-    expect(keys).toContain('invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE })');
-    expect(keys).toContain("S.keyRemoveSure");
-    expect(readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8")).toContain('{fixedShown("key") && inv && <KeySection keySaved={inv.keySaved}');
+    // Removing is in the danger zone: asked first, with the exact words typed.
+    const danger = card.slice(card.indexOf("function DangerZone"), card.indexOf("\n}\n", card.indexOf("function DangerZone")));
+    expect(danger).toContain('invoke("remove_api_key", { confirm: REMOVE_KEY_PHRASE })');
+    expect(danger).toContain("S.keyRemoveSure");
+    expect(danger).toContain("typed.trim().toLowerCase() !== REMOVE_KEY_PHRASE");
+    expect(readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8")).toContain('type?: "text" | "search" | "password"');
   });
 });
 
@@ -254,51 +258,54 @@ describe("the Keys section in Settings", () => {
   test("Settings shows every row, Change opens the short list, and Reset is there", () => {
     const card = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const fn = (name: string) => card.slice(card.indexOf(`function ${name}`), card.indexOf("\n}\n", card.indexOf(`function ${name}`)));
-    const section = fn("KeysSection");
+    const section = fn("KeysRows");
     expect(section).toContain("keyRows(keys)");
     expect(section).toContain('invoke("reset_keys")');
-    expect(section).toContain("aria-expanded={open === r.job}");
+    expect(section).toContain("expanded={open === job}");
     expect(section).toContain("S.keysChangeFor(r.name)");
-    expect(section).toContain("<KeyPicker");
-    const picker = fn("KeyPicker");
+    expect(section).toContain("<KeySheet");
+    const picker = fn("KeySheet");
     expect(picker).toContain('invoke("key_choices", { action: job })');
     expect(picker).toContain('invoke("set_key", { action: job, id })');
     expect(picker).toContain("disabled={busy || !canPick(c, id)}");
-    expect(picker).toContain("aria-pressed={keys.using[job] === id}");
+    expect(picker).toContain("pressed={keys.using[job] === id}");
     expect(picker).toContain("pickerLines(c, keys)");
     expect(picker).toContain("talkCost(id)");
     expect(picker).toContain("keyProblem(");
     // The app's answer becomes the keys every line on the page names, and the row says what changed.
-    expect(picker).toContain("const k = keysFrom(v); setKeysNow(k); onDone(k);");
-    // A change is said in one line, and the keyboard goes back to the row's Change button once the list closes (it was on
-    // a button in the list, which is gone), so a keyboard or VoiceOver user does not lose their place.
+    expect(picker).toContain("const k = keysFrom(v); setKeysNow(k); onClose(k);");
+    // A change is said in one line (a toast, role status), and the keyboard goes back to the row's Change button once the
+    // sheet closes (the Sheet part gives it back to the button that opened it), so nobody loses their place.
     expect(section).toContain("keyChangedLine(");
-    expect(section).toContain('role="status"');
+    expect(readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8")).toContain('<div className="ui-toast" role="status"');
     // It goes there only by the rule every move of the keyboard in Home follows (focus.ts takeIfLost: Home has the keyboard
     // and nothing in it does), never by a focus of its own, so it never pulls the keyboard from a box the person went to.
-    expect(section).toMatch(/takeIfLost\(\(\) => changeButtons\.current\[job\]\)/);
+    expect(readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8")).toMatch(/return \(\) => \{ takeIfLost\(\(\) => opener\.current\); \}/);
     expect(section).not.toMatch(/\.focus\(/);
     // Keys another app took since the list was asked for: the list is asked for again, so they show as taken.
     expect(picker).toMatch(/if \(code === "taken"\) load\(\)/);
     // Nothing on the page reads key presses to learn keys: it only offers the list the app sends.
     for (const f of [section, picker]) expect(f).not.toMatch(/onKey(Down|Up|Press)/);
-    const panel = fn("SettingsPage");
-    expect(fn("SettingRow")).toContain("<KeysSection keys={keys} />");
+    const panel = fn("SettingsView");
+    expect(fn("GroupView")).toContain("<KeysRows keys={c.keys} />");
     expect(panel).toContain('invoke("key_map")');
   });
-  test("the app has the commands, only Home or the Settings window may try or change keys, and one change or check at a time", () => {
+  test("the app has the commands, only Home may try or change keys, and one change or check at a time", () => {
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     for (const c of ["key_map", "key_choices", "set_key", "reset_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
     for (const c of ["talk_keys", "set_talk_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
     const body = (name: string) => main.slice(main.indexOf(`fn ${name}(`), main.indexOf("\n}\n", main.indexOf(`fn ${name}(`)));
     for (const c of ["key_choices", "set_key", "reset_keys"]) {
       const b = body(c);
-      // Home, or the Settings window that shows the same Keys section (27 Oct 2026), never another window.
-      expect(b, c).toContain('if settings::card_or_settings(window.label()).is_err() { return Err("not_card".into()); }');
+      // Home only (Settings, with its Keys rows, lives inside it: T17), never another window.
+      expect(b, c).toContain('if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }');
       // Reset goes through keys_to_usual, which the registry's Reset uses too (T16); it takes the same lock.
       const work = c === "reset_keys" ? b.indexOf("keys_to_usual(") : b.indexOf("KEYS_SWITCH.lock()");
       expect(work, c).toBeGreaterThan(-1);
-      expect(b.indexOf("card_or_settings(window.label())"), c).toBeLessThan(work);
+      // The window gate comes before the lock or the reset (it once searched for a name that no longer exists, so -1 passed).
+      const gate = b.indexOf("only_card(window.label())");
+      expect(gate, c).toBeGreaterThan(-1);
+      expect(gate, c).toBeLessThan(work);
     }
     expect(body("keys_to_usual")).toContain("KEYS_SWITCH.lock()");
     expect(body("key_choices")).toContain("keymap::free(a,");

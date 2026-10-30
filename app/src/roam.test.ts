@@ -59,8 +59,8 @@ describe("Come to what it is about", () => {
   });
   test("Settings has the switch, changed only through the shell, and the hint for dragging it anywhere", () => {
     const page = read("./settingsPage.tsx");
-    expect(page).toContain("<div className=\"line muted\">{S.dragHint}</div>");
-    expect(page.indexOf("{S.dragHint}")).toBeGreaterThan(page.indexOf("home: (<>"));
+    // With Put the character back in its usual place, in More options (Flowflow's Motion and placement).
+    expect(page).toContain("<Row label={S.setResetPlace} description={S.dragHint}");
     expect(S.set["character.comeTo"].label).toBe(S.comeToSetting);
     const main = read("../src-tauri/src/main.rs");
     for (const c of ["settings_get", "settings_set"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
