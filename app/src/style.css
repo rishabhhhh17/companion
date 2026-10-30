@@ -1072,3 +1072,52 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 .home-side .side-item[data-proof="failed"] .ic { color: var(--danger); }
 .home-side .side-dot { flex: none; width: calc(6rem / 14); min-height: calc(6rem / 14); margin: 0 calc(4rem / 14); border-radius: 50%; background: var(--muted); }
 .home-side .side-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- M43: one look on every screen (the founder, 30 Oct 2026: "see this product from the whole thing") ----------
+   The B language from Now, carried to every place, Settings, the notch and the first run: a flat near black page, cards
+   with one hairline edge and 12 px corners, quiet rows that light on hover, small square icon buttons, and chrome kept for
+   the one main button on a screen. Corners: 8 for rows and buttons, 12 for cards, fields and the main button. */
+:root.home-page:not([data-theme="paper"]):not([data-theme="deep"]) { --sky: #0B0B0C; --card: #141416; --surface: #1A1A1D; --home-sea: #0B0B0C; --home-sea-deep: #0B0B0C; }
+/* Now's grid only when its side list is there: the first run, and a job that hides the list, take the full width. */
+.home[data-view="now"] .inner:not(:has(> .home-side)) { display: block; }
+/* The top row: a hairline under it; icon buttons are small squares that light on hover; the open place stays filled. */
+.home .bar { padding-bottom: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.icon-btn, .back { border-radius: calc(8rem / 14); background: transparent; color: var(--muted); }
+.back { color: var(--fg); }
+.icon-btn:hover, .back:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+/* Cards: flat, one hairline, 12 px corners; their titles are plain and a size down, so the page title leads. */
+.home .view .panel:not(.settings), .home .view .panel:not(.settings) + .panel { border-radius: calc(12rem / 14); border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); background-image: none; box-shadow: none; padding: var(--space-4); }
+.home .view .panel:not(.settings) > h2 { font: 600 var(--t-answer)/1.3 -apple-system, "SF Pro Text", system-ui, sans-serif; letter-spacing: -.005em; -webkit-text-fill-color: currentColor; background-image: none; }
+/* Buttons: the second choice has an outline, the main one is chrome; both are 8 px corners, not pills. */
+.home .view .panel:not(.settings) .btn:not(.primary), .home .notice .btn:not(.primary), .home .error .btn:not(.primary) { margin-left: 0; border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); background: color-mix(in srgb, var(--fg) 3%, transparent); font-weight: 600; font-size: var(--t-small); }
+.home .view .panel:not(.settings) .btn:not(.primary):hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.btn.primary { border-radius: calc(8rem / 14); padding: calc(6rem / 14) calc(14rem / 14); font: 600 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.btn.primary:active:not(:disabled) { transform: scale(.97); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+.chip-btn, .section-pill { border-radius: calc(8rem / 14); }
+/* Settings: the open page is a lit row, as on Now's side list; cards and choices are flat with a hairline. */
+:root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] { background: color-mix(in srgb, var(--fg) 9%, transparent); background-image: none; color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent); }
+:root.home-page:not([data-theme="paper"]) .sp-card { border-radius: calc(12rem / 14); background: var(--card); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+:root.home-page:not([data-theme="paper"]) .sp-card > .setting + .setting { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row { border-radius: calc(8rem / 14); background: transparent; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn { border-radius: calc(6rem / 14); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn[aria-checked="true"], :root.home-page:not([data-theme="paper"]) .companion-hero .ch-states button[aria-pressed="true"], :root.home-page:not([data-theme="paper"]) .ch-lively button[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); background-image: none; color: var(--fg); box-shadow: none; }
+:root.home-page:not([data-theme="paper"]) .sp-pick[aria-checked="true"] { background: var(--surface); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--fg) 70%, transparent); }
+:root.home-page:not([data-theme="paper"]) .home[data-view="settings"] .panel.settings > .row[role="search"] input { border-radius: calc(8rem / 14); background: var(--card); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+/* The notch: the same rows, keys and corners as Home. */
+.island-panel .ip-go { min-height: 42px; border-radius: 12px; font: 600 14px -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.island-panel .ip-go:hover { transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.island-panel .ip-go:active { transform: scale(.98); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+.island-panel .ip-plus { width: 20px; min-height: 20px; font-size: 15px; }
+.island-panel .ip-pill { border-radius: 8px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); font: 600 12px -apple-system, "SF Pro Text", system-ui, sans-serif; }
+.island-panel .ip-pill:hover { background: rgba(255, 255, 255, .08); }
+.island-panel .ip-open { border-radius: 8px; background: transparent; color: #A1A1A6; box-shadow: none; }
+.island-panel .ip-open:hover { background: rgba(255, 255, 255, .08); color: #F5F5F7; }
+.island-panel .ip-job { border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover, .island-panel .ip-ask:hover { background: #1A1A1D; }
+.island-panel .ip-answer button { border-radius: 8px; font: 600 12.5px/1 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+.island-panel .ip-no { background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+/* The first run: the same corners; its title keeps the chrome, as the one big moment. */
+.fr-key, .onboarding.look .btn.primary.fl-go { min-height: 46px; border-radius: 12px; font: 600 var(--t-body) -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.fr-pick, .fr-folder { border-radius: 12px; }
+.fr-name, .fr-power { border-radius: 12px; }
+.onboarding.look .fl-code, .onboarding.look .fl-check { background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }

@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## One look on every screen: 30 Oct 2026
+
+- **Home, Settings, the notch and the first run now look like one product.** The same near black page, cards with one thin edge, quiet rows that light up under the pointer and small square buttons, everywhere.
+- **Calmer buttons.** The main button on each screen keeps its silver, now with neat corners instead of a big pill. Second choices have a thin outline.
+- **Settings.** The page you are on is a lit row, as on Home's list, and the cards are flat.
+- **Fixed:** the first run was squeezed into the right half of Home. It uses the whole width again.
+
 ## A new Home, laid out like the best dashboards: 30 Oct 2026
 
 - **Ask first.** The box to ask Squibby is now a command bar across the top of Home, with a search mark, ready to type.
