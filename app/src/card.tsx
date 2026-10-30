@@ -13,7 +13,7 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptProofWords, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, costWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -25,7 +25,7 @@ import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, key
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { HOME_PLACES, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
+import { HOME_PLACES, bringBackCan, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { approvalWords } from "./approvals.ts";
 import { Waterline } from "./waterline.tsx";
@@ -45,7 +45,7 @@ import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { CheckDetail, checkParts } from "./checkDetail.tsx";
-import { undoneExcept } from "./undoWords.ts";
+import { fileNames, undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
 import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
@@ -258,7 +258,7 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
       {shown.map((h, i) => { const backId = `${undoId}-${h.id}`; return (
         <div className="line" key={h.id}>
-          <div>{h.label} <span className="muted">· {historyWords(h)} · {formatUsd(h.usd)}</span></div>
+          <div>{h.label} <span className="muted">· {historyWords(h)} · {costWords(h.usd)}</span></div>
           {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
           {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
             {u.stage === "confirm" && (
@@ -402,7 +402,7 @@ function Card() {
   // When the control with the keyboard goes away (pressed, closed, answered), the keyboard stays near where it was (focus.ts).
   useEffect(() => { const el = root.current; if (!el) return; return keepFocus(el, () => placeEl(tabNow.current)); }, []);
   // The buttons that open a step or a box, so the keyboard goes back to them when it closes.
-  const linkId = useId(), undoId = useId(), bisectUndoId = useId(), askId = useId();
+  const linkId = useId(), undoId = useId(), bisectUndoId = useId(), askId = useId(), checksId = useId();
   const [project, setProject] = useState("");
   // What opening a lesson step's page said, if it could not open it (links.ts); a new step starts with none.
   const [lessonNote, setLessonNote] = useState("");
@@ -553,7 +553,9 @@ function Card() {
     return () => clearTimeout(t);
   }, [m.toast?.lines.length]);
   useEffect(() => { setDraft(m.plan?.steps ?? []); }, [m.plan]);
-  const undone = m.undo?.stage === "done";
+  // The files went back after the last task (an Undo here, from the timeline or of one task), so its picture, Show me what
+  // changed and the turn are not about what is in the files (M45). Put my fix back on a turn is not an Undo.
+  const undone = receiptUndone(m.receipt) || (m.undo?.stage === "done" && !m.undo.back);
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
   const bv = browserView(m);
@@ -1199,7 +1201,8 @@ function Card() {
   // Settings button all open it here.
   const gear = () => pickTab("settings");
   // M33: a fix just proven is said beside the pointer too (the drop that follows it), as HeyClicky announces at the cursor.
-  const provenAt = m.receipt?.proof === "passed" && !m.receipt.gone ? m.receipt.checkpoint : null;
+  // Only what the verdict calls proven (M45): a pass on a task that then stopped or hit a limit is not said as done.
+  const provenAt = receiptVerdict(m)?.proven && !m.receipt!.gone ? m.receipt!.checkpoint : null;
   useEffect(() => { if (provenAt) void invoke("follow_say", { text: S.followDone }).catch(() => {}); }, [provenAt]);
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
@@ -1531,6 +1534,7 @@ function Card() {
         <div className="hero-words">
           <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
           <p className="subline">{hero.line}</p>
+          {hero.detail && <p className="subline muted">{hero.detail}</p>}
         </div>
       </section>
       {home.tab === "now" && show("ask") && (
@@ -1750,16 +1754,17 @@ function Card() {
           </div>
         </section>
       )}
-      {m.approvals.map((a) => { const w = approvalWords(a); return (
+      {m.approvals.map((a) => { const w = approvalWords(a, project); return (
         <section className="panel amber ask-card" key={a.id} aria-label={S.needsYouTitle}>
           <h2>{w.question}</h2>
           {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
           {/* M28: exactly what will happen, why it asks, and whether Undo covers it (approvals.ts). */}
           {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
           <div className="line muted">{w.why}</div>
-          {w.undo && <div className={`line ask-undo${a.undoable ? "" : " no"}`}>{w.undo}</div>}
+          {w.undo && <div className={`line ask-undo${w.canUndo ? "" : " no"}`}>{w.undo}</div>}
+          {/* M45: Allow and Don't allow carry equal weight; Don't allow keeps the safe mark and the keyboard. */}
           <div className="row">
-            <button className="btn primary" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
+            <button className="btn" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
             <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
           </div>
         </section>
@@ -1771,7 +1776,8 @@ function Card() {
           {m.stuck.agent && m.away[m.stuck.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.stuck.agent]))}</div>}
           <div className="line">{stuckWords(m)}</div>
           <div className="line muted">{stuckHelpWords(m)}</div>
-          <div className="line">{m.stuck.failure}</div>
+          {/* M45: the check, one plain sentence, the place, and the raw output only behind Details. */}
+          <div className="line"><b>{m.stuck.failure.label}</b><CheckDetail parts={m.stuck.failure.parts} /></div>
           <div className="row">
             {m.stuck.options.map((o, i) => (
               <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
@@ -1926,8 +1932,10 @@ function Card() {
       )}
 
       {show("proof") && m.task?.proof && m.task.proof.steps.length > 0 && (
-        <section className={`panel ${notDoneReason(m) ? "amber" : ""}`} aria-label={S.checkingTitle}>
-          <h2>{isFixing(m) ? S.fixing : notDoneReason(m) ? S.notDone : S.checkingTitle}</h2>
+        <section className={`panel ${notDoneReason(m) && !receiptUndone(m.receipt) ? "amber" : ""}`} aria-labelledby={`${checksId}-title`}>
+          {/* M45: what was checked, never a verdict of its own (the receipt's result row says that); after an Undo, said as
+              what was checked before it. VoiceOver names the panel by this same heading. */}
+          <h2 id={`${checksId}-title`}>{isFixing(m) ? S.fixing : m.task.proof.steps.some((s) => s.status === "running") ? S.checkingTitle : receiptUndone(m.receipt) ? S.checksBeforeUndo : S.checksTitle}</h2>
           {m.task.proof.steps.map((s) => (
             <div className={`proof ${s.status === "passed" ? "ok" : s.status === "failed" ? "bad" : "wait"}`} key={s.rung}>
               <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
@@ -1938,7 +1946,7 @@ function Card() {
             </div>
           ))}
           {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
-          {notDoneReason(m) && !isFixing(m) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
+          {notDoneReason(m) && !isFixing(m) && !receiptUndone(m.receipt) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
           {canBisect(m) && project && buttonShown("whichTask") && <div className="row"><button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button></div>}
         </section>
       )}
@@ -1956,12 +1964,13 @@ function Card() {
           ); })()}
           {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} />}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          {m.receipt.changed.length > 0 && (
-            <div className={`proof ${m.receipt.proof === "passed" ? "ok" : m.receipt.proof === "failed" ? "bad" : "wait"}`}>
-              <Icon name={m.receipt.proof === "passed" ? "tick" : m.receipt.proof === "failed" ? "cross" : "wait"} size={16} />
-              <span>{receiptProofWords(m)}</span>
+          {/* M45: the result, as the verdict says it. Green and a tick only for a proven fix. */}
+          {(() => { const v = receiptVerdict(m)!; return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (
+            <div className={`proof ${v.tone === "good" ? "ok" : v.tone === "bad" ? "bad" : "wait"}`} data-verdict={v.kind}>
+              <Icon name={v.icon} size={16} />
+              <span><b>{v.headline}</b>{v.line ? ` ${v.line}` : ""}</span>
             </div>
-          )}
+          ); })()}
           <ProofChips m={m} />
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
@@ -1974,7 +1983,7 @@ function Card() {
           <ul className="facts" aria-label={S.look.factsLabel}>
             {/* M39: how many files is the changes card's own header now, so it is not said twice. */}
             {/* M28: what the fix cost, on the person's own Claude (we never mark it up); the count of commands is for the log. */}
-            <li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>
+            <li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
@@ -1987,21 +1996,21 @@ function Card() {
               <div className="row"><button className="btn" type="button" onClick={() => tryTheNextOne(m.receipt!.checkpoint)}>{S.teachOffer}</button></div>
             </div>
           )}
-          {m.undo?.stage === "confirm" && project && (
+          {m.undo?.stage === "confirm" && !m.undo.back && project && (
             <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
               </div></ConfirmStep>
           )}
-          {m.undo?.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+          {m.undo?.stage === "working" && <div className="line" role="status">{m.undo.back ? S.bringBackWorking : S.undoWorking}</div>}
           {m.undo?.stage === "failed" && <div className="line" role="alert">{m.undo.note}</div>}
-          {m.undo?.stage === "done" && <div className="line" role="status">{m.undo.yours?.length ? undoneExcept(m.undo.yours) : S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}{m.undo.putBack === "done" ? ` ${S.undoPutBackDone}` : ""}</div>}
+          {m.undo?.stage === "done" && <div className="line" role="status">{m.undo.back ? (m.undo.yours?.length ? S.bringBackExcept(m.undo.yours.length, fileNames(m.undo.yours)) : "") : m.undo.yours?.length ? undoneExcept(m.undo.yours) : S.undone}{m.undo.recovered ? ` ${S.undoRecovered}` : ""}{m.undo.large ? ` ${S.undoLarge}` : ""}{m.undo.putBack === "done" ? ` ${S.undoPutBackDone}` : ""}</div>}
           {m.undo?.stage === "done" && !!m.undo.yours?.length && !m.undo.putBack && project && (
             <div className="row"><button id={`${undoId}-back`} className="btn" type="button" onClick={() => dispatch({ type: "ui.putBackAsked" })}>{S.undoPutBack}</button></div>
           )}
           {m.undo?.stage === "done" && m.undo.putBack === "confirm" && project && (
-            <ConfirmStep className="line" label={S.undoPutBackSure} back={`${undoId}-back`} onCancel={() => dispatch({ type: "ui.putBackCancelled" })}><div>{S.undoPutBackSure}</div>
+            <ConfirmStep className="line" label={m.undo.back ? S.bringBackPutSure : S.undoPutBackSure} back={`${undoId}-back`} onCancel={() => dispatch({ type: "ui.putBackCancelled" })}><div>{m.undo.back ? S.bringBackPutSure : S.undoPutBackSure}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.putBackSent" }); void send(undoPutBack(project, m.undo!.checkpoint)); }}>{S.undoPutBackYes}</button>
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.putBackCancelled" })}>{S.undoPutBackNo}</button>
@@ -2009,6 +2018,18 @@ function Card() {
           )}
           {m.undo?.stage === "done" && m.undo.putBack === "working" && <div className="line" role="status">{S.undoPutBackWorking}</div>}
           {m.undo?.stage === "done" && m.undo.putBack === "failed" && <div className="line" role="alert">{m.undo.putBackNote}</div>}
+          {/* M45: Bring the fix back restores the safety copy the Undo made first (shadow snapshots only, never git). An Undo
+              from the timeline or of one task shows no extra line: the result row above already says Undone. */}
+          {bringBackCan(m, project) && (
+            <div className="row"><button id={`${undoId}-bring`} className="btn" type="button" onClick={() => dispatch({ type: "ui.bringBackAsked" })}><Icon name="undo" size={14} />{S.bringBack}</button></div>
+          )}
+          {m.undo?.stage === "confirm" && m.undo.back && project && (
+            <ConfirmStep className="line" label={S.bringBackSure} back={`${undoId}-bring`} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.bringBackSure}</div>
+              <div className="row">
+                <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.bringBackYes}</button>
+                <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.bringBackNo}</button>
+              </div></ConfirmStep>
+          )}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (
             <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent} onRefused={followRefused}

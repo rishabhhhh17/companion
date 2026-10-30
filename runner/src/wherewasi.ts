@@ -40,10 +40,15 @@ export function watchName(w: Pick<WatchLite, "kind" | "target">): string {
     default: return "Your project's own checks";
   }
 }
+// M45: an Undo took the task back, so nothing it did is in the project, checked or not.
+const UNDONE = "You undid it, so the project is back as it was before it.";
+const BACK = "You undid it and then brought it back. Nothing was checked since.";
+const PARTIAL = "It finished, but some checks could not run.";
 const resultWords = (r: TaskRow): string => {
   if (r.status === "running") return "It is still running.";
+  if (r.undone) return r.back ? BACK : UNDONE;
   if (r.status === "done" && r.proof === "passed") return "It finished and its checks passed.";
-  if (r.status === "done") return r.proof === "failed" ? "It finished, but its checks did not pass." : "It finished.";
+  if (r.status === "done") return r.proof === "failed" ? "It finished, but its checks did not pass." : r.proof === "partial" ? PARTIAL : "It finished.";
   if (FAILED_STATUS.has(r.status) || r.proof === "failed") return "It did not pass its checks.";
   if (r.status === "needs_you") return "It asked you something.";
   if (r.status === "interrupted") return "You stopped it.";
@@ -65,7 +70,7 @@ export function whereWasI(i: WhereInput): { lines: string[]; next: Next } {
   const open: string[] = [];
   const failing = i.watches.filter((w) => w.state === "failing");
   for (const w of failing) open.push(`${watchName(w)} has been failing since ${clock(Date.parse(w.since), i.now)}: ${plainReason(w.reason)}`);
-  const lastFailed = !!last && last.status !== "running" && (FAILED_STATUS.has(last.status) || last.proof === "failed" || (last.status === "done" && last.proof === "failed"));
+  const lastFailed = !!last && last.status !== "running" && !(last.undone && !last.back) && (FAILED_STATUS.has(last.status) || last.proof === "failed" || (last.status === "done" && last.proof === "failed"));
   if (lastFailed) open.push("The last task did not pass its checks.");
   if (i.question) open.push(i.question.text ? `A task is waiting for your answer: "${clip(redact(i.question.text).replace(/\s+/g, " ").trim(), 140)}"` : "A task is waiting for your answer.");
   if (i.waitingPlans > 0) open.push(i.waitingPlans === 1 ? "A plan is waiting for your approval." : `${i.waitingPlans} plans are waiting for your approval.`);

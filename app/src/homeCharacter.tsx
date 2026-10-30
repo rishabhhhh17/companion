@@ -5,7 +5,7 @@
 import { Suspense, lazy, useEffect, useRef, useState } from "react";
 import { poseFor, poseUrl } from "./characters.ts";
 import { useFlow } from "./flow/useFlow.ts";
-import { visualState, type CharacterState, type Model } from "./model.ts";
+import { lookState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -22,7 +22,8 @@ const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
 export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
-  const state = as ?? (m ? visualState(m) : "idle");
+  // A finished task that is not proven is drawn at rest, never with the done look (M45, model.ts lookState).
+  const state = as ?? (m ? lookState(m) : "idle");
   const pose = poseFor(state);
   const liveOn = useSetting("character.live") === true;
   // The water's colour chosen in Settings (look.water).

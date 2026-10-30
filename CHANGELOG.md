@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby tells the truth about every result: 30 Oct 2026
+
+- **One honest answer for every result.** Home, the notch, What I did, the recent list, VoiceOver, spoken replies and Copy now all say the same thing about a finished task, decided in one place. "Fixed and proven" and the green tick appear only when the project's own checks passed, and no Undo has taken the fix back since.
+- **After Undo, nothing says proven.** The result turns to "Undone. The fix is gone, so the problem is back." The tick, the green colour and the check chips go at once, and What I did files the task under Undone with no second Undo.
+- **Bring the fix back.** Changed your mind after Undo? One button, asked first, puts the task's files back as they were just before you pressed Undo. It uses Squibby's own undo points, never your Git.
+- **Stops are named.** A task that stopped at its spending limit, today's limit or the most turns allowed now says so, instead of "Something went wrong". A task you stopped says "Stopped", and whether it changed files first.
+- **Partly checked says so.** When some checks could not run, the result reads "Fixed, not fully proven. Some checks could not run." instead of a green tick.
+- **Clearer questions before risky steps.** A question never says it can be undone when it can't. Anything Undo can't take back (running a script, changing your Git, an unknown tool) now says "Undo can't take this back.", and those steps are listed under "Cannot be undone" on the result. House rules get their own question, file paths are shown from your project folder, and Allow and Don't allow look equally weighted.
+- **Failures in one plain sentence.** A failed check and the "This keeps failing" card show one plain sentence and where it failed. The raw output is behind Details.
+- **"No cost" instead of "free so far"**, and the first run now says exactly what Undo does: it puts back the files the task changed, leaves files you changed yourself, and can't take back anything sent online.
+
 ## Fixes from a full interface review: 30 Oct 2026
 
 - **Text can now be twice the size.** Settings, Text size has a new Huge step. Home's two columns stack when the words get that big, so nothing is squeezed.

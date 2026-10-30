@@ -82,6 +82,21 @@ describe("allow for the rest of this task", () => {
     expect(r.ran).toEqual(["pricing.txt", "pricing.txt"]);
   });
 
+  // M45: the card now carries the house_rule risk and the base undo fact, and a yes for the task still covers the edit.
+  test("a house rule on an Edit is still covered for the task", async () => {
+    const edit: Step = { tool: { name: "Edit", input: { file_path: "pricing.txt", old_string: "1", new_string: "2" } }, costUsd: 0 };
+    const r = setup(new ScriptedEngine([edit, edit, edit]));
+    writeFileSync(join(r.project, "pricing.txt"), "1");
+    mkdirSync(join(r.project, ".companion"));
+    writeFileSync(join(r.project, ".companion/rules.txt"), "ask before editing pricing.txt");
+    const done = r.runner.handle(start(r.project));
+    await answer(r, 1, "allow", "task");
+    await done;
+    expect(requests(r.events).length).toBe(1);
+    expect(requests(r.events)[0]).toMatchObject({ risk: "house_rule", undoable: true });
+    expect(r.ran).toEqual(["pricing.txt", "pricing.txt", "pricing.txt"]);
+  });
+
   test("never across tasks: the next task asks again", async () => {
     const r = setup(new ScriptedEngine([[read(OUTSIDE)], [read(OUTSIDE)]]));
     const first = r.runner.handle(start(r.project));

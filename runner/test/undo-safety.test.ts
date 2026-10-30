@@ -98,3 +98,71 @@ describe("undo is exact", () => {
     expect(receiptPictureName("/a/site", "cp_0007")).toMatch(/^[a-z0-9_.-]+\.jpg$/);
   });
 });
+
+// M45 [verify]: "Bring the fix back" is a restore of the safety copy the Undo made first. It ships only if this holds on a
+// real restore: the runner accepts that safety id and puts the task's files back exactly. Temporary folders only, and only
+// the shadow snapshots: nothing here runs or writes the project's git (rule 10).
+describe("bring the fix back", () => {
+  const tasksOf = async (r: ReturnType<typeof setup>) => {
+    const before = r.events.length;
+    await r.runner.handle({ v: 1, id: "t", type: "tasks.list", project: r.project } as never);
+    return (r.events.slice(before).find((e) => e.type === "tasks.list") as any).tasks as { undone?: boolean; back?: boolean }[];
+  };
+  test("[verify] the safety copy can be restored, and it puts the task's files back", async () => {
+    const r = setup([
+      { tool: { name: "Write", input: { file_path: "a.txt", content: "fixed" } }, costUsd: 0.01 },
+      { tool: { name: "Write", input: { file_path: "src/new.txt", content: "added by the task" } }, costUsd: 0.01 },
+      { text: "done", costUsd: 0.01 },
+    ]);
+    await r.runner.handle(start(r.project));
+    const cp = (r.events.find((e) => e.type === "checkpoint.created") as any).checkpoint;
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("fixed");
+    expect((await tasksOf(r))[0].undone).toBeUndefined();
+
+    // Undo: the files go back, and the task is marked undone in the history.
+    await r.runner.handle(restore(r.project, cp));
+    const undo = r.events.find((e) => e.type === "checkpoint.restored") as any;
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("original");
+    expect(existsSync(join(r.project, "src/new.txt"))).toBe(false);
+    expect(undo.safety).toMatch(/^cp_/);
+    expect((await tasksOf(r))[0].undone).toBe(true);
+
+    // Bring the fix back: the same command, with the safety id from the first restore.
+    await r.runner.handle({ ...restore(r.project, undo.safety), id: "r2" });
+    expect(r.events.filter((e) => e.type === "protocol.error")).toEqual([]);
+    const back = r.events.filter((e) => e.type === "checkpoint.restored").at(-1) as any;
+    expect(back.checkpoint).toBe(undo.safety);
+    expect(back.yours).toEqual([]);
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("fixed");
+    expect(readFileSync(join(r.project, "src/new.txt"), "utf8")).toBe("added by the task");
+    // The history says it is back (and was not checked since), as the receipt does: never "Fixed and proven".
+    expect((await tasksOf(r))[0]).toMatchObject({ undone: true, back: true });
+    expect(parseEvent(JSON.stringify({ v: 1, id: "x", ...back })).ok).toBe(true);
+  });
+});
+
+// M45 review: Bring back leaves a fix file the person edited after the Undo as their own version, and says which. "Put those
+// back too" (the same command as after an Undo, with the safety copy) then puts the fix's version back.
+describe("bring the fix back over the person's own edit", () => {
+  test("their edit is kept and named, and Put those back too brings the fix's version", async () => {
+    const r = setup([
+      { tool: { name: "Write", input: { file_path: "a.txt", content: "fixed" } }, costUsd: 0.01 },
+      { tool: { name: "Write", input: { file_path: "b.txt", content: "b1" } }, costUsd: 0.01 },
+      { text: "done", costUsd: 0.01 },
+    ]);
+    await r.runner.handle(start(r.project));
+    const cp = (r.events.find((e) => e.type === "checkpoint.created") as any).checkpoint;
+    await r.runner.handle(restore(r.project, cp));
+    const undo = r.events.find((e) => e.type === "checkpoint.restored") as any;
+    writeFileSync(join(r.project, "a.txt"), "my own edit");
+    await r.runner.handle({ ...restore(r.project, undo.safety), id: "r2" });
+    const back = r.events.filter((e) => e.type === "checkpoint.restored").at(-1) as any;
+    expect(back.yours).toEqual(["a.txt"]);
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("my own edit");
+    expect(readFileSync(join(r.project, "b.txt"), "utf8")).toBe("b1");
+    await r.runner.handle({ v: 1, id: "p1", type: "checkpoint.putBack", project: r.project, checkpoint: undo.safety, confirm: true, files: back.yours } as never);
+    const put = r.events.find((e) => e.type === "checkpoint.putBackDone") as any;
+    expect(put).toMatchObject({ ok: true, putBack: ["a.txt"] });
+    expect(readFileSync(join(r.project, "a.txt"), "utf8")).toBe("fixed");
+  });
+});

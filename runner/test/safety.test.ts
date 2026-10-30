@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { evaluate, buildChildEnv, type Verdict } from "../src/safety.ts";
+import { evaluate, evaluateReadOnly, buildChildEnv, type Verdict } from "../src/safety.ts";
 
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
@@ -187,5 +187,98 @@ describe("the agent's commands never see your key (rule 2)", () => {
   });
   test("an API key route without a key is an error, not an empty variable", () => {
     expect(() => buildChildEnv(parent, { route: "api_key" })).toThrow(/key/i);
+  });
+});
+
+// M45 (Tell the truth): Undo puts back project files from a shadow snapshot. It never touches .git (rule 10) and never
+// takes back anything that left the Mac, so a card that asks about one of those must never say Undo can take it back.
+// Decisions do not change anywhere: only the undoable flag, the house rule risk and the reason words do.
+describe("M45: what Undo can take back", () => {
+  const DEEP = 'sh -c "sh -c \\"sh -c \\\\\\"sh -c \\\\\\\\\\\\\\"sh -c \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"sh -c x\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"\\\\\\\\\\\\\\"\\\\\\"\\""';
+  const IRREVERSIBLE_BASH = ["sh x.sh", "./deploy.sh", "xargs rm", "bun -e 1", "node <<EOF\nconsole.log(1)\nEOF", "python -c 'print(1)'", "find src -exec rm {} \;", "find src -delete", "$CMD y", "rm $(cat list)", "echo hi > $F", "npm config set x y", DEEP];
+  const IRREVERSIBLE_TOOLS: [string, Record<string, unknown>][] = [["Mystery", {}], ["mcp__google__foo", {}], ["Bash", {}], ["TaskStop", { task_id: "x" }], ["KillShell", { shell_id: "x" }]];
+  const GIT_WRITES = ["git commit -m x", "git add .", "git reset --hard", "git checkout main", "git switch main", "git restore a.txt", "git merge x", "git rebase main", "git cherry-pick abc", "git revert abc", "git pull", "git clean -fdx", "git rm a.txt", "git mv a.txt b.txt", "git stash", "git tag -a v1 -m x", "git branch -d x", "git remote add o https://x.example.com/r.git", "git config user.name x", "git -C ../other commit -m x"];
+  const READS = ["cat /etc/hosts", "cat < $F", "cat < /etc/hosts", "cpio -o < list", "tar -c -T list -f a.tar", "zip -@ a.zip", "gzip -d /tmp/x.gz", "git diff /etc/hosts"];
+  const tool = (p: string, name: string, input: Record<string, unknown>) => evaluate({ tool: name, input }, { project: p });
+
+  test("every irreversible ask is not undoable", () => {
+    const p = proj();
+    for (const c of IRREVERSIBLE_BASH) expect(bash(p, c), c).toMatchObject({ decision: "ask", risk: "irreversible", undoable: false });
+    for (const [name, input] of IRREVERSIBLE_TOOLS) expect(tool(p, name, input), name).toMatchObject({ decision: "ask", risk: "irreversible", undoable: false });
+  });
+  test("every git write is not undoable", () => {
+    const p = proj();
+    for (const c of GIT_WRITES) expect(bash(p, c), c).toMatchObject({ decision: "ask", undoable: false });
+    expect(bash(p, "git -C ../other commit -m x").risk).toBe("outside_project");
+    expect(bash(p, "git commit -m x").risk).toBe("git");
+  });
+  test("reading output of a program this task did not start is a read, which Undo has nothing to take back from", () => {
+    expect(tool(proj(), "BashOutput", { bash_id: "x" })).toMatchObject({ decision: "ask", risk: "outside_project", undoable: true });
+  });
+  test("reads outside the project and private settings asks keep their undo fact", () => {
+    const p = proj();
+    for (const c of READS) expect(bash(p, c), c).toMatchObject({ decision: "ask", risk: "outside_project", undoable: true });
+    expect(tool(p, "Read", {})).toMatchObject({ decision: "ask", risk: "outside_project", undoable: true });
+    expect(tool(p, "Read", { file_path: "/etc/hosts" })).toMatchObject({ decision: "ask", risk: "outside_project", undoable: true });
+    expect(tool(p, "Write", { file_path: ".env", content: "SITE_NAME=x" })).toMatchObject({ decision: "ask", risk: "settings", undoable: true });
+    expect(bash(p, "echo SITE_NAME=x >> .env")).toMatchObject({ decision: "ask", risk: "settings", undoable: true });
+  });
+  // Taken from the code as it was before M45, so a change in a word or a flag can never move a decision.
+  const BEFORE: Record<string, "allow" | "ask" | "deny"> = {
+    "sh x.sh": "ask", "./deploy.sh": "ask", "xargs rm": "ask", "bun -e 1": "ask", "node <<EOF\nconsole.log(1)\nEOF": "ask", "python -c 'print(1)'": "ask",
+    "find src -exec rm {} \;": "ask", "find src -delete": "ask", "$CMD y": "ask", "rm $(cat list)": "ask", "echo hi > $F": "ask", "npm config set x y": "ask", [DEEP]: "ask",
+    "git commit -m x": "ask", "git add .": "ask", "git reset --hard": "ask", "git checkout main": "ask", "git switch main": "ask", "git restore a.txt": "ask", "git merge x": "ask",
+    "git rebase main": "ask", "git cherry-pick abc": "ask", "git revert abc": "ask", "git pull": "ask", "git clean -fdx": "ask", "git rm a.txt": "ask", "git mv a.txt b.txt": "ask",
+    "git stash": "ask", "git tag -a v1 -m x": "ask", "git branch -d x": "ask", "git remote add o https://x.example.com/r.git": "ask", "git config user.name x": "ask",
+    "git -C ../other commit -m x": "ask", "git -C ../other status": "ask", "GIT_SSH=x git fetch": "ask", "git -c core.x=y status": "ask", "git push": "ask", "git reflog expire --all": "ask",
+    "cat /etc/hosts": "ask", "cat < $F": "ask", "cat < /etc/hosts": "ask", "cpio -o < list": "ask", "tar -c -T list -f a.tar": "ask", "zip -@ a.zip": "ask", "gzip -d /tmp/x.gz": "ask",
+    "git diff /etc/hosts": "ask", "brew install ffmpeg": "ask", "docker run x": "ask", "npm i -g x": "ask",
+    "git status": "allow", "git diff": "allow", "git log": "allow", "git fetch": "allow", "node < x": "allow", "`x` y": "allow", "rm -rf node_modules dist": "allow", "npm install": "allow",
+    "rm -rf /": "deny", "sudo ls": "deny", "rm -rf ~/Documents": "deny",
+  };
+  test("decisions did not change", () => {
+    const p = proj();
+    for (const [c, d] of Object.entries(BEFORE)) expect(bash(p, c).decision, c).toBe(d);
+    for (const [name, input] of [...IRREVERSIBLE_TOOLS, ["BashOutput", { bash_id: "x" }] as [string, Record<string, unknown>], ["Read", {}] as [string, Record<string, unknown>]]) expect(tool(p, name, input).decision, name).toBe("ask");
+  });
+  test("git reads still allowed", () => {
+    const p = proj();
+    for (const c of ["git status", "git diff", "git log", "git fetch"]) expect(bash(p, c), c).toMatchObject({ decision: "allow" });
+  });
+  test("a commit the person asked for lands in Cannot be undone", () => {
+    expect(bash(proj(), "git commit -m x", { userAskedCommit: true })).toMatchObject({ decision: "allow", undoable: false });
+    expect(bash(proj(), "git add .", { userAskedCommit: true })).toMatchObject({ decision: "allow", undoable: false });
+  });
+  test("a part that asks never makes a commit next to it look undoable", () => {
+    // The stricter part decides, but Undo can take the whole command back only if it can take back every part (M45).
+    const p = proj();
+    for (const c of ["git commit -m x && cat ../other.txt", "cat /etc/hosts && git commit -m x", "git add . ; cat ../f"]) {
+      expect(bash(p, c, { userAskedCommit: true }), c).toMatchObject({ decision: "ask", undoable: false });
+    }
+    // Two parts that can both be taken back stay undoable.
+    expect(bash(p, "cat ../a.txt && cat ../b.txt")).toMatchObject({ decision: "ask", undoable: true });
+  });
+  test("reasons are plain", () => {
+    const was = process.env.VIRTUAL_ENV; delete process.env.VIRTUAL_ENV;
+    try {
+      const p = proj();
+      const changed = [
+        ...[...IRREVERSIBLE_BASH, ...GIT_WRITES, ...READS, "git -C ../other status", "GIT_SSH=x git fetch", "git -c core.x=y status", "git push", "git reflog expire --all", "brew install ffmpeg", "pip install requests", "docker run x", "npm i -g x"].map((c) => bash(p, c)),
+        ...[...IRREVERSIBLE_TOOLS, ["BashOutput", { bash_id: "x" }] as [string, Record<string, unknown>], ["Read", {}] as [string, Record<string, unknown>], ["Read", { file_path: "/etc/hosts" }] as [string, Record<string, unknown>]].map(([n, i]) => tool(p, n, i)),
+      ];
+      for (const v of changed) {
+        expect(v.reason, v.reason).not.toMatch(/I cannot|cannot check|—/);
+        // One full sentence: a capital first (or the path it names), and a full stop at the end.
+        expect(v.reason, v.reason).toMatch(/^([A-Z]|\/|\.\.)/);
+        expect(v.reason.endsWith("."), v.reason).toBe(true);
+      }
+      expect(bash(p, "sh x.sh").reason).toBe("This runs a script. What a script does can't be checked first.");
+      expect(bash(p, "git push").reason).toBe("This sends your work to another computer.");
+      expect(bash(p, "git commit -m x").reason).toBe("This changes your project's Git history.");
+      expect(bash(p, "cat /etc/hosts").reason).toBe("/etc/hosts is outside your project folder.");
+      expect(tool(p, "Mystery", {}).reason).toBe("This uses a tool that has not been checked yet (Mystery). It might send or change something.");
+      // A read only part adds its own sentence, with one full stop between them.
+      expect(evaluateReadOnly({ tool: "Bash", input: { command: "sh x.sh" } }, { project: p }).reason).not.toContain("..");
+    } finally { if (was !== undefined) process.env.VIRTUAL_ENV = was; }
   });
 });

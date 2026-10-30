@@ -101,3 +101,25 @@ describe("what changed since", () => {
     expect(watchName({ kind: "site_up" })).toBe("Your site");
   });
 });
+
+// M45: an undone task is not "finished and checked", and a partial check says some checks could not run.
+describe("M45: undone and partial tasks", () => {
+  test("an undone task says it was undone, never that its checks passed", () => {
+    const r = whereWasI(input({ rows: [row({ label: "Fix the cart", status: "done", proof: "passed", undone: true })] }));
+    expect(r.lines[0]).toBe("You were working on: Fix the cart. You undid it, so the project is back as it was before it.");
+    expect(r.lines.join(" ")).not.toMatch(/checks passed/);
+  });
+  test("an undone task whose check failed is not left as unfinished: its change is gone", () => {
+    const r = whereWasI(input({ rows: [row({ label: "Add login", status: "not_done", proof: "failed", undone: true })] }));
+    expect(r.lines).toEqual(["You were working on: Add login. You undid it, so the project is back as it was before it.", "Nothing is unfinished."]);
+    expect(r.next).toEqual({ action: "none" });
+  });
+  test("a task brought back after an Undo says so, never that its checks passed", () => {
+    const r = whereWasI(input({ rows: [row({ label: "Fix the cart", status: "done", proof: "passed", undone: true, back: true })] }));
+    expect(r.lines[0]).toBe("You were working on: Fix the cart. You undid it and then brought it back. Nothing was checked since.");
+  });
+  test("partial says some checks could not run", () => {
+    const r = whereWasI(input({ rows: [row({ label: "Fix the cart", status: "done", proof: "partial" })] }));
+    expect(r.lines[0]).toBe("You were working on: Fix the cart. It finished, but some checks could not run.");
+  });
+});

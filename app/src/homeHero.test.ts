@@ -4,7 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
-import { HOME_PLACES, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
+import { HOME_PLACES, bringBackCan, heroWords, openSettings, placeAfter, stopCan, undoCan } from "./homeHero.ts";
 import { S } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -99,8 +99,8 @@ describe("the top says the job in big words", () => {
     const h = heroWords(run([...task(), approval]), P);
     expect(h).toEqual({ headline: S.needsYouTitle, line: S.look.below, tone: "needsYou" });
   });
-  test("done: what was asked, whether it was checked, and the cost", () => {
-    expect(heroWords(done(), P)).toEqual({ headline: "add a sign up page", line: S.look.doneLine(S.proven, "5 cents"), tone: "done" });
+  test("done: whether it was proven in big words, then what was asked and the cost (M45)", () => {
+    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: S.look.doneLine("Add a sign up page", "5 cents"), tone: "done" });
     expect(heroWords(done({ proof: "failed" }), P).tone).toBe("notDone");
   });
   test("an answer from Look it up: its name, and that it is just below", () => {
@@ -203,11 +203,64 @@ describe("it springs open from the notch, and not at all with less motion", () =
     expect(ch).not.toMatch(/^import .* from "\.\/flowflow\//m);
     expect(ch).toContain("onFallback={() => setLiveFailed(true)}");
     expect(ch).toContain("poseFor(state");
-    expect(ch).toContain("visualState(m)");
+    // The dock's state, except that a finished task that is not proven is drawn at rest (M45, lookState).
+    expect(ch).toContain("lookState(m)");
     expect(ch).toContain("watchReducedMotion(setReduced)");
     // A finished task: the water splashes, only with reactions on and motion allowed.
     expect(ch).toContain("playful(reactionsOn(), reducedMotion())");
     expect(ch).not.toContain("skins.ts");
     expect(card).toContain("<HomeCharacter m={m} />");
+  });
+});
+
+describe("M45: Home's big words tell the truth", () => {
+  const restored = (checkpoint = "cp_1", safety = "cp_2") => ev({ type: "checkpoint.restored", checkpoint, safety, recovered: [], largeLeftAlone: [], leftAlone: [] });
+  test("after Undo the hero never says proven", () => {
+    const m = run([ev({ type: "ui.undoAsked", checkpoint: "cp_1" }), ev({ type: "ui.undoSent" }), restored()], done());
+    const h = heroWords(m, P);
+    expect(h.tone).not.toBe("done");
+    expect(h.headline).toBe(S.verdict.undone);
+    expect(h.detail).toBe(S.verdict.undoneFix);
+    expect(JSON.stringify(h)).not.toMatch(/proven/i);
+    expect(undoCan(m, P)).toBe(false);
+  });
+  test("a proven fix: the verdict in big words, then what it was and what it cost", () => {
+    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: S.look.doneLine("Add a sign up page", "5 cents"), tone: "done" });
+  });
+  test("a stopped task's hero is plain", () => {
+    const h = heroWords(done({ ended: "stopped", proof: "skipped" }), P);
+    expect(h.tone).toBe("plain");
+    expect(h.headline).toBe(S.verdict.stopped);
+  });
+  test("a failed check reads Not fixed yet", () => {
+    const h = heroWords(done({ ended: "failed", endedWhy: "check_failed", proof: "failed" }), P);
+    expect([h.headline, h.tone]).toEqual([S.verdict.failed, "notDone"]);
+  });
+  test("a partial hero says some checks could not run, never a list that names the wrong check", () => {
+    // M45 review: the ladder also skips harmless steps ("Nothing new to install."), so skipped steps are not the gaps. Until
+    // the engine names its gap rungs, the line is the general one.
+    const m = run([...task(), ev({ type: "proof.step", agent: "a", rung: "install", label: "Installing", status: "skipped", detail: "Nothing new to install." }),
+      ev({ type: "proof.step", agent: "a", rung: "tests", label: "Running the tests", status: "passed", detail: "" }), ev({ type: "proof.step", agent: "a", rung: "browser", label: "Opening it in a browser", status: "skipped", detail: "No browser." }),
+      receipt({ proof: "partial", ended: "done" }), ev({ type: "agent.state", agent: "a", state: "done" })]);
+    const h = heroWords(m, P);
+    expect(h.headline).toBe(S.verdict.partial);
+    expect(h.detail).toBe(S.verdict.someCouldNotRun);
+    expect(h.detail).not.toContain("install");
+    expect(h.tone).toBe("partly");
+  });
+  test("zero cost says No cost", () => {
+    const h = heroWords(done({ usdEstimate: 0 }), P);
+    expect(h.line.endsWith(`· ${S.noCost}`)).toBe(true);
+    expect(h.line).not.toContain("free so far");
+  });
+  test("Undo hides after a bisect undo", () => {
+    const m: Model = { ...done(), undo: null, receipt: { ...done().receipt!, undone: true, undoSafety: "cp_9" } };
+    expect(undoCan(m, P)).toBe(false);
+    expect(bringBackCan(m, P)).toBe(true);
+    expect(bringBackCan({ ...m, receipt: { ...m.receipt!, undoSafety: undefined } }, P)).toBe(false);
+    expect(bringBackCan(m, "")).toBe(false);
+  });
+  test("the page draws the verdict's line under the hero's line", () => {
+    expect(card).toContain("{hero.detail && <p className=\"subline muted\">{hero.detail}</p>}");
   });
 });

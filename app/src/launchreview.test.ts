@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { historyWords, initial, plainError, reduce, triesNote, type Model } from "./model.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
+import { S } from "./strings.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
 
@@ -58,13 +59,16 @@ describe("words that claim success", () => {
   test("a cancelled check is not 'fixed'", () => {
     const withProof = (verdict: string) => ({ ...initial(), task: { agent: "a", label: "x", lines: [], costUsd: 0, proof: { steps: [], verdict, tries: 2 } } }) as never;
     expect(triesNote(withProof("cancelled"))).toBeNull();
-    expect(triesNote(withProof("passed"))).toMatch(/fixed after 2 tries/i);
+    // M45: the check passed; "fixed" is the verdict's word, never the tries note's.
+    expect(triesNote(withProof("passed"))).toMatch(/passed after 2 tries/i);
+    expect(triesNote(withProof("passed"))).not.toMatch(/fixed/i);
     expect(triesNote(withProof("passed_with_gaps"))).toMatch(/skipped/i);
   });
   test("a check that could not run all the way is said to be partly checked", () => {
-    expect(historyWords({ status: "done", proof: "partial" })).toBe("Done, partly checked");
-    expect(historyWords({ status: "done", proof: "passed" })).toBe("Done, checked");
-    expect(historyWords({ status: "done", proof: "skipped" })).toBe("Done, not checked");
+    expect(historyWords({ status: "done", proof: "partial", changed: 1 })).toBe(S.verdict.partial);
+    expect(historyWords({ status: "done", proof: "passed", changed: 1 })).toBe(S.verdict.proven);
+    expect(historyWords({ status: "done", proof: "skipped", changed: 1 })).toBe(S.verdict.unchecked);
+    expect(historyWords({ status: "done", proof: "skipped", changed: 0 })).toBe(S.verdict.noChange);
   });
   test("pressing the key when a check could not run all the way does not say everything passes", () => {
     const m = run([{ type: "ui.findProblem" }, { type: "problem.found", project: "p", agent: "a", verdict: "passed_with_gaps" }]);

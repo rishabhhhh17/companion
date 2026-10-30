@@ -29,7 +29,7 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   return (
     <div role="group" aria-label={S.practiceChanged}>
-      {r.changed.length > 0 && <div className="line muted">{S.practiceChanged}: {r.changed.map((c) => `${c.file} (${kindWord(c.kind)})`).join(", ")} · {S.cost}: {formatUsd(r.usdEstimate)}</div>}
+      {r.changed.length > 0 && <div className="line muted">{S.practiceChanged}: {r.changed.map((c) => `${c.file} (${kindWord(c.kind)})`).join(", ")} · {r.usdEstimate > 0 ? `${S.cost}: ${formatUsd(r.usdEstimate)}` : S.noCost}</div>}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
         {r.changed.length > 0 && !mine && <button id={undoId} className="btn danger" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button>}

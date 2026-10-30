@@ -524,7 +524,8 @@ export class CheckpointStore {
     writeFileSync(tmp, JSON.stringify({ ...o, watched: cap(o.watched), found: cap(o.found) }));
     renameSync(tmp, this.ownPath());
   }
-  private static num(id: string): number { return Number(id.replace(/^cp_/, "")) || 0; }
+  /** The number in a checkpoint id: "cp_0012" gives 12 (0 when it has none). */
+  static num(id: string): number { return Number(id.replace(/^cp_/, "")) || 0; }
   private static hash(b: Buffer): string { return createHash("sha256").update(b).digest("hex"); }
   /** A hash of each .env file in this version (their private copies), by name. */
   private envHashes(id: string): Record<string, string> {

@@ -13,7 +13,7 @@ import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
-import { answerPrompt, differentTaskPrompt, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
+import { answerPrompt, differentTaskPrompt, endedWhyOf, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
@@ -38,7 +38,7 @@ import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
-import { applyRules, loadRules } from "./rules.ts";
+import { applyRules, loadRules, withHouseRule } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
@@ -692,6 +692,10 @@ export class AgentRunner {
           this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
           // The files went back, so no conversation in this project matches them any more: nothing there can be followed up.
           for (const [a, t] of this.lastTask) if (resolve(t.project) === resolve(cmd.project)) this.lastTask.set(a, { ...t, undone: true });
+          // The task history follows (M45): a restore of an Undo's safety copy ("Bring the fix back") clears what that Undo
+          // marked, and then every task from the version gone back to onwards is marked undone by this restore's own safety copy.
+          // The files already went back, so a log that cannot be written must not make this say "Nothing was changed".
+          try { this.o.log.bringBack(cmd.project, cmd.checkpoint); this.o.log.markUndone(cmd.project, CheckpointStore.num(cmd.checkpoint), r.safetyCheckpoint); } catch { /* the log is not worth a second failure */ }
           this.emit({ type: "checkpoint.restored", project: cmd.project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone, yours: r.yours } as never);
         } catch (e) {
           const m = String((e as Error).message ?? e);
@@ -715,7 +719,7 @@ export class AgentRunner {
         return;
       }
       case "tasks.list": {
-        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof }));
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}) }));
         this.emit({ type: "tasks.list", project: cmd.project, tasks } as never);
         return;
       }
@@ -1170,7 +1174,7 @@ export class AgentRunner {
     // The agent's last words reach the card (secrets hidden, clipped), and whether they ask the person something: only for a
     // task that ended as needs you or done, never one that stopped or failed (that is tried again, not answered).
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
     this.state(cmd.agent, status === "done" ? "done" : status === "needs_you" ? "needsYou" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
@@ -1843,6 +1847,8 @@ export class AgentRunner {
       // As with Undo: the files are not what any offer, turn or conversation in this project was made for any more.
       this.teachOffers.delete(key); this.teaching.delete(key);
       for (const [a, t] of this.lastTask) if (resolve(t.project) === key) this.lastTask.set(a, { ...t, undone: true });
+      // Only the found task was taken back, so only its row is marked (later tasks keep their changes).
+      try { this.o.log.markUndone(cmd.project, CheckpointStore.num(rec.before), r.safetyCheckpoint, CheckpointStore.num(rec.before)); } catch { /* the log is not worth a second failure */ }
       done(true, { reverted: [...r.reverted, ...r.env], safety: r.safetyCheckpoint });
     } catch (e) {
       const m = String((e as Error).message ?? e);
@@ -2184,10 +2190,10 @@ export class AgentRunner {
     let ruled = applyRules(loaded.rules, { tool: tool.name, input: tool.input }, cmd.project);
     // A rules file that cannot be read must not mean "no rules": anything that is not plain reading asks first.
     if (loaded.broken && !ruled && base.decision === "allow" && !["Read", "Grep", "Glob", "LS"].includes(tool.name)) {
-      ruled = { decision: "ask", risk: "irreversible", reason: "Your house rules file could not be read, so I am asking first.", undoable: base.undoable };
+      ruled = { decision: "ask", risk: "house_rule", reason: "Your house rules file could not be read, so I am asking first.", undoable: base.undoable };
     }
-    const rank = { allow: 0, ask: 1, deny: 2 } as const;
-    const verdict: Verdict = ruled && rank[ruled.decision] > rank[base.decision] ? ruled : base;
+    // A rule can make a call stricter, and can never make something Undo cannot take back look undoable (M45).
+    const { verdict, byHouseRule } = withHouseRule(base, ruled);
     const sum = summary(tool);
     const tell = (outcome: "ran" | "blocked" | "needs_approval" | "denied") =>
       this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: sum, toolUseId, undoable: verdict.undoable, outcome } as never);
@@ -2204,7 +2210,6 @@ export class AgentRunner {
     }
     // A yes "for the rest of this task" covers exactly this action again, and only the few kinds of question whose repeat is
     // harmless (taskScopeCovers): never a command, a send, a deploy or an unknown tool, and never a refusal (decided above).
-    const byHouseRule = !!ruled && verdict === ruled;
     const key = taskScopeCovers({ tool: tool.name, input: tool.input }, verdict, byHouseRule) ? approvalKey(tool, verdict) : null;
     if (verdict.decision === "ask" && key && s.taskAllowed.has(key)) tell("ran");
     else if (verdict.decision === "ask") {

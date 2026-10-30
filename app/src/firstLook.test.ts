@@ -68,3 +68,17 @@ describe("the tour can be watched again", () => {
     expect(card).toContain("<FirstLook onGo={() => setTour(false)} />");
   });
 });
+
+describe("M45: the Undo promise matches Undo", () => {
+  test("the Undo promise matches Undo", () => {
+    expect(S.firstLook.beats.undo).not.toMatch(/exactly/i);
+    expect(S.firstLook.more.undo).not.toMatch(/exactly/i);
+    expect(S.firstLook.beats.undo).toBe("Not happy? Undo puts back the files it changed.");
+    expect(S.firstLook.more.undo).toMatch(/files you changed yourself/);
+    expect(S.firstLook.more.undo).toMatch(/sent online/);
+  });
+  test("Undo's own warning promises the Undo of the Undo only because Bring the fix back exists", () => {
+    expect(S.undoReplaces).toContain("so you can undo the Undo");
+    expect(S.bringBack).toBe("Bring the fix back");
+  });
+});

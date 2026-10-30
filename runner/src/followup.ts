@@ -48,6 +48,13 @@ export type Ending = "failed_check" | "spending_limit" | "error" | "no_connectio
 /** From the task's status and its check: a check that failed is said first, even if the task then stopped. */
 export const endingOf = (status: string, proof: string): Ending =>
   proof === "failed" ? "failed_check" : status === "error_max_budget_usd" ? "spending_limit" : status === "error" ? "error" : status === "no_connection" ? "no_connection" : status === "claude_busy" ? "claude_busy" : status === "needs_you" ? "asked" : status === "interrupted" ? "stopped" : status === "done" ? "finished" : "unfinished";
+/** M45: why a task whose receipt says ended "failed" stopped, for the receipt's endedWhy. A check that failed is said first,
+ *  as in endingOf. Undefined when the task did not end as failed (done, needs you, or stopped by the person). */
+export type EndedWhy = "check_failed" | "spending_limit" | "daily_limit" | "turns" | "no_connection" | "claude_busy" | "error";
+export const endedWhyOf = (status: string, proof: string): EndedWhy | undefined =>
+  status === "done" || status === "needs_you" || status === "interrupted" ? undefined
+    : proof === "failed" || status === "not_done" ? "check_failed" : status === "error_max_budget_usd" ? "spending_limit" : status === "daily_limit" ? "daily_limit"
+      : status === "error_max_turns" ? "turns" : status === "no_connection" ? "no_connection" : status === "claude_busy" ? "claude_busy" : "error";
 const ENDED: Record<Ending, string> = {
   failed_check: "The last attempt did not pass the checks.",
   spending_limit: "The last attempt stopped before it finished, because it reached its spending limit.",

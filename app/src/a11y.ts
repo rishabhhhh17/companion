@@ -3,7 +3,7 @@
 // decides. Nothing here ever takes the keyboard: Companion never does that by itself (rule 9).
 import { shouldTakeFocus } from "./cardlogic.ts";
 import { PANEL_TAB, need, tabName, type Panel, type Tab } from "./home.ts";
-import { driveWords, pausedWords, receiptProofWords, stuckWords, type Model } from "./model.ts";
+import { driveWords, pausedWords, receiptVerdict, stuckWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 // ---- what Home says out loud ----
@@ -33,8 +33,9 @@ function gather(m: Model, at: Tab): { news: News[]; quiet: string[] } {
   const f = m.drive?.finished, done = f ? driveWords(m) ?? "" : "";
   if (f && done.trim()) out.push({ key: `drive:${f.status}:${f.completed}:${f.total}`, text: on("drive", done) });
   if (m.receipt) {
-    const label = m.task?.label ?? "";
-    out.push({ key: `receipt:${m.receipt.checkpoint}`, text: on("receipt", m.receipt.proof === "failed" ? S.saidNotDone(label) : S.saidDone(label, receiptProofWords(m))) });
+    // The result as the verdict says it (M45). Its kind is in the key, so an Undo is said once, as Undone.
+    const label = m.task?.label ?? "", v = receiptVerdict(m)!;
+    out.push({ key: `receipt:${m.receipt.checkpoint}:${v.kind}`, text: on("receipt", S.saidResult(label, v.say)) });
   }
   const n = need(m);
   if (n && !out.some((x) => x.key === n.key)) {

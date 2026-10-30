@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { checkShip, askResearch, approvePlan, chooseLoop, diagnose, DIAGNOSE_MODEL, pauseDrive, planDrive, resumeDrive } from "./commands.ts";
-import { confirmable, shipWords, phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, reduce, stateLabel, type Model } from "./model.ts";
+import { canFollowUp, confirmable, costWords, lookState, resultShown, shipWords, phWords, blockedNote, pausedWords, driveWords, characterWords, formatUsd, historyWords, isFixing, triesNote, initial, motionFor, notDoneReason, plainError, plainPath, receiptVerdict, reduce, stateLabel, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -118,7 +118,7 @@ describe("motion and money", () => {
     expect(motionFor("off", false)).toBe("none");
   });
   test("money is shown in plain amounts", () => {
-    expect(formatUsd(0)).toBe("free so far");
+    expect(formatUsd(0)).toBe("0 cents");
     expect(formatUsd(0.004)).toBe("less than 1 cent");
     expect(formatUsd(0.069)).toBe("7 cents");
     expect(formatUsd(1.234)).toBe("$1.23");
@@ -168,7 +168,8 @@ describe("proof: the checklist and Not done", () => {
       result("failed", [{ rung: "browser", label: "Opening it in a browser", status: "failed", detail: "The page threw an error: foo is not defined" }]),
       ev({ type: "agent.state", agent: "a", state: "error" })]);
     expect(m.task?.proof?.verdict).toBe("failed");
-    expect(notDoneReason(m)).toBe("Opening it in a browser: The page threw an error: foo is not defined");
+    // M45: one plain sentence, never the raw output (that is behind Details on the step's row).
+    expect(notDoneReason(m)).toBe(`Opening it in a browser: ${S.checkDidNotPass}`);
   });
   test("a passing result is not a Not done", () => {
     const m = run([...start, result("passed", [])]);
@@ -202,11 +203,11 @@ describe("the timeline of past tasks", () => {
     expect(m.history.map((h) => h.label)).toEqual(["add a page", "fix it"]);
   });
   test("each line says in plain words how it ended", () => {
-    expect(historyWords(task(1, "x", "done", "passed"))).toBe("Done, checked");
-    expect(historyWords(task(1, "x", "done", "skipped"))).toBe("Done, not checked");
-    expect(historyWords(task(1, "x", "not_done", "failed"))).toBe("Not done");
+    expect(historyWords(task(1, "x", "done", "passed"))).toBe("Fixed and proven");
+    expect(historyWords(task(1, "x", "done", "skipped"))).toBe("Changed, not proven");
+    expect(historyWords(task(1, "x", "not_done", "failed"))).toBe("Not fixed yet");
     expect(historyWords(task(1, "x", "interrupted"))).toBe("Stopped");
-    expect(historyWords(task(1, "x", "error_max_budget_usd"))).toBe("Stopped at the spending limit");
+    expect(historyWords(task(1, "x", "error_max_budget_usd"))).toBe("Stopped at this task's spending limit");
     expect(historyWords(task(1, "x", "error_max_turns"))).toBe(S.historyTurns);
     expect(S.historyTurns).not.toMatch(/Something went wrong/);
     expect(historyWords(task(1, "x", "running"))).toBe("Running");
@@ -224,7 +225,7 @@ describe("saying how many tries it took", () => {
     expect(triesNote(run([...start, res("passed", 1)]))).toBeNull();
   });
   test("a pass after a fix says how many tries it took", () => {
-    expect(triesNote(run([...start, res("failed", 1), res("passed", 2)]))).toBe("Fixed after 2 tries");
+    expect(triesNote(run([...start, res("failed", 1), res("passed", 2)]))).toBe("Passed after 2 tries");
   });
   test("a failure after all tries says so", () => {
     expect(triesNote(run([...start, res("failed", 3)]))).toBe("Still failing after 3 tries");
@@ -252,8 +253,10 @@ describe("a failed check that Claude is still fixing", () => {
 
 describe("the word under the character", () => {
   const failed = ev({ type: "proof.result", agent: "a", verdict: "failed", steps: [{ rung: "checks", label: "Building", status: "failed", detail: "x" }], tries: 3 });
-  test("a task that ended on a failed check says Not done, not Something went wrong", () => {
-    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Not done");
+  test("a task that ended on a failed check says Not fixed yet, not Something went wrong", () => {
+    expect(characterWords(run([...start, failed, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe(S.verdict.failed);
+    const receipt = ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [{ file: "a.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "failed", usdEstimate: 0.01, ended: "failed", endedWhy: "check_failed" });
+    expect(characterWords(run([...start, failed, receipt, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe(S.verdict.failed);
   });
   test("a real error still says something went wrong", () => {
     expect(characterWords(run([...start, ev({ type: "agent.state", agent: "a", state: "error" })]))).toBe("Something went wrong");
@@ -316,7 +319,7 @@ describe("Drive: the 'this keeps failing' card", () => {
   const stuck = ev({ type: "loop.stuck", agent: "a", index: 2, title: "Add a form", failure: { label: "Opening it in a browser", detail: "x is not defined" }, options: [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }] });
   test("it shows the evidence and the options", () => {
     const m = run([stuck]);
-    expect(m.stuck).toMatchObject({ index: 2, title: "Add a form", failure: "Opening it in a browser: x is not defined" });
+    expect(m.stuck).toMatchObject({ index: 2, title: "Add a form", failure: { label: "Opening it in a browser", parts: { summary: S.checkDidNotPass, raw: "x is not defined" } } });
     expect(m.stuck?.options.map((o) => o.id)).toEqual(["different", "stop"]);
   });
   test("answering removes it", () => expect(reduce(run([stuck]), { type: "ui.stuckAnswered" } as never).stuck).toBeNull());
@@ -561,5 +564,192 @@ describe("the engine's first words after a restart", () => {
     expect(m.notice).toBeNull();
     m = run([{ type: "app.notice", message: "Stopped everything." }, { type: "auth.status", method: "api_key" }], m);
     expect(m.notice).toBe("Stopped everything.");
+  });
+});
+
+describe("M45: the receipt tells the truth", () => {
+  const P = "/p";
+  const begin = [ev({ type: "checkpoint.created", project: P, agent: "a", checkpoint: "cp_0001", label: "Before: fix the cart", files: 3, skipped: [] }), ev({ type: "agent.state", agent: "a", state: "working" })];
+  const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "a", checkpoint: "cp_0001", changed: [{ file: "cart.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.05, ended: "done", ...o });
+  const finished = (o: Record<string, unknown> = {}, state = "done") => run([...begin, receipt(o), ev({ type: "agent.state", agent: "a", state })]);
+  const restored = (checkpoint = "cp_0001", safety = "cp_0002") => ev({ type: "checkpoint.restored", project: P, checkpoint, safety, recovered: [], largeLeftAlone: [], leftAlone: [] });
+
+  test("receipt keeps how it ended", () => {
+    expect(finished({ ended: "failed", endedWhy: "spending_limit", proof: "skipped" }, "error").receipt).toMatchObject({ end: "limit", limit: "spending" });
+    expect(finished({ ended: "failed", endedWhy: "daily_limit", proof: "skipped" }, "error").receipt).toMatchObject({ end: "limit", limit: "daily" });
+    expect(finished({ ended: "failed", endedWhy: "turns", proof: "skipped" }, "error").receipt).toMatchObject({ end: "limit", limit: "turns" });
+    expect(finished({ ended: "failed", endedWhy: "no_connection", proof: "skipped" }, "error").receipt).toMatchObject({ end: "failed", failWhy: "noConnection" });
+    expect(finished({ ended: "failed", endedWhy: "claude_busy", proof: "skipped" }, "error").receipt).toMatchObject({ end: "failed", failWhy: "claudeBusy" });
+    expect(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error").receipt).toMatchObject({ end: "failed", failWhy: "check" });
+    expect(finished({ ended: "failed", proof: "skipped" }, "error").receipt).toMatchObject({ end: "failed", failWhy: "error" });
+    expect(finished({ ended: "stopped", proof: "skipped" }, "idle").receipt?.end).toBe("stopped");
+    expect(finished({ ended: "needs_you" }, "needsYou").receipt?.end).toBe("needsYou");
+    expect(finished().receipt?.end).toBe("done");
+    const old = finished({ ended: undefined });
+    expect(old.receipt?.end, "no ending sent: unknown, never done").toBeUndefined();
+  });
+
+  test("undo marks the receipt and rests the character", () => {
+    const m = run([ev({ type: "ui.undoAsked", checkpoint: "cp_0001" }), ev({ type: "ui.undoSent" }), restored()], finished());
+    expect(m.receipt).toMatchObject({ undone: true, undoSafety: "cp_0002", back: false });
+    expect(m.agents.a).toBe("idle");
+    expect(m.character).toBe("idle");
+    expect(receiptVerdict(m)?.kind).toBe("undone");
+    // A task that ended in an error rests too.
+    const e = run([restored()], finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error"));
+    expect(e.agents.a).toBe("idle");
+  });
+
+  test("bisect undo marks the receipt", () => {
+    const found = run([ev({ type: "ui.bisectAsked" }), ev({ type: "bisect.result", agent: "a", outcome: "found", task: { label: "fix the cart", at: "t", checkpoint: "cp_0001" }, undo: "safe" }), ev({ type: "ui.bisectUndoAsked" }), ev({ type: "ui.bisectUndoSent" })], finished());
+    const m = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_0001", ok: true, reverted: ["cart.js"], safety: "cp_0009" })], found);
+    expect(m.receipt).toMatchObject({ undone: true, undoSafety: "cp_0009", back: false });
+    expect(m.agents.a).toBe("idle");
+    expect(receiptVerdict(m)?.kind).toBe("undone");
+  });
+
+  test("bring back sets back, not a second undo", () => {
+    const undone = run([ev({ type: "ui.undoAsked", checkpoint: "cp_0001" }), ev({ type: "ui.undoSent" }), restored()], finished());
+    const asked = run([ev({ type: "ui.bringBackAsked" })], undone);
+    expect(asked.undo).toEqual({ stage: "confirm", checkpoint: "cp_0002", back: true });
+    const m = run([ev({ type: "ui.undoSent" }), restored("cp_0002", "cp_0003")], asked);
+    expect(m.receipt).toMatchObject({ undone: true, back: true });
+    expect(m.receipt?.undoSafety).toBeUndefined();
+    expect(m.undo).toBeNull();
+    expect(canFollowUp(m, P)).toBe(false);
+    expect(receiptVerdict(m)?.kind).toBe("back");
+    expect(receiptVerdict(m)?.offer).toBe("undo");
+    // Undo again after bringing it back: undone once more, with the new safety copy.
+    const again = run([ev({ type: "ui.undoAsked", checkpoint: "cp_0001" }), ev({ type: "ui.undoSent" }), restored("cp_0001", "cp_0004")], m);
+    expect(again.receipt).toMatchObject({ undone: true, back: false, undoSafety: "cp_0004" });
+  });
+
+  test("a bisect undo of an earlier task leaves the last result alone", () => {
+    // M45 review: "Which task broke it" found an older task (cp_0000) and undid only it. The last task's fix is still in the
+    // files, so its result, its Undo and its words stay; only its conversation can no longer be followed up.
+    const found = run([ev({ type: "ui.bisectAsked" }), ev({ type: "bisect.result", agent: "a", outcome: "found", task: { label: "add the cart", at: "t", checkpoint: "cp_0000" }, undo: "safe" }), ev({ type: "ui.bisectUndoAsked" }), ev({ type: "ui.bisectUndoSent" })], finished());
+    const before = receiptVerdict(found);
+    const m = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_0000", ok: true, reverted: ["cart.js"], safety: "cp_0009" })], found);
+    expect(m.receipt?.undone).toBeUndefined();
+    expect(m.receipt?.undoSafety).toBeUndefined();
+    expect(m.receipt?.earlierUndone).toBe(true);
+    expect(receiptVerdict(m)).toEqual(before!);
+    expect(receiptVerdict(m)?.offer).toBe("undo");
+    expect(m.bisect?.undoStage).toBe("done");
+    expect(canFollowUp(m, P)).toBe(false);
+    // An older task's question waits for nothing once its files changed under it (the engine refuses the answer).
+    const asked = run([ev({ type: "bisect.undone", project: P, checkpoint: "cp_0000", ok: true, reverted: [], safety: "cp_0009" })],
+      { ...found, receipt: { ...found.receipt!, asks: true, said: "Which colour?" }, agents: { a: "needsYou" }, character: "needsYou" });
+    expect(asked.agents.a).toBe("idle");
+  });
+
+  test("bring back over the person's own edit says so and offers Put those back too", () => {
+    const undone = run([ev({ type: "ui.undoAsked", checkpoint: "cp_0001" }), ev({ type: "ui.undoSent" }), restored()], finished());
+    const asked = run([ev({ type: "ui.bringBackAsked" }), ev({ type: "ui.undoSent" })], undone);
+    const m = run([ev({ type: "checkpoint.restored", project: P, checkpoint: "cp_0002", safety: "cp_0003", recovered: [], largeLeftAlone: [], leftAlone: [], yours: ["cart.js"] })], asked);
+    expect(m.receipt).toMatchObject({ undone: true, back: true, backPartly: true });
+    expect(m.undo).toMatchObject({ stage: "done", checkpoint: "cp_0002", back: true, yours: ["cart.js"] });
+    const v = receiptVerdict(m)!;
+    expect(v.kind).toBe("back");
+    expect(v.line).toBe(S.verdict.backPartlyLine);
+    expect(v.line).not.toContain("passed its checks");
+    // Put those back too, with the safety copy: then the whole fix is back.
+    const put = run([ev({ type: "ui.putBackAsked" }), ev({ type: "ui.putBackSent" }), ev({ type: "checkpoint.putBackDone", project: P, checkpoint: "cp_0002", ok: true, putBack: ["cart.js"], skipped: [] })], m);
+    expect(put.receipt?.backPartly).toBeUndefined();
+    expect(receiptVerdict(put)?.line).toBe(S.verdict.backLine);
+  });
+
+  test("another agent's error is not this result", () => {
+    // M45 review: a proven fix, then an explain (agent b) fails. The overall character is error, but the result is still the
+    // task's: the words do not say "Fixed and proven" for an error, and the error keeps its own words.
+    const m = run([ev({ type: "agent.state", agent: "b", state: "error" })], finished());
+    expect(m.character).toBe("error");
+    expect(resultShown(m)).toBe(false);
+    expect(characterWords(m)).toBe(stateLabel("error"));
+    expect(resultShown(finished())).toBe(true);
+  });
+
+  test("only a proven fix takes the done look", () => {
+    expect(lookState(finished())).toBe("done");
+    expect(lookState(finished({ proof: "skipped" }))).toBe("idle");
+    expect(lookState(finished({ proof: "partial" }))).toBe("idle");
+    expect(lookState(finished({ proof: "skipped", changed: [] }))).toBe("idle");
+    // Other states are drawn as they are.
+    expect(lookState(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error"))).toBe("error");
+  });
+
+  test("What I did does not claim nothing changed when it does not know, and says when a fix is back", () => {
+    expect(historyWords({ status: "done", proof: null, changed: null })).not.toBe(S.verdict.noChange);
+    expect(historyWords({ status: "done", proof: null, changed: 0 })).toBe(S.verdict.noChange);
+    expect(historyWords({ status: "done", proof: "passed", changed: 1, undone: true, back: true })).toBe(S.verdict.back);
+    expect(historyWords({ status: "done", proof: "passed", changed: 1, undone: true })).toBe(S.verdict.undone);
+  });
+
+  test("a new receipt clears undone", () => {
+    const undone = run([restored()], finished());
+    const m = run([...begin, receipt()], undone);
+    expect(m.receipt?.undone).toBeUndefined();
+    expect(m.receipt?.back).toBeUndefined();
+    expect(m.receipt?.undoSafety).toBeUndefined();
+  });
+
+  test("putting the fix back on a turn is not an Undo", () => {
+    const turn = run([ev({ type: "ui.teachAsked", checkpoint: "cp_0001" }), ev({ type: "teach.ready", checkpoint: "cp_0001", made: true, target: { file: "b.js", line: 2, lineText: "x" }, restore: "cp_0003" })], finished());
+    expect(receiptVerdict(turn)?.kind).toBe("turn");
+    const back = run([ev({ type: "ui.teachRestore" }), restored("cp_0003", "cp_0004")], turn);
+    expect(back.receipt?.undone, "the conversation no longer matches the files").toBe(true);
+    expect(receiptVerdict(back)?.kind).toBe("proven");
+  });
+
+  test("notDoneReason has no raw output", () => {
+    const m = run([...begin, ev({ type: "proof.result", agent: "a", verdict: "failed", tries: 1, steps: [{ rung: "tests", label: "Running the tests", status: "failed", detail: "Tests failed.\n  at x.ts:3 expected 2" }] })]);
+    expect(notDoneReason(m)).toBe("Running the tests: Tests failed.");
+  });
+
+  test("loop card keeps raw output behind Details", () => {
+    const m = run([ev({ type: "loop.stuck", agent: "a", index: 0, title: "Fix the cart", failure: { label: "Running the tests", detail: "Tests failed.\n  at x.ts:3 expected 2" }, options: [] })]);
+    expect(m.stuck?.failure.label).toBe("Running the tests");
+    expect(m.stuck?.failure.parts.summary).toBe("Tests failed.");
+    expect(m.stuck?.failure.parts.raw).toContain("at x.ts:3");
+    expect(m.stuck?.options.map((o) => o.label)).toEqual([S.stuckDifferent, S.stuckStop]);
+  });
+
+  test("historyWords for every status", () => {
+    const h = (status: string, proof: string | null = null, undone?: boolean) => historyWords({ status, proof, changed: 1, ...(undone ? { undone } : {}) });
+    expect(h("daily_limit")).toBe("Stopped at today's limit");
+    expect(h("error_max_budget_usd")).toBe("Stopped at this task's spending limit");
+    expect(h("error_max_turns")).toBe(S.historyTurns);
+    expect(h("done", "passed", true)).toBe("Undone");
+    expect(h("done", "passed")).toBe("Fixed and proven");
+    expect(h("done", "partial")).toBe("Fixed, not fully proven");
+    expect(h("done", "skipped")).toBe("Changed, not proven");
+    expect(h("not_done", "failed")).toBe("Not fixed yet");
+    expect(h("interrupted")).toBe("Stopped");
+    expect(h("needs_you", "skipped")).toBe(S.historyNeedsYou);
+    expect(h("no_connection")).toBe(S.historyNoConnection);
+    expect(h("claude_busy")).toBe(S.historyClaudeBusy);
+    expect(h("running")).toBe("Running");
+    expect(h("error")).toBe("Something went wrong");
+  });
+
+  test("characterWords after a limit stop", () => {
+    const m = finished({ ended: "failed", endedWhy: "spending_limit", proof: "skipped" }, "error");
+    expect(characterWords(m)).toBe("Stopped at this task's spending limit");
+    expect(characterWords(m)).not.toBe("Something went wrong");
+    expect(characterWords(finished())).toBe("Fixed and proven");
+    expect(characterWords(finished({ proof: "skipped" }))).toBe("Changed, not proven");
+  });
+
+  test("zero cost says No cost", () => {
+    expect(costWords(0)).toBe(S.noCost);
+    expect(costWords(0.05)).toBe("5 cents");
+    expect(formatUsd(0)).toBe("0 cents");
+  });
+
+  test("tries say the check passed, and nothing after an Undo", () => {
+    const res = (verdict: string, tries: number) => ev({ type: "proof.result", agent: "a", verdict, steps: [], tries });
+    const m = run([...begin, res("failed", 1), res("passed", 2), receipt()]);
+    expect(triesNote(m)).toBe(S.passedAfter(2));
+    expect(triesNote(run([restored()], m))).toBeNull();
   });
 });

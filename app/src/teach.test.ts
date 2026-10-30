@@ -187,16 +187,18 @@ describe("your turn", () => {
     expect(run([ev({ type: "ui.teachRestore" })], left).teach?.stage).toBe("restoring");
     expect(run([ev({ type: "ui.teachChecking" })], left).teach?.stage).toBe("checking");
   });
-  test("the receipt says checked and working only while no place has its old code back", () => {
+  test("the receipt says proven only while no place has its old code back (M45: the verdict's words)", () => {
     const m = run(onCard);
-    expect(receiptProofWords(run([receipt()]))).toBe(S.proven);
-    expect(receiptProofWords(m)).toBe(S.teachProvenBefore);
-    expect(receiptProofWords(run([ev({ type: "ui.teachLeft" })], m))).toBe(S.teachProvenBefore);
-    expect(receiptProofWords(run([ev({ type: "ui.teachChecking" }), result({ verdict: "failed", same: false })], m))).toBe(S.teachProvenBefore);
-    expect(receiptProofWords(run([ev({ type: "ui.teachChecking" }), result({ verdict: "passed", same: true })], m))).toBe(S.proven);
-    expect(receiptProofWords(run([ev({ type: "ui.teachRestore" }), ev({ type: "checkpoint.restored", project: "/p", checkpoint: "cp_3", safety: "cp_8", recovered: [], largeLeftAlone: [], leftAlone: [] })], m))).toBe(S.proven);
-    expect(receiptProofWords(run([receipt({ proof: "failed" })]))).toBe(S.notDone);
-    expect(receiptProofWords(run([receipt({ proof: "skipped" })]))).toBe(S.notChecked);
+    const proven = S.verdict.say(S.verdict.proven, null), before = S.verdict.say(S.verdict.turn, S.verdict.turnLine);
+    expect(receiptProofWords(run([receipt()]))).toBe(proven);
+    expect(receiptProofWords(m)).toBe(before);
+    expect(receiptProofWords(run([ev({ type: "ui.teachLeft" })], m))).toBe(before);
+    expect(receiptProofWords(run([ev({ type: "ui.teachChecking" }), result({ verdict: "failed", same: false })], m))).toBe(before);
+    expect(receiptProofWords(run([ev({ type: "ui.teachChecking" }), result({ verdict: "passed", same: true })], m))).toBe(proven);
+    // Put my fix back puts the fix itself back: still proven, not Undone.
+    expect(receiptProofWords(run([ev({ type: "ui.teachRestore" }), ev({ type: "checkpoint.restored", project: "/p", checkpoint: "cp_3", safety: "cp_8", recovered: [], largeLeftAlone: [], leftAlone: [] })], m))).toBe(proven);
+    expect(receiptProofWords(run([receipt({ proof: "failed" })]))).toBe(S.verdict.say(S.verdict.failed, S.verdict.failedLine));
+    expect(receiptProofWords(run([receipt({ proof: "skipped" })]))).toBe(S.verdict.say(S.verdict.unchecked, S.verdict.uncheckedLine));
   });
   test("Let me try the next one is offered once: never again after the turn was set up, even once it is closed", () => {
     const offered = run([receipt({ repeat: { first: at, second, was: "user", now: "user?" } })]);

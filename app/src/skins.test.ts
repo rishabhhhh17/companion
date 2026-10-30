@@ -79,9 +79,10 @@ describe("the chrome does not read a skin", () => {
   test("no orange anywhere in the stylesheet: the old accent is gone and amber stays a small mark", () => {
     expect(css).not.toMatch(/#ff9a2e/i);
     expect(css).not.toContain("--accent");
-    // Where the waiting amber is used: the character's needs you glow, the island's mark, a tab's dot and a panel's headline dot.
+    // Where the waiting amber is used: the character's needs you glow, the island's mark, a tab's dot and a panel's headline dot,
+    // and (M45) the small mark of a result that is only partly proven.
     const uses = css.split("\n").filter((l) => /var\(--amber(-line)?\)/.test(l) && !/^--|^:root|^@media/.test(l.trim()) && !l.trim().startsWith("/*"));
-    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|@keyframes (glow|pose-glow)|:root \{|prefers-color-scheme/);
+    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|data-tone="partly"|@keyframes (glow|pose-glow)|:root \{|prefers-color-scheme/);
   });
   test("the filled button is polished chrome on black (M32, the founder: shiny silver, bold, with black)", () => {
     expect(css).toMatch(/\.btn\.primary \{ background: var\(--key\); color: var\(--key-ink\);/);

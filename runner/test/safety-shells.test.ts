@@ -128,7 +128,9 @@ describe("a tool nobody knows still asks", () => {
   for (const t of ["MadeUpTool", "Kill", "Shell", "TaskStopAll", "mcp__x__kill"]) test(t, () => {
     const r = v(t, { task_id: "b7k2p9" });
     expect(r.decision).toBe("ask");
-    expect(r.reason).toContain("unknown tool");
+    // M45: said in plain words, with the tool's name.
+    expect(r.reason).toContain("a tool that has not been checked yet");
+    expect(r.reason).toContain(t);
   });
 });
 

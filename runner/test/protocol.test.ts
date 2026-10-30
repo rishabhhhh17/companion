@@ -245,3 +245,38 @@ describe("files added to a request (agent.start files and images)", () => {
     expect(start({ images: [null] })).toBe(false);
   });
 });
+
+// M45 (Tell the truth): additive fields only. The receipt says why a failed task stopped, a task row says it was undone, and
+// a house rule has its own risk. Older engines send none of these, and their messages still parse.
+describe("M45: why a task ended, undone rows and house rule asks", () => {
+  const e = (o: Record<string, unknown>) => parseEvent(JSON.stringify({ v: 1, id: "e", ...o })).ok;
+  const receipt = { type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "failed", usdEstimate: 0, ended: "failed" };
+  const ask = { type: "approval.request", approval: "ap_1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "irreversible", title: "x", expiresAt: "2026-10-30T10:00:00Z" };
+  const row = { id: 1, label: "x", status: "done", usd: 0, startedAt: "2026-10-30T10:00:00Z", endedAt: null, checkpoint: "cp_1", changed: 1, proof: "passed" };
+  test("endedWhy takes only its known words, and may be left out", () => {
+    for (const endedWhy of ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"]) expect(e({ ...receipt, endedWhy }), endedWhy).toBe(true);
+    expect(e(receipt)).toBe(true);
+    for (const endedWhy of ["limit", "", 3, null]) expect(e({ ...receipt, endedWhy }), String(endedWhy)).toBe(false);
+  });
+  test("the ending itself keeps its four words", () => {
+    expect(e({ ...receipt, ended: "limit" })).toBe(false);
+  });
+  test("house_rule is a risk an approval card may carry", () => {
+    expect(e({ ...ask, risk: "house_rule", undoable: true })).toBe(true);
+    expect(e({ ...ask, risk: "house rule" })).toBe(false);
+  });
+  test("TaskSummary.undone is optional", () => {
+    expect(e({ type: "tasks.list", project: "p", tasks: [row] })).toBe(true);
+    expect(e({ type: "tasks.list", project: "p", tasks: [{ ...row, undone: true }] })).toBe(true);
+  });
+  test("the new fixture lines validate", () => {
+    const m45 = lines("events.jsonl").filter((l) => /"id":"em45/.test(l));
+    expect(m45.length).toBe(4);
+    for (const l of m45) expect(parseEvent(l).ok, l).toBe(true);
+    const all = m45.map((l) => JSON.parse(l));
+    expect(all.some((x) => x.type === "receipt" && x.ended === "failed" && x.endedWhy === "spending_limit")).toBe(true);
+    expect(all.some((x) => x.type === "receipt" && x.ended === "stopped")).toBe(true);
+    expect(all.some((x) => x.type === "approval.request" && x.risk === "house_rule" && x.undoable === true)).toBe(true);
+    expect(all.some((x) => x.type === "tasks.list" && x.tasks[0].undone === true)).toBe(true);
+  });
+});

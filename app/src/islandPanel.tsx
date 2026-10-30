@@ -56,7 +56,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
             <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>
             <span className="ip-answer">
-              {answerHere(j.risk ?? "") ? <>
+              {j.here ?? answerHere(j.risk ?? "") ? <>
                 <button className="ip-no" type="button" tabIndex={tab} aria-label={`${S.dontAllow}: ${j.title}`} onClick={() => answer(j, false)}>{S.dontAllow}</button>
                 <button className="ip-yes" type="button" tabIndex={tab} aria-label={`${S.allow}: ${j.title}`} onClick={() => answer(j, true)}>{S.allow}</button>
               </> : <button className="ip-yes" type="button" tabIndex={tab} onClick={() => void invoke("island_click").catch(() => {})}>{S.panel.lookFirst}</button>}

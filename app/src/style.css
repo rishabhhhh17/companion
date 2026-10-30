@@ -93,6 +93,10 @@ html.home-page, body.home-page { background: transparent; }
 .home[data-tone="needsYou"] .bar-dot { background: var(--amber-line); }
 .home[data-tone="done"] .bar-dot { background: var(--ok); }
 .home[data-tone="notDone"] .bar-dot { background: var(--danger); }
+/* M45: a result that is not proven. Partly proven: the amber dot only. Plain (stopped, undone, nothing checked): the idle
+   look. Only "done", a proven fix, is green. */
+.home[data-tone="partly"] .bar-dot { background: var(--amber-line); }
+.home[data-tone="plain"] .bar-dot { background: color-mix(in srgb, var(--fg) 50%, var(--bg)); }
 .places { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
 .icon-btn, .back { position: relative; flex: none; display: grid; place-items: center; width: calc(28rem / 14); height: calc(28rem / 14); padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .icon-btn.close { width: calc(22rem / 14); height: calc(22rem / 14); margin-left: var(--space-2); }
@@ -607,6 +611,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-yes:active, .island-panel .ip-no:active { transform: scale(.97); }
 .island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
+/* M45: partly proven has a thin amber edge; plain (stopped, undone, not checked) looks like any resting card. */
+.island-panel .ip-job[data-tone="partly"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+.island-panel .ip-job[data-tone="plain"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
 .island-panel .ip-text b { font: 600 var(--t-small) var(--round); color: #fff; overflow-wrap: anywhere; }
@@ -1071,8 +1078,9 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 .home-side .side-item { display: flex; align-items: center; gap: calc(9rem / 14); min-height: calc(32rem / 14); padding: calc(4rem / 14) calc(10rem / 14); border: 0; border-radius: calc(8rem / 14); background: transparent; color: var(--fg); font: 500 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; cursor: pointer; }
 .home-side .side-item:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
 .home-side .side-item .ic { flex: none; width: calc(14rem / 14); height: auto; color: var(--muted); }
-.home-side .side-item[data-proof="passed"] .ic { color: var(--ok); }
-.home-side .side-item[data-proof="failed"] .ic { color: var(--danger); }
+/* M45: data-proof holds the verdict kind. Only a proven fix is green; a failed check and a crash are red. */
+.home-side .side-item[data-proof="proven"] .ic { color: var(--ok); }
+.home-side .side-item[data-proof="failed"] .ic, .home-side .side-item[data-proof="error"] .ic { color: var(--danger); }
 .home-side .side-dot { flex: none; width: calc(6rem / 14); min-height: calc(6rem / 14); margin: 0 calc(4rem / 14); border-radius: 50%; background: var(--muted); }
 .home-side .side-label { min-width: 0; overflow-wrap: anywhere; }
 

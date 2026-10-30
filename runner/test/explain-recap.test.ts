@@ -105,3 +105,18 @@ describe("Where was I", () => {
     expect(l.join(" ")).toMatch(/still running/i);
   });
 });
+
+// M45: an undone task is not counted as checked.
+describe("Where was I: undone tasks", () => {
+  test("an undone task is not finished and checked", () => {
+    const since = "2026-10-09T11:00:00.000Z";
+    const rows = [
+      row({ id: 2, label: "Fix the cart", status: "done", proof: "passed", undone: true, startedAt: "2026-10-09T11:10:00.000Z", endedAt: "2026-10-09T11:20:00.000Z" }),
+      row({ id: 1, label: "Add pricing", status: "done", proof: "passed", startedAt: "2026-10-09T11:05:00.000Z", endedAt: "2026-10-09T11:08:00.000Z" }),
+    ];
+    const l = recapLines(rows, since, 0);
+    expect(l[1]).toMatch(/2 tasks ended/);
+    expect(l[1]).toMatch(/1 checked/);
+    expect(l[1]).not.toMatch(/2 checked/);
+  });
+});
