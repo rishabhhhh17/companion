@@ -714,6 +714,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 @keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
 @keyframes fr-rise { from { opacity: 0; transform: translateY(50px) scale(.7); } to { opacity: 1; transform: none; } }
 .fr[data-step="hello"] .fr-title { margin-top: var(--space-7); }
+/* M41 (Supabase): the second half of a two tone headline, on its own line, in grey. */
+.fr-title-2 { display: block; color: var(--muted); -webkit-text-fill-color: var(--muted); }
 /* Who do you want with you: Flowflow chosen, and empty places for the companions to come. */
 .fr-cast { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: color-mix(in srgb, var(--water) 18%, #000000); color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px var(--water); cursor: default; }

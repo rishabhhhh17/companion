@@ -23,7 +23,7 @@ The five above are venture backed but not YC. Two design led YC companies, live:
 - **M40, keycaps.** Home's actions that have keys show them as small keycaps at the end of the row, with the keys in use now (`keys.ts` `keycaps`).
 - **M40, progress in place (Granola).** While a task works, the step under way has a thin turning arc and the step before it a quiet tick; still with Reduce motion or Less motion.
 - **M41, the light rim (Resend).** Home's cards catch a thin line of light along the top edge, with a soft shade below.
+- **M41, two tone headline (Supabase).** The first run's hello: the statement bright, its answer in grey on the next line.
 
 ## Next candidates, not built
-- **Two tone empty states:** the bold statement, then the grey line.
 - **"Worked for N seconds"** on the receipt, once the engine sends how long a task took. We would not guess it in the page.

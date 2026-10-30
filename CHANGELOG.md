@@ -5,6 +5,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 ## The ring keeps up, and it's smaller: 30 Oct 2026
 
 - **The water ring sticks to your cursor.** It now moves the instant your Mac reports the mouse moving, instead of checking where it is many times a second, so it doesn't trail behind. It only ever knows where the pointer is, never what you type.
+- **A bolder first hello.** The first screen's headline now reads in two tones: "Your AI built it." bright, "Let's finish it." in grey below.
 - **Glassier cards.** Home's cards catch a thin rim of light along their top edge, like glass.
 - **A smaller, finer ring.** About two thirds the size, with a thinner ring of water.
 - **Easier to bring Flowflow out.** A short pull away from the edge is enough for it to stay where you drop it; only a drop right at the edge sticks it back.
