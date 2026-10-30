@@ -5,6 +5,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 ## You can see Squibby listening, and results read cleaner: 30 Oct 2026
 
 - **The water ring hears you.** While you hold a voice key, the ring at your pointer ripples with your voice and glows a little, so you can see Squibby is listening right where you're looking.
+- **A cleaner notch panel.** Its buttons sit on one row, with Settings and Open Home as two small round buttons at the end, and the blurry glow under it is gone.
 - **Home's top is tidier.** The line under the headline no longer sits on the waterline, and Flowflow melts into Home's water instead of ending in a hard line.
 - **See what it's doing now.** While Squibby works, the step it's on has a small turning circle beside it, and finished steps go quiet with a tick.
 - **See the keys.** Find the problem, Explain an error and Show me now show their keyboard shortcut as small keys at the end of the row, using the keys you picked.
