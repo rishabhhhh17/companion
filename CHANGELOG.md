@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## You can see Squibby listening, and results read cleaner: 30 Oct 2026
+
+- **The water ring hears you.** While you hold a voice key, the ring at your pointer ripples with your voice and glows a little, so you can see Squibby is listening right where you're looking.
+- **Clearer results.** After a fix, Squibby's own words come first, then one tidy card of what changed: each file with a mark for added, changed or removed, its name in bold and its folder in grey.
+
 ## Easier on your battery: 30 Oct 2026
 
 - **The water ring rests when you do.** It redraws at full speed only while your pointer moves, and slows right down when it's still.

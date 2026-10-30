@@ -142,6 +142,8 @@ export const S = {
   commands: "commands run",
   fixCost: (usd: string) => `About ${usd} of your Claude`,
   modified: "changed",
+  /** M39 (Linear's agent results: one card of what changed): the header of the changes card. */
+  changedFiles: (n: number) => `Changed ${n} ${n === 1 ? "file" : "files"}`,
   deleted: "removed",
   blocked: "Blocked",
   waiting: "Waiting for you",

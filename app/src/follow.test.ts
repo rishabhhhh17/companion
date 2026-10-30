@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { RING_FRAGMENT, rgb, ringStretch } from "./follow.ts";
+import { RING_FRAGMENT, rgb, ringStretch, voiceEnvelope } from "./follow.ts";
 
 describe("the water ring around the pointer (M37)", () => {
   test("it keeps its ring shape: no stretch when slow, a gentle one along the way it moves when fast, never more than a third", () => {
@@ -35,5 +35,17 @@ describe("the water ring around the pointer (M37)", () => {
     const cap = JSON.parse(readFileSync(new URL("../src-tauri/capabilities/overlay.json", import.meta.url), "utf8"));
     expect(cap.windows).toContain("follow");
     expect(cap.permissions).toEqual(["core:event:allow-listen", "core:event:allow-unlisten"]);
+  });
+  test("it breathes with the voice: up fast as you speak, down gently, still in a quiet room (M39)", () => {
+    let v = 0;
+    for (let i = 0; i < 6; i++) v = voiceEnvelope(v, 0.5, 1 / 60);
+    expect(v).toBeGreaterThan(0.7);
+    const loud = v;
+    v = voiceEnvelope(v, 0, 1 / 60);
+    expect(v).toBeGreaterThan(loud * 0.85);   // a pause between words does not drop it at once
+    let q = 0; for (let i = 0; i < 60; i++) q = voiceEnvelope(q, 0.015, 1 / 60);
+    expect(q).toBe(0);
+    expect(voiceEnvelope(0.4, NaN, 1 / 60)).toBeLessThan(0.4);
+    expect(RING_FRAGMENT).toContain("uVoice");
   });
 });

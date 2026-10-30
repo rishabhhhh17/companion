@@ -105,9 +105,9 @@ describe("Home is one calm column", () => {
     expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }");
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
-  test("the receipt reads as one block: what changed, a tick for what was checked, then what it cost and how many files", () => {
+  test("the receipt reads as one block: what changed (with how many files), a tick for what was checked, then what it cost", () => {
     expect(card).toContain('<Icon name={m.receipt.proof === "passed" ? "tick" : m.receipt.proof === "failed" ? "cross" : "wait"} size={16} />');
-    expect(card).toContain("S.look.files(m.receipt.changed.length)");
+    expect(card).toContain("<ChangesCard changed={m.receipt.changed} />");   // M39: how many files heads the changes card
     expect(card).toContain("<li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>");   // M28: what the fix cost on your own Claude
     // Each check of the proof is a row with its own tick.
     expect(card).toContain('<Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />');

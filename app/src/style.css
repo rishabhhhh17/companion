@@ -928,6 +928,19 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sp-text b { font-weight: 600; font-size: var(--t-body); color: var(--fg); }
 .sp-text span { font-size: var(--t-small); color: var(--muted); line-height: 1.35; }
+.receipt .answer-lead { font-size: var(--t-small); font-weight: 600; color: var(--muted); }
+.receipt .answer-words { margin: 2px 0 0; font-size: var(--t-body); line-height: 1.45; }
+/* M39 (Linear's agent results): what a fix changed, as one quiet card. */
+.changes { margin: var(--space-2) 0; border-radius: var(--r-md); background: color-mix(in srgb, var(--fg) 4%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent); }
+.changes-head { padding: var(--space-2) var(--space-3); font-size: var(--t-small); font-weight: 600; color: var(--muted); border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.changes ul { list-style: none; margin: 0; padding: var(--space-1) 0; }
+.changes li { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); padding: 3px var(--space-3); min-width: 0; }
+.changes li b { font-weight: 600; overflow-wrap: anywhere; }
+.changes-dir { color: var(--muted); font: 400 var(--t-small) ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; min-width: 0; }
+.changes-mark { flex: none; width: 1em; text-align: center; font-weight: 700; color: var(--muted); }
+.changes li[data-kind="added"] .changes-mark { color: var(--ok); }
+.changes li[data-kind="deleted"] .changes-mark { color: var(--danger); }
+
 /* M35: the character picks, one card per water with the live water in it. They sit under the row's name. */
 .sp-row:has(> .sp-picks) { flex-wrap: wrap; row-gap: var(--space-3); }
 .sp-row:has(> .sp-picks) > :first-child { flex: 1 1 100%; }

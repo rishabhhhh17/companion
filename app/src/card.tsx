@@ -32,6 +32,7 @@ import { Waterline } from "./waterline.tsx";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
+import { ChangesCard } from "./changesCard.tsx";
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
@@ -1919,12 +1920,13 @@ function Card() {
           <h2>{receiptHeading(m.receipt)}</h2>
           {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
             <div className="answer" role={w.help ? "status" : undefined}>
-              <div><b>{w.lead}:</b> {plainPath(w.words, project)}</div>
+              {/* M39: the result in its own words, as a paragraph; what kind of answer it is, small above it. */}
+              <div className="answer-lead">{w.lead}</div>
+              <p className="answer-words">{plainPath(w.words, project)}</p>
               {w.help && <div className="muted">{w.help}</div>}
             </div>
           ); })()}
-          {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> :
-            m.receipt.changed.map((c) => <div className="line" key={c.file}>{(S as any)[c.kind] ?? c.kind}: {c.file}</div>)}
+          {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} />}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.changed.length > 0 && (
             <div className={`proof ${m.receipt.proof === "passed" ? "ok" : m.receipt.proof === "failed" ? "bad" : "wait"}`}>
@@ -1942,7 +1944,7 @@ function Card() {
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           <ul className="facts" aria-label={S.look.factsLabel}>
-            {m.receipt.changed.length > 0 && <li>{S.look.files(m.receipt.changed.length)}</li>}
+            {/* M39: how many files is the changes card's own header now, so it is not said twice. */}
             {/* M28: what the fix cost, on the person's own Claude (we never mark it up); the count of commands is for the log. */}
             <li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>
           </ul>

@@ -3871,6 +3871,13 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                         // Stop everything while it opened (a Bluetooth microphone can take seconds): closed again at once.
                         if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { let _ = r.finish(); hold.cancel(); listening(false); log("voice_stopped_opening", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                         quiet_mic = opened.quiet;
+                        // M39: the water ring at the pointer ripples with the voice while the keys are held (follow.ts). Only how
+                        // loud, about 25 times a second, and only until the microphone closes.
+                        voice_mac::reset_level();
+                        { let (a, typing_now) = (app.clone(), mode == talkkeys::Mode::Type); std::thread::spawn(move || {
+                            while listening_now() { let _ = a.emit_to("follow", "follow-voice", json!({ "level": voice_mac::level(), "typing": typing_now })); std::thread::sleep(Duration::from_millis(40)); }
+                            let _ = a.emit_to("follow", "follow-voice", json!({ "level": Value::Null }));
+                        }); }
                         rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some(), "quiet": opened.quiet }));
                         // The picked microphone is not connected, so the default listens: one plain line, once each time it goes away.
                         if MIC_NOTE.lock().unwrap_or_else(|e| e.into_inner()).tell(opened.missing.as_deref()) {
