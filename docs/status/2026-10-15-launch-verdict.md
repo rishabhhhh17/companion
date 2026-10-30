@@ -47,3 +47,5 @@ Finish the founder-side list, then one hands-on session, then a small friends pr
   - `cargo audit`: two certificate fixes taken (`rustls-webpki` 0.103.16, `webpki-root-certs` 1.0.11).
   - `zip` 4.6.1 (three advisories) comes only through the updater on Windows and is not in the Mac app. Update it before a Windows build.
   - `bun audit`: `zod` to 4.6.6, plus seven fixes in the Agent SDK's own dependencies. The runner and the pages are clean.
+- **AGENTS.md / CLAUDE.md before the first snapshot:** closed in M14 (22 to 23 Oct). In a folder Squibby made, the shared files are never written until the person says yes, so Undo returns such a folder to empty apart from `.companion`.
+- **Next hands-on check:** `docs/status/2026-10-30-mac-session-3-plan.md`.

@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Easier on your battery: 30 Oct 2026
+
+- **The water ring rests when you do.** It redraws at full speed only while your pointer moves, and slows right down when it's still.
+- **Flowflow idles gently.** Its slow sway at rest uses about a third less of your Mac's graphics power, and looks the same.
+
 ## Drawing that keeps pace with the voice: 30 Oct 2026
 
 - **Marks are drawn as Squibby says them.** When Squibby points at something and says the step out loud, the hand drawn ring or arrow now draws along with the words, finishing as it reaches the important part. Without the voice, marks draw at their own pace as before.

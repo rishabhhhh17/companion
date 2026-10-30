@@ -21,7 +21,8 @@ export type ControllerOptions = {
 };
 
 /** Frame intervals (seconds) for the resting moods, to spend little when nothing is happening. */
-const IDLE_INTERVAL = 1 / 30, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
+// M38 (battery): 20 a second while it only sways at rest; its slow liquid motion looks the same, the GPU works a third less.
+const IDLE_INTERVAL = 1 / 20, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
 
 export class FlowflowController {
   readonly engine: FlowflowEngine; private renderer: FlowflowRenderer;

@@ -24,6 +24,9 @@ export const rgb = (hex: string): [number, number, number] => {
   return Number.isFinite(n) ? [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255] : [0.35, 0.82, 1];
 };
 
+/** At rest, one frame every this many milliseconds (20 a second): the waves still move, the GPU mostly sleeps. */
+export const RESTING_FRAME_MS = 50;
+
 export const RING_VERTEX = `attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }`;
 export const RING_FRAGMENT = `
 precision highp float;
@@ -95,6 +98,8 @@ if (cv) {
     const next = (): void => {
       const reduced = still();
       if (reduced) { window.setTimeout(() => frame(performance.now()), 250); return; }
+      // Battery: every refresh only while it moves or pulses; at rest its small waves need no more than 20 frames a second.
+      if (Math.hypot(vel.x, vel.y) < 0.002 && Math.hypot(aim.x, aim.y) < 0.002 && pulse < 0.01) { window.setTimeout(() => frame(performance.now()), RESTING_FRAME_MS); return; }
       requestAnimationFrame(frame);
     };
     next();

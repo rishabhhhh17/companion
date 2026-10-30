@@ -20,6 +20,8 @@ describe("the water ring around the pointer (M37)", () => {
     const page = readFileSync(new URL("./follow.ts", import.meta.url), "utf8");
     expect(RING_FRAGMENT).toContain("sdTorus");
     expect(page).toContain("const calm = still();");
+    // Battery: every refresh only while it moves; at rest a slower timer.
+    expect(page).toContain("window.setTimeout(() => frame(performance.now()), RESTING_FRAME_MS)");
     const html = readFileSync(new URL("../follow.html", import.meta.url), "utf8");
     expect(html).toContain('<canvas class="ring" id="d"');
     expect(html).not.toMatch(/\.(png|jpe?g|gif|svg)\b/);
