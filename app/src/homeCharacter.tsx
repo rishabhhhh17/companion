@@ -14,9 +14,9 @@ import { flowColours, waterOf } from "./lookfeel.ts";
 // With "Draw live" on (character.live), the founder's live water (src/flowflow/), loaded only then, as on the desktop.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
 
-/** M37c: Home's waterline crosses the character at about two thirds down its box (style.css .home-char's mask): the water
+/** M37c: Home's waterline sits a little above 70% down its box; the drop meets it just under the line (measured on Home, M40): the water
  *  joins it there and it clings to the surface, as water meeting water does. */
-const ON_THE_WATER = { side: "below" as const, at: 0.67, cling: 0.6 };
+const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
 
 /** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). */
 export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {

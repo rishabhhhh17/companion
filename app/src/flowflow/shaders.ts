@@ -88,9 +88,11 @@ float drop(vec3 p){
   float d = body(toBody(p)) * min(1.0, squeeze());
   // It joins the surface in a soft fillet, and a thin film of it spreads along the surface.
   d = smin(d, pl - dot(p.xy, sn), 0.02 + 0.42 * m);
-  vec2 t = vec2(-sn.y, sn.x), c = sn * pl;
-  float len = 0.15 + 0.4 * max(pr, 0.0) + 0.3 * uSurf.w;
-  d = smin(d, taper(p, vec3(c - t * len, 0.0), vec3(c + t * len, 0.0), 0.03 + 0.12 * m, 0.03 + 0.12 * m), 0.12 + 0.25 * m);
+  if (pr > 0.01) {   // the film spreads only while it is pushed in; at rest it only joins the surface
+    vec2 t = vec2(-sn.y, sn.x), c = sn * pl;
+    float len = 0.15 + 0.4 * pr;
+    d = smin(d, taper(p, vec3(c - t * len, 0.0), vec3(c + t * len, 0.0), 0.03 + 0.12 * pr, 0.03 + 0.12 * pr), 0.12 + 0.25 * pr);
+  }
   return max(d, dot(p.xy, sn) - pl);
 }
 vec3 nrm(vec3 p){ vec2 e = vec2(0.002, 0.0); return normalize(vec3(drop(p+e.xyy)-drop(p-e.xyy), drop(p+e.yxy)-drop(p-e.yxy), drop(p+e.yyx)-drop(p-e.yyx))); }
@@ -113,6 +115,8 @@ void main(){
   float t = 0.0, mind = 1e9, tBest = 0.0;
   for (int i = 0; i < 80; i++){ float d = drop(ro + rd*t); if (d < mind) { mind = d; tBest = t; } if (d < 0.0002) break; t += d; if (t > 6.0) break; }
   float cover = 1.0 - smoothstep(0.0, uPx * 1.5, mind);   // inside is solid; only the last pixel of the edge is soft
+  // Where it meets its surface it melts into it: a soft fade just before the surface, never a hard cut line (M40).
+  if (dot(uSurf.xy, uSurf.xy) > 0.25) cover *= smoothstep(0.0, 0.1, uSurf.z - dot(lp, uSurf.xy));
   if (cover <= 0.0) { gl_FragColor = vec4(0.0); return; }
   vec3 p = ro + rd*tBest, n = nrm(p), v = -rd, r = reflect(rd, n);
   float ndv = clamp(dot(n, v), 0.0, 1.0), fres = pow(1.0 - ndv, 4.0);

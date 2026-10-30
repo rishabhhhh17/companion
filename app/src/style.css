@@ -638,7 +638,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
 .home .subline { font-size: var(--t-small); }
 /* M27: the line under the headline sits in the water, clear of the wave, never on it. */
-.home .hero .hero-words .subline { margin-top: 24px; color: color-mix(in srgb, var(--fg) 72%, transparent); }
+/* M40: right under the headline, clear of the waterline below (at 24px it sat on the water). */
+.home .hero .hero-words .subline { margin-top: var(--space-1); color: color-mix(in srgb, var(--fg) 72%, transparent); }
 /* The ask box: white paper on the water, the words in black, the lime key to send. */
 .home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
 .home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(220, 226, 235, .55), 0 10px 40px rgba(0, 0, 0, .45); }
