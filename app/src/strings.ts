@@ -142,6 +142,9 @@ export const S = {
   commands: "commands run",
   fixCost: (usd: string) => `About ${usd} of your Claude`,
   modified: "changed",
+  /** M42: the side list in Home (Supabase's dashboard): things to do, then recent work. */
+  sideRecent: "Recent",
+  sideDo: "Do",
   /** M39 (Linear's agent results: one card of what changed): the header of the changes card. */
   changedFiles: (n: number) => `Changed ${n} ${n === 1 ? "file" : "files"}`,
   deleted: "removed",

@@ -1033,3 +1033,42 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 :root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row { background: #1E2026; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }
 :root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
 :root.home-page:not([data-theme="paper"]) .home[data-view="settings"] .panel.settings > .row[role="search"] input { background: #16181C; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }
+
+/* ---------- M42: Home on Now as a command layout (the founder picked B, after Supabase's dashboard) ----------
+   The ask box is a command bar across the top; the things to do (with their keys) and the recent fixes are a quiet list on
+   the left; the job's words and every result are on the right. Only on Now: the other places keep their own layout. */
+.home[data-view="now"] .inner { display: grid; grid-template-columns: calc(212rem / 14) minmax(0, 1fr); column-gap: var(--space-5); align-items: start; }
+.home[data-view="now"] .inner > * { grid-column: 2; min-width: 0; }
+.home[data-view="now"] .inner > .bar, .home[data-view="now"] .inner > .askwrap { grid-column: 1 / -1; }
+.home[data-view="now"] .home-side { grid-column: 1; grid-row: 3 / span 12; position: sticky; top: 0; display: grid; gap: 2px; padding-top: var(--space-1); }
+/* The command bar: a dark field with a search mark, one thin edge, the keys to talk and the send button inside. */
+.home[data-view="now"] .ask { background: var(--card); border: 1px solid color-mix(in srgb, var(--fg) 16%, transparent); border-radius: calc(12rem / 14); padding: calc(4rem / 14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05); }
+.home[data-view="now"] .ask:focus-within { border-color: color-mix(in srgb, var(--fg) 40%, transparent); }
+.home[data-view="now"] .ask textarea { color: var(--fg); background: transparent; caret-color: var(--fg); padding-left: calc(6rem / 14); }
+.home[data-view="now"] .ask .ask-mark { align-self: center; flex: none; display: grid; place-items: center; margin-left: calc(8rem / 14); color: var(--muted); }
+.home[data-view="now"] .ask textarea::placeholder { color: var(--muted); background: transparent; }
+.home[data-view="now"] .ask .talk-how { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.home[data-view="now"] .ask .talk-how:hover, .home[data-view="now"] .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+/* The job's words: a heading over the results, no picture and no water here (Flowflow lives on the edge of the screen). */
+.home[data-view="now"] .hero { display: block; margin: var(--space-2) 0 var(--space-3); }
+.home[data-view="now"] .hero::before, .home[data-view="now"] .hero .waterline, .home[data-view="now"] .hero .home-char { display: none; }
+.home[data-view="now"] .hero .hero-words { padding-top: 0; }
+.home[data-view="now"] .headline { font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -.01em; }
+/* The side list: small section names, rows with an icon, the words and the keys; recent fixes with how each ended. */
+.home-side .side-head { padding: var(--space-3) calc(10rem / 14) calc(4rem / 14); color: var(--muted); font-size: var(--t-caption); font-weight: 600; }
+.home[data-view="now"] .home-side .chips.quick { margin: 0; gap: 2px; }
+.home[data-view="now"] .home-side .chips.quick .chip-btn { min-height: calc(34rem / 14); padding: 0 calc(10rem / 14); gap: calc(9rem / 14); border-radius: calc(8rem / 14); font: 500 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+.home[data-view="now"] .home-side .caps kbd { letter-spacing: .04em; }
+.home[data-view="now"] .home-side .chips.quick .chip-btn:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.home[data-view="now"] .home-side .chips.quick .chip-btn .ic { width: calc(15rem / 14); color: var(--muted); }
+.home[data-view="now"] .home-side .caps kbd { min-width: calc(17rem / 14); min-height: calc(18rem / 14); padding: 0 calc(4rem / 14); font-size: calc(10rem / 14); }
+.home[data-view="now"] .home-side details.more { margin: var(--space-1) 0 0; }
+.home[data-view="now"] .home-side details.more > summary { padding: 0 calc(10rem / 14); font-size: var(--t-small); }
+.home-side .recent { display: grid; gap: 2px; }
+.home-side .side-item { display: flex; align-items: center; gap: calc(9rem / 14); min-height: calc(32rem / 14); padding: calc(4rem / 14) calc(10rem / 14); border: 0; border-radius: calc(8rem / 14); background: transparent; color: var(--fg); font: 500 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; cursor: pointer; }
+.home-side .side-item:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.home-side .side-item .ic { flex: none; width: calc(14rem / 14); height: auto; color: var(--muted); }
+.home-side .side-item[data-proof="passed"] .ic { color: var(--ok); }
+.home-side .side-item[data-proof="failed"] .ic { color: var(--danger); }
+.home-side .side-dot { flex: none; width: calc(6rem / 14); min-height: calc(6rem / 14); margin: 0 calc(4rem / 14); border-radius: 50%; background: var(--muted); }
+.home-side .side-label { min-width: 0; overflow-wrap: anywhere; }

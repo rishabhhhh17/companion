@@ -33,11 +33,13 @@ import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
+import { RecentList } from "./recentList.tsx";
 
 /** M40: an action's keys, as small keycaps at the end of its row (only to see; the row's own name is what is read out). */
 function Caps({ id }: { id: string | null | undefined }) {
   const caps = keycaps(id);
-  return caps.length ? <span className="caps" aria-hidden="true">{caps.map((c, i) => <kbd key={i}>{c}</kbd>)}</span> : null;
+  // M42: one compact key holding the whole chord (⌃⌥⌘F), so the side list keeps each name on one line.
+  return caps.length ? <span className="caps" aria-hidden="true"><kbd>{caps.join("")}</kbd></span> : null;
 }
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
@@ -1476,19 +1478,14 @@ function Card() {
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
       {onboarded && <ClaudeNotice />}
       {onboarded && (<>
-      {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
-      <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
-        <Waterline />
-        <HomeCharacter m={m} />
-        <div className="hero-words">
-          <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
-          <p className="subline">{hero.line}</p>
-        </div>
+      {/* M42 (the founder picked B, Supabase's dashboard): on Now, the ask box is a command bar across the top, the things to
+          do and the recent fixes are a list on the left, and the job and its results are on the right (style.css .home-side). */}
           {/* The one ask box, under the job's words (27 Oct 2026). Only hidden on the other places, never taken away: a draft, and
               the words from hold to talk, stay in the box. Its one filled button starts; the mic says how to hold to talk. */}
           <div className="askwrap" hidden={!show("ask")}>
           {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <button className="btn" type="button" onClick={() => setAskMode("task")}>{S.planCancel}</button></div>}
           <div className="ask">
+            <span className="ask-mark" aria-hidden="true"><Icon name="find" size={16} /></span>
             <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.look.ask} aria-label={S.look.ask} aria-describedby="ask-keys"
               onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
@@ -1520,6 +1517,24 @@ function Card() {
           {attached.length > 0 && <div className="line muted">{S.attachStartOnly}</div>}
           <div className="sr" role="status">{attachSaid}</div>
           {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
+          <div className="sr" id="ask-keys">{S.askKeysHint}</div>
+          {/* The invitation to try a tool, only while nothing else is on Now. */}
+      {hero.tone === "idle" && (() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
+          {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
+          {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
+          </div>
+      {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
+      <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
+        <Waterline />
+        <HomeCharacter m={m} />
+        <div className="hero-words">
+          <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
+          <p className="subline">{hero.line}</p>
+        </div>
+      </section>
+      {home.tab === "now" && show("ask") && (
+        <aside className="home-side" aria-label={S.look.chipsLabel}>
+          <div className="side-head" aria-hidden="true">{S.sideDo}</div>
           {/* Three quick actions, each a drawing and a word: what their keys and buttons already do. */}
           <div className="chips quick" role="group" aria-label={S.look.chipsLabel}>
             {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}<Caps id={keys.using.problem} /></button>}
@@ -1548,13 +1563,9 @@ function Card() {
               {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
             </details>
           )}
-          <div className="sr" id="ask-keys">{S.askKeysHint}</div>
-          {/* The invitation to try a tool, only while nothing else is on Now. */}
-      {hero.tone === "idle" && (() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
-          {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
-          {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
-          </div>
-      </section>
+          <RecentList items={project ? m.history : []} onOpen={() => pickTab("did")} />
+        </aside>
+      )}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}

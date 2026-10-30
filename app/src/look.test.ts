@@ -56,11 +56,13 @@ describe("Home is one calm column", () => {
     expect(card).toContain("aria-label={tabName(t)} title={tabName(t)}");
     expect(card).not.toContain('role="tablist"');
   });
-  test("the first screen shows the current job first, in big words, and the ask box after it; results follow below", () => {
+  test("M42 (Supabase's dashboard, the founder's pick): the ask box is a command bar first, then the job in big words, the side list, then results", () => {
     const head = card.indexOf('className="headline">{hero.headline}</h1>');
     const ask = card.indexOf('<div className="askwrap" hidden={!show("ask")}>');
+    const side = card.indexOf('<aside className="home-side"');
     expect(head).toBeGreaterThan(-1);
-    expect(head).toBeLessThan(ask);
+    expect(ask).toBeLessThan(head);
+    expect(head).toBeLessThan(side);
     for (const panel of ['{show("urgent") && <div ref={urgent}>', '{show("receipt") && m.receipt', '{show("proof") && m.task?.proof', '{show("research") && m.research']) {
       expect(card.indexOf(panel), panel).toBeGreaterThan(ask);
     }

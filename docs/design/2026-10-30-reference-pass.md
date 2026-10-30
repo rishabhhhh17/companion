@@ -24,6 +24,12 @@ The five above are venture backed but not YC. Two design led YC companies, live:
 - **M40, progress in place (Granola).** While a task works, the step under way has a thin turning arc and the step before it a quiet tick; still with Reduce motion or Less motion.
 - **M41, the light rim (Resend).** Home's cards catch a thin line of light along the top edge, with a soft shade below.
 - **M41, two tone headline (Supabase).** The first run's hello: the statement bright, its answer in grey on the next line.
+- **M42, Home as a command layout (the founder's pick, 30 Oct 2026).** After the founder said the look was still off ("copy a lot of YC companies"), three full Home directions were shown side by side (`docs/design/2026-10-30-home-directions.html`):
+  - A: Thread, after Replit's agent.
+  - B: Command, after Supabase's dashboard.
+  - C: Cards, after Airbnb and Brex.
+
+  The founder picked B. On Now, Home is now a command bar across the top, a quiet list on the left (the things to do with one compact keycap each, More ways to ask, and the last few fixes with how each ended), and the job and its results on the right. Flowflow lives on the screen's edge, not in Home's Now.
 
 ## Next candidates, not built
 - **"Worked for N seconds"** on the receipt, once the engine sends how long a task took. We would not guess it in the page.

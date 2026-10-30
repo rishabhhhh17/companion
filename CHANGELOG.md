@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A new Home, laid out like the best dashboards: 30 Oct 2026
+
+- **Ask first.** The box to ask Squibby is now a command bar across the top of Home, with a search mark, ready to type.
+- **Everything to do on the left.** Find the problem, Is it safe to go live?, Explain an error and Show me sit in a quiet list with their keyboard shortcut, and your last few fixes are listed below them with a tick or a cross for how each ended. Press one to see it in What I did.
+- **The job on the right.** What Squibby is working on, and every result, has the rest of the space.
+
 ## The ring keeps up, and it's smaller: 30 Oct 2026
 
 - **The water ring sticks to your cursor.** It now moves the instant your Mac reports the mouse moving, instead of checking where it is many times a second, so it doesn't trail behind. It only ever knows where the pointer is, never what you type.
