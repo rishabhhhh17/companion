@@ -206,7 +206,7 @@ pub fn snap_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64, home:
 }
 
 /// M37: how far from every edge (points) the pointer must let go for the character to stay where it is, not snap.
-pub const FREE_REACH: f64 = 120.0;
+pub const FREE_REACH: f64 = 56.0;   // M41 (the founder: pulled out, it went back to the edge): a short pull is enough
 
 /// Where a drag lets go, as a free place (0 to 1 across and down its room in the work area), or None when it is near an
 /// edge and should snap to it (`snap_on`).
@@ -732,8 +732,8 @@ mod tests {
     fn let_go_away_from_every_edge_it_stays_there_and_near_one_it_snaps() {
         let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
         let size = (160.0, 160.0);
-        assert_eq!(free_on(&s, size, 60.0, 450.0), None, "near the left edge: snap");
-        assert_eq!(free_on(&s, size, 720.0, 870.0), None, "near the bottom: snap");
+        assert_eq!(free_on(&s, size, 40.0, 450.0), None, "right at the left edge: snap");
+        assert_eq!(free_on(&s, size, 720.0, 880.0), None, "right at the bottom: snap");
         let (fx, fy) = free_on(&s, size, 300.0, 500.0).expect("away from every edge: stays");
         let f = place_free(&s, size, (fx, fy), island::HomeSize::STANDARD);
         assert!(((f[0] + 80.0) - 300.0).abs() < 1.0 && ((f[1] + 80.0) - 500.0).abs() < 1.0, "{f:?}");

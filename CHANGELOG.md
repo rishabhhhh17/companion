@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The ring keeps up, and it's smaller: 30 Oct 2026
+
+- **The water ring sticks to your cursor.** It now moves the instant your Mac reports the mouse moving, instead of checking where it is many times a second, so it doesn't trail behind. It only ever knows where the pointer is, never what you type.
+- **A smaller, finer ring.** About two thirds the size, with a thinner ring of water.
+- **Easier to bring Flowflow out.** A short pull away from the edge is enough for it to stay where you drop it; only a drop right at the edge sticks it back.
+
 ## You can see Squibby listening, and results read cleaner: 30 Oct 2026
 
 - **The water ring hears you.** While you hold a voice key, the ring at your pointer ripples with your voice and glows a little, so you can see Squibby is listening right where you're looking.

@@ -1075,7 +1075,7 @@ fn follow_loop(app: AppHandle) {
         tick += 1;
         if !want || overlay_busy() {
             if shown {
-                shown = false; d.placed = false;
+                shown = false; d.placed = false; FOLLOW_LIVE.store(false, Ordering::SeqCst);
                 let _ = app.run_on_main_thread(|| FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.orderOut(None); } }));
             }
             last = std::time::Instant::now();
@@ -1094,6 +1094,8 @@ fn follow_loop(app: AppHandle) {
         if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); sent_speed = speed; }
         // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
         if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
+        // M41: once shown, the mouse watch moves it (follow_to_pointer); this loop only shows it and changes its width.
+        if !first && (fr[2] - last_fr[2]).abs() < 0.5 { last_fr = fr; continue; }
         // M37 (the founder: "it lags a bit"): one move waits on the main thread at most. A move that is still queued is not
         // queued again (they used to pile up behind other work and the ring fell behind), and the move reads where the
         // pointer is at the moment it runs, so it is always the latest place, never an old one.
@@ -1113,7 +1115,7 @@ fn follow_loop(app: AppHandle) {
             FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
                 if (pn.frame().size.width - w).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(x, primary_h - (y + h)), NSSize::new(w, h)), true); }
                 else { pn.setFrameOrigin(NSPoint::new(x, primary_h - (y + h))); }
-                if first { pn.orderFrontRegardless(); }
+                if first { pn.orderFrontRegardless(); FOLLOW_LIVE.store(true, Ordering::SeqCst); }
             } });
         });
         // The first time it shows, the page learns the water colour.
@@ -1711,6 +1713,14 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
 static FOLLOW_SAY: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
 /// M37: a move of the water ring is waiting on the main thread (never more than one at a time).
 static FOLLOW_QUEUED: AtomicBool = AtomicBool::new(false);
+/// M41: the ring is on screen now (follow_loop shows and hides it); the mouse watch moves it only then.
+static FOLLOW_LIVE: AtomicBool = AtomicBool::new(false);
+/// M41: put the ring's middle on the pointer now. Main thread, from the mouse watch: the freshest place there is.
+fn follow_to_pointer() {
+    if !FOLLOW_LIVE.load(Ordering::SeqCst) { return; }
+    let m = NSEvent::mouseLocation();   // bottom left points, the same as a window's origin
+    FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() { pn.setFrameOrigin(NSPoint::new(m.x + follow::OFFSET.0 - follow::SIZE / 2.0, m.y - follow::OFFSET.1 - follow::SIZE / 2.0)); } });
+}
 #[tauri::command]
 fn follow_say(app: AppHandle, text: String) {
     let Some(line) = follow::say_line(&text) else { return };
@@ -4458,6 +4468,17 @@ fn main() {
             let follow_p = make_overlay(mtm, follow_ns);
             follow_p.setFrame_display(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(follow::SIZE, follow::SIZE)), false);
             FOLLOW.with(|f| *f.borrow_mut() = Some(follow_p));
+            // M41 (the founder: "ring is laggy"): the ring moves the moment macOS says the mouse moved, on the main thread,
+            // straight to where the pointer is, so it keeps up with the cursor. Only mouse moves and drags are watched (where
+            // the pointer is), never keys and never clicks' content; nothing is kept. A global monitor for mouse events needs
+            // no permission (only key events would need Accessibility, rule 8). Ours (local) and every other app's (global).
+            let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;
+            let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); });
+            let gm = unsafe { NSEvent::addGlobalMonitorForEventsMatchingMask_handler(follow_moves, &follow_global) };
+            std::mem::forget(gm);
+            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); e.as_ptr() });
+            let lm = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(follow_moves, &follow_local) };
+            std::mem::forget(lm);
             // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.
             let island_ns: &NSWindow = unsafe { &*(island_w.ns_window()? as *const NSWindow) };
             let island = make_panel(mtm, island_ns, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(185.0, 32.0)));

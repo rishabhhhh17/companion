@@ -64,7 +64,12 @@ describe("the island window", () => {
   test("notices the pointer only through a tracking area on its own window, and never key events", () => {
     expect(main).toContain("NSTrackingArea");
     expect(main).toMatch(/NSTrackingAreaOptions::MouseEnteredAndExited \| NSTrackingAreaOptions::ActiveAlways \| NSTrackingAreaOptions::InVisibleRect/);
-    expect(main).not.toMatch(/addGlobalMonitorForEvents|NSEventMask::KeyDown|CGEventTap/);
+    // Never key events, never an event tap (rule 8). M41: one global watch is allowed, and only for where the pointer moves
+    // (the water ring keeps up with the cursor): its mask is exactly mouse moves and drags, nothing else.
+    expect(main).not.toMatch(/NSEventMask::KeyDown|NSEventMask::KeyUp|NSEventMask::FlagsChanged|CGEventTap|NSEventMask::Any/);
+    const globals = [...main.matchAll(/addGlobalMonitorForEventsMatchingMask_handler\((\w+),/g)].map((m) => m[1]);
+    expect(globals).toEqual(["follow_moves"]);
+    expect(main).toContain("let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;");
   });
   test(`is hidden with the rest in a full screen app and when the person hides ${PRODUCT}, and shown again after`, () => {
     const tick = fnBody("tick");

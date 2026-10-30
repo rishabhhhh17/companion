@@ -46,10 +46,10 @@ float ring(vec3 p){
   float along = dot(p.xy, d); vec2 perp = p.xy - along * d;
   p.xy = along * d / (1.0 + sp) + perp * (1.0 + 0.5 * sp);
   float a = atan(p.y, p.x);
-  float wave = 0.007 * sin(a * 3.0 + uT * 2.6) + 0.005 * sin(a * 5.0 - uT * 3.4) + 0.04 * sp * sin(a * 2.0 + uT * 6.0);   // small waves: it stays a round ring
-  wave += uVoice * (0.026 * sin(a * 6.0 - uT * 9.0) + 0.014 * sin(a * 9.0 + uT * 13.0));   // M39: speaking, the water ripples with the voice
-  float tube = 0.088 + 0.016 * sin(a * 4.0 - uT * 2.0) + 0.02 * uPulse + 0.03 * uVoice;
-  return sdTorus(p, vec2(0.5 + 0.05 * uPulse + wave, tube));
+  float wave = 0.005 * sin(a * 3.0 + uT * 2.6) + 0.0035 * sin(a * 5.0 - uT * 3.4) + 0.028 * sp * sin(a * 2.0 + uT * 6.0);   // small waves: it stays a round ring
+  wave += uVoice * (0.018 * sin(a * 6.0 - uT * 9.0) + 0.01 * sin(a * 9.0 + uT * 13.0));   // M39: speaking, the water ripples with the voice
+  float tube = 0.06 + 0.01 * sin(a * 4.0 - uT * 2.0) + 0.015 * uPulse + 0.02 * uVoice;   // M41: finer (the founder: "the ring needs to be smaller")
+  return sdTorus(p, vec2(0.34 + 0.04 * uPulse + wave, tube));
 }
 vec3 nrm(vec3 p){ vec2 e = vec2(0.001, 0.0); return normalize(vec3(ring(p+e.xyy)-ring(p-e.xyy), ring(p+e.yxy)-ring(p-e.yxy), ring(p+e.yyx)-ring(p-e.yyx))); }
 float box(vec3 d, vec3 c, vec2 sz, float soft){ vec3 z = normalize(c); vec3 x = normalize(cross(vec3(0.0,1.0,0.0), z)); vec3 y = cross(z, x);
