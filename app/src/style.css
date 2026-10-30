@@ -148,6 +148,8 @@ html.home-page, body.home-page { background: transparent; }
 /* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a big readable card that sits on the
    black: a slightly lighter black, a hairline, a large corner, and it rises in on the spring when it arrives. */
 .home .view .panel { background: var(--card); border-radius: var(--r-lg); padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-3); border: 1px solid rgba(255, 255, 255, .06); animation: card-in var(--dur-2) var(--ease-out) both; }
+/* M41 (Resend): a thin rim of light along each card's top edge, like glass catching the light, and a soft shade below. */
+.home .view .panel { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09), 0 10px 30px -18px rgba(0, 0, 0, .8); background-image: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 40%); }
 @keyframes card-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .home .view .panel + .panel { border: 1px solid rgba(255, 255, 255, .06); padding-top: var(--space-4); }
 .home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }
