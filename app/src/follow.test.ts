@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { RING_FRAGMENT, rgb, ringStretch, voiceEnvelope } from "./follow.ts";
+import { RESTING_FRAME_MS, RING_FRAGMENT, rgb, ringNext, ringStretch, voiceEnvelope } from "./follow.ts";
 
 describe("the water ring around the pointer (M37)", () => {
   test("it keeps its ring shape: no stretch when slow, a gentle one along the way it moves when fast, never more than a third", () => {
@@ -20,8 +20,8 @@ describe("the water ring around the pointer (M37)", () => {
     const page = readFileSync(new URL("./follow.ts", import.meta.url), "utf8");
     expect(RING_FRAGMENT).toContain("sdTorus");
     expect(page).toContain("const calm = still();");
-    // Battery: every refresh only while it moves; at rest a slower timer.
-    expect(page).toContain("window.setTimeout(() => frame(performance.now()), RESTING_FRAME_MS)");
+    // Battery: every refresh only while it moves; at rest in Lively a slower timer; otherwise nothing (ringNext below).
+    expect(page).toContain("window.setTimeout(() => frame(performance.now()), n.ms)");
     const html = readFileSync(new URL("../follow.html", import.meta.url), "utf8");
     expect(html).toContain('<canvas class="ring" id="d"');
     expect(html).not.toMatch(/\.(png|jpe?g|gif|svg)\b/);
@@ -47,5 +47,44 @@ describe("the water ring around the pointer (M37)", () => {
     expect(q).toBe(0);
     expect(voiceEnvelope(0.4, NaN, 1 / 60)).toBeLessThan(0.4);
     expect(RING_FRAGMENT).toContain("uVoice");
+  });
+});
+
+// M46 (F28): the ring shows at rest only in Lively, and while listening in every choice (the shell decides, follow.rs
+// shown). This page draws only while shown, and outside Lively schedules nothing at rest.
+describe("the ring page stops when it is put away (M46)", () => {
+  const base = { shown: true, reduced: false, lively: false, moving: false, pulsing: false, voice: false };
+  test("hidden, nothing is scheduled, whatever else is going on", () => {
+    for (const k of ["reduced", "lively", "moving", "pulsing", "voice"] as const) expect(ringNext({ ...base, shown: false, [k]: true }), k).toEqual({ kind: "none" });
+  });
+  test("at rest outside Lively it schedules nothing; in Lively its slow timer", () => {
+    expect(ringNext(base)).toEqual({ kind: "none" });
+    expect(ringNext({ ...base, lively: true })).toEqual({ kind: "timer", ms: RESTING_FRAME_MS });
+  });
+  test("moving, pulsing or hearing a voice: the next refresh, in every choice", () => {
+    for (const k of ["moving", "pulsing", "voice"] as const) for (const lively of [false, true]) expect(ringNext({ ...base, lively, [k]: true })).toEqual({ kind: "frame" });
+  });
+  test("with Reduce motion or Less motion it is drawn still; outside Lively not even a timer", () => {
+    expect(ringNext({ ...base, reduced: true, voice: true })).toEqual({ kind: "none" });
+    expect(ringNext({ ...base, reduced: true, lively: true })).toEqual({ kind: "timer", ms: 250 });
+  });
+  test("the page listens for show and hide, starts with nothing drawn, and freezes its small waves outside Lively", () => {
+    const page = readFileSync(new URL("./follow.ts", import.meta.url), "utf8");
+    expect(page).toContain('void listen("follow-hide", () => { shown = false; halt(); });');
+    expect(page).toContain('void listen("follow-show"');
+    expect(page).toContain("let shown = false, lively = false;");
+    expect(page).toContain("if (lively && !calm) waves += dt;");
+    expect(RING_FRAGMENT).toContain("sin(a * 3.0 + uW * 2.6)");
+    expect(RING_FRAGMENT).toContain("uVoice * (0.018 * sin(a * 6.0 - uT * 9.0)");   // the voice still ripples it
+    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    expect(main).toContain('app.emit_to("follow", "follow-show", json!({ "water": water, "lively": lively }))');
+    expect(main).toContain('app.emit_to("follow", "follow-hide", json!({}))');
+  });
+  test("the line beside the pointer is a flat near black card in the system font", () => {
+    const html = readFileSync(new URL("../follow.html", import.meta.url), "utf8");
+    expect(html).toContain("background:#141416;color:#fff");
+    expect(html).not.toContain("linear-gradient");
+    expect(html).not.toContain("inset 0 1px 0 #fff");
+    expect(html).toContain('-apple-system,"SF Pro Text",system-ui');
   });
 });

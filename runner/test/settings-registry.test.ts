@@ -81,6 +81,8 @@ describe("the shipped list of settings", () => {
       "look.water": "ocean", "look.theme": "night", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
       "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
+      // M46 (F28): Flowflow holds still unless it has news, rests in Low Power Mode, and the Show me how ring lands at once.
+      "character.lively": "still", "character.restLowPower": true, "point.fly": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -100,6 +102,11 @@ describe("the shipped list of settings", () => {
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);
     expect(defOf("character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
     expect(defOf("character.motion")!.options).toEqual(["followMac", "less"]);
+    // M46 (F28): How lively, in the order Settings shows the three choices; Still is the usual one.
+    expect(defOf("character.lively")).toMatchObject({ section: "home", kind: "choice", default: "still", options: ["still", "gentle", "lively"], applies: ["shell", "pages"], store: "settings", live: true });
+    expect(defOf("character.restLowPower")).toMatchObject({ section: "home", kind: "switch", default: true, applies: ["shell", "pages"], store: "settings", live: true });
+    expect(defOf("point.fly")).toMatchObject({ section: "pointing", kind: "switch", default: false, applies: ["shell", "pages"], store: "settings", live: true });
+    expect(defOf("character.lively")!.from).toBeUndefined();
     // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
     for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
     // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.

@@ -5,7 +5,8 @@ import type { FlowflowController } from "./flowflow/controller.ts";
 import { characterName } from "./companion.ts";
 import { useLook } from "./useLook.ts";
 import { play, wantSound, type Cue } from "./sound.ts";
-import { livelyOf, SIZE_SCALE, sizeOf } from "./lookfeel.ts";
+import { livelinessOf, SIZE_SCALE, sizeOf } from "./lookfeel.ts";
+import { useRest } from "./useRest.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
 import { characterWords, motionFor } from "./model.ts";
 import { characterShows } from "./home.ts";
@@ -63,15 +64,18 @@ function Dock() {
   const dropMark = drop.s.hover ? "over" : drop.s.menu?.at === "dock" ? "menu" : undefined;
   // Peeking from past the edge (peek.ts): only a lean toward the screen, as data.
   const peek = usePeek();
-  // The live water (M20): a handle to move it from here, the window's speed felt as jelly lag, Lively's hops, and the eyes
-  // following the pointer anywhere on the screen (the shell sends where it is, only with Follow my pointer on).
+  // M46: rest. The shell's (a call with Quiet during calls, Low Power Mode), or tucked past the edge: it holds still.
+  const shellRest = useRest();
+  // The live water (M20): a handle to move it from here, the window's speed felt as jelly lag, and in Lively the eyes
+  // following the pointer anywhere on the screen (the shell sends where it is only in Lively with Follow my pointer on).
   const ffCtl = useRef<FlowflowController | null>(null);
   const vel = (vx: number, vy: number) => { flow.api.velocity(vx, vy); ffCtl.current?.push(vx, vy); };
-  const reactionsSet = useSetting("fun.reactions"), motionSet = useSetting("character.motion");
-  const lively = livelyOf(reactionsSet, motionSet) === "lively";
-  useEffect(() => { ffCtl.current?.setLively(lively); }, [lively, ffCtl.current]);
+  // M46 (F28): how lively it is (character.lively, Still unless chosen). The pointer is news only in Lively.
+  const liveliness = livelinessOf(useSetting("character.lively"));
+  const livelyNow = useRef(liveliness);
+  livelyNow.current = liveliness;
   useEffect(() => {
-    const off = listen("gaze", (e) => { const g = (e.payload ?? {}) as { dx?: number; dy?: number }; ffCtl.current?.gaze(Number(g.dx), Number(g.dy)); });
+    const off = listen("gaze", (e) => { if (livelyNow.current !== "lively") return; const g = (e.payload ?? {}) as { dx?: number; dy?: number }; ffCtl.current?.gaze(Number(g.dx), Number(g.dy)); });
     return () => { off.then((f) => f()); };
   }, []);
   // Coming in from the edge: the window slides in (peek.rs IN_SECS), the water lags behind it, then splashes as it stops.
@@ -113,6 +117,7 @@ function Dock() {
   // cannot start, or the GPU context is lost, the pictures come back and nothing else about the character changes.
   const liveOn = useSetting("character.live") === true;
   const [liveFailed, setLiveFailed] = useState(false);
+  const live = liveOn && !liveFailed;
   const pose = poseFor(state, { roam: roam.phase, react: react?.r });
   const flow = useFlow({ pose, state, calm: reduced, off: liveOn && !liveFailed });
   const button = useRef<HTMLButtonElement>(null);
@@ -217,13 +222,13 @@ function Dock() {
   }, [state]);
   return (
     <main className="dock" data-drop={dropMark}>
-      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-state={state} data-motion={motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {liveOn && !liveFailed
-          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} onFallback={() => setLiveFailed(true)} /></Suspense>
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
             <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

@@ -209,7 +209,11 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // A finished task: the water splashes, only with reactions on and motion allowed.
     expect(ch).toContain("playful(reactionsOn(), reducedMotion())");
     expect(ch).not.toContain("skins.ts");
-    expect(card).toContain("<HomeCharacter m={m} />");
+    // M46: Home's hidden Flowflow is gone (it drew, out of sight, on every refresh); the first run and Settings keep theirs.
+    expect(card).not.toContain("<HomeCharacter");
+    expect(card).not.toContain("<Waterline");
+    expect(css).not.toContain(".hero .home-char { display: none; }");
+    expect(ch).toContain("liveliness={mode} resting={resting}");
   });
 });
 

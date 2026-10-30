@@ -8,7 +8,7 @@ import { allScreensOn, voiceHint as talkKeysLine } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
 import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, settlesBeforeLook, waitsForPage } from "./anywhere.ts";
 import { EVERYDAY_ASK, checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown } from "./everyday.ts";
-import { answerPlayer, leadMs, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
+import { answerPlayer, flightFor, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
@@ -26,9 +26,7 @@ import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { HOME_PLACES, bringBackCan, heroWords, placeAfter, stopCan, undoCan } from "./homeHero.ts";
-import { HomeCharacter } from "./homeCharacter.tsx";
 import { approvalWords } from "./approvals.ts";
-import { Waterline } from "./waterline.tsx";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
@@ -964,7 +962,8 @@ function Card() {
       const aim = (s: Step) => invoke("showme_aim", {
         req, x: s.target.x, y: s.target.y, ocrId: s.target.ocrId ?? null, targetText: s.target.targetText, caption: s.target.caption,
         mark: s.target.mark ?? null, screen: s.target.screen ?? 1, step: s.index + 1, of: s.total, hold: s.hold,
-        flyMs: s.total > 1 ? leadMs(pace) : null, fadeMs: lineMs(s.text, speaking, speed, pace),
+        // M46: a flight time only with Fly to the place first on; otherwise the lead in is a plain pause between steps.
+        flyMs: flightFor(s.total, setting("point.fly"), pace), fadeMs: lineMs(s.text, speaking, speed, pace),
       }).then((r) => {
         const out = r as { ok?: boolean; why?: string } | undefined;
         // The window the picture was taken of changed: nothing more is drawn over it (rule 22). Say so in words.
@@ -1527,10 +1526,9 @@ function Card() {
           </div>
           {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
           <ClaudeNotice />
-      {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
+      {/* Now: the job in big words. M46: the hidden Flowflow and its water that stood here are gone (it lives on the edge of
+          the screen); M48's one column Home decides whether a visible one comes back. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
-        <Waterline />
-        <HomeCharacter m={m} />
         <div className="hero-words">
           <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
           <p className="subline">{hero.line}</p>

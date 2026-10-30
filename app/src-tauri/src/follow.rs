@@ -46,7 +46,56 @@ pub fn say_line(text: &str) -> Option<String> {
 }
 
 /// Whether the ring is wanted: only with "drop" chosen (the setting's id from M20; Settings calls it the water ring now).
-pub fn wanted(v: &serde_json::Value) -> bool { v.as_str() == Some("drop") }
+/// Nothing set (Null) is the usual one, the water ring.
+pub fn wanted(v: &serde_json::Value) -> bool { v.is_null() || v.as_str() == Some("drop") }
+
+/// M46 (F28): How lively is Lively (character.lively). Nothing set, or a word it does not know, is the usual Still.
+pub fn is_lively(v: &serde_json::Value) -> bool { v.as_str() == Some("lively") }
+
+/// M46 (F28): whether the water ring is on the pointer now. Never while Companion is hidden, never while a ring points at a
+/// place (that ring is the ring: Show me how or Point at the problem; spec section 0 item 4), and only with A water ring
+/// chosen (`follow`; No means nothing, not even while it listens). Then: always while it listens, in every choice, and at
+/// rest only in Lively and not while `quiet` (on a call or presenting, or resting in Low Power Mode). Still and Gentle keep
+/// it off at rest.
+pub fn shown(lively: &serde_json::Value, follow: &serde_json::Value, listening: bool, pointing: bool, quiet: bool, hidden: bool) -> bool {
+    if hidden || pointing || !wanted(follow) { return false; }
+    listening || (is_lively(lively) && !quiet)
+}
+
+/// What a thread that watches the pointer does next. Tick: again after this many milliseconds. Park: sleep with no timer
+/// until it is woken (main.rs follow_wake, gaze_wake). ParkFor: sleep until it is woken or this many milliseconds pass.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Next { Tick(u64), Park, ParkFor(u64) }
+
+/// The ring's thread: TICK_MS ticks while the ring is shown. While a ring points at a place and would go by itself in
+/// `busy_left_ms` (one that waits for a click, or that is kept, has none: putting it away wakes the thread), it sleeps that
+/// long, but only when the water ring would show once it is gone. Otherwise it sleeps until woken.
+pub fn next(shown: bool, busy_left_ms: Option<u64>, ring_otherwise_wanted: bool) -> Next {
+    if shown { return Next::Tick(TICK_MS); }
+    match busy_left_ms { Some(ms) if ring_otherwise_wanted => Next::ParkFor(ms.max(1)), _ => Next::Park }
+}
+
+/// The ring's page learns that the ring shows only from follow-show, and it cannot ask the shell (it only listens). Events
+/// are not kept: a follow-show sent before the page's listeners are up (at launch the ring can show in Lively before its
+/// page has loaded) is lost, and the ring would stay blank while it shows. So for RESHOW_MS after the page finishes
+/// loading, while the ring shows, the thread tells it again every RESHOW_EVERY ticks (about every 100 ms). After that,
+/// nothing more is sent.
+pub const RESHOW_MS: u64 = 1_500;
+pub const RESHOW_EVERY: u64 = 12;
+pub fn reshow(shown: bool, tick: u64, since_load_ms: Option<u64>) -> bool {
+    shown && tick % RESHOW_EVERY == 0 && since_load_ms.is_some_and(|ms| ms <= RESHOW_MS)
+}
+
+/// M46: after a Your turn click, the drop flies back to the character and confetti may play only in Lively with Little
+/// reactions on (fun.reactions) and no Reduce motion or Less motion. Otherwise the ring turns green, the tick draws, and
+/// nothing flies home.
+pub fn flies_home(lively: &serde_json::Value, reactions: &serde_json::Value, reduced: bool) -> bool {
+    is_lively(lively) && reactions.as_bool() != Some(false) && !reduced
+}
+
+/// M46: Fly to the place first (point.fly). Off (the usual), the Show me how ring shows at the place at once, with no drop
+/// leaving the character and no poke on it.
+pub fn flies(v: &serde_json::Value) -> bool { v.as_bool() == Some(true) }
 
 /// The ring: its middle and the speed it reports, in global top left points.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -86,7 +135,71 @@ mod tests {
     #[test]
     fn only_a_drop_of_water_wants_it() {
         assert!(wanted(&json!("drop")));
-        for v in [json!("eyes"), json!("off"), serde_json::Value::Null] { assert!(!wanted(&v), "{v}"); }
+        assert!(wanted(&serde_json::Value::Null), "nothing set is the usual one, the water ring");
+        for v in [json!("eyes"), json!("off"), json!(true)] { assert!(!wanted(&v), "{v}"); }
+    }
+
+    #[test]
+    fn the_ring_shows_at_rest_only_in_lively_and_while_listening_in_every_choice() {
+        let null = serde_json::Value::Null;
+        let (still, gentle, lively, drop) = (json!("still"), json!("gentle"), json!("lively"), json!("drop"));
+        // At rest: Still and Gentle keep it off, Lively shows it. Nothing set is Still.
+        assert!(!shown(&still, &drop, false, false, false, false));
+        assert!(!shown(&gentle, &drop, false, false, false, false));
+        assert!(!shown(&null, &drop, false, false, false, false));
+        assert!(!shown(&json!("calm"), &drop, false, false, false, false), "an unknown word is Still");
+        assert!(shown(&lively, &drop, false, false, false, false));
+        assert!(shown(&lively, &null, false, false, false, false), "nothing set for what follows is the water ring");
+        // Listening shows it in every choice with the water ring.
+        for l in [&still, &gentle, &lively, &null] { assert!(shown(l, &drop, true, false, false, false), "{l}"); }
+        // Its eyes and No never show it, not even while listening.
+        for f in [json!("eyes"), json!("off")] {
+            for l in [&still, &gentle, &lively] { for listening in [false, true] { assert!(!shown(l, &f, listening, false, false, false), "{l} {f} {listening}"); } }
+        }
+        // A ring pointing at a place is the ring, and hidden always hides it.
+        for l in [&still, &lively] { for listening in [false, true] {
+            assert!(!shown(l, &drop, listening, true, false, false), "pointing: {l} {listening}");
+            assert!(!shown(l, &drop, listening, false, false, true), "hidden: {l} {listening}");
+            assert!(!shown(l, &drop, listening, false, true, true), "hidden and quiet: {l} {listening}");
+        } }
+        // On a call (or resting): Lively's ring at rest goes, the listening ring stays.
+        assert!(!shown(&lively, &drop, false, false, true, false));
+        assert!(shown(&lively, &drop, true, false, true, false));
+        assert!(shown(&still, &drop, true, false, true, false));
+    }
+
+    #[test]
+    fn the_rings_thread_ticks_only_while_shown_and_otherwise_sleeps() {
+        assert_eq!(next(true, None, true), Next::Tick(TICK_MS));
+        assert_eq!(next(true, Some(500), true), Next::Tick(8));
+        assert_eq!(next(false, None, false), Next::Park);
+        assert_eq!(next(false, None, true), Next::Park, "a ring that waits for a click: putting it away wakes the thread");
+        assert_eq!(next(false, Some(4_000), true), Next::ParkFor(4_000), "a ring that goes by itself: back when it is gone");
+        assert_eq!(next(false, Some(4_000), false), Next::Park, "nothing to come back for in Still at rest");
+        assert_eq!(next(false, Some(0), true), Next::ParkFor(1));
+    }
+
+    #[test]
+    fn a_page_that_loads_under_a_ring_already_shown_is_told_again_for_a_moment_then_never() {
+        assert!(reshow(true, RESHOW_EVERY, Some(0)), "the page just loaded under a shown ring");
+        assert!(reshow(true, RESHOW_EVERY * 5, Some(RESHOW_MS)));
+        assert!(!reshow(true, RESHOW_EVERY + 1, Some(10)), "only every few ticks");
+        assert!(!reshow(true, RESHOW_EVERY, Some(RESHOW_MS + 1)), "once the page has had time, nothing more is sent");
+        assert!(!reshow(true, RESHOW_EVERY, None), "before the page has loaded there is nobody to tell");
+        assert!(!reshow(false, RESHOW_EVERY, Some(0)), "a ring that is not shown is not shown again");
+        assert!(RESHOW_EVERY * TICK_MS <= 100 && RESHOW_MS >= 1_000);
+    }
+
+    #[test]
+    fn the_drop_flies_home_only_in_lively_with_reactions_and_motion_and_flies_out_only_when_chosen() {
+        let null = serde_json::Value::Null;
+        assert!(flies_home(&json!("lively"), &json!(true), false));
+        assert!(flies_home(&json!("lively"), &null, false), "Little reactions is on unless turned off");
+        assert!(!flies_home(&json!("lively"), &json!(false), false));
+        assert!(!flies_home(&json!("lively"), &json!(true), true), "Reduce motion or Less motion");
+        for l in [json!("still"), json!("gentle"), null.clone()] { assert!(!flies_home(&l, &json!(true), false), "{l}"); }
+        assert!(flies(&json!(true)));
+        for v in [json!(false), null, json!("on")] { assert!(!flies(&v), "{v}"); }
     }
 
     #[test]
@@ -124,12 +237,55 @@ mod tests {
         assert_eq!(d.frame(), [100.0 - SIZE / 2.0, 50.0 - SIZE / 2.0, SIZE, SIZE]);
     }
 
+    fn fn_body<'a>(main: &'a str, start: &str) -> &'a str {
+        let b = &main[main.find(start).unwrap_or_else(|| panic!("{start}"))..];
+        &b[..b.find("\n}\n").map(|i| i + 2).unwrap_or(b.len())]
+    }
+
+    #[test]
+    fn the_rings_thread_sleeps_with_no_timer_while_the_ring_is_not_shown() {
+        let main = include_str!("main.rs");
+        let body = fn_body(main, "fn follow_loop(");
+        assert!(body.contains("follow::shown(") && body.contains("follow::next("), "{body}");
+        assert!(body.contains("setting_now(\"character.follow\")") && body.contains("setting_now(\"character.lively\")"));
+        assert!(body.contains("listening_now()") && body.contains("overlay_busy()") && body.contains("companion_hidden()") && body.contains("REST.load("));
+        assert!(body.contains("FOLLOW_THREAD.set(std::thread::current())"), "it can be woken from the moment it reads");
+        // The not shown path: the window is put away once, the page is told to draw nothing, then it parks. No sleep on it.
+        let at = body.find("follow::Next::Park").expect("a park branch");
+        let hidden = &body[at..at + body[at..].find("continue;").expect("the park branch ends with continue")];
+        assert!(hidden.contains("std::thread::park()") && hidden.contains("std::thread::park_timeout("), "{hidden}");
+        assert!(hidden.contains("\"follow-hide\"") && hidden.contains("FOLLOW_LIVE.store(false"), "{hidden}");
+        assert!(!hidden.contains("sleep("), "no timer on the not shown path: {hidden}");
+        assert!(body.contains("\"follow-show\""), "the page is told once when it shows");
+        // A page that loads under a ring already shown is told again (reshow), before any early continue skips it.
+        let re = body.find("follow::reshow(shown, tick, ").expect("the page is told again after it loads");
+        assert!(re < body.find("let p = macos_see::pointer();").unwrap(), "{body}");
+        assert!(body.contains("FOLLOW_PAGE_AT.load("));
+        let make = &main[main.find("let follow_w = ").unwrap()..];
+        let make = &make[..make.find(".build()?;").unwrap()];
+        assert!(make.contains("on_page_load(") && make.contains("PageLoadEvent::Finished") && make.contains("FOLLOW_PAGE_AT.store(") && make.contains("follow_wake()"), "{make}");
+        // The only sleep is the tick while it is shown.
+        assert_eq!(body.matches("sleep(").count(), 1, "{body}");
+        assert!(body.contains("follow::Next::Tick(ms) => std::thread::sleep(Duration::from_millis(ms))"));
+        // Everything that can show it again wakes it.
+        assert!(fn_body(main, "fn listening(").contains("follow_wake()"));
+        let worker = fn_body(main, "fn voice_worker(");
+        let (light, wake) = (worker.find("say_voice(&app, \"listening\", LISTENING, json!({}));").unwrap(), worker.find("follow_wake();").expect("the worker wakes the ring"));
+        assert!(light < wake, "rule 5: the light is lit first, then the listening ring wakes");
+        for f in ["fn draw_pointer_with(", "fn hide_overlay(", "fn point_cancel(", "fn home_setting_applied(", "fn set_user_hidden(", "fn rest_tick("] {
+            assert!(fn_body(main, f).contains("follow_wake()"), "{f}");
+        }
+        let draw = fn_body(main, "fn draw_pointer_with(");
+        assert!(draw.find("OVERLAY_BUSY_UNTIL.store(until").unwrap() < draw.find("follow_wake()").unwrap(), "woken after the busy time is set");
+        assert!(fn_body(main, "fn tick(").matches("follow_wake()").count() >= 2, "hidden for a full screen app and shown again");
+        // The mouse watch costs nothing while the ring is away: it returns at once.
+        assert!(fn_body(main, "fn follow_to_pointer(").contains("if !FOLLOW_LIVE.load(Ordering::SeqCst) { return; }"));
+    }
+
     #[test]
     fn the_shell_moves_it_only_when_wanted_and_hides_it_under_a_ring() {
         let main = include_str!("main.rs");
-        let body = &main[main.find("fn follow_loop(").unwrap()..];
-        let body = &body[..body.find("\n}\n").unwrap()];
-        assert!(body.contains("follow::wanted(&setting_now(\"character.follow\"))"));
+        let body = fn_body(main, "fn follow_loop(");
         assert!(body.contains("overlay_busy()"), "it steps aside while a pointer ring is up");
         assert!(body.contains("macos_see::pointer()"));
         assert!(!body.contains("log("), "the pointer's place is never written down");

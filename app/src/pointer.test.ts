@@ -44,3 +44,41 @@ describe("how long a ring that does not wait stays (rule 22)", () => {
     expect(flightMs(1e9, "slower")).toBeLessThan(ringMsOf(5000));   // the flight is part of the ring's time, never on top of it
   });
 });
+
+// M46: the words beside the ring live in strings.ts (rule 21), and the plain lettering is the Mac's own system face.
+import { S } from "./strings.ts";
+import { captionStyle, guessWords } from "./pointer.ts";
+describe("the pointer's words and lettering (M46)", () => {
+  test("a ring that is not exact: the caption, then the hint, as two sentences, never a run on", () => {
+    expect(S.pointer.aroundHere("Open the Format menu")).toBe("Open the Format menu. Somewhere around here.");
+    expect(S.pointer.aroundHere("Click Save.")).toBe("Click Save. Somewhere around here.");
+    expect(S.pointer.aroundHere("Is it this one? ")).toBe("Is it this one? Somewhere around here.");
+  });
+  test("every word comes from S.pointer, none typed in the pages", () => {
+    expect(notSureWords("Save", "Click it.")).toBe(`${S.pointer.notSure} ${S.pointer.lookFor("Save")} Click it.`);
+    expect(guessWords("Save", "")).toBe(`${S.pointer.guessing} ${S.pointer.lookFor("Save")}`);
+    const o = readFileSync(new URL("./overlay.ts", import.meta.url), "utf8"), p = readFileSync(new URL("./pointer.ts", import.meta.url), "utf8");
+    for (const gone of ['"Your turn: "', '" (around here)"', '"That\'s it."']) expect(o, gone).not.toContain(gone);
+    expect(p).not.toContain("I am only guessing where");
+    expect(o).toContain("S.pointer.yourTurn(words)");
+    expect(o).toContain("S.pointer.aroundHere");
+    expect(o).toContain("cap.textContent = S.pointer.done;");
+  });
+  test("plain captions use the system face; the caption and the talk captions in overlay.html too, with a short ease out", () => {
+    expect(captionStyle("plain", "standard").font).toContain("-apple-system");
+    expect(captionStyle("plain", "standard").font).not.toContain("Rounded");
+    expect(captionStyle("handwritten", "standard").font).toContain("Bradley Hand");   // still a choice
+    const html = readFileSync(new URL("../overlay.html", import.meta.url), "utf8");
+    expect(html).not.toContain("SF Pro Rounded");
+    expect(html).not.toContain("cubic-bezier(.34,1.56,.64,1)");   // no overshoot
+    expect(html).toContain("transform .2s cubic-bezier(.23,1,.32,1)");
+  });
+  test("with Fly to the place first off, the ring lands at once: no bud, arc, trail or squash", () => {
+    const o = readFileSync(new URL("./overlay.ts", import.meta.url), "utf8");
+    const show = o.slice(o.indexOf("function show("), o.indexOf('void listen("overlay-point"'));
+    const atOnce = show.indexOf("if (!fly) { land(); return; }");
+    expect(atOnce).toBeGreaterThan(0);
+    for (const flight of ["bud(", "arcAt(", "trail.push(", "LAND_MS"]) expect(show.indexOf(flight), flight).toBeGreaterThan(atOnce);
+    expect(show).toContain('const fly = setting("point.fly") === true');
+  });
+});

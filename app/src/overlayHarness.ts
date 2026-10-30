@@ -49,9 +49,12 @@ function advance(ms: number) {
   while (clock < end) { clock = Math.min(end, clock + 16); const due = frames; frames = []; for (const f of due) f(clock); }
 }
 const fire = (ev: string, payload: unknown = null) => listeners.get(ev)?.({ payload });
-const state = (name: string) => ({ name, captionOn: cap.classList.contains("on"), caption: cap.textContent, drawn: svg.querySelectorAll("ellipse, path, g").length });
+const state = (name: string) => ({ name, captionOn: cap.classList.contains("on"), caption: cap.textContent, drawn: svg.querySelectorAll("ellipse, path, g").length, ellipses: svg.querySelectorAll("ellipse").length, pending: frames.length });
+const snap = (values: Record<string, unknown>) => ({ values, usual: {}, project: "", migrated: ["pageStorage.v1"], problems: [], changed: [] });
+/** M46: the flight is the opt in Fly to the place first (point.fly); these scenarios turn it on to keep it covered. */
+const FLY = snap({ "point.fly": true });
 
-const point = (caption: string, x: number) => ({ rect: { x, y: 300, w: 80, h: 30 }, from: { x: 20, y: 20 }, caption, exact: true, hold: true, reduced: false, flyMs: 600, settings: null });
+const point = (caption: string, x: number, settings: unknown = FLY) => ({ rect: { x, y: 300, w: 80, h: 30 }, from: { x: 20, y: 20 }, caption, exact: true, hold: true, reduced: false, flyMs: 600, settings });
 
 await import("./overlay.ts");
 const out: unknown[] = [];
@@ -89,5 +92,34 @@ for (const e of svg.querySelectorAll("ellipse")) e.remove();
 fire("overlay-party", { x: 1300, y: 800, settings: null });
 advance(100);
 out.push(state("party with a caption and no ring"));
+
+// M46: with Fly to the place first off (the usual), the ring shows at the place at once: the caption is on as soon as the
+// ring is ordered, and no drop is drawn at all (only the ring's own line).
+fire("overlay-clear");
+fire("overlay-point", point("Click Save", 700, snap({})));
+out.push(state("no fly: at once"));
+// Outside Lively the ring draws in, then holds still: nothing is scheduled while it waits for the click.
+advance(1000);
+out.push(state("no fly: held still"));
+// A ring that is not exact: the runner's short caption (no full stop) and the hint read as two sentences.
+fire("overlay-clear");
+fire("overlay-point", { ...point("Open the Format menu", 700, snap({})), exact: false });
+out.push(state("not exact"));
+// With the flight on, mid flight there is a drop on the way, and no caption yet.
+fire("overlay-clear");
+fire("overlay-point", point("Click Save", 700));
+advance(200);
+out.push(state("fly: on the way"));
+// In Lively a held ring keeps its gentle wobble (frames keep coming).
+fire("overlay-clear");
+fire("overlay-point", point("Click Save", 700, snap({ "character.lively": "lively" })));
+advance(1000);
+out.push(state("lively: wobbles"));
+// A right click outside Lively: the ring turns green with the tick and the words, and nothing bursts or flies home.
+fire("overlay-clear");
+fire("overlay-point", point("Click Save", 700, snap({})));
+advance(400);
+fire("overlay-celebrate", { rect: { x: 700, y: 300, w: 80, h: 30 }, home: null, settings: snap({ "fun.reactions": true }) });
+out.push({ ...state("celebrate: still"), splash: svg.querySelectorAll("g.splash").length });
 
 for (const o of out) console.log(JSON.stringify(o));

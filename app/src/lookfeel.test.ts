@@ -1,7 +1,7 @@
 // Look and feel (lookfeel.ts): the waters, the themes, how lively, the size.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { applyLook, flowColours, hueTurn, livelyOf, livelySettings, sizeOf, SIZE_SCALE, themeOf, waterOf, waterVars, WATERS, WATER_TINTS } from "./lookfeel.ts";
+import { applyLook, flowColours, hueTurn, livelinessOf, LIVELINESS, sizeOf, SIZE_SCALE, themeOf, waterOf, waterVars, WATERS, WATER_TINTS } from "./lookfeel.ts";
 
 const lum = (hex: string) => { const n = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((s) => (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4)); return 0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]; };
 const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
@@ -59,15 +59,22 @@ describe("Home's theme", () => {
   });
 });
 
-describe("how lively, in one control", () => {
-  test("reads what is in force and writes the two settings it stands for", () => {
-    expect(livelyOf(true, "followMac")).toBe("lively");
-    expect(livelyOf(false, "followMac")).toBe("calm");
-    expect(livelyOf(true, "less")).toBe("still");
-    expect(livelySettings("lively")).toEqual([["fun.reactions", true], ["character.motion", "followMac"]]);
-    expect(livelySettings("calm")).toEqual([["fun.reactions", false], ["character.motion", "followMac"]]);
-    expect(livelySettings("still")).toEqual([["fun.reactions", false], ["character.motion", "less"]]);
-    for (const l of ["lively", "calm", "still"] as const) { const [[, r], [, m]] = livelySettings(l); expect(livelyOf(r, m)).toBe(l); }
+describe("how lively (M46, F28): Still, Gentle or Lively, one key of its own", () => {
+  test("the registry has its own key, Still by default, the three choices in order, and no mapping from the old ones", () => {
+    expect(def("character.lively")).toMatchObject({ default: "still", options: ["still", "gentle", "lively"], kind: "choice", live: true });
+    expect((def("character.lively") as { from?: unknown }).from).toBeUndefined();
+    expect(LIVELINESS).toEqual(["still", "gentle", "lively"]);
+  });
+  test("anything that is not one of the three reads as Still, the usual: nothing old turns motion on", () => {
+    for (const v of ["still", "gentle", "lively"] as const) expect(livelinessOf(v)).toBe(v);
+    for (const bad of [null, undefined, "", "calm", "Lively", true, false, 1, {}, "less", "followMac"]) expect(livelinessOf(bad)).toBe("still");
+  });
+  test("the old two setting mapping is gone, and Less motion and reactions keep their own keys", () => {
+    const src = readFileSync(new URL("./lookfeel.ts", import.meta.url), "utf8");
+    expect(src).not.toContain("livelyOf");
+    expect(src).not.toContain("livelySettings");
+    expect(def("character.motion")).toMatchObject({ default: "followMac" });
+    expect(def("fun.reactions")).toMatchObject({ default: true });
   });
 });
 
@@ -79,5 +86,50 @@ describe("the character's size", () => {
     expect(156 * SIZE_SCALE.large).toBeLessThanOrEqual(180);
     const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
     expect(main).toContain("const DOCK: (f64, f64) = (160.0, 160.0);");
+  });
+});
+
+// M46 (F28): where How lively shows, and its words.
+import { PAGES, PAGE_KEYS } from "./settingsPages.ts";
+import { MAIN } from "./settingsLevel.ts";
+import { S } from "./strings.ts";
+describe("How lively in Settings (M46)", () => {
+  test("it sits on the Flowflow page next to Follow my pointer, with Rest in Low Power Mode; Less motion and reactions stay under Advanced", () => {
+    const keys = PAGES.character.keys;
+    expect(keys).toContain("character.lively"); expect(keys).toContain("character.restLowPower");
+    expect(Math.abs(keys.indexOf("character.lively") - keys.indexOf("character.follow"))).toBe(1);
+    expect(MAIN.has("fun.reactions")).toBe(false); expect(MAIN.has("character.motion")).toBe(false);
+    expect(def("character.restLowPower")).toMatchObject({ default: true, kind: "switch" });
+    expect(def("point.fly")).toMatchObject({ default: false, kind: "switch" });
+  });
+  test("its words: a label, help, a short line and all three choices, plain, with no dash", () => {
+    const w = S.set["character.lively"] as { label: string; help: string; options: Record<string, string> };
+    expect(w.label).toBe("How lively");
+    expect(Object.keys(w.options)).toEqual(["still", "gentle", "lively"]);
+    expect(S.short["character.lively"]).toBe("Still unless it has news. Gentle sways a little. Lively follows your pointer.");
+    for (const t of [w.label, w.help, S.short["character.lively"], ...Object.values(w.options), S.set["character.restLowPower"].help, S.set["point.fly"].help, S.set["character.follow"].help]) expect(t).not.toMatch(/[–—]/);
+    expect(S.set["character.live"].help).not.toContain("eyes that follow your pointer");
+    expect(S.set["calls.quiet"].help).toContain("The notch does not open by itself during a call either, and the character holds still.");
+    expect(S.lively).toEqual({ still: "Still", gentle: "Gentle", lively: "Lively" });
+  });
+  test("the page rows say only what is true in Still, the usual (page rows show the short line, never the help)", () => {
+    expect(S.short["character.follow"]).toBe("What follows your pointer when How lively is Lively.");
+    expect(S.short["character.restLowPower"]).toBe("Holds still while your Mac saves power.");
+    const follow = S.set["character.follow"] as { help: string; options: Record<string, string> };
+    expect(follow.help).toContain(`${follow.options.off}: nothing follows`);   // the option is named as it reads
+    expect(follow.help).toContain("never what you type or what is on the screen, and never kept");
+    expect(S.set["fun.reactions"].help).not.toContain("Small moves of the character when a check passes or fails");
+    for (const t of [S.short["character.follow"], S.short["character.restLowPower"], S.set["fun.reactions"].help]) expect(t).not.toMatch(/[–—]/);
+  });
+  test("every setting on a page has a short line (Shortcuts has its own editor)", () => {
+    expect(PAGE_KEYS.filter((k) => k !== "keys.hotkeys" && !S.short[k as keyof typeof S.short])).toEqual([]);
+  });
+  test("the Settings hero's three buttons read and write character.lively only, and its Flowflow shows the choice at once", () => {
+    const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    const hero = page.slice(page.indexOf("function CompanionHero("), page.indexOf("/** Google (M21"));
+    expect(hero).toContain('livelinessOf(useSetting("character.lively"))');
+    expect(hero).toContain('changeSetting("character.lively", l)');
+    expect(hero).toContain("<HomeCharacter as={as} liveliness={lively} />");
+    expect(hero).not.toMatch(/fun\.reactions|character\.motion/);
   });
 });

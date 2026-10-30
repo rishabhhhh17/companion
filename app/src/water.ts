@@ -7,7 +7,11 @@ import { WATER_TINTS, waterOf } from "./lookfeel.ts";
 
 export type Pt = { x: number; y: number };
 
-/** How long each part takes (ms): the bud swells and pinches off, the drop squashes on arrival, and spreads into the ring. */
+/** M46: the ring shows at the place at once (Fly to the place first, point.fly, is off unless chosen): it draws in over
+ *  this long, easing out with no overshoot (ringIn), then holds. */
+export const RING_IN_MS = 240;
+/** How long each part takes (ms), with Fly to the place first on: the bud swells and pinches off, the drop squashes on
+ *  arrival, and spreads into the ring. */
 export const SPLIT_MS = 560;
 export const LAND_MS = 240;
 export const SPREAD_MS = 700;
@@ -80,6 +84,8 @@ export function arcAt(from: Pt, to: Pt, e: number, hop = false): Pt {
 /** A spring that overshoots a little and settles (0 to 1 over t from 0 to 1): the ring spreading out like water. */
 export function settle(t: number): number { const x = Math.min(1, Math.max(0, t)); return x >= 1 ? 1 : 1 - Math.exp(-6 * x) * Math.cos(9 * x); }
 export function easeOut(t: number): number { return 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3); }
+/** M46: how far the ring has drawn in (0 to 1 over t from 0 to 1): an ease out that never passes 1, never a spring. */
+export function ringIn(t: number): number { return easeOut(t); }
 export function easeInOut(t: number): number { const x = Math.min(1, Math.max(0, t)); return x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; }
 
 /** The water's colours. The usual is Flowflow's own water; a ring colour chosen in Settings (red, yellow or blue) tints it,

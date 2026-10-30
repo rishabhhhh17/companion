@@ -112,6 +112,12 @@ mod tests {
         assert!(f.contains("if !free() || quiet() || companion_hidden() { return; }"), "{f}");
         let on_main = &f[f.find("run_on_main_thread(").unwrap()..];
         assert!(on_main.contains("if !free() || companion_hidden() || POINT_GEN.load(SeqCst) != gen { return; }"), "{on_main}");
+        // M46: outside Lively, or with reactions off or less motion, nothing would be drawn, so the overlay never comes forward.
+        let gate = f.find("if !follow::is_lively(&setting_now(\"character.lively\")) { return; }").expect("Lively is checked before the main thread hop");
+        assert!(gate < f.find("run_on_main_thread(").unwrap(), "{f}");
+        assert!(f.contains("follow::flies_home(&setting_now(\"character.lively\"), &setting_now(\"fun.reactions\"), reduce_motion())"), "{f}");
+        let front = on_main.find("orderFrontRegardless()").unwrap();
+        assert!(on_main.find("if !plays() { return; }").unwrap() < front, "{on_main}");
     }
     #[test]
     fn a_picture_kept_until_closed_never_keeps_the_character_beside_a_window() {

@@ -6,7 +6,7 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
-import { ARM_MS, answerHere, armed, greeting, islandJobs, panelNote, PANEL_DO, type JobCard } from "./islandPanel.ts";
+import { ARM_MS, answerHere, armed, cardReady, greeting, islandJobs, panelNote, PANEL_DO, type JobCard } from "./islandPanel.ts";
 import { keyHint, keysFrom, setKeysNow } from "./keys.ts";
 import { answerApproval } from "./commands.ts";
 import type { Model } from "./model.ts";
@@ -14,37 +14,53 @@ import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 
-/** `brief` (M26): the panel opened by itself (a question, or a moment of work), so it shows only the cards; the pointer
- *  opens the whole panel. */
-type Props = { m: Model; line: string; shown: boolean; brief?: boolean };
+/** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only the cards; the
+ *  pointer opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line
+ *  only (the bare notch shows nothing at rest). */
+type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?: number };
 
 // M33: the Mac account's first name for the greeting, asked once.
 let firstName: string | null = null;
 void invoke("first_name").then((v) => { firstName = typeof v === "string" && v ? v : null; }).catch(() => {});
 void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
-export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief }, ref) {
+export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0 }, ref) {
   // What the panel shows and its size (M19, Look and feel): the hello, the work, the quick actions, usual or compact.
   const showHello = useSetting("panel.showHello") !== false, showWork = useSetting("panel.showWork") !== false, showButtons = useSetting("panel.showButtons") !== false;
   const compact = useSetting("panel.size") === "compact";
   const jobs = showWork || brief ? islandJobs(m) : [];
   const tab = shown ? 0 : -1;
   const note = panelNote(line, jobs);
-  // M23: when each question's card was first seen with the panel open; its buttons wait ARM_MS from then.
+  // M23: when each card was first seen with the panel open; a question's buttons wait ARM_MS from then (M46: in a panel
+  // that opened by itself, every card does, cardReady).
   const seen = useRef(new Map<string, number>());
   const [now, setNow] = useState(() => Date.now());
-  const asks = jobs.filter((j) => j.approval).map((j) => j.key).join(" ");
+  const keys = jobs.map((j) => j.key).join(" ");
   useEffect(() => {
     if (!shown) { seen.current.clear(); return; }
     const t = Date.now();
-    for (const k of asks.split(" ").filter(Boolean)) if (!seen.current.has(k)) seen.current.set(k, t);
+    for (const k of keys.split(" ").filter(Boolean)) if (!seen.current.has(k)) seen.current.set(k, t);
     setNow(t);
-    if (!asks) return;
+    if (!keys) return;
     const id = setTimeout(() => setNow(Date.now()), ARM_MS + 20);
     return () => clearTimeout(id);
-  }, [shown, asks]);
+  }, [shown, keys]);
+  // M46: opened by itself, the whole panel ignores every click for its first ARM_MS (Look first, a result card, Allow and
+  // Don't allow alike), and keeps that moment if the pointer then rests on it. Opened by the pointer, it is ready at once.
+  const openedAt = useRef<number | null>(null);
+  if (!shown) openedAt.current = null;
+  else if (brief && openedAt.current === null) openedAt.current = Date.now();
+  const selfOpened = openedAt.current;
+  useEffect(() => {
+    if (selfOpened === null) return;
+    const id = setTimeout(() => setNow(Date.now()), Math.max(0, selfOpened + ARM_MS + 20 - Date.now()));
+    return () => clearTimeout(id);
+  }, [selfOpened]);
+  const ready = () => openedAt.current === null || armed(openedAt.current, Date.now());
+  const cardOk = (key: string, at: number) => cardReady(openedAt.current, seen.current.get(key) ?? null, at);
+  const click = (key: string, f: () => void) => () => { if (!ready() || !cardOk(key, Date.now())) return; f(); };
   const answer = (j: JobCard, allow: boolean) => {
-    if (!j.approval || !armed(seen.current.get(j.key) ?? null, Date.now())) return;
+    if (!ready() || !j.approval || !armed(seen.current.get(j.key) ?? null, Date.now())) return;
     void invoke("send_command", { cmd: answerApproval(j.approval, allow) }).catch(() => {});
   };
   // A question waiting comes before the big key: it is the one thing that needs the person now (M23).
@@ -54,18 +70,18 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         <li key={j.key}>
           <div className="ip-job ip-ask" data-tone={j.tone} data-armed={armed(seen.current.get(j.key) ?? null, now) ? "yes" : undefined}>
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
-            <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>
+            <span className="ip-text"><b>{j.title}</b><span>{j.code ? <code>{j.sub}</code> : j.sub}</span></span>
             <span className="ip-answer">
               {j.here ?? answerHere(j.risk ?? "") ? <>
                 <button className="ip-no" type="button" tabIndex={tab} aria-label={`${S.dontAllow}: ${j.title}`} onClick={() => answer(j, false)}>{S.dontAllow}</button>
                 <button className="ip-yes" type="button" tabIndex={tab} aria-label={`${S.allow}: ${j.title}`} onClick={() => answer(j, true)}>{S.allow}</button>
-              </> : <button className="ip-yes" type="button" tabIndex={tab} onClick={() => void invoke("island_click").catch(() => {})}>{S.panel.lookFirst}</button>}
+              </> : <button className="ip-yes" type="button" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>{S.panel.lookFirst}</button>}
             </span>
           </div>
         </li>
       ) : (
         <li key={j.key}>
-          <button className="ip-job" type="button" data-tone={j.tone} tabIndex={tab} onClick={() => void invoke("island_click").catch(() => {})}>
+          <button className="ip-job" type="button" data-tone={j.tone} data-armed={cardOk(j.key, now) ? "yes" : undefined} tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}>
             <FlowMini className="ip-agent" state={j.state} still={!shown} />
             <span className="ip-text"><b>{j.title}</b><span>{j.sub}</span></span>
             {j.cost && <span className="ip-cost">{j.cost}</span>}
@@ -74,8 +90,9 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       ))}
     </ul>;
   return (
-    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+    <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {brief ? list : <>
+      {unseen > 0 && <p className="ip-new">{S.panel.newCount(unseen)}</p>}
       {showHello && jobs.length === 0 && !note && <div className="ip-hello"><p className="ip-hi">{greeting(new Date().getHours(), firstName)}</p><p className="ip-talk">{keyHint("talk", S.panel.talkLine)}</p></div>}
       {asking && list}
       <button className="ip-go" type="button" tabIndex={tab} onClick={() => void invoke("open_card_cmd").catch(() => {})}>

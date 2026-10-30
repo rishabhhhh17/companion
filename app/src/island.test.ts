@@ -320,12 +320,39 @@ describe("the fun island", () => {
     const { islandWings } = await import("./home.ts");
     expect(islandWings(run([up, key]))).toBeNull();
     expect(islandWings(run([ev({ type: "app.runner_down" })])), "engine stopped: bare notch, the line says why").toBeNull();
+    // The runner's own checking keeps the arc; only looking at the screen gets the look mark (M46).
     const want: [string, string, string][] = [["thinking", "thinking", "dots"], ["working", "working", "arc"], ["checking", "checking", "arc"], ["needsYou", "needsYou", "amber"], ["done", "done", "tick"], ["error", "error", "red"]];
     for (const [s, state, mark] of want) expect(islandWings(run([up, key, st(s)])), s).toEqual({ state, mark } as never);
     expect(islandWings(run([up, key, listening]))).toEqual({ state: "listening", mark: "bars" });
     expect(islandWings(run([up, key, st("working"), approval]))).toEqual({ state: "needsYou", mark: "amber" });
     // Rule 5: the microphone's light is never covered, not even by a question waiting.
     expect(islandWings(run([up, key, st("working"), approval, listening]))).toEqual({ state: "listening", mark: "bars" });
+  });
+  // M46, rule 5: the notch's own light for "looking at your screen", lit by the stage the shell announces 250 ms before each
+  // capture (Show me how, and each walkthrough step). Never for Point at the problem or the runner's own checks.
+  test("looking at the screen has its own mark, ahead of everything but listening", async () => {
+    const { islandWings, islandLine, islandName, looksAtScreen } = await import("./home.ts");
+    const looking = ev({ type: "app.showme", stage: "looking", message: "Looking at your screen" });
+    expect(islandWings(run([up, key, looking]))).toEqual({ state: "checking", mark: "look" });
+    expect(islandWings(run([up, key, st("working"), approval, looking])), "even with a question waiting").toEqual({ state: "checking", mark: "look" });
+    expect(islandWings(run([up, key, st("working"), looking])), "even with a task working").toEqual({ state: "checking", mark: "look" });
+    expect(islandWings(run([up, key, looking, listening])), "listening comes first").toEqual({ state: "listening", mark: "bars" });
+    expect(looksAtScreen(run([up, key, looking]))).toBe(true);
+    // Point at the problem's check and the runner's own checks are not captures: they keep the turning arc.
+    expect(islandWings(run([up, key, ev({ type: "ui.findProblem" })]))).toEqual({ state: "checking", mark: "arc" });
+    expect(islandWings(run([up, key, st("checking")]))).toEqual({ state: "checking", mark: "arc" });
+    expect(looksAtScreen(run([up, key, ev({ type: "ui.findProblem" })]))).toBe(false);
+    // The line and the name say it, ahead of what is being worked on.
+    const m = run([up, key, ev({ type: "checkpoint.created", project: "/p", agent: "a", checkpoint: "cp_1", label: "Before: fix it", files: 1, skipped: [] }), st("working"), looking]);
+    expect(islandLine(m)).toBe(S.islandLooking);
+    expect(islandName(islandLine(m))).toContain(S.islandLooking);
+    // Drawn as a still light: a ring with a dot in the middle, no animation.
+    const page = read("./island.tsx"), css = read("./style.css");
+    expect(page).toContain('w.mark === "look" ? <svg');
+    const look = /\.island-wing \.mark\[data-mark="look"\][^{]*\{([^}]*)\}/.exec(css);
+    expect(look, "a look mark rule").not.toBeNull();
+    expect(look![1]).not.toMatch(/animation/);
+    expect(css).not.toMatch(/\[data-mark="look"\][^{]*\{[^}]*animation:(?! none)/);
   });
   test("the done tick shows for four seconds, then the wings tuck back into the bare notch", async () => {
     const { islandWings, wingsAt, DONE_WINGS_MS } = await import("./home.ts");
@@ -461,5 +488,49 @@ describe("the notch panel never cuts off its keys (better-interface review, 30 O
   });
   test("an answer that is not armed yet does not look pressed", () => {
     expect(css).toContain(".island-panel .ip-ask:not([data-armed]) .ip-answer button:active { transform: none; }");
+  });
+});
+
+// M46 (F28, F18): the notch is the bare notch at rest, results drop by themselves once, a self opened card ignores clicks
+// for a moment, and amber pulses three times then holds.
+describe("the bare notch (M46)", () => {
+  const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+  const page = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
+  test("no sun and no count at rest: the window is the notch, and the count is in the hover panel", () => {
+    expect(page).not.toContain("island-sun");
+    expect(page).not.toContain("sun-lime.svg");
+    expect(css).not.toContain(".island-sun");
+    expect(css).not.toContain("island-sun-in");
+    expect(page).not.toContain("island-unseen");
+    expect(page).toContain("const shapeW = shape.w;");
+    const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("S.panel.newCount(");
+    expect(S.panel.newCount(3)).toBe("3 new");
+    expect(S.panel.newCount(12)).toBe("9+ new");
+  });
+  test("brief and hover panels are one width, the island's PANEL_W, and plain words under a question use the system font", () => {
+    expect(css).not.toMatch(/\.island-panel\[data-brief\] \{[^}]*width:/);
+    expect(css).not.toMatch(/\.ip-text span \{[^}]*ui-monospace/);
+    expect(css).toMatch(/\.ip-text span code \{[^}]*ui-monospace/);   // only the exact command or path
+  });
+  test("needs you pulses three times, then holds steady, on the notch and on the pictures; never forever", () => {
+    expect(css).toMatch(/\.island-wing \.mark\[data-state="needsYou"\] \{[^}]*island-needsYou-pulse 1\.6s ease-in-out 200ms 3 both/);
+    expect(css).not.toMatch(/island-needsYou-pulse[^;]*infinite/);
+    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-pose\]\[data-motion="glow"\] \{ animation: pose-glow 1\.8s ease-in-out 3; \}/);
+    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-motion="glow"\] \{ animation: glow 1\.8s ease-in-out 3; \}/);
+    expect(css).not.toMatch(/(pose-glow|glow) 1\.8s ease-in-out infinite/);
+    // Each new question pulses again: the mark is keyed on how many wait.
+    expect(page).toContain("key={`${w.mark}:${count}`}");
+    expect(page).toContain("<Mark w={w} count={m.approvals.length} />");
+  });
+  test("the wing ignores clicks for a moment after it grows by itself, as a self opened card does", () => {
+    expect(page).toContain("ARM_MS");
+    expect(page).toMatch(/selfGrown/);
+    expect(page).toContain("if (!armed(grownAt, Date.now())) return;");
+  });
+  test("it never drops by itself for a start, a step or a cost: only a proven fix or a failure (resultPeekKey)", () => {
+    expect(page).toContain("resultPeekKey(islandJobs(m))");
+    expect(page).not.toContain("workPeekKey");
+    expect(page).toContain("const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);");
   });
 });

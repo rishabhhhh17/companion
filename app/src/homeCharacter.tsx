@@ -9,7 +9,8 @@ import { lookState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useSetting } from "./settingsStore.ts";
-import { flowColours, waterOf } from "./lookfeel.ts";
+import { flowColours, livelinessOf, waterOf, type Liveliness } from "./lookfeel.ts";
+import { useRest } from "./useRest.ts";
 
 // With "Draw live" on (character.live), the founder's live water (src/flowflow/), loaded only then, as on the desktop.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
@@ -18,8 +19,9 @@ const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ def
  *  joins it there and it clings to the surface, as water meeting water does. */
 const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
 
-/** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). */
-export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
+/** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). `liveliness`:
+ *  a choice to show at once instead of the one in force (the Settings hero, while its press reaches the shell). */
+export function HomeCharacter({ m, as, liveliness }: { m?: Model; as?: CharacterState; liveliness?: Liveliness }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // A finished task that is not proven is drawn at rest, never with the done look (M45, model.ts lookState).
@@ -31,6 +33,9 @@ export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
   const colours = flowColours(waterOf(water));
   const [liveFailed, setLiveFailed] = useState(false);
   const live = liveOn && !liveFailed;
+  // M46 (F28): how lively it is, and the shell's rest (a call, Low Power Mode).
+  const mode = liveliness ?? livelinessOf(useSetting("character.lively"));
+  const resting = useRest();
   const flow = useFlow({ pose, state, calm: reduced, off: live });
   const box = useRef<HTMLDivElement>(null);
   // A task that just finished: a ripple and droplets from the middle of the water, once.
@@ -47,7 +52,7 @@ export function HomeCharacter({ m, as }: { m?: Model; as?: CharacterState }) {
     <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>
       {live
-        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} onFallback={() => setLiveFailed(true)} /></Suspense>
+        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} liveliness={mode} resting={resting} onFallback={() => setLiveFailed(true)} /></Suspense>
         : <>
           {!flow.failed && <canvas ref={flow.canvasRef} className="home-flow" />}
           <img className={`home-pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

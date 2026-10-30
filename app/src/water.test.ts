@@ -105,3 +105,15 @@ describe("the pointer's style and size (M19)", () => {
     expect(readFileSync(new URL("../overlay.html", import.meta.url), "utf8")).toContain(".cap.white{background:#fff;color:#000;");
   });
 });
+
+// M46: without the flight, the ring draws in over RING_IN_MS and never overshoots (a spring would wobble past it).
+import { RING_IN_MS, ringIn } from "./water.ts";
+describe("the ring draws in at the place (M46)", () => {
+  test("it eases out from 0 to exactly 1, rising all the way, never past 1", () => {
+    expect(RING_IN_MS).toBe(240);
+    expect(ringIn(0)).toBe(0); expect(ringIn(1)).toBe(1); expect(ringIn(2)).toBe(1); expect(ringIn(-1)).toBe(0);
+    let prev = 0;
+    for (let t = 0.01; t <= 1; t += 0.01) { const v = ringIn(t); expect(v).toBeGreaterThanOrEqual(prev); expect(v).toBeLessThanOrEqual(1); prev = v; }
+    expect(ringIn(0.5)).toBeGreaterThan(0.5);   // an ease out: most of the way early
+  });
+});

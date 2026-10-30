@@ -5,7 +5,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { captionPlace, captionStyle, flightMs, GUESS_LOOK, guessWords, notSureWords, paceFactor, RING_MS, ringLook, ringMsOf } from "./pointer.ts";
-import { afterMs, AFTER_MS, leadMs, LEAD_MS, lineMs, planSteps, play, startTimes, type Target } from "./sequence.ts";
+import { afterMs, AFTER_MS, flightFor, leadMs, LEAD_MS, lineMs, planSteps, play, startTimes, type Target } from "./sequence.ts";
 import { alsoSayLines, lineFor } from "./speech.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { appAnswersFrom, answerOp, forgetAllCount, needsConfirm, neverFrontOp } from "./appanswers.ts";
@@ -57,7 +57,8 @@ describe("Ring colour (point.colour) and Ring lettering (point.lettering)", () =
     expect(ringLook("nonsense", true)).toEqual(ringLook("orange", true));
   });
   test("plain lettering at the usual text size is today's caption exactly; handwriting and bigger text are bigger", () => {
-    expect(captionStyle("plain", "standard")).toEqual({ font: '700 15px ui-rounded, "SF Pro Rounded", -apple-system, sans-serif', maxWidth: 300, reserveW: 320, reserveH: 60 });
+    // M46: plain words in the Mac's own system face; handwriting stays a choice.
+    expect(captionStyle("plain", "standard")).toEqual({ font: '700 15px -apple-system, "SF Pro Text", system-ui, sans-serif', maxWidth: 300, reserveW: 320, reserveH: 60 });
     expect(captionStyle(undefined, undefined)).toEqual(captionStyle("plain", "standard"));
     const hand = captionStyle("handwritten", "standard");
     expect(hand.font).toContain("Bradley Hand");
@@ -168,7 +169,11 @@ describe("Pace of step by step pointing (point.pace)", () => {
   test("the card plays and says the steps at the chosen pace, and the overlay flies at it", () => {
     const card = src("./card.tsx");
     expect(card).toContain('const pace = setting("point.pace");');
-    expect(card).toContain("flyMs: s.total > 1 ? leadMs(pace) : null, fadeMs: lineMs(s.text, speaking, speed, pace),");
+    expect(card).toContain('flyMs: flightFor(s.total, setting("point.fly"), pace), fadeMs: lineMs(s.text, speaking, speed, pace),');
+    // M46: a flight time only for a step of several with Fly to the place first on; otherwise none, and the lead in stays a pause.
+    expect(flightFor(3, true, "slower")).toBe(leadMs("slower"));
+    expect(flightFor(1, true)).toBeNull();
+    for (const off of [false, undefined, null, "true"]) expect(flightFor(3, off)).toBeNull();
     expect(card).toContain("player.current.start(steps, { aim, words }, speaking, speed, pace);");
     expect(src("./overlay.ts")).toContain('flightMs(dist, setting("point.pace"))');
     expect(lineFor({ walk: null, showme: { stage: "pointing", message: "Here", req: "r", step: 1, of: 2 } }, undefined, "slower")?.delayMs).toBe(leadMs("slower"));

@@ -2,9 +2,21 @@
 // feeds them what the page and the pointer say, and shuts everything down cleanly. It listens to the pointer without ever
 // taking it: nothing here stops a click, a drag or a key from reaching the window's own handlers.
 import type { CharacterState } from "../model.ts";
-import { FlowflowEngine, type Side } from "./engine.ts";
+import type { Liveliness } from "../lookfeel.ts";
+import { FlowflowEngine, type Side, type Snapshot } from "./engine.ts";
 import { FlowflowRenderer } from "./renderer.ts";
 import type { Tuning } from "./physics.ts";
+
+/** What the controller asks of a renderer (FlowflowRenderer; the tests give a stand in that only counts frames). */
+export type RendererLike = {
+  halfW: number; halfH: number;
+  render(s: Snapshot): void;
+  setSize(cssW: number, cssH: number, dpr: number): void;
+  toWorld(px: number, py: number): { x: number; y: number };
+  setColours(light: string, deep: string): void;
+  setMode?(m: Liveliness): void;
+  dispose(): void;
+};
 
 export type ControllerOptions = {
   canvas: HTMLCanvasElement;
@@ -18,14 +30,26 @@ export type ControllerOptions = {
   seed?: number;
   /** Called when the GPU context is lost, so the page can go back to the pictures. */
   onFallback?: () => void;
+  /** M46: a small Flowflow (the notch's wing): working draws at WORK_INTERVAL in every choice, Lively included. */
+  small?: boolean;
+  /** Tests only: a renderer to use instead of starting WebGL. */
+  renderer?: RendererLike;
 };
 
-/** Frame intervals (seconds) for the resting moods, to spend little when nothing is happening. */
-// M38 (battery): 20 a second while it only sways at rest; its slow liquid motion looks the same, the GPU works a third less.
-const IDLE_INTERVAL = 1 / 20, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
+/** Frame intervals (seconds), to spend little when nothing is happening. Lively keeps today's: every refresh while awake,
+ *  15 a second asleep (M38's 20 a second at rest applied only when Lively was off, which Still now replaces). */
+const SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
+/** M46 (F28, F04's idle budget): no frame and no timer at all. */
+export const PARK = -1;
+/** Gentle's cap at rest. [verify] against F04's budget on a real Mac (spec M46 section 10). */
+export const GENTLE_INTERVAL = 1 / 12;
+/** Working, thinking and checking in Still and Gentle; the notch's small Flowflow in every choice. */
+export const WORK_INTERVAL = 1 / 30;
+/** Still parks this long after the last news, once the state allows it. */
+export const NO_NEWS_MS = 3000;
 
 export class FlowflowController {
-  readonly engine: FlowflowEngine; private renderer: FlowflowRenderer;
+  readonly engine: FlowflowEngine; private renderer: RendererLike;
   private opts: ControllerOptions;
   private raf = 0; private timer: ReturnType<typeof setTimeout> | null = null; private last = 0; private acc = 0;
   private visible = true; private disposed = false; private reduced: boolean;
@@ -33,15 +57,21 @@ export class FlowflowController {
   private dprMql: MediaQueryList | null = null;
   private gaps: number[] = []; private costs: number[] = []; private ftIdx = 0; private lastDrawn = 0;
   private cleanups: (() => void)[] = [];
-  private lastPointer = -Infinity;
+  /** M46: when the last news came (a state change, a touch, a press, a move of its window, pointing, listening, a new
+   *  liveliness, the end of a rest). The pointer is news only in Lively. */
+  private lastNews = -Infinity;
+  /** The app's state as last told (listening is the one state that runs during rest, rule 5). */
+  private app: CharacterState | null = null;
+  /** M46: resting (a call, Low Power Mode, tucked away): one still frame, no loop, except while listening. */
+  private resting = false;
 
   /** Returns null when WebGL cannot start (the caller keeps the picture poses). */
   static create(opts: ControllerOptions): FlowflowController | null {
-    const r = FlowflowRenderer.create(opts.canvas);
+    const r = opts.renderer ?? FlowflowRenderer.create(opts.canvas);
     return r ? new FlowflowController(opts, r) : null;
   }
 
-  private constructor(opts: ControllerOptions, renderer: FlowflowRenderer) {
+  private constructor(opts: ControllerOptions, renderer: RendererLike) {
     this.opts = opts; this.renderer = renderer; this.reduced = !!opts.reduced;
     this.engine = new FlowflowEngine(opts.tuning ?? {}, opts.seed ?? 7);
     if (opts.followRange !== undefined) this.engine.followRange = opts.followRange;
@@ -66,27 +96,50 @@ export class FlowflowController {
   give(dx: number, dy: number): void {
     if (this.reduced || this.disposed) return;
     const n = Math.hypot(dx, dy) || 1;
-    this.engine.touch((dx / n) * 0.7, (-dy / n) * 0.7); this.lastPointer = performance.now(); this.resumeOrPause();
+    this.engine.touch((dx / n) * 0.7, (-dy / n) * 0.7); this.news();
   }
   /** The drop comes home: it lands on top and ripples through. */
   catch(): void {
     if (this.reduced || this.disposed) return;
-    this.engine.touch(0, 0.6); this.lastPointer = performance.now(); this.resumeOrPause();
+    this.engine.touch(0, 0.6); this.news();
   }
 
-  /** Alive on the side (M20): the pointer anywhere on the screen, its window moving, coming in from the edge, and Lively. */
-  gaze(dx: number, dy: number): void { if (this.disposed || this.reduced) return; this.engine.gaze(dx, dy); this.lastPointer = performance.now(); this.resumeOrPause(); }
-  push(vx: number, vy: number): void { if (this.disposed || this.reduced) return; this.engine.push(vx, vy); this.lastPointer = performance.now(); this.resumeOrPause(); }
-  arrive(fromX: number, fromY = 0): void { if (this.disposed || this.reduced) return; this.engine.arrive(fromX, fromY); this.lastPointer = performance.now(); this.resumeOrPause(); }
+  /** Alive on the side (M20): the pointer anywhere on the screen. M46: only in Lively; otherwise nothing at all happens
+   *  (no eye target, no frame), so a pointer crossing the screen never wakes a parked character. */
+  gaze(dx: number, dy: number): void { if (this.disposed || this.reduced || this.engine.mode !== "lively") return; this.engine.gaze(dx, dy); this.resumeOrPause(); }
+  /** Its window moving and coming in from the edge are news: the person moved it. */
+  push(vx: number, vy: number): void { if (this.disposed || this.reduced) return; this.engine.push(vx, vy); this.news(); }
+  arrive(fromX: number, fromY = 0): void { if (this.disposed || this.reduced) return; this.engine.arrive(fromX, fromY); this.news(); }
   /** M37c: the surface the water clings to, and how hard it is pushed into it (engine.ts Surface). */
-  setSurface(side: Side | null, at = 1, cling = 0): void { if (this.disposed) return; this.engine.setSurface(side, at, cling); if (this.reduced) this.still(); else this.resumeOrPause(); }
-  press(amount: number): void { if (this.disposed) return; this.engine.press(amount); if (this.reduced) this.still(); else { this.lastPointer = performance.now(); this.resumeOrPause(); } }
-  setLively(on: boolean): void { this.engine.lively = on; if (on) this.resumeOrPause(); }
+  setSurface(side: Side | null, at = 1, cling = 0): void { if (this.disposed) return; this.engine.setSurface(side, at, cling); this.nudge(); }
+  press(amount: number): void { if (this.disposed) return; this.engine.press(amount); if (!this.reduced) this.lastNews = performance.now(); this.nudge(); }
+  /** M46 (F28): Still, Gentle or Lively. A new choice is news, so it shows at once and then follows its own rule. */
+  setLiveliness(m: Liveliness): void {
+    if (this.disposed) return;
+    const changed = this.engine.mode !== m;
+    this.engine.mode = m;
+    if (changed) { this.renderer.setMode?.(m); this.measure(); }
+    this.news();
+  }
+  /** M46: rest (a call with Quiet during calls, Low Power Mode, tucked away). One still frame and no loop, except while
+   *  listening: rule 5's light is never stilled. Leaving rest is news. */
+  setResting(r: boolean): void {
+    if (this.disposed || r === this.resting) return;
+    this.resting = r;
+    if (this.restingNow()) { this.stop(); this.still(); } else { this.lastNews = performance.now(); this.resumeOrPause(); }
+  }
 
   /** The water's colours (lookfeel.ts flowColours). */
-  setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); if (this.reduced) this.still(); else this.resumeOrPause(); }
+  setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); this.nudge(); }
 
-  setState(s: CharacterState): void { this.engine.applyApp(s); if (this.reduced) this.still(); else this.resumeOrPause(); }
+  /** The app's state. A real change is news; the same state again is not. */
+  setState(s: CharacterState): void {
+    if (this.disposed) return;
+    const changed = s !== this.app;
+    this.app = s; this.engine.applyApp(s);
+    if (changed && !this.reduced) this.lastNews = performance.now();
+    this.nudge();
+  }
   setTuning(t: Partial<Tuning>): void { this.engine.setTuning(t); if (this.reduced) this.still(); }
   setReduced(r: boolean): void { if (r === this.reduced) return; this.reduced = r; if (r) { this.stop(); this.still(); } else this.resumeOrPause(); }
 
@@ -98,7 +151,12 @@ export class FlowflowController {
     return { intervalMs: iv, renderMs: avg(this.costs), fps: iv > 0 ? 1000 / iv : 0, frames: n };
   }
 
-  private active(): boolean { return !this.disposed && !this.reduced && this.visible && !document.hidden; }
+  private restingNow(): boolean { return this.resting && this.app !== "listening"; }
+  private active(): boolean { return !this.disposed && !this.reduced && this.visible && !document.hidden && !this.restingNow(); }
+  /** Something happened that the person should see: it moves at once, then follows its rule. */
+  private news(): void { this.lastNews = performance.now(); this.resumeOrPause(); }
+  /** Show a change: a still frame when it may not move (less motion, or resting), else the loop. */
+  private nudge(): void { if (this.reduced || this.restingNow()) { this.stop(); this.still(); } else this.resumeOrPause(); }
   private resumeOrPause(): void { if (this.active()) this.start(); else this.stop(); }
   private start(): void {
     if (this.raf || this.disposed) return;
@@ -108,11 +166,35 @@ export class FlowflowController {
   }
   private stop(): void { if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; } if (this.timer) { clearTimeout(this.timer); this.timer = null; } }
 
+  /** Seconds until the next frame (0: the next refresh), or PARK: no frame and no timer until news. */
   private interval(): number {
     const e = this.engine, st = e.behavior.state;
-    if (st === "sleeping") return SLEEP_INTERVAL;
-    const quiet = st === "idle" && !e.lively && e.body.settled && e.droplets.alive === 0 && e.ripples.alive === 0 && performance.now() - this.lastPointer > 4000;
-    return quiet ? IDLE_INTERVAL : 0;
+    if (this.opts.small && st === "working" && !this.restingNow()) return WORK_INTERVAL;   // the notch's wing, in every choice
+    if (e.mode === "lively") return st === "sleeping" ? SLEEP_INTERVAL : 0;   // today's rule
+    if (this.restingNow()) return PARK;
+    if (this.parkable()) return PARK;
+    if (st === "working") return WORK_INTERVAL;
+    if (st === "idle" || st === "sleeping") return e.mode === "gentle" ? GENTLE_INTERVAL : 0;
+    return 0;   // a touch, listening, a flash: every refresh
+  }
+  /** M46: may it stop drawing? Only once nothing is moving and nothing is due: no news for NO_NEWS_MS, a state that holds
+   *  still (rest, sleep, a dull error, needs you after its pulses), no flash, the body and the press at rest, no drop or
+   *  ripple alive, the eyes open, and in Still at rest no sway left. Gentle never parks at rest: it sways at its cap. */
+  private parkable(): boolean {
+    const e = this.engine, st = e.behavior.state, rest = st === "idle" || st === "sleeping";
+    if (e.mode === "lively" || (e.mode === "gentle" && rest)) return false;
+    if (performance.now() - this.lastNews < NO_NEWS_MS) return false;
+    if (!(rest || st === "error" || (st === "needsYou" && e.behavior.pulsesDone))) return false;
+    if (!e.body.settled || !e.pressSettled || e.droplets.alive !== 0 || e.ripples.alive !== 0 || e.face.blinking) return false;
+    return !(e.mode === "still" && rest && e.sway !== 0);
+  }
+
+  private draw(now: number): void {
+    const t0 = performance.now();
+    this.renderer.render(this.engine.update(this.acc)); this.acc = 0;
+    const t1 = performance.now();
+    if (this.lastDrawn > 0 && now - this.lastDrawn < RESUME_GAP_MS) { this.gaps[this.ftIdx] = now - this.lastDrawn; this.costs[this.ftIdx] = t1 - t0; this.ftIdx = (this.ftIdx + 1) % 120; }
+    this.lastDrawn = now;
   }
 
   private loop = (now: number): void => {
@@ -120,13 +202,9 @@ export class FlowflowController {
     const gap = now - this.last; this.last = now;
     // After a suspension (a long gap) nothing is simulated: the body carries on from where it was.
     this.acc += gap > RESUME_GAP_MS ? 0 : gap / 1000;
-    if (this.acc >= this.interval()) {
-      const t0 = performance.now();
-      this.renderer.render(this.engine.update(this.acc)); this.acc = 0;
-      const t1 = performance.now();
-      if (this.lastDrawn > 0 && now - this.lastDrawn < RESUME_GAP_MS) { this.gaps[this.ftIdx] = now - this.lastDrawn; this.costs[this.ftIdx] = t1 - t0; this.ftIdx = (this.ftIdx + 1) % 120; }
-      this.lastDrawn = now;
-    }
+    // M46: parked. One last frame (its sway is already nothing), then nothing is scheduled until news wakes it.
+    if (this.interval() === PARK) { this.draw(now); this.stop(); return; }
+    if (this.acc >= this.interval()) this.draw(now);
     // Resting (M25): wake only when the next frame is due, not at every refresh of the screen (up to 120 a second), so the
     // same calm water costs a fraction of the work in a window that is on all day. Anything that happens wakes it at once.
     const iv = this.interval();
@@ -156,16 +234,17 @@ export class FlowflowController {
   }
 
   private onMove(e: PointerEvent): void {
-    this.lastPointer = performance.now();
+    if (this.disposed || this.engine.mode !== "lively") return;   // M46: the pointer is news only in Lively
     const r = this.opts.canvas.getBoundingClientRect(); if (!(r.width > 0)) return;
     const span = Math.max(r.width, r.height) * 1.2;
     this.engine.pointer(((e.clientX - (r.left + r.width / 2)) / span) * 2, (-(e.clientY - (r.top + r.height / 2)) / span) * 2);
-    if (this.reduced) this.still();
+    if (this.reduced) this.still(); else this.resumeOrPause();
   }
   private onDown(e: PointerEvent): void {
+    if (this.disposed) return;
     const r = this.opts.canvas.getBoundingClientRect(); if (!(r.width > 0)) return;
     const w = this.renderer.toWorld(e.clientX - r.left, e.clientY - r.top), p = this.engine.body.pose;
-    this.engine.touch(w.x - p.x, w.y - p.y); this.lastPointer = performance.now();
+    this.engine.touch(w.x - p.x, w.y - p.y); this.lastNews = performance.now();
     if (!this.raf) this.resumeOrPause();
   }
 

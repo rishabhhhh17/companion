@@ -2,6 +2,7 @@
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
 import { switchKey, type SwitchedId } from "./groups.ts";
+import type { Liveliness } from "./lookfeel.ts";
 
 // The first run (M18, 28 Oct 2026, the whole flow): a hello, then see it work before anything is asked (F17, F05: a demo runs
 // before anything is connected), then choose your companion and make it yours, say what it should help with, connect Claude,
@@ -21,19 +22,19 @@ export const LEVEL: Record<Step, number> = { hello: 34, look: 10, pick: 24, your
 
 /** Make it yours: the name (empty keeps the character's own), how lively, and which edge it lives on. Null: not chosen here,
  *  so the setting is left as it is (the person may have moved the character already). */
-export type Lively = "lively" | "calm";
 export type Edge = "left" | "right" | "top" | "bottom";
 export type Follow = "eyes" | "drop" | "off";
-export type Yours = { name: string; lively: Lively | null; edge: Edge | null; follow?: Follow | null };
+/** `follow`: no longer asked in the first run (M46); kept so an old answer still reads, and null writes nothing. */
+export type Yours = { name: string; lively: Liveliness | null; edge: Edge | null; follow?: Follow | null };
 export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null, follow: null };
 export const NAME_MAX = 24;
-/** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), the reactions for
- *  how lively, and the edge. Only what was chosen. */
+/** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), how lively
+ *  (character.lively, M46), and the edge. Only what was chosen. */
 export function yoursSettings(y: Yours, ownName: string): [string, unknown][] {
   const out: [string, unknown][] = [];
   const name = y.name.trim().slice(0, NAME_MAX);
   if (name && name !== ownName) out.push(["character.name", name]);
-  if (y.lively) out.push(["fun.reactions", y.lively === "lively"]);
+  if (y.lively) out.push(["character.lively", y.lively]);
   if (y.edge) out.push(["character.edge", y.edge]);
   // Follow my pointer (M20): its eyes, a drop of water, or off; the person's choice.
   if (y.follow) out.push(["character.follow", y.follow]);

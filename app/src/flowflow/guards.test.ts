@@ -60,3 +60,46 @@ describe("how it reaches the app", () => {
     expect(read("view.tsx")).toContain("onFallback");
   });
 });
+
+// M46 (F28): the resting sway is the only motion at rest, scaled by the choice, on its own clock.
+describe("how lively reaches the drawing (M46)", () => {
+  test("the point sway, the side waves and the base spread all multiply uSway and run on uSwayTime", () => {
+    const sh = read("shaders.ts");
+    const body = sh.slice(sh.indexOf("float body(vec3 p){"), sh.indexOf("return d * 0.8;"));
+    const sway = body.split("\n").filter((l) => /sways like poured liquid|slow waves running up|base spreads and gathers/.test(l));
+    expect(sway.length).toBe(3);
+    for (const l of sway) { expect(l).toContain("calmed * uSway"); expect(l).toContain("uSwayTime"); expect(l).not.toContain("uTime"); }
+    expect(sh).toContain("uniform float uSway;"); expect(sh).toContain("uniform float uSwayTime;");
+  });
+  test("the renderer sets the sway from the snapshot, draws drops in the body's colour space, and caps Gentle at 2x", () => {
+    const r = read("renderer.ts");
+    expect(r).toContain("u.uSway.value = s.sway; u.uSwayTime.value = s.swayTime;");
+    expect(r).toContain("uColA: { value: asWritten(AQUA) } }");
+    expect(r).toContain("this.dropMat.uniforms.uColA.value = asWritten(new Color(light));");
+    expect(r).toContain("Math.min(this.gentle ? 2 : 3,");
+  });
+  test("the idle tricks are gone from the engine", () => {
+    const e = read("engine.ts");
+    for (const gone of ["IDLE_ACTS", "HOP_EVERY", "idleLife", "pickAct", "playAct", "idleDone"]) expect(e, gone).not.toContain(gone);
+  });
+});
+
+// M46: the old CSS motions are for the pictures only. The live drawing (the dock's button with data-live) never takes an
+// animation or a tilt from the stylesheet: it moves itself, and holds still at rest unless Gentle or Lively is chosen.
+describe("the live drawing takes no CSS motion (M46)", () => {
+  const css = readFileSync(join(dir, "..", "style.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules: { sel: string; body: string; media: string }[] = [];
+  { let i = 0, media = "";
+    const walk = (text: string, m: string) => { let k = 0; while (k < text.length) { const open = text.indexOf("{", k); if (open < 0) break; let depth = 0, close = open; for (; close < text.length; close++) { if (text[close] === "{") depth++; else if (text[close] === "}" && --depth === 0) break; } const head = text.slice(k, open).trim(), body = text.slice(open + 1, close); if (head.startsWith("@media")) walk(body, head); else if (!head.startsWith("@")) for (const sel of head.split(",")) rules.push({ sel: sel.trim(), body, media: m }); k = close + 1; } };
+    walk(css, media); void i; }
+  test("no animation or rotate rule can match .character[data-live]", () => {
+    const moving = rules.filter((r) => !/prefers-reduced-motion/.test(r.media) && /^(:root\[[^\]]+\] )?\.character(?![\w-])/.test(r.sel) && !r.sel.includes(":not([data-live])")
+      && (/(^|;)\s*animation(-name)?:(?!\s*none)/.test(r.body) || /(^|;)\s*rotate:(?!\s*none)/.test(r.body)));
+    expect(moving.map((r) => r.sel)).toEqual([]);
+  });
+  test("the dock marks the live drawing, and gives it no data-motion", () => {
+    const dock = readFileSync(join(dir, "..", "dock.tsx"), "utf8");
+    expect(dock).toContain('data-live={live ? "on" : undefined}');
+    expect(dock).toContain("data-motion={live ? undefined : motionFor(state, reduced)}");
+  });
+});

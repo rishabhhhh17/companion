@@ -3,7 +3,8 @@ import type { DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, checkMac } from "./commands.ts";
 import { changeSetting } from "./settingsStore.ts";
-import { STEPS, canContinue, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, yoursSettings, type Answers, type Edge, type Follow, type Lively, type Step, type Yours } from "./onboarding.ts";
+import { STEPS, canContinue, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, yoursSettings, type Answers, type Edge, type Step, type Yours } from "./onboarding.ts";
+import type { Liveliness } from "./lookfeel.ts";
 import { keyHints, keyRows, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -32,8 +33,7 @@ export function twoTone(text: string): [string, string] {
 type Props = { doctor: DoctorItem[] | null; connected: string; keyTested: Model["keyTested"]; project: string; send: (c: unknown) => unknown; pickFolder: () => void; startPractice: (id: string) => void; onDone: () => void };
 
 const EDGES: Edge[] = ["left", "right", "top", "bottom"];
-const LIVELY: Lively[] = ["lively", "calm"];
-const FOLLOWS: Follow[] = ["eyes", "drop", "off"];
+const LIVELY: Liveliness[] = ["still", "gentle", "lively"];
 /** The keys shown first on the last screen: open the box, show me how, and stop everything. */
 const FIRST_KEYS: string[] = ["card", "showme", "stop"];
 /** Keys in the Mac's own symbols ("Control, Option, Command and K" is ⌃⌥⌘K); the words stay for VoiceOver. */
@@ -161,16 +161,12 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <label className="fr-name"><FlowMini className="fr-flow" state="idle" /><span className="sr">{S.fr.nameLabel}</span>
           <input type="text" value={yours.name} maxLength={NAME_MAX} placeholder={own} spellCheck={false} autoComplete="off" onChange={(e) => setYours({ ...yours, name: e.target.value })} /></label>
         <div className="fr-label" id="fr-lively">{S.fr.livelyLabel}</div>
-        <div className="fr-seg" role="group" aria-labelledby="fr-lively">
-          {LIVELY.map((l) => <button key={l} type="button" aria-pressed={(yours.lively ?? "lively") === l} onClick={() => setYours({ ...yours, lively: l })}><b>{S.fr.lively[l]}</b><span>{S.fr.livelyLine[l]}</span></button>)}
+        <div className="fr-seg three" role="group" aria-labelledby="fr-lively">
+          {LIVELY.map((l) => <button key={l} type="button" aria-pressed={(yours.lively ?? "still") === l} onClick={() => setYours({ ...yours, lively: l })}><b>{S.fr.lively[l]}</b><span>{S.fr.livelyLine[l]}</span></button>)}
         </div>
         <div className="fr-label" id="fr-edge">{S.fr.edgeLabel}</div>
         <div className="fr-edges" role="group" aria-labelledby="fr-edge">
           {EDGES.map((e) => <button key={e} type="button" className="fr-edge" data-edge={e} aria-label={S.fr.edges[e]} aria-pressed={(yours.edge ?? "right") === e} onClick={() => setYours({ ...yours, edge: e })}><i /></button>)}
-        </div>
-        <div className="fr-label" id="fr-follow">{S.fr.followLabel}</div>
-        <div className="fr-seg three" role="group" aria-labelledby="fr-follow">
-          {FOLLOWS.map((f) => <button key={f} type="button" aria-pressed={(yours.follow ?? "eyes") === f} onClick={() => setYours({ ...yours, follow: f })}><b>{S.fr.follow[f]}</b><span>{S.fr.followLine[f]}</span></button>)}
         </div>
         <div className="fr-grow" />
         {main(S.fr.yoursGo, () => go(next(step)))}

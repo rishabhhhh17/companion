@@ -99,6 +99,6 @@ describe("the dock uses them", () => {
     }
   });
   test("thinking tilts the picture instead of spinning it upside down", () => {
-    expect(css).toMatch(/\.character\[data-pose\]\[data-motion="swirl"\]\s*\{[^}]*animation:\s*tilt/);
+    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-pose\]\[data-motion="swirl"\]\s*\{[^}]*animation:\s*tilt/);   // pictures only (M46)
   });
 });

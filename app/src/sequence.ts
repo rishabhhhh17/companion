@@ -6,13 +6,16 @@
 import { aimDecision, notSureWords, paceFactor } from "./pointer.ts";
 
 export const MAX_TARGETS = 5;
-/** Before each line: the pointer flies to its target. */
+/** Before each line: the pointer flies to its target (with Fly to the place first on), or a plain pause (M46). */
 export const LEAD_MS = 900;
 /** After each line, before the next target. */
 export const AFTER_MS = 350;
 /** The lead in and the pause at the chosen pace (point.pace; normal is the two above). */
 export const leadMs = (pace?: unknown): number => Math.round(LEAD_MS * paceFactor(pace));
 export const afterMs = (pace?: unknown): number => Math.round(AFTER_MS * paceFactor(pace));
+/** M46: the flight time a step asks the overlay for. Only a step of several with Fly to the place first on (point.fly)
+ *  flies; otherwise null, the ring shows at once and LEAD_MS stays only as a pause between steps. */
+export const flightFor = (total: number, fly: unknown, pace?: unknown): number | null => (fly === true && total > 1 ? leadMs(pace) : null);
 
 export type Mark = "ring" | "arrow" | "underline" | "box";
 export type Target = { x: number; y: number; ocrId?: string; targetText: string; confidence: number; caption: string; mark?: Mark; screen?: number };

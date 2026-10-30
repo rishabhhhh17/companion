@@ -498,7 +498,8 @@ describe("When something needs me (home.goToNeeds)", () => {
     // The character's page draws it from the two settings.
     const dock = read("./dock.tsx");
     expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
-    expect(dock).toContain("data-state={state} data-motion={motionFor(state, reduced)}");
+    // M46: data-motion is for the pictures only; the live drawing moves itself.
+    expect(dock).toContain("data-state={state} data-motion={live ? undefined : motionFor(state, reduced)}");
   });
   test("the card reads the setting for each new need, and says what was only marked when Speak to me is on", () => {
     const eff = card.slice(card.indexOf("const needNow = need(m);"), card.indexOf("// A tab shown by itself took away"));

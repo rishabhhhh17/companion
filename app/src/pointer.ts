@@ -1,3 +1,5 @@
+import { S } from "./strings.ts";
+
 /** How long a ring that does not wait for a click stays, counted from when the draw was ordered (the flight is part of it),
  *  unless changed in Settings (How long a ring stays, point.ringSeconds, 5 to 30 seconds). The shell sends the time with
  *  each ring and watches it half a second longer (anchor.rs watch_ms), so no part of it goes unwatched (rule 22). */
@@ -36,7 +38,8 @@ export function ringLook(colour: unknown, exact: boolean): RingLook {
 /** Ring lettering (point.lettering) and the text size picked in Settings: the caption's font and how much room it needs, so
  *  it is kept inside the window. Plain at the usual size is the caption as it always was. */
 const CAPTION_PX: Record<string, number> = { standard: 15, large: 17, larger: 19, largest: 21, huge: 25 };
-const PLAIN_FONT = 'ui-rounded, "SF Pro Rounded", -apple-system, sans-serif';
+// M46: the Mac's own system face for plain words (the rounded face read as a toy); handwritten stays a choice.
+const PLAIN_FONT = '-apple-system, "SF Pro Text", system-ui, sans-serif';
 const HAND_FONT = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
 export function captionStyle(lettering: unknown, size: unknown): { font: string; maxWidth: number; reserveW: number; reserveH: number } {
   const base = CAPTION_PX[typeof size === "string" && Object.hasOwn(CAPTION_PX, size) ? size : "standard"];
@@ -98,10 +101,10 @@ export function aimDecision(confidence: unknown): "draw" | "words" {
 /** The words used instead of a guess's ring when the person asked for words only (point.guesses). */
 export function guessWords(targetText: string, caption: string): string {
   const look = targetText.trim().replace(/\s+/g, " ").slice(0, 80);
-  return `I am only guessing where that is, so I did not draw a ring.${look ? ` Look for "${look}".` : ""}${caption.trim() ? ` ${caption.trim().slice(0, 160)}` : ""}`;
+  return `${S.pointer.guessing}${look ? ` ${S.pointer.lookFor(look)}` : ""}${caption.trim() ? ` ${caption.trim().slice(0, 160)}` : ""}`;
 }
 /** The words used instead of a ring. Plain, and says what to look for. */
 export function notSureWords(targetText: string, caption: string): string {
   const look = targetText.trim().replace(/\s+/g, " ").slice(0, 80);
-  return `I am not sure where that is, so I will not point at the wrong thing.${look ? ` Look for "${look}".` : ""}${caption.trim() ? ` ${caption.trim().slice(0, 160)}` : ""}`;
+  return `${S.pointer.notSure}${look ? ` ${S.pointer.lookFor(look)}` : ""}${caption.trim() ? ` ${caption.trim().slice(0, 160)}` : ""}`;
 }

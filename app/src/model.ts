@@ -1084,7 +1084,8 @@ export function notDoneReason(m: Model): string | null {
   return f ? `${f.label}: ${checkParts({ ...f, status: "failed" }).summary}` : S.verdict.failedLine;
 }
 
-// How the character moves. Reduced motion freezes everything (Rive does not do this by itself).
+// How the character's pictures move (character.live off). Reduced motion freezes everything. M46: the live drawing has no
+// data-motion at all (dock.tsx); it moves itself (flowflow/).
 export function motionFor(state: CharacterState, reduced: boolean): "none" | "breathe" | "swirl" | "busy" | "scan" | "glow" | "droop" {
   if (reduced) return "none";
   switch (state) {

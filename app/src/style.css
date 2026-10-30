@@ -49,12 +49,14 @@ html.dock-page, body.dock-page { background: transparent; }
 .character { position: relative; width: 132px; height: 94px; border-radius: 0; background: none; border: 0; padding: 0; }
 .character:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
 .character[data-state="off"] { filter: grayscale(1); opacity: .5; }
-.character[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
-.character[data-motion="swirl"] { animation: swirl 2.4s linear infinite; }
-.character[data-motion="busy"] { animation: busy 1s ease-in-out infinite; }
-.character[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
-.character[data-motion="glow"] { animation: glow 1.8s ease-in-out infinite; }
-.character[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
+/* M46: the state motions are for the pictures only (character.live off). The live drawing (data-live) moves itself
+   (flowflow/), and holds still at rest unless Gentle or Lively is chosen. Needs you glows three times, then holds. */
+.character:not([data-live])[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
+.character:not([data-live])[data-motion="swirl"] { animation: swirl 2.4s linear infinite; }
+.character:not([data-live])[data-motion="busy"] { animation: busy 1s ease-in-out infinite; }
+.character:not([data-live])[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
+.character:not([data-live])[data-motion="glow"] { animation: glow 1.8s ease-in-out 3; }
+.character:not([data-live])[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
 /* The count of questions waiting: a small black pill with white words and a white rim, so it reads on any wallpaper and
    has no colour of its own. */
 .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; min-height: 18px; box-sizing: border-box; padding: 0 var(--space-1); border-radius: var(--r-pill); background: #000; color: #fff; box-shadow: 0 0 0 1.5px #fff; font-size: var(--t-caption); font-weight: 600; line-height: 1; display: grid; place-items: center; }
@@ -291,11 +293,12 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 /* Listening is a light that shows first (rule 5): a still glow around the water, with or without motion. */
 .character[data-state="listening"] { filter: drop-shadow(0 0 7px var(--skin-glow, #fff)); }
 
-/* Reactions: one off moves that play over the state's own motion, then stop. */
-.character[data-react="nod"] { animation: nod .6s ease-out 1; }
-.character[data-react="wince"] { animation: wince .7s ease-out 1; }
-.character[data-react="cheer"] { animation: cheer .9s ease-out 1; }
-.character[data-react="party"] { animation: party 1.4s ease-out 1; }
+/* Reactions: one off moves that play over the state's own motion, then stop. Pictures only (M46): the live drawing never
+   tilts or jumps as a whole. */
+.character:not([data-live])[data-react="nod"] { animation: nod .6s ease-out 1; }
+.character:not([data-live])[data-react="wince"] { animation: wince .7s ease-out 1; }
+.character:not([data-live])[data-react="cheer"] { animation: cheer .9s ease-out 1; }
+.character:not([data-live])[data-react="party"] { animation: party 1.4s ease-out 1; }
 @keyframes nod { 30% { transform: translateY(3px); } 60% { transform: translateY(-2px); } }
 @keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
@@ -303,9 +306,9 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 /* Coming to what it is about (F18): the named states the app moves the character through. Placeholders for the
    founder's art (the water idea: it surfaces from its edge, travels, settles beside the window, returns). Home and
    visiting are at rest, so the state's own motion plays. */
-.character[data-roam="surface"] { animation: roam-surface .16s ease-out 1; }
-.character[data-roam="travel"], .character[data-roam="return"] { animation: none; transform: scale(.92); transition: transform .12s ease-out; }
-.character[data-roam="settle"] { animation: roam-settle .22s ease-out 1; }
+.character:not([data-live])[data-roam="surface"] { animation: roam-surface .16s ease-out 1; }
+.character:not([data-live])[data-roam="travel"], .character:not([data-live])[data-roam="return"] { animation: none; transform: scale(.92); transition: transform .12s ease-out; }
+.character:not([data-live])[data-roam="settle"] { animation: roam-settle .22s ease-out 1; }
 @keyframes roam-surface { from { transform: scale(.72); opacity: .55; } to { transform: scale(.92); opacity: 1; } }
 @keyframes roam-settle { 0% { transform: scale(1.06, .94); } 60% { transform: scale(.98, 1.02); } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion], .character[data-roam] { animation: none; transition: none; } }
@@ -380,9 +383,17 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .mark[data-state="done"] { background: #4cc27f; }
 .mark[data-state="working"], .mark[data-state="thinking"], .mark[data-state="checking"] { background: #fff; }
 .mark[data-state="error"] { background: #ff7a6e; box-shadow: 0 0 0 2px rgba(255, 122, 110, .3); }
-.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-2) var(--ease-out) both, island-needsYou-pulse 1.6s ease-in-out 200ms infinite; }
-@keyframes island-needsYou-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } }
-.island-wing .mark[data-mark="dots"], .island-wing .mark[data-mark="arc"], .island-wing .mark[data-mark="bars"], .island-wing .mark[data-mark="tick"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 2px; }
+/* M46: amber pulses three times, then holds as a solid amber dot (the last keyframe). Each new question pulses again
+   (island.tsx keys the mark on the count of questions). */
+.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-2) var(--ease-out) both, island-needsYou-pulse 1.6s ease-in-out 200ms 3 both; }
+@keyframes island-needsYou-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; background: var(--amber); } }
+.island-wing .mark[data-mark="dots"], .island-wing .mark[data-mark="arc"], .island-wing .mark[data-mark="bars"], .island-wing .mark[data-mark="tick"], .island-wing .mark[data-mark="look"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 2px; }
+/* M46, rule 5: looking at the screen. A white ring with a dot in the middle that holds still: a light, not a spinner. It is
+   lit at once (no pop in), so it is on screen well before the capture 250 ms later. */
+.island-wing > .mark[data-mark="look"] { animation: none; }
+.island-wing .mark[data-mark="look"] svg { display: block; }
+.island-wing .mark[data-mark="look"] .look-ring { fill: none; stroke: #fff; stroke-width: 1.75; }
+.island-wing .mark[data-mark="look"] .look-dot { fill: #fff; }
 .island-wing .mark[data-mark="dots"] i { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: island-breathe 1.4s ease-in-out infinite; }
 @keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }
 .island-wing .mark[data-mark="arc"] svg { display: block; fill: none; stroke: #fff; stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 12.25 28.6; animation: island-spin .8s cubic-bezier(.45, .05, .55, .95) infinite; }
@@ -417,15 +428,16 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .dock[data-drop="menu"] .dock-label { display: none; }
 @media (prefers-reduced-motion: reduce) { .character[data-drop] { transform: none; transition: none; } }
 :root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
-/* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, a small lean toward the screen. Its own rotate and
-   translate, so the breathing animation (which sets transform) never cancels it. None with Reduce motion or Less motion. */
-.character[data-peek] { transition: rotate var(--dur-2) var(--ease-out), translate var(--dur-2) var(--ease-out); }
-.character[data-peek="peek"][data-peek-edge="right"] { rotate: -7deg; translate: -2px 0; }
-.character[data-peek="peek"][data-peek-edge="left"] { rotate: 7deg; translate: 2px 0; }
-.character[data-peek="peek"][data-peek-edge="top"] { translate: 0 3px; }
-.character[data-peek="peek"][data-peek-edge="bottom"] { translate: 0 -3px; }
-@media (prefers-reduced-motion: reduce) { .character[data-peek] { rotate: none; translate: none; transition: none; } }
-:root[data-less-motion] .character[data-peek] { rotate: none; translate: none; transition: none; }
+/* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, the pictures move a touch toward the screen. M46: no
+   tilt. The face stays parallel to the edge, and the live drawing draws its own stick to the edge (engine.ts surface), so
+   it is never moved here. None with Reduce motion or Less motion. */
+.character:not([data-live])[data-peek] { transition: translate var(--dur-2) var(--ease-out); }
+.character:not([data-live])[data-peek="peek"][data-peek-edge="right"] { translate: -2px 0; }
+.character:not([data-live])[data-peek="peek"][data-peek-edge="left"] { translate: 2px 0; }
+.character:not([data-live])[data-peek="peek"][data-peek-edge="top"] { translate: 0 3px; }
+.character:not([data-live])[data-peek="peek"][data-peek-edge="bottom"] { translate: 0 -3px; }
+@media (prefers-reduced-motion: reduce) { .character[data-peek] { translate: none; transition: none; } }
+:root[data-less-motion] .character[data-peek] { translate: none; transition: none; }
 .drop-ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
 /* A target: a round 44 point button with a small drawing and no letters. Its word shows in the middle of the ring. */
 .drop-item { position: absolute; width: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; border-radius: 50%; border: 1px solid var(--edge); background: var(--bg); color: var(--fg); padding: 0; display: grid; place-items: center; cursor: pointer; pointer-events: auto; box-shadow: 0 2px 10px rgba(0, 0, 0, .22); animation: ring-in var(--dur-2) var(--ease-spring) both; }
@@ -455,13 +467,15 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .character[data-pose][data-state="checking"] { filter: drop-shadow(0 0 2px rgba(0, 0, 0, .55)) drop-shadow(0 0 7px rgba(255, 255, 255, .9)); }
 .character[data-pose][data-state="needsYou"] { filter: drop-shadow(0 0 7px color-mix(in srgb, var(--amber) 80%, transparent)); }
 .character[data-pose][data-state="done"] { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ok) 70%, transparent)); }
-/* Thinking tilts a little; the circle's full turn would stand the creature on its head. A needs you glow breathes. */
-.character[data-pose][data-motion="swirl"] { animation: tilt 2.4s ease-in-out infinite; }
-.character[data-pose][data-motion="glow"] { animation: pose-glow 1.8s ease-in-out infinite; }
+/* Thinking tilts a little; the circle's full turn would stand the creature on its head. A needs you glow breathes three
+   times, then holds steady (the glow above). Pictures only (M46). */
+.character:not([data-live])[data-pose][data-motion="swirl"] { animation: tilt 2.4s ease-in-out infinite; }
+.character:not([data-live])[data-pose][data-motion="glow"] { animation: pose-glow 1.8s ease-in-out 3; }
 @keyframes tilt { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 @keyframes pose-glow { 50% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--amber) 60%, transparent)); } }
-/* With Flowflow drawing (data-flow), the body moves itself (breathing, wobble, lag, squash: physics.ts), so the button's own
-   state motions and reactions stand down. The glows above and the needs you breathing stay. */
+/* With the soft water drawn over the pictures (src/flow/, data-flow), the body moves itself (breathing, wobble, lag,
+   squash), so the button's own state motions and reactions stand down. The glows above and the needs you breathing stay.
+   The live drawing (data-live) never has these motions at all (M46). */
 .character[data-flow][data-pose][data-motion="breathe"], .character[data-flow][data-pose][data-motion="swirl"], .character[data-flow][data-pose][data-motion="busy"],
 .character[data-flow][data-pose][data-motion="scan"], .character[data-flow][data-pose][data-motion="droop"], .character[data-flow][data-pose][data-react] { animation: none; }
 @media (forced-colors: active) { .character[data-pose] { border: 0; } .character .pose { forced-color-adjust: none; } }
@@ -584,7 +598,12 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-jobs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 /* M26: opened by itself (a question, or a moment of work), the panel is only the cards, narrower, so it covers as little
    of the windows under the notch as it can. */
-.island-panel[data-brief] { width: 340px; padding: 6px 10px 10px; }
+.island-panel[data-brief] { padding: 6px 10px 10px; }
+/* M46: opened by itself, it ignores clicks for its first moment (islandPanel.tsx), and does not look clickable meanwhile. */
+.island-panel[data-brief]:not([data-armed]) { cursor: default; }
+.island-panel:not([data-armed]) button { cursor: default; }
+.island-panel button.ip-job:not([data-armed]) { cursor: default; }
+.island-panel button.ip-job:not([data-armed]):active { transform: none; }
 /* The rows come with the panel itself, not one by one (M25: it opens on every hover). While the panel is hidden, nothing in
    it keeps animating. */
 .island-panel:not([data-shown]) *, .island-panel:not([data-shown]) *::after { animation-play-state: paused; }
@@ -621,13 +640,6 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-cost { padding: 3px 8px; border-radius: var(--r-pill); color: #E9ECF1; background: #2A2C30; font: 700 var(--t-caption) var(--round); font-variant-numeric: tabular-nums; }
 .island-panel .ip-job[data-tone="done"] .ip-cost { color: #7BE495; background: #17301F; }
 .island-panel .ip-note { color: #d0d0d4; font-size: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
-/* The sun beside the notch (M16): Squibby's mark (the smiling pinwheel sun, app/brand) on the menu bar just left of the
-   notch, at rest only (the wings and the panel take its place while they show). One colour like the Mac's own menu bar
-   icons: white on a dark menu bar, black on a light one. The window is island.rs MARK wider each side, see through;
-   resting on it opens the panel. It fades in, and breathes very slowly. */
-.island-sun { position: absolute; top: calc((var(--row) - 15px) / 2); left: calc(50% - var(--core) / 2 - 20.5px); width: 15px; display: none; pointer-events: none; user-select: none; -webkit-user-select: none; z-index: 1; }
-.island.notch[data-mode="rest"]:not([data-tuck]) .island-sun { display: block; animation: island-sun-in var(--dur-2) var(--ease-out) both; }
-@keyframes island-sun-in { from { opacity: 0; scale: .9; } }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The waterline (M17 step 4, 28 Oct 2026, a frontend-design pass after the founder said the look still fell flat). Home is
@@ -915,7 +927,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .ask-what code { font: 500 var(--t-small)/1.45 ui-monospace, "SF Mono", Menlo, monospace; color: var(--fg); white-space: pre-wrap; }
 .ask-undo { font-size: var(--t-small); color: color-mix(in srgb, var(--fg) 80%, transparent); }
 .ask-undo.no { color: var(--fg); font-weight: 700; }
-.island-panel .ip-ask .ip-text span { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
+/* M46: plain words under a question are in the panel's own system font; only the exact command or path is monospace. */
+.island-panel .ip-ask .ip-text span code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; }
 
 /* M28: the one button that fixes a notice or an error sits right after its words. */
 .notice .fix-it, .error .fix-it { margin-left: var(--space-2); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
@@ -1020,8 +1033,9 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 .island-panel .ip-hello .ip-hi { margin: 0; font: 700 22px/1.15 -apple-system, "SF Pro Display", system-ui, sans-serif; letter-spacing: -0.01em; background-image: var(--chrome-text); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
 .island-panel .ip-hello .ip-talk { margin: 0; font-size: 13px; color: #A1A1A6; }
 
-/* M34: new results finished while Home was closed: a small chrome count at the notch's right end. */
-.island-unseen { position: absolute; right: 10px; top: 50%; translate: 0 -50%; min-width: 16px; min-height: 16px; padding: 0 4px; box-sizing: border-box; display: grid; place-items: center; border-radius: 999px; background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; font: 700 10px/1 -apple-system, system-ui, sans-serif; pointer-events: none; }
+/* M34: new results finished while Home was closed. M46: said on the hover panel's top line only (the bare notch shows
+   nothing at rest; inside it a count would sit under the camera housing). */
+.island-panel .ip-new { margin: 0; color: #c4c4c9; font: 600 var(--t-caption) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: center; }
 
 /* M34 (the founder: "make the settings interface silver"): Settings in chrome on black. The page you are on is a polished
    chrome pill; each card is dark brushed metal with a silver hairline and a bright top edge; a switch that is on, and the
@@ -1061,7 +1075,7 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 .home[data-view="now"] .ask .talk-how:hover, .home[data-view="now"] .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
 /* The job's words: a heading over the results, no picture and no water here (Flowflow lives on the edge of the screen). */
 .home[data-view="now"] .hero { display: block; margin: var(--space-2) 0 var(--space-3); }
-.home[data-view="now"] .hero::before, .home[data-view="now"] .hero .waterline, .home[data-view="now"] .hero .home-char { display: none; }
+.home[data-view="now"] .hero::before { display: none; }
 .home[data-view="now"] .hero .hero-words { padding-top: 0; }
 .home[data-view="now"] .headline { font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -.01em; }
 /* The side list: small section names, rows with an icon, the words and the keys; recent fixes with how each ended. */

@@ -23,7 +23,7 @@ import "./style.css";
 // tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
-import { islandJobs, workPeekKey, WORK_PEEK_MS } from "./islandPanel.ts";
+import { armed, islandJobs, resultPeekKey, RESULT_PEEK_MS } from "./islandPanel.ts";
 import { FlowMini } from "./flowflowMini.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
@@ -67,13 +67,16 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
 
 /** The live mark on the right wing (home.ts WingMark). Drawn only, never read: the island's name says it in words. */
 function Mark({ w, count }: { w: Wings; count: number }) {
-  // Thinking: one dot that breathes. Working and looking: a thin round arc (13 points across) that turns.
+  // Thinking: one dot that breathes. Working and checking: a thin round arc (13 points across) that turns. Looking at the
+  // screen (M46, rule 5): a ring with a dot in the middle that holds still, a light rather than a spinner.
   const inner = w.mark === "dots" ? <i />
     : w.mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6.5" /></svg>
+    : w.mark === "look" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle className="look-ring" cx="8" cy="8" r="6.25" /><circle className="look-dot" cx="8" cy="8" r="2.5" /></svg>
     : w.mark === "bars" ? <><i /><i /><i /><i /></>
     : w.mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
     : null;
-  return <><span className="mark" data-state={w.state} data-mark={w.mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
+  // M46: keyed on how many questions wait, so each new one pulses the amber three more times, then it holds.
+  return <><span className="mark" key={`${w.mark}:${count}`} data-state={w.state} data-mark={w.mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
 }
 
 function Island() {
@@ -86,11 +89,11 @@ function Island() {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(9, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
-    // M34: results finished while Home was closed, counted on the notch until Home opens.
-    const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(9, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
+    // M34: results finished while Home was closed, counted until Home opens. M46: said on the hover panel only.
+    const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(99, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
     return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); };
   }, []);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
@@ -136,19 +139,21 @@ function Island() {
   }, [ticking]);
   const cheering = cheer && out;
   // M23: a question waiting opens the panel under the wings by itself (island.rs mode), with Open the notch for questions on.
-  // M26: and the work cards drop down for a moment at each change (a job starts, moves a step, ends with its proof), with
-  // Show work under the notch on; then they tuck back so nothing stays over the person's windows.
+  // M46 (F28): the only other thing that drops by itself is a result that matters, a proven fix or a failure, once, for as
+  // long as the tick shows, with Show results under the notch on; then it tucks back. A start, a step, a cost, a partly
+  // checked or plain result and Undo stay up in the notch for the pointer. While quiet (a call, or hidden) the shell keeps
+  // even these closed (island.rs quiet).
   const showWork = useSetting("island.showWork") !== false;
-  const peekKey = showWork ? workPeekKey(islandJobs(m)) : "";
-  const [workPeek, setWorkPeek] = useState(false);
+  const peekKey = showWork ? resultPeekKey(islandJobs(m)) : "";
+  const [resultPeek, setResultPeek] = useState(false);
   useEffect(() => {
-    if (!peekKey) { setWorkPeek(false); return; }
-    setWorkPeek(true);
-    const id = setTimeout(() => setWorkPeek(false), WORK_PEEK_MS);
+    if (!peekKey) { setResultPeek(false); return; }
+    setResultPeek(true);
+    const id = setTimeout(() => setResultPeek(false), RESULT_PEEK_MS);
     return () => clearTimeout(id);
   }, [peekKey]);
   const questionsOpen = useSetting("island.openForQuestions") !== false;   // read every render: a hook is never skipped
-  const ask = out && ((questionsOpen && m.approvals.length > 0) || workPeek);
+  const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);
   useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask }).catch(() => {}); }, [out, panelH, cheering, ask]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
@@ -167,29 +172,32 @@ function Island() {
   const w = wings ?? lastWings.current;
   const [soft, setSoft] = useState(false);
   useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
-  // At rest on a notch the window is wider than the notch (island.rs MARK) and the black grows into it (M20): the sun sits on
-  // that black, in lime, sharp on any wallpaper, like the notch apps do.
+  // M46 (F28, F18): at rest on a notch the window is exactly the notch (island.rs), bare black, with no sun and no count.
   const shapeW = shape.w;
+  // M46: grown by itself (a question, a result), not by the pointer: the wing ignores clicks for its first ARM_MS, as a
+  // card that opened by itself does, so a pointer that happened to be there presses nothing.
+  const grownRef = useRef(0);
+  const lastMode = useRef<IslandMode>(shape.mode);
+  useEffect(() => {
+    const was = lastMode.current; lastMode.current = shape.mode;
+    const selfGrown = was === "rest" && (shape.mode === "wings" || shape.mode === "wingsPeek") && !shape.hover;
+    if (selfGrown) grownRef.current = Date.now();
+  }, [shape.mode, shape.hover]);
+  const tap = () => { const grownAt = grownRef.current; if (!armed(grownAt, Date.now())) return; void invoke("island_click"); };
   const box = useSpringBox(shapeW, shape.h, reduced, soft);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
   return (
     <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} style={vars}>
-      {/* Squibby's mark on the menu bar beside the notch (M16): drawn only, the island's name says what it is. */}
-      {/* The mark (app/brand/make_logo.py): white on a dark menu bar, black on a light one, like the Mac's own menu bar icons. */}
-      {shape.kind === "notch" && <picture>
-        <img className="island-sun" src="./brand/sun-lime.svg" alt="" aria-hidden="true" draggable={false} />
-      </picture>}
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
-        <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={() => void invoke("island_click")}>
-          {unseen > 0 && !showWings && <b className="island-unseen" aria-hidden="true">{unseen}</b>}
+        <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
             <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
           </span>}
         </button>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} />
       </span>
     </main>
   );

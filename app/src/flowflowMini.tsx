@@ -5,10 +5,11 @@
 // that is not on screen, or a small mark that should not pull the eye).
 import { Suspense, lazy, useEffect, useState } from "react";
 import { poseFor, poseUrl } from "./characters.ts";
-import { flowColours, hueTurn, waterOf, type Water } from "./lookfeel.ts";
+import { flowColours, hueTurn, livelinessOf, waterOf, type Water } from "./lookfeel.ts";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
 import { useSetting } from "./settingsStore.ts";
+import { useRest } from "./useRest.ts";
 
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
 
@@ -20,12 +21,15 @@ export function FlowMini({ state, className, still, water }: { state: CharacterS
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   const [failed, setFailed] = useState(false);
+  // M46 (F28): how lively, and rest. Small, so working draws at WORK_INTERVAL in every choice (controller.ts small).
+  const mode = livelinessOf(useSetting("character.lively"));
+  const resting = useRest();
   const picture = <img className={className} src={poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
   if (!liveOn || failed) return picture;
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>
-        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" onFallback={() => setFailed(true)} />
+        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small onFallback={() => setFailed(true)} />
       </Suspense>
     </span>
   );

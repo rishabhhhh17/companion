@@ -159,11 +159,13 @@ export class SoftBody {
     return p;
   }
 
-  /** True once the body has stopped moving, so a render loop may rest. */
+  /** True once the body has stopped moving, so a render loop may rest. M46: with no breath asked for (Still at rest), the
+   *  breath drawn must be nothing too, so a parked frame is truly at rest. */
   get settled(): boolean {
     return Math.abs(this.px.x - this.tx) < 0.002 && Math.abs(this.py.x - this.ty) < 0.002 && Math.hypot(this.px.v, this.py.v) < 0.004
       && Math.abs(this.squashS.x) < 0.002 && Math.abs(this.squashS.v) < 0.01 && Math.abs(this.w2.x) < 0.01 && Math.abs(this.w3.x) < 0.01
-      && Math.abs(this.contactS.x) < 0.002 && Math.abs(this.leanS.x) < 0.002;
+      && Math.abs(this.contactS.x) < 0.002 && Math.abs(this.leanS.x) < 0.002
+      && (this.breathAmp > 0 || Math.abs(this.pose.breath) < 1e-4);
   }
 
   /** Put the body somewhere at rest (a new window, a state that must not glide in from elsewhere). */

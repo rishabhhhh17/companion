@@ -50,9 +50,22 @@ describe("make it yours", () => {
   test("only what was chosen changes; its own name, or nothing typed, keeps the name empty", () => {
     expect(yoursSettings(DEFAULT_YOURS, "Flowflow")).toEqual([]);
     expect(yoursSettings({ name: "Flowflow", lively: null, edge: null }, "Flowflow")).toEqual([]);
-    expect(yoursSettings({ name: "  Blub  ", lively: "calm", edge: "left" }, "Flowflow")).toEqual([["character.name", "Blub"], ["fun.reactions", false], ["character.edge", "left"]]);
-    expect(yoursSettings({ name: "", lively: "lively", edge: null }, "Flowflow")).toEqual([["fun.reactions", true]]);
+    expect(yoursSettings({ name: "  Blub  ", lively: "gentle", edge: "left" }, "Flowflow")).toEqual([["character.name", "Blub"], ["character.lively", "gentle"], ["character.edge", "left"]]);
+    expect(yoursSettings({ name: "", lively: "lively", edge: null }, "Flowflow")).toEqual([["character.lively", "lively"]]);
+    expect(yoursSettings({ name: "", lively: "still", edge: null }, "Flowflow")).toEqual([["character.lively", "still"]]);
     expect(yoursSettings({ name: "", lively: null, edge: null, follow: "drop" }, "Flowflow")).toEqual([["character.follow", "drop"]]);
+  });
+  test("M46: how lively is three choices, Still pressed first; it writes character.lively, never the reactions, and the follow step is gone", () => {
+    const page = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(page).toContain('const LIVELY: Liveliness[] = ["still", "gentle", "lively"];');
+    expect(page).toContain('aria-pressed={(yours.lively ?? "still") === l}');
+    expect(page).not.toContain("FOLLOWS");
+    expect(page).not.toContain("S.fr.follow");
+    expect(page).not.toContain("fr-follow");
+    for (const l of ["still", "gentle", "lively"]) { expect(S.fr.lively[l], l).toBeTruthy(); expect(S.fr.livelyLine[l], l).toBeTruthy(); }
+    expect(S.fr.livelyLine.still).toBe("Moves only when it has news");
+    expect((S.fr as Record<string, unknown>).followLabel).toBeUndefined();
+    expect(yoursSettings({ name: "", lively: "gentle", edge: null }, "Flowflow").some(([k]) => k === "fun.reactions")).toBe(false);
   });
   test("a name is cut to the most the setting takes, and the setting exists in the registry", () => {
     const long = "x".repeat(40);

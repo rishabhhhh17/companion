@@ -4,6 +4,7 @@ import {
   BufferAttribute, BufferGeometry, Color, Mesh, OrthographicCamera, PlaneGeometry, Points, Scene, ShaderMaterial,
   Vector4, WebGLRenderer, CustomBlending, OneFactor, OneMinusSrcAlphaFactor,
 } from "three";
+import type { Liveliness } from "../lookfeel.ts";
 import type { Snapshot } from "./engine.ts";
 import { MAX_DROPLETS } from "./particles.ts";
 import { MAX_STRETCH } from "./physics.ts";
@@ -33,6 +34,8 @@ export class FlowflowRenderer {
   private disposed = false;
   halfW = 1.6; halfH = FRAME_HEIGHT / 2;
   private cssW = 0; private cssH = 0;
+  /** M46: Gentle draws at most at 2x, to stay inside its battery budget ([verify] on a real Mac). */
+  private gentle = false;
 
   /** Starts the renderer, or returns null when WebGL is not available (no throw: the caller falls back). */
   static create(canvas: HTMLCanvasElement): FlowflowRenderer | null {
@@ -51,6 +54,7 @@ export class FlowflowRenderer {
         uHalf: { value: [1.6, FRAME_HEIGHT / 2] }, uCenter: { value: [0, 0] }, uScale: { value: BODY_SCALE }, uPx: { value: 0.01 },
         uPose: { value: new Vector4() }, uMove: { value: [1, 0, 0] }, uEyes: { value: new Vector4() }, uOpen: { value: 1 },
         uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uSurf: { value: new Vector4() }, uPress: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
+        uSway: { value: 0 }, uSwayTime: { value: 0 }, uAmber: { value: 0 },
       },
     });
     // One quad over the whole canvas: the drop and its eyes are worked out per pixel (shaders.ts).
@@ -59,7 +63,7 @@ export class FlowflowRenderer {
     this.dropGeo.setAttribute("position", new BufferAttribute(this.dropPos, 3)); this.dropGeo.setAttribute("aSize", new BufferAttribute(this.dropSize, 1));
     this.dropMat = new ShaderMaterial({
       vertexShader: DROP_VERTEX, fragmentShader: DROP_FRAGMENT, transparent: true, depthWrite: false, depthTest: false,
-      blending: CustomBlending, blendSrc: OneFactor, blendDst: OneMinusSrcAlphaFactor, uniforms: { uPixels: { value: 60 }, uColA: { value: AQUA } },
+      blending: CustomBlending, blendSrc: OneFactor, blendDst: OneMinusSrcAlphaFactor, uniforms: { uPixels: { value: 60 }, uColA: { value: asWritten(AQUA) } },   // M46: as written, like the body
     });
     this.drops = new Points(this.dropGeo, this.dropMat); this.drops.frustumCulled = false; this.scene.add(this.drops);
   }
@@ -67,14 +71,16 @@ export class FlowflowRenderer {
   /** The water's colours (M19, the water colour in Settings): its light and its deep. */
   setColours(light: string, deep: string): void {
     this.bodyMat.uniforms.uColA.value = asWritten(new Color(light)); this.bodyMat.uniforms.uColB.value = asWritten(new Color(deep));
-    this.dropMat.uniforms.uColA.value = new Color(light);
+    this.dropMat.uniforms.uColA.value = asWritten(new Color(light));
   }
+  /** M46: the liveliness chosen (Gentle caps the pixel ratio). The caller measures again after a change. */
+  setMode(m: Liveliness): void { this.gentle = m === "gentle"; }
 
   /** The canvas's size in CSS pixels, and the screen's pixel ratio (it can change when the window moves between screens). */
   setSize(cssW: number, cssH: number, dpr: number): void {
     if (this.disposed || !(cssW > 0) || !(cssH > 0)) return;
     this.cssW = cssW; this.cssH = cssH;
-    this.gl.setPixelRatio(Math.min(3, Math.max(2, dpr || 1)));   // M29: always at least 2x, so the water is crisp, never soft
+    this.gl.setPixelRatio(Math.min(this.gentle ? 2 : 3, Math.max(2, dpr || 1)));   // M29: always at least 2x, so the water is crisp, never soft
     this.gl.setSize(cssW, cssH, false);   // M37: this call had slipped into the comment above, so the canvas was drawn small and stretched
     this.halfH = FRAME_HEIGHT / 2; this.halfW = this.halfH * (cssW / cssH);
     this.cam.left = -this.halfW; this.cam.right = this.halfW; this.cam.top = this.halfH; this.cam.bottom = -this.halfH; this.cam.updateProjectionMatrix();
@@ -96,12 +102,16 @@ export class FlowflowRenderer {
     const { pose, look, eyes } = s, u = this.bodyMat.uniforms;
     u.uCenter.value = [pose.x, pose.y + s.float + REST_Y];
     u.uTime.value = s.time;
-    (u.uPose.value as Vector4).set(pose.breath, pose.squash * BEND.squash, pose.lean * BEND.lean, look.expand);
+    // M46: the resting sway (point, side waves, base) only as much as the choice and the moment allow, on its own clock.
+    u.uSway.value = s.sway; u.uSwayTime.value = s.swayTime;
+    // Needs you: an amber core that pulses three times, then holds.
+    u.uAmber.value = look.amber;
+    (u.uPose.value as Vector4).set(pose.breath, pose.squash * BEND.squash, pose.lean * BEND.lean, look.expand + 0.03 * s.pulse);
     u.uMove.value = [pose.dirX, pose.dirY, pose.stretch * BEND.stretch];
     u.uPour.value = Math.min(1, Math.max(0, pose.stretch / MAX_STRETCH));   // M37b: the tail grows with how far it stretches
     (u.uEyes.value as Vector4).set(eyes.lx, eyes.ly, eyes.rx, eyes.ry);
     u.uOpen.value = Math.max(0, eyes.open);
-    u.uCloud.value = look.cloud; u.uGlow.value = look.glow;
+    u.uCloud.value = look.cloud; u.uGlow.value = look.glow + 0.5 * s.pulse;
     // M37c: the surface it clings to, as a plane in the drop's own units (shaders.ts drop).
     const sf = s.surface, sv = u.uSurf.value as Vector4;
     if (!sf.side) sv.set(0, 0, 0, 0);

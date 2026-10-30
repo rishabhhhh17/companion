@@ -1,6 +1,6 @@
 // The character as a whole, without a screen: what it does when the app and the pointer act on it.
 import { describe, expect, test } from "bun:test";
-import { BODY_RADIUS, FlowflowEngine, FOLLOW_HOLD, gazeOf, HOP_EVERY, LOOK_HOLD, PUSH_MAX } from "./engine.ts";
+import { BODY_RADIUS, FlowflowEngine, FOLLOW_HOLD, gazeOf, LOOK_HOLD, PUSH_MAX, SWAY, SWAY_FADE_S } from "./engine.ts";
 import { MAX_DROPLETS } from "./particles.ts";
 
 const run = (e: FlowflowEngine, s: number, dt = 1 / 60) => { for (let t = 0; t < s; t += dt) e.update(dt); };
@@ -26,8 +26,8 @@ describe("it only reflects what really happened", () => {
 });
 
 describe("the pointer", () => {
-  test("the eyes follow the pointer and the body leans after it, with inertia", () => {
-    const e = new FlowflowEngine(); run(e, 0.5); e.pointer(0.9, 0.3); const s = e.update(1 / 60);
+  test("the eyes follow the pointer and the body leans after it, with inertia (Lively)", () => {
+    const e = new FlowflowEngine(); e.mode = "lively"; run(e, 0.5); e.pointer(0.9, 0.3); const s = e.update(1 / 60);
     expect(Math.abs(s.pose.x)).toBeLessThan(0.05);
     for (let t = 0; t < 1.5; t += 1 / 60) { e.pointer(0.9, 0.3); e.update(1 / 60); }   // a cursor that keeps reporting where it is
     const t = e.update(1 / 60); expect(t.eyes.lx).toBeGreaterThan(0.3); expect(t.pose.x).toBeGreaterThan(0.1); expect(t.state).toBe("following");
@@ -85,7 +85,7 @@ describe("alive on the side (M20)", () => {
     expect(near.nx).toBeGreaterThan(0); expect(far.nx).toBeGreaterThan(near.nx); expect(far.nx).toBeLessThanOrEqual(1);
     expect(gazeOf(0, -500).ny).toBeGreaterThan(0);   // above on the screen is up for the eyes
     expect(gazeOf(NaN, 3)).toEqual({ nx: 0, ny: 0 });
-    const e = new FlowflowEngine(); run(e, 0.5);
+    const e = new FlowflowEngine(); e.mode = "lively"; run(e, 0.5);
     for (let t = 0; t < 1; t += 1 / 60) { e.gaze(-900, 0); e.update(1 / 60); }
     expect(e.update(1 / 60).eyes.lx).toBeLessThan(-0.2);
   });
@@ -103,52 +103,58 @@ describe("alive on the side (M20)", () => {
     const e = new FlowflowEngine(); run(e, 0.5); e.arrive(1); run(e, 0.1);
     expect(e.ripples.alive).toBeGreaterThan(0); expect(e.droplets.alive).toBeGreaterThan(0);
   });
-  test("Lively: with nothing happening it hops now and then; never when not Lively, and not while it is followed", () => {
-    const calm = new FlowflowEngine(); run(calm, HOP_EVERY[1] + 6); expect(calm.ripples.alive).toBe(0);
-    const lively = new FlowflowEngine(); lively.lively = true;
-    // M26: it now does one of several moves; within a minute at least one of them leaves the ground.
-    let hopped = false; for (let t = 0; t < 60; t += 1 / 60) { lively.update(1 / 60); if (lively.body.pose.y > 0.08) hopped = true; }
-    expect(hopped).toBe(true);
-    const followed = new FlowflowEngine(); followed.lively = true;
-    let up = false; for (let t = 0; t < 60; t += 1 / 60) { followed.pointer(0.5, 0); followed.update(1 / 60); if (followed.body.pose.y > 0.08) up = true; }
-    expect(up).toBe(false);
-    expect(followed.idleDone).toEqual([]);
-  });
 });
 
-// M26: life when nothing happens is a little repertoire, not one hop: a hop, a double bounce, a look around, a shake of
-// water, a stretch, a bubble. Chosen from the seeded schedule (the same every run), only with Lively, never while busy,
-// followed or pushed.
-import { IDLE_ACTS } from "./engine.ts";
-
-describe("idle life (M26)", () => {
-  const live = (seed = 7) => { const e = new FlowflowEngine({}, seed); e.lively = true; return e; };
-  const play = (e: FlowflowEngine, secs: number) => { for (let t = 0; t < secs; t += 1 / 60) e.update(1 / 60); };
-  test("in two minutes of quiet it does several different things, not the same hop", () => {
-    const e = live(); play(e, 120);
-    expect(new Set(e.idleDone).size).toBeGreaterThanOrEqual(4);
-    expect(e.idleDone.length).toBeGreaterThanOrEqual(12);
-    for (const k of e.idleDone) expect(IDLE_ACTS).toContain(k);
+// M46 (F28): no idle tricks in any choice; Still's sway fades to exactly nothing; Gentle sways slower; only Lively looks.
+describe("how lively (M46)", () => {
+  const modes = ["still", "gentle", "lively"] as const;
+  const make = (mode: (typeof modes)[number], seed = 7) => { const e = new FlowflowEngine({}, seed); e.mode = mode; return e; };
+  test("no idle trick of any kind fires over two minutes in any choice: no hop, no drop, no ripple", () => {
+    for (const mode of modes) {
+      const e = make(mode);
+      let high = 0, drops = 0, ripples = 0;
+      for (let t = 0; t < 120; t += 1 / 60) { e.update(1 / 60); high = Math.max(high, e.body.pose.y); drops = Math.max(drops, e.droplets.alive); ripples = Math.max(ripples, e.ripples.alive); }
+      expect(high, mode).toBeLessThan(0.02); expect(drops, mode).toBe(0); expect(ripples, mode).toBe(0);
+    }
+    expect(Object.keys(new FlowflowEngine())).not.toContain("idleDone");
   });
-  test("the same seed does the same things in the same order (no dice)", () => {
-    const a = live(3), b = live(3); play(a, 60); play(b, 60);
-    expect(a.idleDone).toEqual(b.idleDone);
+  test("Still's sway reaches exactly 0 by 3 s, and floats and breathes not at all once it has", () => {
+    const e = make("lively"); run(e, 4); expect(e.sway).toBeCloseTo(SWAY.lively.amount, 6);
+    e.mode = "still";
+    run(e, 3);
+    expect(SWAY_FADE_S).toBeLessThanOrEqual(3);
+    expect(e.sway).toBe(0);
+    const s = e.update(1 / 60);
+    expect(s.sway).toBe(0); expect(s.float).toBe(0); expect(s.pose.breath).toBe(0);
   });
-  test("nothing without Lively, and nothing while it works", () => {
-    const calm = new FlowflowEngine(); play(calm, 60); expect(calm.idleDone).toEqual([]);
-    const busy = live(); busy.applyApp("working"); play(busy, 60); expect(busy.idleDone).toEqual([]);
+  test("Still sways while it has news, then fades back to nothing", () => {
+    const e = make("still"); e.applyApp("working"); run(e, 3); expect(e.sway).toBe(SWAY.still.amount);
+    e.applyApp("idle"); run(e, 3); expect(e.sway).toBe(0);
   });
-  test("every move ends where it started: the body comes back home", () => {
-    const e = live(); play(e, 90);
-    play(e, 0); // let the last one finish below
-    for (let t = 0; t < 8; t += 1 / 60) { e.update(1 / 60); }
-    expect(Math.abs(e.body.pose.x)).toBeLessThan(0.3);
+  test("Gentle sways about 0.4, its clock at half the rate; Lively at 1, today's rate", () => {
+    const g = make("gentle"), l = make("lively"); run(g, 5); run(l, 5);
+    expect(g.sway).toBeCloseTo(0.4, 6); expect(l.sway).toBeCloseTo(1, 6);
+    const g0 = g.update(1 / 60).swayTime, l0 = l.update(1 / 60).swayTime; run(g, 2); run(l, 2);
+    const gr = g.update(1 / 60).swayTime - g0, lr = l.update(1 / 60).swayTime - l0;
+    expect(gr / lr).toBeCloseTo(0.5, 2);
   });
-  test("resting, it visibly breathes and floats", () => {
-    const e = new FlowflowEngine();
-    const look = e.behavior.look;
-    expect(look.breathAmp).toBeGreaterThanOrEqual(0.035);
-    expect(look.floatAmp).toBeGreaterThanOrEqual(0.03);
+  test("the pointer and the gaze do nothing unless Lively", () => {
+    for (const mode of ["still", "gentle"] as const) {
+      const e = make(mode); run(e, 0.5);
+      for (let i = 0; i < 60; i++) { e.gaze(400, -100); e.pointer(0.9, 0.3); e.update(1 / 60); }
+      expect(Math.abs((e.face.eyes.lx + e.face.eyes.rx) / 2), mode).toBeLessThan(0.02); expect(Math.abs(e.body.pose.x), mode).toBeLessThan(0.01);
+      expect(e.behavior.state, mode).toBe("idle");
+    }
+    const l = make("lively"); run(l, 0.5); for (let i = 0; i < 60; i++) { l.gaze(400, -100); l.update(1 / 60); }
+    expect(l.face.eyes.lx).toBeGreaterThan(0.2);
+  });
+  test("tiny drops shed as it moves only in Lively", () => {
+    const shed = (mode: (typeof modes)[number]) => { const e = make(mode); let n = 0; for (let t = 0; t < 3; t += 1 / 60) { e.push(1500, 0); e.update(1 / 60); n = Math.max(n, e.droplets.alive); } return n; };
+    expect(shed("still")).toBe(0); expect(shed("gentle")).toBe(0);
+  });
+  test("a still frame holds needs you's amber with no pulse", () => {
+    const e = make("still"); e.applyApp("needsYou"); run(e, 0.5);
+    const s = e.still(); expect(s.look.amber).toBe(1); expect(s.pulse).toBe(0);
   });
 });
 

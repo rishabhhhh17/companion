@@ -10,7 +10,7 @@ import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
 import { characterName } from "./companion.ts";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
-import { livelyOf, livelySettings, waterOf, WATERS, WATER_TINTS } from "./lookfeel.ts";
+import { LIVELINESS, livelinessOf, waterOf, WATERS, WATER_TINTS, type Liveliness } from "./lookfeel.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { focusBack, focusIfLost, takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, keyStatus, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
@@ -989,17 +989,23 @@ function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: 
 }
 
 /** The character on the water at the top of its own part of Settings (M18): alive, with its name, shown resting, working or
- *  done on a press so a change here (how lively, the motion) can be seen. A picture, not a control: the states are buttons. */
+ *  done on a press so a change here (how lively) can be seen. A picture, not a control: the states are buttons. M46 (F28):
+ *  Still, Gentle and Lively read and write character.lively only; Less motion and reactions keep their own rows. */
 const HERO_STATES = ["idle", "working", "done"] as const;
 function CompanionHero() {
   const [as, setAs] = useState<(typeof HERO_STATES)[number]>("idle");
   const name = characterName(useSetting("character.name"));
   // One tap changes it, and the character above shows it at once (M19).
-  const lively = livelyOf(useSetting("fun.reactions"), useSetting("character.motion"));
+  const inForce = livelinessOf(useSetting("character.lively"));
+  // The press shows on the character at once, before the shell's answer comes back (a press is news: it moves, then
+  // follows the choice's own rule).
+  const [pressed, setPressed] = useState<Liveliness | null>(null);
+  useEffect(() => { if (pressed === inForce) setPressed(null); }, [pressed, inForce]);
+  const lively = pressed ?? inForce;
   return (<>
     <div className="companion-hero">
       <div className="ch-water" aria-hidden="true"><Waterline under /></div>
-      <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} /></div>
+      <div className="ch-char" aria-hidden="true"><HomeCharacter as={as} liveliness={lively} /></div>
       <b className="ch-name">{name}</b>
       <div className="ch-states" role="group" aria-label={S.heroStatesLabel}>
         {HERO_STATES.map((st) => <button key={st} type="button" aria-pressed={as === st} onClick={() => setAs(st)}>{S.heroStates[st]}</button>)}
@@ -1008,7 +1014,7 @@ function CompanionHero() {
     </div>
     <div className="ch-look">
       <div className="ch-lively" role="group" aria-label={S.livelyLabel}>
-        {(["lively", "calm", "still"] as const).map((l) => <button key={l} type="button" aria-pressed={lively === l} onClick={() => { for (const [k, v] of livelySettings(l)) void changeSetting(k, v); }}>{S.lively[l]}</button>)}
+        {LIVELINESS.map((l) => <button key={l} type="button" aria-pressed={lively === l} onClick={() => { setPressed(l); void changeSetting("character.lively", l).then((d) => { if (!d.ok) setPressed(null); }); }}>{S.lively[l]}</button>)}
       </div>
     </div>
   </>);

@@ -21,6 +21,8 @@ export class Face {
   private blinkIn: number; private blinkT = -1;
   private wanderIn: number; private glanceLeft = 0; private gx = 0; private gy = 0;
   readonly eyes: Eyes = { lx: 0, ly: 0, rx: 0, ry: 0, open: 1 };
+  /** M46: whether it glances aside by itself when nothing is happening. Only in Lively (the engine sets it). */
+  wander = true;
 
   constructor(seed = 7) {
     this.rand = rng(seed);
@@ -35,6 +37,8 @@ export class Face {
   glance(nx: number, ny: number, seconds = 1.2): void { this.gx = clamp1(nx); this.gy = clamp1(ny); this.glanceLeft = seconds; }
   /** Close both eyes now (an app event such as a poke may ask for it). */
   blinkNow(): void { if (this.blinkT < 0) this.blinkT = 0; }
+  /** True while a blink is under way: a frame loop parks only with the eyes open (M46). */
+  get blinking(): boolean { return this.blinkT >= 0; }
 
   update(dt: number, look: { eyeOpen: number; gazeGain: number }, hasTarget: boolean): void {
     if (!(dt > 0)) return;
@@ -43,7 +47,7 @@ export class Face {
     if (this.blinkT >= 0) { this.blinkT += dt; if (this.blinkT >= BLINK_SECONDS) { this.blinkT = -1; this.blinkIn = 2.4 + this.rand() * 3.2; } }
     else if (this.blinkIn <= 0) this.blinkT = 0;
     // With nothing to look at it now and then glances aside, then comes back.
-    if (!hasTarget) {
+    if (!hasTarget && this.wander) {
       this.wanderIn -= dt;
       if (this.wanderIn <= 0) { this.glance((this.rand() - 0.5) * 1.1, (this.rand() - 0.5) * 0.6, 1.1); this.wanderIn = 3.5 + this.rand() * 3.5; }
     }

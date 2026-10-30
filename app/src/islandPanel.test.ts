@@ -61,20 +61,13 @@ describe("the panel under the notch shows the work, not a character", () => {
   });
 });
 
-describe("the sun inside the notch (M20)", () => {
-  test("at rest the notch's black grows into the window's margin, and the sun sits on it in lime, sharp on any wallpaper", () => {
+describe("the bare notch at rest (M46, F28: the sun leaves the notch)", () => {
+  test("no sun on the black, and the black is exactly the notch", () => {
     const page = read("./island.tsx"), css = read("./style.css");
     expect(page).toContain("const shapeW = shape.w;");
-    expect(page).toContain('src="./brand/sun-lime.svg"');
+    expect(page).not.toContain("sun-lime.svg");
     expect(page).not.toContain("prefers-color-scheme");   // no guessing the menu bar's colour from the Mac's theme
-    expect(css).toMatch(/\.island\.notch\[data-mode="rest"\]:not\(\[data-tuck\]\) \.island-sun \{ display: block;/);
-    expect(css).not.toContain("island-sun-breathe");   // it holds still: no fading in and out on the black
-    const lime = readFileSync(new URL("../public/brand/sun-lime.svg", import.meta.url), "utf8");
-    expect(lime).toContain('fill="url(#chr)"');   // M32: polished chrome, not lime
-    // The mark is exactly seven identical rays (make_logo.py rotates one path 360/7 degrees) and a sun with its smile cut out.
-    expect(lime.match(/transform="rotate\(/g)?.length).toBe(7);
-    expect(new Set([...lime.matchAll(/<path d="([^"]+)" fill="url\(#chr\)" transform/g)].map((m) => m[1])).size).toBe(1);
-    expect(lime).toContain('mask="url(#cutn)"');
+    expect(css).not.toContain(".island-sun");
   });
 });
 
@@ -120,33 +113,76 @@ describe("answering in the notch (M23)", () => {
   });
 });
 
-// M26: work cards that hang from the notch by themselves for a moment (like a phone's live activity): when a job starts,
-// moves to a new step, and ends with its proof. Then they tuck back; the pointer still opens the whole panel.
-import { WORK_PEEK_MS, workPeekKey } from "./islandPanel.ts";
+// M46 (replacing M26's work peek): a card drops from the notch by itself only for a result that matters, a proven fix or a
+// failure. A job starting, moving a step, its cost, a partly checked or a plain (stopped, not checked) result, and Undo
+// stay up in the notch: the person rests the pointer on it to see them.
+import { RESULT_PEEK_MS, resultPeekKey } from "./islandPanel.ts";
 
-describe("work cards drop from the notch on each change (M26)", () => {
-  test("the moment changes when a job starts, moves a step, or ends", () => {
+describe("only a proven fix or a failure drops from the notch by itself (M46)", () => {
+  const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "join.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.05, ended: "done", ...o });
+  const finished = (o: Record<string, unknown> = {}, state = "done") => run([...started, receipt(o), ev({ type: "agent.state", agent: "a", state })]);
+  const undone = (m: Model) => run([ev({ type: "checkpoint.restored", project: "/p", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], m);
+  test("a start, a step and a cost give nothing", () => {
+    expect(resultPeekKey(islandJobs(initial()))).toBe("");
     const a = run(started);
-    const k0 = workPeekKey(islandJobs(initial()));
-    const k1 = workPeekKey(islandJobs(a));
-    expect(k0).toBe("");
-    expect(k1).not.toBe("");
-    const b = run([ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })], a);
-    expect(workPeekKey(islandJobs(b))).not.toBe(k1);
+    expect(resultPeekKey(islandJobs(a))).toBe("");
+    expect(resultPeekKey(islandJobs(run([ev({ type: "drive.step", agent: "a", index: 2, total: 3, title: "Rename the function", status: "started" })], a)))).toBe("");
+    expect(resultPeekKey(islandJobs(run([ev({ type: "cost.update", agent: "a", usdEstimate: 0.04 })], a)))).toBe("");
   });
-  test("the cost going up is not a new moment", () => {
-    const a = run(started);
-    const paid = run([ev({ type: "cost.update", agent: "a", usdEstimate: 0.04 })], a);
-    expect(workPeekKey(islandJobs(paid))).toBe(workPeekKey(islandJobs(a)));
+  test("partly checked, plain (stopped, not checked) and Undo give nothing", () => {
+    expect(resultPeekKey(islandJobs(finished({ proof: "partial" })))).toBe("");
+    expect(resultPeekKey(islandJobs(finished({ ended: "stopped", proof: "skipped" }, "idle")))).toBe("");
+    expect(resultPeekKey(islandJobs(undone(finished())))).toBe("");
   });
-  test("a moment is long enough to read and short enough not to be in the way", () => {
-    expect(WORK_PEEK_MS).toBeGreaterThanOrEqual(2500);
-    expect(WORK_PEEK_MS).toBeLessThanOrEqual(5000);
+  test("a proven fix and a failure each give their own key, never built from the card's line", () => {
+    const proven = resultPeekKey(islandJobs(finished()));
+    const failed = resultPeekKey(islandJobs(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error")));
+    expect(proven).not.toBe(""); expect(failed).not.toBe(""); expect(proven).not.toBe(failed);
+    expect(proven).toBe("done:cp_1|done");
+    const [c] = islandJobs(finished());
+    expect(resultPeekKey([{ ...c, sub: "another line" }])).toBe(proven);
   });
-  test("opened by itself, the panel shows only the cards; the pointer shows everything", () => {
-    const view = read("./islandPanel.tsx");
-    expect(view).toContain("brief");
+  test("questions are never part of it (they open by their own setting)", () => {
+    const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Q", expiresAt: "2099-01-01T00:00:00Z" })]);
+    expect(resultPeekKey(islandJobs(m))).toBe("");
+  });
+  test("it stays down as long as the done tick shows", () => {
+    expect(RESULT_PEEK_MS).toBe(4000);
     expect(read("./island.tsx")).toContain('useSetting("island.showWork") !== false');
+    expect(read("./islandPanel.tsx")).toContain("brief");
+  });
+});
+
+// M46: a card that opened by itself ignores every click for its first ARM_MS: Look first, a result card, Allow and Don't
+// allow. The pointer that happened to sit there cannot press anything by accident.
+describe("a self opened panel is armed after a moment (M46)", () => {
+  test("ignored at 599 ms, accepted at 600 ms, whatever the button", () => {
+    expect(ARM_MS).toBe(600);
+    expect(armed(0, 599)).toBe(false);
+    expect(armed(0, 600)).toBe(true);
+    const view = read("./islandPanel.tsx");
+    expect(view).toContain("const openedAt = useRef<number | null>(null);");
+    expect(view).toContain('data-armed={ready() ? "yes" : undefined}');
+    for (const b of ['className="ip-yes" type="button" tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}', 'className="ip-job" type="button" data-tone={j.tone} data-armed={cardOk(j.key, now) ? "yes" : undefined} tabIndex={tab} onClick={click(j.key, () => void invoke("island_click").catch(() => {}))}']) expect(view, b).toContain(b);
+    expect(view).toContain("const click = (key: string, f: () => void) => () => { if (!ready() || !cardOk(key, Date.now())) return; f(); };");
+    expect(view).toContain("const keys = jobs.map((j) => j.key).join(\" \");");   // every card's first sight, not only questions'
+    expect(read("./style.css")).toContain(".island-panel button.ip-job:not([data-armed]) { cursor: default; }");
+    expect(read("./style.css")).toContain(".island-panel[data-brief]:not([data-armed]) { cursor: default; }");
+  });
+});
+
+import { cardReady } from "./islandPanel.ts";
+describe("a card that drops into a panel already open by itself waits its own moment (M46)", () => {
+  test("opened at 0 for a result, a question at 2 s: its Look first ignores 2599 ms and takes 2600 ms", () => {
+    expect(cardReady(0, 0, 599)).toBe(false);
+    expect(cardReady(0, 0, 600)).toBe(true);
+    expect(cardReady(0, 2000, 2599)).toBe(false);
+    expect(cardReady(0, 2000, 2600)).toBe(true);
+    expect(cardReady(0, null, 9000)).toBe(false);   // not drawn yet: nothing to press
+  });
+  test("opened by the pointer, every card is ready at once", () => {
+    expect(cardReady(null, null, 0)).toBe(true);
+    expect(cardReady(null, 5000, 5001)).toBe(true);
   });
 });
 
@@ -175,9 +211,10 @@ describe("M45: the notch card after a result tells the truth", () => {
     expect(c.state).toBe("idle");
     expect(c.sub).toBe("Undone. The fix is gone, so the problem is back.");
   });
-  test("the peek key changes on Undo", () => {
+  test("Undo never drops a card by itself (M46): the proven key goes, nothing new comes", () => {
     const m = finished();
-    expect(workPeekKey(islandJobs(undone(m)))).not.toBe(workPeekKey(islandJobs(m)));
+    expect(resultPeekKey(islandJobs(m))).not.toBe("");
+    expect(resultPeekKey(islandJobs(undone(m)))).toBe("");
   });
   test("a stopped task's card is plain", () => {
     const [c] = islandJobs(finished({ ended: "stopped", proof: "skipped" }, "idle"));

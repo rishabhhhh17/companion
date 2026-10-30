@@ -1,16 +1,17 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Squibby pointer</title>
 <style>html,body{margin:0;background:transparent;overflow:hidden}svg{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none}
-.cap{position:fixed;font:700 15px ui-rounded,"SF Pro Rounded",-apple-system,sans-serif;background:#E9ECF1;color:#0A0A0B;padding:9px 13px 10px;border-radius:16px 16px 16px 4px;max-width:300px;box-shadow:0 3px 0 #5C6168,0 12px 30px rgba(0,0,0,.4);pointer-events:none;opacity:0;transform:scale(.7) translateY(6px);transform-origin:0 100%;transition:opacity .15s,transform .4s cubic-bezier(.34,1.56,.64,1)}
+.cap{position:fixed;font:700 15px -apple-system,"SF Pro Text",system-ui,sans-serif;background:#E9ECF1;color:#0A0A0B;padding:9px 13px 10px;border-radius:16px 16px 16px 4px;max-width:300px;box-shadow:0 3px 0 #5C6168,0 12px 30px rgba(0,0,0,.4);pointer-events:none;opacity:0;transform:scale(.7) translateY(6px);transform-origin:0 100%;transition:opacity .15s,transform .2s cubic-bezier(.23,1,.32,1)}
 .cap.left{border-radius:16px 16px 4px 16px;transform-origin:100% 100%}
 .cap.on{opacity:1;transform:none}
 .cap.white{background:#fff;color:#000;box-shadow:0 3px 0 #c9c9cf,0 12px 30px rgba(0,0,0,.4)}
 ellipse[data-water]{visibility:hidden}
-.talk{position:fixed;left:50%;bottom:9vh;max-width:min(680px,80vw);box-sizing:border-box;padding:12px 18px 13px;border-radius:18px;background:rgba(14,14,16,.9);color:#fff;font:600 18px/1.35 ui-rounded,"SF Pro Rounded",-apple-system,sans-serif;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 12px 32px rgba(0,0,0,.35);pointer-events:none;opacity:0;transform:translate(-50%,6px);transition:opacity .16s cubic-bezier(.23,1,.32,1),transform .16s cubic-bezier(.23,1,.32,1)}
+.talk{position:fixed;left:50%;bottom:9vh;max-width:min(680px,80vw);box-sizing:border-box;padding:12px 18px 13px;border-radius:18px;background:rgba(14,14,16,.9);color:#fff;font:600 18px/1.35 -apple-system,"SF Pro Text",system-ui,sans-serif;text-align:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 12px 32px rgba(0,0,0,.35);pointer-events:none;opacity:0;transform:translate(-50%,6px);transition:opacity .16s cubic-bezier(.23,1,.32,1),transform .16s cubic-bezier(.23,1,.32,1)}
 .talk.on{opacity:1;transform:translate(-50%,0)}
 .talk:empty{display:none}
 @keyframes pulse{0%{transform:scale(1);opacity:.95}70%{transform:scale(1.18);opacity:.35}100%{transform:scale(1);opacity:.95}}
 .ring{transform-box:fill-box;transform-origin:center;animation:pulse 1.4s ease-out infinite}
+:root[data-ring-calm] .ring{animation-iteration-count:3}
 @media (prefers-reduced-motion:reduce){.ring{animation:none}.cap{transition:none;transform:none}.talk{transition:none}}
 :root[data-less-motion] *,:root[data-less-motion] *::before,:root[data-less-motion] *::after{animation:none!important;transition:none!important}</style></head>
 <body><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>

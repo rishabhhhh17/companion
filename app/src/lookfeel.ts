@@ -35,13 +35,12 @@ export function flowColours(w: Water): { light: string; deep: string } {
   return w === "ocean" ? { light: "#6fe3ff", deep: "#1d72d8" } : { light: WATER_TINTS[w].mid, deep: WATER_TINTS[w].deep };
 }
 
-/** How lively, in one control: Lively (reactions on, the Mac's motion), Calm (no reactions), Still (no reactions, less
- *  motion). Read from the two settings it writes, so it always shows what is in force. */
-export type Lively = "lively" | "calm" | "still";
-export function livelyOf(reactions: unknown, motion: unknown): Lively { return motion === "less" ? "still" : reactions === false ? "calm" : "lively"; }
-export function livelySettings(l: Lively): [string, unknown][] {
-  return [["fun.reactions", l === "lively"], ["character.motion", l === "still" ? "less" : "followMac"]];
-}
+/** How lively Flowflow is (M46, F28, character.lively): Still, the usual, holds still after 3 seconds with no news; Gentle
+ *  sways slowly at rest; Lively is today's motion (sway, eyes on the pointer, the ring on the pointer). Its own key, so Less
+ *  motion (character.motion) stays the accessibility control and always wins. Anything else reads as Still. */
+export const LIVELINESS = ["still", "gentle", "lively"] as const;
+export type Liveliness = (typeof LIVELINESS)[number];
+export function livelinessOf(v: unknown): Liveliness { return typeof v === "string" && (LIVELINESS as readonly string[]).includes(v) ? (v as Liveliness) : "still"; }
 
 /** The character's size on the edge. Its window stays 160 points square (main.rs DOCK), so large is only as big as still
  *  leaves the water room to wobble inside it. */

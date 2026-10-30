@@ -202,9 +202,10 @@ export const ISLAND_LINE_MAX = 64;
 const cut = (t: string) => (t.length <= ISLAND_LINE_MAX ? t : `${t.slice(0, ISLAND_LINE_MAX - 1).trimEnd()}…`);
 const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approvals.length > 0 || !!m.agentsAsk || !!m.stuck || !!m.paused || !!m.plan);
 
-/** The small live mark on the right wing. dots: thinking. arc: working or looking. bars: listening (the microphone's light,
- *  rule 5). amber: something waits for the person. tick: just done (it draws itself). red: something went wrong. */
-export type WingMark = "dots" | "arc" | "bars" | "amber" | "tick" | "red";
+/** The small live mark on the right wing. dots: thinking. arc: working or checking. look: looking at the screen (a still
+ *  light, rule 5, M46). bars: listening (the microphone's light, rule 5). amber: something waits for the person. tick: just
+ *  done (it draws itself). red: something went wrong. */
+export type WingMark = "dots" | "arc" | "look" | "bars" | "amber" | "tick" | "red";
 export type Wings = { state: CharacterState; mark: WingMark };
 const MARK: Partial<Record<CharacterState, WingMark>> = { thinking: "dots", working: "arc", checking: "arc", listening: "bars", needsYou: "amber", done: "tick", error: "red" };
 
@@ -213,10 +214,17 @@ const MARK: Partial<Record<CharacterState, WingMark>> = { thinking: "dots", work
  *  question waiting, then the character's own state, then a failing watch (F21). `marked`: When something needs me only
  *  marks the tab (home.goToNeeds), so anything that needs the person shows the amber mark too. With the engine stopped,
  *  none: the line says so when the pointer rests on it. */
+/** M46, rule 5: Show me how is about to look, or is looking, at the screen. The stage the shell announces 250 ms before
+ *  each capture (main.rs), each walkthrough step included. Never "checking" alone: that also covers Point at the problem
+ *  and the runner's own checks, which are not captures. */
+export function looksAtScreen(m: Model): boolean { return m.showme?.stage === "looking"; }
+
 export function islandWings(m: Model, marked = false): Wings | null {
   if (!m.runnerUp) return null;
   const v = visualState(m);
-  if (v === "listening" || v === "checking") return { state: v, mark: MARK[v]! };
+  if (v === "listening") return { state: v, mark: MARK[v]! };
+  if (looksAtScreen(m)) return { state: "checking", mark: "look" };
+  if (v === "checking") return { state: v, mark: MARK[v]! };
   if (waiting(m) || (marked && need(m))) return { state: "needsYou", mark: "amber" };
   // A finished task's own result (M45): the tick only for a proven fix, red only when it went wrong, otherwise the bare
   // notch (stopped, undone, not checked or partly checked). Show me's own done keeps its tick. Only the task's own agent's
@@ -282,6 +290,7 @@ export function islandLine(m: Model, o: { update?: string | null; group?: string
 function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
+  if (looksAtScreen(m)) return S.islandLooking;
   // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.
   if (m.voice && TYPED.includes(m.voice.stage) && m.voice.message) return cut(m.voice.message);
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));

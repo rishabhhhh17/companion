@@ -1,6 +1,6 @@
 // Flowflow's moods: every change has a real cause, every change is smooth, and any change may interrupt another.
 import { describe, expect, test } from "bun:test";
-import { BEHAVIOR_STATES, Behavior, FLASH_SECONDS, LOOKS, LOOK_KEYS, fromApp } from "./behavior.ts";
+import { BEHAVIOR_STATES, Behavior, FLASH_SECONDS, LOOKS, LOOK_KEYS, NEEDS_PULSES, PULSE_SECONDS, fromApp } from "./behavior.ts";
 import type { CharacterState } from "../model.ts";
 
 const APP: CharacterState[] = ["off", "idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"];
@@ -12,7 +12,9 @@ describe("what the app's state means", () => {
     expect(fromApp("off").base).toBe("sleeping"); expect(fromApp("working").base).toBe("working"); expect(fromApp("thinking").base).toBe("working");
     expect(fromApp("checking").base).toBe("working"); expect(fromApp("error").base).toBe("error");
     expect(fromApp("done")).toEqual({ base: "idle", flash: "success" });
-    expect(fromApp("listening").base).toBe("curious"); expect(fromApp("needsYou").base).toBe("curious");
+    expect(fromApp("listening").base).toBe("curious");
+    // M46: needs you is its own mood (amber, eyes forward), never the same as listening.
+    expect(fromApp("needsYou").base).toBe("needsYou"); expect(fromApp("needsYou").base).not.toBe(fromApp("listening").base);
   });
 });
 
@@ -73,5 +75,28 @@ describe("smooth and interruptible", () => {
   });
   test("no time passing changes nothing, and a bad time is ignored", () => {
     const b = new Behavior(); b.applyApp("error"); const l = { ...b.look }; b.update(0); b.update(NaN); b.update(-1); expect(b.look).toEqual(l);
+  });
+});
+
+describe("needs you (M46)", () => {
+  test("an amber core, the eyes straight ahead, three pulses, then it holds steady", () => {
+    expect(LOOKS.needsYou.amber).toBe(1); expect(LOOKS.needsYou.gazeGain).toBe(0);
+    for (const st of BEHAVIOR_STATES) if (st !== "needsYou") expect(LOOKS[st].amber, st).toBe(0);
+    const b = new Behavior(); b.applyApp("needsYou");
+    expect(b.state).toBe("needsYou"); expect(b.pulsesDone).toBe(false);
+    let peaks = 0, was = 0, rising = false;
+    for (let t = 0; t < NEEDS_PULSES * PULSE_SECONDS + 3; t += 1 / 60) {
+      b.update(1 / 60);
+      const p = b.pulse;
+      if (rising && p < was) peaks++;
+      rising = p > was; was = p;
+    }
+    expect(peaks).toBe(NEEDS_PULSES);
+    expect(b.pulse).toBe(0); expect(b.pulsesDone).toBe(true); expect(b.look.amber).toBeGreaterThan(0.95);
+  });
+  test("each new time it needs you pulses again; other states never pulse", () => {
+    const b = new Behavior(); b.applyApp("needsYou"); settle(b, 6); expect(b.pulsesDone).toBe(true);
+    b.applyApp("working"); expect(b.pulsesDone).toBe(true); expect(b.pulse).toBe(0);
+    b.applyApp("needsYou"); b.update(0.3); expect(b.pulsesDone).toBe(false); expect(b.pulse).toBeGreaterThan(0);
   });
 });

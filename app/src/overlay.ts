@@ -1,9 +1,9 @@
-// The pointer: a drop of Flowflow's water that splits off the character, flies to the target and spreads into a ring of
-// water around it, then a short caption (M17, water.ts).
+// The pointer: a ring of Flowflow's water at the target, then a short caption (M17, water.ts). M46: the ring shows at the
+// place at once; the drop that splits off the character and flies there is the opt in Fly to the place first (point.fly).
 // Plain page, no framework, no input: the panel it sits in ignores the mouse and never takes the keyboard.
 import { listen } from "./tauri.ts";
 import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, ringLook, ringMsOf } from "./pointer.ts";
-import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, ringBeads, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
+import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, RING_IN_MS, ringBeads, ringIn, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
 import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, ringRadii } from "./marks.ts";
@@ -12,6 +12,7 @@ import { SpeechClock } from "./speechClock.ts";
 import { followLessMotion, playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
+import { S } from "./strings.ts";
 
 // mark: a hand drawn ring, arrow, underline or box for a confirmed target (marks.ts); a guess never gets one. flyMs: how
 // long the flight takes (a step of a multi step answer flies for its lead in). fadeMs: how long the mark stays (its line).
@@ -57,6 +58,10 @@ function show(p: Point) {
   tintWater(waterTint(setting("point.colour"), setting("look.water")));
   // The pointer's style and size (M19): water (the drop and its ring of water) or a plain ring; the drop small to large.
   const style = setting("point.style") === "ring" ? "ring" : "water", ks = dropScale(setting("point.dropSize")), R = DROP_R * ks;
+  // M46 (F28): the drop flies to the place only with Fly to the place first on; only Lively keeps the held ring wobbling.
+  const fly = setting("point.fly") === true, lively = setting("character.lively") === "lively";
+  // Outside Lively a plain or dashed ring pulses three times to be seen, then holds still (overlay.html data-ring-calm).
+  document.documentElement.toggleAttribute("data-ring-calm", !lively);
   // The ring and the drop are drawn only inside the window they were confirmed in (nothing lands on a different app).
   let layer: Element = svg;
   if (p.clip) {
@@ -83,13 +88,15 @@ function show(p: Point) {
   const ring = el("ellipse", { cx, cy, rx, ry, fill: "none", stroke: color, "stroke-width": look.width, "stroke-dasharray": look.dash, class: "ring", "data-main": 1, opacity: reduced && !strokes ? 1 : 0 });
   if (p.exact && !look.halo && style === "water") ring.setAttribute("data-water", "1");
   layer.appendChild(ring);
-  // The water ring: beads evenly spaced around the target that spread out like water and wobble gently (still with less
-  // motion). It starts when the plain ring would show.
+  // The water ring: beads evenly spaced around the target that spread out like water (still with less motion). It starts
+  // when the plain ring would show. M46: without the flight it draws in over RING_IN_MS with no overshoot, and outside
+  // Lively it then holds still, so nothing is drawn while it waits for a click.
   const beads = p.exact && style === "water" ? ringBeads(rx, ry, BEAD_GAP * ks).map((b) => ({ b, c: ringWater.appendChild(el("circle", { cx, cy, r: 0, fill: "url(#wg)" })) })) : [];
+  const spreadMs = fly ? SPREAD_MS : RING_IN_MS, wobbles = lively && !reduced;
   const placeBeads = (k: number, now: number) => {
-    const sk = reduced ? 1 : settle(k), grow = reduced ? 1 : Math.min(1, k * 2);
+    const sk = reduced ? 1 : fly ? settle(k) : ringIn(k), grow = reduced ? 1 : fly ? Math.min(1, k * 2) : ringIn(k);
     for (const { b, c } of beads) {
-      const wob = reduced ? 0 : Math.sin(now / 330 + b.ux * 4) * 2.2 + Math.sin(now / 190 + b.uy * 5) * 1.3;
+      const wob = !wobbles ? 0 : Math.sin(now / 330 + b.ux * 4) * 2.2 + Math.sin(now / 190 + b.uy * 5) * 1.3;
       c.setAttribute("cx", String(cx + b.ux * rx * sk + b.nx * wob));
       c.setAttribute("cy", String(cy + b.uy * ry * sk + b.ny * wob));
       c.setAttribute("r", String(BEAD_R * ks * grow));
@@ -102,12 +109,16 @@ function show(p: Point) {
     const t0 = performance.now();
     // Once the ring has spread and settled, a held ring (waiting for the click, maybe for minutes) keeps its wobble at 20
     // frames a second rather than every refresh of the screen (M25): the same look, far less redrawing of the water filter.
+    // M46: only in Lively. Otherwise the last frame is the ring drawn in, and nothing more is scheduled.
     const wobble = (now: number) => {
       if (mine !== drawGen) return;
-      placeBeads((now - t0) / SPREAD_MS, now);
-      if (now - t0 > SPREAD_MS + 3000) setTimeout(() => requestAnimationFrame(wobble), 50);
+      const k = (now - t0) / spreadMs;
+      placeBeads(k, now);
+      if (!wobbles) { if (k < 1) requestAnimationFrame(wobble); return; }
+      if (now - t0 > spreadMs + 3000) setTimeout(() => requestAnimationFrame(wobble), 50);
       else requestAnimationFrame(wobble);
     };
+    placeBeads(0, t0);
     requestAnimationFrame(wobble);
   };
   // M28 drawing v2 (ink.ts): tapered ink over a halo, each stroke drawn in pen order at pen speed by growing its outline,
@@ -160,7 +171,8 @@ function show(p: Point) {
     lastLanding = { x: cx, y: cy };
     if (strokes) drawMark(strokes); else ringOn();
     const side = cx > innerWidth / 2 ? -1 : 1;
-    cap.textContent = (p.hold ? "Your turn: " : "") + p.caption + (p.exact ? "" : " (around here)");
+    const words = p.exact ? p.caption : S.pointer.aroundHere(p.caption);
+    cap.textContent = p.hold ? S.pointer.yourTurn(words) : words;
     // Ring lettering and the text size picked in Settings; plain at the usual size is the caption as it always was.
     const cs = captionStyle(setting("point.lettering"), setting("display.textSize"));
     const box = p.clip ?? { x: 0, y: 0, w: innerWidth, h: innerHeight };   // the words stay inside the window too
@@ -174,6 +186,8 @@ function show(p: Point) {
   };
   if (style === "ring") { land(); return; }   // a plain ring simply appears, as it used to
   if (reduced) { land(); return; }
+  // M46: unless Fly to the place first is on, the ring shows at the place at once: no bud, no arc, no trail, no squash.
+  if (!fly) { land(); return; }
   // The drop: it splits off the character (a hop from the last step's target skips that), arcs to the target stretched
   // the way it moves with a few tiny drops dropping behind, squashes on arrival, then the ring spreads from it.
   const to = { x: cx, y: cy };
@@ -252,9 +266,9 @@ void listen("overlay-caption", (e) => {
 });
 void listen("overlay-caption-end", () => { talkGen++; talk.classList.remove("on"); });
 
-// The person clicked the right thing: the ring turns green with a tick, and the water ring bursts into a splash of drops
-// (none with reduced motion or with reactions turned off; the green ring and the tick show either way). Then the drop
-// gathers and flies home to the character (`home`, where it is now), which ripples as it lands (the shell tells the dock).
+// The person clicked the right thing: the ring turns green with a tick. M46: that is all, unless Lively is chosen with
+// reactions on and motion allowed; then the water ring bursts into a splash of drops and the drop gathers and flies home to
+// the character (`home`, where it is now; the shell sends it only then), which ripples as it lands.
 function celebrate(rect: { x: number; y: number; w: number; h: number }, home: { x: number; y: number } | null) {
   const reduced = reducedMotion();
   drawGen += 1;   // a landing still on its way would cover the tick with the old caption
@@ -269,9 +283,10 @@ function celebrate(rect: { x: number; y: number; w: number; h: number }, home: {
   if (ring) { ring.setAttribute("opacity", "1"); ring.setAttribute("stroke", "#1e8a4c"); ring.setAttribute("stroke-dasharray", ""); ring.toggleAttribute("data-water", false); }
   const cx = rect.x + rect.w / 2, cy = rect.y + rect.h / 2, ty = rect.y - Math.max(rect.h / 2 + 10, 26) + rect.h / 2 - 2;
   svg.appendChild(el("path", { d: `M${cx - 9} ${ty - 14} l6 6 l12 -13`, fill: "none", stroke: "#1e8a4c", "stroke-width": 5, "stroke-linecap": "round", "stroke-linejoin": "round" }));
-  cap.textContent = "That's it."; 
+  cap.textContent = S.pointer.done;
   wentHome = home;
-  if (playful(reactionsOn(), reduced)) {
+  const lively = setting("character.lively") === "lively";
+  if (playful(reactionsOn(), reduced) && lively) {
     const water = el("g", { class: "splash", filter: "url(#goo)" });
     svg.appendChild(water);
     const dots = burst(rect).map((d, i) => { const c = el("circle", { cx: d.x, cy: d.y, r: d.r + 2, fill: i % 3 ? "url(#wg)" : "#C6F432" }); (i % 3 ? water : svg).appendChild(c); return { c, d }; });
@@ -296,11 +311,12 @@ void listen("overlay-celebrate", (e) => { const p = e.payload as { rect: { x: nu
 
 
 // The big celebration (proof passed on a fix, or the site went live): confetti from the character, once, then gone.
-// It draws in its own layer and never clears anything else on the overlay. None with reactions off or reduced motion.
+// It draws in its own layer and never clears anything else on the overlay. None with reactions off or reduced motion, and
+// M46 (F28): none unless Lively is chosen.
 function party(o: { x: number; y: number }) {
-  if (!playful(reactionsOn(), reducedMotion())) return;
   // The overlay is brought to the front for the confetti: a caption with no ring under it is never shown with it.
   if (!svg.querySelector("ellipse[data-main]")) cap.classList.remove("on");
+  if (!playful(reactionsOn(), reducedMotion()) || setting("character.lively") !== "lively") return;
   const layer = el("g", { class: "party" });
   svg.appendChild(layer);
   const bits = confetti(36, o.x > innerWidth / 2).map((p) => {
@@ -329,7 +345,8 @@ void listen("overlay-party", (e) => { const p = e.payload as { x: number; y: num
 // whole thing fades by itself.
 type Laid = { nodes: { id: string; label: string; x: number; y: number; w: number; h: number; broken: boolean }[]; edges: { from: string; to: string; label?: string; points: [number, number][]; broken: boolean }[]; width: number; height: number; caption: string; reason: string };
 const RED = "#ff6b6b", INKC = "#f2efe6";
-const HAND = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
+// M46: Draw it's words in the Mac's own system face (they were in a handwriting face).
+const HAND = "-apple-system, 'SF Pro Text', system-ui, sans-serif";
 /** How long the picture stays, as the shell sent it (How long Draw it for me stays in Settings): a time in ms, or null to keep
  *  it until it is closed. Nothing usable is the usual 15 seconds. */
 function diagramMsOf(v: unknown): number | null {

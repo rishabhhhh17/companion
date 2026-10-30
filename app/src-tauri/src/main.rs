@@ -10,6 +10,7 @@ mod gaze;
 mod google;
 mod claude_install;
 mod follow;
+mod rest;
 mod settingswin;
 mod island;
 mod esc;
@@ -121,7 +122,7 @@ static SHOWME: Mutex<showme::Pending> = Mutex::new(showme::Pending::new());
 fn showme_pending() -> std::sync::MutexGuard<'static, showme::Pending> { SHOWME.lock().unwrap_or_else(|e| e.into_inner()) }
 /// Point at the problem: each run takes a number; Stop, Close or a newer run changes it, and an older run then stops before it looks or draws.
 static POINT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); turn_cancel(); }
+fn point_cancel() { POINT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst); turn_cancel(); follow_wake(); }
 /// Your turn: the target the ring is waiting on (global points, label), and a number that Stop, Close or a newer ring changes.
 static TURN: Mutex<Option<(coords::R, String)>> = Mutex::new(None);
 static TURN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
@@ -130,6 +131,12 @@ static TURN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// or a Draw it for me picture kept until closed, holds it until the overlay is hidden.
 static OVERLAY_BUSY_UNTIL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 fn overlay_busy() -> bool { (now() as u64) < OVERLAY_BUSY_UNTIL.load(std::sync::atomic::Ordering::SeqCst) }
+/// M46: how long until the pointer on the overlay goes by itself (ms), while one is up. None with none up, or with one that
+/// waits for a click or is kept until closed: putting that away (hide_overlay) wakes the ring's thread instead.
+fn overlay_busy_left_ms() -> Option<u64> {
+    let (until, n) = (OVERLAY_BUSY_UNTIL.load(std::sync::atomic::Ordering::SeqCst), now() as u64);
+    (until != u64::MAX && until > n).then(|| until - n)
+}
 /// A Draw it for me picture kept until it is closed (drawIt.seconds) is on the overlay: a new picture may replace it.
 static DIAGRAM_KEPT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Each celebration takes a number, so an older one's tidy up never cuts a newer one short.
@@ -432,7 +439,7 @@ thread_local! {
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
 /// M34: results finished while Home was closed, shown as a count on the notch (island::unseen_next).
 static UNSEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
@@ -511,10 +518,12 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     if d.id != last { remember_island(&d.id); }
     let moved = ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref() != Some(&d);
     if moved { reset_hover(); }
-    let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); *s };
+    // M46: on a call or presenting (Quiet during calls), or hidden, the island never opens by itself and never cheers; its
+    // marks still show, and the pointer still opens it (island.rs `mode`). Only the front app's id is read (rule 7).
+    let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); s.quiet = quiet() || companion_hidden(); *s };
     let mode = island::mode(state);
     let look = island::look(&d, mode, f64::from(state.panel));
-    let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() { island::cheered(&d, mode, look) } else { look };
+    let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet { island::cheered(&d, mode, look) } else { look };
     let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
     // The page springs its shape to the new size (island.tsx). Growing is at once, so the shape has room to grow into;
@@ -1043,10 +1052,46 @@ fn pointer_on_character(mtm: MainThreadMarker) -> Option<bool> {
 /// The last place of the pointer the character's page was told (gaze.rs), so only a real move is sent.
 static LAST_GAZE: Mutex<Option<(f64, f64)>> = Mutex::new(None);
 
-/// Follow my pointer (gaze.rs): while the character is in view and the setting is not Off, where the pointer is from the
-/// middle of the character's window, sent only when it moved. Main thread (the window's frame).
+/// M46: the eyes follow the pointer now (gaze.rs `follows`: Lively, and not No), the character is not resting and
+/// Companion is not hidden. While false the eyes' thread sleeps with no timer and never asks the main thread.
+static GAZE_WANTED: AtomicBool = AtomicBool::new(false);
+/// The eyes' thread and the ring's thread, kept so a change can wake them (std::thread::park and unpark).
+static GAZE_THREAD: OnceLock<std::thread::Thread> = OnceLock::new();
+static FOLLOW_THREAD: OnceLock<std::thread::Thread> = OnceLock::new();
+/// When the ring's page last finished loading (now(), in ms); 0 until it has. follow::reshow.
+static FOLLOW_PAGE_AT: AtomicU64 = AtomicU64::new(0);
+fn gaze_wake() { if let Some(t) = GAZE_THREAD.get() { t.unpark(); } }
+/// Wakes the ring's thread, so it looks again at once whether the water ring should show (listening, a ring pointing at a
+/// place put up or put away, a setting, hidden or shown, rest). Any thread.
+fn follow_wake() { if let Some(t) = FOLLOW_THREAD.get() { t.unpark(); } }
+/// Works out again whether the eyes follow the pointer, and wakes their thread. Called when How lively or what follows
+/// changes, when rest changes, and when Companion is hidden or shown. Any thread.
+fn gaze_recompute() {
+    let w = gaze::follows(&setting_now("character.follow"), &setting_now("character.lively")) && !REST.load(Ordering::SeqCst) && !companion_hidden();
+    GAZE_WANTED.store(w, Ordering::SeqCst);
+    gaze_wake();
+}
+/// The eyes' own thread: while they follow the pointer, a look every gaze::POLL_MS (on the main thread, gaze_tick);
+/// otherwise it parks until gaze_wake, so in Still and Gentle it costs nothing.
+fn gaze_loop(app: AppHandle) {
+    let _ = GAZE_THREAD.set(std::thread::current());
+    loop {
+        match gaze::next(GAZE_WANTED.load(Ordering::SeqCst)) {
+            follow::Next::Tick(ms) => std::thread::sleep(Duration::from_millis(ms)),
+            follow::Next::Park => std::thread::park(),
+            follow::Next::ParkFor(ms) => std::thread::park_timeout(Duration::from_millis(ms)),
+        }
+        if !GAZE_WANTED.load(Ordering::SeqCst) { continue; }
+        if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { continue; }
+        let h2 = app.clone();
+        let _ = app.run_on_main_thread(move || gaze_tick(&h2));
+    }
+}
+
+/// Follow my pointer (gaze.rs): while the eyes follow it (GAZE_WANTED) and the character is in view, where the pointer is
+/// from the middle of the character's window, sent only when it moved. Main thread (the window's frame).
 fn gaze_tick(app: &AppHandle) {
-    if !gaze::follows(&setting_now("character.follow")) { return; }
+    if !GAZE_WANTED.load(Ordering::SeqCst) { return; }
     if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { return; }
     let Some(mtm) = MainThreadMarker::new() else { return };
     let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -1060,26 +1105,47 @@ fn gaze_tick(app: &AppHandle) {
     let _ = app.emit_to("dock", "gaze", json!({ "dx": rel.0, "dy": rel.1 }));
 }
 
-/// The water ring around the pointer (follow.rs, M37): about 120 times a second, while it is chosen and no pointer ring is
-/// up, its window is put on the pointer; otherwise the window is put away. Its own thread.
+/// The water ring around the pointer (follow.rs, M37; M46): about 120 times a second while it shows (follow::shown: at
+/// rest only in Lively, in every choice while listening, never under a ring pointing at a place, never while hidden or
+/// resting), its window is put on the pointer. Otherwise the window is put away once, the page is told to draw nothing
+/// (follow-hide), and the thread sleeps with no timer until follow_wake, or until a pointing ring goes by itself when the
+/// water ring would show after it. Its own thread.
 fn follow_loop(app: AppHandle) {
+    let _ = FOLLOW_THREAD.set(std::thread::current());
     let mut d = follow::Drop::default();
-    let (mut shown, mut want, mut tick) = (false, false, 0u64);
-    let mut water = Value::Null;
+    let (mut shown, mut tick, mut fresh) = (false, 0u64, true);
+    let (mut lively, mut follow_v, mut water) = (Value::Null, Value::Null, Value::Null);
     let mut last = std::time::Instant::now();
     let mut last_fr = [f64::NAN; 4];
     let mut sent_speed = 0.0f64;
     loop {
-        std::thread::sleep(Duration::from_millis(follow::TICK_MS));
-        if tick % 30 == 0 { want = follow::wanted(&setting_now("character.follow")); water = setting_now("look.water"); }
+        // The settings: on the first pass, after every sleep, and every 30 ticks while it shows.
+        if fresh || tick % 30 == 0 { lively = setting_now("character.lively"); follow_v = setting_now("character.follow"); water = setting_now("look.water"); }
+        fresh = false;
         tick += 1;
-        if !want || overlay_busy() {
-            if shown {
-                shown = false; d.placed = false; FOLLOW_LIVE.store(false, Ordering::SeqCst);
-                let _ = app.run_on_main_thread(|| FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.orderOut(None); } }));
+        // Resting (a call with Quiet during calls on, or Low Power Mode) takes Lively's ring off the pointer, never the
+        // listening one (rest.rs).
+        let (listening, pointing, quiet, hidden) = (listening_now(), overlay_busy(), REST.load(Ordering::SeqCst), companion_hidden());
+        let want = follow::shown(&lively, &follow_v, listening, pointing, quiet, hidden);
+        let after = follow::shown(&lively, &follow_v, listening, false, quiet, hidden);
+        match follow::next(want, overlay_busy_left_ms(), after) {
+            follow::Next::Tick(ms) => std::thread::sleep(Duration::from_millis(ms)),
+            park @ (follow::Next::Park | follow::Next::ParkFor(_)) => {
+                if shown {
+                    shown = false; d.placed = false; FOLLOW_LIVE.store(false, Ordering::SeqCst);
+                    let _ = app.run_on_main_thread(|| FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.orderOut(None); } }));
+                    let _ = app.emit_to("follow", "follow-hide", json!({}));
+                }
+                if let follow::Next::ParkFor(ms) = park { std::thread::park_timeout(Duration::from_millis(ms)); } else { std::thread::park(); }
+                fresh = true;
+                last = std::time::Instant::now();
+                continue;
             }
-            last = std::time::Instant::now();
-            continue;
+        }
+        // A page that loaded under a ring already shown missed its follow-show: tell it again for a moment (follow::reshow).
+        let loaded = FOLLOW_PAGE_AT.load(Ordering::SeqCst);
+        if follow::reshow(shown, tick, (loaded > 0).then(|| (now() as u64).saturating_sub(loaded))) {
+            let _ = app.emit_to("follow", "follow-show", json!({ "water": water, "lively": lively }));
         }
         let now = std::time::Instant::now();
         let dt = (now - last).as_secs_f64();
@@ -1091,7 +1157,7 @@ fn follow_loop(app: AppHandle) {
         let (fr, first) = (if saying { d.frame_saying() } else { d.frame() }, !shown);
         // The speed goes to the page while it moves and until it has eased back to nothing (M37: the ring's stretch).
         let speed = d.vx.hypot(d.vy);
-        if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); sent_speed = speed; }
+        if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water, "lively": lively })); sent_speed = speed; }
         // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
         if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
         // M41: once shown, the mouse watch moves it (follow_to_pointer); this loop only shows it and changes its width.
@@ -1118,8 +1184,12 @@ fn follow_loop(app: AppHandle) {
                 if first { pn.orderFrontRegardless(); FOLLOW_LIVE.store(true, Ordering::SeqCst); }
             } });
         });
-        // The first time it shows, the page learns the water colour.
-        if first { let _ = app.emit_to("follow", "follow-move", json!({ "vx": 0.0, "vy": 0.0, "water": water })); }
+        // The first time it shows, the page draws again (follow-show) and learns the water colour and whether Lively is
+        // chosen (only Lively keeps the ring's small waves moving at rest, M46).
+        if first {
+            let _ = app.emit_to("follow", "follow-show", json!({ "water": water, "lively": lively }));
+            let _ = app.emit_to("follow", "follow-move", json!({ "vx": 0.0, "vy": 0.0, "water": water, "lively": lively }));
+        }
     }
 }
 
@@ -1189,6 +1259,9 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
         "island.peekOnHover" | "island.openDelay" | "island.closeDelay" => {
             let _ = app.run_on_main_thread(|| { reset_hover(); if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "setting"); } });
         }
+        // M46: How lively or what follows the pointer changed: the eyes' and the ring's threads look again at once (each
+        // sleeps with no timer while it has nothing to do). Rest in Low Power Mode is looked at on the next tick.
+        "character.lively" | "character.follow" | "character.restLowPower" => { gaze_recompute(); follow_wake(); }
         // Peeking turned on or off: the character goes where it should be now (fully in when off).
         "character.peek" | "character.peekIdle" => { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
         // Close Home when I click another app: an open Home's watch stops at once, or starts when it is turned on.
@@ -2219,6 +2292,8 @@ fn hide_overlay(app: &AppHandle) {
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);
     let _ = app.emit_to("overlay", "overlay-clear", ());
     let _ = app.run_on_main_thread(|| { OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.orderOut(None); } }); });
+    // The pointing ring is gone: the water ring may show again.
+    follow_wake();
 }
 
 /// The card was closed (Esc, or a click on the character): it goes quiet. What is being said stops, a Show me answer still
@@ -2367,6 +2442,11 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         return None;
     }
     DIAGRAM_KEPT.store(false, std::sync::atomic::Ordering::SeqCst);   // a ring is never replaced by a new picture
+    // The pointing ring is the ring now: the water ring steps aside at once (spec M46 section 0 item 4).
+    follow_wake();
+    // M46: Fly to the place first (point.fly, off unless chosen). Off, the ring shows at the place at once: no drop
+    // leaves the character (no poke, so no drop sound) and no flight time is asked of the overlay.
+    let fly = follow::flies(&setting_now("point.fly"));
     let a = app.clone();
     let caption2 = caption.to_string();
     let watched = anchor::watched_for(under, front_pid());
@@ -2389,11 +2469,11 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
         let from = hop.unwrap_or(here);
         // The water pointer (M17): a drop splits off Flowflow's side facing the target (the overlay draws it from `from`),
         // so the character is poked on that side; a hop from the last step's target leaves it be.
-        if hop.is_none() { let _ = a.emit_to("dock", "flowflow-move", json!({ "kind": "give", "dx": rect.x + rect.w / 2.0 - from.0, "dy": rect.y + rect.h / 2.0 - from.1 })); }
+        if fly && hop.is_none() { let _ = a.emit_to("dock", "flowflow-move", json!({ "kind": "give", "dx": rect.x + rect.w / 2.0 - from.0, "dy": rect.y + rect.h / 2.0 - from.1 })); }
         // The character comes beside the window the ring is in (F18 item 2); a ring with no confirmed window leaves it home.
         roam_to(&a, mtm, anchored.as_ref(), [rect.x, rect.y, rect.w, rect.h]);
         let payload = json!({ "rect": { "x": rect.x - d.x, "y": rect.y - d.y, "w": rect.w, "h": rect.h }, "from": { "x": from.0 - d.x, "y": from.1 - d.y }, "caption": caption2, "exact": exact, "hold": hold, "clip": clip,
-            "mark": look.mark, "flyMs": look.fly_ms.map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)), "ringMs": ring, "settings": settings });
+            "mark": look.mark, "flyMs": look.fly_ms.filter(|_| fly).map(|v| v.clamp(300, 1600)), "fadeMs": look.fade_ms.map(|v| v.clamp(1000, 12_000)), "ringMs": ring, "settings": settings });
         let ak = coords::rect_to_appkit(d, primary_h);
         OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
         let _ = a.emit_to("overlay", "overlay-point", payload);
@@ -2560,17 +2640,20 @@ fn your_turn(app: &AppHandle, display: coords::R, target: coords::R, label: &str
                     // The overlay only listens (its capability), so it is given the settings in force with the event, and
                     // where the character is now (read on the main thread), for the water drop's trip home (M17).
                     let settings = settings_snapshot(&[]);
+                    // M46: the drop flies home (and the confetti may play) only in Lively with Little reactions on and
+                    // motion allowed (follow::flies_home). Otherwise no `home` is sent: the ring turns green and the tick draws.
+                    let home_trip = follow::flies_home(&setting_now("character.lively"), &setting_now("fun.reactions"), reduce_motion());
                     let a2 = app.clone();
                     let _ = app.run_on_main_thread(move || {
                         let mtm = MainThreadMarker::new().unwrap();
                         let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-                        let home = with_panels(|dock, _| from_appkit(dock.frame(), primary_h)).map(|f| roam::arrow_start(Some(f), (0.0, 0.0))).map(|(x, y)| json!({ "x": x - display.x, "y": y - display.y }));
+                        let home = with_panels(|dock, _| from_appkit(dock.frame(), primary_h)).filter(|_| home_trip).map(|f| roam::arrow_start(Some(f), (0.0, 0.0))).map(|(x, y)| json!({ "x": x - display.x, "y": y - display.y }));
                         let _ = a2.emit_to("overlay", "overlay-celebrate", json!({ "rect": r, "home": home, "settings": settings }));
                     });
                     say_showme(&app, "your_turn_done", "That's it.", json!({}));
                     // The drop lands back on the character (water.ts HOME_DELAY_MS + HOME_MS), which ripples as it does.
                     std::thread::sleep(Duration::from_millis(980));
-                    if alive() { let _ = app.emit_to("dock", "flowflow-move", json!({ "kind": "catch" })); }
+                    if alive() && home_trip { let _ = app.emit_to("dock", "flowflow-move", json!({ "kind": "catch" })); }
                     std::thread::sleep(Duration::from_millis(420));
                     if alive() { hide_overlay(&app); }
                     return;
@@ -3266,11 +3349,16 @@ fn celebrate(app: AppHandle) {
     use std::sync::atomic::Ordering::SeqCst;
     let free = || TURN.lock().unwrap_or_else(|e| e.into_inner()).is_none() && !overlay_busy();
     if !free() || quiet() || companion_hidden() { return; }
+    // M46 (F28): confetti only in Lively, with Little reactions on and motion allowed (the overlay page's own rule). Any
+    // other way nothing would be drawn, so the full screen overlay is never brought forward for it.
+    let plays = || follow::flies_home(&setting_now("character.lively"), &setting_now("fun.reactions"), reduce_motion());
+    if !follow::is_lively(&setting_now("character.lively")) { return; }
     let (gen, party) = (POINT_GEN.load(SeqCst), PARTY_GEN.fetch_add(1, SeqCst) + 1);
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         // Checked again here: a pointer may have been drawn, or Companion hidden, since the command came in.
         if !free() || companion_hidden() || POINT_GEN.load(SeqCst) != gen { return; }
+        if !plays() { return; }
         let mtm = MainThreadMarker::new().unwrap();
         let screens = NSScreen::screens(mtm);
         let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -3723,7 +3811,9 @@ const LISTENING: &str = "Listening. Let go of the keys when you are done.";
 /// the cap running out, Companion being hidden, or a microphone that would not start). Nothing is said meanwhile (`speak`).
 static LISTENING_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 fn listening_now() -> bool { LISTENING_NOW.load(std::sync::atomic::Ordering::SeqCst) }
-fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); }
+/// Turning on, the ring is woken by the voice worker only once the light is lit (rule 5: the listening ring follows the
+/// light and never replaces it); turning off wakes it at once, so the ring goes with the microphone.
+fn listening(on: bool) { LISTENING_NOW.store(on, std::sync::atomic::Ordering::SeqCst); if !on { follow_wake(); } }
 static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(None);
 /// How many times Stop everything was pressed. Bumped before its Cancel is queued, so the worker sees a Stop that came while
 /// it was busy: the microphone never opens after one, and words heard before one are dropped (rule 11).
@@ -3776,6 +3866,8 @@ fn set_user_hidden(app: &AppHandle, hide: bool) {
     with_panels(|d, c| if hide { d.orderOut(None); c.orderOut(None); } else if !HIDDEN_BY_US.load(Ordering::SeqCst) { d.orderFrontRegardless(); });
     island_show(!hide && !HIDDEN_BY_US.load(Ordering::SeqCst));
     if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }
+    // Hidden counts as rest for the eyes' and the ring's threads (M46).
+    gaze_recompute(); follow_wake();
     log("menu_hide", json!({ "hidden": hide }));
 }
 /// Companion was just hidden: wake the hold to talk worker if it is running, so a microphone that is open closes at once.
@@ -3855,6 +3947,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 listening(true);
                 speech_off(&app);
                 say_voice(&app, "listening", LISTENING, json!({}));
+                // The light is asked for first; then the listening ring may show on the pointer too (follow::shown).
+                follow_wake();
                 std::thread::sleep(Duration::from_millis(150));   // the light is on screen before the microphone opens
                 // Hidden meanwhile: the light is gone again, so the microphone never opens.
                 if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
@@ -3999,6 +4093,34 @@ fn voice_download(app: AppHandle) {
     });
 }
 
+/// M46: the character rests now (rest.rs): on a call or presenting with Quiet during calls on, or in Low Power Mode with
+/// Rest in Low Power Mode on. Worked out twice a second (tick).
+static REST: AtomicBool = AtomicBool::new(false);
+/// Whether the island may not open by itself, as `tick` saw it last: a call or presentation app in front with Quiet during
+/// calls on (presentation.rs), or Companion hidden. The same reading as place_island's `quiet`.
+static QUIET_NOW: AtomicBool = AtomicBool::new(false);
+/// For a page that loads while the character rests (the dock, the island, Home's hero): whether it rests now. After that,
+/// each change comes as flowflow-rest.
+#[tauri::command]
+fn flowflow_rest() -> bool { REST.load(Ordering::SeqCst) }
+
+/// Twice a second (tick): is it a call, and does the character rest? Only the front app's id and the power state are read,
+/// never any content (rule 7). A change of rest tells every live character (flowflow-rest) and wakes the eyes' and the
+/// ring's threads; a call that starts or ends, or Companion hidden or shown again, while a question waits puts the island
+/// where it belongs (it opens by itself only off a call and while shown, so a question that waited drops once). Main thread.
+fn rest_tick(app: &AppHandle, mtm: MainThreadMarker) {
+    let q = quiet();
+    let island_quiet = q || companion_hidden();
+    let quiet_changed = QUIET_NOW.swap(island_quiet, Ordering::SeqCst) != island_quiet;
+    let rest = rest::rest_now(presentation_now().quiet_on_calls, q, rest::rest_low_power_on(&setting_now("character.restLowPower")), rest::low_power());
+    if REST.swap(rest, Ordering::SeqCst) != rest {
+        let _ = app.emit("flowflow-rest", json!({ "rest": rest }));
+        gaze_recompute(); follow_wake();
+        log("character_rest", json!({ "rest": rest }));
+    }
+    if quiet_changed && ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()).ask { place_island(mtm, false, "quiet"); }
+}
+
 fn tick(app: &AppHandle) {
     let mtm = MainThreadMarker::new().unwrap();
     // Stay out of full screen apps unless the setting says otherwise.
@@ -4022,12 +4144,16 @@ fn tick(app: &AppHandle) {
         home_closed();
         voice_tell_hidden();
         pointers_gone_hidden(app);
+        gaze_recompute(); follow_wake();
         log("hidden_for_full_screen", json!({}));
     } else if show && HIDDEN_BY_US.swap(false, Ordering::SeqCst) {
         with_panels(|d, _| d.orderFrontRegardless());
         island_show(true);
+        gaze_recompute(); follow_wake();
         log("shown_after_full_screen", json!({}));
     }
+    // M46: rest (a call, or Low Power Mode) and whether the island may open by itself.
+    rest_tick(app, mtm);
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
     let sig = signature(&screens_now(mtm));
     // The island and Home go back on their display too, and Home is placed again if it is open.
@@ -4394,7 +4520,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, first_name, follow_say, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, first_name, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, open_settings_window, close_settings_window, google_accounts, google_start, google_disconnect, claude_status, claude_install_now]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -4426,7 +4552,11 @@ fn main() {
             let dock_w = mk("dock", "dock.html", DOCK)?;
             let card_w = mk("card", "card.html", CARD)?;
             let overlay_w = WebviewWindowBuilder::new(app, "overlay", WebviewUrl::App("overlay.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(100.0, 100.0).build()?;
-            let follow_w = WebviewWindowBuilder::new(app, "follow", WebviewUrl::App("follow.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(follow::SIZE, follow::SIZE).build()?;
+            // The ring's page may load after the ring first shows (Lively at launch): when it has loaded, the ring's thread
+            // tells it again for a moment (follow::reshow), since the first follow-show had nobody listening.
+            let follow_w = WebviewWindowBuilder::new(app, "follow", WebviewUrl::App("follow.html".into())).visible(false).focused(false).decorations(false).transparent(true).inner_size(follow::SIZE, follow::SIZE)
+                .on_page_load(|_, p| if matches!(p.event(), tauri::webview::PageLoadEvent::Finished) { FOLLOW_PAGE_AT.store(now() as u64, Ordering::SeqCst); follow_wake(); })
+                .build()?;
             let island_w = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("island.html".into())).visible(false).focused(false).decorations(false).transparent(true).accept_first_mouse(true).inner_size(185.0, 32.0).build()?;
             // F19: a file dropped on the character or the island. Tauri's own drop events, on these two windows only.
             for (w, at) in [(&dock_w, "dock"), (&island_w, "island")] {
@@ -4472,6 +4602,8 @@ fn main() {
             // straight to where the pointer is, so it keeps up with the cursor. Only mouse moves and drags are watched (where
             // the pointer is), never keys and never clicks' content; nothing is kept. A global monitor for mouse events needs
             // no permission (only key events would need Accessibility, rule 8). Ours (local) and every other app's (global).
+            // M46: they stay installed in every choice; follow_to_pointer's early return while the ring is away (FOLLOW_LIVE
+            // false, so always in Still and Gentle at rest) is their whole cost. They read the pointer only, never keys.
             let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;
             let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); });
             let gm = unsafe { NSEvent::addGlobalMonitorForEventsMatchingMask_handler(follow_moves, &follow_global) };
@@ -4515,14 +4647,11 @@ fn main() {
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
             });
-            // Follow my pointer (gaze.rs): the pointer's place, a few times a second, only while the character is in view.
+            // Follow my pointer (gaze.rs): the pointer's place, a few times a second, only while the eyes follow it (Lively)
+            // and the character is in view; otherwise the thread sleeps with no timer (M46).
+            gaze_recompute();
             let h = app.handle().clone();
-            std::thread::spawn(move || loop {
-                std::thread::sleep(Duration::from_millis(gaze::POLL_MS));
-                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) == peek::Pose::Hidden { continue; }
-                let h2 = h.clone();
-                let _ = h.run_on_main_thread(move || gaze_tick(&h2));
-            });
+            std::thread::spawn(move || gaze_loop(h));
             // Google (google.rs): the engine gets fresh access tokens for the connected accounts soon after launch and
             // again every 45 minutes, before Google's hour runs out. Nothing happens with no account connected.
             let h = app.handle().clone();

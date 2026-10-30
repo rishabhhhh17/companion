@@ -2,6 +2,21 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Quiet unless something is happening: 30 Oct 2026
+
+- **Flowflow now holds still when nothing is happening.** It moves when it is working, needs you, has finished, could not fix something, or is listening, then settles and stops drawing a few seconds later. To have it sway and follow your pointer again, pick Lively in Settings, Flowflow.
+- **You pick how lively it is.** Settings, Flowflow has three choices: Still (the usual), Gentle (a slow, small sway) and Lively (it sways, its eyes follow your pointer, and the water ring stays on your pointer). Less motion, and Reduce motion on your Mac, still keep it still whatever you pick.
+- **No more tricks at rest.** The hops, shakes and bubbles it did by itself are gone, in every choice.
+- **The live character no longer reacts to checks.** Its small nods, winces and cheers when a check passes or fails or work is proven are gone from the live drawing, in every choice. Reactions and celebrations now gives a short cheer on the notch when work is proven, and in Lively a splash and confetti. The pictures (Draw live off) still nod and wince.
+- **It rests during calls and in Low Power Mode.** With Quiet during calls on, the character holds still and the notch does not open by itself while you are on a call. Rest in Low Power Mode (on unless you turn it off) keeps the character still while your Mac saves power. It still shows when it is listening or needs you.
+- **The notch is the bare notch at rest.** The sun and the count of new results are gone from it. The count now shows on the panel when you rest your pointer on the notch.
+- **Only results that matter drop down.** A card drops from the notch by itself for a proven fix or a failure, never for a job starting or moving a step. A card that opened by itself ignores clicks for its first moment, so a pointer that happened to be there presses nothing.
+- **A light when Squibby looks at your screen.** The notch shows a still ring with a dot while Show me how looks, and says "Looking at your screen".
+- **Needs you pulses three times, then holds,** on the notch and on the character. On the notch, each new question pulses three more times.
+- **Show me how points at once.** The ring shows at the place right away, in the Mac's own font. The drop that flies there from Flowflow is now a choice: Settings, Fly to the place first. When you click the right thing, the ring turns green with a tick. The splash and confetti come only in Lively, with Reactions and celebrations on.
+- **The water ring only while listening.** In Still and Gentle the ring around your pointer shows only while Squibby listens, and stops drawing when it goes away.
+- **Gone for now:** the hidden Flowflow that Home drew out of sight. A visible one may come back when Home is rebuilt.
+
 ## Squibby tells the truth about every result: 30 Oct 2026
 
 - **One honest answer for every result.** Home, the notch, What I did, the recent list, VoiceOver, spoken replies and Copy now all say the same thing about a finished task, decided in one place. "Fixed and proven" and the green tick appear only when the project's own checks passed, and no Undo has taken the fix back since.

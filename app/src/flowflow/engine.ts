@@ -1,6 +1,7 @@
 // The whole character without a screen: mood, soft body, eyes, droplets and ripples, wired together. The renderer only reads
 // what this produces (a "snapshot"); everything that decides what Flowflow does is here, so it can be tested without a GPU.
 import type { CharacterState } from "../model.ts";
+import type { Liveliness } from "../lookfeel.ts";
 import { Behavior, type BehaviorState, type Look } from "./behavior.ts";
 import { Face, rng, type Eyes } from "./face.ts";
 import { Droplets, Ripples } from "./particles.ts";
@@ -24,15 +25,11 @@ export function gazeOf(dx: number, dy: number, span = GAZE_SPAN): { nx: number; 
 /** How far the body lags behind its window per point a second of the window's speed (world units), and the most it lags. */
 export const PUSH_PER = 0.0011;
 export const PUSH_MAX = 0.2;   // M29: it leans a little as its window moves, never smears
-/** Life when nothing happens (Lively): something small every few seconds, on the seeded schedule (the same every run). */
-export const HOP_EVERY = [4, 8] as const;
-export const HOP_S = 0.5;
-/** M26: what it does when nothing happens, so it never just sits: a hop, a double bounce, a look around, a shake of
- *  water off itself, a stretch, a bubble blown upward. Each with how long it lasts (seconds) and how often it is picked. */
-export const IDLE_ACTS = ["hop", "double", "look", "shake", "stretch", "bubble"] as const;
-export type IdleAct = (typeof IDLE_ACTS)[number];
-const ACT_S: Record<IdleAct, number> = { hop: 0.5, double: 0.9, look: 2.2, shake: 0.7, stretch: 1.3, bubble: 0.35 };
-const ACT_WEIGHT: Record<IdleAct, number> = { hop: 3, double: 1, look: 3, shake: 2, stretch: 2, bubble: 2 };
+/** M46 (F28): how much it sways, floats and breathes at rest in each choice, and how fast. The idle tricks of M26 (a hop, a
+ *  shake, a bubble) are gone in every choice: nothing moves unless something happened, or the person chose a sway. Still
+ *  sways only while it has news, and its sway fades to nothing in SWAY_FADE_S, linearly, so it reaches exactly 0. */
+export const SWAY: Readonly<Record<Liveliness, { amount: number; rate: number }>> = { still: { amount: 1, rate: 1 }, gentle: { amount: 0.4, rate: 0.5 }, lively: { amount: 1, rate: 1 } };
+export const SWAY_FADE_S = 2.5;
 
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
@@ -40,6 +37,10 @@ export type Snapshot = {
   surface: Surface;
   /** The float added on top of the body's height (a slow bob). */
   float: number;
+  /** M46: how much of its resting sway shows (0 none: the clean drop) and the sway's own clock (the shader's waves). */
+  sway: number; swayTime: number;
+  /** M46: needs you's pulse now, 0 to 1 (0 once its three pulses are done, and in any still frame). */
+  pulse: number;
   droplets: Droplets; ripples: Ripples;
 };
 
@@ -65,11 +66,9 @@ export class FlowflowEngine {
   private rand: () => number;
   private time = 0;
   private lastLook = -Infinity; private lastMove = -Infinity; private lastGaze = -Infinity; private pushing = false;
-  /** Lively (M19, M20): with nothing happening it now and then hops. Off unless the page turns it on (Lively chosen). */
-  lively = false;
-  private hopIn: number = HOP_EVERY[0]; private hopT = -1; private act: IdleAct = "hop";
-  /** The idle moves done so far, oldest first (the last 64): for the tests, and to never do the same one twice in a row. */
-  readonly idleDone: IdleAct[] = [];
+  /** M46 (F28, character.lively): Still, the usual; Gentle; or Lively, the only one whose eyes follow the pointer. */
+  mode: Liveliness = "still";
+  private swayK = 0; private swayT = 0;
   private credit = 0;
   /** How far the body may roam toward the pointer, as a fraction of the frame (the dock is tiny, the preview is large). */
   followRange = 0.35;
@@ -91,15 +90,16 @@ export class FlowflowEngine {
   /** The app's state changed. Only a real change does anything: success is never made up. */
   applyApp(s: CharacterState): void { this.behavior.applyApp(s); }
 
-  /** The pointer, in the frame's own units (-1 to 1 across and up). Called whenever it moves. */
+  /** The pointer, in the frame's own units (-1 to 1 across and up). Called whenever it moves. Only in Lively (M46). */
   pointer(nx: number, ny: number): void {
-    if (!Number.isFinite(nx) || !Number.isFinite(ny)) return;
+    if (this.mode !== "lively" || !Number.isFinite(nx) || !Number.isFinite(ny)) return;
     this.lastLook = this.time; this.lastMove = this.time;
     this.face.setTarget(nx, ny);
     this.body.setTarget(nx * this.halfW * this.followRange, ny * this.halfH * this.followRange);
   }
   /** The pointer anywhere on the screen (M20): the eyes look toward it and the body leans a little that way. */
   gaze(dx: number, dy: number): void {
+    if (this.mode !== "lively") return;   // M46: in Still and Gentle the eyes stay ahead
     const g = gazeOf(dx, dy);
     if (g.nx === 0 && g.ny === 0 && !(dx === 0 && dy === 0)) return;
     this.lastLook = this.time; this.lastGaze = this.time;
@@ -148,7 +148,22 @@ export class FlowflowEngine {
   }
 
   /** A pose for one frame of reduced motion: the body at rest in the state's look, no sliding. */
-  still(): Snapshot { this.behavior.snap(); this.body.reset(0, 0); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo; this.face.update(1 / 60, this.behavior.look, false); return this.snapshot(); }
+  still(): Snapshot {
+    this.behavior.snap(); this.body.reset(0, 0); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo;
+    this.face.wander = this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, false);
+    const s = this.snapshot(); s.pulse = 0; return s;   // a still frame holds needs you's amber, with no pulse
+  }
+
+  /** M46: the press spring has come to rest (a frame loop may park only then). */
+  get pressSettled(): boolean { return Math.abs(this.pressSpring.x - this.pressTo) < 0.002 && Math.abs(this.pressSpring.v) < 0.01; }
+  /** M46: how much of its resting sway shows now (0 to the choice's amount). */
+  get sway(): number { return this.swayK; }
+  /** The sway it is heading for: Still sways only while it has news (any state but rest and sleep). */
+  private swayTarget(): number {
+    const st = this.behavior.state;
+    if (this.mode === "still") return st === "idle" || st === "sleeping" ? 0 : SWAY.still.amount;
+    return SWAY[this.mode].amount;
+  }
 
   update(dt: number): Snapshot {
     const d = frameDelta(dt);
@@ -158,75 +173,23 @@ export class FlowflowEngine {
     const look = this.behavior.look;
     this.reactToEntered();
     if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && this.time - this.lastLook < LOOK_HOLD + 1) this.body.setTarget(0, 0);
-    this.idleLife(d);
-    this.body.setBreath(look.breathAmp, look.breathRate);
+    // M46: the sway eases toward the choice's amount in a straight line, so Still's reaches exactly 0 and holds there.
+    { const to = this.swayTarget(), stepK = d / SWAY_FADE_S; this.swayK = this.swayK < to ? Math.min(to, this.swayK + stepK) : Math.max(to, this.swayK - stepK); }
+    this.swayT += d * SWAY[this.mode].rate;
+    this.body.setBreath(look.breathAmp * this.swayK, look.breathRate);
     this.body.advance(d);
     { const n = Math.min(8, Math.max(1, Math.ceil(d / (1 / 120)))), h = d / n; for (let i = 0; i < n; i++) this.pressSpring.step(h, this.pressTo); }
     this.surface.press = Math.max(-0.2, Math.min(1.15, this.pressSpring.x));
+    this.face.wander = this.mode === "lively";
     this.face.update(d, look, this.time - this.lastLook < LOOK_HOLD);
-    // Droplets leave in proportion to how fast the body moves and how readily this mood sheds them: no dice.
-    this.credit += look.droplets * Math.min(2, this.body.pose.speed) * 0.9 * d;
+    // Droplets leave in proportion to how fast the body moves and how readily this mood sheds them: no dice. M46: none
+    // unless Lively (a touch or a done still sends its own few).
+    this.credit += (this.mode === "lively" ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
     if (this.credit >= 1) { this.credit -= 1; const p = this.body.pose; this.emitDroplet(-p.dirX * BODY_RADIUS * 0.6, -p.dirY * BODY_RADIUS * 0.6 + 0.2, 0.4); }
     this.droplets.update(d, this.body.pose.x, this.body.pose.y);
     this.ripples.update(d);
     this.ripples.fill(this.rippleBuffer);
     return this.snapshot();
-  }
-
-  /** A small hop now and then while Lively and nothing happens (not while it is followed, pushed or busy). */
-  private idleLife(d: number): void {
-    if (this.hopT >= 0) { this.playAct(d); return; }
-    const quiet = this.lively && !this.pushing && this.behavior.state === "idle" && this.time - this.lastMove > 4;
-    if (!quiet) { this.hopIn = Math.max(this.hopIn, 2); return; }
-    this.hopIn -= d;
-    if (this.hopIn <= 0) {
-      this.hopIn = HOP_EVERY[0] + this.rand() * (HOP_EVERY[1] - HOP_EVERY[0]);
-      this.act = this.pickAct(); this.hopT = 0;
-      this.idleDone.push(this.act); if (this.idleDone.length > 64) this.idleDone.shift();
-      if (this.act === "hop" || this.act === "double") this.body.impulse("poke", 0.4, 0, -BODY_RADIUS * 0.7);
-      if (this.act === "stretch") this.face.blinkNow();
-    }
-  }
-  /** A move from the seeded schedule, weighted, never the one just done. */
-  private pickAct(): IdleAct {
-    const last = this.idleDone[this.idleDone.length - 1];
-    const can = IDLE_ACTS.filter((a) => a !== last);
-    const total = can.reduce((n, a) => n + ACT_WEIGHT[a], 0);
-    let r = this.rand() * total;
-    for (const a of can) { r -= ACT_WEIGHT[a]; if (r <= 0) return a; }
-    return can[can.length - 1];
-  }
-  /** One frame of the move under way; each ends with the body back home. */
-  private playAct(d: number): void {
-    const was = this.hopT; this.hopT += d;
-    const k = Math.min(1, this.hopT / ACT_S[this.act]), p = this.body.pose;
-    const crossed = (at: number) => was < at * ACT_S[this.act] && this.hopT >= at * ACT_S[this.act];
-    switch (this.act) {
-      case "hop": this.body.setTarget(0, Math.sin(k * Math.PI) * 0.22); break;
-      case "double": {
-        this.body.setTarget(0, Math.abs(Math.sin(k * Math.PI * 2)) * 0.15);
-        if (crossed(0.5)) { this.body.impulse("land", 0.45); this.body.impulse("poke", 0.3, 0, -BODY_RADIUS * 0.7); }
-        break;
-      }
-      case "look": {
-        // Left, then right, a little lean each way, then back to the middle.
-        const side = k < 0.45 ? -1 : k < 0.9 ? 1 : 0;
-        this.face.glance(side * 0.9, 0.15, 0.3);
-        this.body.setTarget(side * 0.06, 0);
-        break;
-      }
-      case "shake": {
-        this.body.setTarget(Math.sin(k * Math.PI * 6) * 0.09 * (1 - k), 0);
-        if (crossed(0.35) || crossed(0.6)) this.emitDroplet((crossed(0.35) ? -1 : 1) * BODY_RADIUS * 0.8, 0.1, 0.55);
-        break;
-      }
-      case "stretch": this.body.setTarget(0, Math.sin(k * Math.PI) * 0.12); if (crossed(0.5)) this.body.impulse("poke", 0.35, 0, BODY_RADIUS * 0.8); break;
-      case "bubble": if (crossed(0.3)) { this.emitDroplet(0, BODY_RADIUS * 0.9, 0.6); this.ripples.add(p.x, p.y + 0.4, 0.35); } break;
-    }
-    if (k >= 1) {
-      this.hopT = -1; this.body.setTarget(0, 0);
-      if (this.act === "hop" || this.act === "double") { this.body.impulse("land", 0.7); this.ripples.add(p.x, p.y - 0.3, 0.5); }
-    }
   }
 
   readonly rippleBuffer = new Float32Array(16);
@@ -249,9 +212,10 @@ export class FlowflowEngine {
 
   private snap: Snapshot | null = null;
   private snapshot(): Snapshot {
-    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface });
+    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, sway: 0, swayTime: 0, pulse: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface });
     s.state = this.behavior.state; s.tuning = this.tuning; s.time = this.time;
-    s.float = this.behavior.look.floatAmp * Math.sin(this.time * 0.9);
+    s.sway = this.swayK; s.swayTime = this.swayT; s.pulse = this.behavior.pulse;
+    s.float = this.behavior.look.floatAmp * this.swayK * Math.sin(this.swayT * 0.9);
     return s;
   }
 }

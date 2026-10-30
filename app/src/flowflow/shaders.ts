@@ -21,6 +21,9 @@ uniform vec3 uMove;        // direction x, direction y, stretch
 uniform vec4 uEyes;        // left x, left y, right x, right y (where each looks, -1 to 1)
 uniform float uOpen;       // 0 shut, 1 open
 uniform float uCloud, uGlow, uTime, uPour;
+uniform float uSway;       // M46: how much of the resting sway shows (0 Still at rest: the clean drop; 0.4 Gentle; 1 Lively)
+uniform float uSwayTime;   // the sway's own clock (slower in Gentle); uTime stays for news motion
+uniform float uAmber;      // M46: needs you's amber core, 0 to 1
 uniform vec4 uSurf;        // M37c: the surface it clings to, in body units: normal x, y (zero: none), how far, cling at rest
 uniform float uPress;      // how hard it is pushed into it (a spring: a little past 1, or below 0, as it wobbles back)   // uPour: 0 still, 1 moving at its fastest (the tail it pours)
 uniform vec3 uColA, uColB;
@@ -47,12 +50,12 @@ vec3 unpose(vec3 p){
 float body(vec3 p){
   vec3 q = unpose(p) - vec3(0.0, -0.18, 0.0); q.z *= 1.06;
   float up = smoothstep(-0.3, 1.1, q.y), calmed = 1.0 - 0.85 * clamp(uPress, 0.0, 1.0);   // pressed flat, it holds still
-  q.x -= calmed * (0.06 * sin(uTime * 0.9) + 0.025 * sin(uTime * 1.7 + 1.3)) * up * up;          // the point sways like poured liquid
+  q.x -= calmed * uSway * (0.06 * sin(uSwayTime * 0.9) + 0.025 * sin(uSwayTime * 1.7 + 1.3)) * up * up;   // the point sways like poured liquid
   float d = sdRoundCone(q, 0.80, 0.16, 1.02);
   d = smin(d, sdEll(q, vec3(0.86, 0.74, 0.82)), 0.18);
   float a = atan(q.z, q.x);
-  d += calmed * 0.024 * sin(q.y * 4.2 - uTime * 1.8 + a) * smoothstep(1.0, 0.1, abs(q.y - 0.05)); // slow waves running up its sides
-  d -= 0.03 * (0.5 + 0.5 * sin(uTime * 1.1)) * smoothstep(-0.2, -0.75, q.y);              // the base spreads and gathers, like settling water
+  d += calmed * uSway * 0.024 * sin(q.y * 4.2 - uSwayTime * 1.8 + a) * smoothstep(1.0, 0.1, abs(q.y - 0.05)); // slow waves running up its sides
+  d -= calmed * uSway * 0.03 * (0.5 + 0.5 * sin(uSwayTime * 1.1)) * smoothstep(-0.2, -0.75, q.y);              // the base spreads and gathers, like settling water
   d = max(d, -(q.y + 0.68));   // the calm flat underside where it sits
   // Moving: the water pours out behind it in one smooth, tapering tail that melts back in as it slows.
   float pour = clamp(uPour, 0.0, 1.0);
@@ -131,6 +134,7 @@ void main(){
   // An error clouds and darkens the water; a success lifts it.
   inside = mix(inside, vec3(0.30, 0.38, 0.44) * (0.5 + 0.5 * g), uCloud * 0.75);
   inside += uGlow * uColA * 0.35;
+  inside = mix(inside, vec3(1.0, 0.69, 0.125) * (0.55 + 0.45 * g), uAmber * 0.6);   // needs you: an amber core (#FFB020)
   vec3 col = mix(inside, env(r), 0.04 + 0.85 * fres);
   col += vec3(1.0) * pow(max(dot(r, normalize(vec3(-0.55, 0.75, 0.55))), 0.0), 140.0) * 3.0;
   col += vec3(0.9, 0.97, 1.0) * pow(max(dot(r, normalize(vec3(0.95, 0.15, 0.25))), 0.0), 400.0) * 2.0;

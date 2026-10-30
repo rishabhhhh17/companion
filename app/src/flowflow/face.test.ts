@@ -46,3 +46,12 @@ describe("blinking and glances come from a schedule, never from chance", () => {
 });
 
 describe("the number generator", () => { test("is repeatable and stays inside 0 and 1", () => { const a = rng(1), b = rng(1); for (let i = 0; i < 100; i++) { const x = a(); expect(x).toBe(b()); expect(x).toBeGreaterThanOrEqual(0); expect(x).toBeLessThan(1); } }); });
+
+describe("M46: quiet eyes outside Lively", () => {
+  test("with wander off it never glances aside by itself, and it says when a blink is under way", () => {
+    const f = new Face(2); f.wander = false; let moved = 0;
+    for (let i = 0; i < 60 * 40; i++) { f.update(1 / 60, look, false); if (Math.abs(f.eyes.lx) > 0.05) moved++; }
+    expect(moved).toBe(0);
+    const g = new Face(); expect(g.blinking).toBe(false); g.blinkNow(); expect(g.blinking).toBe(true); run(g, 0.3); expect(g.blinking).toBe(false);
+  });
+});

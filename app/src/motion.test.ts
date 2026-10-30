@@ -100,9 +100,12 @@ describe("every page that moves something checks the setting", () => {
   test("the burst of dots and the confetti follow the reactions setting and reduced motion", () => {
     const o = read("./overlay.ts");
     const party = o.slice(o.indexOf("function party("), o.indexOf('void listen("overlay-party"'));
-    expect(party.split("\n")[1].trim()).toBe("if (!playful(reactionsOn(), reducedMotion())) return;");
+    // M46: and only in Lively. A caption with no ring under it is turned off first, whatever is drawn.
+    const lines = party.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("//"));
+    expect(lines[1]).toBe('if (!svg.querySelector("ellipse[data-main]")) cap.classList.remove("on");');
+    expect(lines[2]).toBe('if (!playful(reactionsOn(), reducedMotion()) || setting("character.lively") !== "lively") return;');
     const burst = o.slice(o.indexOf("function celebrate("), o.indexOf('void listen("overlay-celebrate"'));
-    expect(burst).toContain("if (playful(reactionsOn(), reduced)) {");
+    expect(burst).toContain("if (playful(reactionsOn(), reduced) && lively) {");
     expect(o).toMatch(/import \{ reactionsOn \} from "\.\/reactions\.ts";/);
   });
   test("the character's reactions and its call for confetti: none with reactions off or reduced motion", () => {
@@ -113,7 +116,7 @@ describe("every page that moves something checks the setting", () => {
     expect(handler).toContain('invoke("quiet_now")');
     expect(dock).toContain("useState(reducedMotion)");
     expect(dock).toContain("watchReducedMotion(setReduced)");
-    expect(dock).toContain("data-motion={motionFor(state, reduced)}");
+    expect(dock).toContain("data-motion={live ? undefined : motionFor(state, reduced)}");
   });
 });
 
@@ -191,7 +194,8 @@ describe("every animation and transition in the stylesheets stops with reduced m
   });
   test("the character's states, reactions and named trips are among them", () => {
     const c = motionCover(read("./style.css")).map((x) => x.sel);
-    for (const s of ['.character[data-motion="breathe"]', '.character[data-react="party"]', '.character[data-roam="travel"]', '.character[data-roam="surface"]']) expect(c, s).toContain(s);
+    // M46: on the pictures only; the live drawing (data-live) never takes them.
+    for (const s of ['.character:not([data-live])[data-motion="breathe"]', '.character:not([data-live])[data-react="party"]', '.character:not([data-live])[data-roam="travel"]', '.character:not([data-live])[data-roam="surface"]']) expect(c, s).toContain(s);
     const o = motionCover(sheets.find(([f]) => f === "overlay.html")![1]).map((x) => x.sel);
     expect(o).toEqual(expect.arrayContaining([".ring", ".cap"]));
   });

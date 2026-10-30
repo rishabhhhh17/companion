@@ -23,13 +23,13 @@ describe("the character's page and peeking", () => {
     expect(page).toContain('listen("peek"');
     expect(page).not.toMatch(/\binvoke\b/);
   });
-  test("it leans toward the screen while it peeks, and never moves with Reduce motion or Less motion", () => {
+  test("M46: it never tilts; the pictures move a touch toward the screen, the live drawing draws its own stick", () => {
     const css = read("./style.css");
-    for (const e of ["left", "right", "top", "bottom"]) expect(css).toContain(`.character[data-peek="peek"][data-peek-edge="${e}"]`);
-    // Its own properties, so the breathing animation (which sets transform) never cancels the lean.
-    expect(css).toMatch(/\.character\[data-peek="peek"\]\[data-peek-edge="right"\] \{ rotate: -\d+deg;/);
-    expect(css).toContain('@media (prefers-reduced-motion: reduce) { .character[data-peek] { rotate: none; translate: none; transition: none; } }');
-    expect(css).toContain(':root[data-less-motion] .character[data-peek] { rotate: none; translate: none; transition: none; }');
+    for (const e of ["left", "right", "top", "bottom"]) expect(css).toContain(`.character:not([data-live])[data-peek="peek"][data-peek-edge="${e}"]`);
+    expect(css).not.toMatch(/\[data-peek[^{]*\{[^}]*rotate: -?\d/);
+    expect(css).not.toMatch(/\.character\[data-peek="peek"\]/);   // nothing on the live drawing
+    expect(css).toContain('@media (prefers-reduced-motion: reduce) { .character[data-peek] { translate: none; transition: none; } }');
+    expect(css).toContain(':root[data-less-motion] .character[data-peek] { translate: none; transition: none; }');
   });
   test("the shell moves it through the one frame helper, brings it in at once for a light, and reads the setting each time", () => {
     const main = read("../src-tauri/src/main.rs");

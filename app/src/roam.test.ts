@@ -45,7 +45,7 @@ describe("the character page", () => {
     const css = read("./style.css");
     const block = /@media \(prefers-reduced-motion: reduce\)\s*\{([^}]*\{[^}]*\}[^}]*)\}/.exec(css)?.[1] ?? "";
     expect(block).toContain("[data-roam]");
-    for (const p of ["surface", "travel", "settle", "return"]) expect(css).toContain(`.character[data-roam="${p}"]`);
+    for (const p of ["surface", "travel", "settle", "return"]) expect(css).toContain(`.character:not([data-live])[data-roam="${p}"]`);   // pictures only (M46)
   });
   test("the trip uses the arrow's easing and bend", () => {
     expect(ease(0)).toBe(0); expect(ease(1)).toBe(1); expect(ease(0.5)).toBe(0.5); expect(ease(0.25)).toBe(0.125);

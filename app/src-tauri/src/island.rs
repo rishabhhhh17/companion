@@ -62,8 +62,9 @@ pub enum Kind { Notch, Pill, Edge }
 impl Kind { pub fn word(self) -> &'static str { match self { Kind::Notch => "notch", Kind::Pill => "pill", Kind::Edge => "edge" } } }
 
 /// How big the island is (the fun island, 27 Oct 2026). Rest: the bare notch (the pill, or the thin line), with nothing on
-/// it. Wings: something is happening, so it grows short wings either side, in the menu bar row only: a tiny Flowflow on the
-/// left, a live mark on the right. Peek: the pointer rests on the bare notch, so Flowflow peeks out below it (and a line,
+/// it. On a notch the window is exactly the notch, so nothing beside it takes a click (F28: the sun is gone). Wings:
+/// something is happening, so it grows short wings either side, in the menu bar row only: a tiny Flowflow on the left, a
+/// live mark on the right. Peek: the pointer rests on the bare notch, so Flowflow peeks out below it (and a line,
 /// wider, when there is something to say). WingsPeek: the pointer rests on the wings, so one line opens below them.
 /// `Alert` is the wings (the name docking.rs and roam.rs know); its word for the page is "wings".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,10 +82,6 @@ pub const WING: f64 = 40.0;
 /// Squibby is for, and each job at work as a little card with its plan and then its result (island.tsx). This wide, so it
 /// fits on the smallest MacBook screen and inside the character's clear zone (docking.rs NOTCH_CLEAR, with CLEAR_MARGIN).
 pub const PANEL_W: f64 = 400.0;
-/// The sun beside the notch (M16, the founder: "yeah" to HeyClicky's logo beside the notch): at rest on a notch the window
-/// is this much wider on each side, see through, and the page draws Squibby's mark on the menu bar just left of the notch.
-/// The black shape stays exactly the notch. Resting the pointer on the sun opens the panel, like resting it on the notch.
-pub const MARK: f64 = 26.0;
 /// How tall the panel may be below the notch's row: the page measures what it shows and asks (island_alert `panel`).
 pub const PANEL_MIN: f64 = 56.0;
 pub const PANEL_MAX: f64 = 240.0;
@@ -151,7 +148,8 @@ pub fn look(d: &Display, mode: Mode, panel: f64) -> Look {
     let at = |w: f64, top: f64, h: f64| { let w = w.min(fw); [around(cx, w, fx, fw), top, w, h] };
     let winged = core + 2.0 * WING;
     let frame = match mode {
-        Mode::Rest => if kind(d) == Kind::Notch { at(core + 2.0 * MARK, r[1], r[3]) } else { r },
+        // F28: the bare notch at rest. On a notch the window, and so the click and hover area, is exactly the notch.
+        Mode::Rest => r,
         Mode::Alert => at(winged, top, row),
         Mode::Peek => at(winged.max(PANEL_W), r[1], r[3] + panel_h(panel)),
         Mode::WingsPeek => at(winged.max(PANEL_W), top, row + panel_h(panel)),
@@ -299,13 +297,14 @@ impl Follow {
 }
 
 /// What decides the island's size: the pointer is on it, something is happening (the wings), Home is open, and how tall
-/// the hover panel's contents are (`panel`, whole points, as the page measured them).
+/// the hover panel's contents are (`panel`, whole points, as the page measured them). `quiet` (M46): a call or a
+/// presentation is on with Quiet during calls on, or Companion is hidden; the island then never opens by itself.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool }
+pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool, pub quiet: bool }
 
-/// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 9;
-/// any result while Home is open is seen at once.
-pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(9) } }
+/// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 99 (the
+/// hover panel says "9+" past nine, M46); any result while Home is open is seen at once.
+pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(99) } }
 
 /// M33: the first name for the notch's greeting ("Evening, Rishabh."), from the Mac account's full name, on this Mac only.
 /// Only letters (and an inside hyphen or apostrophe), at most 24 of them; anything else gives no name and a plain greeting.
@@ -321,9 +320,11 @@ pub fn animates_open(source: &str) -> bool { source != "hotkey" }
 
 /// Home open shows everything the line or the wings would, right below, so the island stays the bare notch over it.
 /// A question waiting for the person (`ask`, M23: the page says so only with Open the notch for questions on) opens the
-/// panel under the wings without the pointer, so it can be answered there.
+/// panel under the wings without the pointer, so it can be answered there, but never while `quiet` (M46: a call or a
+/// presentation): then the wings and their marks still show (the listening light, needs you), and the pointer still
+/// opens the panel, since the person did that.
 pub fn mode(s: State) -> Mode {
-    if s.ask && !s.home_open { return Mode::WingsPeek; }
+    if s.ask && !s.home_open && !s.quiet { return Mode::WingsPeek; }
     match (s.home_open, s.hover, s.alert) {
         (true, _, _) => Mode::Rest,
         (false, true, true) => Mode::WingsPeek,
@@ -439,15 +440,17 @@ mod tests {
         assert_eq!(notch_from(1512.0, f64::NAN, 663.5, 663.5), None);
     }
     #[test]
-    fn on_a_notch_the_island_at_rest_is_the_notch_and_room_for_the_sun_beside_it() {
-        // M16: the black shape stays exactly the notch (the page draws it at `core`); the window is MARK wider each side,
-        // see through, for the sun on the menu bar. Less than a wing (the founder agreed to the sun, 27 Oct 2026).
-        assert!(MARK < WING);
+    fn on_a_notch_the_island_at_rest_is_exactly_the_notch() {
+        // F28: the bare notch at rest, the sun gone. The window, and so the click and hover area, is the notch itself, so
+        // nothing beside the camera takes a click from the menu bar.
         let d = mbp14();
-        assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN), [663.5 - MARK, 0.0, 185.0 + 2.0 * MARK, 32.0]);
-        assert_eq!(look(&d, Mode::Rest, PANEL_MIN).core, 185.0, "the page is told the notch's own width");
+        assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN), [663.5, 0.0, 185.0, 32.0]);
+        let l = look(&d, Mode::Rest, PANEL_MIN);
+        assert_eq!(l.core, l.frame[2], "the page is told the notch's own width, the whole window");
+        assert_eq!(l.core, 185.0);
         let big = mbp16();
-        assert_eq!(frame_of(&big, Mode::Rest, PANEL_MIN), [771.5 - MARK, 0.0, 185.0 + 2.0 * MARK, 32.0]);
+        assert_eq!(frame_of(&big, Mode::Rest, PANEL_MIN), [771.5, 0.0, 185.0, 32.0]);
+        assert_eq!(look(&big, Mode::Rest, PANEL_MIN).core, look(&big, Mode::Rest, PANEL_MIN).frame[2]);
         assert_eq!(menu_bar(&d), Some(32.0));
     }
     // The menu bar beside the notch holds app menus and status icons, and the middle of a menu bar without a notch can
@@ -691,7 +694,7 @@ mod tests {
     }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
-        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false });
+        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false });
         assert_eq!(s(false, false, false), Mode::Rest);
         assert_eq!(s(false, true, false), Mode::Alert);
         assert_eq!(s(true, false, false), Mode::Peek);
@@ -1034,11 +1037,40 @@ mod tests {
 
     #[test]
     fn a_question_opens_the_panel_unless_home_is_open() {
-        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask });
+        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask, quiet: false });
         assert_eq!(s(false, false, true), Mode::WingsPeek);
         assert_eq!(s(true, false, true), Mode::WingsPeek);
         assert_eq!(s(false, true, true), Mode::Rest);
         assert_eq!(s(false, false, false), Mode::Alert);
+    }
+
+    #[test]
+    fn on_a_call_the_island_never_opens_by_itself_but_its_marks_show_and_the_pointer_still_opens_it() {
+        let q = |hover, alert, ask| mode(State { hover, alert, home_open: false, panel: 0, ask, quiet: true });
+        assert_eq!(q(false, true, true), Mode::Alert, "a question waiting: the wings and their mark, no panel");
+        assert_eq!(q(true, true, true), Mode::WingsPeek, "the person rested the pointer on it: it opens");
+        assert_eq!(q(true, false, false), Mode::Peek, "the same on the bare notch");
+        assert_eq!(q(false, true, false), Mode::Alert, "listening (or needs you) while quiet: the wings with the light");
+        assert_eq!(q(false, false, false), Mode::Rest);
+        assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true }), Mode::Rest, "Home open");
+        assert_eq!(State::default().quiet, false);
+    }
+
+    #[test]
+    fn the_shell_keeps_the_island_quiet_on_a_call_and_when_hidden_and_looks_again_when_that_changes() {
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let b = &main[main.find(name).unwrap_or_else(|| panic!("{name}"))..]; b[..b.find("\n}\n").unwrap()].to_string() };
+        assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false }"));
+        let place = body("fn place_island(");
+        assert!(place.contains("s.quiet = quiet() || companion_hidden();"), "{place}");
+        assert!(place.contains("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet"), "no cheer on a call");
+        let rest = body("fn rest_tick(");
+        assert!(rest.contains("let island_quiet = q || companion_hidden();"), "shown again counts as quiet ending, as in place_island: {rest}");
+        assert!(rest.contains("QUIET_NOW.swap(island_quiet, Ordering::SeqCst) != island_quiet") && rest.contains("place_island(mtm, false, \"quiet\")"), "{rest}");
+        // Every tick looks, after the hide and show branches, so a question that waited drops once Companion is shown again.
+        let tick = body("fn tick(");
+        assert!(tick.find("shown_after_full_screen").unwrap() < tick.find("rest_tick(app, mtm);").unwrap(), "{tick}");
+        assert!(rest.contains(".ask"), "it looks again only while a question waits");
     }
 
     #[test]
@@ -1055,10 +1087,11 @@ mod tests {
     }
 
     #[test]
-    fn results_finished_while_home_is_closed_are_counted_up_to_nine() {
+    fn results_finished_while_home_is_closed_are_counted_past_nine_so_the_panel_can_say_9_plus() {
         assert_eq!(unseen_next(0, false), 1);
         assert_eq!(unseen_next(8, false), 9);
-        assert_eq!(unseen_next(9, false), 9);
+        assert_eq!(unseen_next(9, false), 10, "ten reads \"9+ new\" on the hover panel, never \"9 new\"");
+        assert_eq!(unseen_next(99, false), 99);
         assert_eq!(unseen_next(4, true), 0);
     }
 }
