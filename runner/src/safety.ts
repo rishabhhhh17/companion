@@ -7,6 +7,9 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { commandsOf, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { privateReason } from "./watchaddress.ts";
 import { isEnvFile } from "./diagram.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 
@@ -292,6 +295,28 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
 // digits in it.
 const encodedLike = (part: string) => part.length >= 6 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part);
 /** Can data leave inside this web address? Returns the reason, "invalid", or null when it looks like an ordinary page. */
+/** Launch check (15 Oct 2026, "a website that resolves to a private address could slip past the network check"): a web
+ *  address whose name looks public but leads to this Mac or a private network (a name pointed home, DNS rebinding). The name
+ *  is looked up once, every answer judged; any private answer refuses. Null when it leads only to public addresses, or
+ *  when the name cannot be looked up in time (the fetch then fails on its own). A second lookup by the fetch could still
+ *  answer differently; this closes the plain case, not every rebinding race. */
+export const LOOKUP_MS = 3_000;
+export async function leadsHome(url: string, lookup: (host: string) => Promise<string[]> = async (h) => (await dnsLookup(h, { all: true })).map((a) => a.address)): Promise<string | null> {
+  let host: string;
+  try { host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ""); } catch { return null; }
+  if (!host || isIP(host)) return null;   // a number was already judged by isSafeUrl
+  let addresses: string[];
+  try { addresses = await Promise.race([lookup(host), new Promise<string[]>((_, no) => setTimeout(() => no(new Error("slow")), LOOKUP_MS))]); } catch { return null; }
+  for (const a of addresses) { const why = privateReason(a); if (why) return `that address leads to ${why}, so it is not opened`; }
+  return null;
+}
+/** The network verdict for a web address after its name was looked up: refused when it leads home, else the verdict as it was. */
+export async function withLookup(v: Verdict, tool: string, input: Record<string, unknown>, lookup?: (host: string) => Promise<string[]>): Promise<Verdict> {
+  if (tool !== "WebFetch" || v.decision === "deny") return v;
+  const why = await leadsHome(String(input.url ?? ""), lookup);
+  return why ? deny("network", why) : v;
+}
+
 export function carriesData(url: string): string | null {
   let u: URL;
   try { u = new URL(url); } catch { return "invalid"; }

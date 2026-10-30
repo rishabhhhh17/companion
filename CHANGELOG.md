@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Safer behind the scenes: 30 Oct 2026
+
+- **Undo covers more.** If Squibby edits a file your project keeps out of Git (like a local config), Undo now puts it back too, and removes one it made.
+- **No sneaky addresses.** When Squibby opens a web page while fixing something, it refuses a name that secretly leads back to your own Mac or home network.
+- **Up to date.** Security fixes for the certificate checks and a few packages the engine uses.
+
 ## Flowflow sticks to the edge until you need it: 30 Oct 2026
 
 - **It lives stuck to the edge.** Flowflow now waits half tucked into the edge of your screen, flattened against it like a drop of water on glass. You can always see where it is, but it stays out of your way.

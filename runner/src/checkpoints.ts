@@ -18,7 +18,9 @@ export type Checkpoint = { id: string; commit: string; label: string; files: num
 // largeLeftAlone: big files undo did not touch (the checkpoint only holds an older small version, or there was no room to copy aside).
 // yours: files the person changed themselves (made, edited or deleted since our last step ended, or while a plan was paused) that Undo
 // left exactly as they are. "Put those back too" (putBack) is a separate, confirmed action.
-export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[]; recovered: string[]; largeLeftAlone: string[]; yours: string[] };
+export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[]; recovered: string[]; largeLeftAlone: string[]; yours: string[]; ignoredRestored: string[] };
+/** What `keepIgnored` did: copied it, noted it was not there, it is in the snapshot anyway, too big to keep, or not ours to touch. */
+export type IgnoredKept = "kept" | "absent" | "tracked" | "too_big" | "skipped";
 export type PutBackResult = { restored: string; safetyCheckpoint: string; putBack: string[]; skipped: Skipped[]; savedTo: string };
 // What we know about who changed what (own.json in the shadow store). baseline: the project as our last step left it (a tree, plus
 // a hash of each .env file). watched: files the person changed while a plan was running and no tool of ours was (the watcher saw it),
@@ -105,6 +107,11 @@ export class CheckpointStore {
   restore(id: string, opts: { protect?: boolean; force?: boolean } = {}): Promise<RestoreResult> { return this.serial(() => this.restoreNow(id, opts.protect !== false, opts.force === true)).catch((e) => { throw friendly(e); }); }
   /** "Put those back too": the files the last Undo left alone because they were the person's. Each one is saved aside first. Only
    *  files that Undo left alone can be named. */
+  /** Launch check (15 Oct 2026): a file git ignores is in no snapshot, so just before a task edits one it is kept here (a
+   *  private copy, or a note that it was not there) under the checkpoint the task started from. Undo then puts it back, or
+   *  removes it. Only the state before the first edit after each checkpoint is kept. Not for .env files (they have their own
+   *  copies), never through a link, never outside the project, nothing over 2 MiB. */
+  keepIgnored(id: string, path: string): Promise<IgnoredKept> { return this.serial(() => this.keepIgnoredNow(id, path)).catch(() => "skipped" as const); }
   putBack(id: string, files?: string[]): Promise<PutBackResult> { return this.serial(() => this.putBackNow(id, files)).catch((e) => { throw friendly(e); }); }
   /** Our work ended here: the project as it is now is what our last step left. Later differences are the person's. */
   noteAgentEnd(_afterId?: string): Promise<void> { return this.serial(() => this.agentEndNow()); }
@@ -258,6 +265,62 @@ export class CheckpointStore {
   }
 
   private metaPath(id: string) { return join(this.shadowDir, "meta", id); }
+  private ignoredJournal(id: string): Record<string, "kept" | "absent" | "too_big"> {
+    try { const j = JSON.parse(readFileSync(join(this.metaPath(id), "ignored", "journal.json"), "utf8")); return j && typeof j === "object" ? j : {}; } catch { return {}; }
+  }
+  private async keepIgnoredNow(id: string, path: string): Promise<IgnoredKept> {
+    if (!this.refs().some((r) => r.id === id)) return "skipped";
+    let abs: string;
+    try { abs = this.inProject(path); } catch { return "skipped"; }
+    const rel = relative(this.projectDir, abs);
+    if (this.hasLinkOnTheWay(abs)) return "skipped";
+    const name = rel.split(sep).pop() ?? "";
+    if (name === ".env" || name.startsWith(".env.")) return "tracked";
+    const p = Bun.spawn(["git", "check-ignore", "-q", "--no-index", "--", rel], { cwd: this.projectDir, env: this.env(), stdout: "ignore", stderr: "ignore" });
+    if ((await p.exited) !== 0) return "tracked";
+    const dir = join(this.metaPath(id), "ignored"), journal = this.ignoredJournal(id);
+    if (journal[rel]) return journal[rel];
+    let st;
+    try { st = lstatSync(abs); } catch { st = null; }
+    let kept: "kept" | "absent" | "too_big";
+    if (!st) kept = "absent";
+    else if (!st.isFile()) return "skipped";
+    else if (st.size > MAX_NEW_FILE_BYTES) kept = "too_big";
+    else {
+      const dst = join(dir, "files", rel);
+      mkdirSync(dirname(dst), { recursive: true, mode: 0o700 });
+      copyFileSync(abs, dst); chmodSync(dst, 0o600);
+      kept = "kept";
+    }
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(dir, "journal.json"), JSON.stringify({ ...journal, [rel]: kept }), { mode: 0o600 });
+    return kept;
+  }
+  /** Undo for ignored files: every one a task edited since checkpoint `n` goes back to how it was before the first of those
+   *  edits. The safe copy taken before this undo first keeps each one as it is now, so the undo can itself be undone. */
+  private async restoreIgnored(n: number, safetyId: string, yours: Set<string>, leftAlone: string[]): Promise<string[]> {
+    const first = new Map<string, { id: string; kept: "kept" | "absent" | "too_big" }>();
+    for (const r of this.refs().filter((x) => x.n >= n && x.id !== safetyId)) {
+      for (const [rel, kept] of Object.entries(this.ignoredJournal(r.id))) if (!first.has(rel)) first.set(rel, { id: r.id, kept });
+    }
+    const back: string[] = [];
+    for (const [rel, { id, kept }] of first) {
+      if (yours.has(rel)) continue;
+      let abs: string;
+      try { abs = this.inProject(rel); } catch { continue; }
+      if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
+      if (kept === "too_big") { leftAlone.push(rel); continue; }
+      await this.keepIgnoredNow(safetyId, rel);
+      try { if (lstatSync(abs).isSymbolicLink()) rmSync(abs, { force: true }); } catch { /* not there */ }
+      if (kept === "absent") { if (existsSync(abs)) { this.removeWithEmptyDirs(abs); back.push(rel); } continue; }
+      const src = join(this.metaPath(id), "ignored", "files", rel);
+      if (!existsSync(src)) continue;
+      mkdirSync(dirname(abs), { recursive: true });
+      copyFileSync(src, abs);
+      back.push(rel);
+    }
+    return back.sort();
+  }
   private readMeta(id: string): Checkpoint | null {
     try { return JSON.parse(readFileSync(join(this.metaPath(id), "meta.json"), "utf8")); } catch { return null; }
   }
@@ -664,6 +727,8 @@ export class CheckpointStore {
       if (this.hasLinkOnTheWay(abs)) { leftAlone.push(rel); continue; }
       rmSync(abs, { force: true });
     }
+    // Files git ignores that a task edited since then (keepIgnored).
+    const ignoredRestored = await this.restoreIgnored(CheckpointStore.num(id), safety.id, yours, leftAlone);
     // From here on, what our work left is the version we went back to. A file the person kept is not that, so it stays theirs.
     const n = CheckpointStore.num(id), now = CheckpointStore.num(safety.id);
     const tree = (await this.git(["rev-parse", `${targetMeta.commit}^{tree}`])).trim(), envNow = this.envHashes(id);
@@ -675,7 +740,7 @@ export class CheckpointStore {
       own.baseline = { tree, env: envNow, big };
       own.left = yours.size ? { checkpoint: id, files: [...yours].sort() } : null;
     });
-    return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone, recovered, largeLeftAlone, yours: [...yours].sort() };
+    return { restored: id, safetyCheckpoint: safety.id, envRestored, leftAlone, recovered, largeLeftAlone, yours: [...yours].sort(), ignoredRestored };
   }
 
   // "Put those back too": the person said yes a second time. Their version of each file is saved aside first, then the old one comes back.

@@ -73,3 +73,14 @@ Every snapshot needs Git, so the Mac check now says Git is needed ("Companion ne
 
 ## Revisit if
 SDK file checkpointing closes its gaps (Bash edits, subagent edits, directory moves, rewind across sessions). Until then the shadow store is the source of truth.
+
+## Added 30 Oct 2026: undo covers ignored files a task edits (launch check of 15 Oct)
+- **Kept before the first edit.** Just before a task's Write, Edit, MultiEdit or NotebookEdit changes a file git ignores, the file is kept under the checkpoint the task started from (`checkpoints.ts` `keepIgnored`):
+  - a private 0600 copy, or a note that it was not there
+  - only the state before the first edit after each checkpoint
+- **Undo to a checkpoint puts each one back,** or removes one the task made (`restoreIgnored`). The safe copy taken before the undo first keeps each one as it is, so the undo can itself be undone.
+- **Left out:**
+  - `.env` files, which have their own copies
+  - anything through a link or outside the project
+  - files over 2 MiB, which the receipt names as not covered
+- **Still not covered:** ignored files a shell command changes, such as `npm install` writing `node_modules`. Undo of a single step (undoOne) does not touch ignored files.

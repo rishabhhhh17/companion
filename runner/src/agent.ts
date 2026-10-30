@@ -40,7 +40,7 @@ import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { fileApprovals, readRunFiles, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
@@ -269,6 +269,9 @@ type PendingPlan = { project: string; model: string; budgetUsd: number; usd: num
 const CHECKER_STOPPED = "The checks could not run, so this is not proven yet. Try again.";
 /** The checks' steps as the pages get them: never what only the model is told (Step.forModel, a weakened check). */
 const forPerson = (steps: Step[]): Step[] => steps.map(({ forModel: _model, ...rest }) => rest);
+
+/** The tools that write one file by name; a file git ignores is kept before they change it (checkpoints.ts keepIgnored). */
+const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 export class AgentRunner {
   private sessions = new Map<string, Session>();
@@ -1300,7 +1303,7 @@ export class AgentRunner {
       const notGiven = NOT_GIVEN.get(tool.name);
       let refused = notGiven ? refusal(notGiven) : allowed.has(tool.name) && spec.check ? spec.check(tool) : null;
       // The same safety rules as a normal task, with every "ask" turned into "no": these flows only look, inside the project.
-      if (!refused && allowed.has(tool.name)) { const v = evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }); if (v.decision !== "allow") refused = refusal(v.reason); }
+      if (!refused && allowed.has(tool.name)) { const v = await withLookup(evaluateReadOnly({ tool: tool.name, input: tool.input }, { project: spec.project }), tool.name, tool.input); if (v.decision !== "allow") refused = refusal(v.reason); }
       const ok = allowed.has(tool.name) && !refused;
       this.emit({ type: "agent.tool", agent: spec.agent, tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: ok ? "ran" : "blocked" } as never);
       return ok ? { allow: true, reason: "" } : { allow: false, reason: refused ?? spec.refuse ?? refusal("this can only look at the project, not change it") };
@@ -2170,7 +2173,7 @@ export class AgentRunner {
   // and by the real engine's PreToolUse hook; either way the safety rules are the same.
   private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
-    const base = evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells }, ...(s.webSearch === false ? { webSearch: false } : {}) });
+    const base = await withLookup(evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells }, ...(s.webSearch === false ? { webSearch: false } : {}) }), tool.name, tool.input);
     // House rules can only make a call stricter, never looser.
     const loaded = loadRules(cmd.project);
     const said = `${cmd.project}\n${loaded.problems.join("\n")}`;
@@ -2238,6 +2241,11 @@ export class AgentRunner {
     if (!verdict.undoable) notUndoable.push(clip(redact(String(tool.input.command ?? sum)), 300));
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");
+    // Launch check: a file git ignores is in no snapshot, so it is kept just before it is edited, and Undo puts it back.
+    if (EDIT_TOOLS.has(tool.name)) {
+      const path = String(tool.input.file_path ?? tool.input.notebook_path ?? "");
+      if (path) { const kept = await this.store(cmd.project).keepIgnored(checkpoint, path); if (kept === "too_big") notUndoable.push(`${clip(redact(path), 200)}: over 2 MiB and ignored by git, so Undo cannot put it back`); }
+    }
     // From here until the tool finishes, file changes are the agent's own.
     const wid = sdkId ?? toolUseId;
     this.watchers.get(cmd.agent)?.begin(wid);
