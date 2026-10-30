@@ -1476,7 +1476,6 @@ function Card() {
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
-      {onboarded && <ClaudeNotice />}
       {onboarded && (<>
       {/* M42 (the founder picked B, Supabase's dashboard): on Now, the ask box is a command bar across the top, the things to
           do and the recent fixes are a list on the left, and the job and its results are on the right (style.css .home-side). */}
@@ -1523,6 +1522,8 @@ function Card() {
           {!working && !project && <div className="line muted">{S.newFolder.noProject}</div>}
           {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
           </div>
+          {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
+          <ClaudeNotice />
       {/* Now: Flowflow, large and alive, beside the job in big words, the ask box and the quick actions. */}
       <section className="hero" hidden={home.tab !== "now"} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
         <Waterline />

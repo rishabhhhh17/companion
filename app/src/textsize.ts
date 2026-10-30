@@ -6,8 +6,8 @@
 // the one migration). Only Home follows it: the island is the notch's size and the character's window is fixed. Plain
 // code, tested in textsize.test.ts and a11y.test.ts.
 import { setting } from "./settingsStore.ts";
-export type TextSize = "standard" | "large" | "larger" | "largest";
-export const TEXT_SIZES: readonly TextSize[] = ["standard", "large", "larger", "largest"];
+export type TextSize = "standard" | "large" | "larger" | "largest" | "huge";
+export const TEXT_SIZES: readonly TextSize[] = ["standard", "large", "larger", "largest", "huge"];
 export const TEXT_SIZE_DEFAULT: TextSize = "standard";
 
 /** A saved value, or anything else, as one of the sizes; anything not one of them is Standard. */

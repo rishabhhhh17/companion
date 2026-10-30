@@ -744,7 +744,10 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
   const darkRule = css.find((r) => r.sel === ":root" && /prefers-color-scheme: dark/.test(r.media ?? ""));
   // Home is black in both Mac themes (27 Oct 2026): its own tokens on its page's root, checked as a third theme.
   const homeRule = css.find((r) => r.sel === ":root.home-page" && !r.media);
-  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }]];
+  const paperRule = css.find((r) => r.sel === ':root.home-page[data-theme="paper"]' && !r.media);
+  const deepRule = css.find((r) => r.sel === ':root.home-page[data-theme="deep"]' && !r.media);
+  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }],
+    ["Home on Paper", { ...light, ...homeRule!.decl, ...paperRule!.decl }], ["Home on Deep sea", { ...light, ...homeRule!.decl, ...deepRule!.decl }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   test("Home's black token set is there, and its result cards keep their words readable", () => {
@@ -811,6 +814,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       }
       // The ask box's edge in Home.
       expect(ratio(c(colourIn(one(".home .ask")!.decl.border)!), bg), "Home's ask box edge").toBeGreaterThanOrEqual(3);
+      if (tokens["--ask-edge"]) expect(ratio(c(colourIn(one('.home[data-view="now"] .ask')!.decl.border)!), bg), "the command bar's edge on Now").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
       // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
@@ -888,7 +892,7 @@ describe("Home stays usable with bigger text (part 4)", () => {
       expect(px, t).toBeGreaterThan(last);
       last = px;
     }
-    expect(last, "the largest is a real step up").toBeGreaterThanOrEqual(20);
+    expect(last, "the biggest reaches twice the usual size (WCAG 1.4.4, 200 percent)").toBeGreaterThanOrEqual(28);
     expect(css.some((x) => x.sel === ':root[data-text="standard"]'), "Standard needs no rule of its own").toBe(false);
   });
   test("Home puts the saved size on before it draws, and Settings changes it there", () => {

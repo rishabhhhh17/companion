@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Fixes from a full interface review: 30 Oct 2026
+
+- **Text can now be twice the size.** Settings, Text size has a new Huge step. Home's two columns stack when the words get that big, so nothing is squeezed.
+- **The notch never cuts off its buttons.** With questions waiting, the cards scroll and the buttons under them stay in reach.
+- **The ask box stays at the top.** While Claude was installing or missing, its notice could push the ask box below the side list.
+- **The Paper theme is readable.** Errors, the ticks and crosses, and the dot that says a place needs you were too faint on Paper.
+- **Easier to read keys and edges.** The keyboard shortcuts beside each action, and the edge of the ask box, now stand out enough to see.
+- **Every button answers a press.** Some rows on Home showed no press at all, and a notch answer that was not ready yet looked pressed.
+- **Clearer words.** The Now hint says to press Return, and the first run says what to do when the practice project needs Node.
+- **VoiceOver keeps its place** while the first run's short story plays.
+
 ## One look on every screen: 30 Oct 2026
 
 - **Home, Settings, the notch and the first run now look like one product.** The same near black page, cards with one thin edge, quiet rows that light up under the pointer and small square buttons, everywhere.

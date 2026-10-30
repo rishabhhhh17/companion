@@ -164,7 +164,7 @@
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.apps", "section": "sharing", "kind": "list", "default": ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams", "com.apple.FaceTime", "Cisco-Systems.Spark", "com.webex.meetingmanager", "com.skype.skype"], "maxItems": 27, "item": { "maxLength": 200, "shape": "appId" }, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "calls.apps" },
 
-    { "key": "display.textSize", "section": "display", "kind": "choice", "default": "standard", "options": ["standard", "large", "larger", "largest"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
+    { "key": "display.textSize", "section": "display", "kind": "choice", "default": "standard", "options": ["standard", "large", "larger", "largest", "huge"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.textSize", "map": "textSize" } } },
 
     { "key": "updates.daily", "section": "updates", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,

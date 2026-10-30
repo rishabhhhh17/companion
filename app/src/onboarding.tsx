@@ -264,7 +264,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           <p className="fr-small">{effectsOf(answers).join(" ")}</p>
         </details>
         <div className="fr-grow" />
-        {first.needsNode && noNode && <p className="fr-small" role="status">{S.practiceNodeLine(noNode.fix ?? "")}</p>}
+        {first.needsNode && noNode && <p className="fr-small" role="status">{S.fr.practiceNeedsNode(noNode.fix ?? "")}</p>}
         {/* Taking it ends the first run here: the practice opens its own folder. The choices made on the way are kept. */}
         <button className="fr-key" type="button" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.fr.practice}</button>
         <button className="fr-quiet" type="button" onClick={finish}>{S.fr.goProject}</button>

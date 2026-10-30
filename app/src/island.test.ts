@@ -445,3 +445,21 @@ describe("the island page never skips a hook (M26)", () => {
     for (const line of page.split("\n")) if (/useSetting\(/.test(line)) expect(line, line).not.toMatch(/(&&|\|\||\?)[\s(]*useSetting\(/);
   });
 });
+
+describe("the notch panel never cuts off its keys (better-interface review, 30 Oct 2026)", () => {
+  const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+  test("with questions waiting, the cards scroll inside the panel and the keys under them stay in reach", () => {
+    expect(css).toMatch(/\.island-panel:not\(\[data-brief\]\) \.ip-jobs \{ max-height: \d+px; overflow: auto;/);
+    expect(css).toMatch(/\.island-panel\[data-brief\] \.ip-jobs \{ max-height: \d+px; overflow: auto;/);
+    const full = Number(/\.island-panel:not\(\[data-brief\]\) \.ip-jobs \{ max-height: (\d+)px/.exec(css)![1]);
+    const brief = Number(/\.island-panel\[data-brief\] \.ip-jobs \{ max-height: (\d+)px/.exec(css)![1]);
+    const rs = readFileSync(new URL("../src-tauri/src/island.rs", import.meta.url), "utf8");
+    const max = Number(/pub const PANEL_MAX: f64 = (\d+)\.0;/.exec(rs)![1]);
+    // The full panel also holds Fix something (42), the row of keys (30), two gaps (10) and its padding (22).
+    expect(full + 42 + 30 + 2 * 10 + 22, "the full panel fits its window").toBeLessThanOrEqual(max);
+    expect(brief + 16, "the brief panel fits its window").toBeLessThanOrEqual(max);
+  });
+  test("an answer that is not armed yet does not look pressed", () => {
+    expect(css).toContain(".island-panel .ip-ask:not([data-armed]) .ip-answer button:active { transform: none; }");
+  });
+});

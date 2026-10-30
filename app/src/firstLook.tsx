@@ -40,7 +40,7 @@ export function FirstLook({ onGo }: { onGo: () => void }) {
         <HomeCharacter as={BEAT_STATE[beat]} />
         <div className="fl-say" aria-live="polite">
           <p className="fl-tagline">{W.tagline}</p>
-          <h2 key={beat}>{W.beats[beat]}</h2>
+          <h2><span key={beat}>{W.beats[beat]}</span></h2>
           <p className="muted">{W.more[beat]}</p>
         </div>
       </div>

@@ -57,7 +57,7 @@ describe("one row of each kind", () => {
     const r = rowModel(d("display.textSize"), "large", "standard", "");
     expect(r.shown).toBe("Large");
     expect(r.usualLine).toBe("Usual: Standard");
-    expect(r.options).toEqual([{ id: "standard", label: "Standard" }, { id: "large", label: "Large" }, { id: "larger", label: "Larger" }, { id: "largest", label: "Largest" }]);
+    expect(r.options).toEqual([{ id: "standard", label: "Standard" }, { id: "large", label: "Large" }, { id: "larger", label: "Larger" }, { id: "largest", label: "Largest" }, { id: "huge", label: "Huge" }]);
   });
   test("a number shows its unit, its range and step, and says when it takes effect", () => {
     const r = rowModel(d("work.maxTurns"), 120, 80, "");
@@ -147,7 +147,7 @@ describe("the rows for Home, the island and the character", () => {
   test("Home size suggests Large when the text is larger than usual, and only then", () => {
     expect(homeSizeHint("larger", "standard")).toBe(S.setHomeLarger);
     expect(homeSizeHint("largest", "standard")).toBe(S.setHomeLarger);
-    for (const [t, h] of [["standard", "standard"], ["large", "standard"], ["larger", "large"], ["largest", "large"]]) expect(homeSizeHint(t, h), `${t} ${h}`).toBeNull();
+    for (const [t, h] of [["standard", "standard"], ["large", "standard"], ["larger", "large"], ["largest", "large"], ["huge", "large"]]) expect(homeSizeHint(t, h), `${t} ${h}`).toBeNull();
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     expect(page).toContain('homeSizeHint(setting("display.textSize"), value)');
   });
