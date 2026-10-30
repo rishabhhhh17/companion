@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { filterHistory, historyFiltering, HISTORY_STATUSES, historyUndo, statusGroup } from "./history.ts";
+import { recentMark } from "./recentList.tsx";
 import { readFileSync } from "node:fs";
 import type { HistoryItem } from "./model.ts";
 import { S } from "./strings.ts";
@@ -19,10 +20,10 @@ const ids = (l: HistoryItem[]) => l.map((x) => x.id);
 
 describe("a task waiting for an answer", () => {
   test("is not filed under Not done", () => {
-    expect(statusGroup("needs_you")).toBe("stopped");
-    expect(statusGroup("daily_limit")).toBe("stopped");
-    expect(statusGroup("error")).toBe("not_done");
-    expect(statusGroup("")).toBe("not_done");
+    expect(statusGroup({ status: "needs_you" })).toBe("stopped");
+    expect(statusGroup({ status: "daily_limit" })).toBe("stopped");
+    expect(statusGroup({ status: "error" })).toBe("not_done");
+    expect(statusGroup({ status: "" })).toBe("not_done");
   });
 });
 
@@ -40,14 +41,14 @@ describe("search in What I did", () => {
     expect(ids(filterHistory(tasks, { words: "payments", status: "all" }))).toEqual([]);
   });
   test("status: grouped the way the list words them", () => {
-    expect(statusGroup("done")).toBe("done");
-    expect(statusGroup("not_done")).toBe("not_done");
-    expect(statusGroup("error")).toBe("not_done");
-    expect(statusGroup("something new")).toBe("not_done");
-    expect(statusGroup("interrupted")).toBe("stopped");
-    expect(statusGroup("error_max_budget_usd")).toBe("stopped");
-    expect(statusGroup("error_max_turns")).toBe("stopped");
-    expect(statusGroup("running")).toBe("running");
+    expect(statusGroup({ status: "done" })).toBe("done");
+    expect(statusGroup({ status: "not_done" })).toBe("not_done");
+    expect(statusGroup({ status: "error" })).toBe("not_done");
+    expect(statusGroup({ status: "something new" })).toBe("not_done");
+    expect(statusGroup({ status: "interrupted" })).toBe("stopped");
+    expect(statusGroup({ status: "error_max_budget_usd" })).toBe("stopped");
+    expect(statusGroup({ status: "error_max_turns" })).toBe("stopped");
+    expect(statusGroup({ status: "running" })).toBe("running");
     expect(ids(filterHistory(tasks, { words: "", status: "done" }))).toEqual([6, 4]);
     expect(ids(filterHistory(tasks, { words: "", status: "not_done" }))).toEqual([5, 1]);
     expect(ids(filterHistory(tasks, { words: "", status: "stopped" }))).toEqual([3, 2]);
@@ -121,5 +122,46 @@ describe("Undo in What I did", () => {
     expect(S.historyUndoWhy).toContain("newest");
     expect(S.historyUndoWhy).not.toContain("—");
     expect(typeof S.historyUndo).toBe("string");
+  });
+});
+
+describe("M45: an undone task reads Undone everywhere", () => {
+  const undone = { ...t(6, "Add a contact form", "done", "passed"), undone: true };
+  test("undone rows group as undone", () => {
+    expect(statusGroup(undone)).toBe("undone");
+    expect(HISTORY_STATUSES).toContain("undone");
+    expect(S.historyStatus.undone).toBe("Undone");
+    expect(ids(filterHistory([undone, ...tasks.slice(1)], { words: "", status: "undone" }))).toEqual([6]);
+    expect(ids(filterHistory([undone, ...tasks.slice(1)], { words: "", status: "done" }))).toEqual([4]);
+  });
+  test("no Undo for an undone row", () => {
+    const list = [undone, ...tasks.slice(1).filter((x) => x.status !== "running")];
+    expect(historyUndo(list, undone, null)).toBeNull();
+  });
+  test("recentMark", () => {
+    expect(recentMark(t(1, "a", "done", "passed"))).toEqual({ icon: "tick", words: "Fixed and proven", kind: "proven" });
+    expect(recentMark({ ...t(1, "a", "done", "passed"), undone: true })).toEqual({ icon: "undo", words: "Undone", kind: "undone" });
+    expect(recentMark(t(1, "a", "interrupted"))).toMatchObject({ icon: "stop", words: "Stopped" });
+    expect(recentMark(t(1, "a", "done", "partial"))).toMatchObject({ icon: "wait", words: "Fixed, not fully proven" });
+    expect(recentMark(t(1, "a", "not_done", "failed"))).toMatchObject({ icon: "cross", words: "Not fixed yet" });
+    expect(recentMark(t(1, "a", "running"))).toEqual({ icon: "wait", words: S.historyRunning, kind: "running" });
+    // Brought back after an Undo: the same words as the receipt, never a tick (M45 review).
+    expect(recentMark({ ...t(1, "a", "done", "passed"), undone: true, back: true })).toEqual({ icon: "wait", words: S.verdict.back, kind: "back" });
+  });
+  test("a row brought back is not filed as Undone, and may be undone again", () => {
+    const back = { ...tasks[0], undone: true, back: true };
+    expect(statusGroup(back)).toBe("done");
+    expect(historyUndo([back, ...tasks.slice(1).filter((x) => x.status !== "running")], back, null)).toBe("undo");
+  });
+  test("an Undo of a task that changed nothing does not file it as Undone", () => {
+    expect(statusGroup({ ...t(1, "a", "done"), changed: 0, undone: true })).toBe("done");
+    // An unknown count may have changed files.
+    expect(statusGroup({ ...t(1, "a", "done"), changed: null, undone: true })).toBe("undone");
+  });
+  test("the recent list colours a proven tick green and a failure or a crash red", () => {
+    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+    expect(css).toContain('.home-side .side-item[data-proof="proven"] .ic { color: var(--ok); }');
+    expect(css).toMatch(/\.home-side \.side-item\[data-proof="failed"\] \.ic, \.home-side \.side-item\[data-proof="error"\] \.ic \{ color: var\(--danger\); \}/);
+    expect(css).not.toContain('[data-proof="passed"]');
   });
 });

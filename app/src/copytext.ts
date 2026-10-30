@@ -1,6 +1,6 @@
 // Copy on replies and receipts: the text a Copy button puts on the clipboard, the same lines the card shows. Anything that
 // looks like a key or a password is hidden again first (the clipboard can be read by every app), as on the card.
-import { blockedNote, ehLines, slLines, formatUsd, receiptHeading, receiptProofWords, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
+import { blockedNote, ehLines, slLines, formatUsd, receiptHeading, receiptVerdict, type About, type Explain, type Model, type RescueCard, type ResearchCard } from "./model.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
 
@@ -29,9 +29,10 @@ export function receiptCopy(m: Model, project: string): string {
   return lines([
     receiptHeading(r), ...changed,
     r.notUndoable.length > 0 && `${S.cannotUndo}: ${r.notUndoable.join("; ")}`,
-    r.changed.length > 0 && receiptProofWords(m),
+    // The result, as the verdict says it (M45), whether or not files changed.
+    receiptVerdict(m)?.say,
     blockedNote(m, project),
-    `${r.commands} ${S.commands} · ${S.cost}: ${formatUsd(r.usdEstimate)}`,
+    r.usdEstimate > 0 ? `${r.commands} ${S.commands} · ${S.cost}: ${formatUsd(r.usdEstimate)}` : `${r.commands} ${S.commands} · ${S.noCost}`,
   ]);
 }
 

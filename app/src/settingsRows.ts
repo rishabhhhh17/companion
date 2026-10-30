@@ -112,7 +112,7 @@ export const PLACE_KEYS = ["character.edge", "character.position", "character.sa
 
 /** Under Home size: Large may suit text larger than usual (display.textSize larger or largest), while Home is standard. */
 export function homeSizeHint(textSize: unknown, homeSize: unknown): string | null {
-  return (textSize === "larger" || textSize === "largest") && homeSize === "standard" ? S.setHomeLarger : null;
+  return (textSize === "larger" || textSize === "largest" || textSize === "huge") && homeSize === "standard" ? S.setHomeLarger : null;
 }
 
 /** The words for a setting's fixed part (its floor), from strings.ts. */

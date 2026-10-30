@@ -90,10 +90,15 @@ describe("answers said out loud for a question asked by voice (off by default, T
     const r = repliesIn(m({ research: { title: "Which host", answer: "Vercel fits this project best.", notes: [], file: ".companion/research/a.md" } } as never), "/p");
     expect(r).toEqual([{ key: "research:/p:.companion/research/a.md", text: "Vercel fits this project best.", kind: "research" }]);
     const done = repliesIn(m({ receipt: { proof: "passed", checkpoint: "cp_0007", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
-    expect(done).toEqual([{ key: "receipt:/p:cp_0007", text: S.proven, kind: "task" }]);
+    expect(done).toEqual([{ key: "receipt:/p:cp_0007", text: "Fixed and proven.", kind: "task" }]);
     // A rescue is started by its button, never by voice, so it is not an answer to say.
     expect(repliesIn(m({ rescue: { summary: "The site builds.", works: [], broken: "x", evidence: [] } } as never), "/p")).toEqual([]);
     expect(repliesIn(m({}), "/p")).toEqual([]);
+  });
+  test("the reply after a limit stop names the limit (M45)", () => {
+    const r = repliesIn(m({ receipt: { proof: "skipped", checkpoint: "cp_0009", changed: [{ file: "a.js", kind: "modified" }], commands: 1, notUndoable: [], usdEstimate: 3, end: "limit", limit: "spending" } } as never), "/p");
+    expect(r[0].text).toBe(`${S.verdict.limit.spending}. ${S.verdict.limitChanged}`);
+    expect(r[0].key).toBe("receipt:/p:cp_0009");
   });
   // Found in the M11 audit (A65): an answer asked off the record has no file, so every such answer had the same key and only
   // the first was ever said, though the next ones were asked by voice too.
@@ -111,7 +116,7 @@ describe("answers said out loud for a question asked by voice (off by default, T
     expect(newReply(before, seen)).toBeNull();
     // The task asked by voice finishes while the old research answer is still shown: its result is the new answer.
     const after = repliesIn(m({ research, receipt: { proof: "passed", checkpoint: "cp_0008", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
-    expect(newReply(after, seen)).toEqual({ key: "receipt:/p:cp_0008", text: S.proven, kind: "task" });
+    expect(newReply(after, seen)).toEqual({ key: "receipt:/p:cp_0008", text: "Fixed and proven.", kind: "task" });
     expect(newReply([], seen)).toBeNull();
   });
   test("when the sound is off nothing is said, and the card says so once", () => {
@@ -229,7 +234,7 @@ describe("answers in another project", () => {
   test("the first receipt in another project is a new answer, though its checkpoint has the same number", () => {
     const seen = new Set(repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/practice").map((x) => x.key));
     const mine = repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/shop");
-    expect(newReply(mine, seen)).toEqual({ key: "receipt:/Users/me/shop:cp_0001", text: S.proven, kind: "task" });
+    expect(newReply(mine, seen)).toEqual({ key: "receipt:/Users/me/shop:cp_0001", text: "Fixed and proven.", kind: "task" });
     // The same answer in the same project is still said only once.
     for (const x of mine) seen.add(x.key);
     expect(newReply(repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/shop"), seen)).toBeNull();

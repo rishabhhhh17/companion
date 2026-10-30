@@ -178,8 +178,17 @@ function installs(command: string): boolean {
   return commandsOf(command).some((t) => { const line = [basename(t[0]), ...t.slice(1)].join(" "); return INSTALL.some((re) => re.test(line)); });
 }
 
-const deny = (rule: Rule): Verdict => ({ decision: "deny", risk: "irreversible", reason: `House rule: "${rule.text}"`, undoable: true });
-const ask = (rule: Rule): Verdict => ({ decision: "ask", risk: "irreversible", reason: `House rule: "${rule.text}"`, undoable: true });
+const deny = (rule: Rule): Verdict => ({ decision: "deny", risk: "house_rule", reason: `Your house rule says: "${rule.text}"`, undoable: true });
+const ask = (rule: Rule): Verdict => ({ decision: "ask", risk: "house_rule", reason: `Your house rule says: "${rule.text}"`, undoable: true });
+const RANK = { allow: 0, ask: 1, deny: 2 } as const;
+
+/** The verdict for a call once house rules are applied: the rule's when it is stricter than the base, else the base. A rule
+ *  can never turn something Undo cannot take back into something it can (M45), so the base's undo fact always holds.
+ *  byHouseRule: the rule decided, which taskScopeCovers needs to know. */
+export function withHouseRule(base: Verdict, ruled: Verdict | null): { verdict: Verdict; byHouseRule: boolean } {
+  if (!ruled || RANK[ruled.decision] <= RANK[base.decision]) return { verdict: base, byHouseRule: false };
+  return { verdict: { ...ruled, undoable: ruled.undoable && base.undoable }, byHouseRule: true };
+}
 
 // Returns a stricter verdict when a rule applies, otherwise null.
 export function applyRules(rules: Rule[], call: ToolCall, project: string): Verdict | null {

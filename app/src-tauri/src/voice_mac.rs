@@ -221,10 +221,22 @@ static BUFFER_ROOM: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUs
 pub fn set_buffer_room(n: usize) { BUFFER_ROOM.store(n, std::sync::atomic::Ordering::SeqCst); }
 fn buffer_room() -> usize { BUFFER_ROOM.load(std::sync::atomic::Ordering::SeqCst) }
 
+/// M39 (the water ring listens): how loud the microphone is right now, the peak of the last block it gave (0 to 1, as f32
+/// bits). Only a number, kept in memory while the keys are held; never stored, never the sound itself.
+static LEVEL: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+pub fn level() -> f32 { f32::from_bits(LEVEL.load(std::sync::atomic::Ordering::Relaxed)) }
+pub fn reset_level() { LEVEL.store(0, std::sync::atomic::Ordering::Relaxed); }
+/// The peak of one block of samples, 0 to 1.
+pub fn peak(block: &[f32]) -> f32 { block.iter().fold(0.0f32, |m, s| if s.is_finite() { m.max(s.abs()) } else { m }).min(1.0) }
+
 fn collect<T: SizedSample + 'static>(dev: &cpal::Device, cfg: cpal::StreamConfig, buf: Arc<Mutex<Vec<f32>>>, trouble: Arc<Trouble>, to_f32: fn(T) -> f32) -> Result<cpal::Stream, String> {
     // The most serious problem waiting wins (voiceset::replaces): a microphone that went away is never hidden behind an overload.
     let on_error = move |e: cpal::Error| { let k = format!("{:?}", e.kind()); trouble.report(&k); };
-    dev.build_input_stream(cfg, move |data: &[T], _| { if let Ok(mut b) = buf.lock() { if b.len() < buffer_room() { b.extend(data.iter().map(|s| to_f32(*s))); } } }, on_error, None).map_err(|e| e.to_string())
+    dev.build_input_stream(cfg, move |data: &[T], _| {
+        let block: Vec<f32> = data.iter().map(|s| to_f32(*s)).collect();
+        LEVEL.store(peak(&block).to_bits(), std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut b) = buf.lock() { if b.len() < buffer_room() { b.extend(block); } }
+    }, on_error, None).map_err(|e| e.to_string())
 }
 
 fn open(dev: &cpal::Device) -> Result<Open, String> {
@@ -356,6 +368,12 @@ pub fn transcribe_with(ctx: &Speech, samples_16k: &[f32], prompt: &str, language
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_level_is_the_loudest_sample_and_only_a_number() {
+        assert_eq!(super::peak(&[0.1, -0.6, 0.3]), 0.6);
+        assert_eq!(super::peak(&[]), 0.0);
+        assert_eq!(super::peak(&[f32::NAN, 0.2, 9.0]), 1.0, "never past full, a broken sample is skipped");
+    }
     use super::*;
     #[test]
     fn the_checksum_of_a_known_file_is_right_and_a_changed_file_is_noticed() {

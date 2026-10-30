@@ -33,3 +33,14 @@ describe("proof you can see under a receipt", () => {
     expect(view).toContain('<Icon name={c.ok ? "tick" : "cross"}');
   });
 });
+
+describe("M45: chips are proof for the files as checked", () => {
+  const checked = withProof([line("tests", "passed"), line("browser", "passed")]);
+  test("no chips after Undo", () => {
+    expect(proofChips(checked).length).toBe(2);
+    expect(proofChips({ ...checked, receipt: { ...checked.receipt!, undone: true } })).toEqual([]);
+  });
+  test("no chips after Bring back", () => {
+    expect(proofChips({ ...checked, receipt: { ...checked.receipt!, undone: true, back: true } })).toEqual([]);
+  });
+});

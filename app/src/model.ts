@@ -10,6 +10,8 @@ import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
 import type { WatchView, WhereNext } from "../../protocol/index.ts";
 import { validView } from "./watch.ts";
+import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
+import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -26,15 +28,26 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // undone: an undo point in this project was restored after it, so the work it shows is no longer what is in the files.
 // said: the agent's last words (secrets hidden again here); asks: they ask the person something, so the task needs them.
 // gone: the engine restarted after it, and the new one keeps no conversation to carry on, so it cannot be followed up.
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean };
+// M45 (verdict.ts): end, limit and failWhy: how the task ended, as the engine said (no end: it did not say, never read as
+// done). undoSafety: the safety copy the Undo made first, which "Bring the fix back" restores. back: the fix was brought
+// back after the Undo (undone stays true: the conversation still does not match); backPartly: but some fix files were left
+// as the person changed them after the Undo. fixKept: the last restore was "Put my fix back" on a turn, which puts the fix
+// itself back, so the files are as checked (undone stays true for the same reason). earlierUndone: "Which task broke it"
+// undid an earlier task after this one: this task's files stay, but the engine no longer follows its conversation up.
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
+  end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
+  undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean };
 // checkpoint: the undo point it began with (a task that changes files; a read only look has none).
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
-export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
+// undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
+// then put its files back again (undone stays set).
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
 // tries and same: how the tries ran out, when it was not the usual three identical failures (work.tries, work.askOnAnyFailure).
 // agent: the one it holds up (a task that keeps going in the folder before is named with its folder).
-export type StuckCard = { index: number; title: string; failure: string; options: { id: string; label: string }[]; tries?: number; same?: boolean; agent?: string };
+// failure: the check that kept failing, and its result in plain words with the raw output kept for behind Details (M45).
+export type StuckCard = { index: number; title: string; failure: { label: string; parts: CheckParts }; options: { id: string; label: string }[]; tries?: number; same?: boolean; agent?: string };
 export type Paused = { reason: string; path?: string; agent?: string };
 export type RescueCard = { summary: string; works: string[]; broken: string; evidence: { label: string; status: string; detail: string }[] };
 // file: where the notes were filed; none when it was asked off the record.
@@ -99,7 +112,8 @@ export type Practice = {
 };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 // yours: files Undo left alone because the person changed them. putBack: the separate, confirmed "Put those back too" for them.
-export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; note?: string; recovered?: number; large?: number; yours?: string[]; putBack?: "confirm" | "working" | "done" | "failed"; putBackNote?: string };
+// back (M45): this is "Bring the fix back", a restore of the Undo's own safety copy, not an Undo.
+export type UndoState = { stage: "confirm" | "working" | "done" | "failed"; checkpoint: string; back?: true; note?: string; recovered?: number; large?: number; yours?: string[]; putBack?: "confirm" | "working" | "done" | "failed"; putBackNote?: string };
 export type DiagramState = { stage: "asking" | "shown" | "none"; ask?: string; project?: string; reason?: string; caption?: string; brokenReason?: string };
 // fromProject: made by the runner from this project's own setting names, not a lesson file.
 export type LessonItem = { id: string; title: string; app: string; goal: string; status?: "draft" | "tried"; needsProject?: boolean; fromProject?: boolean; steps: number; saved: boolean };
@@ -244,7 +258,7 @@ export const folderName = (path: string): string => path.split("/").filter(Boole
 function holds(m: Model, agent: string, planToo: boolean): boolean {
   if (m.approvals.some((a) => a.agent === agent) || m.stuck || m.paused || m.agentsAsk) return true;
   if (!planToo && m.plan?.agent === agent) return true;
-  return m.task?.agent === agent && !!m.receipt?.asks && !m.receipt.undone && !m.receipt.gone;
+  return m.task?.agent === agent && !!m.receipt?.asks && !followGone(m.receipt);
 }
 /** May this agent be put aside: it is on needs you, and nothing on Home waits on the person for it any more (a plan put
  *  aside, a found problem, which task broke it or a failed check of your turn closed)? Then Home lets it rest and asks the
@@ -282,10 +296,8 @@ const shipStopped = (f: ShipFlow | null): ShipFlow | null => !f || !["checking_g
 const browserFresh = (b: BrowserSetupState): BrowserSetupState => (browserBusy(b) ? b : { needed: false, stage: "idle", ...(b.installed !== undefined ? { installed: b.installed } : {}) });
 const browserRung = (steps: unknown, test: (s: any) => boolean) => Array.isArray(steps) && steps.some((s: any) => !!s && s.rung === "browser" && test(s));
 
-// Most sentences the engine sends were written for a person ("Something is still working on this project. Wait for it to finish,
-// or press Stop."). Those are shown as they are. A technical message (an error name, a path, a code) is wrapped and never shown raw.
-const LOOKS_TECHNICAL = /(\b[A-Z][A-Za-z]*(Error|Exception)\b|\bE[A-Z]{3,}\b|\bat \/|\.(ts|js|tsx|rs):\d|\bundefined\b|\bnull\b|\bNaN\b|\[object|\bstack\b|\bgit [a-z-]+ failed|\bexit(ed)? (code|with)\b|\bunknown approval\b|\bstderr\b)/;
-export const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.test(r.trim()) && !LOOKS_TECHNICAL.test(r);
+// Whether a sentence was written for a person lives with the check's words (checkParts.ts); it is used here too.
+export { WRITTEN_FOR_A_PERSON };
 /** Claude's own stops, which the engine names (runner/src/reach.ts): Claude out of reach (never the project's or the key's
  *  fault), and every other kind of failed request, in plain words and never in Claude Code's own (which names its /login).
  *  "(ask again)" marks a flow with no Try again, so the words point at no button. Null for any other reason. */
@@ -410,6 +422,9 @@ export function reduce(m: Model, e: Ev): Model {
 function reduceRest(m: Model, e: Ev): Model {
   switch (e.type) {
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
+    // M45: Bring the fix back restores the safety copy the Undo made first (shadow snapshots only, never git: rule 10). It
+    // reuses the Undo's steps (sent, then the engine's answer), marked back.
+    case "ui.bringBackAsked": return m.receipt?.undone && !m.receipt.back && m.receipt.undoSafety ? { ...m, undo: { stage: "confirm", checkpoint: m.receipt.undoSafety, back: true } } : m;
     // ---- which task broke it ----
     case "ui.bisectAsked": return { ...m, bisect: { stage: "running" } };
     // The engine leaves the search's agent waiting on the person while the answer is shown: closing it is the answer, as for Point at the problem.
@@ -436,9 +451,13 @@ function reduceRest(m: Model, e: Ev): Model {
       if (m.bisect?.undoStage !== "working" || m.bisect.task?.checkpoint !== e.checkpoint) return m;
       if (e.ok !== true) return { ...m, bisect: { ...m.bisect, undoStage: "failed", note: String(e.reason ?? "") } };
       // As with Undo: files went back, so the last task's receipt has nothing left to follow up on, and no turn is left (the
-      // engine drops both too).
-      const receipt = m.receipt && !m.receipt.undone && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project) ? { ...m.receipt, undone: true } : m.receipt;
-      return answerGone({ ...m, receipt, teach: null, bisect: { ...m.bisect, undoStage: "done", reverted: Array.isArray(e.reverted) ? e.reverted.length : 0 } });
+      // engine drops both too). Only the found task was taken back: when that is the last task, its result is Undone and the
+      // safety copy the engine made first is what Bring the fix back restores (M45). When it is an earlier task, the last
+      // task's own files are still there, so its result, its Undo and its words stay; only its follow up closes.
+      const found = { ...m, teach: null, bisect: { ...m.bisect, undoStage: "done" as const, reverted: Array.isArray(e.reverted) ? e.reverted.length : 0 } };
+      if (m.receipt && m.receipt.checkpoint === e.checkpoint) return answerGone(filesWentBack(found, e.project, e.safety));
+      const here = !!m.receipt && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project);
+      return here ? answerGone({ ...found, receipt: { ...m.receipt!, earlierUndone: true } }) : found;
     }
     // ---- the error explainer ----
     case "app.explain_error": {
@@ -478,9 +497,22 @@ function reduceRest(m: Model, e: Ev): Model {
       const pr = m.practice;
       if (pr && pr.checkpoint && pr.checkpoint === e.checkpoint && (typeof e.project !== "string" || e.project === pr.project) && ["done", "failed", "proving"].includes(pr.stage)) m = { ...m, practice: { ...pr, stage: "found", undone: true, result: undefined, gaps: undefined, checksFailed: undefined } };
       // Put my fix back: only the restore the turn asked for ends it.
-      if (m.teach?.stage === "restoring" && m.teach.restore === e.checkpoint) m = { ...m, teach: { ...m.teach, stage: "restored" } };
-      // Any undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
-      if (m.receipt && !m.receipt.undone && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project)) m = answerGone({ ...m, receipt: { ...m.receipt, undone: true } });
+      const turnBack = m.teach?.stage === "restoring" && m.teach.restore === e.checkpoint;
+      if (turnBack) m = { ...m, teach: { ...m.teach!, stage: "restored" } };
+      const here = !!m.receipt && (typeof e.project !== "string" || !m.task?.project || e.project === m.task.project);
+      // M45, Bring the fix back: the restore of the Undo's own safety copy puts the task's files back. It is not a second
+      // Undo. undone stays true: the engine still refuses to follow the old conversation up.
+      // Fix files the person changed after the Undo are left as theirs (e.yours): the result says so, and the card offers
+      // "Put those back too" for them, as after an Undo.
+      if (here && m.receipt!.undone && !m.receipt!.back && m.receipt!.undoSafety === e.checkpoint) {
+        const yours = Array.isArray(e.yours) ? e.yours.filter((x: unknown): x is string => typeof x === "string") : [];
+        return { ...m, receipt: { ...m.receipt!, back: true, undoSafety: undefined, ...(yours.length ? { backPartly: true } : {}) },
+          undo: yours.length ? { stage: "done", checkpoint: e.checkpoint, back: true, yours } : null };
+      }
+      // Put my fix back puts the fix itself back, so the files are as checked; the conversation no longer matches them.
+      if (turnBack) { if (here && !m.receipt!.undone) m = answerGone({ ...m, receipt: { ...m.receipt!, undone: true, fixKept: true } }); }
+      // Any other undo in this project (from the card or the timeline) puts the files back, so the receipt's work is gone from them.
+      else m = filesWentBack(m, e.project, e.safety);
       // Undo of the whole task puts every file back as it was before it, so no turn is left (the engine drops it too).
       return m.undo?.stage === "working" && m.undo.checkpoint === e.checkpoint ? { ...m, teach: null, undo: { stage: "done", checkpoint: m.undo.checkpoint, recovered: Array.isArray(e.recovered) ? e.recovered.length : 0, large: Array.isArray(e.largeLeftAlone) ? e.largeLeftAlone.length : 0, ...(Array.isArray(e.yours) && e.yours.length ? { yours: e.yours.filter((x: unknown): x is string => typeof x === "string") } : {}) } } : m;
     }
@@ -493,7 +525,9 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.ok !== true) return { ...m, undo: { ...m.undo, putBack: "failed", putBackNote: String(e.reason ?? "") } };
       const back = new Set(Array.isArray(e.putBack) ? e.putBack : []);
       const left = (m.undo.yours ?? []).filter((f) => !back.has(f));
-      return { ...m, undo: { ...m.undo, putBack: back.size ? "done" : "failed", ...(back.size ? {} : { putBackNote: String(e.reason ?? "Nothing was put back.") }), yours: left } };
+      // After Bring back: once every file the person had changed is the fix's again, the whole fix is back.
+      const receipt = m.undo.back && m.receipt?.backPartly && left.length === 0 ? { ...m.receipt, backPartly: undefined } : m.receipt;
+      return { ...m, receipt, undo: { ...m.undo, putBack: back.size ? "done" : "failed", ...(back.size ? {} : { putBackNote: String(e.reason ?? "Nothing was put back.") }), yours: left } };
     }
     case "ui.teachAsked": return { ...m, teach: { stage: "asking", checkpoint: String(e.checkpoint) } };
     case "teach.ready": {
@@ -805,7 +839,10 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "plan.ready": if (m.away[e.agent] !== undefined) return m;
       return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
-    case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title, failure: `${e.failure?.label ?? ""}: ${e.failure?.detail ?? ""}`, options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: "Try a different way" }, { id: "stop", label: "Stop here" }],
+    // The check that kept failing: one plain sentence, and its raw output kept for behind Details (M45), never shown bare.
+    case "loop.stuck": return { ...m, plan: null, paused: null, stuck: { index: e.index, title: e.title,
+      failure: { label: String(e.failure?.label ?? ""), parts: checkParts({ status: "failed", detail: String(e.failure?.detail ?? ""), summary: typeof e.failure?.summary === "string" ? e.failure.summary : undefined, problem: e.failure?.problem }) },
+      options: Array.isArray(e.options) && e.options.length ? e.options : [{ id: "different", label: S.stuckDifferent }, { id: "stop", label: S.stuckStop }],
       ...(Number.isInteger(e.tries) && e.tries >= 1 ? { tries: e.tries } : {}), ...(typeof e.same === "boolean" ? { same: e.same } : {}), ...(typeof e.agent === "string" ? { agent: e.agent } : {}) } };
     case "drive.paused": return { ...m, stuck: null, paused: { reason: e.reason, path: e.path, ...(typeof e.agent === "string" ? { agent: e.agent } : {}) } };
     case "ui.resumed": return { ...m, paused: null };
@@ -855,7 +892,8 @@ function reduceRest(m: Model, e: Ev): Model {
       m = { ...m, workIn: without(m.workIn, e.agent) };
       if (away !== undefined) return away ? { ...m, notice: S.awayFinished(folderName(away)) } : m;
       if (m.folder && (w?.project ?? m.task?.project) !== m.folder) return m;
-      return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e) } };
+      // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
+      return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
@@ -930,15 +968,43 @@ export const cardWorking = (m: Model): boolean => BUSY.includes(m.character) && 
 // it): its agent is ready again, unless something else waits for it (an approval card, the loop card, a pause, a plan).
 function answerGone(m: Model): Model {
   const a = m.task?.agent, r = m.receipt;
-  if (!a || !r?.asks || !r.undone || m.agents[a] !== "needsYou") return m;
+  if (!a || !r?.asks || !(r.undone || r.earlierUndone) || m.agents[a] !== "needsYou") return m;
   if (m.approvals.some((x) => x.agent === a) || m.stuck || m.paused || m.plan || m.agentsAsk) return m;
   return withAgents(m, { ...m.agents, [a]: "idle" });
+}
+/** The last task's conversation no longer matches the files (an Undo, an earlier task undone after it, or an engine restart),
+ *  so it cannot be followed up or answered: the engine refuses it too. */
+const followGone = (r: Receipt): boolean => !!r.undone || !!r.gone || !!r.earlierUndone;
+/** M45: files went back in this project after the last task (an Undo from the card or the timeline, or undoing one task), so
+ *  its work is no longer in them. The receipt is marked undone with the safety copy the engine made first (Bring the fix
+ *  back restores it), and a finished task's tick and "Done" go at once, not 4 seconds later (ui.settle). A receipt already
+ *  undone keeps its first safety copy: that one has the fix in it. */
+function filesWentBack(m: Model, project: unknown, safety: unknown): Model {
+  const r = m.receipt;
+  if (!r || (typeof project === "string" && m.task?.project && project !== m.task.project)) return m;
+  if (r.undone && !r.back && !r.fixKept) return m;
+  m = answerGone({ ...m, receipt: { ...r, undone: true, back: false, backPartly: undefined, fixKept: undefined, undoSafety: typeof safety === "string" && safety ? safety : undefined } });
+  const a = m.task?.agent;
+  return a && (m.agents[a] === "done" || m.agents[a] === "error") ? withAgents(m, { ...m.agents, [a]: "idle" }) : m;
+}
+/** How the receipt says the task ended (M45). No ending sent (an older engine): nothing, which reads as "unknown", never done.
+ *  "failed" is split by the engine's reason, so a limit is named instead of "Something went wrong". */
+function endOf(e: Ev): Pick<Receipt, "end" | "limit" | "failWhy"> {
+  const why = e.endedWhy;
+  if (e.ended === "done") return { end: "done" };
+  if (e.ended === "needs_you") return { end: "needsYou" };
+  if (e.ended === "stopped") return { end: "stopped" };
+  if (e.ended !== "failed") return {};
+  if (why === "spending_limit") return { end: "limit", limit: "spending" };
+  if (why === "daily_limit") return { end: "limit", limit: "daily" };
+  if (why === "turns") return { end: "limit", limit: "turns" };
+  return { end: "failed", failWhy: why === "no_connection" ? "noConnection" : why === "claude_busy" ? "claudeBusy" : why === "check_failed" ? "check" : "error" };
 }
 /** The last task has ended on a question to the person (its receipt asks, and its agent needs them), and nothing else is
  *  waiting for an answer: the follow up box is where they answer, and nothing is running. */
 export function waitsForAnswer(m: Model): boolean {
   const t = m.task, r = m.receipt;
-  if (!r?.asks || r.undone || r.gone || !t || m.agents[t.agent] !== "needsYou") return false;
+  if (!r?.asks || followGone(r) || !t || m.agents[t.agent] !== "needsYou") return false;
   if (m.approvals.length || m.stuck || m.paused || m.plan || m.agentsAsk) return false;
   return Object.entries(m.agents).every(([a, s]) => a === t.agent || !BUSY.includes(s));
 }
@@ -947,7 +1013,7 @@ export function waitsForAnswer(m: Model): boolean {
 // asked or once it has put the files back (the conversation would no longer match them; the engine refuses it too).
 export function canFollowUp(m: Model, project: string): boolean {
   const t = m.task;
-  if (!m.receipt || m.receipt.undone || m.receipt.gone || !t || !project || t.project !== project) return false;
+  if (!m.receipt || followGone(m.receipt) || !t || !project || t.project !== project) return false;
   if (!waitsForAnswer(m) && (BUSY.includes(m.agents[t.agent] ?? "idle") || BUSY.includes(m.character))) return false;
   if (m.followUp === "sending" || m.undo || m.plan || m.stuck || m.paused || (m.drive && !m.drive.finished)) return false;
   return true;
@@ -987,20 +1053,10 @@ export function savedWords(m: Model): string | null {
   return l.length === 1 ? `Remembered: ${l[0].text}` : `Remembered ${l.length} new things`;
 }
 
-// How a past task ended, in plain words.
-export function historyWords(t: Pick<HistoryItem, "status" | "proof">): string {
-  switch (t.status) {
-    case "done": return t.proof === "passed" ? "Done, checked" : t.proof === "partial" ? "Done, partly checked" : "Done, not checked";
-    case "not_done": return "Not done";
-    case "interrupted": return "Stopped";
-    case "error_max_budget_usd": return "Stopped at the spending limit";
-    case "error_max_turns": return S.historyTurns;
-    case "needs_you": return S.historyNeedsYou;
-    case "no_connection": return S.historyNoConnection;
-    case "claude_busy": return S.historyClaudeBusy;
-    case "running": return "Running";
-    default: return "Something went wrong";
-  }
+// How a past task ended, in plain words: the verdict's own headline (M45), so What I did never words a result its own way.
+export function historyWords(t: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back">>): string {
+  if (t.status === "running") return S.historyRunning;
+  return verdictOf(historyFacts(t)).headline;
 }
 
 // A check failed and Claude is working on it again: say "fixing", not "Not done", until it has really ended.
@@ -1013,7 +1069,10 @@ export function triesNote(m: Model): string | null {
   const p = m.task?.proof;
   if (!p?.verdict || p.tries <= 1) return null;
   if (p.verdict === "cancelled" || p.verdict === "nothing_to_check") return null;   // nothing was fixed, so nothing is claimed
-  return p.verdict === "failed" ? `Still failing after ${p.tries} tries` : p.verdict === "passed_with_gaps" ? `Passed after ${p.tries} tries, with some checks skipped` : `Fixed after ${p.tries} tries`;
+  // After an Undo the checked files are gone, so how many tries the check took is no longer about them (M45).
+  if (m.receipt?.undone) return null;
+  // "Passed", not "Fixed": the check passed; whether it is fixed is the verdict's word.
+  return p.verdict === "failed" ? S.stillFailing(p.tries) : p.verdict === "passed_with_gaps" ? S.passedAfterGaps(p.tries) : S.passedAfter(p.tries);
 }
 
 // Why the task is not done, in one plain line. Null when nothing failed.
@@ -1021,7 +1080,8 @@ export function notDoneReason(m: Model): string | null {
   const p = m.task?.proof;
   if (!p || p.verdict !== "failed") return null;
   const f = [...p.steps].reverse().find((s) => s.status === "failed") ?? p.steps.at(-1);
-  return f ? `${f.label}: ${f.detail}` : "A check failed.";
+  // One plain sentence: the raw output is behind Details on the step's own row, never printed bare (M45).
+  return f ? `${f.label}: ${checkParts({ ...f, status: "failed" }).summary}` : S.verdict.failedLine;
 }
 
 // How the character moves. Reduced motion freezes everything (Rive does not do this by itself).
@@ -1039,12 +1099,16 @@ export function motionFor(state: CharacterState, reduced: boolean): "none" | "br
 }
 
 export function formatUsd(usd: number): string {
-  if (usd <= 0) return "free so far";
+  // Zero is said as "No cost" where it stands alone (costWords); in a sentence, a number still reads correctly (M45).
+  if (usd <= 0) return "0 cents";
   if (usd < 0.01) return "less than 1 cent";
   const cents = Math.round(usd * 100);
   if (cents < 100) return cents === 1 ? "1 cent" : `${cents} cents`;
   return `$${usd.toFixed(2)}`;
 }
+
+/** What a task cost, on its own: its price, or "No cost" (never "free so far", M45). */
+export const costWords = (usd: number): string => (usd > 0 ? formatUsd(usd) : S.noCost);
 
 // The one word shown under the character (plain, never cute).
 export function stateLabel(s: CharacterState): string {
@@ -1176,7 +1240,7 @@ export function slLines(m: Model): string[] {
       if (l.checked?.length) out.push(S.slChecked(l.checked.join("; ")));
       if (l.cantTell?.length) out.push(S.slCantTell(l.cantTell.join("; ")));
       out.push(l.search === "searched" && (l.searches ?? 0) > 0 ? S.slSearched(l.searches ?? 0) : S.slSearch[l.search ?? ""] ?? S.slSearch.unavailable);
-      out.push(S.slCost(formatUsd(l.usd ?? 0)));
+      out.push((l.usd ?? 0) > 0 ? S.slCost(formatUsd(l.usd ?? 0)) : S.slNoCost);
       return out.filter(Boolean);
     }
     default: return [refused[l.why ?? ""] ?? S.slError];
@@ -1229,6 +1293,18 @@ export function visualState(m: Model): CharacterState {
   return m.character;
 }
 
+/** M45: is the character's done or error the last task's own result? Only when that task's own agent is in that state: an
+ *  error from another agent (an explain, a diagnosis or a plan that failed) is that agent's, never this result's. */
+export function resultShown(m: Pick<Model, "character" | "agents" | "receipt" | "task">): boolean {
+  return !!m.receipt && !!m.task && (m.character === "done" || m.character === "error") && m.agents[m.task.agent] === m.character;
+}
+/** The character's state as it is drawn (Home's character, the one on the edge): a finished task that is not proven does not
+ *  take the done look (no green glow, no ripple), as only a proven fix may look done (M45). Otherwise exactly visualState. */
+export function lookState(m: Model): CharacterState {
+  const v = visualState(m);
+  return v === "done" && v === m.character && resultShown(m) && !receiptVerdict(m)!.proven ? "idle" : v;
+}
+
 // The word under the character and at the top of the card. A failed check is "Not done", never a crash.
 export function characterWords(m: Model): string {
   if (m.voice?.stage === "listening") return "Listening";
@@ -1237,7 +1313,10 @@ export function characterWords(m: Model): string {
   if (m.point?.stage === "checking") return "Checking your project";
   if (m.diagram?.stage === "asking") return "Drawing it";
   if (isFixing(m)) return "Fixing a failed check";
-  if (m.character === "error" && notDoneReason(m)) return "Not done";
+  // A finished task is worded by its verdict (M45): "Fixed and proven", "Stopped at today's limit", never a bare "Done".
+  if (resultShown(m) && !isFixing(m)) return receiptVerdict(m)!.headline;
+  // A failed check with no receipt (yet): the verdict's own word for it, never "Something went wrong" (a crash).
+  if (m.character === "error" && notDoneReason(m)) return S.verdict.failed;
   return stateLabel(m.character);
 }
 
@@ -1275,7 +1354,7 @@ export function teachActions(t: TeachState): TeachAction[] {
 export function receiptSaid(m: Model): { lead: string; words: string; help?: string } | null {
   const r = m.receipt;
   if (!r?.said) return null;
-  if (!r.asks || r.undone || r.gone) return { lead: S.receiptSaid, words: r.said };
+  if (!r.asks || followGone(r)) return { lead: S.receiptSaid, words: r.said };
   return { lead: waitsForAnswer(m) ? S.receiptAsks : S.receiptAsksToo, words: r.said, help: r.inPlan ? S.receiptAnswerHelpPlan : S.receiptAnswerHelp };
 }
 
@@ -1284,11 +1363,47 @@ export function receiptHeading(r: Receipt | null | undefined): string {
   return r && r.changed.length === 0 && !!r.said ? S.answerTitle : S.receiptTitle;
 }
 
-// The receipt's one line about its checks. "Checked and working" only while no place has its old code back from a turn.
-export function receiptProofWords(m: Model): string {
+// The receipt's result as one sentence: the verdict's (M45). Kept by name for the older callers.
+export function receiptProofWords(m: Pick<Model, "receipt" | "task" | "teach">): string {
+  return receiptVerdict(m)?.say ?? "";
+}
+
+// ---- M45: the adapters from the Model to the verdict's facts (verdict.ts decides; nothing else says "proven") ----
+
+/** The last receipt as facts. Null when there is no receipt. */
+export function receiptFacts(m: Pick<Model, "receipt" | "task" | "teach">): Facts | null {
   const r = m.receipt;
-  if (r?.proof === "passed") return m.teach && m.teach.checkpoint === r.checkpoint && teachOpen(m.teach) ? S.teachProvenBefore : S.proven;
-  return r?.proof === "failed" ? S.notDone : S.notChecked;
+  if (!r) return null;
+  const steps = m.task?.proof?.steps ?? [];
+  return {
+    proof: r.proof === "passed" || r.proof === "partial" || r.proof === "failed" ? r.proof : "none",
+    ended: r.end ?? "unknown", limit: r.limit, failWhy: r.failWhy,
+    // Put my fix back on a turn is not an Undo: the files are the fix, as checked.
+    undone: !!r.undone && !r.fixKept, back: !!r.back, backPartly: !!r.backPartly, changed: r.changed.length,
+    // Which checks could not run is not known here: the ladder also skips harmless steps ("Nothing new to install."), and
+    // the real gap can sit inside a step that passed. Until the engine names its gap rungs, the line is the general one
+    // ("Some checks could not run."), never a list that names the wrong check (M45 review).
+    missing: [],
+    canBringBack: !!r.undoSafety,
+    turnOpen: !!(m.teach && m.teach.checkpoint === r.checkpoint && teachOpen(m.teach)),
+  };
+}
+export const receiptVerdict = (m: Pick<Model, "receipt" | "task" | "teach">): Verdict | null => { const f = receiptFacts(m); return f ? verdictOf(f) : null; };
+/** Did an Undo put the last task's files back (not counting Put my fix back on a turn)? Bring back leaves this true too: the
+ *  picture, Show me what changed and the turn belong to the files as they were checked. */
+export const receiptUndone = (r: Receipt | null | undefined): boolean => !!r?.undone && !r.fixKept;
+
+/** A What I did row as facts. "running" is not a verdict: callers check it first. */
+export function historyFacts(h: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back">>): Facts {
+  const s = h.status;
+  const ended: Facts["ended"] = s === "done" ? "done" : s === "needs_you" ? "needsYou" : s === "interrupted" ? "stopped"
+    : s === "error_max_budget_usd" || s === "daily_limit" || s === "error_max_turns" ? "limit" : "failed";
+  const limit = s === "daily_limit" ? "daily" : s === "error_max_turns" ? "turns" : s === "error_max_budget_usd" ? "spending" : undefined;
+  const failWhy = s === "not_done" ? "check" : s === "no_connection" ? "noConnection" : s === "claude_busy" ? "claudeBusy" : ended === "failed" ? "error" : undefined;
+  const p = h.proof;
+  // An unknown count (an older log, or a task cut short) may still have changed files: it is never said as "Nothing was
+  // changed", and an Undo of it is an Undo (the engine's log marks it too).
+  return { proof: p === "passed" || p === "partial" || p === "failed" ? p : "none", ended, limit, failWhy, undone: !!h.undone, back: !!h.back, changed: h.changed ?? 1, missing: [] };
 }
 
 // Let me try the next one: only for a receipt that made the same change twice, once (the engine keeps no second offer),

@@ -337,9 +337,24 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(newsOf(run([...task(), ev({ type: "plan.ready", agent: "a", steps: [{ title: "One" }, { title: "Two" }], estimateUsd: 0.1 })]))[0].text).toBe(S.saidPlan(2));
   });
   test("a finished task, and whether it was proven", () => {
-    expect(newsOf(run([...task(), receipt("passed")]))[0]).toEqual({ key: "receipt:cp_1", text: S.saidDone("add a sign up page", S.proven) });
-    expect(newsOf(run([...task(), receipt("none")]))[0].text).toBe(S.saidDone("add a sign up page", S.notChecked));
-    expect(newsOf(run([...task(), receipt("failed")]))[0].text).toBe(S.saidNotDone("add a sign up page"));
+    expect(newsOf(run([...task(), receipt("passed")]))[0]).toEqual({ key: "receipt:cp_1:proven", text: S.saidResult("add a sign up page", "Fixed and proven.") });
+    expect(newsOf(run([...task(), receipt("none")]))[0].text).toBe(S.saidResult("add a sign up page", `${S.verdict.unchecked}. ${S.verdict.uncheckedLine}`));
+    expect(newsOf(run([...task(), receipt("failed")]))[0].text).toBe(S.saidResult("add a sign up page", `${S.verdict.failed}. ${S.verdict.failedLine}`));
+  });
+  test("Undo is announced once as Undone (M45)", () => {
+    const m = run([...task(), receipt("passed")]);
+    const after = run([ev({ type: "checkpoint.restored", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], m);
+    const [a, b] = [newsOf(m)[0], newsOf(after)[0]];
+    expect(b.key).not.toBe(a.key);
+    expect(b.text).toBe(S.saidResult("add a sign up page", `${S.verdict.undone}. ${S.verdict.undoneFix}`));
+    const first = liveLine(EMPTY_LINE, [], m), second = liveLine(first.line, first.said, after);
+    expect(second.line.text).toContain(S.verdict.undone);
+    expect(liveLine(second.line, second.said, after).line, "said once").toBe(second.line);
+  });
+  test("a stopped task is not announced as Done (M45)", () => {
+    const t = newsOf(run([...task(), ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], usdEstimate: 0, proof: "skipped", ended: "stopped" })]))[0].text;
+    expect(t).toBe(S.saidResult("add a sign up page", `${S.verdict.stopped}. ${S.verdict.stoppedNothing}`));
+    expect(t).not.toMatch(/\bDone\b/);
   });
   test("an error, in its own plain words", () => {
     const m = run([ev({ type: "protocol.error", reason: "Could not save that." })]);
@@ -456,10 +471,10 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(effect).toContain('takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));');
     expect(effect).not.toContain(".focus()");
     // The safe choice of each question that holds work up: Don't allow, No (AGENTS.md), Stop here (the loop card).
-    const approval = card.slice(card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a); return ("), card.indexOf("{m.stuck && ("));
+    const approval = card.slice(card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a, project); return ("), card.indexOf("{m.stuck && ("));
     expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.dontAllow\}/);
     expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.allow\}/);
-    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a); return ("));
+    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a, project); return ("));
     expect(agents).toContain('data-safe onClick={() => { void send(answerAgents(project, "no"))');
     const stuck = card.slice(card.indexOf("{m.stuck && ("), card.indexOf("{m.paused && ("));
     expect(stuck).toContain('data-safe={o.id === "stop" || undefined}');
@@ -744,7 +759,10 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
   const darkRule = css.find((r) => r.sel === ":root" && /prefers-color-scheme: dark/.test(r.media ?? ""));
   // Home is black in both Mac themes (27 Oct 2026): its own tokens on its page's root, checked as a third theme.
   const homeRule = css.find((r) => r.sel === ":root.home-page" && !r.media);
-  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }]];
+  const paperRule = css.find((r) => r.sel === ':root.home-page[data-theme="paper"]' && !r.media);
+  const deepRule = css.find((r) => r.sel === ':root.home-page[data-theme="deep"]' && !r.media);
+  const themes: [string, Record<string, string>][] = [["light", light], ["dark", { ...light, ...darkRule!.decl }], ["Home", { ...light, ...homeRule!.decl }],
+    ["Home on Paper", { ...light, ...homeRule!.decl, ...paperRule!.decl }], ["Home on Deep sea", { ...light, ...homeRule!.decl, ...deepRule!.decl }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   test("Home's black token set is there, and its result cards keep their words readable", () => {
@@ -811,6 +829,7 @@ describe("text and focus colours meet WCAG AA in light and dark (part 4)", () =>
       }
       // The ask box's edge in Home.
       expect(ratio(c(colourIn(one(".home .ask")!.decl.border)!), bg), "Home's ask box edge").toBeGreaterThanOrEqual(3);
+      if (tokens["--ask-edge"]) expect(ratio(c(colourIn(one('.home[data-view="now"] .ask')!.decl.border)!), bg), "the command bar's edge on Now").toBeGreaterThanOrEqual(3);
     });
     test(`${theme}: the dot on a tab that waits for the person stands out on the tab, still or under the pointer (3 to 1)`, () => {
       // For sighted people the dot is the only sign another tab needs them (VoiceOver hears the words beside it).
@@ -888,7 +907,7 @@ describe("Home stays usable with bigger text (part 4)", () => {
       expect(px, t).toBeGreaterThan(last);
       last = px;
     }
-    expect(last, "the largest is a real step up").toBeGreaterThanOrEqual(20);
+    expect(last, "the biggest reaches twice the usual size (WCAG 1.4.4, 200 percent)").toBeGreaterThanOrEqual(28);
     expect(css.some((x) => x.sel === ':root[data-text="standard"]'), "Standard needs no rule of its own").toBe(false);
   });
   test("Home puts the saved size on before it draws, and Settings changes it there", () => {

@@ -83,3 +83,9 @@ Built and unit tested with fakes only; no microphone was opened and no app was l
 
 ## Revisit if
 After v1, add Apple's SpeechAnalyzer as an optional engine on macOS 26. One third party benchmark found it more accurate and faster than Whisper Small on English (secondhand) (section 15).
+
+## Added 30 Oct 2026: type by voice in any app (F26, M36, built and unit tested, not yet tried on a Mac)
+- **A second held key, the Type key,** sends the same transcript into the app in front instead of Home's ask box (`dictate.rs`).
+- **It reuses hold to talk's worker,** so the light, the cap, Stop everything and the hidden check are the same. It also reuses T11's paste and clipboard rules.
+- **What it reads:** it never reads the box, only which app and element have the keyboard.
+- **Real Mac checks** are listed in technical_research.md section 15.

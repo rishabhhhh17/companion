@@ -1,7 +1,7 @@
 // Spoken replies, page side: the switch (off unless turned on) and which line, if any, goes with what the card shows.
 // The Mac side says it with the built in voice and refuses anything unsafe; nothing here makes a sound.
 import { leadMs } from "./sequence.ts";
-import { receiptProofWords, waitsForAnswer, type Model } from "./model.ts";
+import { receiptVerdict, waitsForAnswer, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { keysIn, keysNow, type Keys } from "./keys.ts";
 import { setting } from "./settingsStore.ts";
@@ -213,7 +213,8 @@ export type Reply = { key: string; text: string; kind: AskKind };
  *  project's first task ends with cp_0001). */
 export function repliesIn(m: Model, project: string): Reply[] {
   const out: Reply[] = [];
-  if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: receiptProofWords(m), kind: "task" });
+  // The result as the verdict says it (M45); the key stays, so it is said once, at the end.
+  if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: receiptVerdict(m)?.say ?? "", kind: "task" });
   // Each answer by its own number (n): one asked off the record has no file, and two such answers must not share a key.
   if (m.research?.answer) out.push({ key: `research:${project}:${m.research.n ?? m.research.file}`, text: m.research.answer, kind: "research" });
   return out;

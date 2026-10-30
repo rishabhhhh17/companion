@@ -1,25 +1,40 @@
-//! A drop that follows you (M20, character.follow "drop", the founder: "use some water based tool that will work as a
-//! pointer, and if they don't want it, it won't be there"). A small drop of the character's water trails the pointer on a
-//! spring and settles beside it when the pointer stops. It is its own tiny window that never takes clicks or the keyboard
-//! (main.rs makes it like the pointer's overlay). The shell reads only where the pointer is (macos_see::pointer, no
-//! permission), moves the window, and tells the page how fast it goes so the drop can stretch. Nothing is kept.
+//! The water ring around the pointer (M37, the founder, 30 Oct 2026: "a water ring would be really cool that follows the
+//! pointer… make sure it is nice"; it replaces M20's drop, which trailed on a spring and felt laggy). A small ring of the
+//! character's water sits centred on the pointer's tip, open in the middle so it never covers what you point at. It is its
+//! own tiny window that never takes clicks or the keyboard (main.rs makes it like the pointer's overlay). The shell reads
+//! only where the pointer is (macos_see::pointer, no permission), moves the window with it, and tells the page how fast it
+//! goes so the ring can stretch a little. Nothing is kept.
 //!
-//! The spring is plain code here, so it can be tested: it settles beside the pointer, never runs away, and jumps straight
-//! there the first time or after the pointer leaps (another display).
+//! The rule is plain code here, so it can be tested: the ring is always exactly on the pointer (no spring, so it never
+//! trails), and only the speed it reports is smoothed, so the stretch eases in and out.
 
 /// How often the drop moves (milliseconds): about 120 times a second, so it keeps up with a ProMotion screen (M29).
 pub const TICK_MS: u64 = 8;
-/// The drop's window, square, in points.
+/// The ring's window, square, in points.
 pub const SIZE: f64 = 44.0;
-/// Where the drop rests from the pointer's tip: a little below and to the right, never under it.
-pub const OFFSET: (f64, f64) = (16.0, 18.0);
-/// The spring (M29, the founder: "there is a lag to it"): stiff and just under critical damping, so the drop sticks to the
-/// pointer, catching up in about a tenth of a second, with no wobble when it stops.
-pub const K: f64 = 1600.0;
-pub const C: f64 = 76.0;
-/// The fastest it may go (points a second) and the leap that makes it jump instead of fly (points).
+/// Where the ring's middle sits from the pointer's tip: right on it.
+pub const OFFSET: (f64, f64) = (0.0, 0.0);
+/// The fastest speed it reports (points a second), and how quickly the reported speed follows the real one (per second).
 pub const MAX_SPEED: f64 = 6_000.0;
+pub const SPEED_EASE: f64 = 20.0;
+/// A jump this far (another display) reports no speed at all.
 pub const LEAP: f64 = 900.0;
+/// M37c (the founder, sweeping fast: "not working"): a window that follows the pointer is always shown a frame or two after
+/// the pointer got there, so on a fast sweep it sits behind the cursor. The ring is placed ahead along the way the pointer
+/// moves by this long (seconds), about the time from reading the pointer to the screen showing the move, so it lands on
+/// the cursor. Only the place is led; when the pointer stops, the speed eases to nothing and the ring settles exactly on it.
+pub const LEAD_S: f64 = 0.024;
+/// The most it leads by (points), so a sudden flick never throws it far ahead.
+pub const LEAD_MAX: f64 = 60.0;
+
+/// Where to put the ring's middle for a pointer at `p` moving at `v` (points a second): ahead by the time a move takes to show.
+pub fn led(p: (f64, f64), v: (f64, f64)) -> (f64, f64) {
+    let (mut dx, mut dy) = (v.0 * LEAD_S, v.1 * LEAD_S);
+    let m = dx.hypot(dy);
+    if !m.is_finite() { return p; }
+    if m > LEAD_MAX { dx *= LEAD_MAX / m; dy *= LEAD_MAX / m; }
+    (p.0 + dx, p.1 + dy)
+}
 
 /// M33: how wide the window grows to say a short line beside the pointer, and how long a line stays.
 pub const SAY_W: f64 = 260.0;
@@ -30,15 +45,16 @@ pub fn say_line(text: &str) -> Option<String> {
     (!t.is_empty() && t.chars().count() <= 40).then_some(t)
 }
 
-/// Whether the drop is wanted: only with A drop of water chosen.
+/// Whether the ring is wanted: only with "drop" chosen (the setting's id from M20; Settings calls it the water ring now).
 pub fn wanted(v: &serde_json::Value) -> bool { v.as_str() == Some("drop") }
 
-/// The drop: its middle and its speed, in global top left points.
+/// The ring: its middle and the speed it reports, in global top left points.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Drop { pub x: f64, pub y: f64, pub vx: f64, pub vy: f64, pub placed: bool }
 
 impl Drop {
-    /// Moves on by `dt` seconds toward its place beside `pointer`. The first time, or after a leap, it is simply there.
+    /// Moves on by `dt` seconds: always exactly onto the pointer. The speed eases toward how fast the pointer went, so the
+    /// stretch never flickers. The first time, or after a leap, it is simply there with no speed.
     pub fn step(&mut self, pointer: (f64, f64), dt: f64) {
         let (tx, ty) = (pointer.0 + OFFSET.0, pointer.1 + OFFSET.1);
         if !self.placed || (tx - self.x).hypot(ty - self.y) > LEAP {
@@ -46,20 +62,18 @@ impl Drop {
             return;
         }
         let dt = dt.clamp(0.0, 0.1);
-        let steps = (dt / 0.004).ceil().max(1.0) as usize;
-        let h = dt / steps as f64;
-        for _ in 0..steps {
-            let ax = K * (tx - self.x) - C * self.vx;
-            let ay = K * (ty - self.y) - C * self.vy;
-            self.vx += ax * h; self.vy += ay * h;
+        if dt > 0.0 {
+            let (ix, iy) = ((tx - self.x) / dt, (ty - self.y) / dt);
+            let k = 1.0 - (-dt * SPEED_EASE).exp();
+            self.vx += (ix - self.vx) * k; self.vy += (iy - self.vy) * k;
             let s = self.vx.hypot(self.vy);
             if s > MAX_SPEED { self.vx *= MAX_SPEED / s; self.vy *= MAX_SPEED / s; }
-            self.x += self.vx * h; self.y += self.vy * h;
         }
+        self.x = tx; self.y = ty;
     }
-    /// The window's frame for the drop now (global top left points).
+    /// The window's frame for the ring now (global top left points), centred on the pointer.
     pub fn frame(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SIZE, SIZE] }
-    /// M33: while it says something beside the pointer, the window widens to the right to hold the words; the drop stays
+    /// M33: while it says something beside the pointer, the window widens to the right to hold the words; the ring stays
     /// exactly where it was, at the left of the window.
     pub fn frame_saying(&self) -> [f64; 4] { [self.x - SIZE / 2.0, self.y - SIZE / 2.0, SAY_W, SIZE] }
 }
@@ -76,52 +90,36 @@ mod tests {
     }
 
     #[test]
-    fn it_starts_beside_the_pointer_and_settles_there_after_a_move() {
-        let mut d = Drop::default();
-        d.step((100.0, 100.0), 0.016);
-        assert_eq!((d.x, d.y), (100.0 + OFFSET.0, 100.0 + OFFSET.1));
-        for _ in 0..120 { d.step((400.0, 300.0), 0.016); }   // two seconds after the pointer moved
-        assert!((d.x - (400.0 + OFFSET.0)).abs() < 0.5 && (d.y - (300.0 + OFFSET.1)).abs() < 0.5, "{d:?}");
-        assert!(d.vx.hypot(d.vy) < 2.0);
-    }
-
-    #[test]
-    fn it_trails_behind_while_the_pointer_moves_and_never_runs_away() {
-        let mut d = Drop::default();
-        d.step((0.0, 0.0), 0.016);
-        let mut max_over: f64 = 0.0;
-        for i in 0..240 {
-            let p = (i as f64 * 5.0, 0.0);   // the pointer sweeps right at 300 points a second
-            d.step(p, 0.016);
-            assert!(d.vx.hypot(d.vy) <= MAX_SPEED + 1e-6);
-            max_over = max_over.max(d.x - (p.0 + OFFSET.0));
-            if i == 60 { assert!(d.x < p.0 + OFFSET.0, "it lags behind a moving pointer"); }
-        }
-        assert!(max_over < 40.0, "a small overshoot at most: {max_over}");
-        for _ in 0..200 { d.step((1195.0, 0.0), 0.016); }
-        assert!((d.x - (1195.0 + OFFSET.0)).abs() < 0.5);
-    }
-
-    #[test]
-    fn it_keeps_up_with_the_pointer_with_no_lag_you_can_see() {
+    fn it_is_always_exactly_on_the_pointer_with_no_lag() {
         let mut d = Drop::default();
         d.step((100.0, 100.0), 0.008);
-        for _ in 0..19 { d.step((300.0, 100.0), 0.008); }   // 0.15 s after the pointer moved 200 points
-        assert!((d.x - (300.0 + OFFSET.0)).abs() < 6.0, "{d:?}");
-        let mut over: f64 = 0.0;
-        for _ in 0..100 { d.step((300.0, 100.0), 0.008); over = over.max(d.x - (300.0 + OFFSET.0)); }
-        assert!(over < 3.0, "it does not wobble past where it stops: {over}");
+        assert_eq!((d.x, d.y), (100.0, 100.0));
+        for i in 0..240 {
+            let p = (100.0 + i as f64 * 5.0, 100.0 + i as f64 * 2.0);   // a sweep at about 670 points a second
+            d.step(p, 0.008);
+            assert_eq!((d.x, d.y), p, "never behind the pointer");
+            assert!(d.vx.hypot(d.vy) <= MAX_SPEED + 1e-6);
+        }
+    }
+    #[test]
+    fn its_speed_eases_in_and_settles_to_nothing_when_the_pointer_stops() {
+        let mut d = Drop::default();
+        d.step((0.0, 0.0), 0.008);
+        for i in 1..=60 { d.step((i as f64 * 8.0, 0.0), 0.008); }   // 1000 points a second
+        assert!((d.vx - 1000.0).abs() < 30.0, "{d:?}");
+        for _ in 0..60 { d.step((480.0, 0.0), 0.008); }
+        assert!(d.vx.hypot(d.vy) < 1.0, "it rests: {d:?}");
     }
     #[test]
     fn a_leap_to_another_display_jumps_instead_of_flying_across() {
         let mut d = Drop::default();
         d.step((100.0, 100.0), 0.016);
         d.step((3000.0, 100.0), 0.016);
-        assert_eq!((d.x, d.vx), (3000.0 + OFFSET.0, 0.0));
+        assert_eq!((d.x, d.vx), (3000.0, 0.0));
     }
 
     #[test]
-    fn the_window_is_centred_on_the_drop() {
+    fn the_window_is_centred_on_the_ring() {
         let d = Drop { x: 100.0, y: 50.0, vx: 0.0, vy: 0.0, placed: true };
         assert_eq!(d.frame(), [100.0 - SIZE / 2.0, 50.0 - SIZE / 2.0, SIZE, SIZE]);
     }
@@ -148,5 +146,14 @@ mod tests {
         let d = Drop { x: 100.0, y: 50.0, vx: 0.0, vy: 0.0, placed: true };
         assert_eq!(&d.frame_saying()[..2], &d.frame()[..2]);
         assert_eq!(d.frame_saying()[2], SAY_W);
+    }
+    #[test]
+    fn it_leads_a_fast_pointer_by_the_time_a_move_takes_and_sits_exactly_on_a_still_one() {
+        assert_eq!(led((100.0, 100.0), (0.0, 0.0)), (100.0, 100.0));
+        let (x, y) = led((100.0, 100.0), (1000.0, 0.0));
+        assert!((x - 124.0).abs() < 1e-9 && y == 100.0);
+        let (fx, fy) = led((0.0, 0.0), (100_000.0, 100_000.0));
+        assert!((fx.hypot(fy) - LEAD_MAX).abs() < 1e-9, "a flick never throws it far ahead");
+        assert_eq!(led((5.0, 5.0), (f64::NAN, 1.0)), (5.0, 5.0));
     }
 }

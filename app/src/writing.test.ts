@@ -12,6 +12,12 @@ const lessonTexts = () => readdirSync(lessonDir).filter((f) => f.endsWith(".json
   return out;
 });
 const cardTexts = (): [string, string][] => Object.entries(S as Record<string, unknown>).filter(([, v]) => typeof v === "string").map(([k, v]) => [k, v as string]);
+/** Every string inside S, however deep (S.verdict, S.approval and the rest), by its path. */
+const deepTexts = (o: unknown = S, at = "S"): [string, string][] => {
+  if (typeof o === "string") return [[at, o]];
+  if (!o || typeof o !== "object") return [];
+  return Object.entries(o as Record<string, unknown>).flatMap(([k, v]) => deepTexts(v, `${at}.${k}`));
+};
 
 describe("writing rules", () => {
   test("no em dashes or en dashes anywhere a person reads", () => {
@@ -27,6 +33,15 @@ describe("writing rules", () => {
   });
   test("every lesson line is short enough to read at a glance", () => {
     for (const [where, t] of lessonTexts()) expect(t.length, where).toBeLessThanOrEqual(200);
+  });
+  test("the words nested inside S are walked too, M45's results among them (no dashes, no doubled or trailing spaces)", () => {
+    const all = deepTexts();
+    for (const k of ["S.verdict.proven", "S.verdict.undoneFix", "S.verdict.limit.daily", "S.verdict.check.browser", "S.approval.question.house_rule"]) expect(all.some(([w]) => w === k), k).toBe(true);
+    for (const [where, t] of all) {
+      expect(/[–—]/.test(t), `${where}: ${t}`).toBe(false);
+      expect(t.includes("  "), where).toBe(false);
+      expect(t !== t.trim(), where).toBe(false);
+    }
   });
   test("every card string ends cleanly (no doubled spaces, no trailing space, no stray braces)", () => {
     for (const [where, t] of cardTexts()) { expect(t.includes("  "), `${where}`).toBe(false); expect(t !== t.trim(), `${where}`).toBe(false); }

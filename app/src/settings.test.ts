@@ -166,8 +166,8 @@ describe("the Keys section in Settings", () => {
   const list = (job: Job, free: string[], ours: Record<string, string> = {}): Choices => choicesFrom({ action: job, choices: job === "talk" ? ["option-space", "option-return", "control-return"] : [KEY_DEFAULTS[job], "control-option-command-j", "control-option-command-l"], free, ours }, job);
   test("one row for every job, in the order the hints use, with its name and the keys it uses now", () => {
     const rows = keyRows(KEYS_START);
-    expect(rows.map((r) => r.job)).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"]);
-    expect(rows.map((r) => r.name)).toEqual(["Open Home", "Point at the problem", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Second Look", "Hold to talk", "Stop everything"]);
+    expect(rows.map((r) => r.job)).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"]);
+    expect(rows.map((r) => r.name)).toEqual(["Open Home", "Point at the problem", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Second Look", "Hold to talk", "Type by voice", "Stop everything"]);
     expect(rows[0].keys).toBe("Control, Option, Command and K");
     expect(rows.find((r) => r.job === "talk")!.keys).toBe("Option and Space");
     expect(rows.filter((r) => r.problem)).toEqual([]);

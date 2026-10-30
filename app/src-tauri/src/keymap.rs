@@ -141,16 +141,16 @@ pub fn decode(v: u32) -> Option<Chord> {
 
 /// Each job that has keys, in the order Settings shows them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum Action { Card, Problem, ShowMe, Read, Accept, Explain, SecondLook, Talk, Stop }
-pub const N: usize = 9;
-pub const ACTIONS: [Action; N] = [Action::Card, Action::Problem, Action::ShowMe, Action::Read, Action::Accept, Action::Explain, Action::SecondLook, Action::Talk, Action::Stop];
+pub enum Action { Card, Problem, ShowMe, Read, Accept, Explain, SecondLook, Talk, Dictate, Stop }
+pub const N: usize = 10;
+pub const ACTIONS: [Action; N] = [Action::Card, Action::Problem, Action::ShowMe, Action::Read, Action::Accept, Action::Explain, Action::SecondLook, Action::Talk, Action::Dictate, Action::Stop];
 impl Action {
     pub fn index(self) -> usize { self as usize }
     /// The id the page and the saved file use.
     pub fn id(self) -> &'static str {
         match self {
             Action::Card => "card", Action::Problem => "problem", Action::ShowMe => "showme", Action::Read => "read",
-            Action::Accept => "accept", Action::Explain => "explain", Action::SecondLook => "secondlook", Action::Talk => "talk", Action::Stop => "stop",
+            Action::Accept => "accept", Action::Explain => "explain", Action::SecondLook => "secondlook", Action::Talk => "talk", Action::Dictate => "dictate", Action::Stop => "stop",
         }
     }
     pub fn from_id(s: &str) -> Option<Action> { ACTIONS.into_iter().find(|a| a.id() == s) }
@@ -159,7 +159,7 @@ impl Action {
         match self {
             Action::Card => "open the ask box", Action::Problem => "point at the problem", Action::ShowMe => "Show me how",
             Action::Read => "Prompt help", Action::Accept => "use a Prompt help suggestion", Action::Explain => "explain an error",
-            Action::SecondLook => "Second Look", Action::Talk => "hold to talk", Action::Stop => "stop everything",
+            Action::SecondLook => "Second Look", Action::Talk => "hold to talk", Action::Dictate => "type by voice", Action::Stop => "stop everything",
         }
     }
     /// Registered only while a Prompt help result shows (with Esc), never at launch; elsewhere its keys are only tried.
@@ -177,6 +177,8 @@ pub const DEFAULTS: [(Action, Chord); N] = [
     // Second Look (M14), added 22 Oct 2026: C for check, in the same place on QWERTY, QWERTZ and AZERTY keyboards.
     (Action::SecondLook, Chord::new(CONTROL | OPTION | COMMAND, Key::C)),
     (Action::Talk, Chord::new(OPTION, Key::Space)),
+    // Type by voice into any app (M36, F26), held like hold to talk.
+    (Action::Dictate, Chord::new(OPTION | SHIFT, Key::Space)),
     (Action::Stop, Chord::new(CONTROL | OPTION | COMMAND, Key::X)),
 ];
 pub fn default(a: Action) -> Chord { DEFAULTS[a.index()].1 }
@@ -188,6 +190,7 @@ pub const SPARE: [Key; 6] = [Key::I, Key::J, Key::L, Key::O, Key::P, Key::U];
 /// The short list a job's keys can be picked from, its usual keys first. Hold to talk's own list is in talkkeys.rs.
 pub fn choices(a: Action) -> Vec<Chord> {
     if a == Action::Talk { return crate::talkkeys::CHOICES.to_vec(); }
+    if a == Action::Dictate { return crate::talkkeys::DICTATE_CHOICES.to_vec(); }
     let d = default(a);
     let mut v = vec![d, Chord::new(d.mods | SHIFT, d.key)];
     v.extend(SPARE.iter().map(|k| Chord::new(LETTER, *k)));

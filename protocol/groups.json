@@ -88,6 +88,7 @@
     { "id": "talk", "group": "voice", "hotkeys": ["talk"], "tried": "shell", "permissions": ["microphone"], "settings": ["talk.maxHold", "talk.autoSend"],
       "commands": ["voice_download"],
       "runner": [] },
+    { "id": "dictate", "group": "voice", "hotkeys": ["dictate"], "tried": "shell", "permissions": ["microphone", "accessibility"], "settings": ["talk.dictate"], "commands": [], "runner": [] },
     { "id": "speak", "group": "voice", "tried": "shell", "permissions": [], "settings": ["talk.speak", "talk.speakReplies"],
       "commands": ["speak"],
       "runner": [] },

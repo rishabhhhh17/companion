@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, visualState, type Model } from "./model.ts";
-import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
+import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce, stepsAside, homeStart, islandAlert, islandLine, islandWings, ISLAND_LINE_MAX, markedLine, need, panelsIn, phArmable, shownOn, tabKey, tabName, typing, type HomeState, type Panel } from "./home.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 import { PH_KEYS_MS } from "./keys.ts";
@@ -316,7 +316,7 @@ describe("the island's status", () => {
     expect(islandLine(run(task()))).toBe("Working on: Add a sign up page");
     expect(islandLine(run([...task(), approval()]))).toBe(S.islandNeedsYou("git push sends your work to a remote"));
     expect(islandLine(run([...task(), stuck]))).toBe(S.islandNeedsYou(S.stuckTitle));
-    expect(islandLine(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })]))).toBe(S.islandDone("add a sign up page"));
+    expect(islandLine(run([...task(), ev({ type: "agent.state", agent: "a", state: "done" })])), "done with no result to read: just Done").toBe("Done");
     expect(islandLine(run([ev({ type: "app.voice", stage: "listening", message: "Listening" })]))).toBe(S.islandListening);
     expect(islandLine(run([ev({ type: "app.runner_down" })]))).toBe(S.islandOff);
   });
@@ -520,3 +520,37 @@ describe("Close Home when I click another app (home.closeOnClickAway)", () => {
   });
 });
 
+
+describe("M45: the island tells the truth about a result", () => {
+  const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "signup.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.05, ended: "done", ...o });
+  const finished = (o: Record<string, unknown> = {}, state = "done") => run([...task(), receipt(o), ev({ type: "agent.state", agent: "a", state })]);
+  test("a proven fix gets the tick, and the island says so", () => {
+    expect(islandWings(finished())).toEqual({ state: "done", mark: "tick" });
+    expect(islandLine(finished())).toBe(S.islandResult(S.verdict.proven, "add a sign up page"));
+  });
+  test("no tick or cheer for an unproven done", () => {
+    expect(islandWings(finished({ proof: "skipped" }))).toBeNull();
+    expect(islandWings(finished({ proof: "partial" }))).toBeNull();
+    expect(islandLine(finished({ proof: "skipped" }))).toBe(S.islandResult(S.verdict.unchecked, "add a sign up page"));
+  });
+  test("the island line after Undo is not Done", () => {
+    const m = run([ev({ type: "checkpoint.restored", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], finished());
+    expect(islandLine(m)).not.toMatch(/^Done/);
+    expect(islandWings(m)).toBeNull();
+  });
+  test("another agent's error keeps the red mark and its own words, never the result's tick", () => {
+    // M45 review: a proven fix, then another agent (an explain or a plan) ends in an error.
+    const m = run([ev({ type: "agent.state", agent: "b", state: "error" }), ev({ type: "error", agent: "b", message: "That did not work." })], finished());
+    expect(islandWings(m)).toEqual({ state: "error", mark: "red" });
+    expect(islandLine(m)).not.toContain(S.verdict.proven);
+  });
+  test("an unproven done does not take the done look", () => {
+    expect(characterShows(finished({ proof: "skipped" }), false, true)).toBe("idle");
+    expect(characterShows(finished(), false, true)).toBe("done");
+  });
+  test("a failed result shows red, and names the limit it stopped at", () => {
+    expect(islandWings(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error"))).toEqual({ state: "error", mark: "red" });
+    expect(islandLine(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error"))).toBe(S.islandResult(S.verdict.failed, "add a sign up page"));
+    expect(islandLine(finished({ ended: "failed", endedWhy: "daily_limit", proof: "skipped" }, "error"))).toBe(S.islandResult(S.verdict.limit.daily, "add a sign up page"));
+  });
+});

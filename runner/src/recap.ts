@@ -19,7 +19,7 @@ export function recapLines(rows: TaskRow[], since: string, pendingApprovals: num
   lines.push(`You were working on: ${focus.label}`);
   const running = startedAway.filter((r) => r.status === "running");
   const ended = startedAway.filter((r) => r.status !== "running");
-  const checked = ended.filter((r) => r.status === "done" && r.proof === "passed").length;
+  const checked = ended.filter((r) => r.status === "done" && r.proof === "passed" && !r.undone).length;   // an undone task is not checked (M45)
   const notDone = ended.filter((r) => r.status === "not_done" || r.status === "error" || r.proof === "failed").length;
   const stopped = ended.filter((r) => STOPPED.has(r.status)).length;
   // A task that ended by asking a question still waits for the person's answer, unless a newer task of that agent in that

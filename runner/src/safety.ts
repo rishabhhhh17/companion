@@ -7,10 +7,13 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { commandsOf, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
+import { privateReason } from "./watchaddress.ts";
 import { isEnvFile } from "./diagram.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 
-export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network" | "settings";
+export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule";
 export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean };
 export type ToolCall = { tool: string; input: Record<string, unknown> };
 // started: the ids of the background commands this task's own shell commands reported starting.
@@ -19,11 +22,20 @@ export type Started = { shells: ReadonlySet<string> };
 export type Context = { project: string; userAskedCommit?: boolean; started?: Started; claudeTemp?: string; webSearch?: boolean };
 export const claudeTempRoot = (env: Record<string, string | undefined> = process.env): string => resolve(env.CLAUDE_CODE_TMPDIR || "/tmp", `claude-${process.getuid?.() ?? 0}`);
 
-const allow = (reason = "ok"): Verdict => ({ decision: "allow", reason, undoable: true });
-const ask = (risk: Risk, reason: string, undoable = true): Verdict => ({ decision: "ask", risk, reason, undoable });
+const allow = (reason = "ok", undoable = true): Verdict => ({ decision: "allow", reason, undoable });
+// Undo puts back project files from a shadow snapshot. It never touches .git (rule 10) and never takes back anything that
+// left the Mac, so an irreversible or git ask is never undoable, whatever a caller says (M45). Every caller says it out loud.
+const ask = (risk: Risk, reason: string, undoable: boolean): Verdict =>
+  ({ decision: "ask", risk, reason, undoable: risk === "irreversible" || risk === "git" ? false : undoable });
 const deny = (risk: Risk, reason: string): Verdict => ({ decision: "deny", risk, reason, undoable: true });
 const rank = { allow: 0, ask: 1, deny: 2 } as const;
-const worst = (a: Verdict, b: Verdict): Verdict => (rank[b.decision] > rank[a.decision] ? b : a);
+// The stricter decision wins (on a tie, the first one's words stay). Whichever part wins, Undo can take the whole command
+// back only if it can take back both parts (M45): a commit the person asked for (allowed, not undoable) next to a part that
+// asks must not make the question say Undo can take it back.
+const worst = (a: Verdict, b: Verdict): Verdict => {
+  const w = rank[b.decision] > rank[a.decision] ? b : a;
+  return w.undoable && !(a.undoable && b.undoable) ? { ...w, undoable: false } : w;
+};
 
 // ---------- paths ----------
 
@@ -231,7 +243,8 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     const id = shellId(input, STOP_SHELL.has(tool) ? ["task_id", "shell_id"] : ["bash_id", "task_id", "shell_id"]);
     const stopping = STOP_SHELL.has(tool);
     if (id && ctx.started?.shells.has(id)) return allow(stopping ? "stops a command this task started" : "reads a command this task started");
-    return ask("irreversible", stopping ? "this stops something this task did not start" : "this reads something this task did not start");
+    // Reading another program's output changes nothing, so it is a read like any outside the project; stopping one is not.
+    return stopping ? ask("irreversible", "This stops a program that this task did not start.", false) : ask("outside_project", "This reads the output of a program this task did not start.", true);
   }
   if (tool === "Read" && typeof input.file_path === "string" && startedOutput(input.file_path, ctx)) return allow("reads the output of a command this task started");
   if (tool in WRITE_TOOLS) {
@@ -246,7 +259,7 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   if (tool in READ_PATHS) {
     // Reading outside the project asks, for every way of reading.
     const p = input[READ_PATHS[tool]];
-    if (tool === "Read" && typeof p !== "string") return ask("outside_project", "no file path given");
+    if (tool === "Read" && typeof p !== "string") return ask("outside_project", "This read does not say which file it wants.", true);
     const candidates: string[] = [];
     if (typeof p === "string" && p) candidates.push(p);
     if (tool === "Glob" && typeof input.pattern === "string") {
@@ -254,7 +267,7 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
       const prefix = input.pattern.replace(/[*?[{].*$/, "");
       if (isAbsolute(prefix) || prefix.startsWith("~") || /(^|\/)\.\.(\/|$)/.test(prefix)) candidates.push(isAbsolute(prefix) || prefix.startsWith("~") ? (prefix || "/") : join(typeof p === "string" && p ? p : ".", prefix));
     }
-    for (const q of candidates) { const w = whereIs(ctx.project, q); if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", "reading outside the project"); }
+    for (const q of candidates) { const w = whereIs(ctx.project, q); if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", "This reads a file outside your project folder.", true); }
     // A private settings file can hold keys, so no task reads one (which names exist is not what is in them: Glob and LS are fine).
     if (tool !== "Glob" && tool !== "LS" && typeof p === "string" && p && isSettingsFile(whereIs(ctx.project, p).abs)) return deny("settings", SETTINGS_NOT_READ);
     return allow();
@@ -278,20 +291,42 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
     if (GOOGLE_READS.has(name)) return allow("reads from a connected Google account");
     if (name === "gmail_draft") return { decision: "allow", reason: "makes a Gmail draft; nothing is sent", undoable: false };
     if (name === "calendar_create") return ask("network", "adds an event to your Google Calendar, and invites anyone it names", false);
-    return ask("irreversible", `unknown Google tool "${name}"`);
+    return ask("irreversible", `This uses a Google tool that has not been checked yet (${name}). It might send or change something.`, false);
   }
   if (tool === "Bash") {
     const cmd = input.command;
-    if (typeof cmd !== "string") return ask("irreversible", "no command given");
+    if (typeof cmd !== "string") return ask("irreversible", "This command is empty, so there is nothing to check.", false);
     return evaluateBash(cmd, ctx);
   }
-  return ask("irreversible", `unknown tool "${tool}"`);
+  return ask("irreversible", `This uses a tool that has not been checked yet (${tool}). It might send or change something.`, false);
 }
 
 // A part of an address that reads like encoded data rather than a word: code-like characters only, with both letters and
 // digits in it.
 const encodedLike = (part: string) => part.length >= 6 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part);
 /** Can data leave inside this web address? Returns the reason, "invalid", or null when it looks like an ordinary page. */
+/** Launch check (15 Oct 2026, "a website that resolves to a private address could slip past the network check"): a web
+ *  address whose name looks public but leads to this Mac or a private network (a name pointed home, DNS rebinding). The name
+ *  is looked up once, every answer judged; any private answer refuses. Null when it leads only to public addresses, or
+ *  when the name cannot be looked up in time (the fetch then fails on its own). A second lookup by the fetch could still
+ *  answer differently; this closes the plain case, not every rebinding race. */
+export const LOOKUP_MS = 3_000;
+export async function leadsHome(url: string, lookup: (host: string) => Promise<string[]> = async (h) => (await dnsLookup(h, { all: true })).map((a) => a.address)): Promise<string | null> {
+  let host: string;
+  try { host = new URL(url).hostname.toLowerCase().replace(/^\[|\]$/g, ""); } catch { return null; }
+  if (!host || isIP(host)) return null;   // a number was already judged by isSafeUrl
+  let addresses: string[];
+  try { addresses = await Promise.race([lookup(host), new Promise<string[]>((_, no) => setTimeout(() => no(new Error("slow")), LOOKUP_MS))]); } catch { return null; }
+  for (const a of addresses) { const why = privateReason(a); if (why) return `that address leads to ${why}, so it is not opened`; }
+  return null;
+}
+/** The network verdict for a web address after its name was looked up: refused when it leads home, else the verdict as it was. */
+export async function withLookup(v: Verdict, tool: string, input: Record<string, unknown>, lookup?: (host: string) => Promise<string[]>): Promise<Verdict> {
+  if (tool !== "WebFetch" || v.decision === "deny") return v;
+  const why = await leadsHome(String(input.url ?? ""), lookup);
+  return why ? deny("network", why) : v;
+}
+
 export function carriesData(url: string): string | null {
   let u: URL;
   try { u = new URL(url); } catch { return "invalid"; }
@@ -312,7 +347,7 @@ export function carriesData(url: string): string | null {
 export function evaluateReadOnly(call: ToolCall, ctx: Context): Verdict {
   const v = evaluate(call, ctx);
   if (v.decision === "deny") return v;
-  if (v.decision === "ask") return deny(v.risk ?? "outside_project", `${v.reason}. This part of ${PRODUCT} only looks inside your project`);
+  if (v.decision === "ask") return deny(v.risk ?? "outside_project", `${v.reason.replace(/\.+$/, "")}. This part of ${PRODUCT} only looks inside your project`);
   const target = call.input.file_path ?? call.input.notebook_path;
   if ((call.tool === "Read" || call.tool === "NotebookRead") && typeof target === "string") {
     const w = whereIs(ctx.project, target);
@@ -324,6 +359,10 @@ export function evaluateReadOnly(call: ToolCall, ctx: Context): Verdict {
 // ---------- shell commands ----------
 
 const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh", "fish"]);
+// Reasons shared by several checks. They reach the approval card and Claude's refusal message, so they are plain sentences.
+const SCRIPT = "This runs a script. What a script does can't be checked first.";
+const INLINE = "This runs code typed into the command itself, which can't be checked first.";
+const LISTED = "This reads a list of files from somewhere else, and that list can't be checked first.";
 const INLINE_CODE: Record<string, RegExp> = {
   python: /^-[A-Za-z]*c/, python2: /^-[A-Za-z]*c/, python3: /^-[A-Za-z]*c/, node: /^(-e|-p|--eval|--print|-pe)$/, nodejs: /^(-e|-p|--eval)$/, deno: /^(eval)$/, bun: /^(-e|--eval)$/,
   ruby: /^-[A-Za-z]*e/, perl: /^-[A-Za-z]*[eE]/, php: /^-r$/, osascript: /^-e$/, lua: /^-e$/, Rscript: /^-e$/, swift: /^-e$/,
@@ -389,7 +428,7 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
   let out = allow();
   const commands = commandsOf(cmd);
   const dynamic = hasDynamic(cmd);
-  if (commands.some((w) => w[0] === "<too deep>")) return ask("irreversible", "command nests too deeply to check");
+  if (commands.some((w) => w[0] === "<too deep>")) return ask("irreversible", "This command is too tangled to check first.", false);
 
   // Walk the commands in order, keeping track of where `cd` has moved to. Leaving the project is not allowed.
   let cwd = ctx.project;
@@ -409,15 +448,15 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
   if (gitEnv) out = worst(out, gitEnv);
   // Where input is read from with <: reading outside the project asks, whatever the command (the Read tool always did).
   for (const t of inputTargets(cmd)) {
-    if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "this command reads from a place it works out while it runs")); continue; }
+    if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "This command decides while it runs which files to read, so it can't be checked first.", true)); continue; }
     const w = whereIs(ctx.project, t, cwd);
-    if (!w.inside && w.abs !== resolveLinks(ctx.project)) out = worst(out, ask("outside_project", `${t} is outside the project`));
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) out = worst(out, ask("outside_project", `${t} is outside your project folder.`, true));
     else if (isSettingsFile(w.abs)) out = worst(out, deny("settings", SETTINGS_NOT_READ));
   }
   // Where output is written with > and >>.
   // Also the redirects written inside nested shells (`sh -c "echo x >> .env"`), whose quotes hide them from a scan of the outer line.
   for (const t of [...redirectTargets(cmd), ...nestedStrings(cmd).flatMap((n) => redirectTargets(n))]) {
-    if (t.includes("$") || t.includes("`")) { out = worst(out, ask("irreversible", "this command writes to a place it works out while it runs")); continue; }
+    if (t.includes("$") || t.includes("`")) { out = worst(out, ask("irreversible", "This command decides while it runs where to save, so it can't be checked first.", false)); continue; }
     const v = pathVerdict(t, ctx, cwd);
     if (v) out = worst(out, v);
   }
@@ -428,7 +467,7 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
     out = secret ? deny("settings", `${PRODUCT} does not write a key, token or password for you. Add the ${secret} line to your settings file yourself`) : names.length ? { ...out, reason: `${out.reason}: ${names.join(", ")}` } : out;
   }
   // Last, so a specific reason (like "git push") is shown in preference to this general one.
-  if (dynamic && out.decision === "allow" && commands.some((w) => w.some((x) => DANGEROUS_WORDS.has(basename(x))))) out = ask("irreversible", "this command builds part of itself while it runs, so I cannot check it");
+  if (dynamic && out.decision === "allow" && commands.some((w) => w.some((x) => DANGEROUS_WORDS.has(basename(x))))) out = ask("irreversible", "This command puts itself together while it runs, so it can't be checked first.", false);
   return out;
 }
 
@@ -441,22 +480,22 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
 function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdict {
   const name = basename(words[0]);
   const args = words.slice(1);
-  if (words[0].includes("$") || words[0].startsWith("`")) return ask("irreversible", "the command is worked out while it runs, so I cannot check it");
+  if (words[0].includes("$") || words[0].startsWith("`")) return ask("irreversible", "This command's name is decided while it runs, so it can't be checked first.", false);
   if (["sudo", "doas", "su"].includes(name)) return deny("install", "commands may not use administrator rights");
   if (name === "screencapture") return deny("irreversible", "commands may not look at your screen; only your own key press does");
   if (name.startsWith("mkfs")) return deny("irreversible", "this would erase a disk");
   if (["kill", "killall", "pkill"].includes(name)) return ask("irreversible", "this stops programs running on your Mac", false);
   if (SYSTEM_TOOLS.has(name) || (name === "defaults" && ["write", "delete", "import", "rename"].includes(args[0] ?? ""))) return deny("irreversible", "this changes your Mac's settings or reads its secrets");
   // Reading the Mac's settings of other apps is reading outside the project.
-  if (name === "defaults" && ["read", "export", "find", "read-type", "domains"].includes(args[0] ?? "")) return ask("outside_project", "this reads your Mac's settings, outside the project");
+  if (name === "defaults" && ["read", "export", "find", "read-type", "domains"].includes(args[0] ?? "")) return ask("outside_project", "this reads your Mac's settings, outside the project", true);
   // cpio reads the files it is handed on its input, which cannot be checked here.
-  if (name === "cpio" && args.some((a) => /^-[A-Za-z]*[op]/.test(a) || a === "--create" || a === "--pass-through")) return ask("outside_project", "cpio reads whatever files it is handed, which I cannot check");
-  if (SHELLS.has(name) || name === "source" || name === ".") return ask("irreversible", "a script I cannot read");
-  if (words[0].endsWith(".sh") || words[0].endsWith(".bash") || words[0].endsWith(".zsh")) return ask("irreversible", "a script I cannot read");
+  if (name === "cpio" && args.some((a) => /^-[A-Za-z]*[op]/.test(a) || a === "--create" || a === "--pass-through")) return ask("outside_project", "This copies whatever files it is given, and that list can't be checked first.", true);
+  if (SHELLS.has(name) || name === "source" || name === ".") return ask("irreversible", SCRIPT, false);
+  if (words[0].endsWith(".sh") || words[0].endsWith(".bash") || words[0].endsWith(".zsh")) return ask("irreversible", SCRIPT, false);
   if (name === "xargs") {
     const rest = (() => { const w = [...args]; while (w.length && w[0].startsWith("-")) { const o = w.shift()!; if (["-I", "-n", "-P", "-s", "-L", "-d", "-E"].includes(o) && w.length) w.shift(); } return w; })();
     const inner = unwrap(rest).words;
-    if (!inner.length || DANGEROUS_WORDS.has(basename(inner[0]))) return ask("irreversible", "xargs runs another command on many things at once");
+    if (!inner.length || DANGEROUS_WORDS.has(basename(inner[0]))) return ask("irreversible", "This runs another command on many files at once.", false);
     return allow();
   }
   if (name === "find") return evaluateFind(args, ctx, cwd);
@@ -469,18 +508,18 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
     if (i >= 0) return evaluateCommand(unwrap(rest.slice(i)).words.length ? unwrap(rest.slice(i)).words : rest.slice(i), ctx, cwd);
     return allow();
   }
-  if (name === "bun" && args.some((a) => /^(-e|--eval|-p|--print)$/.test(a))) return ask("irreversible", "bun would run code I cannot check");
+  if (name === "bun" && args.some((a) => /^(-e|--eval|-p|--print)$/.test(a))) return ask("irreversible", INLINE, false);
   // node with no file to run reads its code from the input (a here document, a pipe): code nobody can check here. node --test and --version are fine.
-  if ((name === "node" || name === "nodejs") && !args.some((a) => !a.startsWith("-") && !a.startsWith("<") && !a.startsWith(">")) && !args.some((a) => /^(-v|--version|-h|--help|-c|--check|--test.*)$/.test(a))) return ask("irreversible", "node would run code I cannot check");
+  if ((name === "node" || name === "nodejs") && !args.some((a) => !a.startsWith("-") && !a.startsWith("<") && !a.startsWith(">")) && !args.some((a) => /^(-v|--version|-h|--help|-c|--check|--test.*)$/.test(a))) return ask("irreversible", INLINE, false);
   if (["npm", "pnpm", "yarn", "bun"].includes(name)) return evaluatePackageManager(name, args);
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
     // Outside the project, so Undo cannot take these back (technical_research section 6).
-    if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", `${name} ${args[0]} changes your Mac`, false);
-    if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "pip install may change your Mac", false);
+    if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", "This changes software installed on your Mac, not just your project.", false);
+    if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "This installs Python packages for your whole Mac, not just this project.", false);
     return allow();
   }
   if (["wrangler", "vercel", "netlify", "firebase", "fly", "flyctl", "railway", "heroku", "supabase", "prisma", "gh"].includes(name)) return evaluateService(name, args);
-  if (name === "docker" || name === "podman") return DOCKER_READ.has(args.find((a) => !a.startsWith("-")) ?? "") ? allow() : ask("irreversible", `${name} changes containers or sends images away`, false);
+  if (name === "docker" || name === "podman") return DOCKER_READ.has(args.find((a) => !a.startsWith("-")) ?? "") ? allow() : ask("irreversible", "This changes Docker containers, or sends images to another computer.", false);
   if (ACCOUNT_AND_NETWORK_TOOLS.has(name)) return ask(name === "open" ? "irreversible" : "network", `${name} reaches outside your project`, false);
   let out: Verdict = allow();
   if (name === "curl" || name === "wget") out = evaluateCurl(args);
@@ -511,7 +550,7 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
   if (archive) { const v = pathVerdict(archive, ctx, cwd); if (v) out = worst(out, v); }
   // A program that is handed code to run can do anything that code says.
   const inline = INLINE_CODE[name.replace(/\.[0-9]+$/, "")];
-  if (inline && args.some((a) => inline.test(a))) out = worst(out, ask("irreversible", `${name} would run code I cannot check`));
+  if (inline && args.some((a) => inline.test(a))) out = worst(out, ask("irreversible", INLINE, false));
   return out;
 }
 
@@ -530,7 +569,7 @@ function readerVerdict(name: string, args: string[], ctx: Context, cwd: string):
     if (!skipped) { skipped = true; continue; }
     if (!looksOutside(a) || /^\/dev\/(null|stdin|stdout|stderr|tty|zero|urandom)$/.test(a)) continue;
     const w = whereIs(ctx.project, a, cwd);
-    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${a} is outside the project`);
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${a} is outside your project folder.`, true);
   }
   return null;
 }
@@ -548,8 +587,8 @@ function archiveReads(name: string, args: string[], ctx: Context, cwd: string): 
     // Files named in a list (tar -T or --files-from, zip -@ from its input) cannot be checked before they are read, as for
     // cpio. When tar only unpacks, -T names what to take out of the archive, so only the list itself is read.
     const creating = isTar && (args.some((a) => /^-?[A-Za-z]*[cru][A-Za-z]*$/.test(a) && !a.startsWith("--")) || args.some((a) => ["--create", "--append", "--update"].includes(a)));
-    if (isTar && creating && args.some((a) => a === "--files-from" || a.startsWith("--files-from=") || (/^-[A-Za-z]*T/.test(a) && !a.startsWith("--")))) return ask("outside_project", `${name} reads the files listed in another file, which I cannot check`);
-    if (name === "zip" && args.includes("-@")) return ask("outside_project", "zip reads whatever files it is handed, which I cannot check");
+    if (isTar && creating && args.some((a) => a === "--files-from" || a.startsWith("--files-from=") || (/^-[A-Za-z]*T/.test(a) && !a.startsWith("--")))) return ask("outside_project", LISTED, true);
+    if (name === "zip" && args.includes("-@")) return ask("outside_project", LISTED, true);
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
       if (isTar && (a === "-T" || a === "--files-from")) { if (args[i + 1] !== undefined) reads.push(args[i + 1]); i++; continue; }
@@ -567,7 +606,7 @@ function archiveReads(name: string, args: string[], ctx: Context, cwd: string): 
   for (const r of reads) {
     if (!looksOutside(r) || /^\/dev\/(null|stdin|zero|urandom)$/.test(r)) continue;
     const w = whereIs(ctx.project, r, cwd);
-    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${r} is outside the project`);
+    if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${r} is outside your project folder.`, true);
   }
   return null;
 }
@@ -592,7 +631,7 @@ function evaluateFind(args: string[], ctx: Context, cwd: string): Verdict {
   const risky = args.some((a) => ["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"].includes(a));
   if (!risky) return allow();
   for (const r of roots) { const v = pathVerdict(r, ctx, cwd); if (v) return v; }
-  return ask("irreversible", "find can delete things or run commands on everything it finds");
+  return ask("irreversible", "This can delete files, or run a command on every file it finds.", false);
 }
 
 // A folder given to git that is outside the project (or worked out while the command runs, or under ~).
@@ -602,7 +641,8 @@ function gitElsewhere(v: string | undefined, ctx: Context, cwd: string): boolean
   const w = whereIs(ctx.project, v, cwd);
   return !w.inside && w.abs !== resolveLinks(ctx.project);
 }
-const OTHER_FOLDER = ask("outside_project", "this points git at a folder outside the project, so it would read another project's history and files");
+// Not undoable: what a git command does in another folder is outside every snapshot of this project (M45).
+const OTHER_FOLDER = ask("outside_project", "This points Git at a folder outside your project.", false);
 
 // git's own environment variables do what its options do. Those naming a folder or a file of git's (GIT_DIR and the like)
 // are judged like -C and --git-dir; those that make git run a program or read other settings ask like -c. They are looked
@@ -617,7 +657,7 @@ function gitEnvVerdict(cmd: string, ctx: Context, depth = 0): Verdict | null {
       if (m && GIT_PLACE_VARS.has(m[1])) {
         // Several folders may be listed, as GIT_ALTERNATE_OBJECT_DIRECTORIES does.
         if (m[2].split(":").some((v) => gitElsewhere(v, ctx, ctx.project))) return OTHER_FOLDER;
-      } else if (m && GIT_PROGRAM_VARS.test(m[1])) return ask("git", "this changes how git behaves for one command, which can run a program", false);
+      } else if (m && GIT_PROGRAM_VARS.test(m[1])) return ask("git", "This changes how Git behaves for one command, and that can run another program.", false);
       else if (/\s/.test(w) && w !== cmd) { const v = gitEnvVerdict(w, ctx, depth + 1); if (v) return v; }
     }
   }
@@ -632,7 +672,7 @@ function evaluateGit(args: string[], ctx: Context, cwd: string = ctx.project): V
   while (i < args.length) {
     const a = args[i];
     // Global options that make git run a program or behave differently for one command: -c core.fsmonitor=..., --exec-path=...
-    if (a === "-c" || a.startsWith("--config-env") || a.startsWith("--exec-path")) return ask("git", "this changes how git behaves for one command, which can run a program", false);
+    if (a === "-c" || a.startsWith("--config-env") || a.startsWith("--exec-path")) return ask("git", "This changes how Git behaves for one command, and that can run another program.", false);
     if (a === "-C" || a === "--git-dir" || a === "--work-tree") { if (elsewhere(args[i + 1])) return OTHER_FOLDER; i += 2; continue; }
     if (a.startsWith("--git-dir=") || a.startsWith("--work-tree=")) { if (elsewhere(a.slice(a.indexOf("=") + 1))) return OTHER_FOLDER; i += 1; continue; }
     if (GIT_VALUE_OPTS.has(a)) { i += 2; continue; }
@@ -652,27 +692,30 @@ function evaluateGit(args: string[], ctx: Context, cwd: string = ctx.project): V
     for (const p of positional) {
       if (!looksOutside(p)) continue;
       const w = whereIs(ctx.project, homeSpelling(p), cwd);
-      if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${p} is outside the project`);
+      if (!w.inside && w.abs !== resolveLinks(ctx.project)) return ask("outside_project", `${p} is outside your project folder.`, true);
     }
   }
-  const mutates = (reason: string, undoable = true): Verdict => ask("git", reason, undoable);
+  // Undo never touches .git (rule 10), so no change to the person's git is ever undoable.
+  const mutates = (reason: string): Verdict => ask("git", reason, false);
 
-  if (ctx.userAskedCommit && (sub === "add" || sub === "commit")) return allow("the user asked for a commit in this task");
+  // A commit the person asked for runs without a card, and still lands in the receipt's "Cannot be undone" list.
+  if (ctx.userAskedCommit && (sub === "add" || sub === "commit")) return allow("the user asked for a commit in this task", false);
   switch (sub) {
-    case "push": return mutates("git push sends your work to a remote", false);
+    // The command itself is on the card under "What will happen", so the reason does not repeat it in machine words.
+    case "push": return mutates("This sends your work to another computer.");
     case "status": case "diff": case "log": case "show": case "blame": case "grep": case "ls-files": case "ls-tree": case "rev-parse":
     case "describe": case "shortlog": case "check-ignore": case "check-attr": case "cat-file": case "fetch": case "whatchanged": case "show-ref": case "diff-tree": case "rev-list":
       return allow();
-    case "reflog": return rest.some((a) => ["expire", "delete"].includes(a)) ? mutates("deletes saved history", false) : allow();
-    case "remote": return rest.some((a) => ["add", "remove", "rm", "rename", "set-url", "prune", "set-head"].includes(a)) ? mutates("changes remotes") : allow();
+    case "reflog": return rest.some((a) => ["expire", "delete"].includes(a)) ? mutates("This deletes Git's saved history.") : allow();
+    case "remote": return rest.some((a) => ["add", "remove", "rm", "rename", "set-url", "prune", "set-head"].includes(a)) ? mutates("This changes where Git sends your work.") : allow();
     case "branch": {
       const write = flags.some((f) => /^(-d|-D|-m|-M|-c|-C|-f|-u|--delete|--move|--copy|--force|--set-upstream-to|--unset-upstream|--edit-description)/.test(f));
-      return write || positional.length > 0 ? mutates("changes branches") : allow();
+      return write || positional.length > 0 ? mutates("This changes your Git branches.") : allow();
     }
-    case "tag": return flags.some((f) => /^(-d|-a|-s|-f|-m|--delete|--annotate|--sign|--force)/.test(f)) || (positional.length > 0 && !flags.some((f) => /^(-l|--list)/.test(f))) ? mutates("changes tags") : allow();
-    case "stash": return ["list", "show"].includes(rest[0] ?? "") ? allow() : mutates("changes the stash");
-    case "config": return rest.some((a) => ["--get", "--get-all", "--list", "-l", "--get-regexp"].includes(a)) ? allow() : mutates("changes git settings");
-    default: return mutates(`git ${sub} changes your repository`);
+    case "tag": return flags.some((f) => /^(-d|-a|-s|-f|-m|--delete|--annotate|--sign|--force)/.test(f)) || (positional.length > 0 && !flags.some((f) => /^(-l|--list)/.test(f))) ? mutates("This changes your Git tags.") : allow();
+    case "stash": return ["list", "show"].includes(rest[0] ?? "") ? allow() : mutates("This changes work Git has set aside.");
+    case "config": return rest.some((a) => ["--get", "--get-all", "--list", "-l", "--get-regexp"].includes(a)) ? allow() : mutates("This changes your Git settings.");
+    default: return mutates("This changes your project's Git history.");
   }
 }
 
@@ -700,10 +743,10 @@ function evaluateRm(args: string[], ctx: Context, cwd: string): Verdict {
 function evaluatePackageManager(name: string, args: string[]): Verdict {
   const sub = args.find((a) => !a.startsWith("-")) ?? "";
   const global = args.some((a) => a === "-g" || a === "--global" || a === "--global=true" || a === "--location=global" || (a === "--location" && args[args.indexOf(a) + 1] === "global")) || (name === "yarn" && sub === "global");
-  if (global && !["list", "ls", "view", "info", "outdated", "bin", "root", "prefix"].includes(sub)) return ask("install", "a global install changes your Mac", false);
+  if (global && !["list", "ls", "view", "info", "outdated", "bin", "root", "prefix"].includes(sub)) return ask("install", "This installs a tool for your whole Mac, not just this project.", false);
   if (sub === "publish" || (name === "yarn" && sub === "npm" && args.includes("publish"))) return ask("irreversible", "publishing a package cannot be undone", false);
   if (["unpublish", "login", "adduser", "logout", "token", "owner", "access", "dist-tag", "deprecate", "profile", "team", "star", "unstar", "set", "trust"].includes(sub)) return ask("irreversible", `${name} ${sub} changes your account or your published packages`, false);
-  if (sub === "config" && ["set", "delete", "edit"].includes(args.filter((a) => !a.startsWith("-"))[1] ?? "")) return ask("irreversible", "changes package manager settings");
+  if (sub === "config" && ["set", "delete", "edit"].includes(args.filter((a) => !a.startsWith("-"))[1] ?? "")) return ask("irreversible", "This changes package manager settings for your whole Mac.", false);
   // A version bump makes a git commit and a tag in a git project (npm, pnpm, yarn version; bun pm version), unless it is
   // told not to.
   const bumps = sub === "version" || (name === "bun" && sub === "pm" && args.includes("version"));

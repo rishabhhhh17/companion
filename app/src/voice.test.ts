@@ -76,3 +76,20 @@ describe("why the microphone gave only silence", () => {
     expect(run([{ type: "app.voice", stage: "silent", message: "I did not hear anything.", why: "lid" }]).voice!.message).toBe("I did not hear anything.");
   });
 });
+
+// M36: the Type key's results show in the notch line and never reach the ask box.
+import { islandLine as islandLineM36, TYPED } from "./home.ts";
+import { heardGoesTo as heardGoesToM36 } from "./askbox.ts";
+describe("type by voice results (M36)", () => {
+  test("typed, copied and refused say their line in the notch", () => {
+    for (const stage of TYPED) {
+      const m = run([{ type: "app.voice", stage, message: "Typed into Notes." }]);
+      expect(islandLineM36(m)).toBe("Typed into Notes.");
+    }
+  });
+  test("only heard words go to a box: the card routes on heard alone", () => {
+    const card = require("node:fs").readFileSync(new URL("./card.tsx", import.meta.url), "utf8") as string;
+    expect(card).toContain('ev.type === "app.voice" && ev.stage === "heard" && ev.text');
+    expect(typeof heardGoesToM36).toBe("function");
+  });
+});

@@ -178,7 +178,7 @@ export type AgentState = Envelope & { type: "agent.state"; agent: string; state:
 export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean; outcome?: "ran" | "blocked" | "needs_approval" | "denied" };
 export type ApprovalRequest = Envelope & {
   type: "approval.request"; approval: string; agent: string; checkpoint: string; toolUseId: string;
-  risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings"; title: string; expiresAt: string;
+  risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule"; title: string; expiresAt: string;
   /** M28: what will happen, in plain words: the command (secrets covered) or the file. Shown on the card so nobody answers
    *  a question they cannot read. Absent from older engines. */
   action?: string;
@@ -200,6 +200,9 @@ export type Receipt = Envelope & {
   repeat?: { first: ChangeAt; second: ChangeAt; was: string; now: string };   // the same small change made in two places (was -> now)
   practice?: string;   // the practice id the task was started with, echoed back
   ended?: "done" | "needs_you" | "stopped" | "failed";   // how the task ended: only done and needs_you count as a real use (groups, F20)
+  /** M45: why a "failed" task stopped, so the result can name a limit instead of "Something went wrong". Only with ended
+   *  "failed"; absent from older engines. `ended` keeps its four words (groups, F20). */
+  endedWhy?: "check_failed" | "spending_limit" | "daily_limit" | "turns" | "no_connection" | "claude_busy" | "error";
   mode?: "drive" | "rescue" | "research" | "ship";   // the mode the task ran in
   said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
@@ -265,7 +268,9 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 // tries and same: how the tries ran out, sent only when it was not the usual three identical failures (the settings
 // work.tries and work.askOnAnyFailure): how many checks failed in a row, and whether all of them the same way.
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[]; tries?: number; same?: boolean };
-export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null };
+// undone (M45): an Undo put the project back to before this task. back: "Bring the fix back" then put its files back again
+// (undone stays set: nothing was checked since).
+export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
@@ -541,9 +546,9 @@ const EVENTS: Record<string, Check[]> = {
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
-  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable"))],
+  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],

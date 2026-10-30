@@ -3,7 +3,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyRules, loadRules, parseRules, RULES_FILE } from "../src/rules.ts";
+import { applyRules, loadRules, parseRules, RULES_FILE, withHouseRule } from "../src/rules.ts";
+import { evaluate } from "../src/safety.ts";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
@@ -139,5 +140,56 @@ describe("in a real task", () => {
   test("files that are not covered are written as normal", async () => {
     const r = await go("never edit pricing.txt", [w("index.html", "<h1>hi</h1>")]);
     expect(existsSync(join(r.project, "index.html"))).toBe(true);
+  });
+});
+
+// M45: a house rule asks with its own words and its own risk, and it can never make Undo promise more than it can do.
+describe("M45: house rules and Undo", () => {
+  test("a house rule asks in plain words, as a house rule", () => {
+    const v = applyRules(rules("ask before editing pricing.txt"), edit("pricing.txt"), P)!;
+    expect(v).toMatchObject({ decision: "ask", risk: "house_rule", reason: 'Your house rule says: "ask before editing pricing.txt"' });
+    expect(applyRules(rules("never edit pricing.txt"), edit("pricing.txt"), P)).toMatchObject({ decision: "deny", risk: "house_rule", reason: 'Your house rule says: "never edit pricing.txt"' });
+  });
+  test("a house rule keeps the base undo fact", () => {
+    // A commit the person asked for runs without a card, and Undo cannot take it back. A rule that asks about it makes it a
+    // card, and that card must still say Undo can't take it back.
+    const base = evaluate({ tool: "Bash", input: { command: "git commit -m x" } }, { project: P, userAskedCommit: true });
+    const ruled = applyRules(rules("ask before running git commit"), run("git commit -m x"), P);
+    const r = withHouseRule(base, ruled);
+    expect(r.verdict).toMatchObject({ decision: "ask", risk: "house_rule", undoable: false });
+    expect(r.byHouseRule).toBe(true);
+    // Without the person's ask, the commit is already a card of its own: the rule adds nothing, and Undo still can't.
+    const plain = withHouseRule(evaluate({ tool: "Bash", input: { command: "git commit -m x" } }, { project: P }), ruled);
+    expect(plain.verdict).toMatchObject({ decision: "ask", undoable: false });
+    expect(plain.byHouseRule).toBe(false);
+  });
+  test("a house rule on an Edit stays undoable", () => {
+    const base = evaluate(edit("pricing.txt"), { project: P });
+    const r = withHouseRule(base, applyRules(rules("ask before editing pricing.txt"), edit("pricing.txt"), P));
+    expect(r.verdict).toMatchObject({ decision: "ask", risk: "house_rule", undoable: true });
+    expect(r.byHouseRule).toBe(true);
+  });
+  test("no rule, or a rule no stricter than the base, leaves the base as it is", () => {
+    const base = evaluate(edit("pricing.txt"), { project: P });
+    expect(withHouseRule(base, null)).toEqual({ verdict: base, byHouseRule: false });
+  });
+  const card = async (rulesText: string, step: Step) => {
+    const project = tmp("p");
+    mkdirSync(join(project, ".companion"));
+    writeFileSync(join(project, ".companion/rules.txt"), rulesText);
+    const events: Event[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([[step]]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict: "passed", steps: [] }), approvalTimeoutMs: 30 });
+    await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: 3 });
+    return events.find((e) => e.type === "approval.request") as any;
+  };
+  test("in a real task: the card for a house rule on an Edit says house_rule and undoable", async () => {
+    expect(await card("ask before editing pricing.txt", { tool: { name: "Write", input: { file_path: "pricing.txt", content: "1" } }, costUsd: 0 })).toMatchObject({ risk: "house_rule", undoable: true });
+  });
+  test("in a real task: a rule on git commit never makes the card say Undo can take it back", async () => {
+    expect(await card("ask before running git commit", { tool: { name: "Bash", input: { command: "git commit -m x" } }, costUsd: 0 })).toMatchObject({ undoable: false });
+  });
+  test("in a real task: a rules file that cannot be read asks as a house rule, and keeps the base undo fact", async () => {
+    const c = await card("# x\n".repeat(20_000), { tool: { name: "Write", input: { file_path: "pricing.txt", content: "1" } }, costUsd: 0 });
+    expect(c).toMatchObject({ risk: "house_rule", undoable: true });
   });
 });

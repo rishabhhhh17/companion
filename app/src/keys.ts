@@ -4,13 +4,13 @@
 // reads key presses (rule 8).
 import { S } from "./strings.ts";
 
-export type Job = "card" | "problem" | "showme" | "read" | "accept" | "explain" | "secondlook" | "talk" | "stop";
+export type Job = "card" | "problem" | "showme" | "read" | "accept" | "explain" | "secondlook" | "talk" | "dictate" | "stop";
 /** In the order Settings shows them, the same as keymap.rs ACTIONS (hotkeys.test.ts checks). */
-export const JOBS: readonly Job[] = ["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"];
+export const JOBS: readonly Job[] = ["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"];
 /** Each job's usual keys, the ones Companion always had; hotkeys.test.ts checks them against keymap.rs DEFAULTS. */
 export const KEY_DEFAULTS: Readonly<Record<Job, string>> = {
   card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
-  accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", stop: "control-option-command-x",
+  accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", dictate: "option-shift-space", stop: "control-option-command-x",
 };
 export type Keys = { using: Record<Job, string | null>; picked: Record<Job, string> };
 export const KEYS_START: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_DEFAULTS } };
@@ -147,4 +147,12 @@ export function keyProblem(code: string): string {
   if (code === "not_enough") return S.keysNotEnough;
   if (code === "reserved") return S.keysReserved;
   return S.keysFailed;
+}
+
+/** M40 (Raycast shows each action's keys as small keycaps): a chord as the Mac's own key symbols, one cap each, in the
+ *  Mac's order: ["⌃", "⌥", "⌘", "F"]. Empty for no keys or anything not written the way the app writes it. */
+const CAP: Record<string, string> = { control: "⌃", option: "⌥", shift: "⇧", command: "⌘", space: "Space", return: "⏎" };
+export function keycaps(id: string | null | undefined): string[] {
+  if (!id || !chordLabel(id)) return [];
+  return id.split("-").map((p) => CAP[p] ?? p.toUpperCase());
 }

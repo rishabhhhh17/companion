@@ -27,7 +27,7 @@
 //! The old four key chord (Control, Option, Command and V) is not kept as a second binding: nobody has used hold to talk
 //! yet (F17), and a hotkey that no hint names would take a key from the person's other apps for nothing.
 
-use crate::keymap::{label, Chord, Key, CONTROL, OPTION, WHERE_TO_PICK};
+use crate::keymap::{label, Chord, Key, CONTROL, OPTION, SHIFT, WHERE_TO_PICK};
 
 /// The chords a person can pick, the default first. hotkeys.test.ts reads this list; the page names each chord with
 /// the same words keymap::label builds.
@@ -39,6 +39,41 @@ pub const CHOICES: [Chord; 3] = [
 /// The default, first on the list. The key map's own table (keymap::DEFAULTS) is the one used; the tests check they agree.
 #[cfg(test)]
 pub const DEFAULT: Chord = CHOICES[0];
+
+/// The Type key's chords (M36, F26: type by voice into any app), the default first. Held like hold to talk, so a chord with
+/// Space or Return; none is hold to talk's or another job's. Option, Shift and Space types a non breaking space on some
+/// keyboards (rarely typed on purpose); the two Return chords add a line in a few apps. Control, Option and Space is left
+/// out on purpose: it is the Mac's own "next keyboard language" key.
+pub const DICTATE_CHOICES: [Chord; 3] = [
+    Chord::new(OPTION | SHIFT, Key::Space),
+    Chord::new(CONTROL | OPTION, Key::Return),
+    Chord::new(CONTROL | SHIFT, Key::Return),
+];
+
+/// What a held chord is for: talking to Squibby (the words go to Home's ask box) or typing into the app in front.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode { Ask, Type }
+
+/// Both hold keys share one microphone, so only one hold at a time: while one is held, the other's press and let go do
+/// nothing, and only a let go of the key that started the hold ends it. Key repeats and a lost let go work as in `Held`.
+#[derive(Debug)]
+pub struct Holding { by: Option<Mode>, last_ms: u64 }
+impl Holding {
+    pub const fn new() -> Holding { Holding { by: None, last_ms: 0 } }
+    /// True for a new hold by this key.
+    pub fn press(&mut self, m: Mode, now_ms: u64) -> bool {
+        let fresh = |last: u64| now_ms.saturating_sub(last) >= REPEAT_GAP_MS;
+        match self.by {
+            Some(b) if b != m && !fresh(self.last_ms) => false,
+            Some(b) if b == m && !fresh(self.last_ms) => { self.last_ms = now_ms; false }
+            _ => { self.by = Some(m); self.last_ms = now_ms; true }
+        }
+    }
+    /// True when this let go ends the hold this key started.
+    pub fn release(&mut self, m: Mode) -> bool { if self.by == Some(m) { self.by = None; true } else { false } }
+    /// The keys changed or everything stopped: the next press is new.
+    pub fn reset(&mut self) { self.by = None; }
+}
 
 /// What the line says when the speech model is ready.
 pub fn ready_words(using: Option<Chord>) -> String {
@@ -52,9 +87,11 @@ pub fn ready_words(using: Option<Chord>) -> String {
 /// a let go that ends one. If a let go never arrives (it can be lost), a press long after the last one counts as new, so
 /// hold to talk can never get stuck; the microphone itself is closed at its cap whatever happens (a minute unless changed, voice.rs).
 #[derive(Debug)]
+#[cfg_attr(not(test), allow(dead_code))]   // M36: the shell holds both keys with `Holding`; this one-key rule stays tested
 pub struct Held { down: bool, last_ms: u64 }
 /// Longer than the slowest key repeat macOS offers (about 2 seconds between repeats).
 pub const REPEAT_GAP_MS: u64 = 2_500;
+#[cfg_attr(not(test), allow(dead_code))]
 impl Held {
     pub const fn new() -> Held { Held { down: false, last_ms: 0 } }
     /// True for a new press, false for a repeat while held.
@@ -156,6 +193,31 @@ mod tests {
     }
     #[test]
     fn a_let_go_with_no_press_does_nothing() { assert!(!Held::new().release()); }
+    #[test]
+    fn one_hold_at_a_time_and_only_its_own_let_go_ends_it() {
+        let mut h = Holding::new();
+        assert!(h.press(Mode::Ask, 0));
+        assert!(!h.press(Mode::Type, 100), "the Type key does nothing while talking");
+        assert!(!h.release(Mode::Type), "nor does its let go");
+        assert!(!h.press(Mode::Ask, 130), "a key repeat");
+        assert!(h.release(Mode::Ask));
+        assert!(h.press(Mode::Type, 200));
+        assert!(!h.press(Mode::Ask, 300));
+        assert!(h.press(Mode::Ask, 300 + REPEAT_GAP_MS), "a lost let go never leaves it stuck");
+        h.reset(); assert!(h.press(Mode::Type, 10_000));
+    }
+    #[test]
+    fn the_type_keys_are_their_own_and_skip_the_language_key() {
+        assert_eq!(keymap::default(Action::Dictate), DICTATE_CHOICES[0]);
+        assert_eq!(keymap::choices(Action::Dictate), DICTATE_CHOICES.to_vec());
+        assert_eq!(label(DICTATE_CHOICES[0]), "Option, Shift and Space");
+        for c in DICTATE_CHOICES {
+            assert!(!CHOICES.contains(&c), "{} is hold to talk's", keymap::id(c));
+            assert!(matches!(c.key, Key::Space | Key::Return));
+            assert_ne!(c, Chord::new(CONTROL | OPTION, Key::Space), "the Mac's next keyboard language key");
+            for a in keymap::ACTIONS { if a != Action::Dictate { assert!(!keymap::choices(a).contains(&c), "{:?} has {}", a, keymap::id(c)); } }
+        }
+    }
     #[test]
     fn a_lost_let_go_never_leaves_hold_to_talk_stuck() {
         let mut h = Held::new();

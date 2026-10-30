@@ -56,11 +56,13 @@ describe("Home is one calm column", () => {
     expect(card).toContain("aria-label={tabName(t)} title={tabName(t)}");
     expect(card).not.toContain('role="tablist"');
   });
-  test("the first screen shows the current job first, in big words, and the ask box after it; results follow below", () => {
+  test("M42 (Supabase's dashboard, the founder's pick): the ask box is a command bar first, then the job in big words, the side list, then results", () => {
     const head = card.indexOf('className="headline">{hero.headline}</h1>');
     const ask = card.indexOf('<div className="askwrap" hidden={!show("ask")}>');
+    const side = card.indexOf('<aside className="home-side"');
     expect(head).toBeGreaterThan(-1);
-    expect(head).toBeLessThan(ask);
+    expect(ask).toBeLessThan(head);
+    expect(head).toBeLessThan(side);
     for (const panel of ['{show("urgent") && <div ref={urgent}>', '{show("receipt") && m.receipt', '{show("proof") && m.task?.proof', '{show("research") && m.research']) {
       expect(card.indexOf(panel), panel).toBeGreaterThan(ask);
     }
@@ -105,10 +107,11 @@ describe("Home is one calm column", () => {
     expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }");
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
-  test("the receipt reads as one block: what changed, a tick for what was checked, then what it cost and how many files", () => {
-    expect(card).toContain('<Icon name={m.receipt.proof === "passed" ? "tick" : m.receipt.proof === "failed" ? "cross" : "wait"} size={16} />');
-    expect(card).toContain("S.look.files(m.receipt.changed.length)");
-    expect(card).toContain("<li>{S.fixCost(formatUsd(m.receipt.usdEstimate))}</li>");   // M28: what the fix cost on your own Claude
+  test("the receipt reads as one block: what changed (with how many files), a tick for what was checked, then what it cost", () => {
+    // M45: the mark is the verdict's own (a tick only for a proven fix).
+    expect(card).toContain('<Icon name={v.icon} size={16} />');
+    expect(card).toContain("<ChangesCard changed={m.receipt.changed} />");   // M39: how many files heads the changes card
+    expect(card).toContain("<li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>");   // M28: what the fix cost on your own Claude (M45: No cost at zero)
     // Each check of the proof is a row with its own tick.
     expect(card).toContain('<Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />');
   });

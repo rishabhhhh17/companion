@@ -151,3 +151,31 @@ describe("idle life (M26)", () => {
     expect(look.floatAmp).toBeGreaterThanOrEqual(0.03);
   });
 });
+
+// M37c: water clings to a surface and flattens the harder it is pushed into it, then wobbles back like water.
+import { FlowflowEngine as Engine37 } from "./engine.ts";
+describe("clinging and pressing (M37c)", () => {
+  test("the press follows how hard it is pushed, and letting go wobbles back past nothing before it settles", () => {
+    const e = new Engine37();
+    e.setSurface("right", 1, 0);
+    e.press(1);
+    for (let i = 0; i < 90; i++) e.update(1 / 60);
+    expect(e.surface.press).toBeGreaterThan(0.9);
+    e.press(0);
+    let lowest = 1;
+    for (let i = 0; i < 60; i++) { e.update(1 / 60); lowest = Math.min(lowest, e.surface.press); }
+    expect(lowest).toBeLessThan(0);          // it springs back a little past its shape, like water
+    expect(lowest).toBeGreaterThanOrEqual(-0.2);
+    for (let i = 0; i < 240; i++) e.update(1 / 60);
+    expect(Math.abs(e.surface.press)).toBeLessThan(0.02);
+  });
+  test("a surface it does not know, or numbers that are not numbers, change nothing harmful", () => {
+    const e = new Engine37();
+    e.setSurface("sideways" as never, NaN, 9);
+    expect(e.surface).toMatchObject({ side: null, at: 1, cling: 1 });
+    e.press(NaN); e.update(1 / 60);
+    expect(e.surface.press).toBe(0);
+    e.setSurface("below", 0.67, 0.6);
+    expect(e.surface).toMatchObject({ side: "below", at: 0.67, cling: 0.6 });
+  });
+});

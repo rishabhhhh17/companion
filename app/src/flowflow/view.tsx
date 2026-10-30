@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CharacterState } from "../model.ts";
 import { FlowflowController } from "./controller.ts";
+import type { Side } from "./engine.ts";
 import type { Tuning } from "./physics.ts";
 
 export type FlowflowViewProps = {
@@ -16,11 +17,13 @@ export type FlowflowViewProps = {
   className?: string;
   /** The water's colours (lookfeel.ts flowColours); today's ocean when not given. */
   colours?: { light: string; deep: string };
+  /** M37c: a surface the water clings to: Home's waterline (`below`, `at` from the top, 0 to 1), with how much it joins it at rest. */
+  surface?: { side: Side; at?: number; cling?: number };
   /** Gives the preview a handle to the controller (for its numbers). */
   controllerRef?: { current: FlowflowController | null };
 };
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours }: FlowflowViewProps) {
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface }: FlowflowViewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
@@ -41,6 +44,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   useEffect(() => { ctl.current?.setReduced(!!reduced); }, [reduced]);
   useEffect(() => { if (colours) ctl.current?.setColours(colours.light, colours.deep); }, [colours?.light, colours?.deep, ctl.current]);
   useEffect(() => { if (tuning) ctl.current?.setTuning(tuning); }, [tuning]);
+  useEffect(() => { if (surface) ctl.current?.setSurface(surface.side, surface.at ?? 1, surface.cling ?? 0); }, [surface?.side, surface?.at, surface?.cling, ctl.current]);
 
   if (failed) return null;
   return <canvas ref={canvas} className={className ?? "flowflow"} aria-hidden="true" />;

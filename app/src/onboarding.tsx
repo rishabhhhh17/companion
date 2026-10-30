@@ -18,6 +18,12 @@ import { Waterline } from "./waterline.tsx";
 import { COMPANIONS } from "./companion.ts";
 import { FlowMini } from "./flowflowMini.tsx";
 
+/** A headline as its first sentence and the rest (M41): "Your AI built it." and "Let's finish it.". One sentence: all first. */
+export function twoTone(text: string): [string, string] {
+  const at = text.search(/[.!?]\s/);
+  return at < 0 ? [text, ""] : [text.slice(0, at + 1), text.slice(at + 2)];
+}
+
 // The first run (M18, the whole flow; onboarding.ts has the order and the rules). Home's black, with water at the foot that
 // rises with every step (the progress, also said in words), and the one lime button always in the same place at the bottom.
 // The hello and the recorded fix come before anything is asked; choosing, naming, the powers, Connect and the folder follow;
@@ -131,7 +137,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
       <div className="fr-slide" key={step} data-dir={dir}>
       {step === "hello" && (<>
         <div className="fr-hello" aria-hidden="true"><span className="fr-drop" /><span className="fr-ripple" /><div className="fr-rise"><HomeCharacter as="idle" /></div></div>
-        <h2 className="fr-title">{S.fr.helloTitle}</h2>
+        {/* M41 (Supabase's two tone headlines): the statement bright, its answer in grey on the line below. */}
+        <h2 className="fr-title">{twoTone(S.fr.helloTitle)[0]}<span className="fr-title-2">{twoTone(S.fr.helloTitle)[1]}</span></h2>
         <p className="fr-line">{S.fr.helloLine}</p>
         <div className="fr-grow" />
         {main(S.fr.helloGo, () => go(next(step)))}
@@ -257,7 +264,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           <p className="fr-small">{effectsOf(answers).join(" ")}</p>
         </details>
         <div className="fr-grow" />
-        {first.needsNode && noNode && <p className="fr-small" role="status">{S.practiceNodeLine(noNode.fix ?? "")}</p>}
+        {first.needsNode && noNode && <p className="fr-small" role="status">{S.fr.practiceNeedsNode(noNode.fix ?? "")}</p>}
         {/* Taking it ends the first run here: the practice opens its own folder. The choices made on the way are kept. */}
         <button className="fr-key" type="button" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.fr.practice}</button>
         <button className="fr-quiet" type="button" onClick={finish}>{S.fr.goProject}</button>

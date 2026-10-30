@@ -36,7 +36,7 @@ describe("the character's page and peeking", () => {
     const body = (n: string) => { const a = main.indexOf(`fn ${n}(`); expect(a, n).toBeGreaterThan(-1); return main.slice(a, main.indexOf("\n}\n", a)); };
     const apply = body("peek_apply");
     expect(apply).toContain("set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES)");
-    expect(apply).toContain("on: hs.peek, idle_on: hs.peek_idle");
+    expect(apply).toContain("on: hs.peek, stick: hs.stick, idle_on: hs.peek_idle");
     expect(apply).toContain('app.emit_to("dock", "peek"');
     expect(body("peek_heard")).toContain("if lit { peek_now(app, true); }");
     expect(read("../src-tauri/src/runner.rs")).toContain("crate::peek_heard(app, &v);");

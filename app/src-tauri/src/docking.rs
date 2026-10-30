@@ -40,9 +40,14 @@ pub struct Prefs {
     pub come_to: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub same_everywhere: Option<(Edge, f64)>,
+    /// M37 (the founder: "make sure the water can go anywhere in the display"): a display where it was let go away from
+    /// every edge, with where (0 to 1 across and down the room it has inside the work area). It stays there instead of
+    /// snapping to an edge. A drop near an edge, or a change of edge or position in Settings, takes it back to an edge.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub free: BTreeMap<String, (f64, f64)>,
 }
 fn on() -> bool { true }
-impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None } } }
+impl Default for Prefs { fn default() -> Self { Prefs { last_screen: String::new(), per_screen: BTreeMap::new(), come_to: true, same_everywhere: None, free: BTreeMap::new() } } }
 
 impl Prefs {
     /// Reads `dock.json`. Never loses more than it must: an entry that cannot be read (an edge this version does not
@@ -60,6 +65,12 @@ impl Prefs {
         }
         p.come_to = v.get("come_to").and_then(Value::as_bool) != Some(false);
         // Anything that is not a place leaves "Same place on every display" off.
+        if let Some(m) = v.get("free").and_then(Value::as_object) {
+            for (id, entry) in m {
+                let Ok((fx, fy)) = serde_json::from_value::<(f64, f64)>(entry.clone()) else { continue };
+                if fx.is_finite() && fy.is_finite() { p.free.insert(id.clone(), (fx.clamp(0.0, 1.0), fy.clamp(0.0, 1.0))); }
+            }
+        }
         p.same_everywhere = v.get("same_everywhere").and_then(|e| serde_json::from_value::<(Edge, f64)>(e.clone()).ok()).filter(|(_, pct)| pct.is_finite()).map(|(e, pct)| (e, pct.clamp(0.0, 1.0)));
         p
     }
@@ -194,6 +205,61 @@ pub fn snap_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64, home:
     (edge, pct_of(w, size, edge, place(s, size, edge, pct, home)))
 }
 
+/// M37: how far from every edge (points) the pointer must let go for the character to stay where it is, not snap.
+pub const FREE_REACH: f64 = 56.0;   // M41 (the founder: pulled out, it went back to the edge): a short pull is enough
+
+/// Where a drag lets go, as a free place (0 to 1 across and down its room in the work area), or None when it is near an
+/// edge and should snap to it (`snap_on`).
+pub fn free_on(s: &Screen, size: (f64, f64), cursor_x: f64, cursor_y: f64) -> Option<(f64, f64)> {
+    let w = s.work;
+    let (dl, dr, dt, db) = (cursor_x - w[0], w[0] + w[2] - cursor_x, cursor_y - w[1], w[1] + w[3] - cursor_y);
+    if [dl, dr, dt, db].into_iter().any(|d| !(d >= FREE_REACH)) { return None; }
+    let room = |len: f64, sz: f64| (len - sz).max(1.0);
+    Some((along((cursor_x - size.0 / 2.0 - w[0]) / room(w[2], size.0)), along((cursor_y - size.1 / 2.0 - w[1]) / room(w[3], size.1))))
+}
+
+/// A free place on a display: inside the work area, and out of the notch's zone (moved sideways out of it).
+pub fn place_free(s: &Screen, size: (f64, f64), at: (f64, f64), home: island::HomeSize) -> Rect {
+    let w = s.work;
+    let f = [w[0] + along(at.0) * (w[2] - size.0).max(0.0), w[1] + along(at.1) * (w[3] - size.1).max(0.0), size.0, size.1];
+    // M37d (the founder: "it still can't go in the middle"): free, it keeps clear of the notch only; Home may drop over it.
+    let _ = home;
+    let z = notch_zone(s);
+    if !overlaps(f, z) { return f; }
+    // Out of the zone sideways, to the nearer side that fits; on a display too narrow for either, below it.
+    let (lo, hi) = (w[0], w[0] + w[2] - size.0);
+    let side = [z[0] - size.0, z[0] + z[2]].into_iter().filter(|x| *x >= lo - 0.01 && *x <= hi + 0.01).min_by(|a, b| (a - f[0]).abs().total_cmp(&(b - f[0]).abs()));
+    match side { Some(x) => [x, f[1], f[2], f[3]], None => [f[0], (z[1] + z[3]).min(w[1] + w[3] - size.1), f[2], f[3]] }
+}
+
+/// The edge nearest a free place: which way it faces, and where its trips come back to.
+pub fn nearest_edge(frame: Rect, work: Rect) -> Edge {
+    let (cx, cy) = (frame[0] + frame[2] / 2.0, frame[1] + frame[3] / 2.0);
+    [(Edge::Left, cx - work[0]), (Edge::Right, work[0] + work[2] - cx), (Edge::Top, cy - work[1]), (Edge::Bottom, work[1] + work[3] - cy)]
+        .into_iter().min_by(|a, b| a.1.total_cmp(&b.1)).map(|(e, _)| e).unwrap_or(Edge::Right)
+}
+
+/// M37c (the founder: "the more I push it towards it, the flatter it gets"): how hard a drag presses the character into
+/// its edge, 0 to 1. Nothing while the pointer is at the character's middle or further from the edge; all of it once the
+/// pointer reaches the edge of the screen itself. The page flattens the water against that side by this much.
+pub fn press_of(s: &Screen, size: (f64, f64), edge: Edge, cursor: (f64, f64)) -> f64 {
+    let w = s.work;
+    let (dist, half) = match edge {
+        Edge::Left => (cursor.0 - w[0], size.0 / 2.0),
+        Edge::Right => (w[0] + w[2] - cursor.0, size.0 / 2.0),
+        Edge::Top => (cursor.1 - w[1], size.1 / 2.0),
+        Edge::Bottom => (w[1] + w[3] - cursor.1, size.1 / 2.0),
+    };
+    if !dist.is_finite() || half <= 0.0 { return 0.0; }
+    (1.0 - dist / half).clamp(0.0, 1.0)
+}
+
+/// M37d: where the display's own edge on `edge` is, in points from the window's top left (its left for a side edge, its
+/// top for the top or bottom), so the character's page flattens the water against the real edge, not its window's.
+pub fn screen_at(edge: Edge, s: &Screen, win: Rect) -> f64 {
+    match edge { Edge::Right => s.frame[0] + s.frame[2] - win[0], Edge::Left => s.frame[0] - win[0], Edge::Top => s.frame[1] - win[1], Edge::Bottom => s.frame[1] + s.frame[3] - win[1] }
+}
+
 pub fn inside(frame: Rect, work: Rect) -> bool {
     let e = 1.0;
     frame[0] >= work[0] - e && frame[1] >= work[1] - e && frame[0] + frame[2] <= work[0] + work[2] + e && frame[1] + frame[3] <= work[1] + work[3] + e
@@ -292,7 +358,7 @@ mod tests {
     }
     #[test]
     fn unplugging_the_screen_the_character_was_on_brings_it_back_inside_the_laptop_screen() {
-        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true, same_everywhere: None };
+        let p = Prefs { last_screen: "1920x1080@1512,0".into(), per_screen: [("1920x1080@1512,0".to_string(), (Edge::Left, 0.2))].into(), come_to: true, same_everywhere: None, free: Default::default() };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
@@ -507,7 +573,7 @@ mod tests {
     }
     #[test]
     fn a_top_place_on_a_screen_that_went_away_comes_back_inside_the_laptop_screen_and_out_of_the_zone() {
-        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true, same_everywhere: None };
+        let p = Prefs { last_screen: "1920x1080@1512,-98".into(), per_screen: [("1920x1080@1512,-98".to_string(), (Edge::Top, 0.5))].into(), come_to: true, same_everywhere: None, free: Default::default() };
         let only = [mac()];
         let (s, _) = pick(&only, &p, (400.0, 400.0)).unwrap();
         let (e, pct) = choice(&p, &s.id);
@@ -661,5 +727,56 @@ mod tests {
         assert_eq!(Edge::of("middle"), None);
         // The same words dock.json has always used.
         assert_eq!(serde_json::to_string(&Edge::Top).unwrap(), "\"top\"");
+    }
+    #[test]
+    fn let_go_away_from_every_edge_it_stays_there_and_near_one_it_snaps() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        let size = (160.0, 160.0);
+        assert_eq!(free_on(&s, size, 40.0, 450.0), None, "right at the left edge: snap");
+        assert_eq!(free_on(&s, size, 720.0, 880.0), None, "right at the bottom: snap");
+        let (fx, fy) = free_on(&s, size, 300.0, 500.0).expect("away from every edge: stays");
+        let f = place_free(&s, size, (fx, fy), island::HomeSize::STANDARD);
+        assert!(((f[0] + 80.0) - 300.0).abs() < 1.0 && ((f[1] + 80.0) - 500.0).abs() < 1.0, "{f:?}");
+        // Let go in the very middle of the screen: it stays right there (M37d), Home may drop over it.
+        let mid = place_free(&s, size, free_on(&s, size, 720.0, 500.0).unwrap(), island::HomeSize::STANDARD);
+        assert!(((mid[0] + 80.0) - 720.0).abs() < 1.0 && (mid[1] + 80.0 - 500.0).abs() < 1.0, "{mid:?}");
+        assert!(inside(f, s.work));
+        assert_eq!(free_on(&s, size, f64::NAN, 500.0), None);
+    }
+    #[test]
+    fn a_free_place_keeps_out_of_the_notch() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        let f = place_free(&s, (160.0, 160.0), (0.5, 0.0), island::HomeSize::STANDARD);
+        assert!(!overlaps(f, notch_zone(&s)), "{f:?}");
+        assert!(inside(f, s.work));
+        assert_eq!(nearest_edge([10.0, 400.0, 100.0, 100.0], s.work), Edge::Left);
+        assert_eq!(nearest_edge([600.0, 760.0, 100.0, 100.0], s.work), Edge::Bottom);
+    }
+    #[test]
+    fn a_saved_free_place_reads_back_and_a_bad_one_is_dropped() {
+        let p = Prefs::from_text(Some(r#"{"last_screen":"a","per_screen":{},"free":{"a":[0.4,2.0],"b":["x",1],"c":[0.1,0.2]}}"#));
+        assert_eq!(p.free.get("a"), Some(&(0.4, 1.0)));
+        assert_eq!(p.free.get("b"), None);
+        assert_eq!(p.free.get("c"), Some(&(0.1, 0.2)));
+        assert!(!serde_json::to_string(&Prefs::default()).unwrap().contains("free"), "nothing written when it is always on an edge");
+    }
+    #[test]
+    fn the_harder_it_is_pushed_into_its_edge_the_more_it_presses() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        let size = (160.0, 160.0);
+        assert_eq!(press_of(&s, size, Edge::Right, (1300.0, 400.0)), 0.0, "pointer at or past its middle: no press");
+        assert!((press_of(&s, size, Edge::Right, (1400.0, 400.0)) - 0.5).abs() < 1e-9);
+        assert_eq!(press_of(&s, size, Edge::Right, (1440.0, 400.0)), 1.0, "at the screen's edge: all of it");
+        assert_eq!(press_of(&s, size, Edge::Left, (-5.0, 400.0)), 1.0);
+        assert!((press_of(&s, size, Edge::Top, (700.0, 65.0)) - 0.5).abs() < 1e-9);
+        assert_eq!(press_of(&s, size, Edge::Bottom, (700.0, f64::NAN)), 0.0);
+    }
+    #[test]
+    fn the_screen_edge_is_found_from_the_window() {
+        let s = Screen { id: "a".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 25.0, 1440.0, 875.0], primary: true, notch: None };
+        assert_eq!(screen_at(Edge::Right, &s, [1280.0, 300.0, 160.0, 160.0]), 160.0);
+        assert_eq!(screen_at(Edge::Right, &s, [1360.0, 300.0, 160.0, 160.0]), 80.0, "half past the edge");
+        assert_eq!(screen_at(Edge::Left, &s, [-80.0, 300.0, 160.0, 160.0]), 80.0);
+        assert_eq!(screen_at(Edge::Bottom, &s, [600.0, 740.0, 160.0, 160.0]), 160.0);
     }
 }

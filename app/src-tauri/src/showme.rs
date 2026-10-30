@@ -878,8 +878,8 @@ mod tests {
         let line = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find('\n').unwrap()].to_string() };
         assert!(line("fn toggle_card(").contains("toggle_home(app, \"character\")") && line("fn island_click(").contains("toggle_home(app, \"island\")"));
         assert!(body("fn toggle_home(").contains("card_closed_hush("), "and a click on the character or the island");
-        // Hold to talk is the two key chord in use (F18 item 3): found by is_talk(s).
-        let hold = &main[main.find("if is_talk(s) {").unwrap()..];
+        // Hold to talk is the two key chord in use (F18 item 3), and since M36 the Type key too: found by hold_mode(s).
+        let hold = &main[main.find("if let Some(mode) = hold_mode(s) {").unwrap()..];
         let hold = &hold[..hold.find("voice_send(app").unwrap()];
         assert!(hold.contains("showme_end_answer(app)") && hold.contains("emit(\"hush\""), "so does starting to hold to talk");
         let pp = body("fn point_problem(");

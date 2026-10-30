@@ -2,7 +2,7 @@
 // feeds them what the page and the pointer say, and shuts everything down cleanly. It listens to the pointer without ever
 // taking it: nothing here stops a click, a drag or a key from reaching the window's own handlers.
 import type { CharacterState } from "../model.ts";
-import { FlowflowEngine } from "./engine.ts";
+import { FlowflowEngine, type Side } from "./engine.ts";
 import { FlowflowRenderer } from "./renderer.ts";
 import type { Tuning } from "./physics.ts";
 
@@ -21,7 +21,8 @@ export type ControllerOptions = {
 };
 
 /** Frame intervals (seconds) for the resting moods, to spend little when nothing is happening. */
-const IDLE_INTERVAL = 1 / 30, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
+// M38 (battery): 20 a second while it only sways at rest; its slow liquid motion looks the same, the GPU works a third less.
+const IDLE_INTERVAL = 1 / 20, SLEEP_INTERVAL = 1 / 15, RESUME_GAP_MS = 500;
 
 export class FlowflowController {
   readonly engine: FlowflowEngine; private renderer: FlowflowRenderer;
@@ -77,6 +78,9 @@ export class FlowflowController {
   gaze(dx: number, dy: number): void { if (this.disposed || this.reduced) return; this.engine.gaze(dx, dy); this.lastPointer = performance.now(); this.resumeOrPause(); }
   push(vx: number, vy: number): void { if (this.disposed || this.reduced) return; this.engine.push(vx, vy); this.lastPointer = performance.now(); this.resumeOrPause(); }
   arrive(fromX: number, fromY = 0): void { if (this.disposed || this.reduced) return; this.engine.arrive(fromX, fromY); this.lastPointer = performance.now(); this.resumeOrPause(); }
+  /** M37c: the surface the water clings to, and how hard it is pushed into it (engine.ts Surface). */
+  setSurface(side: Side | null, at = 1, cling = 0): void { if (this.disposed) return; this.engine.setSurface(side, at, cling); if (this.reduced) this.still(); else this.resumeOrPause(); }
+  press(amount: number): void { if (this.disposed) return; this.engine.press(amount); if (this.reduced) this.still(); else { this.lastPointer = performance.now(); this.resumeOrPause(); } }
   setLively(on: boolean): void { this.engine.lively = on; if (on) this.resumeOrPause(); }
 
   /** The water's colours (lookfeel.ts flowColours). */

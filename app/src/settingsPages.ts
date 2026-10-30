@@ -11,8 +11,8 @@ export type Page = { icon: IconName; keys: readonly string[]; fixed: readonly Fi
 export const PAGES: Readonly<Record<PageId, Page>> = {
   account: { icon: "person", keys: ["spend.dailyLimit"], fixed: ["key", "google"] },
   general: { icon: "sliders", keys: ["island.show", "island.showWork", "island.openForQuestions", "home.escStops", "sharing.hide", "calls.quiet", "display.textSize", "updates.daily"], fixed: [] },
-  character: { icon: "drop", keys: ["character.name", "look.water", "look.size", "character.edge", "character.follow", "sound.on"], fixed: [] },
-  voice: { icon: "mic", keys: ["talk.speak", "talk.captions", "talk.voice"], fixed: [] },
+  character: { icon: "drop", keys: ["character.name", "look.water", "look.size", "character.edge", "character.peek", "character.follow", "sound.on"], fixed: [] },
+  voice: { icon: "mic", keys: ["talk.dictate", "talk.speak", "talk.captions", "talk.voice"], fixed: [] },
   shortcuts: { icon: "keyboard", keys: ["keys.hotkeys"], fixed: [] },
   powers: { icon: "grid", keys: ["flow.on", "guide.on", "voice.on", "files.on"], fixed: [] },
   privacy: { icon: "lock", keys: ["memory.paused", "rules.house"], fixed: ["permissions", "kept"] },

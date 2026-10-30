@@ -60,6 +60,7 @@ mod voice_mac;
 mod voiceset;
 mod voicewords;
 mod talkkeys;
+mod dictate;
 mod keymap;
 mod visibility;
 mod wheel;
@@ -339,8 +340,12 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     // Another display, or the launch, can change the place Settings shows: the pages are told (a drag tells them once, on
     // the drop).
     if reason != "drag" && place_shown_changed() { if let Some(app) = APP.get() { place_told(app); } }
-    // On its edge, inside the work area, out of the clear zone at the top centre (the notch island).
-    let f = docking::place(&target, DOCK, edge, pct, home_size());
+    // On its edge, inside the work area, out of the clear zone at the top centre (the notch island). M37: or where it was
+    // let go, away from every edge; it then faces the nearest edge and does not peek.
+    let free = with_prefs(|p| p.free.get(&target.id).copied());
+    let f = match free { Some(at) => docking::place_free(&target, DOCK, at, home_size()), None => docking::place(&target, DOCK, edge, pct, home_size()) };
+    let edge = if free.is_some() { docking::nearest_edge(f, target.work) } else { edge };
+    HOME_FREE.store(free.is_some(), Ordering::SeqCst);
     // This is home now. A drag or a display change also ends any visit beside a window, with no trip back, and stops a
     // trip that was under way where it is.
     ROAM_GEN.fetch_add(1, Ordering::SeqCst);
@@ -362,15 +367,26 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
 fn drag_dock(app: AppHandle, x: f64, y: f64) {
     // While the person drags it nothing else moves it (F18 item 2).
     DRAG_AT.store(now() as u64, Ordering::SeqCst);
+    let a = app.clone();
     let _ = app.run_on_main_thread(move || {
+        let app = a;
         let mtm = MainThreadMarker::new().unwrap();
         let list = screens_now(mtm);
         let Some(first) = list.first() else { return };
         let target = list.iter().find(|s| x >= s.frame[0] && x < s.frame[0] + s.frame[2] && y >= s.frame[1] && y < s.frame[1] + s.frame[3]).unwrap_or(first).clone();
         let (edge, pct) = snap_on(&target, DOCK, x, y, home_size());
+        let free = docking::free_on(&target, DOCK, x, y);
         *LAST_DRAG.lock().unwrap() = (x, y, target.work[0], target.work[2]);
         // With Same place on every display on, the place dragged to is the one copied to displays with no place yet.
-        with_prefs(|p| { p.last_screen = target.id.clone(); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } });
+        // M37: away from every edge it stays where it is let go; near one it snaps to it, as before.
+        // M37c: how hard it is pushed into its edge, for the water to flatten against it (none when it is let go free).
+        let press = if free.is_some() { 0.0 } else { docking::press_of(&target, DOCK, edge, (x, y)) };
+        let at = docking::screen_at(edge, &target, docking::place(&target, DOCK, edge, pct, home_size()));
+        let _ = app.emit_to("dock", "dock-press", json!({ "edge": if free.is_some() { Value::Null } else { json!(edge.word()) }, "press": press, "screenAt": at }));
+        with_prefs(|p| {
+            p.last_screen = target.id.clone();
+            match free { Some(at) => { p.free.insert(target.id.clone(), at); } None => { p.free.remove(&target.id); p.per_screen.insert(target.id.clone(), (edge, pct)); if p.same_everywhere.is_some() { p.same_everywhere = Some((edge, pct)); } } }
+        });
         apply_dock(mtm, "drag", true);
     });
 }
@@ -391,6 +407,8 @@ fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLAC
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
     DRAG_AT.store(0, Ordering::SeqCst);
+    // Let go: the water springs back from the edge (the page's spring does the wobble).
+    let _ = app.emit_to("dock", "dock-press", json!({ "press": 0.0 }));
     save_prefs();
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
@@ -754,6 +772,8 @@ static ROAM_GEN: AtomicU64 = AtomicU64::new(0);
 static ROAM_AT: Mutex<Option<Rect>> = Mutex::new(None);
 /// The edge home is on, and the named state the character's page was last told.
 static HOME_EDGE: Mutex<docking::Edge> = Mutex::new(docking::Edge::Right);
+/// M37: the character was let go away from every edge and stays there (docking::Prefs::free); it never peeks then.
+static HOME_FREE: AtomicBool = AtomicBool::new(false);
 static ROAM_PHASE: Mutex<roam::Phase> = Mutex::new(roam::Phase::Home);
 /// When the person last dragged the character (ms since 1970), 0 once they let go.
 static DRAG_AT: AtomicU64 = AtomicU64::new(0);
@@ -975,8 +995,9 @@ fn peek_apply(app: &AppHandle, light: bool) {
     let hs = home_set();
     let calm = reduce_motion();
     let at_home = roam_phase() == roam::Phase::Home && roamer().visit().is_none() && !dragging();
-    let n = peek::Now { now: now() as u64, on: hs.peek, idle_on: hs.peek_idle, calm, at_home };
-    let pose = peeker().pose(&n, quiet);
+    let n = peek::Now { now: now() as u64, on: hs.peek, stick: hs.stick, idle_on: hs.peek_idle, calm, at_home };
+    // M37: a character let go in the middle of the screen has no edge to tuck into, so it stays fully in.
+    let pose = if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In } else { peeker().pose(&n, quiet) };
     let was = *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner());
     if pose == was || !at_home { if !at_home { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::Pose::In; } return; }
     let Some(home) = roamer().home() else { return };
@@ -992,7 +1013,8 @@ fn peek_apply(app: &AppHandle, light: bool) {
     *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;
     // The page leans toward the screen while it peeks (dock.tsx data-peek). Where it may not hide, it is simply in.
     let shown = if f == home { peek::Pose::In } else { pose };
-    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word() }));
+    // M37d: and where the screen's edge is from the window's own top left, so the water flattens against the real edge.
+    let _ = app.emit_to("dock", "peek", json!({ "pose": shown.word(), "edge": edge.word(), "screenAt": docking::screen_at(edge, s, f) }));
 }
 
 /// Each tick: the pointer on the character (its place only), then the pose.
@@ -1038,21 +1060,22 @@ fn gaze_tick(app: &AppHandle) {
     let _ = app.emit_to("dock", "gaze", json!({ "dx": rel.0, "dy": rel.1 }));
 }
 
-/// A drop that follows you (follow.rs): about sixty times a second, while A drop of water is chosen and no pointer ring is
-/// up, the drop's spring moves toward the pointer and its window follows; otherwise the window is put away. Its own thread.
+/// The water ring around the pointer (follow.rs, M37): about 120 times a second, while it is chosen and no pointer ring is
+/// up, its window is put on the pointer; otherwise the window is put away. Its own thread.
 fn follow_loop(app: AppHandle) {
     let mut d = follow::Drop::default();
     let (mut shown, mut want, mut tick) = (false, false, 0u64);
     let mut water = Value::Null;
     let mut last = std::time::Instant::now();
     let mut last_fr = [f64::NAN; 4];
+    let mut sent_speed = 0.0f64;
     loop {
         std::thread::sleep(Duration::from_millis(follow::TICK_MS));
         if tick % 30 == 0 { want = follow::wanted(&setting_now("character.follow")); water = setting_now("look.water"); }
         tick += 1;
         if !want || overlay_busy() {
             if shown {
-                shown = false; d.placed = false;
+                shown = false; d.placed = false; FOLLOW_LIVE.store(false, Ordering::SeqCst);
                 let _ = app.run_on_main_thread(|| FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.orderOut(None); } }));
             }
             last = std::time::Instant::now();
@@ -1066,20 +1089,37 @@ fn follow_loop(app: AppHandle) {
         d.step((p.x, p.y), dt);
         let saying = { let mut g = FOLLOW_SAY.lock().unwrap_or_else(|e| e.into_inner()); if g.as_ref().is_some_and(|(_, at)| at.elapsed() > Duration::from_millis(follow::SAY_MS)) { *g = None; let _ = app.emit_to("follow", "follow-say", json!({ "text": "" })); } g.is_some() };
         let (fr, first) = (if saying { d.frame_saying() } else { d.frame() }, !shown);
+        // The speed goes to the page while it moves and until it has eased back to nothing (M37: the ring's stretch).
+        let speed = d.vx.hypot(d.vy);
+        if tick % 2 == 0 && (speed > 1.0 || sent_speed > 1.0) { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); sent_speed = speed; }
         // Still: nothing to move (no work for the main thread while the pointer rests), compared with the frame last set.
         if !first && fr.iter().zip(last_fr.iter()).all(|(a, b)| (a - b).abs() < 0.25) { continue; }
+        // M41: once shown, the mouse watch moves it (follow_to_pointer); this loop only shows it and changes its width.
+        if !first && (fr[2] - last_fr[2]).abs() < 0.5 { last_fr = fr; continue; }
+        // M37 (the founder: "it lags a bit"): one move waits on the main thread at most. A move that is still queued is not
+        // queued again (they used to pile up behind other work and the ring fell behind), and the move reads where the
+        // pointer is at the moment it runs, so it is always the latest place, never an old one.
+        if !first && FOLLOW_QUEUED.swap(true, Ordering::SeqCst) { continue; }
+        if first { FOLLOW_QUEUED.store(true, Ordering::SeqCst); }
         last_fr = fr;
         shown = true;
+        let (w, h, vx, vy) = (fr[2], fr[3], d.vx, d.vy);
         let _ = app.run_on_main_thread(move || {
+            FOLLOW_QUEUED.store(false, Ordering::SeqCst);
             let Some(mtm) = MainThreadMarker::new() else { return };
             let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+            let p = macos_see::pointer();
+            // Placed a touch ahead of a moving pointer, so it lands on the cursor when the screen shows it (follow::led).
+            let (lx, ly) = follow::led((p.x, p.y), (vx, vy));
+            let (x, y) = if p.x < 0.0 && p.y < 0.0 { (fr[0], fr[1]) } else { (lx + follow::OFFSET.0 - follow::SIZE / 2.0, ly + follow::OFFSET.1 - follow::SIZE / 2.0) };
             FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() {
-                if (pn.frame().size.width - fr[2]).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3])), NSSize::new(fr[2], fr[3])), true); }
-                else { pn.setFrameOrigin(NSPoint::new(fr[0], primary_h - (fr[1] + fr[3]))); }
-                if first { pn.orderFrontRegardless(); }
+                if (pn.frame().size.width - w).abs() > 0.5 { pn.setFrame_display(NSRect::new(NSPoint::new(x, primary_h - (y + h)), NSSize::new(w, h)), true); }
+                else { pn.setFrameOrigin(NSPoint::new(x, primary_h - (y + h))); }
+                if first { pn.orderFrontRegardless(); FOLLOW_LIVE.store(true, Ordering::SeqCst); }
             } });
         });
-        if tick % 2 == 0 { let _ = app.emit_to("follow", "follow-move", json!({ "vx": d.vx, "vy": d.vy, "water": water })); }
+        // The first time it shows, the page learns the water colour.
+        if first { let _ = app.emit_to("follow", "follow-move", json!({ "vx": 0.0, "vy": 0.0, "water": water })); }
     }
 }
 
@@ -1671,6 +1711,16 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
 /// M33: a short line beside the pointer (a fix just proven), said by the drop that follows it, for follow::SAY_MS. Never
 /// during a call or screen sharing (quiet), and only while the drop is shown.
 static FOLLOW_SAY: Mutex<Option<(String, std::time::Instant)>> = Mutex::new(None);
+/// M37: a move of the water ring is waiting on the main thread (never more than one at a time).
+static FOLLOW_QUEUED: AtomicBool = AtomicBool::new(false);
+/// M41: the ring is on screen now (follow_loop shows and hides it); the mouse watch moves it only then.
+static FOLLOW_LIVE: AtomicBool = AtomicBool::new(false);
+/// M41: put the ring's middle on the pointer now. Main thread, from the mouse watch: the freshest place there is.
+fn follow_to_pointer() {
+    if !FOLLOW_LIVE.load(Ordering::SeqCst) { return; }
+    let m = NSEvent::mouseLocation();   // bottom left points, the same as a window's origin
+    FOLLOW.with(|f| { if let Some(pn) = f.borrow().as_ref() { pn.setFrameOrigin(NSPoint::new(m.x + follow::OFFSET.0 - follow::SIZE / 2.0, m.y - follow::OFFSET.1 - follow::SIZE / 2.0)); } });
+}
 #[tauri::command]
 fn follow_say(app: AppHandle, text: String) {
     let Some(line) = follow::say_line(&text) else { return };
@@ -2778,6 +2828,11 @@ fn voice_save(before: &voiceset::Saved, next: &voiceset::Saved) -> Result<(), &'
 /// Silence, at once. Also part of Stop everything.
 #[tauri::command]
 fn speak_stop(app: AppHandle) { speech_off(&app); }
+/// M38: each word the voice is about to say goes to the overlay, so a mark being drawn keeps pace with the words (overlay.ts
+/// SpeechClock). Only how far through the line it is, never the words.
+fn speech_word(part: Option<f64>) {
+    if let Some(app) = APP.get() { let _ = app.emit_to("overlay", "speech-word", json!({ "part": part })); }
+}
 fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
 
 /// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
@@ -3437,7 +3492,8 @@ static KEYS_SWITCH: Mutex<()> = Mutex::new(());
 /// Whether use a suggestion's keys are registered now (only while a Prompt help result shows).
 static ACCEPT_ARMED: AtomicBool = AtomicBool::new(false);
 /// Key repeats while the hold to talk keys are held restart nothing (talkkeys::Held).
-static TALK_HELD: Mutex<talkkeys::Held> = Mutex::new(talkkeys::Held::new());
+/// M36: the Type key shares it, so only one hold uses the microphone at a time (talkkeys::Holding).
+static TALK_HELD: Mutex<talkkeys::Holding> = Mutex::new(talkkeys::Holding::new());
 
 fn keys_path() -> PathBuf { data_dir().join(keymap::FILE) }
 fn key_using(a: keymap::Action) -> Option<keymap::Chord> { keymap::decode(KEYS_USING[a.index()].load(Ordering::SeqCst)) }
@@ -3458,6 +3514,12 @@ fn key_action(s: &Shortcut) -> Option<keymap::Action> {
 }
 /// Whether a shortcut the plugin reports is the hold to talk chord in use right now.
 fn is_talk(s: &Shortcut) -> bool { key_action(s) == Some(keymap::Action::Talk) }
+/// Whether it is one of the two held chords in use now, and which: hold to talk, or the Type key (M36).
+fn hold_mode(s: &Shortcut) -> Option<talkkeys::Mode> {
+    if is_talk(s) { Some(talkkeys::Mode::Ask) } else if key_action(s) == Some(keymap::Action::Dictate) { Some(talkkeys::Mode::Type) } else { None }
+}
+/// A job held like hold to talk.
+fn is_hold_job(a: keymap::Action) -> bool { matches!(a, keymap::Action::Talk | keymap::Action::Dictate) }
 /// Saves what the person picked. Only one file keeps the keys: hold to talk's old one goes once the new one is written.
 fn save_keys(m: &keymap::Map) -> bool {
     let _ = std::fs::create_dir_all(data_dir());
@@ -3538,7 +3600,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
             *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
             set_key_using(a, Some(wanted));
             // The old hold to talk keys no longer reach it, so a hold still going on them is ended here, not left open.
-            if a == keymap::Action::Talk && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
+            if is_hold_job(a) && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
             log("key_set", json!({ "action": a.id(), "id": keymap::id(wanted) }));
             settings_told(&app, &["keys.hotkeys".to_string()]);
             Ok(keymap::state_json(&keys_using(), &next))
@@ -3571,8 +3633,8 @@ fn keys_to_usual(app: &AppHandle) -> Result<Value, &'static str> {
         Ok(done) => {
             *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = done.picked;
             for a in keymap::ACTIONS { set_key_using(a, done.using[a.index()]); }
-            let talk = keymap::Action::Talk.index();
-            if using[talk] != done.using[talk] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+            let (talk, typing) = (keymap::Action::Talk.index(), keymap::Action::Dictate.index());
+            if using[talk] != done.using[talk] || using[typing] != done.using[typing] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             let kept: Vec<&str> = done.kept.iter().map(|a| a.id()).collect();
             log("keys_reset", json!({ "kept": kept }));
             let mut v = keymap::state_json(&done.using, &done.picked);
@@ -3599,7 +3661,7 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
             Ok(next) => {
                 *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
                 set_key_using(a, Some(want));
-                if a == keymap::Action::Talk && was != Some(want) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+                if is_hold_job(a) && was != Some(want) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             }
             Err(_) => failed.push(a),
         }
@@ -3641,7 +3703,7 @@ fn show_me_key(app: &AppHandle) {
             SHOWME_LISTENING.store(true, Ordering::SeqCst);
             // As hold to talk starts: nothing talks over the person, a Show me answer still playing ends.
             speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ());
-            voice_send(app, VoiceMsg::Down(now() as u64));
+            voice_send(app, VoiceMsg::Down(now() as u64, talkkeys::Mode::Ask));
         }
         voice::ShowMeKey::Finish => {
             SHOWME_LISTENING.store(false, Ordering::SeqCst);
@@ -3654,7 +3716,8 @@ fn show_me_key(app: &AppHandle) {
 
 /// Hidden: Companion was just hidden (a full screen app came forward, or Hide from the menu bar). It only wakes the worker,
 /// which then closes an open microphone at once instead of at its next one second check.
-enum VoiceMsg { Down(u64), Up(u64), Cancel, Hidden }
+/// Down carries what the hold is for (M36): talking to Squibby, or typing into the app in front.
+enum VoiceMsg { Down(u64, talkkeys::Mode), Up(u64), Cancel, Hidden }
 const LISTENING: &str = "Listening. Let go of the keys when you are done.";
 /// Hold to talk is listening: from just before the light comes on until the microphone is closed (let go, Stop everything,
 /// the cap running out, Companion being hidden, or a microphone that would not start). Nothing is said meanwhile (`speak`).
@@ -3665,6 +3728,16 @@ static VOICE_TX: Mutex<Option<std::sync::mpsc::Sender<VoiceMsg>>> = Mutex::new(N
 /// How many times Stop everything was pressed. Bumped before its Cancel is queued, so the worker sees a Stop that came while
 /// it was busy: the microphone never opens after one, and words heard before one are dropped (rule 11).
 static VOICE_STOPS: AtomicU64 = AtomicU64::new(0);
+/// M36: how many holds began, so a Type key result line ("Typed into Notes.") is cleared a few seconds later only if no
+/// new hold has started since.
+static VOICE_HOLDS: AtomicU64 = AtomicU64::new(0);
+/// A Type key result: in Home's line and as a word at the pointer, then cleared after a few seconds.
+fn say_typed(app: &AppHandle, stage: &'static str, line: &str, extra: Value) {
+    say_voice(app, stage, line, extra);
+    if let Some(w) = dictate::pointer_word(stage) { follow_say(app.clone(), w.to_string()); }
+    let (a, holds) = (app.clone(), VOICE_HOLDS.load(Ordering::SeqCst));
+    std::thread::spawn(move || { std::thread::sleep(Duration::from_secs(4)); if VOICE_HOLDS.load(Ordering::SeqCst) == holds && !listening_now() { say_voice(&a, "idle", "", json!({})); } });
+}
 
 fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
     let mut v = json!({ "v": 1, "id": format!("vo{}", now()), "type": "app.voice", "stage": stage, "message": message });
@@ -3729,6 +3802,9 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let mut quiet_mic = false;
     // Stop everything's count as the keys went down: any Stop since then ends this hold.
     let mut stops_at = VOICE_STOPS.load(Ordering::SeqCst);
+    // M36: where the words go when the Type key started this hold (the app in front and its focused element at the press).
+    // None for hold to talk: the words go to Home's ask box.
+    let mut typing: Option<dictate::Target> = None;
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
@@ -3745,10 +3821,18 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
             say_voice(&app, "error", &words, json!({}));
         }
         match msg {
-            Ok(VoiceMsg::Down(t)) => {
+            Ok(VoiceMsg::Down(t, mode)) => {
                 // The cap is read as the keys go down and kept for this hold (there is always one, at most two minutes).
                 let cap = voice::max_hold_ms(&setting_now("talk.maxHold"));
                 if hold.down_for(t, cap) != voice::Step::Start { continue; }
+                typing = None;
+                VOICE_HOLDS.fetch_add(1, Ordering::SeqCst);
+                // The Type key (M36): switched off in Settings, or no Accessibility yet (asked here, the first time it is
+                // used, rule 8). Nothing listens either way.
+                if mode == talkkeys::Mode::Type {
+                    if setting_now("talk.dictate") == json!(false) { hold.cancel(); say_voice(&app, "error", "Typing by voice is off. Turn it on in Settings, Voice.", json!({})); continue; }
+                    if !ax::trusted(true) { hold.cancel(); say_voice(&app, "needs_access", concat!("To type for you, ", crate::product!(), " needs Accessibility. Allow it in the box macOS shows (or System Settings, Privacy and Security, Accessibility), then hold the keys again."), json!({})); continue; }
+                }
                 stops_at = VOICE_STOPS.load(Ordering::SeqCst);
                 voice_mac::set_buffer_room(voice::buffer_samples(cap));
                 if !voice_mac::model_ready(&data) { hold.cancel(); if DOWNLOADING.load(Ordering::SeqCst) { say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": DOWNLOAD_PERCENT.load(Ordering::SeqCst) })); } else { say_voice(&app, "needs_model", concat!("To talk to ", crate::product!(), ", it needs a speech model on this Mac (about 140 MB, downloaded once). Your voice never leaves this Mac."), json!({})); } continue; }
@@ -3776,12 +3860,34 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 if companion_hidden() { hold.cancel(); listening(false); say_voice(&app, "error", voice::HIDDEN_WORDS, json!({})); continue; }
                 // Stop everything meanwhile: the microphone never opens.
                 if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.cancel(); listening(false); say_voice(&app, "idle", "", json!({})); continue; }
+                // The Type key, with the light on: which app and box the words go to (never what the box holds). A password
+                // box, secure typing or a never-read app is refused here and the microphone never opens. With Squibby
+                // itself in front, the words go to its own ask box as with hold to talk.
+                if mode == talkkeys::Mode::Type {
+                    if let Some(front) = ax::front_app().filter(|f| f.pid != std::process::id() as i32) {
+                        let f = ax::focused(front.pid);
+                        let (role, subrole) = f.as_ref().map_or((String::new(), String::new()), |f| (f.role.clone(), f.subrole.clone()));
+                        if let Err(v) = dictate::target_verdict(&role, &subrole, ax::secure_input_enabled(), &front.bundle_id, &prompthelp::Denylist::empty()) {
+                            hold.cancel(); listening(false); log("dictate_refused", json!({ "why": v.code() }));
+                            say_typed(&app, "refused", dictate::refused_words(v), json!({}));
+                            continue;
+                        }
+                        typing = Some(dictate::Target { pid: front.pid, bundle: front.bundle_id, name: front.name, element: f.map_or(0, |f| f.element.id()) });
+                    }
+                }
                 // The microphone picked in Settings, or the Mac's default when it is not connected or will not open (voiceset::open_at_start).
                 match voice_mac::Recorder::start(voice_now().mic) {
                     Ok((r, opened)) => {
                         // Stop everything while it opened (a Bluetooth microphone can take seconds): closed again at once.
                         if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { let _ = r.finish(); hold.cancel(); listening(false); log("voice_stopped_opening", json!({})); say_voice(&app, "idle", "", json!({})); continue; }
                         quiet_mic = opened.quiet;
+                        // M39: the water ring at the pointer ripples with the voice while the keys are held (follow.ts). Only how
+                        // loud, about 25 times a second, and only until the microphone closes.
+                        voice_mac::reset_level();
+                        { let (a, typing_now) = (app.clone(), mode == talkkeys::Mode::Type); std::thread::spawn(move || {
+                            while listening_now() { let _ = a.emit_to("follow", "follow-voice", json!({ "level": voice_mac::level(), "typing": typing_now })); std::thread::sleep(Duration::from_millis(40)); }
+                            let _ = a.emit_to("follow", "follow-voice", json!({ "level": Value::Null }));
+                        }); }
                         rec = Some(r); log("voice_listening", json!({ "fell_back": opened.missing.is_some(), "quiet": opened.quiet }));
                         // The picked microphone is not connected, so the default listens: one plain line, once each time it goes away.
                         if MIC_NOTE.lock().unwrap_or_else(|e| e.into_inner()).tell(opened.missing.as_deref()) {
@@ -3842,6 +3948,14 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                     // Only the word list written back is not what the person said (voicewords::is_echo).
                                     Ok(text) if voicewords::is_echo(&text, &words) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     // The language picked in Settings goes with the words: the page sends by itself only in English for now.
+                                    // The Type key (M36): into the box in front, at the cursor, never sent. Stop is checked
+                                    // again right before the paste.
+                                    Ok(text) if !text.is_empty() && typing.is_some() => {
+                                        let target = typing.take().unwrap_or_else(|| unreachable!());
+                                        let (stage, line) = dictate::insert_at_cursor(&target, &text, || VOICE_STOPS.load(Ordering::SeqCst) != stops_at);
+                                        say_typed(&app, stage, &line, mic);
+                                        if stage == "typed" { mark_tried(&app, "dictate") }
+                                    }
                                     Ok(text) if !text.is_empty() => { mic["text"] = json!(text); mic["language"] = json!(voice_now().language); say_voice(&app, "heard", "", mic); mark_tried(&app, "talk") }
                                     Ok(_) => say_voice(&app, "silent", "I did not catch any words. Try again.", mic),
                                     Err(e) => say_voice(&app, "error", &e, mic),
@@ -4224,17 +4338,18 @@ fn main() {
                         }
                         return;
                     }
-                    // Hold to talk (two keys, talkkeys.rs) needs to know when the keys come up as well as down.
-                    if is_talk(s) {
+                    // Hold to talk and the Type key (M36) need to know when the keys come up as well as down.
+                    if let Some(mode) = hold_mode(s) {
                         let down = e.state == ShortcutState::Pressed;
-                        // A key repeat while held, or a let go that ends no press, restarts nothing and is not logged.
-                        let counts = { let mut h = TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()); if down { h.press(now() as u64) } else { h.release() } };
+                        // A key repeat while held, a let go that ends no press, or the other hold key while one is held,
+                        // restarts nothing and is not logged (one microphone, talkkeys::Holding).
+                        let counts = { let mut h = TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()); if down { h.press(mode, now() as u64) } else { h.release(mode) } };
                         if !counts { return; }
-                        log("hotkey", json!({ "id": "talk", "down": down }));
+                        log("hotkey", json!({ "id": if mode == talkkeys::Mode::Type { "dictate" } else { "talk" }, "down": down }));
                         // Never talk over the person: what is being said stops, a Show me answer still playing ends (no
                         // later step is drawn or said), and the page drops any line still waiting to be said.
                         if down { SHOWME_LISTENING.store(false, Ordering::SeqCst); speech_off(app); showme_end_answer(app); let _ = app.emit("hush", ()); }
-                        voice_send(app, if down { VoiceMsg::Down(now() as u64) } else { VoiceMsg::Up(now() as u64) });
+                        voice_send(app, if down { VoiceMsg::Down(now() as u64, mode) } else { VoiceMsg::Up(now() as u64) });
                         return;
                     }
                     if e.state != ShortcutState::Pressed { return; }
@@ -4272,7 +4387,7 @@ fn main() {
                             let _ = app.emit("runner-event", stop);
                             showme_stop(&app);
                         }
-                        keymap::Action::Talk => {}
+                        keymap::Action::Talk | keymap::Action::Dictate => {}
                     }
                 })
                 .build(),
@@ -4288,6 +4403,7 @@ fn main() {
         })
         .setup(move |app| {
             log("launch", json!({}));
+            let _ = speak::WORD_HOOK.set(speech_word);   // M38: drawing keeps pace with the voice
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
             let mk = |label: &str, page: &str, size: (f64, f64)| {
@@ -4352,6 +4468,17 @@ fn main() {
             let follow_p = make_overlay(mtm, follow_ns);
             follow_p.setFrame_display(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(follow::SIZE, follow::SIZE)), false);
             FOLLOW.with(|f| *f.borrow_mut() = Some(follow_p));
+            // M41 (the founder: "ring is laggy"): the ring moves the moment macOS says the mouse moved, on the main thread,
+            // straight to where the pointer is, so it keeps up with the cursor. Only mouse moves and drags are watched (where
+            // the pointer is), never keys and never clicks' content; nothing is kept. A global monitor for mouse events needs
+            // no permission (only key events would need Accessibility, rule 8). Ours (local) and every other app's (global).
+            let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;
+            let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); });
+            let gm = unsafe { NSEvent::addGlobalMonitorForEventsMatchingMask_handler(follow_moves, &follow_global) };
+            std::mem::forget(gm);
+            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); e.as_ptr() });
+            let lm = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(follow_moves, &follow_local) };
+            std::mem::forget(lm);
             // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.
             let island_ns: &NSWindow = unsafe { &*(island_w.ns_window()? as *const NSWindow) };
             let island = make_panel(mtm, island_ns, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(185.0, 32.0)));

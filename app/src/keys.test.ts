@@ -9,10 +9,10 @@ afterEach(() => setKeysNow(KEYS_START));
 
 describe("the usual keys", () => {
   test(`are the ones ${PRODUCT} always had, one per job`, () => {
-    expect(JOBS).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "stop"]);
+    expect(JOBS).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"]);
     expect(KEY_DEFAULTS).toEqual({
       card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
-      accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", stop: "control-option-command-x",
+      accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", dictate: "option-shift-space", stop: "control-option-command-x",
     });
     expect(KEYS_START).toEqual({ using: KEY_DEFAULTS, picked: KEY_DEFAULTS });
     expect(new Set(Object.values(KEY_DEFAULTS)).size).toBe(JOBS.length);
@@ -155,5 +155,15 @@ describe("Change: the short list", () => {
     expect(keyProblem("not_saved")).toBe(S.keysNotSaved);
     for (const c of ["unknown", "not_card", "Error: something odd", ""]) expect(keyProblem(c), c).toBe(S.keysFailed);
     for (const w of [S.keysTaken, S.keysInUse, S.keysNotSaved, S.keysFailed]) { expect(w).not.toContain("—"); expect(w.length).toBeGreaterThan(10); }
+  });
+});
+
+describe("keycaps (M40)", () => {
+  test("a chord is shown as the Mac's own key symbols, in the Mac's order", async () => {
+    const { keycaps } = await import("./keys.ts");
+    expect(keycaps("control-option-command-f")).toEqual(["⌃", "⌥", "⌘", "F"]);
+    expect(keycaps("option-shift-space")).toEqual(["⌥", "⇧", "Space"]);
+    expect(keycaps(null)).toEqual([]);
+    expect(keycaps("nonsense")).toEqual([]);
   });
 });

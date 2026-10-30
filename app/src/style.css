@@ -12,7 +12,7 @@
    islandSpring.ts, as a linear() curve) only for rare delight (the first run, a proven fix); four durations, 120 200 280
    400 ms, and nothing a person sees often over 280 ms. Every press answers at once with a small squeeze (scale .97).
    Interruptible, none with reduced motion. */
-:root { --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
+:root { --ask-edge: color-mix(in srgb, var(--fg) 45%, var(--bg)); --bg: #ffffff; --fg: #111; --muted: #6b6b70; --line: #e6e6ea; --edge: #767680; --surface: #f4f4f6; --amber: #ffb020; --amber-line: #b87300; --danger: #c0392b; --ok: #187a42;
   --lime: #E9ECF1; --water: #59D2FF; --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15; --sky: #000000; --key: #111111; --key-ink: #E9ECF1; --key-edge: #000000;
   --round: ui-rounded, "SF Pro Rounded", -apple-system, sans-serif;
   --t-caption: calc(12rem / 14); --t-small: calc(13rem / 14); --t-body: calc(15rem / 14); --t-answer: calc(16rem / 14); --t-title: calc(19rem / 14); --t-display: calc(22rem / 14);
@@ -29,6 +29,7 @@
 :root[data-text="large"] { font-size: 16px; }
 :root[data-text="larger"] { font-size: 18px; }
 :root[data-text="largest"] { font-size: 20px; }
+:root[data-text="huge"] { font-size: 28px; }
 @media (prefers-color-scheme: dark) { :root { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; } }
 @media (prefers-contrast: more) { :root { --muted: var(--fg); --line: var(--edge); } .panel { border-top-width: 2px; } }
 html, body { margin: 0; background: var(--bg); color: var(--fg); user-select: none; cursor: default; -webkit-font-smoothing: antialiased; }
@@ -77,7 +78,7 @@ html.dock-page, body.dock-page { background: transparent; }
    Its window paints nothing (main.rs), so only the shape shows. No side list and no title bar: small round buttons at the
    top, Flowflow large beside the job in big words, one ask box and three quick actions, then the result as a card. The
    window is as tall as what shows (card.tsx measures .inner and the strip), from 300 (island.rs HomeSize). */
-:root.home-page { --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; }
+:root.home-page { --ask-edge: color-mix(in srgb, var(--fg) 40%, var(--bg)); --bg: #000000; --fg: #f5f5f7; --muted: #a1a1a6; --line: #2c2c2e; --edge: #8e8e96; --surface: #1c1c1e; --card: #18181b; --amber-line: var(--amber); --danger: #ff7a6e; --ok: #4cc27f; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; }
 @media (prefers-contrast: more) { :root.home-page { --muted: var(--fg); --line: var(--edge); } }
 html.home-page, body.home-page { background: transparent; }
 .card { padding: 0; height: 100vh; box-sizing: border-box; }
@@ -92,6 +93,10 @@ html.home-page, body.home-page { background: transparent; }
 .home[data-tone="needsYou"] .bar-dot { background: var(--amber-line); }
 .home[data-tone="done"] .bar-dot { background: var(--ok); }
 .home[data-tone="notDone"] .bar-dot { background: var(--danger); }
+/* M45: a result that is not proven. Partly proven: the amber dot only. Plain (stopped, undone, nothing checked): the idle
+   look. Only "done", a proven fix, is green. */
+.home[data-tone="partly"] .bar-dot { background: var(--amber-line); }
+.home[data-tone="plain"] .bar-dot { background: color-mix(in srgb, var(--fg) 50%, var(--bg)); }
 .places { display: flex; align-items: center; gap: var(--space-1); margin-left: auto; }
 .icon-btn, .back { position: relative; flex: none; display: grid; place-items: center; width: calc(28rem / 14); height: calc(28rem / 14); padding: 0; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--fg) 8%, var(--bg)); color: var(--fg); cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .icon-btn.close { width: calc(22rem / 14); height: calc(22rem / 14); margin-left: var(--space-2); }
@@ -123,7 +128,7 @@ html.home-page, body.home-page { background: transparent; }
 /* The one ask box: a round field with the mic and the one filled button inside it. Its edge is quiet but still seen (3 to 1,
    a11y.test.ts); on focus it is white with a soft ring. The send button waits small and grey until there are words, then
    pops to full size on the spring. */
-.home .ask { align-items: flex-end; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface); border: 1px solid color-mix(in srgb, var(--fg) 45%, var(--bg)); border-radius: var(--r-lg); transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.home .ask { align-items: flex-end; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface); border: 1px solid var(--ask-edge); border-radius: var(--r-lg); transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
 .home .ask:focus-within { border-color: var(--fg); box-shadow: 0 0 0 4px color-mix(in srgb, var(--fg) 8%, transparent); }
 .home .ask textarea { border: 0; background: transparent; padding: calc(8rem / 14) calc(12rem / 14); border-radius: var(--r-lg); }
 .home .ask .icon-btn { background: transparent; color: var(--muted); }
@@ -148,6 +153,8 @@ html.home-page, body.home-page { background: transparent; }
 /* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a big readable card that sits on the
    black: a slightly lighter black, a hairline, a large corner, and it rises in on the spring when it arrives. */
 .home .view .panel { background: var(--card); border-radius: var(--r-lg); padding: var(--space-4) var(--space-5); margin: 0 0 var(--space-3); border: 1px solid rgba(255, 255, 255, .06); animation: card-in var(--dur-2) var(--ease-out) both; }
+/* M41 (Resend): a thin rim of light along each card's top edge, like glass catching the light, and a soft shade below. */
+.home .view .panel { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .09), 0 10px 30px -18px rgba(0, 0, 0, .8); background-image: linear-gradient(180deg, rgba(255, 255, 255, .025), transparent 40%); }
 @keyframes card-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
 .home .view .panel + .panel { border: 1px solid rgba(255, 255, 255, .06); padding-top: var(--space-4); }
 .home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }
@@ -488,7 +495,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .onboarding .ob-steps { margin: var(--space-2) 0; padding-left: 1.4em; display: grid; gap: var(--space-1); font-size: var(--t-body); }
 .first-look { display: grid; gap: var(--space-3); }
 .fl-tagline { margin: 0; font-size: var(--t-small); font-weight: 600; color: var(--muted); }
-.fl-say h2 { margin: 0; font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -0.01em; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-say h2 { margin: 0; font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -0.01em; }
+.fl-say h2 > span { display: block; animation: fl-in var(--dur-slow) var(--ease); }
 .fl-say p { margin: var(--space-1) 0 0; font-size: var(--t-body); }
 @keyframes fl-in { from { opacity: 0; transform: translateY(4px); } }
 .fl-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--space-3); align-items: start; }
@@ -554,7 +562,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 /* The notch's black, lifting to a soft grey where the panel hangs. */
 .island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
 .island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity 160ms var(--ease-out), scale 160ms var(--ease-out), visibility 0s; }
-.island-panel::after { content: ""; position: absolute; left: 10%; right: 10%; bottom: -26px; height: 40px; border-radius: 50%; background: radial-gradient(closest-side, rgba(220, 226, 235, .22), transparent); pointer-events: none; }
+/* M40: the soft glow under the panel read as a smudge; gone. */
+.island-panel::after { content: none; }
 .island-panel button { all: unset; box-sizing: border-box; cursor: pointer; }
 .island-panel button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .island-panel .ip-hi { margin: 4px 4px 0; color: #F7F7F2; font: 700 calc(21rem / 14)/1.15 var(--round); letter-spacing: -.01em; }
@@ -563,7 +572,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-go:active { transform: translateY(3px); box-shadow: inset 0 2px 0 rgba(255, 255, 255, .75), inset 0 -2px 0 rgba(60, 90, 0, .35), 0 1px 0 var(--lime-lo), 0 6px 18px rgba(220, 226, 235, .25); }
 .island-panel .ip-plus { display: grid; place-items: center; width: 24px; min-height: 24px; border-radius: 50%; color: #E9ECF1; background: #0A0A0B; font-size: calc(17rem / 14); font-weight: 700; line-height: 1; }
 .island-panel .ip-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
+.island-panel .ip-set { margin-left: auto; }
+.island-panel .ip-set + .ip-open { margin-left: 0; }
+.island-panel .ip-pill { display: inline-flex; align-items: center; gap: 5px; padding: 7px 10px; border-radius: var(--r-pill); color: #F7F7F2; background: #2A2A2E; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .1); font: 600 var(--t-caption) var(--round); transition: transform 160ms var(--ease-out), background-color var(--dur-2) var(--ease-out); }
 .island-panel .ip-pill:hover { background: #34343A; }
 .island-panel .ip-pill:active, .island-panel .ip-open:active, .island-panel .ip-job:active { transform: scale(.97); }
 .island-panel .ip-open, .island-panel .ip-job, .island-panel .ip-answer button { transition: transform 160ms var(--ease-out), background-color var(--dur-1) var(--ease-out); }
@@ -600,6 +611,9 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel .ip-yes:active, .island-panel .ip-no:active { transform: scale(.97); }
 .island-panel .ip-job[data-tone="done"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px rgba(123, 228, 149, .5); }
 .island-panel .ip-job[data-tone="failed"] { box-shadow: inset 0 0 0 1px rgba(255, 122, 110, .55); }
+/* M45: partly proven has a thin amber edge; plain (stopped, undone, not checked) looks like any resting card. */
+.island-panel .ip-job[data-tone="partly"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent); }
+.island-panel .ip-job[data-tone="plain"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08); }
 .island-panel .ip-agent { display: block; width: 30px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .island-panel .ip-text { display: grid; gap: 1px; min-width: 0; }
 .island-panel .ip-text b { font: 600 var(--t-small) var(--round); color: #fff; overflow-wrap: anywhere; }
@@ -638,7 +652,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .headline { font: 800 calc(30rem / 14)/1.05 var(--round); letter-spacing: -0.025em; margin: 0 0 var(--space-2); }
 .home .subline { font-size: var(--t-small); }
 /* M27: the line under the headline sits in the water, clear of the wave, never on it. */
-.home .hero .hero-words .subline { margin-top: 24px; color: color-mix(in srgb, var(--fg) 72%, transparent); }
+/* M40: right under the headline, clear of the waterline below (at 24px it sat on the water). */
+.home .hero .hero-words .subline { margin-top: var(--space-1); color: color-mix(in srgb, var(--fg) 72%, transparent); }
 /* The ask box: white paper on the water, the words in black, the lime key to send. */
 .home .ask { background: #ffffff; border-color: #ffffff; border-radius: 22px; padding: 6px; box-shadow: 0 10px 40px rgba(0, 0, 0, .45); }
 .home .ask:focus-within { border-color: #ffffff; box-shadow: 0 0 0 4px rgba(220, 226, 235, .55), 0 10px 40px rgba(0, 0, 0, .45); }
@@ -655,6 +670,19 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .chips.quick .chip-btn { justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: calc(42rem / 14); padding: 0 var(--space-2); border-radius: var(--r-md); background: transparent; color: var(--fg); font: 600 var(--t-body) var(--round); transform: none; }
 .home .chips.quick .chip-btn:hover { background: rgba(89, 210, 255, .1); transform: none; }
 .home .chips.quick .chip-btn .ic { color: var(--key); width: 16px; }
+/* M40 (Granola): the step under way turns a thin arc beside it; finished steps are quiet with a small tick. */
+.panel .line.step { display: flex; align-items: center; gap: var(--space-2); }
+.panel .line.step.done { color: var(--muted); }
+.panel .line.step.done .ic { width: 12px; height: auto; opacity: .7; }
+.spin { flex: none; width: calc(12rem / 14); min-height: calc(12rem / 14); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--fg) 18%, transparent); border-top-color: var(--fg); animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; border-top-color: color-mix(in srgb, var(--fg) 60%, transparent); } }
+:root[data-less-motion] .spin { animation: none; }
+/* M40 (Raycast): each action's keys as small keycaps at the end of its row, quiet until the row is under the pointer. */
+.home .chips.quick .caps { margin-left: auto; display: inline-flex; gap: 3px; }
+.home .chips.quick .caps kbd { color: var(--muted); }
+.home .chips.quick .chip-btn:hover .caps kbd, .home .chips.quick .chip-btn:focus-visible .caps kbd { color: var(--fg); }
+.caps kbd { min-width: calc(20rem / 14); min-height: calc(20rem / 14); display: inline-grid; place-items: center; padding: 0 calc(5rem / 14); box-sizing: border-box; border-radius: calc(5rem / 14); background: color-mix(in srgb, var(--fg) 9%, transparent); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); font: 600 calc(11rem / 14)/1 -apple-system, "SF Pro Text", system-ui, sans-serif; }
 /* The top row stays out of the way: the round buttons are only their drawings until the pointer is on them. */
 .home .bar .icon-btn { background: transparent; color: var(--muted); }
 .home .bar .icon-btn:hover { background: rgba(255, 255, 255, .1); color: var(--fg); }
@@ -696,6 +724,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 @keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
 @keyframes fr-rise { from { opacity: 0; transform: translateY(50px) scale(.7); } to { opacity: 1; transform: none; } }
 .fr[data-step="hello"] .fr-title { margin-top: var(--space-7); }
+/* M41 (Supabase): the second half of a two tone headline, on its own line, in grey. */
+.fr-title-2 { display: block; color: var(--muted); -webkit-text-fill-color: var(--muted); }
 /* Who do you want with you: Flowflow chosen, and empty places for the companions to come. */
 .fr-cast { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
 .fr-pick { position: relative; display: grid; justify-items: start; align-content: start; gap: var(--space-1); min-height: 140px; padding: var(--space-3) var(--space-4); border: 0; border-radius: 20px; background: color-mix(in srgb, var(--water) 18%, #000000); color: #ffffff; text-align: left; box-shadow: inset 0 0 0 2px var(--water); cursor: default; }
@@ -816,10 +846,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    water's colour (look.water) sets --water and --sea on every page; under Paper the sea is a pale wash of that water. */
 :root.home-page { --home-sea: var(--sea); --home-sea-deep: var(--sea-deep); }
 :root.home-page[data-theme="deep"] { --bg: #071423; --sky: #071423; --surface: #10233A; --card: #0D1E31; --line: #1E3550; }
-:root.home-page[data-theme="paper"] { --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #E9ECF1; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
+:root.home-page[data-theme="paper"] { --ask-edge: color-mix(in srgb, var(--fg) 54%, var(--bg)); --bg: #F6F4EE; --fg: #111111; --muted: #55555C; --danger: #b3261e; --ok: #146c3a; --amber-line: #9a5f00; --line: #DCDAD2; --edge: #8A8A90; --surface: #ECEAE3; --card: #FFFFFF; --key: #111111; --key-ink: #E9ECF1; --key-edge: #000000; --sky: #F6F4EE; --home-sea: color-mix(in srgb, var(--water) 24%, #F6F4EE); --home-sea-deep: #F6F4EE; }
 :root.home-page[data-theme="paper"] .home .ask { box-shadow: 0 0 0 1px #DCDAD2, 0 8px 24px rgba(0, 0, 0, .08); }
 :root.home-page[data-theme="paper"] .home .waterline .line { stroke: var(--water-deep); }
-.fr { --fg: #f5f5f7; --muted: #a1a1a6; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; color: #f5f5f7; background: #000000; }
+.fr { --fg: #f5f5f7; --muted: #a1a1a6; --danger: #ff7a6e; --ok: #4cc27f; --amber-line: #ffb020; --key: #E9ECF1; --key-ink: #0A0A0B; --key-edge: #5C6168; color: #f5f5f7; background: #000000; }
 .home:has(.fr) { background: #000000; }
 .waterline .sky { fill: var(--sky); }
 .waterline .sea { fill: var(--sea); }
@@ -928,6 +958,19 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .sp-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sp-text b { font-weight: 600; font-size: var(--t-body); color: var(--fg); }
 .sp-text span { font-size: var(--t-small); color: var(--muted); line-height: 1.35; }
+.receipt .answer-lead { font-size: var(--t-small); font-weight: 600; color: var(--muted); }
+.receipt .answer-words { margin: 2px 0 0; font-size: var(--t-body); line-height: 1.45; }
+/* M39 (Linear's agent results): what a fix changed, as one quiet card. */
+.changes { margin: var(--space-2) 0; border-radius: var(--r-md); background: color-mix(in srgb, var(--fg) 4%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent); }
+.changes-head { padding: var(--space-2) var(--space-3); font-size: var(--t-small); font-weight: 600; color: var(--muted); border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.changes ul { list-style: none; margin: 0; padding: var(--space-1) 0; }
+.changes li { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); padding: 3px var(--space-3); min-width: 0; }
+.changes li b { font-weight: 600; overflow-wrap: anywhere; }
+.changes-dir { color: var(--muted); font: 400 var(--t-small) ui-monospace, "SF Mono", Menlo, monospace; overflow-wrap: anywhere; min-width: 0; }
+.changes-mark { flex: none; width: 1em; text-align: center; font-weight: 700; color: var(--muted); }
+.changes li[data-kind="added"] .changes-mark { color: var(--ok); }
+.changes li[data-kind="deleted"] .changes-mark { color: var(--danger); }
+
 /* M35: the character picks, one card per water with the live water in it. They sit under the row's name. */
 .sp-row:has(> .sp-picks) { flex-wrap: wrap; row-gap: var(--space-3); }
 .sp-row:has(> .sp-picks) > :first-child { flex: 1 1 100%; }
@@ -1000,3 +1043,107 @@ img.sp-pick-flow { aspect-ratio: 1; object-fit: contain; }
 :root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row { background: #1E2026; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }
 :root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn[aria-checked="true"] { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
 :root.home-page:not([data-theme="paper"]) .home[data-view="settings"] .panel.settings > .row[role="search"] input { background: #16181C; box-shadow: inset 0 0 0 1px rgba(220, 226, 235, .14); }
+
+/* ---------- M42: Home on Now as a command layout (the founder picked B, after Supabase's dashboard) ----------
+   The ask box is a command bar across the top; the things to do (with their keys) and the recent fixes are a quiet list on
+   the left; the job's words and every result are on the right. Only on Now: the other places keep their own layout. */
+.home[data-view="now"] .inner { display: grid; grid-template-columns: calc(212rem / 14) minmax(0, 1fr); column-gap: var(--space-5); align-items: start; }
+.home[data-view="now"] .inner > * { grid-column: 2; min-width: 0; }
+.home[data-view="now"] .inner > .bar, .home[data-view="now"] .inner > .askwrap { grid-column: 1 / -1; }
+.home[data-view="now"] .home-side { grid-column: 1; grid-row: 3 / span 12; position: sticky; top: 0; display: grid; gap: 2px; padding-top: var(--space-1); }
+/* The command bar: a dark field with a search mark, one thin edge, the keys to talk and the send button inside. */
+.home[data-view="now"] .ask { background: var(--card); border: 1px solid var(--ask-edge); border-radius: calc(12rem / 14); padding: calc(4rem / 14); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05); }
+.home[data-view="now"] .ask:focus-within { border-color: color-mix(in srgb, var(--fg) 70%, var(--bg)); }
+.home[data-view="now"] .ask textarea { color: var(--fg); background: transparent; caret-color: var(--fg); padding-left: calc(6rem / 14); }
+.home[data-view="now"] .ask .ask-mark { align-self: center; flex: none; display: grid; place-items: center; margin-left: calc(8rem / 14); color: var(--muted); }
+.home[data-view="now"] .ask textarea::placeholder { color: var(--muted); background: transparent; }
+.home[data-view="now"] .ask .talk-how { background: color-mix(in srgb, var(--fg) 8%, transparent); color: var(--fg); }
+.home[data-view="now"] .ask .talk-how:hover, .home[data-view="now"] .ask .talk-how[aria-expanded="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); }
+/* The job's words: a heading over the results, no picture and no water here (Flowflow lives on the edge of the screen). */
+.home[data-view="now"] .hero { display: block; margin: var(--space-2) 0 var(--space-3); }
+.home[data-view="now"] .hero::before, .home[data-view="now"] .hero .waterline, .home[data-view="now"] .hero .home-char { display: none; }
+.home[data-view="now"] .hero .hero-words { padding-top: 0; }
+.home[data-view="now"] .headline { font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -.01em; }
+/* The side list: small section names, rows with an icon, the words and the keys; recent fixes with how each ended. */
+.home-side .side-head { padding: var(--space-3) calc(10rem / 14) calc(4rem / 14); color: var(--muted); font-size: var(--t-caption); font-weight: 600; }
+.home[data-view="now"] .home-side .chips.quick { margin: 0; gap: 2px; }
+.home[data-view="now"] .home-side .chips.quick .chip-btn { min-height: calc(34rem / 14); padding: 0 calc(10rem / 14); gap: calc(9rem / 14); border-radius: calc(8rem / 14); font: 500 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; }
+.home[data-view="now"] .home-side .caps kbd { letter-spacing: .04em; }
+.home[data-view="now"] .home-side .chips.quick .chip-btn:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.home[data-view="now"] .home-side .chips.quick .chip-btn .ic { width: calc(15rem / 14); color: var(--muted); }
+.home[data-view="now"] .home-side .caps kbd { min-width: calc(17rem / 14); min-height: calc(18rem / 14); padding: 0 calc(4rem / 14); font-size: calc(10rem / 14); }
+.home[data-view="now"] .home-side details.more { margin: var(--space-1) 0 0; }
+.home[data-view="now"] .home-side details.more > summary { padding: 0 calc(10rem / 14); font-size: var(--t-small); }
+.home-side .recent { display: grid; gap: 2px; }
+.home-side .side-item { display: flex; align-items: center; gap: calc(9rem / 14); min-height: calc(32rem / 14); padding: calc(4rem / 14) calc(10rem / 14); border: 0; border-radius: calc(8rem / 14); background: transparent; color: var(--fg); font: 500 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; text-align: left; cursor: pointer; }
+.home-side .side-item:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); }
+.home-side .side-item .ic { flex: none; width: calc(14rem / 14); height: auto; color: var(--muted); }
+/* M45: data-proof holds the verdict kind. Only a proven fix is green; a failed check and a crash are red. */
+.home-side .side-item[data-proof="proven"] .ic { color: var(--ok); }
+.home-side .side-item[data-proof="failed"] .ic, .home-side .side-item[data-proof="error"] .ic { color: var(--danger); }
+.home-side .side-dot { flex: none; width: calc(6rem / 14); min-height: calc(6rem / 14); margin: 0 calc(4rem / 14); border-radius: 50%; background: var(--muted); }
+.home-side .side-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- M43: one look on every screen (the founder, 30 Oct 2026: "see this product from the whole thing") ----------
+   The B language from Now, carried to every place, Settings, the notch and the first run: a flat near black page, cards
+   with one hairline edge and 12 px corners, quiet rows that light on hover, small square icon buttons, and chrome kept for
+   the one main button on a screen. Corners: 8 for rows and buttons, 12 for cards, fields and the main button. */
+:root.home-page:not([data-theme="paper"]):not([data-theme="deep"]) { --sky: #0B0B0C; --card: #141416; --surface: #1A1A1D; --home-sea: #0B0B0C; --home-sea-deep: #0B0B0C; }
+/* Now's grid only when its side list is there: the first run, and a job that hides the list, take the full width. */
+.home[data-view="now"] .inner:not(:has(> .home-side)) { display: block; }
+/* The top row: a hairline under it; icon buttons are small squares that light on hover; the open place stays filled. */
+.home .bar { padding-bottom: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); }
+.icon-btn, .back { border-radius: calc(8rem / 14); background: transparent; color: var(--muted); }
+.back { color: var(--fg); }
+.icon-btn:hover, .back:hover { background: color-mix(in srgb, var(--fg) 7%, transparent); color: var(--fg); }
+/* Cards: flat, one hairline, 12 px corners; their titles are plain and a size down, so the page title leads. */
+.home .view .panel:not(.settings), .home .view .panel:not(.settings) + .panel { border-radius: calc(12rem / 14); border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent); background-image: none; box-shadow: none; padding: var(--space-4); }
+.home .view .panel:not(.settings) > h2 { font: 600 var(--t-answer)/1.3 -apple-system, "SF Pro Text", system-ui, sans-serif; letter-spacing: -.005em; -webkit-text-fill-color: currentColor; background-image: none; }
+/* Buttons: the second choice has an outline, the main one is chrome; both are 8 px corners, not pills. */
+.home .view .panel:not(.settings) .btn:not(.primary), .home .notice .btn:not(.primary), .home .error .btn:not(.primary) { margin-left: 0; border: 1px solid color-mix(in srgb, var(--fg) 14%, transparent); background: color-mix(in srgb, var(--fg) 3%, transparent); font-weight: 600; font-size: var(--t-small); }
+.home .view .panel:not(.settings) .btn:not(.primary):hover:not(:disabled) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
+.btn.primary { border-radius: calc(8rem / 14); padding: calc(6rem / 14) calc(14rem / 14); font: 600 var(--t-small) -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.btn.primary:active:not(:disabled) { transform: scale(.97); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+.chip-btn, .section-pill { border-radius: calc(8rem / 14); }
+/* Settings: the open page is a lit row, as on Now's side list; cards and choices are flat with a hairline. */
+:root.home-page:not([data-theme="paper"]) .sp-nav[aria-current="page"] { background: color-mix(in srgb, var(--fg) 9%, transparent); background-image: none; color: var(--fg); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 10%, transparent); }
+:root.home-page:not([data-theme="paper"]) .sp-card { border-radius: calc(12rem / 14); background: var(--card); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+:root.home-page:not([data-theme="paper"]) .sp-card > .setting + .setting { box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row { border-radius: calc(8rem / 14); background: transparent; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn { border-radius: calc(6rem / 14); }
+:root.home-page:not([data-theme="paper"]) .sp-row > [role="radiogroup"].row .btn[aria-checked="true"], :root.home-page:not([data-theme="paper"]) .companion-hero .ch-states button[aria-pressed="true"], :root.home-page:not([data-theme="paper"]) .ch-lively button[aria-pressed="true"] { background: color-mix(in srgb, var(--fg) 14%, transparent); background-image: none; color: var(--fg); box-shadow: none; }
+:root.home-page:not([data-theme="paper"]) .sp-pick[aria-checked="true"] { background: var(--surface); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--fg) 70%, transparent); }
+:root.home-page:not([data-theme="paper"]) .home[data-view="settings"] .panel.settings > .row[role="search"] input { border-radius: calc(8rem / 14); background: var(--card); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+/* The notch: the same rows, keys and corners as Home. */
+.island-panel .ip-go { min-height: 42px; border-radius: 12px; font: 600 14px -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.island-panel .ip-go:hover { transform: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.island-panel .ip-go:active { transform: scale(.98); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9); }
+.island-panel .ip-plus { width: 20px; min-height: 20px; font-size: 15px; }
+.island-panel .ip-pill { border-radius: 8px; background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .12); font: 600 12px -apple-system, "SF Pro Text", system-ui, sans-serif; }
+.island-panel .ip-pill:hover { background: rgba(255, 255, 255, .08); }
+.island-panel .ip-open { border-radius: 8px; background: transparent; color: #A1A1A6; box-shadow: none; }
+.island-panel .ip-open:hover { background: rgba(255, 255, 255, .08); color: #F5F5F7; }
+.island-panel .ip-job { border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+.island-panel .ip-job:hover, .island-panel .ip-ask:hover { background: #1A1A1D; }
+.island-panel .ip-answer button { border-radius: 8px; font: 600 12.5px/1 -apple-system, "SF Pro Text", system-ui, sans-serif; }
+.island-panel .ip-no { background: rgba(255, 255, 255, .03); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+/* The first run: the same corners; its title keeps the chrome, as the one big moment. */
+.fr-key, .onboarding.look .btn.primary.fl-go { min-height: 46px; border-radius: 12px; font: 600 var(--t-body) -apple-system, "SF Pro Text", system-ui, sans-serif; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9), 0 1px 0 var(--chrome-edge); }
+.fr-pick, .fr-folder { border-radius: 12px; }
+.fr-name, .fr-power { border-radius: 12px; }
+.onboarding.look .fl-code, .onboarding.look .fl-check { background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .08); }
+
+/* ---------- M44: fixes from the better-interface review (docs/design/2026-10-30-better-interface-review.md) ----------
+   One press for everything that can be pressed, never on a disabled button, and never on a notch answer that is not armed
+   yet (its click is ignored, so it must not look taken). Later than every hover rule, so a press always shows. */
+:is(.icon-btn, .back, .chip-btn, .pill, .btn, .section-pill, .fr-key, .island-panel .ip-pill, .island-panel .ip-open, .island-panel .ip-job, .island-panel .ip-go):not(:disabled):active { transform: scale(.97); }
+.island-panel .ip-ask:not([data-armed]) .ip-answer button:active { transform: none; }
+/* The notch never grows past its window (island.rs PANEL_MAX, 240): with questions waiting, the cards scroll and the keys
+   under them stay in reach. */
+.island-panel:not([data-brief]) .ip-jobs { max-height: 126px; overflow: auto; overscroll-behavior: contain; }
+.island-panel[data-brief] .ip-jobs { max-height: 224px; overflow: auto; overscroll-behavior: contain; }
+/* A control reached with Tab at the foot of Home is never under the Undo and Stop strip. */
+.home { scroll-padding-block-end: calc(var(--space-2) + 32rem / 14 + var(--space-4) + var(--space-2)); }
+/* With big text, Now's two columns stack, so the job keeps the width (the side list comes first, then the job). */
+.home { container: home / inline-size; }
+@container home (width < 44rem) { .home[data-view="now"] .inner { display: block; } .home[data-view="now"] .home-side { position: static; } .home[data-view="now"] .ask { flex-wrap: wrap; } .home[data-view="now"] .ask textarea { flex: 1 1 calc(100% - 3rem); } }

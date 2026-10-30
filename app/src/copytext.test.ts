@@ -21,7 +21,7 @@ describe("Copy on replies and receipts", () => {
       `${S.added}: src/page.js`,
       `${S.modified}: src/app.js`,
       `${S.cannotUndo}: data.db: over 2 MiB`,
-      S.proven,
+      "Fixed and proven.",
       "1 action was not done: git push",
       `3 ${S.commands} · ${S.cost}: 4 cents`,
     ]);
@@ -130,5 +130,27 @@ describe("what Copy may put on the clipboard", () => {
     expect(mod).toContain('copyable("a\\u{0}b"), None');
     expect(copyable("a\u001b[31mb")).toBeNull();
     expect(copyable("a\u0000b")).toBeNull();
+  });
+});
+
+describe("M45: the copied receipt tells the truth", () => {
+  const done = [
+    { type: "checkpoint.created", project: "/p", agent: "a", checkpoint: "cp_1", label: "Before: add a page", files: 3, skipped: [] },
+    { type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "src/page.js", kind: "added" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0, ended: "done" },
+  ];
+  test("the copied receipt after Undo says Undone", () => {
+    const m = run([...done, { type: "checkpoint.restored", project: "/p", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] }]);
+    const t = receiptCopy(m, "/p");
+    expect(t).toContain(`${S.verdict.undone}. ${S.verdict.undoneFix}`);
+    expect(t).not.toMatch(/proven/i);
+  });
+  test("zero cost says No cost", () => {
+    const t = receiptCopy(run(done), "/p");
+    expect(t.split("\n").at(-1)).toBe(`1 ${S.commands} · ${S.noCost}`);
+    expect(t).not.toContain("free so far");
+  });
+  test("a receipt that changed nothing still says how it ended", () => {
+    const m = run([{ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [], commands: 0, notUndoable: [], proof: "skipped", usdEstimate: 0, ended: "stopped" }]);
+    expect(receiptCopy(m, "/p")).toContain(`${S.verdict.stopped}. ${S.verdict.stoppedNothing}`);
   });
 });

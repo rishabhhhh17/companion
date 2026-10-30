@@ -1,7 +1,7 @@
 // Home in the notch (F18.1): the card, moved under the island and laid out in tabs. Which part of the old card lives on
 // which tab, which tab opens by itself when something needs the person, when a click elsewhere may close Home, and the
 // island's own words. Plain code, tested in home.test.ts; card.tsx and island.tsx only draw what this decides.
-import { characterWords, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
+import { characterWords, lookState, receiptVerdict, resultShown, stateLabel, visualState, waitsForAnswer, type CharacterState, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 import { nameOf } from "./watch.ts";
 
@@ -64,7 +64,9 @@ const SHOWME_NEEDS = ["needs_permission", "pointing", "pointing_roughly", "your_
 // Show me during a lesson: the pointer is the lesson's own step, but these say why no pointer came, so they are new.
 const SHOWME_PROBLEMS = ["needs_permission", "your_turn_miss", "window_changed", "error", "not_sure"];
 const EVERYDAY_NEEDS = ["found", "none", "fixed", "still", "ask"];
-const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "blocked", "error"];
+/** M36: the Type key's results (dictate.rs), said in the notch line for a few seconds and never sent to the ask box. */
+export const TYPED = ["typed", "copied", "refused"];
+const VOICE_NEEDS = ["needs_model", "needs_mic", "mic_refused", "needs_access", "blocked", "error"];
 // Prompt help and the error explainer start from a hotkey and answer on Now: each step there, a refusal included.
 const PH_NEEDS = ["reading", "consent", "ready", "needs_accessibility", "nothing_to_read", "error", "refused"];
 const EH_NEEDS = ["reading", "consent", "ready", "unexplained", "needs_accessibility", "nothing_selected", "refused", "error"];
@@ -216,6 +218,15 @@ export function islandWings(m: Model, marked = false): Wings | null {
   const v = visualState(m);
   if (v === "listening" || v === "checking") return { state: v, mark: MARK[v]! };
   if (waiting(m) || (marked && need(m))) return { state: "needsYou", mark: "amber" };
+  // A finished task's own result (M45): the tick only for a proven fix, red only when it went wrong, otherwise the bare
+  // notch (stopped, undone, not checked or partly checked). Show me's own done keeps its tick. Only the task's own agent's
+  // done or error is its result: another agent's error keeps the red mark below.
+  if ((v === "done" || v === "error") && v === m.character && resultShown(m)) {
+    const r = receiptVerdict(m)!;
+    if (r.proven) return { state: v, mark: "tick" };
+    if (r.tone === "bad") return { state: "error", mark: "red" };
+    return failingWatch(m) ? { state: "error", mark: "red" } : null;
+  }
   const mark = MARK[v];
   if (mark) return { state: v, mark };
   if (failingWatch(m)) return { state: "error", mark: "red" };
@@ -252,9 +263,10 @@ export function failingWatch(m: Model): { project: string; kind: string; target?
 
 /** The character's state as it is drawn. With When something needs me set to only mark the tab (`markTab`) and no island
  *  (island.show off), the character carries the island's mark: anything that needs the person shows as Needs you. Its own
- *  lights (listening, looking at the screen) and an error are never covered by it. Otherwise exactly `visualState`. */
+ *  lights (listening, looking at the screen) and an error are never covered by it. Otherwise `lookState`: `visualState`,
+ *  except that a finished task that is not proven is drawn at rest (M45). */
 export function characterShows(m: Model, markTab: boolean, islandShown: boolean): CharacterState {
-  const v = visualState(m);
+  const v = lookState(m);
   if (!markTab || islandShown || !m.runnerUp || !need(m)) return v;
   return v === "listening" || v === "checking" || v === "error" ? v : "needsYou";
 }
@@ -270,6 +282,8 @@ export function islandLine(m: Model, o: { update?: string | null; group?: string
 function islandLineBase(m: Model, o: { update?: string | null }): string {
   if (!m.runnerUp) return S.islandOff;
   if (m.voice?.stage === "listening") return S.islandListening;
+  // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.
+  if (m.voice && TYPED.includes(m.voice.stage) && m.voice.message) return cut(m.voice.message);
   if (m.approvals.length) return cut(S.islandNeedsYou(m.approvals[0].title));
   const n = need(m);
   if (waiting(m) && n) return cut(S.islandNeedsYou(n.why));
@@ -278,7 +292,9 @@ function islandLineBase(m: Model, o: { update?: string | null }): string {
   const v = visualState(m), label = m.task?.label?.trim() ?? "", own = v === m.character;
   // With no reason the island knows (Home's own panels are not in its model), plain Needs you, never the word twice.
   if (v === "needsYou") return cut(n ? S.islandNeedsYou(n.why) : stateLabel("needsYou"));
-  if (v === "done") return cut(own && label ? S.islandDone(label) : stateLabel("done"));
+  // A finished task's result as the verdict says it (M45), never a bare "Done" for work that is not proven.
+  if ((v === "done" || v === "error") && own && resultShown(m)) { const h = receiptVerdict(m)!.headline; return cut(label ? S.islandResult(h, label) : h); }
+  if (v === "done") return cut(stateLabel("done"));
   if (v === "thinking" || v === "working" || v === "checking") return cut(own && label ? S.islandWorkingOn(label) : characterWords(m));
   if (v === "error") return cut(stateLabel("error"));
   const fw = failingWatch(m);

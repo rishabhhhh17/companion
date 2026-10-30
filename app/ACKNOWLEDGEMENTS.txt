@@ -15141,7 +15141,7 @@ THIS SOFTWARE.
 
 ====================================================================================================
 Licence group 84: ISC
-Used by: rustls-webpki 0.103.15 (Rust)
+Used by: rustls-webpki 0.103.16 (Rust)
 ----------------------------------------------------------------------------------------------------
 Except as otherwise noted, this project is licensed under the following
 (ISC-style) terms:
@@ -16035,7 +16035,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ====================================================================================================
 Licence group 119: MIT
-Used by: zod 4.6.5 (JavaScript)
+Used by: zod 4.6.6 (JavaScript)
 ----------------------------------------------------------------------------------------------------
 MIT License
 

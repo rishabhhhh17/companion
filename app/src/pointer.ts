@@ -35,7 +35,7 @@ export function ringLook(colour: unknown, exact: boolean): RingLook {
 
 /** Ring lettering (point.lettering) and the text size picked in Settings: the caption's font and how much room it needs, so
  *  it is kept inside the window. Plain at the usual size is the caption as it always was. */
-const CAPTION_PX: Record<string, number> = { standard: 15, large: 17, larger: 19, largest: 21 };
+const CAPTION_PX: Record<string, number> = { standard: 15, large: 17, larger: 19, largest: 21, huge: 25 };
 const PLAIN_FONT = 'ui-rounded, "SF Pro Rounded", -apple-system, sans-serif';
 const HAND_FONT = "'Bradley Hand', 'Noteworthy', 'Marker Felt', 'Segoe Print', cursive";
 export function captionStyle(lettering: unknown, size: unknown): { font: string; maxWidth: number; reserveW: number; reserveH: number } {

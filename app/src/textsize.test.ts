@@ -14,12 +14,12 @@ const memory = () => { const m = new Map<string, string>(); return { getItem: (k
 
 describe("the text size choice", () => {
   test("four sizes, smallest first; Standard, the size Home always had, is the default", () => {
-    expect([...TEXT_SIZES]).toEqual(["standard", "large", "larger", "largest"]);
+    expect([...TEXT_SIZES]).toEqual(["standard", "large", "larger", "largest", "huge"]);
     expect(TEXT_SIZE_DEFAULT).toBe("standard");
   });
   test("anything that is not one of them reads as Standard", () => {
     for (const s of TEXT_SIZES) expect(textSizeFrom(s)).toBe(s);
-    for (const v of [null, undefined, "", "huge", "Large", 3, {}]) expect(textSizeFrom(v), String(v)).toBe("standard");
+    for (const v of [null, undefined, "", "giant", "Large", 3, {}]) expect(textSizeFrom(v), String(v)).toBe("standard");
   });
   test("kept by the shell (display.textSize, T16); the old page storage is read only until the one migration", () => {
     const st = memory();

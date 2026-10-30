@@ -77,6 +77,17 @@ impl Last {
     }
 }
 
+/// M38 (drawing in step with speech): how far through its line the voice is, 0 to 1, from the word it is about to say
+/// (`at` and `len` in the line's UTF-16 units, as AVSpeechSynthesizer reports them). The overlay paces the pen by it.
+pub fn spoken_part(at: usize, len: usize, total: usize) -> f64 {
+    if total == 0 { return 1.0; }
+    ((at.saturating_add(len)) as f64 / total as f64).clamp(0.0, 1.0)
+}
+
+/// Where each word's report goes (main.rs sets it once): how far through the line, or None when the line ended or was cut.
+pub type WordHook = fn(Option<f64>);
+pub static WORD_HOOK: std::sync::OnceLock<WordHook> = std::sync::OnceLock::new();
+
 #[cfg(target_os = "macos")]
 pub mod mac {
     use crate::voiceset::{self, Named, Sound, VoiceInfo};
@@ -86,7 +97,37 @@ pub mod mac {
     use objc2_foundation::NSString;
     use std::cell::RefCell;
 
-    thread_local! { static SYNTH: RefCell<Option<Retained<AVSpeechSynthesizer>>> = const { RefCell::new(None) }; }
+    thread_local! {
+        static SYNTH: RefCell<Option<Retained<AVSpeechSynthesizer>>> = const { RefCell::new(None) };
+        // The synthesizer holds its delegate weakly, so it is kept here as long as the synthesizer.
+        static WORDS: RefCell<Option<Retained<Words>>> = const { RefCell::new(None) };
+    }
+    /// The line being said now, in UTF-16 units (how the voice counts), so each word can be turned into how far it is.
+    static TOTAL: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    use objc2::runtime::{NSObject, NSObjectProtocol, ProtocolObject};
+    use objc2::{define_class, msg_send, AnyThread};
+    use objc2_avf_audio::AVSpeechSynthesizerDelegate;
+    use objc2_foundation::NSRange;
+    define_class!(
+        // SAFETY: NSObject has no rules for subclasses, and this class has no Drop and no instance variables.
+        #[unsafe(super(NSObject))]
+        #[name = "SquibbyWords"]
+        pub struct Words;
+        unsafe impl NSObjectProtocol for Words {}
+        unsafe impl AVSpeechSynthesizerDelegate for Words {
+            #[unsafe(method(speechSynthesizer:willSpeakRangeOfSpeechString:utterance:))]
+            fn will_speak(&self, _s: &AVSpeechSynthesizer, range: NSRange, _u: &AVSpeechUtterance) {
+                let total = TOTAL.load(std::sync::atomic::Ordering::SeqCst);
+                if let Some(h) = super::WORD_HOOK.get() { h(Some(super::spoken_part(range.location, range.length, total))); }
+            }
+            #[unsafe(method(speechSynthesizer:didFinishSpeechUtterance:))]
+            fn finished(&self, _s: &AVSpeechSynthesizer, _u: &AVSpeechUtterance) { if let Some(h) = super::WORD_HOOK.get() { h(None); } }
+            #[unsafe(method(speechSynthesizer:didCancelSpeechUtterance:))]
+            fn cancelled(&self, _s: &AVSpeechSynthesizer, _u: &AVSpeechUtterance) { if let Some(h) = super::WORD_HOOK.get() { h(None); } }
+        }
+    );
+    impl Words { fn new() -> Retained<Self> { let this = Self::alloc().set_ivars(()); unsafe { msg_send![super(this), init] } } }
 
     /// The Mac's installed voices (AVSpeechSynthesisVoice speechVoices), with novelty and personal voices marked so they
     /// are never listed or picked. Main thread only.
@@ -106,9 +147,16 @@ pub mod mac {
     pub fn say(line: &str, voice: Option<&Named>, speed: f64) {
         SYNTH.with(|s| {
             let mut s = s.borrow_mut();
-            let synth = s.get_or_insert_with(|| unsafe { AVSpeechSynthesizer::new() });
+            let synth = s.get_or_insert_with(|| {
+                let synth = unsafe { AVSpeechSynthesizer::new() };
+                let words = Words::new();
+                unsafe { synth.setDelegate(Some(ProtocolObject::from_ref(&*words))); }
+                WORDS.with(|w| *w.borrow_mut() = Some(words));
+                synth
+            });
             unsafe {
                 synth.stopSpeakingAtBoundary(AVSpeechBoundary::Immediate);
+                TOTAL.store(line.encode_utf16().count(), std::sync::atomic::Ordering::SeqCst);
                 let u = AVSpeechUtterance::speechUtteranceWithString(&NSString::from_str(line));
                 if let Some(want) = voice {
                     let direct = AVSpeechSynthesisVoice::voiceWithIdentifier(&NSString::from_str(&want.id));
@@ -159,6 +207,13 @@ pub mod mac {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn how_far_through_the_line_the_voice_is() {
+        assert_eq!(spoken_part(0, 5, 20), 0.25);
+        assert_eq!(spoken_part(15, 5, 20), 1.0);
+        assert_eq!(spoken_part(18, 9, 20), 1.0, "never past the end");
+        assert_eq!(spoken_part(3, 2, 0), 1.0, "an empty line is already said");
+    }
     #[test]
     fn a_caption_is_paged_at_sentences_and_never_mid_word() {
         assert_eq!(caption_pages("Fixed it."), vec!["Fixed it."]);

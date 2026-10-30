@@ -40,10 +40,12 @@ describe("the keys main.rs registers", () => {
     expect(Object.values(r.jobIds)).toEqual([...JOBS]);
     for (const m of r.mods) expect((S.keyWords as Record<string, string>)[m.id], m.id).toBe(m.word);
     for (const k of Object.values(r.keys)) expect(chordLabel(`control-${k.id}`), k.id).toBe(`Control and ${k.word}`);
-    // Every letter job uses Control, Option and Command, as it always did; hold to talk is two keys.
-    for (const j of JOBS.filter((j) => j !== "talk")) expect(KEY_DEFAULTS[j], j).toStartWith("control-option-command-");
+    // Every letter job uses Control, Option and Command, as it always did; hold to talk and the Type key (M36) are held chords.
+    const held = (j: string) => j === "talk" || j === "dictate";
+    for (const j of JOBS.filter((j) => !held(j))) expect(KEY_DEFAULTS[j], j).toStartWith("control-option-command-");
     expect(KEY_DEFAULTS.talk).toBe("option-space");
-    expect(new Set(JOBS.filter((j) => j !== "talk").map((j) => letterOf(KEY_DEFAULTS[j]))).size).toBe(JOBS.length - 1);
+    expect(KEY_DEFAULTS.dictate).toBe("option-shift-space");
+    expect(new Set(JOBS.filter((j) => !held(j)).map((j) => letterOf(KEY_DEFAULTS[j]))).size).toBe(JOBS.length - 2);
   });
   test("every job is registered through the key map at launch, before the one notice, and no key is written into main.rs", () => {
     const setup = main.slice(main.indexOf(".setup(move |app|"));
@@ -63,7 +65,7 @@ describe("the keys main.rs registers", () => {
     // cap checks are the same), a second press ends it, and the box is the fallback.
     const sm = body(main, "fn show_me_key(");
     expect(sm).toContain("voice::show_me_key(&state)");
-    expect(sm).toContain("VoiceMsg::Down(now() as u64)"); expect(sm).toContain("VoiceMsg::Up(now() as u64)");
+    expect(sm).toContain("VoiceMsg::Down(now() as u64, talkkeys::Mode::Ask)"); expect(sm).toContain("VoiceMsg::Up(now() as u64)");
     expect(sm).toContain('"showme-mode"'); expect(sm).toContain('open_card(app, "hotkey", true)');
     expect(sm).toContain('setting_now("showme.listen")');
     expect(arm("Problem")).toContain('"find-problem"');
@@ -73,6 +75,8 @@ describe("the keys main.rs registers", () => {
     expect(arm("Accept")).toContain("phelp::put_back(&a, false)");
     expect(arm("Stop")).toContain('stop_everything("kill switch")');
     expect(main).toContain("fn is_talk(s: &Shortcut) -> bool { key_action(s) == Some(keymap::Action::Talk) }");
+    expect(body(main, "fn hold_mode(")).toContain("key_action(s) == Some(keymap::Action::Dictate)");
+    expect(handler).toContain("keymap::Action::Talk | keymap::Action::Dictate => {}");
     expect(body(main, "fn key_action(")).toContain("key_using(");
     expect(body(main, "fn key_using(")).toContain("KEYS_USING[a.index()]");
   });
@@ -96,10 +100,10 @@ describe("the keys main.rs registers", () => {
     // The old four key chord is gone, and nothing registers V.
     expect(main).not.toContain("Code::KeyV");
     // The handler: the chord in use, a repeat while held does nothing, and both the press and the let go reach the microphone.
-    const hold = main.slice(main.indexOf("if is_talk(s) {"), main.indexOf("if e.state != ShortcutState::Pressed { return; }"));
-    expect(hold).toMatch(/if down \{ h\.press\(now\(\) as u64\) \} else \{ h\.release\(\) \}/);
+    const hold = main.slice(main.indexOf("if let Some(mode) = hold_mode(s) {"), main.indexOf("if e.state != ShortcutState::Pressed { return; }"));
+    expect(hold).toMatch(/if down \{ h\.press\(mode, now\(\) as u64\) \} else \{ h\.release\(mode\) \}/);
     expect(hold.indexOf("if !counts { return; }")).toBeLessThan(hold.indexOf("voice_send(app"));
-    expect(hold).toContain("VoiceMsg::Down(now() as u64)"); expect(hold).toContain("VoiceMsg::Up(now() as u64)");
+    expect(hold).toContain("VoiceMsg::Down(now() as u64, mode)"); expect(hold).toContain("VoiceMsg::Up(now() as u64)");
   });
   test("every hold to talk chord but the default says what it gives up, as talkkeys.rs lists it", () => {
     // talkkeys.rs checks that each other chord is on its list of macOS text keys it takes; the page must say which.
@@ -138,13 +142,15 @@ describe("every hint names the keys in use", () => {
     for (const j of JOBS) {
       const hint = keyHints(keys(j, null)).join(" ");
       if (j === "talk") expect(namedChords(hint)).toEqual([]);
+      else if (j === "dictate") expect(hint).not.toContain("Option, Shift and Space");
       else if (j !== "accept") expect(named(hint)).not.toContain(letterOf(KEY_DEFAULTS[j]));
     }
   });
   test("the hint list names every job a person can press any time, with the keys in use", () => {
     const all = keyHints();
-    for (const j of JOBS.filter((j) => j !== "talk" && j !== "accept")) expect(all.flatMap(named), j).toContain(letterOf(KEY_DEFAULTS[j]));
+    for (const j of JOBS.filter((j) => j !== "talk" && j !== "dictate" && j !== "accept")) expect(all.flatMap(named), j).toContain(letterOf(KEY_DEFAULTS[j]));
     expect(all.flatMap(namedChords)).toEqual(["Option and Space"]);
+    expect(all.filter((h) => h.includes("Option, Shift and Space"))).toEqual([S.dictateHint.replace("{keys}", "Option, Shift and Space")]);
     const moved = keyHints(keys("stop", "control-option-shift-command-x"));
     expect(moved.at(-1)).toBe("Press Control, Option, Shift, Command and X to stop everything at once.");
     for (const id of rust().talk) expect(keyHints(keys("talk", id)).flatMap(namedChords), id).toEqual([chordLabel(id)]);

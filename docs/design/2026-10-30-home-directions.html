@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Home Directions</title>
+<style>
+  :root {
+    --bg: #050506; --panel: #0B0B0C; --card: #141416; --card2: #1A1A1D; --line: rgba(255,255,255,.08); --line2: rgba(255,255,255,.14);
+    --fg: #F4F4F5; --muted: #9A9AA3; --faint: #6B6B73; --ok: #4ADE80; --bad: #F87171; --amber: #FBBF24;
+    --chrome: linear-gradient(180deg, #FFFFFF 0%, #DADDE2 40%, #9AA0A9 52%, #E8EBEF 72%, #B7BDC6 100%);
+    --sans: -apple-system, "SF Pro Text", system-ui, sans-serif; --display: -apple-system, "SF Pro Display", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #2B2D31; color: var(--fg); font: 14px/1.45 var(--sans); }
+  main { padding: 28px 20px 60px; max-width: 2060px; margin: 0 auto; }
+  .intro { max-width: 760px; margin: 0 auto 26px; text-align: center; }
+  .intro h1 { font: 700 26px/1.15 var(--display); margin: 0 0 6px; letter-spacing: -.02em; }
+  .intro p { color: #C9CAD0; margin: 0; }
+  .row { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; }
+  figure { margin: 0; }
+  figcaption { margin: 12px 4px 0; max-width: 640px; }
+  figcaption b { display: block; font-size: 16px; }
+  figcaption span { color: #C9CAD0; font-size: 13.5px; }
+  .tag { display: inline-grid; place-items: center; min-width: 26px; height: 26px; margin-right: 8px; border-radius: 999px; background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; font-weight: 800; font-size: 13px; vertical-align: 2px; }
+  .frame { width: 640px; height: 640px; border-radius: 22px; background: var(--panel); overflow: hidden; position: relative; box-shadow: 0 30px 80px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.06); display: flex; flex-direction: column; }
+  .top { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); flex: none; }
+  .proj { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px rgba(74,222,128,.6); }
+  .icons { margin-left: auto; display: flex; gap: 4px; }
+  .ib { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+  .ib svg { width: 15px; height: 15px; }
+  kbd { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 5px; background: rgba(255,255,255,.07); box-shadow: inset 0 -1px 0 rgba(255,255,255,.12); color: #D4D4D8; font: 600 11px/1 var(--sans); }
+  .drop { width: 30px; height: 30px; flex: none; border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; background: radial-gradient(circle at 35% 35%, #E6F8FF 0 8%, #6FD8FF 30%, #1D6FD0 80%); position: relative; transform: rotate(0deg); clip-path: path("M15 0 C 20 7, 30 13, 30 20 A 15 15 0 0 1 0 20 C 0 13, 10 7, 15 0 Z"); }
+  .drop::before, .drop::after { content: ""; position: absolute; top: 16px; width: 3px; height: 5px; border-radius: 2px; background: #0B1D33; }
+  .drop::before { left: 10px; } .drop::after { right: 10px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 8px; border: 1px solid var(--line2); background: rgba(255,255,255,.03); color: #E4E4E7; font: 600 12.5px var(--sans); }
+  .btn svg { width: 13px; height: 13px; }
+  .chrome { background: #E9ECF1; background-image: var(--chrome); color: #0A0A0B; border: 0; box-shadow: inset 0 1px 0 rgba(255,255,255,.9), 0 2px 0 #4E535A; }
+  .ok { color: var(--ok); } .muted { color: var(--muted); } .mono { font-family: var(--mono); }
+
+  /* ---------- A: Thread (Replit Agent) ---------- */
+  .A .thread { flex: 1; overflow: hidden; padding: 18px 22px 8px; display: flex; flex-direction: column; gap: 14px; }
+  .A .you { align-self: flex-end; max-width: 78%; padding: 10px 14px; border-radius: 16px 16px 4px 16px; background: #26262B; font-size: 14px; }
+  .A .agent { display: flex; gap: 12px; }
+  .A .agent .body { flex: 1; min-width: 0; display: grid; gap: 8px; }
+  .A .say { font-size: 14.5px; line-height: 1.5; }
+  .A .act { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12.5px; }
+  .A .act svg { width: 14px; height: 14px; flex: none; }
+  .A .act .mono { color: #D4D4D8; font-size: 12px; }
+  .A .cp { border: 1px solid var(--line2); border-radius: 12px; background: var(--card); padding: 11px 12px; display: grid; gap: 8px; }
+  .A .cp-head { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); }
+  .A .cp-head b { color: var(--fg); font-weight: 600; }
+  .A .cp-title { font-weight: 600; }
+  .A .checks { display: flex; flex-wrap: wrap; gap: 6px; }
+  .A .chk { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; background: rgba(74,222,128,.1); color: #A7F3C4; font-size: 12px; font-weight: 600; }
+  .A .chk svg { width: 12px; height: 12px; }
+  .A .cp-actions { display: flex; gap: 6px; }
+  .A .meta { color: var(--faint); font-size: 12px; }
+  .A .composer { flex: none; margin: 6px 14px 14px; border: 1px solid var(--line2); border-radius: 14px; background: #111113; padding: 10px 10px 10px 14px; display: grid; gap: 8px; }
+  .A .composer .ph { color: var(--faint); font-size: 14px; }
+  .A .composer .bar { display: flex; align-items: center; gap: 6px; }
+  .A .pill { height: 26px; padding: 0 10px; border-radius: 999px; background: rgba(255,255,255,.06); color: #D4D4D8; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+  .A .send { margin-left: auto; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; }
+
+  /* ---------- B: Command (Supabase dashboard / command palette) ---------- */
+  .B .search { flex: none; display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .B .search .q { flex: 1; font-size: 16px; color: var(--faint); }
+  .B .search svg { width: 17px; height: 17px; color: var(--muted); }
+  .B .split { flex: 1; display: grid; grid-template-columns: 272px 1fr; min-height: 0; }
+  .B .it { white-space: nowrap; }
+  .B .it kbd { min-width: 17px; height: 18px; padding: 0 4px; font-size: 10.5px; }
+  .B .list { border-right: 1px solid var(--line); padding: 10px 8px; display: grid; align-content: start; gap: 2px; }
+  .B .sect { padding: 10px 10px 4px; color: var(--faint); font-size: 11.5px; font-weight: 600; }
+  .B .it { display: flex; align-items: center; gap: 9px; height: 34px; padding: 0 10px; border-radius: 8px; color: #E4E4E7; font-size: 13px; font-weight: 500; }
+  .B .it svg { width: 15px; height: 15px; color: var(--muted); flex: none; }
+  .B .it .k { margin-left: auto; display: flex; gap: 2px; opacity: .8; }
+  .B .it.on { background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .B .it .st { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+  .B .detail { padding: 18px 20px; display: grid; align-content: start; gap: 14px; min-width: 0; }
+  .B .crumb { color: var(--faint); font-size: 12px; }
+  .B .detail h2 { margin: 0; font: 700 21px/1.2 var(--display); letter-spacing: -.01em; }
+  .B .badge { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 6px; background: rgba(74,222,128,.12); color: #A7F3C4; font-size: 12px; font-weight: 700; width: max-content; }
+  .B .stat { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .B .stat div { padding: 10px 12px; border-right: 1px solid var(--line); }
+  .B .stat div:last-child { border-right: 0; }
+  .B .stat small { display: block; color: var(--faint); font-size: 11.5px; }
+  .B .stat b { font: 700 17px/1.3 var(--display); }
+  .B .tbl { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; font-size: 12.5px; }
+  .B .tbl div { display: flex; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--line); }
+  .B .tbl div:first-child { border-top: 0; background: rgba(255,255,255,.02); color: var(--faint); font-weight: 600; font-size: 11.5px; }
+  .B .tbl .mono { flex: 1; color: #E4E4E7; }
+  .B .footer { flex: none; display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-top: 1px solid var(--line); background: #0E0E10; font-size: 12px; color: var(--muted); }
+  .B .footer .sp { margin-left: auto; }
+  .B .footer .f { display: inline-flex; align-items: center; gap: 6px; color: #D4D4D8; font-weight: 600; }
+
+  /* ---------- C: Cards (Airbnb / Brex) ---------- */
+  .C .top { border-bottom: 0; }
+  .C .hero { padding: 6px 24px 16px; display: flex; align-items: center; gap: 16px; }
+  .C .hero .drop { width: 54px; height: 54px; clip-path: path("M27 0 C 36 13, 54 23, 54 36 A 27 27 0 0 1 0 36 C 0 23, 18 13, 27 0 Z"); }
+  .C .hero .drop::before, .C .hero .drop::after { top: 30px; width: 5px; height: 9px; border-radius: 3px; }
+  .C .hero .drop::before { left: 18px; } .C .hero .drop::after { right: 18px; }
+  .C h2 { margin: 0; font: 800 26px/1.1 var(--display); letter-spacing: -.025em; }
+  .C h2 span { color: var(--muted); }
+  .C .result { margin: 0 20px; border-radius: 20px; background: linear-gradient(180deg, #1B1B1F, #141416); box-shadow: inset 0 1px 0 rgba(255,255,255,.09), 0 18px 40px -20px rgba(0,0,0,.9); padding: 18px; display: grid; gap: 14px; }
+  .C .rtop { display: flex; align-items: center; gap: 12px; }
+  .C .big { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: rgba(74,222,128,.14); color: var(--ok); }
+  .C .big svg { width: 22px; height: 22px; }
+  .C .rtop b { display: block; font: 700 17px/1.2 var(--display); }
+  .C .rtop span { color: var(--muted); font-size: 13px; }
+  .C .rtop .btn { margin-left: auto; }
+  .C .said { font-size: 14px; line-height: 1.5; color: #E4E4E7; }
+  .C .tiles3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .C .t3 { border-radius: 12px; background: rgba(255,255,255,.04); padding: 10px 12px; }
+  .C .t3 small { display: block; color: var(--faint); font-size: 11.5px; }
+  .C .t3 b { font-size: 14px; }
+  .C .grid { margin: 14px 20px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .C .tile { border-radius: 16px; background: var(--card); box-shadow: inset 0 1px 0 rgba(255,255,255,.07); padding: 14px; display: grid; gap: 6px; }
+  .C .tile .ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: rgba(255,255,255,.07); }
+  .C .tile .ic svg { width: 16px; height: 16px; }
+  .C .tile b { font-size: 14px; }
+  .C .tile span { color: var(--muted); font-size: 12.5px; line-height: 1.35; }
+  .C .ask { margin: auto 20px 18px; height: 48px; border-radius: 999px; background: #F4F4F5; color: #71717A; display: flex; align-items: center; padding: 0 8px 0 18px; font-size: 15px; }
+  .C .ask .go { margin-left: auto; width: 34px; height: 34px; border-radius: 50%; background: #0A0A0B; color: #fff; display: grid; place-items: center; }
+</style>
+</head>
+<body>
+<main>
+  <div class="intro">
+    <h1>Squibby's Home, three ways</h1>
+    <p>Each one is the same moment: a fix just finished and proven. A borrows from Replit's agent (YC), B from Supabase's dashboard (YC) with a command bar, C from Airbnb and Brex (YC) consumer cards. Pick one, or mix: "A, with C's result card".</p>
+  </div>
+  <div class="row">
+
+    <!-- A -->
+    <figure>
+      <div class="frame A">
+        <div class="top">
+          <div class="proj"><span class="dot"></span>test-shop</div>
+          <div class="icons">
+            <span class="ib"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg></span>
+            <span class="ib"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 5h10M3 11h10"/><circle cx="6" cy="5" r="1.6" fill="#0B0B0C"/><circle cx="10" cy="11" r="1.6" fill="#0B0B0C"/></svg></span>
+          </div>
+        </div>
+        <div class="thread">
+          <div class="you">The signup button does nothing when I click it</div>
+          <div class="agent">
+            <div class="drop"></div>
+            <div class="body">
+              <div class="say">Found it. The button posted to <span class="mono">/signup</span>, but your server listens on <span class="mono">/api/signup</span>. I pointed it at the right address and added a test that clicks it.</div>
+              <div class="act"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 13h3l7-7-3-3-7 7z"/></svg>Edited <span class="mono">public/signup.js</span></div>
+              <div class="act"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 3v10M3 8h10"/></svg>Added <span class="mono">test/signup.test.js</span></div>
+              <div class="act"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 3l9 5-9 5z"/></svg>Ran the tests and opened the page in a browser</div>
+              <div class="cp">
+                <div class="cp-head"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="#4ADE80" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg><b>Checked and working</b>· worked for 42 s · 12 cents</div>
+                <div class="checks"><span class="chk"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg>Builds</span><span class="chk"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg>Tests pass</span><span class="chk"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg>Works in a browser</span></div>
+                <div class="cp-actions"><span class="btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h6a3 3 0 010 6H7"/><path d="M6 3L3 6l3 3"/></svg>Undo to here</span><span class="btn"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M6 4L2 8l4 4M10 4l4 4-4 4"/></svg>Changes</span><span class="btn">Explain</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="ph">Ask Squibby to fix, check or explain…</div>
+          <div class="bar"><span class="pill">Find the problem</span><span class="pill">Is it safe to go live?</span><span class="send chrome"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="#0A0A0B" stroke-width="2"><path d="M8 13V3M4 7l4-4 4 4"/></svg></span></div>
+        </div>
+      </div>
+      <figcaption><b><span class="tag">A</span>Thread, like Replit's agent</b><span>A conversation you scroll. What it did shows as small rows with the file. Every fix ends in a checkpoint card with the checks and Undo to here. The ask box stays at the bottom, always ready.</span></figcaption>
+    </figure>
+
+    <!-- B -->
+    <figure>
+      <div class="frame B">
+        <div class="search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><span class="q">Ask Squibby or search…</span><kbd>⌘</kbd><kbd>K</kbd></div>
+        <div class="split">
+          <div class="list">
+            <div class="sect">Do</div>
+            <div class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>Find the problem<span class="k"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>F</kbd></span></div>
+            <div class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/></svg>Safe to go live?</div>
+            <div class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 3h12v8H6l-3 3z"/></svg>Explain an error<span class="k"><kbd>⌃</kbd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>E</kbd></span></div>
+            <div class="sect">Recent</div>
+            <div class="it on"><svg viewBox="0 0 16 16" fill="none" stroke="#4ADE80" stroke-width="2"><path d="M3 8.5l3 3 7-7"/></svg>Fix the signup button<span class="st"></span></div>
+            <div class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5l3 3 7-7"/></svg>Header overlaps on phones</div>
+            <div class="it"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 8.5l3 3 7-7"/></svg>Deploy failed on Vercel</div>
+          </div>
+          <div class="detail">
+            <div class="crumb">test-shop / Fix the signup button</div>
+            <h2>The signup button works again</h2>
+            <span class="badge"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg>Checked and working</span>
+            <div class="stat"><div><small>Worked for</small><b>42 s</b></div><div><small>Files</small><b>2</b></div><div><small>Cost</small><b>12¢</b></div></div>
+            <div class="tbl"><div><span style="flex:1">File</span><span>Change</span></div><div><span class="mono">public/signup.js</span><span class="muted">changed</span></div><div><span class="mono">test/signup.test.js</span><span class="ok">added</span></div></div>
+          </div>
+        </div>
+        <div class="footer"><span class="dot"></span>test-shop<span class="sp"></span><span class="f">Undo <kbd>⌘</kbd><kbd>Z</kbd></span><span class="f">Changes <kbd>⏎</kbd></span><span class="f">Actions <kbd>⌘</kbd><kbd>K</kbd></span></div>
+      </div>
+      <figcaption><b><span class="tag">B</span>Command, like Supabase's dashboard</b><span>Ask or search at the top, a list on the left (things to do with their keys, then recent fixes), the chosen fix on the right with its numbers. A bar at the bottom shows the keys for Undo, Changes and Actions.</span></figcaption>
+    </figure>
+
+    <!-- C -->
+    <figure>
+      <div class="frame C">
+        <div class="top"><div class="proj"><span class="dot"></span>test-shop</div><div class="icons"><span class="ib"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/><path d="M8 5v3l2 1.5"/></svg></span></div></div>
+        <div class="hero"><div class="drop"></div><h2>Fixed and proven.<br><span>Your signup button works.</span></h2></div>
+        <div class="result">
+          <div class="rtop"><span class="big"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8.5l3 3 7-7"/></svg></span><div><b>Checked and working</b><span>Builds · Tests pass · Works in a browser</span></div><span class="btn">Undo</span></div>
+          <div class="said">The button posted to the wrong address. I pointed it at /api/signup and added a test that clicks it.</div>
+          <div class="tiles3"><div class="t3"><small>Worked for</small><b>42 seconds</b></div><div class="t3"><small>Changed</small><b>2 files</b></div><div class="t3"><small>Cost</small><b>12 cents</b></div></div>
+        </div>
+        <div class="grid">
+          <div class="tile"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg></span><b>Find the problem</b><span>I look at the project and show you the exact line.</span></div>
+          <div class="tile"><span class="ic"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l5 2v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z"/></svg></span><b>Safe to go live?</b><span>A check before your site goes out.</span></div>
+        </div>
+        <div class="ask">Tell me what's broken<span class="go"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="#fff" stroke-width="2"><path d="M8 13V3M4 7l4-4 4 4"/></svg></span></div>
+      </div>
+      <figcaption><b><span class="tag">C</span>Cards, like Airbnb and Brex</b><span>One big bold line of what happened, then a rich result card: a large check, the three checks, what it said, and three numbers. Big friendly tiles for what to do next. A round ask bar at the bottom.</span></figcaption>
+    </figure>
+
+  </div>
+</main>
+</body>
+</html>

@@ -91,6 +91,17 @@ describe("answering in the notch (M23)", () => {
   test("what cannot be undone, and anything touching the person's git, opens Home to look first", () => {
     for (const r of ["irreversible", "git", "something new"]) expect(answerHere(r), r).toBe(false);
   });
+  test("a file outside the project that Undo can't take back opens Home, where the card says so (M45)", () => {
+    const outside = (undoable: boolean, action: string) => run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "outside_project", title: "This points Git at a folder outside your project.", action, undoable, expiresAt: "2099-01-01T00:00:00Z" })]);
+    expect(islandJobs(outside(false, "Running: git -C ../other log"))[0]).toMatchObject({ here: false, sub: "git -C ../other log" });
+    expect(islandJobs(outside(true, "Read: /Users/me/other/a.txt"))[0].here).toBe(true);
+    expect(answerHere("outside_project", false)).toBe(false);
+    expect(answerHere("network", false), "network asks stay as M23 left them").toBe(true);
+  });
+  test("paths on the notch's question are shown from the project folder (M45)", () => {
+    const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "settings", title: "Q", action: "Write: /p/.env", undoable: true, expiresAt: "2099-01-01T00:00:00Z" })]);
+    expect(islandJobs(m)[0].sub).toBe(".env");
+  });
   test("the card carries the question's id and risk", () => {
     expect(islandJobs(ask("install"))[0]).toMatchObject({ approval: "ap1", risk: "install" });
     expect(islandJobs(run(started))[0].approval).toBeUndefined();
@@ -147,5 +158,34 @@ describe("the notch greets you (M33)", () => {
     expect(greeting(19, null)).toBe("Evening.");
     expect(greeting(23, "Rishabh")).toBe("Hi, Rishabh.");
     expect(greeting(3, null)).toBe("Hi.");
+  });
+});
+
+describe("M45: the notch card after a result tells the truth", () => {
+  const receipt = (o: Record<string, unknown> = {}) => ev({ type: "receipt", agent: "a", checkpoint: "cp_1", changed: [{ file: "join.js", kind: "modified" }], commands: 1, notUndoable: [], proof: "passed", usdEstimate: 0.05, ended: "done", ...o });
+  const finished = (o: Record<string, unknown> = {}, state = "done") => run([...started, receipt(o), ev({ type: "agent.state", agent: "a", state })]);
+  const undone = (m: Model) => run([ev({ type: "checkpoint.restored", project: "/p", checkpoint: "cp_1", safety: "cp_2", recovered: [], largeLeftAlone: [], leftAlone: [] })], m);
+  test("a proven fix is green", () => {
+    const [c] = islandJobs(finished());
+    expect([c.tone, c.state, c.sub]).toEqual(["done", "done", "Fixed and proven."]);
+  });
+  test("after Undo the notch card is not green", () => {
+    const [c] = islandJobs(undone(finished()));
+    expect(c.tone).toBe("plain");
+    expect(c.state).toBe("idle");
+    expect(c.sub).toBe("Undone. The fix is gone, so the problem is back.");
+  });
+  test("the peek key changes on Undo", () => {
+    const m = finished();
+    expect(workPeekKey(islandJobs(undone(m)))).not.toBe(workPeekKey(islandJobs(m)));
+  });
+  test("a stopped task's card is plain", () => {
+    const [c] = islandJobs(finished({ ended: "stopped", proof: "skipped" }, "idle"));
+    expect([c.tone, c.state]).toEqual(["plain", "idle"]);
+    expect(c.sub).toBe(`${S.verdict.stopped}. ${S.verdict.stoppedChanged}`);
+  });
+  test("a failed check is red, a partial one amber", () => {
+    expect(islandJobs(finished({ ended: "failed", endedWhy: "check_failed", proof: "failed" }, "error"))[0]).toMatchObject({ tone: "failed", state: "error" });
+    expect(islandJobs(finished({ proof: "partial" }))[0]).toMatchObject({ tone: "partly", state: "idle" });
   });
 });

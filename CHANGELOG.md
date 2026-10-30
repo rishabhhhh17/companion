@@ -2,6 +2,108 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby tells the truth about every result: 30 Oct 2026
+
+- **One honest answer for every result.** Home, the notch, What I did, the recent list, VoiceOver, spoken replies and Copy now all say the same thing about a finished task, decided in one place. "Fixed and proven" and the green tick appear only when the project's own checks passed, and no Undo has taken the fix back since.
+- **After Undo, nothing says proven.** The result turns to "Undone. The fix is gone, so the problem is back." The tick, the green colour and the check chips go at once, and What I did files the task under Undone with no second Undo.
+- **Bring the fix back.** Changed your mind after Undo? One button, asked first, puts the task's files back as they were just before you pressed Undo. It uses Squibby's own undo points, never your Git.
+- **Stops are named.** A task that stopped at its spending limit, today's limit or the most turns allowed now says so, instead of "Something went wrong". A task you stopped says "Stopped", and whether it changed files first.
+- **Partly checked says so.** When some checks could not run, the result reads "Fixed, not fully proven. Some checks could not run." instead of a green tick.
+- **Clearer questions before risky steps.** A question never says it can be undone when it can't. Anything Undo can't take back (running a script, changing your Git, an unknown tool) now says "Undo can't take this back.", and those steps are listed under "Cannot be undone" on the result. House rules get their own question, file paths are shown from your project folder, and Allow and Don't allow look equally weighted.
+- **Failures in one plain sentence.** A failed check and the "This keeps failing" card show one plain sentence and where it failed. The raw output is behind Details.
+- **"No cost" instead of "free so far"**, and the first run now says exactly what Undo does: it puts back the files the task changed, leaves files you changed yourself, and can't take back anything sent online.
+
+## Fixes from a full interface review: 30 Oct 2026
+
+- **Text can now be twice the size.** Settings, Text size has a new Huge step. Home's two columns stack when the words get that big, so nothing is squeezed.
+- **The notch never cuts off its buttons.** With questions waiting, the cards scroll and the buttons under them stay in reach.
+- **The ask box stays at the top.** While Claude was installing or missing, its notice could push the ask box below the side list.
+- **The Paper theme is readable.** Errors, the ticks and crosses, and the dot that says a place needs you were too faint on Paper.
+- **Easier to read keys and edges.** The keyboard shortcuts beside each action, and the edge of the ask box, now stand out enough to see.
+- **Every button answers a press.** Some rows on Home showed no press at all, and a notch answer that was not ready yet looked pressed.
+- **Clearer words.** The Now hint says to press Return, and the first run says what to do when the practice project needs Node.
+- **VoiceOver keeps its place** while the first run's short story plays.
+
+## One look on every screen: 30 Oct 2026
+
+- **Home, Settings, the notch and the first run now look like one product.** The same near black page, cards with one thin edge, quiet rows that light up under the pointer and small square buttons, everywhere.
+- **Calmer buttons.** The main button on each screen keeps its silver, now with neat corners instead of a big pill. Second choices have a thin outline.
+- **Settings.** The page you are on is a lit row, as on Home's list, and the cards are flat.
+- **Fixed:** the first run was squeezed into the right half of Home. It uses the whole width again.
+
+## A new Home, laid out like the best dashboards: 30 Oct 2026
+
+- **Ask first.** The box to ask Squibby is now a command bar across the top of Home, with a search mark, ready to type.
+- **Everything to do on the left.** Find the problem, Is it safe to go live?, Explain an error and Show me sit in a quiet list with their keyboard shortcut, and your last few fixes are listed below them with a tick or a cross for how each ended. Press one to see it in What I did.
+- **The job on the right.** What Squibby is working on, and every result, has the rest of the space.
+
+## The ring keeps up, and it's smaller: 30 Oct 2026
+
+- **The water ring sticks to your cursor.** It now moves the instant your Mac reports the mouse moving, instead of checking where it is many times a second, so it doesn't trail behind. It only ever knows where the pointer is, never what you type.
+- **A bolder first hello.** The first screen's headline now reads in two tones: "Your AI built it." bright, "Let's finish it." in grey below.
+- **Glassier cards.** Home's cards catch a thin rim of light along their top edge, like glass.
+- **A smaller, finer ring.** About two thirds the size, with a thinner ring of water.
+- **Easier to bring Flowflow out.** A short pull away from the edge is enough for it to stay where you drop it; only a drop right at the edge sticks it back.
+
+## You can see Squibby listening, and results read cleaner: 30 Oct 2026
+
+- **The water ring hears you.** While you hold a voice key, the ring at your pointer ripples with your voice and glows a little, so you can see Squibby is listening right where you're looking.
+- **A cleaner notch panel.** Its buttons sit on one row, with Settings and Open Home as two small round buttons at the end, and the blurry glow under it is gone.
+- **Home's top is tidier.** The line under the headline no longer sits on the waterline, and Flowflow melts into Home's water instead of ending in a hard line.
+- **See what it's doing now.** While Squibby works, the step it's on has a small turning circle beside it, and finished steps go quiet with a tick.
+- **See the keys.** Find the problem, Explain an error and Show me now show their keyboard shortcut as small keys at the end of the row, using the keys you picked.
+- **Clearer results.** After a fix, Squibby's own words come first, then one tidy card of what changed: each file with a mark for added, changed or removed, its name in bold and its folder in grey.
+
+## Easier on your battery: 30 Oct 2026
+
+- **The water ring rests when you do.** It redraws at full speed only while your pointer moves, and slows right down when it's still.
+- **Flowflow idles gently.** Its slow sway at rest uses about a third less of your Mac's graphics power, and looks the same.
+
+## Drawing that keeps pace with the voice: 30 Oct 2026
+
+- **Marks are drawn as Squibby says them.** When Squibby points at something and says the step out loud, the hand drawn ring or arrow now draws along with the words, finishing as it reaches the important part. Without the voice, marks draw at their own pace as before.
+
+## Safer behind the scenes: 30 Oct 2026
+
+- **Undo covers more.** If Squibby edits a file your project keeps out of Git (like a local config), Undo now puts it back too, and removes one it made.
+- **No sneaky addresses.** When Squibby opens a web page while fixing something, it refuses a name that secretly leads back to your own Mac or home network.
+- **Up to date.** Security fixes for the certificate checks and a few packages the engine uses.
+
+## Flowflow sticks to the edge until you need it: 30 Oct 2026
+
+- **It lives stuck to the edge.** Flowflow now waits half tucked into the edge of your screen, flattened against it like a drop of water on glass. You can always see where it is, but it stays out of your way.
+- **Hover to bring it out.** Move your pointer onto it and it comes out and springs back into shape with a wobble. Move away and it sticks back to the edge.
+- **Pull it out.** Drag it away from the edge and it peels off like water. The closer to the edge you hold it, the flatter it squashes.
+- **No invisible box.** It flattens against the real edge of your screen now, not the edge of its own little window.
+- **Leave it in the middle.** Drop it anywhere away from the edges and it stays right there. Only the notch is kept clear.
+- **Your choice.** On Settings, Flowflow, "Tuck into the edge of the screen" turns this off. Under Advanced, "Stick to the edge" off hides it fully past the edge instead.
+
+## Flowflow clings like water, and the ring lands on your cursor: 30 Oct 2026
+
+- **Push it into the edge and it squashes.** Drag Flowflow into the side of the screen and it slides up against it, flattens and spreads along it. The harder you push, the flatter it gets. Let go and it springs back into shape with a little wobble, like water.
+- **It joins the water in Home.** Where Home's waterline meets Flowflow, the two join in a soft curve, like a drop meeting water, instead of a shape floating on a line.
+- **The ring lands on your cursor.** A window that follows the pointer always shows a frame or two late, so on a fast sweep it used to sit behind. The ring now aims a touch ahead along the way you're moving, and settles exactly on the cursor when you stop.
+
+## Flowflow flows, goes anywhere, and the ring keeps up: 30 Oct 2026
+
+- **Flowflow is liquid now.** Its point sways like poured water, slow waves run up its sides and its base spreads and gathers. When it moves it stretches and pours a smooth tail of water behind it that melts back in as it slows.
+- **Put Flowflow anywhere.** Drag it away from the screen's edges and let go: it stays right there. Drop it near an edge and it snaps to the edge as before. It always keeps out of the notch and the space Home drops into.
+- **The water ring keeps up.** Moves of the ring no longer queue up behind other work, and each one uses where your pointer is at that moment, so it doesn't lag behind anywhere on the screen.
+
+## Flowflow, rebuilt as clear water, and a water ring at your pointer: 30 Oct 2026
+
+- **Flowflow looks premium now.** It's one clean drop of clear water, lit like a studio product shot. It has a soft point on top, two calm eyes with a glint, and light gathering at its base. No more lumps or wobble: it leans, breathes and settles.
+- **It's sharp.** A bug meant Flowflow had been drawn small and stretched up. It's crisp now at every size.
+- **A water ring rides your pointer.** A small ring of Flowflow's water sits right on your cursor's tip, open in the middle so it never covers anything. It moves with the cursor with no lag, stretches a little when you move fast, and has small waves running round it. It stays still if your Mac asks for less motion. You can turn it off in Settings, Flowflow.
+
+## Type by voice in any app: 30 Oct 2026
+
+- **Talk instead of type, anywhere.** Click into any text box, in any app. Hold Option, Shift and Space, speak, and let go. Your words appear where the cursor is.
+- **On this Mac only.** Your voice is turned into text on this Mac, never sent anywhere. Squibby never presses Return, so nothing is sent for you.
+- **It stays out of private places.** It never types into a password box or into password managers. It never reads what's already in the box. If you moved to another box while it was working, it copies your words instead and says so.
+- **You'll see what happened.** The little Flowflow at your pointer says "Typed." or "Copied. Press Cmd+V."
+- **Your choice.** There's a switch on the Voice page in Settings, and you can change the keys in Shortcuts. Hold to talk still sends your words to Squibby, as before.
+
 ## Pick your Flowflow: 29 Oct 2026
 
 - **Choose Flowflow from cards.** Settings, Flowflow page: each water is its own card with the live Flowflow in that colour, its name and a line about it (Ocean, Lagoon, Lime, Berry, Midnight). Click one, or use the arrow keys.

@@ -7,7 +7,8 @@ import { S } from "./strings.ts";
 export type ProofChip = { rung: string; word: string; ok: boolean };
 
 export function proofChips(m: Pick<Model, "task" | "receipt">): ProofChip[] {
-  if (!m.receipt || !m.receipt.changed.length || !m.task?.proof) return [];
+  // After an Undo, even once the fix is brought back, the files are not the ones that were checked (M45).
+  if (!m.receipt || !m.receipt.changed.length || !m.task?.proof || m.receipt.undone) return [];
   return m.task.proof.steps
     .filter((s: ProofLine) => s.status === "passed" || s.status === "failed")
     .map((s) => ({ rung: s.rung, word: (S.proofChip as Record<string, string>)[s.rung] ?? s.label, ok: s.status === "passed" }));

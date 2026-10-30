@@ -217,3 +217,11 @@ describe("the first run has no dead end without a key (M28)", () => {
     expect(src).not.toContain("S.obPlanLater");
   });
 });
+
+describe("two tone headline (M41)", () => {
+  test("the first sentence, then the rest", async () => {
+    const { twoTone } = await import("./onboarding.tsx");
+    expect(twoTone("Your AI built it. Let's finish it.")).toEqual(["Your AI built it.", "Let's finish it."]);
+    expect(twoTone("One sentence only")).toEqual(["One sentence only", ""]);
+  });
+});

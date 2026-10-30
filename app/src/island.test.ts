@@ -64,7 +64,12 @@ describe("the island window", () => {
   test("notices the pointer only through a tracking area on its own window, and never key events", () => {
     expect(main).toContain("NSTrackingArea");
     expect(main).toMatch(/NSTrackingAreaOptions::MouseEnteredAndExited \| NSTrackingAreaOptions::ActiveAlways \| NSTrackingAreaOptions::InVisibleRect/);
-    expect(main).not.toMatch(/addGlobalMonitorForEvents|NSEventMask::KeyDown|CGEventTap/);
+    // Never key events, never an event tap (rule 8). M41: one global watch is allowed, and only for where the pointer moves
+    // (the water ring keeps up with the cursor): its mask is exactly mouse moves and drags, nothing else.
+    expect(main).not.toMatch(/NSEventMask::KeyDown|NSEventMask::KeyUp|NSEventMask::FlagsChanged|CGEventTap|NSEventMask::Any/);
+    const globals = [...main.matchAll(/addGlobalMonitorForEventsMatchingMask_handler\((\w+),/g)].map((m) => m[1]);
+    expect(globals).toEqual(["follow_moves"]);
+    expect(main).toContain("let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;");
   });
   test(`is hidden with the rest in a full screen app and when the person hides ${PRODUCT}, and shown again after`, () => {
     const tick = fnBody("tick");
@@ -438,5 +443,23 @@ describe("the island page never skips a hook (M26)", () => {
   test("no setting is read behind a condition", () => {
     const page = readFileSync(new URL("./island.tsx", import.meta.url), "utf8");
     for (const line of page.split("\n")) if (/useSetting\(/.test(line)) expect(line, line).not.toMatch(/(&&|\|\||\?)[\s(]*useSetting\(/);
+  });
+});
+
+describe("the notch panel never cuts off its keys (better-interface review, 30 Oct 2026)", () => {
+  const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+  test("with questions waiting, the cards scroll inside the panel and the keys under them stay in reach", () => {
+    expect(css).toMatch(/\.island-panel:not\(\[data-brief\]\) \.ip-jobs \{ max-height: \d+px; overflow: auto;/);
+    expect(css).toMatch(/\.island-panel\[data-brief\] \.ip-jobs \{ max-height: \d+px; overflow: auto;/);
+    const full = Number(/\.island-panel:not\(\[data-brief\]\) \.ip-jobs \{ max-height: (\d+)px/.exec(css)![1]);
+    const brief = Number(/\.island-panel\[data-brief\] \.ip-jobs \{ max-height: (\d+)px/.exec(css)![1]);
+    const rs = readFileSync(new URL("../src-tauri/src/island.rs", import.meta.url), "utf8");
+    const max = Number(/pub const PANEL_MAX: f64 = (\d+)\.0;/.exec(rs)![1]);
+    // The full panel also holds Fix something (42), the row of keys (30), two gaps (10) and its padding (22).
+    expect(full + 42 + 30 + 2 * 10 + 22, "the full panel fits its window").toBeLessThanOrEqual(max);
+    expect(brief + 16, "the brief panel fits its window").toBeLessThanOrEqual(max);
+  });
+  test("an answer that is not armed yet does not look pressed", () => {
+    expect(css).toContain(".island-panel .ip-ask:not([data-armed]) .ip-answer button:active { transform: none; }");
   });
 });

@@ -39,3 +39,13 @@ Finish the founder-side list, then one hands-on session, then a small friends pr
 ## Addendum, checks run after the verdict
 - Full suite run four more times: three passed. One run failed with test durations of 10 to 17 minutes for tests that take milliseconds, so the Mac slept mid-run; the next run passed in about 3 minutes. Not a logic failure, but run it again before any release.
 - `sh app/scripts/build-app.sh` succeeds: Companion.app (354 MiB) signs with the development certificate, the signature verifies, Claude's binary is unchanged, no Dock icon. The app was built, not opened.
+
+## Addendum, 30 Oct 2026
+- **A website that resolves to a private address:** closed for the plain case. A task's web fetch now looks the name up once and is refused if any answer is this Mac or a private network (`safety.ts` `leadsHome`). A second lookup by the fetch could still answer differently, a narrow rebinding race.
+- **Ignored files and undo:** files git ignores that a task edits by name are kept and put back by Undo (T06 addendum). Files changed by shell commands are still not covered.
+- **Audits:**
+  - `cargo audit`: two certificate fixes taken (`rustls-webpki` 0.103.16, `webpki-root-certs` 1.0.11).
+  - `zip` 4.6.1 (three advisories) comes only through the updater on Windows and is not in the Mac app. Update it before a Windows build.
+  - `bun audit`: `zod` to 4.6.6, plus seven fixes in the Agent SDK's own dependencies. The runner and the pages are clean.
+- **AGENTS.md / CLAUDE.md before the first snapshot:** closed in M14 (22 to 23 Oct). In a folder Squibby made, the shared files are never written until the person says yes, so Undo returns such a folder to empty apart from `.companion`.
+- **Next hands-on check:** `docs/status/2026-10-30-mac-session-3-plan.md`.

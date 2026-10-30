@@ -5,7 +5,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AgentRunner, type ToolExecutor } from "../src/agent.ts";
-import { ScriptedEngine, type Step } from "../src/engine.ts";
+import { EngineStop, ScriptedEngine, type Engine, type Step, type Turn } from "../src/engine.ts";
+import { endedWhyOf } from "../src/followup.ts";
+import type { LadderResult } from "../src/proof/ladder.ts";
 import { TaskLog } from "../src/tasklog.ts";
 import type { Event } from "../../protocol/index.ts";
 
@@ -274,5 +276,47 @@ describe("an answered approval is announced to everyone", () => {
     await r.runner.handle({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
     await done;
     expect(resolved(r.events)[0].outcome).toBe("cancelled");
+  });
+});
+
+// M45: the receipt says why a failed task stopped, so the result never reads "Something went wrong" for a limit.
+describe("M45: the receipt says why it failed", () => {
+  const receipt = (events: Event[]) => events.find((e) => e.type === "receipt") as any;
+  const run = async (engine: Engine, proof: (ctx: any) => Promise<LadderResult>, budgetUsd = 3) => {
+    const project = tmp("proj"); writeFileSync(join(project, "a.txt"), "original");
+    const events: Event[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("shadow"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof });
+    await runner.handle(start(project, { budgetUsd }));
+    return receipt(events);
+  };
+  const passes = async () => ({ verdict: "passed" as const, steps: [] });
+  test("over budget gives spending_limit", async () => {
+    expect(await run(new ScriptedEngine([{ ...write("a.txt", "x"), costUsd: 9 }]), passes, 1)).toMatchObject({ ended: "failed", endedWhy: "spending_limit" });
+  });
+  test("a failed check gives check_failed", async () => {
+    const failed = { rung: "tests" as const, label: "Running the tests", status: "failed" as const, detail: "1 failed", ms: 1 };
+    expect(await run(new ScriptedEngine([write("a.txt", "x")]), async () => ({ verdict: "failed", steps: [failed], failedAt: failed }))).toMatchObject({ ended: "failed", endedWhy: "check_failed", proof: "failed" });
+  });
+  test("max turns gives turns", async () => {
+    const engine = { start: async function* (): AsyncGenerator<Turn, void, any> { yield { text: "thinking", costUsd: 0.01 }; throw new EngineStop("error_max_turns: the most turns were used", 0); } };
+    expect(await run(engine, passes)).toMatchObject({ ended: "failed", endedWhy: "turns" });
+  });
+  test("done gives no endedWhy", async () => {
+    const r = await run(new ScriptedEngine([write("a.txt", "x")]), passes);
+    expect(r.ended).toBe("done");
+    expect("endedWhy" in r).toBe(false);
+  });
+  test("every status has its reason, and only a failed ending has one", () => {
+    expect(endedWhyOf("not_done", "failed")).toBe("check_failed");
+    expect(endedWhyOf("error_max_budget_usd", "failed")).toBe("check_failed");   // a check that failed is said first
+    expect(endedWhyOf("not_done", "skipped")).toBe("check_failed");
+    expect(endedWhyOf("error_max_budget_usd", "skipped")).toBe("spending_limit");
+    expect(endedWhyOf("daily_limit", "skipped")).toBe("daily_limit");
+    expect(endedWhyOf("error_max_turns", "skipped")).toBe("turns");
+    expect(endedWhyOf("no_connection", "skipped")).toBe("no_connection");
+    expect(endedWhyOf("claude_busy", "skipped")).toBe("claude_busy");
+    expect(endedWhyOf("error", "skipped")).toBe("error");
+    expect(endedWhyOf("something_new", "skipped")).toBe("error");
+    for (const s of ["done", "needs_you", "interrupted"]) expect(endedWhyOf(s, "passed"), s).toBeUndefined();
   });
 });
