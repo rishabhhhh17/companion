@@ -26,8 +26,10 @@ describe("every Settings page renders only parts", () => {
     expect(fn("ChoiceControl(")).toContain("controlFor(d, options.length)");
     expect(fn("SettingRow(")).toContain("const under = controlFor(d) === \"pictures\";");
     expect(fn("SettingRow(")).toContain("more={moreWords(d.key)}>");
-    // The Row part holds them behind a small info button beside the control, opened on a press.
-    expect(read("./ui/parts.tsx")).toContain('{hasMore && <Button kind="icon" size="sm" label={S.ui.learnMore} describedBy={lid} expanded={showMore} controls={moreId}');
+    // The Row part holds them behind a small info button after the name, opened on a press, and seen when the row is
+    // pointed at or reached by the keyboard (the founder, 31 Oct: not a column of icons).
+    expect(read("./ui/parts.tsx")).toContain('{hasMore && <Button kind="icon" size="sm" className="ui-row-info" label={S.ui.learnMore} describedBy={lid} expanded={showMore} controls={moreId}');
+    expect(read("./ui/parts.css")).toContain('.ui-row:hover .ui-row-info, .ui-row:focus-within .ui-row-info, .ui-row-info[aria-expanded="true"] { opacity: 1; }');
     // Lists and editors are a summary and Edit, which opens a sheet.
     for (const k of ["rules.house", "calls.apps", "ph.appAnswers"]) expect(fn("SettingRow("), k).toContain(`if (d.key === "${k}") {`);
     expect(fn("EditorRow(")).toContain("{S.setFrame.edit}</Button>");

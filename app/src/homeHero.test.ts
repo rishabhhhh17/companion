@@ -474,12 +474,17 @@ describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follow
     expect(card).toContain('const lively = livelinessOf(useSetting("character.lively"));');
     // One water for Home's pond and Settings' preview (review, 31 Oct): the same flat sea, and both hold still with Still.
     expect(css).toContain('.home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }');
-    // No gradient on the water's flat sea, in Home or in the preview.
-    expect(/\.home-pond \.ch-water, \.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--sea);");
-    expect(css).not.toMatch(/^\.companion-hero \.ch-water \{/m);
+    // Home: one line across the whole width (the founder, 31 Oct, as in M41), the sea fading out under it, never a box.
+    expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("overflow: clip;");
+    expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("margin: 0 calc(var(--space-6) * -1) var(--space-2);");
+    expect(/\.home-pond \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, var(--sea) 0, transparent 100%);");
+    expect(/\.home-pond \{([^}]*)\}/.exec(css)?.[1]).not.toMatch(/box-shadow|border-radius|background/);
+    // The preview keeps a flat sea in its own card.
+    expect(/\.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--sea);");
+    // Home and the preview now draw the sea differently on purpose (a long fading line in Home, a card in Settings).
     expect(read("./settingsPage.tsx")).toContain('<div className="companion-hero" id={fixedAnchor("preview")} data-lively={lively}>');
-    // The sky over the water is a token, so Paper never draws a black box on its light page.
-    expect(/\.home-pond, \.companion-hero \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--pond);");
+    // The sky over the preview water is a token, so Paper never draws a black box on its light page; Home has no sky box.
+    expect(/\.companion-hero \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--pond);");
     expect(tokens).toMatch(/:root\[data-theme="paper"\] \{[^}]*--pond: var\(--surface-1\);/);
   });
 });

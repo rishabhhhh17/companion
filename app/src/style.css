@@ -67,24 +67,23 @@ html.home-page, body.home-page { background: transparent; }
 .places .tabdot { margin-left: var(--space-1); }
 .places .close { margin-left: var(--space-2); }
 .view-title { font-size: var(--t-display); font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; margin: 0 0 0 var(--space-1); }
-/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
-   founder, 31 Oct). The pond is the same water as Settings' preview (.companion-hero), small, at the left; the status
-   headline (a Verdict line), its line and the one main button at the right. Stacked when the text is big. */
-.hero { display: grid; grid-template-columns: calc(152rem / 14) minmax(0, 1fr); column-gap: var(--space-5); align-items: center; margin: var(--space-2) 0 var(--space-4); }
+/* Now (F28, spec 4.1): Flowflow lives on one waterline across all of Home (the founder, 31 Oct), the status and its one
+   main button in the sky beside it, never a box. --line-up: the drop's own waterline above its column's foot. */
+.hero { --line-up: calc(150rem / 14 * 111 / 156 * .28 - 6px); position: relative; isolation: isolate; overflow: clip; display: grid; grid-template-columns: calc(152rem / 14) minmax(0, 1fr); column-gap: var(--space-4); align-items: end; margin: 0 calc(var(--space-6) * -1) var(--space-2); padding: var(--space-3) var(--space-6) var(--space-5); }
 .hero[hidden] { display: none; }
-.hero-words { min-width: 0; display: grid; justify-items: start; gap: var(--space-1); }
+.hero-words { position: relative; z-index: 1; min-width: 0; display: grid; justify-items: start; gap: var(--space-1); align-self: end; margin-bottom: calc(var(--line-up) + var(--space-4)); }
 .hero-main { margin-top: var(--space-3); }
 .status-head { min-width: 0; }
-/* One water for Home's pond and Settings' preview (.companion-hero), so the preview shows what Home will: a flat sea
-   under the sky (--pond), its line drifting, still with Still (M46; Flowflow parks its drawing, flowflow/controller.ts). */
-.home-pond { position: relative; display: grid; place-items: center; aspect-ratio: 152 / 120; margin: 0; border-radius: var(--r-card); }
-.home-pond, .companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; }
-.home-pond .ch-water, .companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: var(--sea); z-index: 0; }
+.home-pond { position: static; display: block; }
+.home-pond .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--line-up) + var(--space-5)); background: linear-gradient(180deg, var(--sea) 0, transparent 100%); z-index: 0; }
+.home-pond .ch-char { position: relative; z-index: 1; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
+.home-pond .home-char { width: calc(150rem / 14); margin: -10px -12px -6px; }
+/* Settings' preview (.companion-hero): the same water in a card, its line still with Still (M46). */
+.companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: var(--sea); z-index: 0; }
 .home-pond .ch-water .waterline, .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
 .home-pond .ch-water .waterline svg, .companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 .home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }
-.home-pond .ch-char { position: relative; z-index: 1; margin-top: var(--space-4); -webkit-mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); mask-image: linear-gradient(180deg, #000 0, #000 62%, rgba(0, 0, 0, .55) 74%); }
-.home-pond .home-char { width: calc(150rem / 14); margin: -10px -12px -6px; }
 /* The water is drawn with room around it to wobble in, so its box reaches a little past its column on each side. */
 .home-char { position: relative; width: 180px; aspect-ratio: 156 / 111; margin: -12px -16px -8px; }
 .home-flow { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
@@ -202,7 +201,6 @@ h2 { font-size: var(--t-answer); font-weight: 650; line-height: 1.25; letter-spa
 @keyframes putback { 0% { opacity: 0; transform: translateY(4px); } 12%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-out) both; }
 @keyframes card-settle { from { opacity: .6; transform: scaleY(1.04) translateY(-4px); } }
-
 /* The other things you can ask for, kept out of the way until wanted: a small chevron that turns when it opens (M27). */
 details.more { margin: var(--space-2) 0 var(--space-3); }
 details.more > summary { display: inline-flex; align-items: center; gap: 8px; cursor: default; color: var(--fg-2); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; }
@@ -465,6 +463,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .fr { --fg: #f5f5f7; --fg-2: #a1a1a6; --bad: #ff6b5e; --danger: #ff6b5e; --ok: #4cc27f; --amber: #ffb020; color: #f5f5f7; background: #000000; position: relative; display: flex; flex-direction: column; min-height: calc(560rem / 14); margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) calc(var(--space-5) * -1); padding: var(--space-5) var(--space-6) var(--space-6); overflow: clip; isolation: isolate; }
 .fr > * { position: relative; z-index: 1; }
 .fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); transition: height 900ms var(--ease-spring); }
+/* The first run fills Home to its foot, so its sea never stops in a hard line (31 Oct). */
+.home .inner:has(> .onboarding.fr) { flex: 1 0 auto; display: flex; flex-direction: column; } .inner > .onboarding.fr { flex: 1 0 auto; }
 .fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
 .fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 .fr-top { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--fg-2); font: 600 var(--t-caption) var(--font); }
@@ -677,8 +677,8 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
    Always laid out at island.rs PANEL_W so its height is measured before it opens; shown only while the pointer rests on
    the island. */
 .island-panel { position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: #fff; font: 500 var(--t-small) var(--font); visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity 120ms var(--ease-out), scale 120ms var(--ease-out), visibility 0s linear 120ms; }
-/* The notch's black, lifting to a soft grey where the panel hangs. */
-.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: linear-gradient(180deg, #000 0, #000 var(--row), #141416 100%); }
+/* The notch's own black, all the way down: the panel is the notch grown, never a grey band (the founder, 31 Oct). */
+.island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: #000; }
 .island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity 160ms var(--ease-out), scale 160ms var(--ease-out), visibility 0s; }
 .island-panel button[class^="ip-"] { all: unset; box-sizing: border-box; cursor: default; }
 .island-panel button[class^="ip-"]:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
@@ -745,4 +745,4 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .island-panel[data-brief] .ip-jobs { max-height: 224px; overflow: auto; overscroll-behavior: contain; }
 /* With big text, the pond sits above the words, so the status keeps the width; the ask field's keys go under the words. */
 .home { container: home / inline-size; }
-@container home (width < 36rem) { .hero { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-3); } .home-pond { max-width: calc(152rem / 14); } .home .ask { flex-wrap: wrap; } .home .ask textarea { flex: 1 1 calc(100% - 3rem); } }
+@container home (width < 36rem) { .hero { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-3); } .hero-words { order: -1; margin-bottom: 0; } .home .ask { flex-wrap: wrap; } .home .ask textarea { flex: 1 1 calc(100% - 3rem); } }

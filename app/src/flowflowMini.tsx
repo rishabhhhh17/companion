@@ -4,7 +4,7 @@
 // water cannot run, the picture pose instead, as on the desktop. `still`: one still frame on each change, no loop (a panel
 // that is not on screen, or a small mark that should not pull the eye).
 import { Suspense, lazy, useEffect, useState } from "react";
-import { poseFor, poseUrl } from "./characters.ts";
+import { poseFor, poseUrl, type Pose } from "./characters.ts";
 import { flowColours, hueTurn, livelinessOf, waterOf, type Water } from "./lookfeel.ts";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -14,7 +14,10 @@ import { useRest } from "./useRest.ts";
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
 
 /** `water`: show this water colour instead of the chosen one (the character picks in Settings, M35). */
-export function FlowMini({ state, className, still, water }: { state: CharacterState; className: string; still?: boolean; water?: Water }) {
+/** `pose`: always the still picture in that pose, never a live drawing. Rows of choices (Settings' water and how lively)
+ *  use it, so a page never holds a live drawing per tile: Macs cap how many a page may hold, and past the cap the tiles
+ *  went blank (31 Oct). */
+export function FlowMini({ state, className, still, water, pose }: { state: CharacterState; className: string; still?: boolean; water?: Water; pose?: Pose }) {
   const liveOn = useSetting("character.live") === true;
   const chosen = waterOf(useSetting("look.water"));
   const colours = flowColours(water ?? chosen);
@@ -24,8 +27,8 @@ export function FlowMini({ state, className, still, water }: { state: CharacterS
   // M46 (F28): how lively, and rest. Small, so working draws at WORK_INTERVAL in every choice (controller.ts small).
   const mode = livelinessOf(useSetting("character.lively"));
   const resting = useRest();
-  const picture = <img className={className} src={poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
-  if (!liveOn || failed) return picture;
+  const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
+  if (pose || !liveOn || failed) return picture;
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>

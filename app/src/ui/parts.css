@@ -82,6 +82,11 @@ button, select, input, textarea { font: inherit; }
 .ui-row-more { display: grid; gap: var(--space-2); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-row-more > p { margin: 0; }
 .ui-row-extra { flex: 1 0 100%; min-width: 0; }
+.ui-row-info { opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.ui-row:hover .ui-row-info, .ui-row:focus-within .ui-row-info, .ui-row-info[aria-expanded="true"] { opacity: 1; }
+/* A segmented choice takes its own line under the words, the full width of the row, so it never wraps half under. */
+.ui-row:has(> .ui-row-control > .ui-seg) > .ui-row-control { flex-basis: 100%; margin-inline-start: 0; }
+.ui-row-control > .ui-seg { width: 100%; }
 .ui-row-extra > * + * { margin-top: var(--space-2); }
 /* A short list of switches inside one row (Also say out loud, the checks to leave out): each item a label and a switch. */
 .ui-sublist { display: grid; margin: 0; padding: 0; list-style: none; }
@@ -169,8 +174,8 @@ button, select, input, textarea { font: inherit; }
 .ui-field-error { color: var(--bad); font: var(--t-caption) / var(--lh-caption) var(--font); }
 
 /* ---------- Picture choice ---------- */
-.ui-pics { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: var(--w-pic); box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.ui-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--w-pic), 1fr)); gap: var(--space-2); }
+.ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: auto; box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .ui-pic:hover:not(:disabled) { border-color: var(--line-strong); }
 .ui-pic:active:not(:disabled) { transform: scale(var(--press-pic)); }
 .ui-pic[aria-checked="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--fg); }

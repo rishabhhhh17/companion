@@ -76,6 +76,9 @@ export function Row({ label, description, control, controlId, labelId, descripti
             onClick={() => { if (restore) setMenu((x) => !x); }} />}
           {controlId ? <label className="ui-row-label" id={lid} htmlFor={controlId}>{label}</label> : <span className="ui-row-label" id={lid}>{label}</span>}
           {scope === "project" && <span className="ui-tag">{S.ui.thisProject}</span>}
+          {/* The longer words sit behind a small info button after the name, seen when the row is pointed at or reached by
+              the keyboard, so a page is not a column of icons (the founder, 31 Oct). */}
+          {hasMore && <Button kind="icon" size="sm" className="ui-row-info" label={S.ui.learnMore} describedBy={lid} expanded={showMore} controls={moreId} onClick={() => setShowMore(!showMore)}><Icon name="info" size={14} /></Button>}
         </span>
         {description ? <span className="ui-row-desc" id={did}>{description}</span> : null}
         {menu && restore && (
@@ -84,8 +87,7 @@ export function Row({ label, description, control, controlId, labelId, descripti
           </div>
         )}
       </div>
-      {(hasControl || hasMore) && <div className="ui-row-control">
-        {hasMore && <Button kind="icon" size="sm" label={S.ui.learnMore} describedBy={lid} expanded={showMore} controls={moreId} onClick={() => setShowMore(!showMore)}><Icon name="info" size={16} /></Button>}
+      {hasControl && <div className="ui-row-control">
         {hasControl ? control : null}
       </div>}
       {children || (hasMore && showMore) ? <div className="ui-row-extra">

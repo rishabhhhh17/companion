@@ -9,7 +9,8 @@ import { HomeCharacter } from "./homeCharacter.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
-import { LIVELINESS, livelinessOf, waterOf, WATERS } from "./lookfeel.ts";
+import { LIVELINESS, livelinessOf, waterOf, WATERS, type Liveliness } from "./lookfeel.ts";
+import type { Pose } from "./characters.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { takeIfLost } from "./focus.ts";
 import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
@@ -118,7 +119,9 @@ function TextControl({ d, value, labelId, disabled, onChange, onProblem }: { d: 
     onProblem("");
     if (c.value !== value) onChange(c.value as string);
   };
-  return <Field value={text} maxLength={d.maxLength} disabled={disabled} labelledBy={labelId}
+  // An empty name shows the name it falls back to, so the box never looks broken (31 Oct).
+  const hint = (S.set[d.key as keyof typeof S.set] as { placeholder?: string } | undefined)?.placeholder;
+  return <Field value={text} maxLength={d.maxLength} disabled={disabled} labelledBy={labelId} placeholder={hint}
     onChange={(t) => { editing.current = true; setText(t); }} onBlur={() => { if (editing.current) commit(); }}
     onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); commit(); } }} />;
 }
@@ -544,7 +547,7 @@ function KeysRows({ keys }: { keys: Keys }) {
   };
   const rest = rows.map((r) => r.job).filter((j) => !F28_JOBS.includes(j));
   return (<>
-    <Group id="keys.keys" title={S.setGroupTitles["keys.keys"]} footer={<Button kind="quiet" size="sm" disabled={busy} onClick={reset}>{S.setRows.restoreKeys}</Button>}>
+    <Group id="keys.keys" title={S.setGroupTitles["keys.keys"]} footer={<Button size="sm" disabled={busy} onClick={reset}>{S.setRows.restoreKeys}</Button>}>
       {F28_JOBS.map(row)}
     </Group>
     <Disclosure id="keys.others" title={S.setRows.otherJobs} count={rest.length} open={others} onToggle={setOthers}>
@@ -1038,16 +1041,18 @@ function DangerZone() {
 }
 const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
 
-/** The water's colour (look.water): a Picture choice, one card per water with the live water in it, its name under it. */
+/** The water's colour (look.water): a Picture choice, one card per water with Flowflow in that water, its name under it. */
 function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
   return <PictureChoice labelledBy={labelId} value={waterOf(value)} onChange={onChange}
-    options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <FlowMini state="idle" className="pic-flow" water={w} still /> }))} />;
+    options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <FlowMini state="idle" className="pic-flow" water={w} pose="look" /> }))} />;
 }
 
-/** How lively Flowflow is (character.lively, F28): a Picture choice, still at rest for Still and moving for the others. */
+/** How lively Flowflow is (character.lively, F28): a Picture choice, a calm pose for Still, a turn for Gentle, a splash for
+ *  Lively. The preview above the choices shows the real movement. */
+const LIVELY_POSE: Record<Liveliness, Pose> = { still: "look", gentle: "glance", lively: "splash" };
 function LivelyPictures({ value, onChange, labelId, disabled }: { value: string; onChange: (v: string) => void; labelId: string; disabled: boolean }) {
   return <PictureChoice labelledBy={labelId} value={livelinessOf(value)} onChange={onChange} disabled={disabled}
-    options={LIVELINESS.map((l) => ({ id: l, label: S.lively[l], picture: <FlowMini state="idle" className="pic-flow" still={l === "still"} /> }))} />;
+    options={LIVELINESS.map((l) => ({ id: l, label: S.lively[l], picture: <FlowMini state="idle" className="pic-flow" pose={LIVELY_POSE[l]} /> }))} />;
 }
 
 /** The Flowflow page opens with the live Flowflow on its water, in the look chosen (the spec, 3.4), shown resting, working
