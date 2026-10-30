@@ -87,9 +87,11 @@ pub fn ready_words(using: Option<Chord>) -> String {
 /// a let go that ends one. If a let go never arrives (it can be lost), a press long after the last one counts as new, so
 /// hold to talk can never get stuck; the microphone itself is closed at its cap whatever happens (a minute unless changed, voice.rs).
 #[derive(Debug)]
+#[cfg_attr(not(test), allow(dead_code))]   // M36: the shell holds both keys with `Holding`; this one-key rule stays tested
 pub struct Held { down: bool, last_ms: u64 }
 /// Longer than the slowest key repeat macOS offers (about 2 seconds between repeats).
 pub const REPEAT_GAP_MS: u64 = 2_500;
+#[cfg_attr(not(test), allow(dead_code))]
 impl Held {
     pub const fn new() -> Held { Held { down: false, last_ms: 0 } }
     /// True for a new press, false for a repeat while held.

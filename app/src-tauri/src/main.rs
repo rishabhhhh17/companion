@@ -2818,6 +2818,11 @@ fn voice_save(before: &voiceset::Saved, next: &voiceset::Saved) -> Result<(), &'
 /// Silence, at once. Also part of Stop everything.
 #[tauri::command]
 fn speak_stop(app: AppHandle) { speech_off(&app); }
+/// M38: each word the voice is about to say goes to the overlay, so a mark being drawn keeps pace with the words (overlay.ts
+/// SpeechClock). Only how far through the line it is, never the words.
+fn speech_word(part: Option<f64>) {
+    if let Some(app) = APP.get() { let _ = app.emit_to("overlay", "speech-word", json!({ "part": part })); }
+}
 fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
 
 /// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
@@ -4381,6 +4386,7 @@ fn main() {
         })
         .setup(move |app| {
             log("launch", json!({}));
+            let _ = speak::WORD_HOOK.set(speech_word);   // M38: drawing keeps pace with the voice
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
             let mk = |label: &str, page: &str, size: (f64, f64)| {

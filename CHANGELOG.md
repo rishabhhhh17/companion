@@ -2,6 +2,10 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Drawing that keeps pace with the voice: 30 Oct 2026
+
+- **Marks are drawn as Squibby says them.** When Squibby points at something and says the step out loud, the hand drawn ring or arrow now draws along with the words, finishing as it reaches the important part. Without the voice, marks draw at their own pace as before.
+
 ## Safer behind the scenes: 30 Oct 2026
 
 - **Undo covers more.** If Squibby edits a file your project keeps out of Git (like a local config), Undo now puts it back too, and removes one it made.

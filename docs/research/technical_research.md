@@ -546,6 +546,11 @@ Claude's supported inputs are images, PDFs and text, not audio ([Files](https://
 * **Later engine.** Apple's SpeechAnalyzer and SpeechTranscriber need macOS 26, download their own assets, and launched with about 10 languages (no Hindi) ([Apple](https://developer.apple.com/documentation/speech/speechtranscriber.md)); one third party benchmark found them more accurate and faster than Whisper Small on English (secondhand). Add as an optional engine on macOS 26 after v1.
 * **Wispr Flow and macOS Dictation.** Both insert text by pasting into the focused field. The ask box must be a plain text input that accepts paste and never swallows Cmd+V; test both. Wispr Flow's MCP server (meeting notes, transcripts, calendar; read only; not dictation history) can be offered as a connector ([Wispr Flow MCP](https://docs.wisprflow.ai/articles/9551372685-connect-an-mcp-client-to-wispr-flow-remote-mcp-server)).
 * **Speaking back.** Off by default. An opt in reads short status lines with `AVSpeechSynthesizer` system voices on Mac.
+* **Drawing in step with speech (M38, 30 Oct 2026).** The Mac's voice reports each word it is about to say (`AVSpeechSynthesizerDelegate` `speechSynthesizer:willSpeakRangeOfSpeechString:utterance:`).
+  * `speak.rs` turns each word into how far through the line it is and sends only that number to the overlay (`speech-word`), never the words.
+  * The overlay's pen keeps pace with it (`speechClock.ts`). It starts with the first word and finishes the mark by about two thirds of the line. Between words it runs at the voice's own pace, never more than 0.12 of the line past the last word heard.
+  * With no voice, or one that starts more than 0.6 s after the pen, the mark keeps its own pen speed.
+  * [verify] on a real Mac: that the delegate's reports arrive while a Show me step is said, and that setting a delegate leaves speaking, Stop and captions as they were.
 * **Type by voice in any app (F26, M36, 30 Oct 2026).**
   * **The key.** A second held chord, the Type key: Option, Shift and Space by default, with Control, Option and Return and Control, Shift and Return on its list. Control, Option and Space is left out because it is the Mac's "next keyboard language" key.
   * **One microphone.** Hold to talk and the Type key share the one worker (`talkkeys::Holding`): while one is held, the other does nothing.

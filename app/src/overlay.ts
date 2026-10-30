@@ -8,6 +8,7 @@ import { fitLabel, wrapLines } from "./layout.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, ringRadii } from "./marks.ts";
 import { INK, haloFor, inkMark, inkPath, penEase, type InkMark } from "./ink.ts";
+import { SpeechClock } from "./speechClock.ts";
 import { followLessMotion, playful, reducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
@@ -134,11 +135,15 @@ function show(p: Point) {
       let at = 0;
       const plan = mark.strokes.map((s) => { at += s.gap; const from = at; at += s.ms; return { from, to: at }; });
       const t0 = performance.now();
+      // M38: while the voice says this step's line, the pen keeps pace with the words (speechClock.ts); otherwise its own speed.
+      const clock = new SpeechClock(t0);
+      speechClock = clock;
       const step = (now: number) => {
         if (mine !== drawGen) return;
-        const t = now - t0;
+        const t = clock.leads() ? clock.pen(now) * at : now - t0;
         plan.forEach((w, i) => { if (t >= w.from) paint(i, penEase((t - w.from) / (w.to - w.from))); });
-        if (t < at) requestAnimationFrame(step);
+        if (t < at && now - t0 < at + 8000) requestAnimationFrame(step);
+        else plan.forEach((_, i) => paint(i, 1));
       };
       requestAnimationFrame(step);
     }
@@ -224,6 +229,9 @@ startSettings({ ask: false });
 followLessMotion();
 // The settings in force come with each pointer and each sketch (the shell sends them), so Less motion, the ring colour,
 // the lettering and the pace reach them too.
+// M38: each word the voice is about to say (main.rs speech_word), for the mark being drawn now.
+let speechClock: SpeechClock | null = null;
+void listen("speech-word", (e) => { const part = (e.payload as { part?: unknown } | null)?.part; speechClock?.word(performance.now(), typeof part === "number" ? part : null); });
 void listen("overlay-point", (e) => { const p = e.payload as Point & { settings?: unknown }; takeSnapshot(p.settings); show(p); });
 void listen("overlay-clear", () => clear());
 
