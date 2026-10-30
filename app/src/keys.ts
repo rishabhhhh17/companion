@@ -148,3 +148,11 @@ export function keyProblem(code: string): string {
   if (code === "reserved") return S.keysReserved;
   return S.keysFailed;
 }
+
+/** M40 (Raycast shows each action's keys as small keycaps): a chord as the Mac's own key symbols, one cap each, in the
+ *  Mac's order: ["⌃", "⌥", "⌘", "F"]. Empty for no keys or anything not written the way the app writes it. */
+const CAP: Record<string, string> = { control: "⌃", option: "⌥", shift: "⇧", command: "⌘", space: "Space", return: "⏎" };
+export function keycaps(id: string | null | undefined): string[] {
+  if (!id || !chordLabel(id)) return [];
+  return id.split("-").map((p) => CAP[p] ?? p.toUpperCase());
+}

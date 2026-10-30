@@ -21,7 +21,7 @@ import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keycaps, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
@@ -33,6 +33,12 @@ import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
+
+/** M40: an action's keys, as small keycaps at the end of its row (only to see; the row's own name is what is read out). */
+function Caps({ id }: { id: string | null | undefined }) {
+  const caps = keycaps(id);
+  return caps.length ? <span className="caps" aria-hidden="true">{caps.map((c, i) => <kbd key={i}>{c}</kbd>)}</span> : null;
+}
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
@@ -1516,10 +1522,10 @@ function Card() {
           {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
           {/* Three quick actions, each a drawing and a word: what their keys and buttons already do. */}
           <div className="chips quick" role="group" aria-label={S.look.chipsLabel}>
-            {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}</button>}
+            {buttonShown("findProblem") && <button className="chip-btn" type="button" onClick={findFromHome}><Icon name="find" size={16} />{S.look.chipFind}<Caps id={keys.using.problem} /></button>}
             {buttonShown("shipCheck") && <button className="chip-btn" type="button" onClick={() => shipIt()}><Icon name="shield" size={16} />{S.look.chipSafe}</button>}
-            {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={explainFromBox}><Icon name="explain" size={16} />{S.look.chipExplain}</button>}
-            {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}</button>}
+            {toolOn("errorHelp") && <button className="chip-btn" type="button" onClick={explainFromBox}><Icon name="explain" size={16} />{S.look.chipExplain}<Caps id={keys.using.explain} /></button>}
+            {buttonShown("showMe") && <button className="chip-btn" type="button" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={16} />{S.look.chipShowMe}<Caps id={keys.using.showme} /></button>}
           </div>
           {/* The other ways to ask, and the options, are kept out of the way until wanted. A ticked option is said on the summary. */}
           {!working && (

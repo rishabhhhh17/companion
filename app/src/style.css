@@ -655,6 +655,10 @@ html.island-page, body.island-page { background: transparent; overflow: hidden; 
 .home .chips.quick .chip-btn { justify-content: flex-start; gap: var(--space-3); width: 100%; min-height: calc(42rem / 14); padding: 0 var(--space-2); border-radius: var(--r-md); background: transparent; color: var(--fg); font: 600 var(--t-body) var(--round); transform: none; }
 .home .chips.quick .chip-btn:hover { background: rgba(89, 210, 255, .1); transform: none; }
 .home .chips.quick .chip-btn .ic { color: var(--key); width: 16px; }
+/* M40 (Raycast): each action's keys as small keycaps at the end of its row, quiet until the row is under the pointer. */
+.home .chips.quick .caps { margin-left: auto; display: inline-flex; gap: 3px; opacity: .55; transition: opacity var(--dur-1) var(--ease-out); }
+.home .chips.quick .chip-btn:hover .caps, .home .chips.quick .chip-btn:focus-visible .caps { opacity: 1; }
+.caps kbd { min-width: calc(20rem / 14); min-height: calc(20rem / 14); display: inline-grid; place-items: center; padding: 0 calc(5rem / 14); box-sizing: border-box; border-radius: calc(5rem / 14); background: color-mix(in srgb, var(--fg) 9%, transparent); box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--fg) 14%, transparent); color: var(--fg); font: 600 calc(11rem / 14)/1 -apple-system, "SF Pro Text", system-ui, sans-serif; }
 /* The top row stays out of the way: the round buttons are only their drawings until the pointer is on them. */
 .home .bar .icon-btn { background: transparent; color: var(--muted); }
 .home .bar .icon-btn:hover { background: rgba(255, 255, 255, .1); color: var(--fg); }

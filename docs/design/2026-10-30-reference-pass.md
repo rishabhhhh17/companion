@@ -15,7 +15,8 @@ Looked at live, on their own sites and product demos: Raycast, Linear, Granola, 
 - **M39, the water ring listens.** While a voice key is held, the ring at the pointer ripples with your voice and glows a little (`voice_mac.rs` level, `follow.ts` `voiceEnvelope`). Only a loudness number, never stored. Our version of Wispr's pill and HeyClicky's wave, in our own water.
 - **M39, the receipt.** The result's own words as a paragraph, then one changes card: "Changed 3 files", a mark for each file (+ added, ● changed, − removed), the name in bold and its folder in grey (`changesCard.tsx`). Linear's pattern, without numbers we do not have.
 
+- **M40, keycaps.** Home's actions that have keys show them as small keycaps at the end of the row, with the keys in use now (`keys.ts` `keycaps`).
+
 ## Next candidates, not built
-- **Keycaps in Home** for the actions that have keys (Raycast's bar).
 - **Two tone empty states:** the bold statement, then the grey line.
 - **"Worked for N seconds"** on the receipt, once the engine sends how long a task took. We would not guess it in the page.

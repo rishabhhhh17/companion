@@ -157,3 +157,13 @@ describe("Change: the short list", () => {
     for (const w of [S.keysTaken, S.keysInUse, S.keysNotSaved, S.keysFailed]) { expect(w).not.toContain("—"); expect(w.length).toBeGreaterThan(10); }
   });
 });
+
+describe("keycaps (M40)", () => {
+  test("a chord is shown as the Mac's own key symbols, in the Mac's order", async () => {
+    const { keycaps } = await import("./keys.ts");
+    expect(keycaps("control-option-command-f")).toEqual(["⌃", "⌥", "⌘", "F"]);
+    expect(keycaps("option-shift-space")).toEqual(["⌥", "⇧", "Space"]);
+    expect(keycaps(null)).toEqual([]);
+    expect(keycaps("nonsense")).toEqual([]);
+  });
+});
