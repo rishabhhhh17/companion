@@ -1,0 +1,11 @@
+{
+  "about": "Dodo Payments for release builds (live mode). Only values that are not secret: the hosts, the two Pro product ids and the business id. The founder fills in the ids after making the products in Dodo's live mode. Every address must be https, and none may be a test host. paymentsOn stays false until the founder switches payments on (F25).",
+  "mode": "live",
+  "paymentsOn": false,
+  "apiHost": "https://live.dodopayments.com",
+  "checkoutHost": "https://checkout.dodopayments.com",
+  "portalHost": "https://customer.dodopayments.com",
+  "businessId": "",
+  "products": { "monthly": "", "yearly": "" },
+  "redirectUrl": ""
+}

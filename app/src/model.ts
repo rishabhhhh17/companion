@@ -10,6 +10,7 @@ import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
 import type { WatchView, WhereNext } from "../../protocol/index.ts";
 import { validView } from "./watch.ts";
+import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } from "./plan.ts";
 import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
 import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
 
@@ -234,6 +235,11 @@ export type Model = {
   error: string | null;
   // The error that says the helper stopped (app.runner_down), so its coming back clears only that one.
   downError?: string;
+  // Pro (the payments spec, sections 2 and 3; runner/src/plan.ts). proUsage: this month's free fixes, from plan.usage (the
+  // engine sends it only while payments are on). proLimit: the card that took the result's place because the plan did not
+  // cover what was pressed (plan.limit, or Home's own look at the count), until the person closes it or new work starts.
+  proUsage?: Usage | null;
+  proLimit?: LimitView | null;
 };
 
 // The record without one agent's entry.
@@ -413,6 +419,8 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
 // The everyday look (everyday.ts) is taken first, from the Show me look waiting then, and settled after everything else:
 // a look whose Show me went away or failed waits no more.
 export function reduce(m: Model, e: Ev): Model {
+  // The limit card goes once new work starts, another folder is chosen, or everything stops.
+  if (m.proLimit && ((e.type === "agent.state" && (e.state === "thinking" || e.state === "working")) || e.type === "ui.projectChanged" || e.type === "app.stop_everything")) m = { ...m, proLimit: null };
   const ed = everydayReduce(m.everyday, e, m.showme?.req);
   const n = reduceRest(ed === m.everyday ? m : { ...m, everyday: ed }, e);
   const settled = everydaySettle(n.everyday, m.showme, n.showme);
@@ -421,6 +429,18 @@ export function reduce(m: Model, e: Ev): Model {
 
 function reduceRest(m: Model, e: Ev): Model {
   switch (e.type) {
+    // Pro: never sent while payments are off, so with payments off neither ever changes Home.
+    case "plan.usage": { const u = usageFrom(e); return u ? { ...m, proUsage: u } : m; }
+    case "plan.limit": case "ui.proLimit": {
+      const reason = String(e.reason) as LimitReason;
+      if (!["fixes", "ship", "recaps", "looks"].includes(reason)) return m;
+      const v: LimitView = { reason, ...(typeof e.resetsOn === "string" ? { resetsOn: e.resetsOn } : {}), ...(typeof e.command === "string" ? { command: e.command } : {}) };
+      if (!limitShown(v)) return m;
+      // Nothing started: whatever was waiting for that command stops waiting (a follow up, the check before going live).
+      const ship = typeof v.command === "string" && v.command.startsWith("ship.");
+      return { ...m, proLimit: v, followUp: "idle", ...(ship ? { shipFlow: null } : {}), practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "found" as const } : m.practice, error: null, notice: null };
+    }
+    case "ui.proLimitClosed": return m.proLimit ? { ...m, proLimit: null } : m;
     case "ui.undoAsked": return { ...m, undo: { stage: "confirm", checkpoint: String(e.checkpoint) } };
     // M45: Bring the fix back restores the safety copy the Undo made first (shadow snapshots only, never git: rule 10). It
     // reuses the Undo's steps (sent, then the engine's answer), marked back.

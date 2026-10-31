@@ -848,6 +848,11 @@ describe("text, controls and marks meet WCAG AA in Night and Paper (part 4)", ()
       expect(ratio(words(".btn.quiet"), bg), "a quiet button").toBeGreaterThanOrEqual(4.5);
       for (const s of [".btn.danger:hover:not(:disabled)", ".btn.danger:active:not(:disabled)"]) expect(ratio(words(".btn.danger"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
       for (const s of [".btn.primary", ".btn.primary:hover:not(:disabled)", ".btn.primary:active:not(:disabled)"]) expect(ratio(words(".btn.primary"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
+      // The Pro tag inside the main button (Home's Check before going live): the button's own words and an edge in them,
+      // never the faint second ink on the silver or ink fill.
+      expect(one(".btn.primary .pro-tag")?.decl.color, "the Pro tag takes the main button's words").toBe("inherit");
+      expect(one(".btn.primary .pro-tag")?.decl["border-color"]).toBe("currentColor");
+      for (const s of [".btn.primary", ".btn.primary:hover:not(:disabled)", ".btn.primary:active:not(:disabled)"]) expect(ratio(words(".btn.primary"), fill(s)), `the Pro tag on ${s}`).toBeGreaterThanOrEqual(4.5);
       // The sidebar, a menu's items and a recent fix: the words on their hover and selected fills.
       for (const s of [".sb-item:hover", ".sb-item:active", '.sb-item[aria-current="page"]']) expect(ratio(words(".sb-item"), fill(s)), s).toBeGreaterThanOrEqual(4.5);
       expect(ratio(words(".ui-menu-item"), over(c(colourIn(one(".ui-menu-item[data-active]")!.decl.background)!), c("var(--surface-2)"))), "a menu item under the pointer").toBeGreaterThanOrEqual(4.5);
@@ -901,6 +906,22 @@ describe("text, controls and marks meet WCAG AA in Night and Paper (part 4)", ()
       const dot = c(one(".tabdot")!.decl.background);
       expect(ratio(dot, bg), "on the page").toBeGreaterThanOrEqual(3);
       expect(one(".back .tabdot")!.decl["box-shadow"]).toBe("0 0 0 2px var(--bg)");
+    });
+    test(`${theme}: a disabled control's words are exempt from 4.5 to 1 but stay legible (3 to 1), and still look disabled`, () => {
+      const ink = c("var(--ink-disabled)"), fill = c("var(--fill-disabled)");
+      // On the disabled fill (a secondary or main button, a field, a stepper, a picture choice) and with no fill (a quiet
+      // or icon button, a disabled row's label) on the page, a card and a sheet.
+      for (const under of [fill, ...["--bg", "--surface-1", "--surface-2"].map((s) => c(`var(${s})`))]) expect(ratio(ink, under)).toBeGreaterThanOrEqual(3);
+      // A disabled switch: its knob against its track, off and on.
+      expect(ratio(ink, fill), "a disabled knob on its track").toBeGreaterThanOrEqual(3);
+      // Still told apart from a control in use: fainter than every readable word, and a fill of its own.
+      expect(ratio(ink, fill)).toBeLessThan(ratio(c("var(--fg-2)"), fill));
+      expect(tokens["--fill-disabled"]).toBe("var(--surface-3)");
+      // Every disabled rule draws with these two, never --fg-3 or a fade.
+      for (const r of css) if (DISABLED.test(r.sel.replace(/:not\([^)]*\)/g, ""))) {
+        expect(r.decl.opacity, r.sel).toBeUndefined();
+        if (r.decl.color) expect(r.decl.color, r.sel).toMatch(/^(var\(--ink-disabled\)|var\(--fill-disabled\))$/);
+      }
     });
     test(`${theme}: the island's words, ring and marks stand out on its black`, () => {
       const black = c("#000");

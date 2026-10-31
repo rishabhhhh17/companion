@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Pro is built, and switched off: 31 Oct 2026
+
+- **Nothing changes for anyone yet.** Payments are off. Every feature stays free, nothing is charged, nothing is held back, and Squibby talks to no payment service.
+- **What is ready for later.** Free will keep 3 proven fixes a month and every safety feature, Undo included. Pro will add unlimited fixes, Ship with rollback, Recaps and extra water colours, with a 14 day trial that needs no card. Pro unlocks with a key you paste once. Checkout and billing open in your own browser, never inside Squibby.
+- **The look is more consistent.** Small Pro tags, when they show, use the same button styles as everything else.
+
 ## A cleaner, quieter look everywhere: 31 Oct 2026
 
 - **One look, flat silver.** The striped silver and the line through the middle of it are gone. Each screen has at most one silver button, the thing to do next. Everything else, like Install, Try again, a watch's Fix it and each lesson's Start, is a plain button.

@@ -33,6 +33,8 @@ import { GhCli } from "./connections.ts";
 import { makeChecks, makeEvidence } from "./watchwire.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 import { failure } from "./plainfail.ts";
+import { FreeFixes } from "./db.ts";
+import { PlanGate } from "./plan.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -61,7 +63,10 @@ const vercel = new VercelCli(undefined, undefined, undefined, slow);
 const gh = new GhCli(undefined, undefined, slow);
 const watchList: { engine: WatchEngine | null } = { engine: null };
 const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
-const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+// The plan gate (plan.ts, F25): nothing is gated until the shell says payments are on (plan.state). The free fix count lives
+// beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
+const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
+const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -103,6 +108,9 @@ function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, b
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
   if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
+  // The plan on this Mac, from the shell only (a page cannot send it). It changes what the next command may start; nothing
+  // running is stopped, slowed or changed.
+  if (cmd.type === "plan.state") { plan.setState(cmd); return; }
   // The shell's Google accounts (M21): kept in memory for the Google tools; nothing is said back, and no token is ever logged.
   if (cmd.type === "google.accounts") { setGoogleAccounts(cmd.accounts); return; }
   // After a key is saved the app asks again who we are signed in as.
@@ -110,13 +118,18 @@ function dispatch(cmd: Command) {
   // The settings line from the shell: each value checked again, names (never values) in the answer.
   if (cmd.type === "settings.apply") {
     const before = groupsOff((k) => runnerSettings.get(k));
-    say({ type: "settings.applied", ...runnerSettings.apply(cmd) });
+    say({ type: "settings.applied", ...runnerSettings.apply(plan.admit(cmd) as typeof cmd) });
     stopGroups(newlyOff(before, groupsOff((k) => runnerSettings.get(k))));
     return;
   }
   // A tool whose group is switched off does nothing (F20): the shell refuses it first, and this is the second check.
   const off = refusal((k) => runnerSettings.get(k), cmd);
   if (off) { say({ type: "protocol.error", reason: off, line: cmd.type }); return; }
+  // A counted fix or a Pro feature the plan does not cover is not started (plan.ts says plan.limit). Everything that stops,
+  // undoes, approves or checks is never gated.
+  const admitted = plan.admit(cmd);
+  if (!admitted) return;
+  cmd = admitted;
   // Home opened or the ask box got the keyboard: read the Claude binary through once (nothing is run or sent). How long it
   // took goes to the log, never anything else.
   if (cmd.type === "engine.warm") { void warmer.warm().then((r) => { if (r.read) process.stderr.write(`warm: read the Claude binary (${Math.round(r.bytes / 1048576)} MB) in ${r.ms} ms\n`); }); return; }

@@ -69,6 +69,7 @@ import type { TaskLog } from "./tasklog.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { defaultOf } from "../../protocol/settings.ts";
 import { PRODUCT } from "./names.ts";
+import type { FixCounter } from "./plan.ts";
 
 /** An undo error that already reads as a plain sentence is shown as it is (the product name comes from protocol/names.json). */
 const SAYS_ITSELF_A = new RegExp(`^(That|This|${PRODUCT} needs|Something)`);
@@ -136,6 +137,9 @@ export type RunnerOptions = {
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
+  // The free fix count (plan.ts, payments spec section 2): which admitted fix a task belongs to, read as the task starts, and
+  // told when one is proven. Without it nothing is counted. Undo and Bring back never tell it anything.
+  fixes?: FixCounter;
   explainer?: (req: { text: string; system: string }, signal: AbortSignal) => Promise<{ text: string; costUsd: number }>;
   // Second Look's checks (secondlook.ts): the fast lane itself, which on the plain API can also search the web (capped by
   // secondLook.searches). Without it, Second Look says in plain words that it needs Claude.
@@ -185,7 +189,7 @@ type StartCmd = Extract<Command, { type: "agent.start" }>;
 // again); followBudgetUsd, what a follow up on it may spend (a Drive step's own budget is only what the plan had left).
 // step: which step of a Drive plan this run is, so its explanation can say so.
 // priorUsd: already spent on this task before it started (looking at pictures added to the request), booked to the day.
-type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; label?: string; said?: string; asked?: string; goal?: string; first?: string; followBudgetUsd?: number; step?: { index: number; title: string }; priorUsd?: number };
+type RunOpts = { resumeSession?: string; taskAllowed?: Set<string>; label?: string; said?: string; asked?: string; goal?: string; first?: string; followBudgetUsd?: number; step?: { index: number; title: string }; priorUsd?: number; fixTicket?: string };
 // How a task's tries ran out, when it stops to ask (or, in a Drive plan, hands the asking to the plan): the failure shown,
 // and how many checks failed in a row and whether all the same way.
 type Stuck = { failure: { label: string; detail: string }; end: LoopEnd };
@@ -859,6 +863,8 @@ export class AgentRunner {
     // packages, and its checks set the character): a task waits for it, never runs beside it.
     if ((holder && holder !== cmd.agent) || this.otherWorkOn(cmd.project)) { this.fail("Something else is already working on this project. Wait for it to finish, or press Stop.", cmd.agent); return { status: "busy", usd: 0 }; }
     this.projectBusy.set(key, cmd.agent);
+    // The admitted fix this task belongs to (plan.ts), read now, as it really starts: a command that comes later cannot move it.
+    if (this.o.fixes && opts.fixTicket === undefined) opts = { ...opts, fixTicket: this.o.fixes.ticketOf(cmd.agent) };
     try {
       const ready = await this.withAttachments(cmd, opts, added);
       if ("ended" in ready) return ready.ended;
@@ -1175,6 +1181,9 @@ export class AgentRunner {
     // task that ended as needs you or done, never one that stopped or failed (that is tried again, not answered).
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
+    // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
+    // and an Undo or Bring back later never changes it.
+    if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);
     this.state(cmd.agent, status === "done" ? "done" : status === "needs_you" ? "needsYou" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));

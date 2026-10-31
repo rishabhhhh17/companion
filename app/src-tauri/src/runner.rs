@@ -181,8 +181,9 @@ pub fn detail_line(kind: &str, failed: Option<&str>, detail: &str) -> Value {
     serde_json::json!({ "kind": kind, "failed": failed.unwrap_or(""), "detail": d.chars().take(400).collect::<String>() })
 }
 
-/// Status messages a page that loads late still needs (who is connected, is the engine up).
-const STICKY: &[&str] = &["runner.hello", "auth.status", "app.runner_down", "app.notice"];
+/// Status messages a page that loads late still needs (who is connected, is the engine up, this month's free fix count).
+/// plan.limit is a moment, not a status: a page that loads later never shows an old limit card.
+const STICKY: &[&str] = &["runner.hello", "auth.status", "app.runner_down", "app.notice", "plan.usage"];
 
 /// Remember the latest sticky event of each type. Returns true if it was kept.
 pub fn remember(map: &mut BTreeMap<String, Value>, v: &Value) -> bool {
@@ -225,6 +226,25 @@ pub fn approval_line(v: &Value, seen: &mut BTreeMap<String, String>) -> Option<(
     }
 }
 static APPROVALS_SEEN: Mutex<BTreeMap<String, String>> = Mutex::new(BTreeMap::new());
+
+/// The plan.state line for the engine (protocol/index.ts PlanState): `{v, id, type: "plan.state", plan: "free" | "trial" |
+/// "pro", trialEndsAt?, paymentsOn}`. trialEndsAt (an ISO time) only while a trial is the plan, so the engine can end it on
+/// time by itself. With paymentsOn false the engine gates nothing, whatever the plan says.
+pub fn plan_state_line(d: &crate::license::Decision, payments_on: bool, id: &str) -> Value {
+    let mut v = serde_json::json!({ "v": PROTOCOL_VERSION, "id": id, "type": "plan.state", "plan": d.plan.word(), "paymentsOn": payments_on });
+    if let Some(t) = d.trial_ends_at { v["trialEndsAt"] = serde_json::json!(crate::license::iso(t)); }
+    v
+}
+/// The last plan.state sent, without its id.
+static PLAN_SENT: Mutex<Option<Value>> = Mutex::new(None);
+/// Whether `line` says something new compared with the last one sent (ids aside). Remembers it.
+pub fn plan_changed(last: &mut Option<Value>, line: &Value) -> bool {
+    let mut bare = line.clone();
+    if let Some(o) = bare.as_object_mut() { o.remove("id"); }
+    if last.as_ref() == Some(&bare) { return false; }
+    *last = Some(bare);
+    true
+}
 
 // ---------- keeping the engine alive ----------
 //
@@ -410,6 +430,14 @@ impl Runner {
     /// Write one line the shell made itself (the settings, settings.rs `apply_line`), exactly as it is. Never waits.
     pub fn send_line(&self, line: String) -> Result<(), String> { self.shared.send_line(line) }
 
+    /// Tells the engine the plan (plan.state, payments spec section 9): when it says hello (`force`, it knows nothing yet)
+    /// and whenever the plan changes. A line equal to the last one sent (apart from its id) is not sent again. Only the
+    /// shell sends it; a page cannot (it is not in ALLOWED). It never carries the license key.
+    pub fn push_plan(&self, line: Value, force: bool) -> Result<(), String> {
+        if !plan_changed(&mut lock(&PLAN_SENT), &line) && !force { return Ok(()); }
+        self.send(&line)
+    }
+
     /// Hands the engine the key, or tells it there is none (after the key was removed). The line goes out exactly as
     /// `handoff_line` wrote it: the engine takes it only when it starts `{"v":1,"type":"auth.key"`, and turning it into a
     /// JSON value first would sort its fields ("key" first), so the engine would refuse it and stay without a key.
@@ -550,6 +578,36 @@ mod tests {
         for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "memory.list", "metrics.show"] {
             assert!(check_command(&json!({"v":1,"id":"c","type":t})).is_ok(), "{t}");
         }
+    }
+    #[test]
+    fn the_plan_reaches_the_engine_only_from_the_shell_and_never_carries_the_key() {
+        // A page could otherwise tell the engine it has Pro.
+        assert!(check_command(&json!({"v":1,"id":"c","type":"plan.state","plan":"pro","paymentsOn":true})).is_err());
+        assert!(!ALLOWED.contains(&"plan.state"));
+        use crate::license::{Decision, Plan, State};
+        let pro = plan_state_line(&Decision { plan: Plan::Pro, state: State::Pro, trial_ends_at: None }, true, "plan-1");
+        assert_eq!(pro, json!({ "v": 1, "id": "plan-1", "type": "plan.state", "plan": "pro", "paymentsOn": true }));
+        let trial = plan_state_line(&Decision { plan: Plan::Trial, state: State::Trial, trial_ends_at: Some(1_209_600) }, true, "plan-2");
+        assert_eq!(trial["trialEndsAt"], "1970-01-15T00:00:00Z");
+        let off = plan_state_line(&Decision { plan: Plan::Free, state: State::Off, trial_ends_at: None }, false, "plan-3");
+        assert_eq!((off["plan"].as_str(), off["paymentsOn"].as_bool()), (Some("free"), Some(false)));
+        for line in [&pro, &trial, &off] {
+            let keys: Vec<&str> = line.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+            assert!(keys.iter().all(|k| ["v", "id", "type", "plan", "trialEndsAt", "paymentsOn"].contains(k)), "{keys:?}");
+        }
+    }
+    #[test]
+    fn the_same_plan_is_not_sent_twice_but_a_change_is() {
+        use crate::license::{Decision, Plan, State};
+        let mut last = None;
+        let a = plan_state_line(&Decision { plan: Plan::Free, state: State::Free, trial_ends_at: None }, true, "p1");
+        assert!(plan_changed(&mut last, &a));
+        assert!(!plan_changed(&mut last, &plan_state_line(&Decision { plan: Plan::Free, state: State::ProOffline, trial_ends_at: None }, true, "p2")), "the same plan under a new id");
+        assert!(plan_changed(&mut last, &plan_state_line(&Decision { plan: Plan::Pro, state: State::Pro, trial_ends_at: None }, true, "p3")));
+        assert!(plan_changed(&mut last, &plan_state_line(&Decision { plan: Plan::Pro, state: State::Pro, trial_ends_at: None }, false, "p4")), "payments switched");
+        // The engine is told the plan every time it says hello.
+        let main = include_str!("main.rs");
+        assert!(main.contains("if t == \"runner.hello\" { hand_key_over(&handle, None); google_push(&handle); plan_push(&handle, true); }"));
     }
     #[test]
     fn settings_reach_the_engine_only_from_the_shell_never_from_a_page() {
@@ -770,6 +828,42 @@ mod tests {
         assert!(remember(&mut m, &json!({"type":"runner.hello","sdk":"1"})));
         assert!(remember(&mut m, &json!({"type":"auth.status","method":"none"})));
         assert_eq!(m.len(), 2);
+    }
+    #[test]
+    fn the_shell_and_the_engine_agree_on_the_plan_lines() {
+        // protocol/fixtures/plan-cases.jsonl is run by runner/test/plan.test.ts too: the plan.state lines the shell makes are
+        // exactly the ones the engine accepts, and the engine's plan.usage and plan.limit reach the pages as they were sent.
+        use crate::license::{Decision, Plan, State};
+        let cases: Vec<Value> = include_str!("../../../protocol/fixtures/plan-cases.jsonl").lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str(l).expect("a case is JSON")).collect();
+        let bare = |v: &Value| { let mut v = v.clone(); v.as_object_mut().unwrap().remove("id"); v };
+        let (mut made, mut events) = (0, 0);
+        for c in &cases {
+            let line = &c["line"];
+            let ok = c["ok"].as_bool().unwrap();
+            match c["kind"].as_str().unwrap() {
+                "command" => {
+                    assert!(check_command(line).is_err(), "a page may never send the plan: {line}");
+                    if let Some(from) = c.get("from") {
+                        assert!(ok, "{c}");
+                        let plan = match from["plan"].as_str().unwrap() { "pro" => Plan::Pro, "trial" => Plan::Trial, _ => Plan::Free };
+                        let d = Decision { plan, state: State::Free, trial_ends_at: from.get("trialEndsAtSecs").and_then(Value::as_u64) };
+                        let ours = plan_state_line(&d, from["paymentsOn"].as_bool().unwrap(), line["id"].as_str().unwrap());
+                        assert_eq!(bare(&ours), bare(line), "{}", c["case"]);
+                        assert_eq!(ours["id"], line["id"]);
+                        made += 1;
+                    } else { assert!(!ok, "{c}"); }
+                }
+                "event" if ok => {
+                    let mut v = line.clone();
+                    assert!(take_detail(&mut v).is_none() && &v == line, "nothing is taken off: {line}");
+                    let mut m = BTreeMap::new();
+                    assert_eq!(remember(&mut m, line), line["type"] == "plan.usage", "only the count is kept for a late page: {line}");
+                    events += 1;
+                }
+                _ => {}
+            }
+        }
+        assert!(made >= 4 && events >= 4, "{made} {events}");
     }
     #[test]
     fn only_the_latest_of_each_status_is_kept_and_busy_events_are_not_stored() {

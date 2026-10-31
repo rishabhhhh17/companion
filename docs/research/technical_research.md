@@ -6,6 +6,8 @@ Build Companion as three local processes and one tiny cloud service. A **Tauri 2
 
 ## Corrections log
 
+**31 Oct 2026 (M47, Pro).** Pro is a Dodo license key checked on the Mac (T17, `docs/design/2026-10-31-dodo-payments-spec.md`). Every Dodo behaviour the code depends on is read from Dodo's docs and is **unverified until the test mode run** of the spec's section 15 (V0 to V16 in `docs/milestones/M47-pro-plan.md`): that the license endpoints need no Authorization header, the shape of the 403 and 404 bodies (a 403 or 404 counts as Dodo's answer only when its body is a JSON object with a `code` or a `message`), the test checkout host, and how keys behave through on hold, plan changes, refunds and cancellation. Payments stay off (`paymentsOn` false in both billing files) until then.
+
 **7 Oct 2026.** A desk research pass checked 129 claims the M0 spikes depend on against live official sources and corrected the items below; the summary is in `docs/milestones/M0-desk-research.md`, and every claim with its evidence and sources is in `docs/milestones/M0-desk-research-details.md`.
 
 | Section | What changed |

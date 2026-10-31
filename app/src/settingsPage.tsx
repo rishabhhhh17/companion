@@ -37,7 +37,9 @@ import { MadePanel } from "./madePanel.tsx";
 import { buttonShown, permissionNeeded, type Permission } from "./groups.ts";
 import { answerOp, appAnswersFrom, forgetAllCount, needsConfirm, neverFrontOp, type Answer, type AppRow } from "./appanswers.ts";
 import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
-import { deleteKeeps, planCard, planNow, type PlanButton } from "./plan.ts";
+import { askTurnOffPro, deleteGoesPro, deleteKeeps, proDeleteProblem, proInventoryFrom, proOnly, proTag, type Usage } from "./plan.ts";
+import { LimitPanel, PlanCardView, ProTag } from "./planCard.tsx";
+import { usePlan } from "./usePlan.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -45,6 +47,8 @@ const send = (cmd: unknown) => invoke("send_command", { cmd });
 
 type Ctx = {
   project: string; working: boolean; practiceBusy: boolean; keys: Keys; facts: CheckFacts | null; inv: Inventory | null; spending: Spending | null;
+  /** This month's free fixes (plan.usage), only ever heard while payments are on. */
+  usage: Usage | null;
   /** Go to a page, a group, a topic or a row (scrolls to it and flashes it). */
   go: (what: string) => void;
   /** One short line at the foot of the panel, with an optional Undo. */
@@ -718,35 +722,15 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
 }
 const fixedAnchor = (fx: Fixed): string => `set-fixed-${fx}`;
 
-/** The Plan card (the spec, 3.10; T17). Payments are off, so it says Early access and offers nothing to buy. */
+/** The Plan card (the payments spec, 9a; T17): from the shell's license_status and the engine's free fix count. With
+ *  payments off it says Early access and offers nothing to buy (planCard.tsx draws it, plan.ts decides it). */
 function PlanGroup() {
-  const card = planCard(planNow());
-  const [compare, setCompare] = useState(false);
-  const act = (b: PlanButton) => { if (b.id === "compare") setCompare(true); };
+  const c = useCtx();
+  const status = usePlan();
   return (
     <Group id="account.plan" title={S.setGroupTitles["account.plan"]} footer={S.setGroupFoot["account.plan"]} pad>
-      <div className="plan" id={fixedAnchor("plan")}>
-        <p className="plan-line" data-mark={card.mark === "none" ? undefined : card.mark}>{card.line}</p>
-        {card.facts.map((f) => <p className="plan-fact" key={f}>{f}</p>)}
-        {card.buttons.length > 0 && <div className="set-buttons">{card.buttons.map((b) => <Button key={b.id} kind={b.kind} onClick={() => act(b)}>{b.label}</Button>)}</div>}
-      </div>
-      {compare && <ComparePlans onClose={() => setCompare(false)} />}
+      <PlanCardView status={status} usage={c.usage} say={(l) => c.say(l)} anchor={fixedAnchor("plan")} />
     </Group>
-  );
-}
-/** Compare plans (a sheet): Monthly or Yearly, Free and Pro side by side, and what cancelling means. */
-function ComparePlans({ onClose }: { onClose: () => void }) {
-  const [period, setPeriod] = useState<"month" | "year">("month");
-  return (
-    <Sheet title={S.plan.compareTitle} dirty={false} instant onSave={onClose} onClose={onClose}>
-      <Segmented label={S.plan.compareTitle} value={period} options={[{ id: "month", label: S.plan.monthly }, { id: "year", label: S.plan.yearly }]} onChange={setPeriod} />
-      <p className="plan-fact">{period === "month" ? S.plan.monthPrice : S.plan.yearPrice} {S.plan.usPrices}</p>
-      <div className="plan-compare">
-        <Card title={S.plan.free}>{S.plan.freeLines(10).map((l) => <p className="plan-fact" key={l}>{l}</p>)}</Card>
-        <Card title={S.plan.pro}>{S.plan.proLines.map((l) => <p className="plan-fact" key={l}>{l}</p>)}</Card>
-      </div>
-      <p className="plan-fact">{S.plan.cancelAny}</p>
-    </Sheet>
   );
 }
 
@@ -959,6 +943,9 @@ function DangerZone() {
   const [problem, setProblem] = useState("");
   const [withProjects, setWithProjects] = useState(false);
   const [withPractice, setWithPractice] = useState(false);
+  // Also turn off Pro on this Mac (the payments spec, section 10): asked only while payments are on and a Pro key is saved.
+  const [withPro, setWithPro] = useState(false);
+  const pro = proInventoryFrom(c.inv?.pro);
   const forgetId = useId(), keyId = useId(), deleteId = useId(), resetAllId = useId();
   const deleting = useRef(false);   // a second click while macOS is asking must not start a second delete
   const close = () => { if (busy) return; setStep(""); setTyped(""); setProblem(""); };
@@ -975,7 +962,8 @@ function DangerZone() {
   const remove = () => {
     if (deleting.current) return;
     deleting.current = true; setBusy(true); setProblem("");
-    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects, withPractice }).catch((e) => { deleting.current = false; setBusy(false); setProblem(String(e)); });
+    void invoke("delete_everything", { confirm: DELETE_PHRASE, withProjects, withPractice, ...(askTurnOffPro(pro) ? { withPro } : {}) })
+      .catch((e) => { deleting.current = false; setBusy(false); setProblem(proDeleteProblem(e) ?? String(e)); });
   };
   // Reset all settings to usual, asked first, naming every setting that changes; then Undo for ten seconds puts every
   // value back through the shell.
@@ -1018,9 +1006,10 @@ function DangerZone() {
       {row(deleteId, S.danger.deleteLabel, S.danger.deleteDesc, S.danger.deleteButton, "delete", (
         <ConfirmStep className="set-confirm" label={S.deleteSure} back={deleteId} onCancel={close}>
           <p><b>{S.deleteSure}</b></p>
-          {c.inv && <p className="set-note">{S.danger.goesTitle} {deletableLines(c.inv).join("; ")}</p>}
+          {c.inv && <p className="set-note">{S.danger.goesTitle} {[...deletableLines(c.inv), ...deleteGoesPro(pro)].join("; ")}</p>}
           <p>{S.deleteExplain}</p>
-          <p className="set-note">{S.danger.keptTitle} {deleteKeeps(null).join(" ")}</p>
+          <p className="set-note">{S.danger.keptTitle} {deleteKeeps(pro, withPro).join(" ")}</p>
+          {askTurnOffPro(pro) && <Row label={S.plan.turnOffPro} description={S.plan.turnOffProHelp} control={<Switch checked={withPro} label={S.plan.turnOffPro} onChange={setWithPro} />} />}
           {c.inv && c.inv.projectsWithNotes > 0 && <Row label={S.deleteProjects.replace("{n}", String(c.inv.projectsWithNotes))} control={<Switch checked={withProjects} label={S.deleteProjects.replace("{n}", String(c.inv.projectsWithNotes))} onChange={setWithProjects} />} />}
           {c.inv && (c.inv.practiceCopies ?? 0) > 0 && <Row label={S.deletePractice.replace("{n}", String(c.inv.practiceCopies))} control={<Switch checked={withPractice} label={S.deletePractice.replace("{n}", String(c.inv.practiceCopies))} onChange={setWithPractice} />} />}
           {typeBox(DELETE_PHRASE)}
@@ -1042,9 +1031,23 @@ function DangerZone() {
 const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
 
 /** The water's colour (look.water): a Picture choice, one card per water with Flowflow in that water, its name under it. */
+/** On a plan that does not cover Pro (payments on only), every water but the usual one has a small Pro tag, and choosing one
+ *  shows the card behind it under the choices instead of changing the colour (the payments spec, section 3). A colour
+ *  chosen before stays. With payments off there is no tag and every water is a plain choice, as before. */
 function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: (v: string) => void; labelId: string }) {
-  return <PictureChoice labelledBy={labelId} value={waterOf(value)} onChange={onChange}
-    options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <FlowMini state="idle" className="pic-flow" water={w} pose="look" /> }))} />;
+  const c = useCtx();
+  const status = usePlan();
+  const tagged = proTag("looks", status);
+  const [card, setCard] = useState(false);
+  const pick = (w: string) => { if (tagged && proOnly("look.water", w)) { setCard(true); return; } setCard(false); onChange(w); };
+  return (<>
+    <PictureChoice labelledBy={labelId} value={waterOf(value)} onChange={pick}
+      options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <>
+        <FlowMini state="idle" className="pic-flow" water={w} pose="look" />{tagged && proOnly("look.water", w) && <ProTag corner />}
+      </> }))} />
+    {tagged && !card && <p className="set-note">{S.plan.partOfPro.looks}</p>}
+    {card && <LimitPanel view={{ reason: "looks" }} status={status} usage={c.usage} say={(l) => c.say(l)} onClose={() => setCard(false)} />}
+  </>);
 }
 
 /** How lively Flowflow is (character.lively, F28): a Picture choice, a calm pose for Still, a turn for Gentle, a splash for
@@ -1269,13 +1272,15 @@ export type SettingsProps = {
   /** A page, a group, a topic, a row's setting key or a fixed part to open on (a deep link: openSettings). */
   place?: string; onPlace?: (place: string) => void;
   working: boolean; practiceBusy: boolean; project: string; spending: Spending | null;
+  /** This month's free fixes (the engine's plan.usage), from Home's model; null until heard (never with payments off). */
+  usage?: Usage | null;
   onClose: () => void; onPracticeList: () => void; onLesson: (lesson: string) => void; onStepAside?: () => void; onMemory?: () => void; onPickFolder?: () => void;
 };
 
 /** Settings inside Home: the sidebar with search at its top, and the page (or the search results) beside it. ⌘F goes to
  *  search; Esc clears the search, and with nothing typed closes Home (Home's own Esc); ⌘[ goes back to Now; the arrows move
  *  through the sidebar. Changes apply at once; one that waits for the next task says so in a toast. */
-export function SettingsView({ place = "", onPlace = () => {}, working, practiceBusy, project, spending, onClose, onPracticeList, onLesson, onStepAside = () => {}, onMemory = () => {}, onPickFolder = () => {} }: SettingsProps) {
+export function SettingsView({ place = "", onPlace = () => {}, working, practiceBusy, project, spending, usage = null, onClose, onPracticeList, onLesson, onStepAside = () => {}, onMemory = () => {}, onPickFolder = () => {} }: SettingsProps) {
   useSetting("fun.reactions");   // any change in any window draws the page again
   const [q, setQ] = useState("");
   const [inv, setInv] = useState<Inventory | null>(null);
@@ -1346,7 +1351,7 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   const say = (text: string, undo?: () => void) => setToast((t) => ({ text, undo, n: (t?.n ?? 0) + 1 }));
-  const ctx: Ctx = { project, working, practiceBusy, keys, facts, inv, spending, go, say, reload: load, onLesson, onPracticeList, onMemory, onPickFolder, onStepAside };
+  const ctx: Ctx = { project, working, practiceBusy, keys, facts, inv, spending, usage, go, say, reload: load, onLesson, onPracticeList, onMemory, onPickFolder, onStepAside };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
   // Up and down move through the sidebar's pages (the open one follows).
   const sideKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {

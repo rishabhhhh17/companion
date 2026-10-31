@@ -71,8 +71,10 @@ describe("the chrome does not read a skin", () => {
       return Math.max(r, g, b) - Math.min(r, g, b);
     };
     // Semantic marks keep a colour (proven, needs you, not fixed), and so does the water ("Squibby is acting"). The silver is
-    // a grey with the faintest cool cast; its dark edge is the only part of it past the line. Everything else is grey.
-    const SEMANTIC = ["--amber", "--ok", "--bad", "--water", "--water-hi", "--water-deep", "--sea", "--sea-deep", "--silver-edge"];
+    // a grey with the faintest cool cast; its dark edge is the only part of it past the line. The fixed colours (the notch,
+    // the first run, the recorded fix's page) keep the same marks under their own names. Everything else is grey.
+    const SEMANTIC = ["--amber", "--ok", "--bad", "--water", "--water-hi", "--water-deep", "--sea", "--sea-deep", "--silver-edge",
+      "--notch-ok", "--notch-bad", "--fr-ok", "--fr-bad", "--fr-amber", "--fr-note", "--fr-drop-deep", "--fl-ok", "--fl-bad"];
     for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

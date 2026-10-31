@@ -37,10 +37,7 @@ const TYPE_SCALE = ["--t-caption", "--t-small", "--t-label", "--t-body", "--t-an
 
 describe("parts.css reads every value from tokens.css", () => {
   test("no colour literal: no hex, rgb, hsl or named colour", () => {
-    for (const r of parts) for (const [k, v] of r.decl) {
-      expect(v, `${r.sel} { ${k}: ${v} }`).not.toMatch(/#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklch|color)\(/i);
-      for (const w of v.split(/[\s,()/]+/)) expect(/^(white|black|red|green|blue|gray|grey|silver|orange|yellow|purple|pink)$/i.test(w), `${r.sel} { ${k}: ${v} }`).toBe(false);
-    }
+    for (const r of parts) for (const [k, v] of r.decl) expect(literalIn(v), `${r.sel} { ${k}: ${v} }`).toBe(false);
   });
   test("no size or duration literal (only inside an @container or @media condition, which cannot read a token)", () => {
     for (const r of parts) for (const [k, v] of r.decl) expect(v, `${r.sel} { ${k}: ${v} }`).not.toMatch(/(^|[^\w.-])-?\d*\.?\d+(px|rem|em|ms|s|vh|vw|pt|ch)\b/);
@@ -57,6 +54,91 @@ describe("parts.css reads every value from tokens.css", () => {
     expect(scale.sort()).toEqual([...TYPE_SCALE].sort());
     for (const m of PARTS_CSS().matchAll(/var\((--t-[\w-]+)\)/g)) expect(TYPE_SCALE, m[1]).toContain(m[1]);
     for (const r of parts) for (const [k, v] of r.decl) if (k === "font-size") expect(v, r.sel).toMatch(/^var\(--t-[a-z]+\)$/);
+  });
+});
+
+// A colour written as a value: a hex, or an rgb, hsl, hwb, lab, lch, oklch or color() function; and the named colours.
+const COLOUR_LITERAL = /#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|hwb|lab|lch|oklch|color)\(/i;
+const NAMED_COLOUR = /^(white|black|red|green|blue|gray|grey|silver|orange|yellow|purple|pink)$/i;
+const literalIn = (v: string) => COLOUR_LITERAL.test(v) || v.split(/[\s,()/]+/).some((w) => NAMED_COLOUR.test(w));
+
+describe("no colour literal anywhere outside tokens.css (Hallmark rule 48)", () => {
+  test("style.css and parts.css write no colour: every rule, keyframe, custom property and fallback reads a token", () => {
+    const bad: string[] = [];
+    for (const [file, rules] of [["parts.css", parts], ["style.css", style]] as const) {
+      for (const r of rules) for (const [k, v] of r.decl) if (literalIn(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
+    }
+    expect(bad).toEqual([]);
+  });
+  test("the check really catches one (a hex, an rgba, a fallback and a name)", () => {
+    for (const v of ["#000", "#ffffffe6", "rgba(0, 0, 0, .5)", "var(--skin-glow, #fff)", "0 0 0 1px white", "color-mix(in srgb, var(--water) 18%, #000000)"]) expect(literalIn(v), v).toBe(true);
+    for (const v of ["var(--notch)", "transparent", "currentColor", "pre-wrap", "var(--silver)", "color-mix(in srgb, var(--water) 18%, var(--fr-sky))"]) expect(literalIn(v), v).toBe(false);
+  });
+  test("no page writes a colour of its own: the React pages and the pages that load the stylesheets", () => {
+    const pages = readdirSync(new URL("../", import.meta.url).pathname).filter((f) => /\.tsx$/.test(f)).map((f) => `../${f}`).concat(["./parts.tsx"]);
+    for (const f of pages) {
+      const src = readFileSync(new URL(f, import.meta.url), "utf8").replace(/&#\d+;/g, "");   // an HTML entity is a character, not a colour
+      expect(src, f).not.toMatch(/["'`]#[0-9a-f]{3,8}\b|\b(rgba?|hsla?)\(/i);
+    }
+    // The three windows built from the stylesheets have no style of their own. (follow.html and overlay.html are drawn
+    // over other apps without the stylesheets; their few fixed colours are pinned by follow.test.ts and water.test.ts.)
+    for (const f of ["card.html", "dock.html", "island.html"]) {
+      const html = readFileSync(new URL(`../../${f}`, import.meta.url), "utf8");
+      expect(html, f).not.toMatch(/<style|style="/);
+    }
+  });
+  test("the fixed colours are the same in every theme: Paper and More contrast redefine none of them", () => {
+    const FIXED = /^--(notch|glow|mask|glass|fr|fl)-|^--notch$|^--glass$|^--shadow-drop-card$/;
+    const fixed = tokens.filter((r) => r.sel === ":root" && !r.at).flatMap((r) => r.decl.map(([k]) => k)).filter((k) => FIXED.test(k));
+    expect(fixed.length).toBeGreaterThan(60);
+    for (const r of tokens.filter((x) => x.sel !== ":root" || x.at)) for (const [k] of r.decl) expect(FIXED.test(k), `${r.sel} redefines ${k}`).toBe(false);
+  });
+  test("the first run keeps Night's own words, colour for colour", () => {
+    const root = Object.fromEntries(tokens.find((r) => r.sel === ":root" && !r.at)!.decl);
+    for (const [fr, night] of [["--fr-fg", "--fg"], ["--fr-fg-2", "--fg-2"], ["--fr-bad", "--bad"], ["--fr-ok", "--ok"], ["--fr-amber", "--amber"]]) expect(root[fr].toUpperCase(), fr).toBe(root[night].toUpperCase());
+    expect(root["--fr-sky"]).toBe("var(--notch)");
+    expect(root["--notch"]).toBe("#000000");
+  });
+});
+
+describe("the Hallmark lint's floor, in our own words (31 Oct)", () => {
+  const bySel = (rules: Rule[], sel: string) => rules.filter((r) => !r.at && sels(r).includes(sel));
+  test("a disabled control is never a fade alone: its own fill or ink, the not allowed pointer, and the disabled attribute", () => {
+    const DISABLED = /:disabled|\[data-disabled\]|\[aria-disabled/;
+    for (const r of [...parts, ...style]) if (DISABLED.test(r.sel)) expect(r.decl.map(([k]) => k), r.sel).not.toContain("opacity");
+    for (const s of [".btn:disabled", ".ui-switch:disabled", ".ui-pic:disabled", ".ui-field:disabled", ".ui-seg-opt:disabled", ".ui-stepper-btn:disabled", ".ui-stepper-value:disabled"]) {
+      const body = bySel(parts, s).map((r) => r.body).join(";");
+      expect(body, s).toMatch(/cursor: not-allowed/);
+      expect(body, s).toMatch(/(color|background): var\(--(ink|fill)-disabled\)/);
+    }
+    for (const s of [".btn.primary:disabled", ".btn.quiet:disabled", ".btn.icon:not(.primary):disabled", ".ui-switch:disabled::after"]) expect(bySel(parts, s).map((r) => r.body).join(";"), s).toMatch(/var\(--(ink|fill)-disabled\)/);
+    // The parts pass the attribute itself, so the browser keeps a disabled control out of reach.
+    const tsx = readFileSync(new URL("./parts.tsx", import.meta.url), "utf8");
+    for (const part of ["function Button(", "function Switch(", "function Segmented<", "function Stepper(", "function Field(", "function PictureChoice<"]) {
+      const at = tsx.indexOf(part);
+      expect(at, part).toBeGreaterThan(-1);
+      expect(tsx.slice(at, tsx.indexOf("\n}\n", at)), part).toMatch(/ disabled=\{disabled/);
+    }
+  });
+  test("the switch's knob moves and stretches by transform only, never by its width", () => {
+    const knob = bySel(parts, ".ui-switch::after")[0];
+    expect(knob.body).toContain("transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-1) var(--ease-out)");
+    expect(knob.body).not.toMatch(/transition:[^;]*width/);
+    for (const r of parts) if (/\.ui-switch/.test(r.sel) && r.sel.includes("::after") && r.sel !== ".ui-switch::after") expect(r.decl.map(([k]) => k), r.sel).not.toContain("width");
+    expect(bySel(parts, ".ui-switch:active:not(:disabled)::after")[0].body).toContain("transform: scaleX(var(--knob-stretch))");
+    expect(TOKENS_CSS()).toContain("--knob-stretch: 1.25;");   // --knob-press over --knob: 20 over 16
+  });
+  test("pills are for controls: what the character says, the drop ring's word and the download bar take a card's corners", () => {
+    for (const s of [".dock-label", ".drop-caption", ".fr-bar", ".fr-bar i"]) expect(bySel(style, s)[0].body, s).toMatch(/border-radius: var\(--r-(card|thumb)\)/);
+    const PILL_OK = /^\.badge$|^\.island\.pill$|^\.fl-dot$/;   // the waiting count, the island's own pill shape, a step's button
+    for (const r of style) if (/var\(--r-pill\)/.test(r.body)) for (const s of sels(r)) expect(PILL_OK.test(s), s).toBe(true);
+  });
+  test("the island page clips its overflow (overflow: clip), never hides it", () => {
+    expect(bySel(style, "html.island-page")[0].body).toContain("overflow: clip;");
+    for (const r of [...parts, ...style]) if (/(^|[\s,])(html|body)\b/.test(r.sel)) for (const [k, v] of r.decl) if (/^overflow(-x)?$/.test(k)) expect(v, r.sel).not.toBe("hidden");
+  });
+  test("display heads balance their lines", () => {
+    for (const s of ["h2", ".headline", ".view-title", ".fr-title", ".fl-say h2"]) expect(bySel(style, s).map((r) => r.body).join(";"), s).toContain("text-wrap: balance");
   });
 });
 

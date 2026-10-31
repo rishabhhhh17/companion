@@ -166,7 +166,14 @@ describe("one ask field, and the main button does what the existing paths do", (
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
   test("Fix it and Check my project run the same check as the Fix it key, in the project; Check before going live runs the ship check", () => {
-    expect(card).toContain('const doMain = (a: MainAct) => { if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome(); };');
+    expect(card).toContain('    if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome();\n  };');
+    // Pro (the payments spec, section 3): only at the free fix limit, or on Ship with a plan that does not cover it (never
+    // with payments off, plan.test.ts), does the main button show the limit card instead.
+    const doMain = card.slice(card.indexOf("const doMain = (a: MainAct) => {"), card.indexOf("\n  };", card.indexOf("const doMain = (a: MainAct) => {")));
+    expect(doMain.match(/return; \}/g)?.length).toBe(1);
+    expect(doMain).toContain('if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }');
+    // Ship's own check is in shipIt (shipGate), so every way into Ship asks the same way (plan.test.ts).
+    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return;");
     const f = card.slice(card.indexOf("const findFromHome = "), card.indexOf("\n", card.indexOf("const findFromHome = ")));
     expect(f).toContain("latest.current.find(null)");
     expect(card).toContain("latest.current.find(e.payload)");
@@ -380,7 +387,7 @@ describe("one main button per state", () => {
     // Choose a project needs no tool, so it stays whatever is off.
     expect(mainFor("rest", homeStatus(initial(), "", NOW), () => false)).toBe("folder");
     // Home asks the same switch the chips ask (groups.ts buttonShown), and the main buttons' tools are the ask buttons'.
-    expect(card).toContain("const main = mainFor(mode, status, (b) => buttonShown(b));");
+    expect(card).toContain("const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b));");
     const groups = read("./groups.ts");
     for (const b of ["findProblem", "shipCheck"]) expect(groups, b).toContain(`"${b}"`);
   });
@@ -400,7 +407,7 @@ describe("one main button per state", () => {
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
     const now = card.slice(card.indexOf('<section className="hero"'), card.indexOf('{show("notes") && <>'));
     expect(now.match(/kind="primary"/g)?.length).toBe(1);
-    expect(now).toContain('{main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}</Button></div>}');
+    expect(now).toContain('{main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}{shipTagged && <ProTag />}</Button></div>}');
     expect(now).not.toMatch(/btn primary/);
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));

@@ -1,6 +1,6 @@
 # Dodo Payments integration spec (F25 Pro)
 
-- **Status:** Draft for the founder to review, 31 Oct 2026. Nothing in this spec has been built. Revised after the critic's review.
+- **Status:** Accepted and built in M47 (31 Oct 2026), with payments off. The founder left the open calls to the build ("U tell me"); the calls made are in section 16 and `docs/milestones/M47-pro-plan.md`. Nothing here is proven against Dodo's test mode yet (section 15).
 - **Scope:** sell F25 Pro ($10 a month, $96 a year) through Dodo Payments for the Squibby Mac app.
 - **Out of scope:** F22 managed usage. It stays off and this work does not touch it.
 - **Code read:** `/Users/rishabhkapadia17/Developer/companion-wt/m36-type`, read only. No git commands and no tests were run.
@@ -198,8 +198,9 @@ Costs we accept:
 **What is stored:** one Keychain item (section 9) holding `trial started at` and the latest clock time seen.
 
 - Days left are counted from the later of the clock and that latest time. Turning the clock back does not extend the trial.
+  - While the app runs, the time Pro is judged by also moves on in real time (a monotonic clock that counts sleep), so a clock set back does not pause the trial or the grace period either (`license.rs` `steady_now`).
 - The item survives a reinstall, so the trial is once per Mac.
-- What Delete everything does to it is the founder's call (section 10).
+- Delete everything keeps it (section 10, Option 2, chosen 31 Oct 2026).
 
 **During the trial:**
 
@@ -207,6 +208,8 @@ Costs we accept:
 - Get Pro shows the line "Billing starts today if you buy now."
 
 **At the end:** "Your Pro trial ended. Free still works: 3 fixes a month, every safety feature. Get Pro to keep unlimited fixes." It never shows an error.
+
+- The end copy shows for 7 days after the trial ends. After that the Plan card shows the usual Free rows, with the trial counted as used.
 
 **Why Option A:**
 
@@ -254,7 +257,7 @@ With Option A, both Dodo products are created with a 0 day trial.
 
 **Manage or cancel:**
 
-- Settings > Plan shows **Manage billing**. It opens Dodo's static portal login, `{portalHost}/login/{business_id}`, in the browser. Source: https://docs.dodopayments.com/features/customer-portal
+- Settings > Plan shows **Billing and invoices**. It opens Dodo's static portal login, `{portalHost}/login/{business_id}`, in the browser. Source: https://docs.dodopayments.com/features/customer-portal
 - Dodo's portal handles everything below. Squibby rebuilds none of it.
   - Cancel.
   - Revoke Cancellation, which undoes a scheduled cancel.
@@ -279,12 +282,14 @@ With Option A, both Dodo products are created with a 0 day trial.
 | `valid: true` | Pro. Record the time of this successful check. | Nothing new |
 | Network error, timeout, 5xx, 429 | Keep the last known plan. | Nothing until day 10 with no successful check. Then "Squibby could not check your Pro key for 10 days. Connect to the internet to keep Pro." |
 | 14 days with no successful check | New fixes follow the Free rules. Running tasks are untouched. The key stays in the Keychain. | "Connect to the internet to check Pro." with **Check again** |
-| `valid: false` or 403 | Plan becomes Free for new tasks. Keep the key, marked inactive, and recheck once a day for 30 days, because on hold and paused keys come back when the card is fixed or the plan resumes. | "This Pro key is not active now. If you changed plans, paste the new key from your email. If a payment failed, fix it in billing." Buttons: **Manage billing**, **Paste new key**, **Check again** |
-| 404 on activate or validate | Refuse. Store nothing. | "Squibby could not find that key. Check it against the email from Dodo." |
+| `valid: false`, or a 403 whose body is Dodo's own JSON error | Plan becomes Free for new tasks. Keep the key, marked inactive, and recheck once a day for 30 days, because on hold and paused keys come back when the card is fixed or the plan resumes. | "This Pro key is not active now. If you changed plans, paste the new key from your email. If a payment failed, fix it in billing." Buttons: **Billing and invoices**, **Paste new key**, **Check again** |
+| 404 on activate or validate, with Dodo's own JSON error | Refuse. Store nothing. | "Squibby could not find that key. Check it against the email from Dodo." |
 | 422 on activate (limit reached) | Refuse. | "This key is already on 3 Macs. Choose 'Use Pro on another Mac' on one of them, or contact support." The portal may also show activations ([verify] V6). |
 
 - Grace is measured from the last successful check, using the later of the clock and the latest time seen.
 - Only a definite answer from Dodo changes the plan. A network failure never does.
+  - A 403 or 404 counts as Dodo's answer only when its body is a JSON object with a `code` or a `message`. An empty body or a web page (a proxy, a firewall, a captive portal, a moved route) is "unknown". [verify] V1 records the exact shape of Dodo's error bodies.
+  - A Keychain that cannot be read is never "no key": the last plan decided stays, and the timer looks again in 15 minutes. With no plan decided yet, the Plan card says the Keychain could not be read, and nothing is gated.
 - **The 30 day daily recheck assumes the end of grace goes to `on_hold`.**
   - If the dashboard ends grace with `cancelled` instead, keys are disabled for good and the recheck is wasted.
   - Section 12 therefore sets the end of grace to on_hold.
@@ -320,13 +325,17 @@ Every state comes from `license_status` plus the `pro-trial` item.
 | Free, last fix left | The same, plus "Last free fix this month." | Same as above |
 | Free, at the limit | "You have used this month's 3 free fixes." | Trial or **Get Pro** |
 | Trial | "Pro trial. N days left. No card needed." | **Get Pro** |
-| Trial ended | The calm end copy (section 6) | **Get Pro** |
-| Pro | "Pro. Key ends in ABCD." | **Manage billing**, **Use Pro on another Mac** |
+| Trial ended (7 days after the end; then the Free rows) | The calm end copy (section 6) | **Get Pro** |
+| Pro | "Pro. Key ends in ABCD." | **Billing and invoices**, **Use Pro on another Mac** |
 | Pro, check overdue (day 10) | The day 10 warning copy (section 8) | **Check again** |
 | Pro, offline over 14 days | "Connect to the internet to check Pro." | **Check again** |
-| Key not active | The inactive copy (section 8) | **Manage billing**, **Paste new key**, **Check again** |
+| Key not active | The inactive copy (section 8) | **Billing and invoices**, **Paste new key**, **Check again** |
+| Keychain could not be read (no plan decided yet) | "Squibby could not read your plan from the Keychain just now. Nothing is held back meanwhile." | **Check again** |
 
 There is no renewal date, no price, no "Due today" line and no account row.
+
+- **Billing and invoices** shows only once the portal host and the business id are filled in. Until then the Pro card shows only **Use Pro on another Mac**, and the inactive card **Paste new key** and **Check again**.
+- **Why "Billing and invoices", not "Manage billing" (31 Oct 2026):** the house copy test (`app/src/settingsPages.test.ts`) bars buttons that start with "Manage", because the word says nothing about what happens. "Billing and invoices" names what the portal shows. The founder can rename it in `strings.ts` alone.
 
 ### 9b. Phase 2 return path
 
@@ -352,7 +361,9 @@ There is no renewal date, no price, no "Due today" line and no account row.
 - Yes: deactivate, then delete the `pro-license` item.
 - No: the `pro-license` item stays. The screen names it.
 
-**The trial item and the free fix count are a founder call (section 16).** Today `wipe.rs:3` promises the Keychain item it removes is Squibby's own key "and nothing else". The free fix count lives in runner SQLite, which the wipe deletes, so a wipe resets it. The two options:
+**Chosen, 31 Oct 2026: Option 2.** Delete everything keeps `pro-trial` and names it on its screen, and the free fix count starts again. Option 1 would let anyone restart the 14 day trial with one button; naming the one kept item keeps the wipe honest.
+
+**The trial item and the free fix count were a founder call (section 16).** Before M47, `wipe.rs:3` promised the Keychain item it removes is Squibby's own key "and nothing else". The free fix count lives in runner SQLite, which the wipe deletes, so a wipe resets it. The two options:
 
 - **Option 1 (recommended):** Delete everything also deletes `pro-trial`.
   - It keeps the promise to delete everything.
@@ -628,7 +639,7 @@ Test cards come from https://docs.dodopayments.com/miscellaneous/testing-process
    - A refund policy, for example 14 days.
 4. **Create the products and settings** in section 12, in test and then live, including grace on, the end of grace set to on_hold, and Allow Subscription Updates on. Then share the non-secret product ids and the business id.
 5. **Keep secrets out of chat.** API keys and webhook secrets are needed only for the test portal script and the phase 2 server. They go straight into the Keychain or Cloudflare secrets, never into chat or the repo.
-6. **Numbers and policies to choose:**
+6. **Numbers and policies to choose.** Settled for M47 on 31 Oct 2026 (the founder: "U tell me"): 3 free proven fixes a calendar month; activation limit 3, set in the Dodo dashboard; Undo does not give a fix back and Bring back never counts again; Delete everything keeps the trial item (Option 2); the in-app trial (Option A); Get Pro lists Yearly, then Monthly. Still open: the grace length, the student check, the retention discount and local prices.
    - Free fixes per month (3 proposed).
    - Activation limit (3 proposed).
    - Grace period length (3 days is Dodo's default).

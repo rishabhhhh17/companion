@@ -1,6 +1,6 @@
-/* The design tokens (docs/design/2026-10-31-uiux-overhaul-spec.md, 2.1). This file is the only place a colour, a size, a
-   radius or a duration is written as a value: parts.css and the pages read these names (ui/styleLint.test.ts checks
-   parts.css). Two themes: Night, the usual one, on :root, and Paper (look.theme = paper) on :root[data-theme="paper"].
+/* The design tokens (docs/design/2026-10-31-uiux-overhaul-spec.md, 2.1). This file is the only place a colour is written
+   as a value, in any stylesheet or page, and the only place parts.css finds a size, a radius or a duration
+   (ui/styleLint.test.ts checks both). Two themes: Night, the usual one, on :root, and Paper (look.theme = paper) on :root[data-theme="paper"].
    A stored "deep" has no rule here, so it reads as Night until Deep has a full, tested look (founder call 3, T17). The
    notch and its panel stay black in every theme, because they are the hardware notch (the island page never takes
    data-theme="paper": useLook.ts, keepNight). Contrast is computed from these
@@ -43,6 +43,10 @@
   --shadow-raised: 0 12px 32px rgba(0, 0, 0, .45);
   --added: rgba(60, 180, 90, .25);     /* a line a fix added, behind words */
   --removed: rgba(220, 70, 70, .22);   /* a line a fix took away, behind words */
+  /* A control that cannot be used: its own fill and ink (and the not allowed pointer, parts.css), never a fade alone. The
+     ink is exempt from 4.5 to 1 (WCAG 1.4.3) but stays legible: 3 to 1 on the fill (a11y.test.ts). */
+  --fill-disabled: var(--surface-3);
+  --ink-disabled: var(--fg-3);
 
   /* The one main button. Night: flat silver with one edge of light and no band (2.2). Paper: ink (below). */
   --main: var(--silver);
@@ -101,6 +105,7 @@
   --w-stepper-value: 56px;
   --w-row-label: 12rem;                /* the least a row's words get beside a control (168 at Standard) */
   --w-switch: 36px; --h-switch: 20px; --knob: 16px; --knob-press: 20px; --knob-inset: 2px; --knob-travel: 16px;
+  --knob-stretch: 1.25;                /* a pressed knob stretches to --knob-press (20 over 16), by transform */
   --w-pic: 96px; --h-pic: 80px;        /* a picture choice */
   --w-menu-min: 160px;                 /* the least a menu's list is */
   --w-toast-max: 440px;
@@ -132,6 +137,94 @@
   /* ---------- The water (lookfeel.ts sets these on the page for the water chosen; these are Ocean) ---------- */
   --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15;
   --pond: #000000;                     /* the sky over Flowflow's water, in Home's pond and Settings' preview */
+
+  /* ---------- Fixed colours: the same in Night and Paper, on purpose. Each belongs to something no theme may change: the
+     hardware notch, the first run (always Night, it comes before any choice), the character and its drop ring on the
+     desktop (they read on any wallpaper), and the picture of a light web page in the recorded fix. Paper redefines none
+     of them. style.css reads them by name and writes no colour itself (ui/styleLint.test.ts). ---------- */
+  /* The notch: black like the hardware, white words and marks, and its panel's cards (islandPanel.tsx). The waiting
+     count's pill on the character takes the same black and white. */
+  --notch: #000000;
+  --notch-ink: #FFFFFF;
+  --notch-fg: #F5F5F7;
+  --notch-fg-2: #C4C4C9;
+  --notch-note: #D0D0D4;
+  --notch-dot: rgba(255, 255, 255, .5);        /* a plain mark, white at half strength */
+  --notch-halo: rgba(255, 255, 255, .35);      /* the ring round the listening mark */
+  --notch-ok: #4CC27F;
+  --notch-ok-clear: rgba(76, 194, 127, 0);     /* the tick's glow before and after it lights */
+  --notch-bad: #FF7A6E;
+  --notch-bad-halo: rgba(255, 122, 110, .3);
+  --notch-card: #141416;
+  --notch-card-hover: #1A1A1D;
+  --notch-edge: rgba(255, 255, 255, .08);
+  --notch-edge-strong: rgba(255, 255, 255, .2);
+  --notch-edge-cost: rgba(255, 255, 255, .16);
+  --notch-edge-ok: rgba(123, 228, 149, .5);
+  --notch-edge-bad: rgba(255, 122, 110, .55);
+  /* The character's lights on the desktop: listening's glow when a skin has none, and the still ring of looking. */
+  --glow-light: #FFFFFF;
+  --glow-look-edge: rgba(0, 0, 0, .55);
+  --glow-look: rgba(255, 255, 255, .9);
+  /* Masks: only their strength counts. Flowflow fades into its water below its waterline. */
+  --mask-solid: #000000;
+  --mask-fade: rgba(0, 0, 0, .55);
+  --mask-fade-rise: rgba(0, 0, 0, .5);
+  /* The drop ring: dark glass with a hairline light edge; light under the pointer or the keyboard, never silver. */
+  --glass: rgba(22, 24, 28, .9);
+  --glass-quiet: rgba(22, 24, 28, .78);
+  --glass-ink: #F5F5F7;
+  --glass-ink-quiet: rgba(245, 245, 247, .72);
+  --glass-edge: rgba(255, 255, 255, .22);
+  --glass-edge-2: rgba(255, 255, 255, .2);
+  --glass-lit: #F5F5F7;
+  --glass-lit-ink: #0A0A0B;
+  --glass-lit-ink-2: #111111;
+  --glass-shadow: 0 6px 16px rgba(0, 0, 0, .35), 0 1px 2px rgba(0, 0, 0, .4);
+  --shadow-drop-card: 0 2px 16px rgba(0, 0, 0, .25);
+  /* The first run: the notch's black sky, Night's words (the same values as :root's, kept so Paper never reaches it), its
+     dark cards, and the white fields a person types in. */
+  --fr-sky: var(--notch);
+  --fr-fg: #F5F5F7;
+  --fr-fg-2: #A1A1A6;
+  --fr-bad: #FF6B5E;
+  --fr-ok: #4CC27F;
+  --fr-amber: #FFB020;
+  --fr-ink: #FFFFFF;
+  --fr-hover: rgba(255, 255, 255, .12);
+  --fr-card: #121216;
+  --fr-card-2: #101013;
+  --fr-slot: #0A0A0C;
+  --fr-edge: rgba(255, 255, 255, .1);
+  --fr-edge-slot: rgba(255, 255, 255, .18);
+  --fr-hole: rgba(255, 255, 255, .3);
+  --fr-folder-edge: rgba(255, 255, 255, .35);
+  --fr-soon: #1E1E22;
+  --fr-soon-ink: #B4B4BC;
+  --fr-note: #FFCF73;
+  --fr-tick: #F5F5F7;
+  --fr-tick-ink: #0A0A0B;
+  --fr-paper: #FFFFFF;
+  --fr-paper-ink: #000000;
+  --fr-paper-ink-2: #4A4A52;
+  --fr-paper-focus: #0A0A0B;
+  --fr-hint: #5F5F66;
+  --fr-glow: rgba(220, 226, 235, .55);
+  --fr-drop-light: #FFFFFF;            /* the falling drop's highlight */
+  --fr-drop-deep: #1676C8;             /* and its deep blue, Ocean's, whatever water is chosen later */
+  /* The recorded fix's picture of a web page: a light page with its own greys, red and green. */
+  --fl-page: #F5F5F7;
+  --fl-ink: #111111;
+  --fl-ink-2: #555555;
+  --fl-ink-3: #666666;
+  --fl-rule: #E2E2E6;
+  --fl-grey: #C9C9CF;
+  --fl-field: #FFFFFF;
+  --fl-button: var(--fl-ink);
+  --fl-button-ink: var(--fl-field);
+  --fl-bad: #B3261E;
+  --fl-ok: #187A42;
+  --fl-edge: rgba(255, 255, 255, .08);
 
   font: 14px var(--font);
 }
@@ -170,6 +263,7 @@
   --pond: var(--surface-1);            /* a light sky over the same water, never a black box on a light page */
   --added: rgba(24, 122, 66, .18);
   --removed: rgba(169, 50, 38, .16);
+  --ink-disabled: #808085;             /* --fg-3 is about 2 to 1 on --surface-3 here; this keeps a disabled word legible */
   /* Silver on white reads as disabled, so Paper's main button is ink, with no lip and no edge. */
   --main: var(--fg);
   --main-hover: #3A3A3D;

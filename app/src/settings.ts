@@ -7,7 +7,8 @@ import { setting } from "./settingsStore.ts";
 
 // receiptPictures: how many receipt pictures are kept now (wipe.rs), so lowering "Pictures to keep" can say first how many go.
 // practiceCopies: how many practice copies Companion made and recorded are still in the home folder (practice.rs).
-export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number; practiceCopies?: number };
+/** pro (data_inventory, wipe.rs pro_inventory): what Delete everything does with Pro, null while payments are off. */
+export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number; practiceCopies?: number; pro?: unknown };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
 /** What the app reports (permissions.rs, page_word). "off" is for Accessibility and Screen Recording, where macOS cannot
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */

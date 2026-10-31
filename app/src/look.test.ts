@@ -28,14 +28,16 @@ describe("the character floats on the desktop", () => {
     // Home is see through too (27 Oct 2026): its page paints one black shape with round bottom corners (island.rs tests).
     expect(main).toContain('let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };');
   });
-  test("what it says is a small pill that stays readable on any wallpaper", () => {
+  test("what it says is a small card (pills are for controls) that stays readable on any wallpaper", () => {
     const pill = /\.dock-label \{([^}]*)\}/.exec(css)![1];
     expect(pill).toMatch(/background: color-mix\(in srgb, var\(--bg\) \d+%, transparent\)/);
     expect(pill).toContain("backdrop-filter: blur(");
-    expect(pill).toContain("border-radius: var(--r-pill)");
+    expect(pill).toContain("border-radius: var(--r-card)");
   });
   test("the count of waiting questions has no colour of its own: a small black pill with white words and a white rim", () => {
-    expect(/\.badge \{([^}]*)\}/.exec(css)![1]).toMatch(/min-height: 18px;[^}]*border-radius: var\(--r-pill\); background: #000; color: #fff; box-shadow: 0 0 0 1\.5px #fff/);
+    expect(/\.badge \{([^}]*)\}/.exec(css)![1]).toMatch(/min-height: 18px;[^}]*border-radius: var\(--r-pill\); background: var\(--notch\); color: var\(--notch-ink\); box-shadow: 0 0 0 1\.5px var\(--notch-ink\)/);
+    expect(TOKENS_CSS()).toContain("--notch: #000000;");
+    expect(TOKENS_CSS()).toContain("--notch-ink: #FFFFFF;");
   });
   test("the rings that show the lights first are still there, around the water", () => {
     for (const s of ["listening", "checking", "needsYou", "done"]) expect(css).toMatch(new RegExp(`\\.character\\[data-pose\\]\\[data-state="${s}"\\][^{]*\\{[^}]*drop-shadow`));

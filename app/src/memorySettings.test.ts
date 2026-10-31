@@ -165,7 +165,9 @@ describe("Show Where was I after a break of (where.after)", () => {
     const at = card.indexOf('const off = listen("opened"');
     const opened = card.slice(at, card.indexOf("}, []);", at));
     expect(opened).toContain("const here = projectRef.current;");
-    expect(opened).toContain("if (last && here && recapDue(last, Date.now())) void send(toolOn(\"whereWasI\") ? whereWasI(here, new Date(last).toISOString()) : askRecap(here, new Date(last).toISOString()));");
+    // Recaps are Pro (the payments spec, section 2): the older version is asked only on a plan that covers it, which is
+    // every plan while payments are off (plan.ts proCovers), so with payments off this is exactly as before.
+    expect(opened).toContain("if (last && here && recapDue(last, Date.now())) { if (toolOn(\"whereWasI\")) void send(whereWasI(here, new Date(last).toISOString())); else if (proCovers(planNow())) void send(askRecap(here, new Date(last).toISOString())); }");
     expect(opened).not.toMatch(/\bproject\b(?!Ref)/);
     expect(card).not.toContain("AWAY_MS");
   });

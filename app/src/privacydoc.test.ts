@@ -63,4 +63,17 @@ describe("the privacy note names every flow that reads or sends something", () =
     const where = row("You open Home after a break");
     for (const w of ["off the record", "Claude is not asked", S.set["where.after"].label]) expect(where, w).toContain(w);
   });
+  test("Pro says exactly what goes to Dodo, and that nothing about projects, files or Claude does (the payments spec, section 10)", () => {
+    const on = row("You turn on **Pro**");
+    for (const w of ["license key", "Mac's own name", "activation id", "Keychain", "last 4", "Dodo", "https", "Never anything about your projects, your files, Claude", "payments are off"]) expect(on, w).toContain(w);
+    expect(row("You press **Get Pro**")).toContain("your own browser");
+    expect(row("You press **Get Pro**")).toContain("never sees your card");
+    const off = row(`You press **${S.plan.buttons.otherMac}**`);
+    for (const w of ["Dodo", S.plan.turnOffPro, "deleted from your Keychain"]) expect(off, w).toContain(w);
+    const trial = row("You press **Try Pro free for 14 days**");
+    for (const w of ["Stays on your Mac", "cannot restart", "Delete everything"]) expect(trial, w).toContain(w);
+    expect(S.plan.buttons.trial).toBe("Try Pro free for 14 days");
+    expect(row("You press **Get Pro**")).toContain(S.plan.buttons.billing);
+    expect(note).toContain("keeps the date a Pro trial started (and says so)");
+  });
 });

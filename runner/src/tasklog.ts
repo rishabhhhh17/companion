@@ -24,6 +24,8 @@ export class TaskLog {
       this.setup();
     }
   }
+  /** The open file, for the free fix count (db.ts FreeFixes), which lives beside the tasks so it goes wherever they go. */
+  get database(): Database { return this.db; }
   private setup() {
     this.db.run(`CREATE TABLE IF NOT EXISTS tasks (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, agent TEXT NOT NULL, mode TEXT NOT NULL,

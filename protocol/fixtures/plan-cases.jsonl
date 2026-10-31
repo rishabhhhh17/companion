@@ -1,0 +1,24 @@
+{"case": "pro", "kind": "command", "ok": true, "from": {"plan": "pro", "paymentsOn": true}, "line": {"v": 1, "id": "plan-1", "type": "plan.state", "plan": "pro", "paymentsOn": true}}
+{"case": "free", "kind": "command", "ok": true, "from": {"plan": "free", "paymentsOn": true}, "line": {"v": 1, "id": "plan-2", "type": "plan.state", "plan": "free", "paymentsOn": true}}
+{"case": "trial", "kind": "command", "ok": true, "from": {"plan": "trial", "trialEndsAtSecs": 1794648600, "paymentsOn": true}, "line": {"v": 1, "id": "plan-3", "type": "plan.state", "plan": "trial", "trialEndsAt": "2026-11-14T09:30:00Z", "paymentsOn": true}}
+{"case": "trial at the new year", "kind": "command", "ok": true, "from": {"plan": "trial", "trialEndsAtSecs": 1798761600, "paymentsOn": true}, "line": {"v": 1, "id": "plan-4", "type": "plan.state", "plan": "trial", "trialEndsAt": "2027-01-01T00:00:00Z", "paymentsOn": true}}
+{"case": "payments off", "kind": "command", "ok": true, "from": {"plan": "free", "paymentsOn": false}, "line": {"v": 1, "id": "plan-5", "type": "plan.state", "plan": "free", "paymentsOn": false}}
+{"case": "not a plan", "kind": "command", "ok": false, "line": {"v": 1, "id": "plan-6", "type": "plan.state", "plan": "max", "paymentsOn": true}}
+{"case": "no payments switch", "kind": "command", "ok": false, "line": {"v": 1, "id": "plan-7", "type": "plan.state", "plan": "pro"}}
+{"case": "the switch as text", "kind": "command", "ok": false, "line": {"v": 1, "id": "plan-8", "type": "plan.state", "plan": "pro", "paymentsOn": "true"}}
+{"case": "a trial end that is only a day", "kind": "command", "ok": false, "line": {"v": 1, "id": "plan-9", "type": "plan.state", "plan": "trial", "trialEndsAt": "2026-11-14", "paymentsOn": true}}
+{"case": "a trial end as a number", "kind": "command", "ok": false, "line": {"v": 1, "id": "plan-10", "type": "plan.state", "plan": "trial", "trialEndsAt": 1794648600, "paymentsOn": true}}
+{"case": "usage at the start of a month", "kind": "event", "ok": true, "line": {"v": 1, "id": "u1", "type": "plan.usage", "used": 0, "limit": 3, "resetsOn": "2026-11-01", "everUsed": false}}
+{"case": "usage at the limit", "kind": "event", "ok": true, "line": {"v": 1, "id": "u2", "type": "plan.usage", "used": 3, "limit": 3, "resetsOn": "2027-01-01", "everUsed": true}}
+{"case": "half a fix", "kind": "event", "ok": false, "line": {"v": 1, "id": "u3", "type": "plan.usage", "used": 1.5, "limit": 3, "resetsOn": "2026-11-01", "everUsed": true}}
+{"case": "fewer than none", "kind": "event", "ok": false, "line": {"v": 1, "id": "u4", "type": "plan.usage", "used": -1, "limit": 3, "resetsOn": "2026-11-01", "everUsed": true}}
+{"case": "a day that does not exist", "kind": "event", "ok": false, "line": {"v": 1, "id": "u5", "type": "plan.usage", "used": 1, "limit": 3, "resetsOn": "2026-11-31", "everUsed": true}}
+{"case": "a day in words", "kind": "event", "ok": false, "line": {"v": 1, "id": "u6", "type": "plan.usage", "used": 1, "limit": 3, "resetsOn": "1 Nov", "everUsed": true}}
+{"case": "usage that does not say whether a fix was ever counted", "kind": "event", "ok": false, "line": {"v": 1, "id": "u7", "type": "plan.usage", "used": 1, "limit": 3, "resetsOn": "2026-11-01"}}
+{"case": "the fixes limit", "kind": "event", "ok": true, "line": {"v": 1, "id": "l1", "type": "plan.limit", "reason": "fixes", "resetsOn": "2026-11-01", "command": "agent.start", "agent": "builder-1", "project": "/Users/me/site"}}
+{"case": "ship is Pro", "kind": "event", "ok": true, "line": {"v": 1, "id": "l2", "type": "plan.limit", "reason": "ship", "command": "ship.preview", "project": "/Users/me/site"}}
+{"case": "recaps are Pro", "kind": "event", "ok": true, "line": {"v": 1, "id": "l3", "type": "plan.limit", "reason": "recaps", "command": "recap.ask"}}
+{"case": "a water colour is Pro", "kind": "event", "ok": true, "line": {"v": 1, "id": "l4", "type": "plan.limit", "reason": "looks"}}
+{"case": "a fixes limit that does not say when they come back", "kind": "event", "ok": false, "line": {"v": 1, "id": "l5", "type": "plan.limit", "reason": "fixes"}}
+{"case": "not a reason", "kind": "event", "ok": false, "line": {"v": 1, "id": "l6", "type": "plan.limit", "reason": "max"}}
+{"case": "an empty command", "kind": "event", "ok": false, "line": {"v": 1, "id": "l7", "type": "plan.limit", "reason": "ship", "command": ""}}

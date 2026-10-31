@@ -149,6 +149,25 @@ export type EngineWarm = Envelope & { type: "engine.warm" };
 // engine applies that is not its usual value (a missing name is its usual value); projectValues: the named project's own.
 // Each one replaces the one before. The engine checks every value again and keeps them in memory only.
 export type SettingsApply = Envelope & { type: "settings.apply"; values: Record<string, unknown>; project?: string; projectValues?: Record<string, unknown> };
+// The plan on this Mac (F25, T17, payments spec section 9): only the shell sends it (app/src-tauri/src/runner.rs
+// plan_state_line), when the engine says hello and whenever the plan changes; a page cannot (it is not in the shell's
+// ALLOWED). trialEndsAt (an ISO time) only while a trial is the plan, so the engine can end it on time by itself. With
+// paymentsOn false nothing is gated, whatever plan says. It never carries the license key: the engine never gets it.
+export const PLANS = ["free", "trial", "pro"] as const;
+export type PlanName = (typeof PLANS)[number];
+export type PlanState = Envelope & { type: "plan.state"; plan: PlanName; trialEndsAt?: string; paymentsOn: boolean };
+// The free fix count (payments spec sections 2 and 9), from the engine (runner/src/plan.ts). Sent only while payments are
+// on: when a plan.state arrives, and each time a proven fix is counted. used and limit: this calendar month's counted fixes
+// and how many Free allows; resetsOn: the 1st of next month in this Mac's local time (YYYY-MM-DD), when they come back;
+// everUsed: a free fix has been counted on this Mac before (since the last Delete everything), so Settings may offer the trial.
+export type PlanUsage = Envelope & { type: "plan.usage"; used: number; limit: number; resetsOn: string; everUsed: boolean };
+// A command the plan does not cover was not started (payments spec section 3): the limit card, or the card behind a Pro tag.
+// reason: fixes (this month's free fixes are used, resetsOn says when they come back), or the Pro only feature tapped. command:
+// the command that was not started, so the page that sent it stops waiting. agent and project: the command's own, if it had
+// them. Never sent while payments are off. It is not an error: nothing failed and nothing changed.
+export const PLAN_LIMITS = ["fixes", "ship", "recaps", "looks"] as const;
+export type PlanLimitReason = (typeof PLAN_LIMITS)[number];
+export type PlanLimit = Envelope & { type: "plan.limit"; reason: PlanLimitReason; resetsOn?: string; command?: string };
 // Make something with no project open (F23, M14 Part 1): "make me a website for my bakery", "research who competes with X".
 // A page sends it to the shell only (start_in_new_folder), never to the engine, and it names no project. The shell makes a
 // new empty folder named after the request in plain words (app/src-tauri/src/newfolder.rs; where it goes is the setting
@@ -162,7 +181,7 @@ export type NewFolderKind = (typeof NEW_FOLDER_KINDS)[number];
 export const MAX_REQUEST_CHARS = 4000;
 export type ProjectNew = { v: 1; id: string; ts?: string; type: "project.new"; kind: NewFolderKind; request: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type ShellCommand = ProjectNew;
-export type Command = WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
+export type Command = PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -347,7 +366,7 @@ export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watc
 export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
 export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
-export type Event = WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -358,6 +377,15 @@ const bool: (k: string) => Check = (k) => (m) => (typeof m[k] === "boolean" ? nu
 const oneOf: (k: string, vals: string[]) => Check = (k, vals) => (m) => (vals.includes(m[k] as string) ? null : `"${k}" must be one of ${vals.join(", ")}`);
 const list: (k: string) => Check = (k) => (m) => (Array.isArray(m[k]) ? null : `"${k}" must be a list`);
 const obj: (k: string) => Check = (k) => (m) => (typeof m[k] === "object" && m[k] !== null && !Array.isArray(m[k]) ? null : `"${k}" must be an object`);
+// A whole number from 0, and a calendar day (YYYY-MM-DD, a real date).
+const whole: (k: string) => Check = (k) => (m) => (Number.isInteger(m[k]) && (m[k] as number) >= 0 ? null : `"${k}" must be a whole number from 0`);
+const day: (k: string) => Check = (k) => (m) => {
+  const v = m[k];
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return `"${k}" must be a day, YYYY-MM-DD`;
+  const [y, mo, d] = v.split("-").map(Number);
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d ? null : `"${k}" must be a real day`;
+};
 // An optional field: absent is fine, present must be valid.
 const NEXT_ACTIONS = ["fixWatch", "findProblem", "open", "none"];
 const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
@@ -414,6 +442,7 @@ const COMMANDS: Record<string, Check[]> = {
   "google.accounts": [list("accounts")],
   "engine.warm": [],
   "settings.apply": [obj("values"), opt("project", str("project")), opt("projectValues", obj("projectValues"))],
+  "plan.state": [oneOf("plan", [...PLANS]), bool("paymentsOn"), opt("trialEndsAt", (m) => (typeof m.trialEndsAt === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(m.trialEndsAt) ? null : '"trialEndsAt" must be an ISO time'))],
   "ship.preview": [str("project")],
   "ship.live": [str("project"), str("url"), (m) => (m.confirm === true ? null : 'going live needs "confirm": true')],
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
@@ -480,6 +509,10 @@ const COMMANDS: Record<string, Check[]> = {
 };
 
 const EVENTS: Record<string, Check[]> = {
+  // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
+  "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
+  "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
+    (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
   "tasks.list": [str("project"), list("tasks")],
   "runner.pong": [],
@@ -586,6 +619,9 @@ const SHELL_COMMANDS: Record<string, Check[]> = {
     (m) => (m.project === undefined ? null : 'a new folder is made by the shell, so the command names no "project"')],
 };
 
+// Every command type the engine takes, as its checks know them (runner/test/plan.test.ts walks them: each is in exactly one
+// of plan.ts's lists, so a new one cannot be added without deciding whether the plan gates it).
+export const COMMAND_TYPES: readonly string[] = Object.freeze(Object.keys(COMMANDS));
 export const parseCommand = (line: string): Parsed<Command> => parseWith<Command>(line, COMMANDS);
 export const parseShellCommand = (line: string): Parsed<ShellCommand> => parseWith<ShellCommand>(line, SHELL_COMMANDS);
 export const parseEvent = (line: string): Parsed<Event> => parseWith<Event>(line, EVENTS);

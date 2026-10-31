@@ -449,7 +449,8 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(css).toMatch(/\.island-wing \.mark\[data-mark="dots"\] i \{ width: 6px; height: 6px;[^}]*island-breathe 1\.4s/);
     expect(css).toContain("@keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }");
     expect(css).not.toMatch(/#8e8e93/i);
-    expect(css).toMatch(/\.mark \{[^}]*background: rgba\(255, 255, 255, \.5\)/);
+    expect(css).toMatch(/\.mark \{[^}]*background: var\(--notch-dot\)/);
+    expect(TOKENS_CSS()).toContain("--notch-dot: rgba(255, 255, 255, .5);");
   });
   test("the hover is the panel under the notch, not a character (27 Oct: \"Flowflow is not the main guy, he is the water agent\")", () => {
     const page = read("./island.tsx"), css = read("./style.css");

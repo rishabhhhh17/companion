@@ -1,8 +1,21 @@
 //! What Companion keeps on this Mac, and "delete everything".
 //! Rules: only Companion's own folders are ever removed; a link is never followed; the developer settings file
-//! (dev.json) stays; the Keychain item removed is Companion's own key and nothing else; inside the person's projects
-//! only Companion's own `.companion` folder and its marked block in AGENTS.md and CLAUDE.md go, every other line of
-//! those files stays exactly as it was.
+//! (dev.json) stays; inside the person's projects only Companion's own `.companion` folder and its marked block in
+//! AGENTS.md and CLAUDE.md go, every other line of those files stays exactly as it was.
+//!
+//! The Keychain items of Companion's own service (`keystore::service()`), exactly:
+//! - `anthropic`, the person's Claude key: removed by the helper, last, and only when everything else went.
+//! - `pro-license`, the Pro key (license.rs): removed only when the person answers yes to "Also turn off Pro on this
+//!   Mac?". Then the app first lets this Mac's activation go at Dodo (`license::deactivate`, which deletes the item)
+//!   before the helper starts; with no answer from Dodo nothing is deleted and the page says so. With no, the item
+//!   stays and the screen names it. The helper itself never touches it.
+//! - `pro-trial`, when the Pro trial started (trial.rs): always kept (payments spec section 10, Option 2, the founder's
+//!   call of 31 Oct 2026), so a trial cannot restart by deleting everything. The screen names it. Removing it is a
+//!   Keychain Access job, as for any honest user check.
+//!
+//! The free fix count lives in the engine's data folder (runner SQLite), so it goes with everything else and starts
+//! again at 0; the screen says so. Questions about Pro appear only while payments are on (`pro_inventory`).
+//! Google connections live under their own service (google.rs) and are not touched here.
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -96,6 +109,15 @@ pub fn inventory(home: &Path, data: &Path, key_saved: bool, projects: &[PathBuf]
     let rows: Vec<Value> = items(home, data).iter().map(|i| json!({ "id": i.id, "label": i.label, "bytes": i.paths.iter().filter(|p| safe_to_remove(p, home, data)).map(|p| size_of(p)).sum::<u64>() })).filter(|r| r["bytes"].as_u64().unwrap_or(0) > 0).collect();
     let with_notes = projects.iter().filter(|p| project_has_ours(p)).count();
     json!({ "items": rows, "keySaved": key_saved, "projectsWithNotes": with_notes, "receiptPictures": receipt_pictures(data) })
+}
+
+/// What the Delete everything screen says about Pro: nothing at all while payments are off (no Keychain look, the screen
+/// is as it was before Pro). With payments on: whether a Pro key is saved (the screen asks "Also turn off Pro on this
+/// Mac?" and names the key when the answer is no), whether the trial's start is kept (always kept, and named), and that
+/// the free fix count starts again.
+pub fn pro_inventory(payments_on: bool, key_saved: impl FnOnce() -> bool, trial_kept: impl FnOnce() -> bool) -> Value {
+    if !payments_on { return Value::Null; }
+    json!({ "keySaved": key_saved(), "trialKept": trial_kept(), "fixCountResets": true })
 }
 
 /// How many receipt pictures are kept (plain .jpg files in the runner's receipts folder, never through a link), so that
@@ -548,6 +570,36 @@ mod tests {
         run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| true, relaunch: &|| {}, wait: &|| {} });
         assert!(other.exists(), "only our own browsers folder may be removed from a folder named like the product");
         assert!(!m.home.join("Library/Application Support/Companion/browsers").exists());
+    }
+    #[test]
+    fn pro_is_asked_about_only_while_payments_are_on_and_the_trial_start_is_always_named_as_kept() {
+        assert_eq!(pro_inventory(false, || panic!("looked"), || panic!("looked")), Value::Null);
+        assert_eq!(pro_inventory(true, || true, || true), json!({ "keySaved": true, "trialKept": true, "fixCountResets": true }));
+        assert_eq!(pro_inventory(true, || false, || false), json!({ "keySaved": false, "trialKept": false, "fixCountResets": true }));
+    }
+    #[test]
+    fn the_wipe_removes_the_claude_key_the_pro_key_only_on_a_yes_and_never_the_trial() {
+        let main = include_str!("main.rs");
+        let helper = &main[main.find("fn wipe_helper_mode()").unwrap()..]; let helper = &helper[..helper.find("\n}\n").unwrap()];
+        assert!(helper.contains("keystore::delete_item(&keystore::service(), keystore::ACCOUNT)"), "the Claude key");
+        for never in ["license::", "trial::", "pro-license", "pro-trial"] { assert!(!helper.contains(never), "the helper touches {never}"); }
+        let del = &main[main.find("async fn delete_everything(").unwrap()..]; let del = &del[..del.find("\n}\n").unwrap()];
+        let off = del.find("license::deactivate(").expect("a yes lets the activation go at Dodo");
+        assert!(del[..off].contains("with_pro == Some(true)") && del[..off].contains("license::billing().payments_on()"), "only on a yes, only with payments on");
+        assert!(off > del.find("confirm_delete_natively").unwrap(), "after the Mac's own question");
+        assert!(off < del.find("helper.spawn()").unwrap(), "before anything is deleted");
+        assert!(!del.contains("trial::") && !del.contains("pro-trial"), "the trial's start is kept (Option 2)");
+        // The contract above says the same.
+        let top = &include_str!("wipe.rs")[..1600];
+        assert!(top.contains("`pro-trial`") && top.contains("always kept") && top.contains("Option 2") && top.contains("`pro-license`"), "{top}");
+    }
+    #[test]
+    fn the_free_fix_count_starts_again_because_every_file_of_the_engine_goes() {
+        let m = mac("fixes");
+        for n in ["tasks.db", "tasks.db-wal", "plan.db", "free_fixes.json"] { write(m.data.join("runner").join(n), "count").unwrap(); }
+        let (_, failed) = erase(&m.home, &m.data);
+        assert!(failed.is_empty(), "{failed:?}");
+        assert_eq!(fs::read_dir(m.data.join("runner")).map(|d| d.count()).unwrap_or(0), 0, "nothing of the engine's is left");
     }
     #[test]
     fn a_key_that_could_not_be_removed_is_never_reported_as_deleted() {

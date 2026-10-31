@@ -18,21 +18,23 @@ button, select, input, textarea { font: inherit; }
 .btn:hover:not(:disabled) { background: var(--surface-2); }
 .btn:active:not(:disabled) { background: var(--surface-3); transform: scale(var(--press)); }
 .btn:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); }
-.btn:disabled { opacity: .4; }
+.btn:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; cursor: not-allowed; }
 .btn.sm { min-height: var(--h-sm); padding: 0 var(--space-3); font-size: var(--t-small); line-height: var(--lh-small); }
 .btn.lg { min-height: var(--h-lg); }
 /* The one main button on a screen: flat silver, one edge of light on top, one darker edge below, and no band. */
 .btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
 .btn.primary:hover:not(:disabled) { background: var(--main-hover); }
 .btn.primary:active:not(:disabled) { background: var(--main-press); box-shadow: var(--main-shadow-press); }
-.btn.primary:disabled { opacity: 1; background: var(--surface-3); color: var(--fg-3); box-shadow: none; }
+/* A Pro tag inside the main button takes the button's own words, and its edge is drawn in them (payments spec section 3). */
+.btn.primary .pro-tag { color: inherit; border-color: currentColor; }
+.btn.primary:disabled { background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; }
 .btn.secondary { border-color: var(--line-strong); }
 /* Any button that stays pressed (a chosen key in Change keys): filled, with a full --fg edge, so the choice in use shows by
    shape and not by a tint alone. A quiet one keeps its own look below. */
 .btn[aria-pressed="true"] { background: var(--surface-3); border-color: var(--fg); }
 .btn.quiet { padding: 0 var(--space-2); border-color: transparent; color: var(--fg-2); }
 .btn.quiet:hover:not(:disabled), .btn.quiet:active:not(:disabled) { background: transparent; color: var(--fg); }
-.btn.quiet:disabled { opacity: 1; color: var(--fg-3); }
+.btn.quiet:disabled { background: transparent; color: var(--ink-disabled); }
 /* A quiet button that opens a place (Home's top bar): the open one is filled, a change of fill and not of colour alone. */
 .btn.quiet[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); }
 .btn.danger { border-color: var(--bad-edge); color: var(--bad); }
@@ -41,7 +43,7 @@ button, select, input, textarea { font: inherit; }
 .btn.icon { width: var(--h-sm); min-height: var(--h-sm); padding: 0; }
 .btn.icon:not(.primary) { border-color: transparent; color: var(--fg-2); }
 .btn.icon:not(.primary):hover:not(:disabled) { color: var(--fg); }
-.btn.icon:not(.primary):disabled { opacity: 1; color: var(--fg-3); }
+.btn.icon:not(.primary):disabled { background: transparent; color: var(--ink-disabled); }
 .btn .ic { flex: none; }
 @media (forced-colors: active) { .btn { border-color: ButtonText; } .btn.primary { border: var(--hair) solid CanvasText; } }
 
@@ -92,8 +94,7 @@ button, select, input, textarea { font: inherit; }
 .ui-sublist { display: grid; margin: 0; padding: 0; list-style: none; }
 .ui-sublist > li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: var(--h-md); color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-sublist > li + li { border-top: var(--hair) solid var(--line); }
-.ui-row[data-disabled] .ui-row-label { color: var(--fg-3); }
-.ui-row[data-disabled] .ui-row-control { opacity: .4; }
+.ui-row[data-disabled] .ui-row-label { color: var(--ink-disabled); }
 /* Changed from the usual: a small dot before the label, in the row's left padding (its menu holds Restore usual). It is
    out of the flow, so the label never moves when a setting is changed or restored, and the row never grows a line. */
 .ui-row-dot { position: absolute; top: calc((var(--lh-label) - var(--icon-md)) / 2); inset-inline-start: calc(var(--icon-md) * -1); width: var(--icon-md); height: var(--icon-md); margin: 0; padding: 0; border: 0; border-radius: var(--r-key); background: transparent; }
@@ -113,14 +114,17 @@ button, select, input, textarea { font: inherit; }
 
 /* ---------- Switch: on is filled, off is hollow ---------- */
 .ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
-.ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transition: transform var(--dur-2) var(--ease-out), width var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transform-origin: left center; transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 .ui-switch[aria-checked="true"] { background: var(--fg); box-shadow: none; }
 .ui-switch[aria-checked="true"]::after { background: var(--bg); transform: translateX(var(--knob-travel)); }
 .ui-switch:hover:not(:disabled):not([aria-checked="true"]) { box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control-hover); }
-.ui-switch:active:not(:disabled)::after { width: var(--knob-press); }
-.ui-switch[aria-checked="true"]:active:not(:disabled)::after { transform: translateX(calc(var(--knob-travel) - var(--knob-press) + var(--knob))); }
-.ui-switch:disabled { opacity: .4; }
-@media (forced-colors: active) { .ui-switch { forced-color-adjust: none; border: var(--hair) solid CanvasText; } .ui-switch[aria-checked="true"] { background: Highlight; } .ui-switch::after { background: CanvasText; } }
+.ui-switch:active:not(:disabled)::after { transform: scaleX(var(--knob-stretch)); }
+.ui-switch[aria-checked="true"]:active:not(:disabled)::after { transform: translateX(calc(var(--knob-travel) - var(--knob-press) + var(--knob))) scaleX(var(--knob-stretch)); }
+.ui-switch:disabled { background: var(--fill-disabled); box-shadow: none; cursor: not-allowed; }
+.ui-switch:disabled::after { background: var(--ink-disabled); }
+.ui-switch[aria-checked="true"]:disabled { background: var(--ink-disabled); }
+.ui-switch[aria-checked="true"]:disabled::after { background: var(--fill-disabled); }
+@media (forced-colors: active) { .ui-switch { forced-color-adjust: none; border: var(--hair) solid CanvasText; } .ui-switch[aria-checked="true"] { background: Highlight; } .ui-switch::after { background: CanvasText; } .ui-switch:disabled { border-color: GrayText; } .ui-switch:disabled::after { background: GrayText; } }
 
 /* ---------- Segmented: two or three options, all the same width ---------- */
 .ui-seg { position: relative; display: inline-grid; grid-template-columns: repeat(var(--n), minmax(var(--w-seg), 1fr)); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-sm); padding: var(--space-seg); background: var(--inset); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
@@ -129,12 +133,15 @@ button, select, input, textarea { font: inherit; }
 .ui-seg-opt { position: relative; z-index: 1; min-width: 0; margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); overflow-wrap: normal; transition: color var(--dur-1) var(--ease-out); }
 .ui-seg-opt:hover:not(:disabled), .ui-seg-opt[aria-checked="true"] { color: var(--fg); }
 .ui-seg-opt:focus-visible { outline-offset: 0; }
-.ui-seg[aria-disabled="true"] { opacity: .4; }
+.ui-seg[aria-disabled="true"] { background: var(--fill-disabled); }
+.ui-seg[aria-disabled="true"] .ui-seg-thumb { background: transparent; }
+.ui-seg-opt:disabled { color: var(--ink-disabled); cursor: not-allowed; }
 
 /* ---------- Menu: a secondary button with the choice and a chevron; its list ---------- */
 .ui-menu { position: relative; display: inline-flex; max-width: 100%; min-width: 0; }
 .ui-menu-btn { justify-content: space-between; min-width: 0; max-width: 100%; font-weight: var(--w-regular); text-align: left; }
 .ui-menu-btn .ic { color: var(--fg-2); }
+.ui-menu-btn:disabled .ic { color: var(--ink-disabled); }
 .ui-menu-value { min-width: 0; overflow-wrap: break-word; }
 .ui-menu-list { position: absolute; top: calc(100% + var(--space-1)); right: 0; z-index: 10; min-width: max(100%, var(--w-menu-min)); max-height: calc(var(--h-menu-item) * 10); overflow: auto; margin: 0; padding: var(--space-1); list-style: none; box-sizing: border-box; background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); transform-origin: top center; animation: ui-menu-in var(--dur-1) var(--ease-out) both; }
 .ui-menu-list:focus-visible { outline-offset: calc(var(--ring) * -1); }
@@ -153,12 +160,13 @@ button, select, input, textarea { font: inherit; }
 .ui-stepper-btn { display: grid; place-items: center; flex: none; width: var(--h-sm); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .ui-stepper-btn:hover:not(:disabled) { background: var(--surface-2); }
 .ui-stepper-btn:active:not(:disabled) { transform: scale(var(--press)); }
-.ui-stepper-btn:disabled { color: var(--fg-3); }
+.ui-stepper-btn:disabled { color: var(--ink-disabled); cursor: not-allowed; }
 .ui-stepper-btn:focus-visible { outline-offset: calc(var(--ring) * -1); }
 .ui-stepper-value { width: var(--w-stepper-value); box-sizing: border-box; margin: 0; padding: 0 var(--space-1); border: 0; border-inline: var(--hair) solid var(--line-strong); border-radius: 0; background: transparent; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); font-variant-numeric: tabular-nums; text-align: center; user-select: text; -webkit-user-select: text; }
 .ui-stepper-value:focus-visible { outline-offset: calc(var(--ring) * -1); }
 .ui-stepper-unit { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
-.ui-stepper[data-disabled] { opacity: .4; }
+.ui-stepper[data-disabled] .ui-stepper-box { background: var(--fill-disabled); }
+.ui-stepper-value:disabled { color: var(--ink-disabled); cursor: not-allowed; }
 
 /* ---------- Field ---------- */
 .ui-field-wrap { display: inline-flex; flex-direction: column; gap: var(--space-1); min-width: 0; max-width: 100%; }
@@ -166,7 +174,7 @@ button, select, input, textarea { font: inherit; }
 .ui-field::placeholder { color: var(--fg-2); }
 .ui-field:hover:not(:disabled) { border-color: var(--edge-control-hover); }
 .ui-field:focus-visible { border-color: var(--fg); outline-offset: 0; }
-.ui-field:disabled { background: var(--surface-1); color: var(--fg-3); }
+.ui-field:disabled { background: var(--fill-disabled); color: var(--ink-disabled); cursor: not-allowed; }
 .ui-field[aria-invalid="true"] { border-color: var(--bad); }
 .ui-field.ask { min-height: var(--h-ask); border-radius: var(--r-card); font-size: var(--t-answer); line-height: var(--lh-answer); }
 .ui-field-wrap.wide { display: flex; flex: 1; width: 100%; }
@@ -179,7 +187,9 @@ button, select, input, textarea { font: inherit; }
 .ui-pic:hover:not(:disabled) { border-color: var(--line-strong); }
 .ui-pic:active:not(:disabled) { transform: scale(var(--press-pic)); }
 .ui-pic[aria-checked="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--fg); }
-.ui-pic:disabled { opacity: .4; }
+.ui-pic:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); cursor: not-allowed; }
+.ui-pic:disabled .ui-pic-label { color: var(--ink-disabled); }
+.ui-pic:disabled .ui-pic-stage { filter: grayscale(1); }
 .ui-pic-stage { display: grid; place-items: center; width: 100%; min-height: var(--h-pic); }
 .ui-pic-label { color: var(--fg); font: var(--t-caption) / var(--lh-caption) var(--font); text-align: center; overflow-wrap: anywhere; }
 .ui-pic-tick { position: absolute; top: var(--space-1); right: var(--space-1); display: grid; place-items: center; width: var(--icon-md); height: var(--icon-md); border-radius: var(--r-round); background: var(--fg); color: var(--bg); }

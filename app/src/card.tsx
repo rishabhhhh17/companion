@@ -62,6 +62,9 @@ import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
 import { Button, KeyLabel, Menu, ProofChip, Switch, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
+import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
+import { LimitPanel, ProTag } from "./planCard.tsx";
+import { planNow, usePlan } from "./usePlan.ts";
 import "./style.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
@@ -321,6 +324,9 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 function Card() {
   useLook();   // the water's colour and Home's theme chosen in Settings (M19)
   const [m, dispatch] = useModel();
+  // Pro (the payments spec, T17): the plan on this Mac, from the shell. With payments off it is { paymentsOn: false } and
+  // nothing on Home changes: no tag, no limit card, no line under Fix it.
+  const pro = usePlan();
   // A command of a tool whose group is switched off is refused with one plain line (the shell, then the engine). The line is
   // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".
   const explainRefusal = (e: unknown) => { const line = refusalNotice(e); if (line) dispatch({ type: "app.notice", message: line }); };
@@ -906,7 +912,9 @@ function Card() {
       const here = projectRef.current;
       // Where was I (F21) is Flow's; with Flow off the older three line version (core) is asked instead. Never in the background:
       // only when Home is opened, after the break chosen in Settings.
-      if (last && here && recapDue(last, Date.now())) void send(toolOn("whereWasI") ? whereWasI(here, new Date(last).toISOString()) : askRecap(here, new Date(last).toISOString()));
+      // Recaps are Pro (the payments spec, section 2): on a plan that does not cover them, the older version is not asked,
+      // so no Pro card ever comes up unasked. Where was I is free and is asked as before.
+      if (last && here && recapDue(last, Date.now())) { if (toolOn("whereWasI")) void send(whereWasI(here, new Date(last).toISOString())); else if (proCovers(planNow())) void send(askRecap(here, new Date(last).toISOString())); }
       if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
@@ -1411,7 +1419,11 @@ function Card() {
     phArmedFor.current = m.ph.text;
     void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" }).then((v) => { setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS); }).catch(() => {});
   }, [m.ph?.stage, m.ph?.text, phShown]);
-  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
+  // Every way into Ship (the main button, the chip, Put it online, the notch, the confirm rows) comes through shipGate: on a
+  // plan without Pro it shows the card behind the Pro tag and sends nothing, so the result, its verdict and Undo stay.
+  const shipGate = (): boolean => { if (!proTag("ship", planNow())) return true; dispatch({ type: "ui.proLimit", reason: "ship" }); return false; };
+  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
+  const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); };
   const research = () => {
     if (inNewFolder) { startNew("research"); return; }
     const c = askResearch(project, box.current?.value ?? "", off);
@@ -1425,6 +1437,8 @@ function Card() {
     const goal = box.current?.value.trim() ?? "";
     if (goal && inNewFolder) { startNew("build"); return; }
     if (!goal || !project) return;
+    // At the free fix limit a plan starts nothing: the limit card shows, and the goal stays in the box and the result stays.
+    if (atFreeLimit(planNow(), m.proUsage ?? null)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: m.proUsage?.resetsOn }); return; }
     sentFromBox("plan");
     dispatch({ type: "ui.undoClosed" });
     dispatch({ type: "ui.planRequested" });
@@ -1446,8 +1460,19 @@ function Card() {
   const mode = homeMode(m, needNow);
   const status = homeStatus(m, project, clock);
   const statusFirst = mode === "rest" || mode === "result";
-  const main = mainFor(mode, status, (b) => buttonShown(b));
-  const doMain = (a: MainAct) => { if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome(); };
+  // The limit card takes the result's place and has its own main button, so Home's main button steps aside while it shows.
+  const proLimit = pro.paymentsOn ? m.proLimit ?? null : null;
+  const usage = m.proUsage ?? null;
+  const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b));
+  const shipTags = proTag("ship", pro);
+  const shipTagged = main === "shipCheck" && shipTags;
+  // At the free fix limit, Fix it starts nothing and shows the limit card (section 3); on a plan without Pro, Check before
+  // going live shows the card behind its Pro tag. The engine refuses both the same way (runner/src/plan.ts).
+  const doMain = (a: MainAct) => {
+    if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }
+    if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome();
+  };
+  const lastFree = main === "fix" ? lastFreeLine(pro, usage) : null;
   const places = barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
   // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
   const lively = livelinessOf(useSetting("character.lively"));
@@ -1535,7 +1560,8 @@ function Card() {
               <p className="subline">{hero.line}</p>
               {hero.detail && <p className="subline muted">{hero.detail}</p>}
             </>}
-          {main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}</Button></div>}
+          {main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}{shipTagged && <ProTag />}</Button></div>}
+          {lastFree && <p className="subline muted pro-last">{lastFree}</p>}
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
           {stopCan(m) && !jobShown && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
         </div>
@@ -1587,13 +1613,13 @@ function Card() {
               <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
               <div className="more-ways">
                 {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}<Caps id={keys.using.problem} /></Button>}
-                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}</Button>}
+                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}{shipTags && <ProTag />}</Button>}
                 {toolOn("errorHelp") && <Button size="sm" onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}<Caps id={keys.using.explain} /></Button>}
                 {buttonShown("showMe") && <Button size="sm" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}<Caps id={keys.using.showme} /></Button>}
                 {buttonShown("plan") && <Button size="sm" onClick={plan}>{S.planIt}</Button>}
                 {buttonShown("rescue") && <Button size="sm" onClick={rescue}>{S.rescueIt}</Button>}
                 {buttonShown("research") && <Button size="sm" onClick={research}>{S.researchIt}</Button>}
-                {buttonShown("online") && <Button size="sm" onClick={() => { if (project) { dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); } }}>{S.onlineButton}</Button>}
+                {buttonShown("online") && <Button size="sm" onClick={shipOnline}>{S.onlineButton}{shipTags && <ProTag />}</Button>}
                 {buttonShown("drawIt") && <Button size="sm" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</Button>}
               </div>
               {buttonShown("autoSend") && <label className="more-opt"><Switch checked={autoSend} onChange={setAutoSend} label={S.voiceAutoSend} /><span aria-hidden="true">{S.voiceAutoSend}</span></label>}
@@ -1637,7 +1663,7 @@ function Card() {
       )}
       {/* Settings inside Home (F28, T17: the one Settings; the separate window is retired): its own sidebar with search, and
           one page at a time, opened on the last page viewed or on what a deep link names. */}
-      {show("settings") && <SettingsView place={setPlace} onPlace={setSetPlace} working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending}
+      {show("settings") && <SettingsView place={setPlace} onPlace={setSetPlace} working={isBusy(m)} practiceBusy={workingOn(m)} project={project} spending={m.spending} usage={usage}
         onClose={() => pickTab("now")} onPracticeList={() => pickTab("learn")} onLesson={(l) => { beginLesson(l, false); }} onStepAside={stepAside}
         onMemory={() => pickTab("memory")} onPickFolder={pickFolder} />}
       {groups.groupOn("guide") && show("practice") && m.practice && m.practice.project === project && practiceOf(m.practice.kind) && (() => {
@@ -1943,6 +1969,10 @@ function Card() {
       {/* The working card (F28, the overhaul spec 4.2): the job's name is the headline above, so here the safety copy, the
           four steps (read only from the runner's real states, homeHero.ts jobStep), the step under way, the time so far
           and what it has cost, and Stop. A step that was blocked or waits for an OK is said in its own line. */}
+      {/* Pro (the payments spec, section 3): the limit card, or the card behind a Pro tag, at the top of the result. Calm, never
+          an error: Flowflow keeps its own state, Undo and Stop stay where they are, and Not now closes it. Never with
+          payments off. */}
+      {show("receipt") && proLimit && <LimitPanel view={proLimit} status={pro} usage={usage} say={(l) => dispatch({ type: "app.notice", message: l })} onClose={() => dispatch({ type: "ui.proLimitClosed" })} />}
       {show("task") && m.task && working && (() => {
         const js = jobStep(m, Number(setting("work.tries")) || 3);
         const lines = activityNow(m);
