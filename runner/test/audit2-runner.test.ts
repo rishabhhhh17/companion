@@ -62,17 +62,17 @@ describe("a project's own settings survive a switch to another folder", () => {
     s.apply(apply("/work/a", { "check.install": "never" }));
     s.apply(apply("/work/b", {}));
     expect(s.get("check.install", "/work/a")).toBe("never");
-    expect(s.get("check.install", "/work/b")).toBe("auto");
+    expect(s.get("check.install", "/work/b")).toBe("ask");
     // A new apply for A replaces A's values only, so a setting put back to usual is usual again.
     s.apply(apply("/work/a", {}));
-    expect(s.get("check.install", "/work/a")).toBe("auto");
+    expect(s.get("check.install", "/work/a")).toBe("ask");
   });
   test("it stays bounded", async () => {
     const { RunnerSettings } = await import("../src/settings.ts");
     const s = new RunnerSettings();
     for (let i = 0; i < 80; i++) s.apply(apply(`/work/p${i}`, { "check.install": "never" }));
     expect(s.get("check.install", "/work/p79")).toBe("never");
-    expect(s.get("check.install", "/work/p0")).toBe("auto");
+    expect(s.get("check.install", "/work/p0")).toBe("ask");
   });
 });
 

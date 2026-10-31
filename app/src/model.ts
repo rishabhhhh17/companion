@@ -122,8 +122,9 @@ export type LessonItem = { id: string; title: string; app: string; goal: string;
 // until it is answered), waiting for "did that work?", words only after a step could not be proven, finished, or stopped.
 // link: the one web page the step is about, only when it is a plain web address (links.ts); Learn offers Open for it.
 export type WalkState = { stage: "step" | "already" | "asking" | "help" | "done" | "stopped"; id: string; lesson: string; title: string; index: number; total: number; variant: "main" | "instead"; say: string; find: string; ask: boolean; note?: string; log: { say: string; how: "done" | "skipped" }[]; link?: string; passed?: number; wordsOnly?: boolean };
-// missing: the tool is not on this Mac at all (runner/src/doctor.ts), so a practice that needs it waits for it.
-export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string; missing?: true };
+// missing: the tool is not on this Mac at all (runner/src/doctor.ts), so a practice that needs it waits for it, unless
+// practiceRuns: the practices run without Node, on the engine's own Bun (runner/src/proof/practicerun.ts).
+export type DoctorItem = { id: string; label: string; ok: boolean; detail: string; fix?: string; missing?: true; practiceRuns?: true };
 // The browser check's one time download (F14). needed: a check skipped the page only because no browser is installed (the
 // engine says so with needs: "browser", never guessed from its words). installed: what the engine last said. stage: the
 // person pressed the button (asked), the download is running, or it ended.
@@ -835,7 +836,8 @@ function reduceRest(m: Model, e: Ev): Model {
     // An answer counts only for a question still waiting (not one that came after Stop or a folder change).
     case "diagram.ready": return m.diagram?.stage !== "asking" || (m.diagram.ask && e.ask && m.diagram.ask !== e.ask) || (m.diagram.project && e.project && m.diagram.project !== e.project) ? m : e.made ? { ...m, diagram: { stage: "shown", caption: e.diagram?.caption, brokenReason: e.diagram?.broken?.reason } } : { ...m, diagram: { stage: "none", reason: claudeStopWords(String(e.reason ?? "")) ?? String(e.reason ?? "") } };
     case "ui.aboutClosed": return { ...m, about: null, install: null };
-    case "ui.findProblem": return { ...m, point: { stage: "checking" } };
+    // `fresh` (the first run's first check): an error or notice from before this press is cleared, so what shows is this one's.
+    case "ui.findProblem": return { ...m, point: { stage: "checking" }, ...(e.fresh ? { error: null, notice: null } : {}) };
     // Closing puts the character back to rest; the check is over.
     case "ui.pointClosed": return rest({ ...m, point: null }, m.point?.agent);
     case "problem.found": {

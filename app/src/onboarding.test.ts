@@ -1,48 +1,223 @@
 import { describe, expect, test } from "bun:test";
-import { addMemory } from "./commands.ts";
-import { back, canContinue, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, groupSettingsFor, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, REQUIRED, settingsFor, STEPS, yoursSettings } from "./onboarding.ts";
+import { addMemory, findProblem } from "./commands.ts";
+import { ALL_ANSWERED, back, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, settingsFor, skipTo, STEPS, yoursSettings, type PointNow } from "./onboarding.ts";
 import { characterName, COMPANIONS } from "./companion.ts";
+import { OFF, planCard, type PlanStatus } from "./plan.ts";
 import { readFileSync } from "node:fs";
+import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
 
-describe("moving through the first run", () => {
-  test("hello, see it work, choose and make it yours, powers, connect, folder, and a last screen; the ends have nowhere to go", () => {
-    expect([...STEPS]).toEqual(["hello", "look", "pick", "yours", "powers", "claude", "connect", "folder", "ready"]);
-    expect(next("hello")).toBe("look"); expect(next("folder")).toBe("ready"); expect(next("ready")).toBeNull();
-    expect(back("look")).toBe("hello"); expect(back("hello")).toBeNull();
-    expect([...REQUIRED]).toEqual(["connect", "folder"]);
+const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
+/** One step's part of the first run's page, from its `{step === "x" && (` to the next step's. */
+const stepOf = (ui: string, step: string) => { const at = ui.indexOf(`{step === "${step}" && (`); const after = ui.indexOf("{step === ", at + 10); return ui.slice(at, after < 0 ? undefined : after); };
+
+describe("the three screens and their order (M49)", () => {
+  test("Hello, Your Claude, Your project, then the first check; the ends have nowhere to go", () => {
+    expect([...STEPS]).toEqual(["hello", "claude", "project", "check"]);
+    expect(next("hello")).toBe("claude"); expect(next("claude")).toBe("project"); expect(next("project")).toBe("check"); expect(next("check")).toBeNull();
+    expect(back("check")).toBe("project"); expect(back("claude")).toBe("hello"); expect(back("hello")).toBeNull();
   });
-  test("the hero comes before any key, folder or question (F17; product doc section 4: a demo before connecting)", () => {
-    expect(STEPS.indexOf("look")).toBeLessThan(STEPS.indexOf("connect"));
-    expect(STEPS.indexOf("look")).toBeLessThan(STEPS.indexOf("folder"));
-    expect(STEPS.slice(0, STEPS.indexOf("look"))).toEqual(["hello"]);   // only the hello, which asks nothing, comes first
-    for (const s of ["hello", "look"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
-    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain("<FirstLook onGo={() => go(next(step))} />");
-    // The real practice is one press away on the last screen, and taking it ends the first run there.
-    expect(ui).toContain("onDone(); startPractice(first.id);");
+  test("the count in words covers the three screens, and the first check comes after them, uncounted", () => {
+    expect([...COUNTED]).toEqual(["hello", "claude", "project"]);
+    expect(countOf("hello")).toEqual({ n: 1, of: 3 }); expect(countOf("project")).toEqual({ n: 3, of: 3 });
+    expect(countOf("check")).toBeNull();
   });
-  test("you cannot move past connecting Claude or choosing a folder until it is done", () => {
-    expect(canContinue("connect", { connected: false, project: "/p" })).toBe(false);
-    expect(canContinue("connect", { connected: true, project: "" })).toBe(true);
-    expect(canContinue("folder", { connected: true, project: "" })).toBe(false);
-    expect(canContinue("folder", { connected: true, project: "/p" })).toBe(true);
-    for (const s of ["pick", "yours", "powers", "ready"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
-    // M22: Anthropic's Claude must be installed before Connect; until then Continue waits.
-    expect(canContinue("claude", { connected: false, project: "", claude: false })).toBe(false);
-    expect(canContinue("claude", { connected: false, project: "", claude: true })).toBe(true);
+  test("the water rises with every step after the hello, and Flowflow rides on it", () => {
+    const after = STEPS.slice(1).map((s) => LEVEL[s]);
+    for (let i = 1; i < after.length; i++) expect(after[i]).toBeGreaterThan(after[i - 1]);
+    for (const s of STEPS) { expect(LEVEL[s]).toBeGreaterThan(0); expect(LEVEL[s]).toBeLessThan(100); }
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain('<div className="fr-tank" aria-hidden="true"><Waterline under />{step !== "hello" && open === null && <div className="fr-float"><HomeCharacter as={look} /></div>}</div>');
+    expect(read("./style.css")).toContain(".fr-tank .fr-float {");
   });
-  test("the count in words covers the five steps in the middle", () => {
-    expect([...COUNTED]).toEqual(["pick", "yours", "powers", "connect", "folder"]);
-    expect(countOf("pick")).toEqual({ n: 1, of: 5 }); expect(countOf("folder")).toEqual({ n: 5, of: 5 });
-    expect(countOf("hello")).toBeNull(); expect(countOf("ready")).toBeNull();
+  test("the hello says what it does, has Continue, and the recorded fix to watch again before anything is asked (F05, F17)", () => {
+    const hello = stepOf(read("./onboarding.tsx"), "hello");
+    expect(hello).toContain("S.fr.helloLine");
+    expect(hello).toContain("onClick={() => setWatching(true)}>{S.firstLook.watch}</Button>");
+    expect(hello).toContain("main(S.obContinue, () => go(next(step)))");
+    expect(hello).not.toContain("Field");
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain("<FirstLook goLabel={S.obContinue} onGo={() => go(next(step))} />");
+    expect(ui).toContain("onClick={() => setWatching(false)}>{S.obBack}</Button>");
   });
-  test("the water rises with every counted step and ends nearly full", () => {
-    const levels = COUNTED.map((s) => LEVEL[s]);
-    for (let i = 1; i < levels.length; i++) expect(levels[i]).toBeGreaterThan(levels[i - 1]);
-    expect(LEVEL.ready).toBeGreaterThan(LEVEL.folder);
-    expect(LEVEL.ready).toBeLessThan(100);
-    for (const s of STEPS) expect(LEVEL[s]).toBeGreaterThan(0);
+  test("Your project offers a folder, GitHub or Lovable through the existing Open from a link, and the practice", () => {
+    const proj = stepOf(read("./onboarding.tsx"), "project");
+    expect(proj).toContain("onClick={pickFolder}><b>{S.fr.pickFolder}</b>");
+    expect(proj).toContain("{S.fr.pickLink}");
+    expect(proj).toContain("S.fr.linkLovable");
+    expect(read("./onboarding.tsx")).toContain("void cloneLink(u).then(() => setLink(\"\")).catch((e) => { if (e !== \"\") setLinkNote(failNote(e, \"folder\")); });");
+    expect(proj).toContain("onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}><b>{S.fr.pickPractice}</b>");
+    const card = read("./card.tsx");
+    expect(card).toContain('const cloneLink = (u: string) => { dispatch({ type: "ui.cloneNoteClosed" }); return invoke("clone_project", { url: u })');
+    for (const t of [S.fr.pickFolder, S.fr.pickLink, S.fr.pickPractice]) expect(t).toMatch(/^[A-Z][^.]*[a-z]$/);
+    expect(S.fr.pickLink).toContain("GitHub"); expect(S.fr.pickLink).toContain("Lovable");
+  });
+});
+
+describe("every step can be skipped and has a way back", () => {
+  test("Skip goes on to the next screen, or out of the first run where the next step needs what was skipped", () => {
+    expect(skipTo("hello")).toBe("claude");
+    expect(skipTo("claude")).toBe("project");
+    expect(skipTo("project")).toBe("done");
+    expect(skipTo("check")).toBe("done");
+  });
+  test("each step draws its own way to skip, and Back on every step after the hello", () => {
+    const ui = read("./onboarding.tsx");
+    expect(stepOf(ui, "hello")).toContain("onClick={finish}>{S.fr.skipSetup}</Button>");
+    expect(stepOf(ui, "claude")).toContain("onClick={skip}>{S.fr.skipKey}</Button>");
+    expect(stepOf(ui, "project")).toContain("onClick={skip}>{S.fr.skipProject}</Button>");
+    expect(stepOf(ui, "project")).toContain("onClick={finish}>{S.fr.skipCheck}</Button>");
+    expect(stepOf(ui, "check")).toContain("onClick={() => { stopCheck(); finish(); }}>{S.fr.skipCheck}</Button>");
+    expect(ui).toContain('{back(step) && <button className="fr-back" type="button" aria-label={S.obBack}');
+    // Back while the check runs stops it first, so nothing keeps running behind the first run.
+    expect(ui).toContain("if (stage === \"checking\" || stage === \"asking\") stopCheck(); go(back(step));");
+  });
+  test("Continue waits for a key on Your Claude and a folder on Your project; the rest never wait", () => {
+    expect(canContinue("claude", { connected: false, project: "/p" })).toBe(false);
+    expect(canContinue("claude", { connected: true, project: "" })).toBe(true);
+    expect(canContinue("project", { connected: true, project: "" })).toBe(false);
+    expect(canContinue("project", { connected: false, project: "/p" })).toBe(true);
+    for (const s of ["hello", "check"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+  });
+  test("a returning person never sees it again unless they choose Replay", () => {
+    const card = read("./card.tsx");
+    expect(card).toContain('const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });');
+    expect(card).toContain("{!onboarded && <Onboarding ");
+    expect(card).toContain('localStorage.setItem("companion.onboarded", "1")');
+    expect(read("./settingsPage.tsx")).toContain("showFirstRunAgain();");
+  });
+});
+
+describe("the first check of the real project", () => {
+  const found: PointNow = { stage: "found", label: "Building and checking the code", message: "tsc failed" };
+  test("it is the free check with first set, so the engine saves a safety copy first and asks before installs", () => {
+    const c = findProblem("/p/shop", true) as Record<string, unknown>;
+    expect(c).toMatchObject({ type: "problem.find", project: "/p/shop", first: true });
+    expect(findProblem("/p/shop") as Record<string, unknown>).not.toHaveProperty("first");
+    // The engine side (snapshot before the ladder, auto held to ask, the usual install card): runner/test/first-check.test.ts.
+    expect(read("../../runner/test/first-check.test.ts")).toContain("a safety copy of the project is saved before anything runs");
+    const card = read("./card.tsx");
+    expect(card).toContain('const firstCheck = () => { pressed(); dispatch({ type: "ui.findProblem", fresh: true }); void sendOrExplain(findProblem(project, true), () => dispatch({ type: "ui.pointClosed" })); };');
+  });
+  test("it runs only on the person's press of Check <name>, and says first that a safety copy comes first and installs ask", () => {
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain("const startCheck = () => { setAsked(true); setStoppedByMe(false); firstCheck(); go(\"check\"); };");
+    expect((ui.match(/firstCheck\(\)/g) ?? []).length).toBe(2);   // Check <name>, and Check again after a stop
+    expect(stepOf(ui, "project")).toContain("main(project ? S.fr.checkGo(folderName(project)) : S.obContinue, startCheck, !canContinue(step, ctx))");
+    expect(stepOf(ui, "project")).toContain("{S.fr.checkPromise}");
+    expect(S.fr.checkPromise).toBe("A safety copy is saved first, and I'll ask before installing anything.");
+    expect(S.fr.checkPromise).not.toMatch(/nothing (will )?change/i);
+  });
+  test("a check that ended without the person's Stop says why, never that it was stopped", () => {
+    // No Apple developer tools (the engine's own words), a refused send, or nothing said: never "You stopped the check".
+    const needsGit = "Squibby needs Apple's developer tools to save a safety copy. Run xcode-select --install in Terminal, then try again.";
+    expect(checkEndLine(false, needsGit)).toBe(needsGit);
+    expect(checkEndLine(false, "That is switched off in Settings. Turn it back on there to use it.")).toContain("switched off");
+    expect(checkEndLine(false, null)).toBe(S.fr.checkCouldNot);
+    expect(checkEndLine(false, "  ")).toBe(S.fr.checkCouldNot);
+    // Only after Stop the check, Back or Skip.
+    expect(checkEndLine(true, needsGit)).toBe(S.fr.checkStopped);
+    expect(S.fr.checkStopped).toMatch(/^You stopped/);
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain("const stopCheck = () => { setStoppedByMe(true); void send(stopAgent()); };");
+    expect(ui).toContain("const startCheck = () => { setAsked(true); setStoppedByMe(false); firstCheck(); go(\"check\"); };");
+    // The reason is Home's error or notice line, which the first run covers, cleared when the check is pressed.
+    const card = read("./card.tsx");
+    expect(card).toContain("why={m.error ?? m.notice} />}");
+    expect(read("./model.ts")).toContain('case "ui.findProblem": return { ...m, point: { stage: "checking" }, ...(e.fresh ? { error: null, notice: null } : {}) };');
+  });
+  test("through the model: a NEEDS_GIT failure and a refused send each reach the check screen as its reason", () => {
+    const needsGit = "Squibby needs Apple's free developer tools to keep a safe copy of your project. Open Terminal, type  xcode-select --install  and press Return. When it finishes, try again.";
+    const run = (evs: Record<string, unknown>[]): Model => evs.reduce<Model>((m, e) => reduce(m, e), { ...initial(), error: "an old error", notice: "an old notice" });
+    // The engine: the safety copy cannot be made, so it says why and ends the check.
+    const git = run([{ type: "ui.findProblem", fresh: true }, { type: "protocol.error", reason: needsGit, failed: "problem.find" }, { type: "problem.found", project: "/p", agent: "builder-1", verdict: "cancelled" }]);
+    expect(checkStage(true, git.point, false)).toBe("stopped");
+    expect(checkEndLine(false, git.error ?? git.notice)).toContain("xcode-select --install");
+    // The shell refused the send (Flow switched off): the notice, and the point closed.
+    const off = "That is switched off in Settings. Turn it back on there to use it.";
+    const refused = run([{ type: "ui.findProblem", fresh: true }, { type: "app.notice", message: off }, { type: "ui.pointClosed" }]);
+    expect(checkStage(true, refused.point, false)).toBe("stopped");
+    expect(checkEndLine(false, refused.error ?? refused.notice)).toBe(off);
+    // An old error from before the press is not this check's reason.
+    const quiet = run([{ type: "ui.findProblem", fresh: true }, { type: "ui.pointClosed" }]);
+    expect(checkEndLine(false, quiet.error ?? quiet.notice)).toBe(S.fr.checkCouldNot);
+    // Home's own Point at the problem keeps its notice as before.
+    expect(run([{ type: "ui.findProblem" }]).notice).toBe("an old notice");
+  });
+  test("the live line says the check, the question, the verdict's own words, or why it ended", () => {
+    expect(checkAnnounce("checking", "shop", null, "")).toBe(`${S.fr.checking("shop")}. ${S.fr.checkPromise}`);
+    expect(checkAnnounce("asking", "shop", null, "")).toBe(S.fr.checkAsk);
+    const v = firstCheckVerdict({ stage: "clear" }, "shop")!;
+    expect(checkAnnounce("done", "shop", v, "")).toBe(v.say);
+    expect(v.say).toContain(S.fr.checkClear("shop"));
+    expect(checkAnnounce("stopped", "shop", null, S.fr.checkCouldNot)).toBe(S.verdict.say(S.home.notChecked, S.fr.checkCouldNot));
+    expect(checkAnnounce("idle", "shop", null, "")).toBe("");
+  });
+  test("a fold left open on one screen does not hide Flowflow on the next", () => {
+    expect(read("./onboarding.tsx")).toContain("setWatching(false); setOpen(null); setStep(target);");
+  });
+  test("where it is: not asked, running, waiting on an install question, answered, or stopped; an old answer is never this one", () => {
+    expect(checkStage(false, { stage: "clear" }, false)).toBe("idle");
+    expect(checkStage(true, { stage: "checking" }, false)).toBe("checking");
+    expect(checkStage(true, { stage: "checking" }, true)).toBe("asking");
+    expect(checkStage(true, found, false)).toBe("done");
+    expect(checkStage(true, null, false)).toBe("stopped");
+  });
+  test("the install question is shown on the check screen, Don't allow first, and neither answer is silver", () => {
+    const asks = installAsks([{ id: "a", risk: "install", agent: "builder-1" }, { id: "b", risk: "irreversible", agent: "builder-1" }, { id: "c", risk: "install", agent: "other" }], "builder-1");
+    expect(asks.map((a) => a.id)).toEqual(["a"]);
+    const chk = stepOf(read("./onboarding.tsx"), "check");
+    const no = chk.indexOf("onClick={() => answer(a.id, false)}"), yes = chk.indexOf("onClick={() => answer(a.id, true)}");
+    expect(no).toBeGreaterThan(0); expect(yes).toBeGreaterThan(no);
+    expect(chk.slice(chk.indexOf("asks.map"), yes + 60)).not.toContain('kind="primary"');
+    expect(read("./card.tsx")).toContain('const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };');
+  });
+  test("the result is shown with the verdict line, and a project check is never called proven (M45)", () => {
+    for (const p of [{ stage: "clear" }, { stage: "gaps" }, { stage: "nothing" }, found] as const) {
+      const v = firstCheckVerdict(p, "shop")!;
+      expect(v.proven).toBe(false);
+      expect(v.offer).toBeNull();
+      expect(v.headline).toContain("shop");
+      expect(v.say).toBe(S.verdict.say(v.headline, v.line));
+    }
+    expect(firstCheckVerdict(found, "shop")).toMatchObject({ kind: "failed", tone: "bad", icon: "cross", headline: S.home.failing("shop"), line: S.fr.checkFoundAt("Building and checking the code") });
+    expect(firstCheckVerdict({ stage: "clear" }, "shop")).toMatchObject({ tone: "good", icon: "tick" });
+    expect(firstCheckVerdict({ stage: "gaps" }, "shop")).toMatchObject({ tone: "mixed" });
+    expect(firstCheckVerdict({ stage: "checking" }, "shop")).toBeNull();
+    expect(stepOf(read("./onboarding.tsx"), "check")).toContain("<VerdictLine verdict={result} size=\"headline\" inline />");
+  });
+});
+
+describe("Your Claude: the honest lines, the key field and Test, and never a login form", () => {
+  test("the three lines come from strings.ts: the key goes only to Claude, you pay Anthropic with a limit you can change, and the plan's own state", () => {
+    const off = honestLines({ limitUsd: 10, plan: planCard(OFF, null) });
+    expect(off.privacy).toBe(S.fr.keyPrivacy);
+    expect(off.privacy).toContain("Keychain"); expect(off.privacy).toContain("only to Claude");
+    expect(off.cost).toBe(S.fr.keyCost("$10"));
+    expect(off.cost).toContain("pay Anthropic directly"); expect(off.cost).toContain("change that in Settings");
+    expect(off.plan).toBe(S.fr.keyPlan(`${S.plan.earlyAccess}. ${S.plan.nothingCharged}`));
+    expect(honestLines({ limitUsd: 12.5, plan: planCard(OFF, null) }).cost).toContain("$12.50");
+    // With payments on, the line follows the Plan card, not a fixed promise.
+    const free: PlanStatus = { ...OFF, paymentsOn: true, state: "free" };
+    expect(honestLines({ limitUsd: 10, plan: planCard(free, null) }).plan).toBe(S.fr.keyPlan(S.plan.freeNew(3)));
+    for (const l of Object.values(off)) { expect(l).not.toContain("\u2014"); expect(l).toMatch(/\.$/); }
+  });
+  test("the page shows them over the key field, from the Plan card's store and the daily limit in force", () => {
+    const claude = stepOf(read("./onboarding.tsx"), "claude");
+    for (const k of ["honest.privacy", "honest.cost", "honest.plan"]) expect(claude).toContain(`<li>{${k}}</li>`);
+    expect(claude.indexOf("honest.plan")).toBeLessThan(claude.indexOf('<Field type="password"'));
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain("const plan = planCard(usePlan(), usage);");
+    expect(ui).toContain('const limit = Number(useSetting("spend.dailyLimit"));');
+  });
+  test("the one field is the Anthropic key, with Save and test; there is no Claude login form anywhere in the first run (rule 2)", () => {
+    const ui = read("./onboarding.tsx");
+    expect((ui.match(/type="password"/g) ?? []).length).toBe(1);
+    expect(ui).toContain('<Field type="password" wide value={key} label={S.obKeyLabel}');
+    expect(ui).toContain("onClick={saveKey}>{S.fr.keyTest}</Button>");
+    expect(S.fr.keyTest).toContain("test");
+    for (const banned of ["auth login", "auth_login", "claude.ai", 'type="email"', "plan_login", "S.obPlanLater", "oauth"]) expect(ui.toLowerCase(), banned).not.toContain(banned.toLowerCase());
+    for (const t of Object.values(S.fr)) if (typeof t === "string") expect(t, t).not.toMatch(/sign in with|log ?in with|your claude password/i);
   });
 });
 
@@ -58,7 +233,7 @@ describe("make it yours", () => {
   test("M46: how lively is three choices, Still pressed first; it writes character.lively, never the reactions, and the follow step is gone", () => {
     const page = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     expect(page).toContain('const LIVELY: Liveliness[] = ["still", "gentle", "lively"];');
-    expect(page).toContain('aria-pressed={(yours.lively ?? "still") === l}');
+    expect(page).toContain('<Segmented label={S.fr.livelyLabel} value={yours.lively ?? "still"}');
     expect(page).not.toContain("FOLLOWS");
     expect(page).not.toContain("S.fr.follow");
     expect(page).not.toContain("fr-follow");
@@ -102,10 +277,24 @@ describe("the questions", () => {
     expect(settingsFor(DEFAULT_ANSWERS)).toEqual([["explain.mode", "reasonsAndQuestion"], ["talk.autoSend", false]]);
     // Explain and auto send are settings (T16): the first run changes them the way Settings does, never by its own command.
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain("for (const [key, on] of settingsFor(answers)) void changeSetting(key, on);");
+    expect(ui).toContain("for (const [key, on] of settingsFor(answers, answered)) void changeSetting(key, on);");
     expect(ui).not.toContain("setExplain");
     expect(cmds.filter((c) => c.type === "memory.add").map((c) => c.text)).toEqual(["Prefers short answers", "Prefers plain words, no jargon"]);
     expect(cmds.every((c) => c.type !== "memory.add" || c.source === "your answer at setup")).toBe(true);
+  });
+  test("only the questions the person answered are saved: a pre-filled answer is never said to be theirs (rule 15)", () => {
+    const add = (scope: "profile", text: string, source: string) => addMemory("/p", scope, text, source);
+    const only = new Set(["autoSend"] as const);
+    // Plain words starts as yes, but nobody answered it: no "Prefers plain words" line with "your answer at setup".
+    expect((commandsFor({ ...DEFAULT_ANSWERS, autoSend: true }, "/p", add, only) as any[]).filter((c) => c.type === "memory.add")).toEqual([]);
+    expect(settingsFor({ ...DEFAULT_ANSWERS, autoSend: true }, only)).toEqual([["talk.autoSend", true]]);
+    expect(settingsFor(DEFAULT_ANSWERS, new Set())).toEqual([]);
+    expect((commandsFor(DEFAULT_ANSWERS, "/p", add, new Set(["plain"])) as any[]).map((c) => c.text)).toEqual(["Prefers plain words, no jargon"]);
+    expect([...ALL_ANSWERED].sort()).toEqual(QUESTIONS.map((q) => q.key).sort());
+    const ui = read("./onboarding.tsx");
+    expect(ui).toContain("setAnswered((s) => new Set(s).add(q.key));");
+    expect(ui).toContain("commandsFor(answers, project, (scope, text, source) => addMemory(project, scope, text, source) as Command, answered)");
+    expect(ui).toContain("settingsFor(answers, answered)");
   });
   test("saying no to everything adds nothing to the profile", () => {
     const cmds = commandsFor({ explain: true, short: false, plain: false, autoSend: false }, "/p", (s, t, so) => addMemory("/p", s, t, so)) as any[];
@@ -123,10 +312,10 @@ describe("the key is checked with Anthropic when it is saved", () => {
   });
   test("a refused key cannot be continued past, and every answer is in plain words", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    const connect = ui.slice(ui.indexOf('{step === "connect" && ('), ui.indexOf('{step === "folder" && ('));
-    expect(connect).toContain('main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || (step === "connect" && check === "refused"))');
+    const claude = stepOf(ui, "claude");
+    expect(claude).toContain('main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || check === "refused")');
     // The one main button of each step is the Button part's primary, large (the flat silver).
-    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <button className="btn primary lg fr-key" type="button" disabled={disabled} onClick={onClick}>{label}</button>;');
+    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <Button kind="primary" size="lg" className="fr-key" disabled={disabled} onClick={onClick}>{label}</Button>;');
     for (const k of ["checking", "works", "refused", "no_connection", "unknown"] as const) { expect(S.obKeyCheck[k].length).toBeGreaterThan(10); expect(S.obKeyCheck[k]).not.toMatch(/40[13]|status|HTTP|models/); }
   });
   test("Get a key opens Anthropic's own page, only on the person's press, and a failure never shows a raw error", () => {
@@ -160,23 +349,27 @@ describe("the first run and INSTALL name every feature that asks for each permis
   });
 });
 
-describe("the first run explains the four groups (F20 item 6)", () => {
-  test("the groups have their own step before Connect, and the optional questions are folded away on the last screen", () => {
+describe("the first run explains the groups (F20 item 6)", () => {
+  test("the groups keep their place in the first run, folded on the last screen with the optional questions", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(STEPS.indexOf("powers")).toBeLessThan(STEPS.indexOf("connect"));
-    expect(ui.slice(ui.indexOf('{step === "powers" && (')).indexOf("SWITCHED.map")).toBeGreaterThan(0);
-    const ready = ui.slice(ui.indexOf('{step === "ready" && ('));
-    expect(ready.indexOf("<details")).toBeLessThan(ready.indexOf("QUESTIONS.map"));
-    for (const s of ["powers", "ready"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
+    const chk = stepOf(ui, "check");
+    expect(chk).toContain('fold("powers", S.fr.powersTitle,');
+    expect(chk.indexOf('fold("powers"')).toBeLessThan(chk.indexOf("SWITCHED.map"));
+    expect(chk.indexOf('fold("questions"')).toBeLessThan(chk.indexOf("QUESTIONS.map"));
+    expect(chk).toContain('fold("yours", S.fr.yoursTitle(own),');
+    expect(ui).toContain("<Disclosure title={title} open={open === id} onToggle={(o) => setOpen(o ? id : null)}>{body}</Disclosure>");
   });
-  test("each group is explained in one short line, four lines in all, in plain words with no score or level", () => {
+  test("each group is explained in one short line, five lines in all, in plain words with no score or level", () => {
     const lines = Object.values(S.groups.short);
-    expect(lines.length).toBe(4);
+    expect(lines.length).toBe(5);
     for (const l of lines) { expect(l.length).toBeGreaterThan(20); expect(l.length).toBeLessThan(110); expect(l).toMatch(/\.$/); }
   });
   test("switching a group off in the first run changes the same setting Settings does, and leaving it on changes nothing", () => {
-    expect(groupSettingsFor([])).toEqual([]);
-    expect(groupSettingsFor(["voice", "files"])).toEqual([["voice.on", false], ["files.on", false]]);
+    // Only what differs from the values in force (F28: file conversion starts off, so leaving it off changes nothing).
+    const usual = (k: string) => (k === "files.on" ? false : undefined);
+    expect(groupSettingsFor(["files"], usual)).toEqual([]);
+    expect(groupSettingsFor(["voice", "files"], usual)).toEqual([["voice.on", false]]);
+    expect(groupSettingsFor([], usual)).toEqual([["files.on", true]]);
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     expect(ui).toContain("for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);");
   });
@@ -186,9 +379,12 @@ describe("the first run explains the four groups (F20 item 6)", () => {
     expect(keep).toContain("yoursSettings(yours, own)"); expect(keep).toContain("groupSettingsFor(groupsOff)");
     expect(keep).not.toContain("settingsFor(answers)"); expect(keep).not.toContain("commandsFor(");
     const fin = ui.slice(ui.indexOf("const finish = () => {"), ui.indexOf("const saveKey"));
-    expect(fin).toContain("keepChoices();"); expect(fin).toContain("settingsFor(answers)");
+    expect(fin).toContain("keepChoices();"); expect(fin).toContain("settingsFor(answers, answered)");
+    // A skip never saves answers the person did not give (rule 15: the profile learns only from explicit signals).
+    expect(fin).toContain("if (answered.size > 0) {");
+    expect(ui).toContain("onChange={(v) => { setAnswered((s) => new Set(s).add(q.key)); setAnswers({ ...answers, [q.key]: v === \"yes\" }); }}");
     expect(ui).toContain("onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}");
-    expect(ui).toContain("onClick={finish}>{S.fr.goProject}");
+    expect(ui).toContain("main(S.fr.goProject, finish, ");
   });
 });
 
@@ -206,29 +402,58 @@ describe("Home opens by itself at the very first launch", () => {
 });
 
 describe("the last screen's keys", () => {
-  test("are shown in the Mac's own symbols, the words kept for VoiceOver", async () => {
-    const { keySymbols } = await import("./onboarding.tsx");
-    expect(keySymbols("Control, Option, Command and K")).toBe("\u2303\u2325\u2318K");
-    expect(keySymbols("Option and Space")).toBe("\u2325Space");
+  test("only the four keys of F28 that can be pressed now, in the Mac's own caps (KeyLabel reads the words to VoiceOver)", () => {
+    expect([...FIRST_KEYS]).toEqual(["problem", "talk", "read", "stop"]);
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain("<kbd aria-label={r.keys}>{keySymbols(r.keys)}</kbd>");
+    expect(ui).toContain("keyRows(keys).filter((r) => FIRST_KEYS.includes(r.job) && !r.none && keys.using[r.job as keyof typeof keys.using])");
+    expect(ui).toContain("<KeyLabel chord={keys.using[r.job as keyof typeof keys.using]} />");
   });
 });
 
-describe("the first run shows only what is ready (M28)", () => {
-  test("no empty Coming soon slots; one ready companion is introduced, not offered as a choice of one", () => {
+describe("the first run offers no choice of one companion (M28, M49)", () => {
+  test("Flowflow is met on the hello and lives on the water; there is no pick step and no empty slot", () => {
     const src = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(src).toContain("const cast = COMPANIONS.filter((c) => c.ready);");
+    expect(src).not.toContain("fr-pick");
     expect(src).not.toContain("fr-soon");
-    expect(S.fr.meetTitle("Flowflow")).toBe("Meet Flowflow.");
+    expect(src).not.toContain("COMPANIONS");
+    expect((S.fr as Record<string, unknown>).pickTitle).toBeUndefined();
+    expect((S.fr as Record<string, unknown>).helloGo).toBeUndefined();   // "Say hello" is gone (the executive review)
   });
 });
 
 describe("the first run has no dead end without a key (M28)", () => {
-  test("the connect step offers Skip for now, which goes on to the next step", () => {
+  test("Your Claude offers Skip for now, which goes on to Your project", () => {
     const src = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(src).toContain('<button className="fr-link fr-skip" type="button" onClick={() => go(next(step))}>{S.fr.skipKey}</button>');
+    expect(src).toContain('<Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipKey}</Button>');
+    expect(skipTo("claude")).toBe("project");
     expect(src).not.toContain("S.obPlanLater");
+  });
+});
+
+describe("keyboard, VoiceOver and motion", () => {
+  test("after Continue, Back or Skip the keyboard goes to the new screen's heading, and the check says where it is", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("}, [view]);");
+    const chk = stepOf(ui, "check");
+    // One live line, always there on the check screen, carries each change (WebKit may not read a live region that is
+    // added with its words already in it); the lines the eye reads are not live, so nothing is said twice.
+    expect(chk).toContain('<p className="sr" role="status" aria-live="polite">{announce}</p>');
+    expect(chk.match(/role="status"/g)?.length).toBe(1);
+    expect(chk).toContain('<p className="fr-line">{S.fr.checkPromise}</p>');
+    expect(chk).toContain('{stage === "stopped" && <p className="fr-line">{endLine}</p>}');
+    // Every button is the Button part (named by its words), but Back, which is named for VoiceOver.
+    expect((ui.match(/<button /g) ?? []).length).toBe(1);
+    expect(ui).toContain('<button className="fr-back" type="button" aria-label={S.obBack}');
+  });
+  test("with Reduce motion or Less motion nothing moves: the recording waits for Next step, and the drop and rise are off", () => {
+    const look = readFileSync(new URL("./firstLook.tsx", import.meta.url), "utf8");
+    expect(look).toContain("const playing = !reduced && !paused && picked === null;");
+    const css = readFileSync(new URL("./style.css", import.meta.url), "utf8");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }");
+    // Squibby's own Less motion turns every animation off, so the rise must not wait at its starting opacity of 0.
+    expect(css).toContain(":root[data-less-motion] .fr-hello .fr-rise { opacity: 1; }");
+    expect(css).toContain(":root[data-less-motion] .fr-hello .fr-drop { display: none; }");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }");
   });
 });
 

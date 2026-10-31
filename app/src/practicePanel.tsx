@@ -204,7 +204,7 @@ function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boo
 }
 
 /** The practice list on Learn, above the lessons. It never brings Learn forward by itself (home.ts). */
-export function PracticeList({ rows, busy, nodeFix, note, damaged, openId, act }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; note: string; damaged: boolean; openId: string | null; act: ListActions }) {
+export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, act }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null; act: ListActions }) {
   return (
     <section className="panel" aria-label={S.practiceListTitle}>
       <h2>{S.practiceListTitle}</h2>
@@ -213,6 +213,7 @@ export function PracticeList({ rows, busy, nodeFix, note, damaged, openId, act }
       {note && <div className="line" role="status">{note}</div>}
       {busy && <div className="line muted">{S.practiceBusy}</div>}
       {nodeFix && rows.some((r) => r.needsNode) && <div className="line">{S.practiceNodeList(nodeFix)}</div>}
+      {withoutNode != null && !rows.some((r) => r.needsNode) && <div className="line muted">{S.practiceWithoutNode(withoutNode)}</div>}
       {rows.map((r) => <ListItem key={r.entry.id} r={r} busy={busy} open={openId === r.entry.id} act={act} />)}
     </section>
   );

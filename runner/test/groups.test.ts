@@ -11,7 +11,7 @@ import { RunnerSettings } from "../src/settings.ts";
 const made: string[] = [];
 afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-groups-${l}-`))); made.push(d); return d; };
-const SWITCH: Record<string, string> = { flow: "flow.on", guide: "guide.on", voice: "voice.on", files: "files.on" };
+const SWITCH: Record<string, string> = { flow: "flow.on", guide: "guide.on", voice: "voice.on", files: "files.on", prompt: "prompt.on" };
 const offOf = (...g: string[]) => (k: string): unknown => (g.some((x) => SWITCH[x] === k) ? false : undefined);
 
 describe("the catalog, read by the engine", () => {
@@ -24,14 +24,14 @@ describe("the catalog, read by the engine", () => {
     expect([...listed, "agent.start"].sort()).toEqual([...types].sort());
     expect(GROUPS.filter((g) => !g.switch).map((g) => g.id)).toEqual(["core"]);
   });
-  test("each group's switch is a setting the engine applies, usual on", () => {
+  test("each group's switch is a setting the engine applies, usual on but file conversion (F28)", () => {
     const s = new RunnerSettings();
-    for (const sw of Object.values(SWITCH)) expect(s.get(sw)).toBe(true);
+    for (const sw of Object.values(SWITCH)) expect(s.get(sw), sw).toBe(sw !== "files.on");
     const r = s.apply({ v: 1, id: "a", type: "settings.apply", values: { "flow.on": false, "voice.on": false } });
     expect(r.accepted.sort()).toEqual(["flow.on", "voice.on"]);
-    expect(groupsOff((k) => s.get(k))).toEqual(["flow", "voice"]);
+    expect(groupsOff((k) => s.get(k))).toEqual(["flow", "voice", "files"]);
     expect(s.apply({ v: 1, id: "b", type: "settings.apply", values: {} }).accepted).toEqual([]);
-    expect(groupsOff((k) => s.get(k))).toEqual([]);
+    expect(groupsOff((k) => s.get(k))).toEqual(["files"]);
   });
 });
 
@@ -54,10 +54,10 @@ describe("a command of a group that is off", () => {
     expect(toolOf({ type: "agent.start" })).toBeUndefined();
     expect(refusal(offOf("flow"), { type: "agent.start", mode: "research" })).toBeNull();
     expect(refusal(offOf("flow"), { type: "agent.start", mode: "drive" })).toBe(OFF_LINE);
-    expect(refusal(offOf("flow", "guide", "voice", "files"), { type: "nothing.here" })).toBeNull();
+    expect(refusal(offOf("flow", "guide", "voice", "files", "prompt"), { type: "nothing.here" })).toBeNull();
   });
   test("with every group off Stop everything, approvals, settings, memory, Research and Ship still go through, and so does taking back", () => {
-    const all = offOf("flow", "guide", "voice", "files");
+    const all = offOf("flow", "guide", "voice", "files", "prompt");
     for (const t of ["agent.interruptAll", "agent.interrupt", "approval.resolve", "runner.ping", "settings.apply", "memory.erase", "research.ask", "ship.live", "ship.rollback", "spending.set", "auth.check", "checkpoint.restore", "bisect.undo", "walk.stop"]) {
       expect(refusal(all, { type: t }), t).toBeNull();
     }
@@ -124,11 +124,11 @@ describe("the engine as a program", () => {
     await r.waitFor(() => r.events().slice(before).some((e: any) => e.type === "agent.state" && e.state !== "working" && e.state !== "thinking"));
     await r.close();
   });
-  test("Guide off refuses a lesson and Voice off refuses Prompt help, each with the one line", async () => {
+  test("Guide off refuses a lesson and Prompt help off refuses the error explainer, each with the one line", async () => {
     const project = tmp("proj");
     const r = launch();
     await r.waitFor(() => r.lines.length >= 1);
-    r.send(apply({ "guide.on": false, "voice.on": false }));
+    r.send(apply({ "guide.on": false, "prompt.on": false }));
     await r.waitFor(() => r.events().some((e: any) => e.type === "settings.applied"));
     const before = r.lines.length;
     r.send({ v: 1, id: "w", type: "walk.list", project });

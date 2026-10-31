@@ -189,6 +189,9 @@ function sentence(text: string, last: boolean): string | null {
   const rows = text.split("\n").map((l) => l.trim()).filter(Boolean);
   const errors = rows.filter((l) => ERROR_LINE.test(l) && !/^at\s/.test(l));
   if (errors.length) return last ? errors.at(-1)! : errors[0];
+  // Bun's test runner (the practices on a Mac without Node, practicerun.ts) prints a thrown error's own words as
+  // "error: ...", under its "# Unhandled error between tests" heading, which is not the error.
+  if (BUN_REPORT.test(text)) { const said = rows.map((l) => BUN_ERROR.exec(l)?.[1]).find((x) => !!x); if (said) return said; }
   return rows.find((l) => ERRORISH.test(l) && !/^at\s/.test(l) && !l.startsWith(">")) ?? rows.find((l) => !l.startsWith(">") && !/^at\s/.test(l)) ?? null;
 }
 
@@ -197,14 +200,27 @@ const tidy = (s: string) => label(redact(s), MESSAGE_MAX);
 // "Failed to resolve import "./Header" from "src/App.tsx"" (Vite) names the file but not the line: the line is the one that
 // imports exactly that, if there is exactly one.
 const FAILED_IMPORT = /Failed to resolve import ["']([^"'\n]+)["'] from ["']([^"'\n]+)["']/;
+// Bun says the same for a require or import it cannot find, with the whole path of the file and no line: "Cannot find module
+// './lib/format-price' from '/Users/sam/shop/server.js'". The line is found the same way, from a whole path only.
+const BUN_IMPORT = /Cannot find (?:module|package) ["']([^"'\n]+)["'] from ["']((?:\/|\.\/)[^"'\n]+)["']/;
+/** The project's own folder, where the output names it in full, as "./": a folder name with spaces in it (every practice
+ *  copy's, "Squibby practice signup page") would otherwise cut each place in two, since a place is read up to a space.
+ *  Also the file:// form Node prints for a module, with its spaces as %20. Only the project's own folder is changed. */
+function inProject(text: string, dirs: string[]): string {
+  const all = [...new Set(dirs.map((d) => d.replace(/\/+$/, "")).filter((d) => d.length > 1))];
+  const forms = [...new Set(all.flatMap((d) => [`file://${encodeURI(d)}/`, `file://${d}/`, `${d}/`]))].sort((a, b) => b.length - a.length);
+  return forms.reduce((t, f) => t.split(f).join("./"), text);
+}
+const BUN_REPORT = /^bun test v\d/m;
+const BUN_ERROR = /^error: (.+)$/;
 
 /** One place in the project for this failure, or the error sentence, or nothing at all. With `loose` (text a person selected,
  *  not a check Companion ran) a path that is not in the project as written may still be matched to one file that is (see
  *  looseFile), and a failed import is found by the line that imports it. */
 export function locateProblem(output: string, project: string, from: string, opts: { loose?: boolean } = {}): Problem | null {
-  const text = output.slice(-TEXT_MAX).replace(ANSI, "").replace(/\r/g, "");
   let root: string;
   try { root = realpathSync(project); } catch { return null; }
+  const text = output.slice(-TEXT_MAX).replace(ANSI, "").replace(/\r/g, "");
   let files: string[] | null = null;
   const loose = opts.loose ? () => (files ??= projectFiles(root)) : undefined;
   // In loose mode a bare file name could be another project's file of that name: it counts only when the error prints that
@@ -236,7 +252,7 @@ export function locateProblem(output: string, project: string, from: string, opt
       if (hit) return { kind: "line", file: hit.file, line: p.line, ...(p.column !== undefined ? { column: p.column } : {}), lineText: hit.lineText, message: tidy(p.message ?? tool.message ?? ""), from };
     }
   }
-  const { list, python } = places(text);
+  const { list, python } = places(inProject(text, [project, root]));
   const ordered = (python ? [...list].reverse() : list).sort((a, b) => Number(!!a.declared) - Number(!!b.declared));   // Python prints the deepest frame last; a test's declaration only if nothing better
   const general = sentence(text, python);
   const imp = loose ? FAILED_IMPORT.exec(text) : null;
@@ -245,6 +261,13 @@ export function locateProblem(output: string, project: string, from: string, opt
     const f = theirFile(project, root, path, loose);   // the file, checked like any other place
     const at = f ? f.rows.flatMap((r, i) => (r.includes(`"${wants}"`) || r.includes(`'${wants}'`) ? [i + 1] : [])) : [];
     if (f && at.length === 1) return { kind: "line", file: f.file, line: at[0], lineText: label(f.rows[at[0] - 1], LINE_MAX), message: tidy(said), from };
+  }
+  const bunImp = BUN_IMPORT.exec(inProject(text, [project, root]));
+  if (bunImp) {
+    const [, wants, path] = bunImp;
+    const f = theirFile(project, root, path);   // a whole path, checked like any other place
+    const at = f ? f.rows.flatMap((r, i) => (r.includes(`"${wants}"`) || r.includes(`'${wants}'`) || r.includes(`\`${wants}\``) ? [i + 1] : [])) : [];
+    if (f && at.length === 1) return { kind: "line", file: f.file, line: at[0], lineText: label(f.rows[at[0] - 1], LINE_MAX), message: tidy(`Cannot find module '${wants}' from '${f.file}'`), from };
   }
   for (const p of ordered) {
     const hit = lineIn(project, root, p, loose);

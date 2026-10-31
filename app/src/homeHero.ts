@@ -121,9 +121,15 @@ const dot = (headline: string): Verdict => ({ kind: "noChange", headline, line: 
 
 /** How the project is, in its own name, from the last check only (F28): "test-shop works" (proven), "test-shop has a
  *  problem" (a check failed), or "Not checked yet" (nothing proven: never checked, stopped, undone, partly checked). */
-export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string, now: number): HomeStatus {
+export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history"> & { point?: Model["point"] }, project: string, now: number): HomeStatus {
   const name = nameOf(project);
   if (!name) return { kind: "noProject", verdict: dot(S.home.noProject), sub: "", ago: "", main: "folder" };
+  // The project's own checks just answered (the first run's first check, or Point at the problem), with no task result on
+  // Home: Home says what they said. A failure is a problem with Fix it; a pass is said, but nothing was fixed or proven.
+  // The point is this project's (it is cleared when the folder changes).
+  const pt = m.receipt ? null : m.point;
+  if (pt?.stage === "found") return { kind: "failing", verdict: { kind: "failed", headline: S.home.failing(name), line: null, say: S.verdict.say(S.home.failing(name), null), tone: "bad", icon: "cross", offer: null, proven: false }, sub: S.home.inProject(name), ago: "", main: "fix" };
+  if (pt?.stage === "clear") return { kind: "unchecked", verdict: dot(S.home.checksPass(name)), sub: S.home.inProject(name), ago: "", main: "check" };
   const last = lastResult(m, project);
   const ago = last ? agoWords(last.at, now) : "";
   if (last?.verdict.proven) return { kind: "works", verdict: said(last.verdict, S.home.works(name)), sub: S.home.checkedAgo(ago), ago, main: "shipCheck" };
@@ -134,6 +140,8 @@ export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "histor
 /** The notch's one true line when nothing is live (4.3), from the same status. */
 export function notchStatusLine(s: HomeStatus, project: string): string {
   const name = nameOf(project);
+  // A check that just answered has no time of its own (homeStatus, the point): its headline as one sentence.
+  if (!s.ago && (s.kind === "failing" || (s.kind === "unchecked" && s.verdict.headline !== S.home.notChecked))) return S.verdict.say(s.verdict.headline, null);
   return s.kind === "works" ? S.home.notchWorks(name, s.ago) : s.kind === "failing" ? S.home.notchFailing(name, s.ago) : s.kind === "unchecked" ? S.home.notchNotChecked(name) : S.home.notchNothing;
 }
 

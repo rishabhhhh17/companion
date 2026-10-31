@@ -19,7 +19,7 @@ import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./ask
 import { isClaudeStop, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS } from "./models.ts";
-import { agentModesOf } from "./groups.ts";
+import { agentModesOf, type Owner } from "./groups.ts";
 import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
@@ -103,7 +103,7 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
 // askScripts: the question for a task that changed the project's scripts or packages, on the same card and the same terms.
 // noServer, run: a watch builds and tests only, and its commands end with Companion (F21).
-export type ProofContext = { project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; noServer?: boolean; run?: (command: string, o: RunOptions) => Promise<RunResult>; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean, unboxed?: boolean) => Promise<boolean>; approvals?: RunApprovals };
+export type ProofContext = { project: string; identity?: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; noServer?: boolean; run?: (command: string, o: RunOptions) => Promise<RunResult>; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean, unboxed?: boolean) => Promise<boolean>; approvals?: RunApprovals };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -612,10 +612,13 @@ export class AgentRunner {
 
   /** A switched group was turned off (F20): ends only what belongs to that group and leaves the rest of the core alone.
    *  Flow: its tasks, plans and Rescue (by the mode they started in, groups.json), the checks that point at a problem or
-   *  find the task that broke it, and the pictures and explanations of a task. Voice: the error explainer. Research and Ship
+   *  find the task that broke it, and the pictures and explanations of a task. Prompt help (split out of Voice): the error
+   *  explainer and Second Look; Second Look and Draw it, switched off on their own, only theirs. Research and Ship
    *  have no switch, so a group going off never ends them. What a task already made stays; Undo of it still works. */
-  async stopGroup(group: "flow" | "voice"): Promise<void> {
-    for (const p of this.picturing) if (this.owner.get(p) === group) p.abort();
+  async stopGroup(group: Owner): Promise<void> {
+    // A tool with its own switch is part of its group: Draw it goes with Flow, Second Look with Prompt help.
+    const ends = (o: string | undefined) => o === group || (group === "flow" && o === "drawIt") || (group === "prompt" && o === "secondLook");
+    for (const p of this.picturing) if (ends(this.owner.get(p))) p.abort();
     if (group !== "flow") return;
     for (const f of this.finding.values()) if (f.flow) f.abort.abort();
     for (const w of this.watchRuns.values()) w.abort.abort();
@@ -1459,6 +1462,8 @@ export class AgentRunner {
   private previews = new Map<string, { url: string; snapshot: string; gates: { id: string; status: string }[]; proof: string }>();
   private shipping = new Set<string>();
   private shipSessions = 0;
+  /** The first run's first checks so far, for their stand in sessions' keys (problemFind). */
+  private firstChecks = 0;
   // Each ship step is its own session under its own key, so one finishing never hides another from Stop everything (the checks inside a preview, then the deploy).
   private openShipSession(ac: AbortController): string { const k = `ship:${++this.shipSessions}`; this.sessions.set(k, newSession("ship", ac)); return k; }
   private shipSay(project: string, stage: string, detail: string, extra: Record<string, unknown> = {}) {
@@ -1669,13 +1674,26 @@ export class AgentRunner {
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { this.fail(`${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.`, cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
     this.finding.set(cmd.project, { abort, agent: cmd.agent, flow: true });
+    // The first run's first check (M49): its install question needs a stand in session to wait in, as Ship's checks do,
+    // so approval.resolve, Stop and Stop everything reach it. Removed when the check ends.
+    const first = cmd.first === true, standIn = first ? `first:${++this.firstChecks}` : null;
     try {
       const store = this.store(cmd.project);
-      const snap = await store.snapshot("Point at the problem: the project as it was found");
+      // The safety copy comes first, before anything of the project's runs.
+      const snap = await store.snapshot(first ? "First check: the project as it was found" : "Point at the problem: the project as it was found");
       this.state(cmd.agent, "checking");
       const onStep = this.stepTeller(cmd.agent);
+      const checking = this.checkFor(cmd.project);
+      // Point at the problem never installs. The first check may, but only on a yes: "auto" is held to "ask" here, and
+      // "never" stays never (a house rule can still only make it stricter, ladder.ts installMode).
+      let how: Pick<ProofContext, "noInstall" | "askInstall" | "askScripts" | "check"> = { noInstall: true };
+      if (standIn) {
+        const s = newSession(cmd.agent, abort);
+        this.sessions.set(standIn, s);
+        how = { noInstall: false, check: { ...checking.check, install: checking.check.install === "never" ? "never" : "ask" }, askInstall: this.installAsker(s, cmd.agent, snap.id), askScripts: this.scriptsAsker(s, cmd.agent, snap.id) };
+      }
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project), approvals: this.approvals(cmd.project) }); }
+      try { res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: snap.id, afterId: snap.id, onStep, signal: abort.signal, ...checking, ...how, approvals: this.approvals(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the project", status: "failed", detail: CHECKER_STOPPED, summary: CHECKER_STOPPED, ms: 0, forModel: `The checker itself stopped: ${clip(redactOutput(String((e as Error)?.message ?? e)), 300)}` }] }; }
       if (abort.signal.aborted) res = { ...res, verdict: "cancelled" };
       const needs = res.verdict === "passed_with_gaps" && res.steps.some((x) => x.needs === "browser") ? "browser" : undefined;
@@ -1698,7 +1716,7 @@ export class AgentRunner {
       this.fail(isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project. Try again.`, cmd.agent);
       found("cancelled");
       this.state(cmd.agent, "idle");
-    } finally { this.finding.delete(cmd.project); }
+    } finally { this.finding.delete(cmd.project); if (standIn) this.sessions.delete(standIn); }
   }
 
   // ---------- Which task broke it (snapshot bisect) ----------
@@ -1728,7 +1746,7 @@ export class AgentRunner {
         if (packages === "failed") return null;
       }
       // A Stop while the copy was made (or while waiting for the project's turn) ends it before any check starts.
-      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking, approvals: this.approvals(project) })));
+      return await this.inTurn(project, async () => (signal.aborted ? { verdict: "cancelled", steps: [] } as LadderResult : (this.o.proof ?? runLadder)({ project: dir, identity: project, store, beforeId: checkpoint, afterId: checkpoint, onStep: () => {}, signal, noInstall: true, ...checking, approvals: this.approvals(project) })));
     } catch { return signal.aborted ? { verdict: "cancelled", steps: [] } : null; }
     finally { rmSync(dir, { recursive: true, force: true }); }
   }
@@ -1893,7 +1911,7 @@ export class AgentRunner {
     // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
     if (this.roomFor(project) <= 0) { say(false, { ...at, reason: limitReached(project) }); return; }
     const ac = new AbortController();
-    this.picturing.add(ac); this.owner.set(ac, "voice");   // Stop everything ends it
+    this.picturing.add(ac); this.owner.set(ac, "prompt");   // Stop everything ends it, and so does Prompt help going off
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 45_000);
     try {
@@ -1919,12 +1937,12 @@ export class AgentRunner {
   private async secondLookCheck(cmd: Extract<Command, { type: "secondlook.check" }>): Promise<void> {
     const project = cmd.project && existsSync(cmd.project) ? cmd.project : undefined;
     const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "secondlook.result", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, items: [], checked: [], cantTell: [], search: "off", searches: 0, usdEstimate: 0, ...extra } as never);
-    if (this.setting<boolean>("secondLook.on") === false) { say(false, { reason: "Second Look is off. Turn it on in Settings, under Other apps." }); return; }
+    if (this.setting<boolean>("secondLook.on") === false) { say(false, { reason: "Second Look is off. Turn it on in Settings, General." }); return; }
     if (!String(cmd.text ?? "").trim()) { say(false, { reason: "Select the answer you want checked, then press the keys again." }); return; }
     if (!this.o.checker) { say(false, { reason: "Second Look needs Claude, which is not connected here." }); return; }
     if (this.roomFor(project) <= 0) { say(false, { reason: limitReached(project) }); return; }
     const ac = new AbortController();
-    this.picturing.add(ac); this.owner.set(ac, "voice");   // Stop everything ends it, and so does Voice going off
+    this.picturing.add(ac); this.owner.set(ac, "secondLook");   // Stop everything ends it, and so do Prompt help or Second Look going off
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 90_000);
     const ended = () => (timedOut ? "That took too long. Try again." : "Stopped.");
@@ -1952,7 +1970,7 @@ export class AgentRunner {
     // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
     if (this.roomFor(cmd.project) <= 0) { done(false, { reason: limitReached(cmd.project) }); return; }
     const ac = new AbortController();
-    this.picturing.add(ac); this.owner.set(ac, "flow");
+    this.picturing.add(ac); this.owner.set(ac, "drawIt");   // Flow or Draw it going off ends it
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; ac.abort(); }, 45_000);
     const slow = "That took too long. Try again.";

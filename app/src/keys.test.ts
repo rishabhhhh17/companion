@@ -1,7 +1,7 @@
 // The key map as the pages see it (keys.ts): every job's keys, read safely from what the app answers, named in plain
 // words, and filled into every line that names a key. The app keeps and registers the keys (keymap.rs).
 import { afterEach, describe, expect, test } from "bun:test";
-import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keyProblem, keysFrom, keysIn, keysNow, KEYS_START, keysOf, onKeys, setKeysNow, withKeys, type Keys } from "./keys.ts";
+import { acceptHint, armedFor, canPick, choicesFrom, chordLabel, hasKeys, JOBS, KEY_DEFAULTS, KEY_USUAL, keyHint, keyProblem, keysFrom, keysIn, keysNow, KEYS_START, keysOf, onKeys, setKeysNow, withKeys, type Keys } from "./keys.ts";
 import { S, PRODUCT } from "./strings.ts";
 
 const swap = (job: keyof Keys["using"], id: string | null, picked?: string): Keys => ({ using: { ...KEYS_START.using, [job]: id }, picked: { ...KEYS_START.picked, [job]: picked ?? id ?? KEY_DEFAULTS[job] } });
@@ -14,7 +14,11 @@ describe("the usual keys", () => {
       card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
       accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", dictate: "option-shift-space", stop: "control-option-command-x",
     });
-    expect(KEYS_START).toEqual({ using: KEY_DEFAULTS, picked: KEY_DEFAULTS });
+    // F28: four jobs (Fix it, Hold to talk, Prompt help, Stop everything) and use a suggestion keep their keys by usual; the
+    // others keep their own suggested keys (first on their list) but have none until the person picks.
+    expect(KEY_USUAL).toEqual({ card: null, problem: KEY_DEFAULTS.problem, showme: null, read: KEY_DEFAULTS.read, accept: KEY_DEFAULTS.accept, explain: null, secondlook: null, talk: KEY_DEFAULTS.talk, dictate: null, stop: KEY_DEFAULTS.stop });
+    expect(KEYS_START).toEqual({ using: KEY_USUAL, picked: KEY_USUAL });
+    expect(JOBS.filter((j) => !hasKeys(j, KEYS_START))).toEqual(["card", "showme", "explain", "secondlook", "dictate"]);
     expect(new Set(Object.values(KEY_DEFAULTS)).size).toBe(JOBS.length);
     expect(keysNow()).toEqual(KEYS_START);
   });
@@ -36,7 +40,9 @@ describe("what the app answers", () => {
   test("is read safely: a job with an unreadable answer keeps its usual keys, and only a clear null means it has none", () => {
     const v = { using: { ...KEY_DEFAULTS, card: "control-option-command-j", talk: null }, picked: { ...KEY_DEFAULTS, card: "control-option-command-j" } };
     expect(keysFrom(v)).toEqual({ using: { ...KEY_DEFAULTS, card: "control-option-command-j", talk: null }, picked: { ...KEY_DEFAULTS, card: "control-option-command-j" } });
-    expect(keysFrom({ using: { card: 7, stop: "junk" }, picked: { stop: "control-option-command-l" } })).toEqual({ using: KEY_DEFAULTS, picked: { ...KEY_DEFAULTS, stop: "control-option-command-l" } });
+    expect(keysFrom({ using: { card: 7, stop: "junk" }, picked: { stop: "control-option-command-l" } })).toEqual({ using: KEY_USUAL, picked: { ...KEY_USUAL, stop: "control-option-command-l" } });
+    // A clear null picked is no keys at all (F28), never for Stop everything; the jobs F28 took keys from come along.
+    expect(keysFrom({ using: { read: null }, picked: { read: null, stop: null }, dropped: ["card", "read", "nobody", 7] })).toEqual({ using: { ...KEY_USUAL, read: null }, picked: { ...KEY_USUAL, read: null }, dropped: ["card"] });
     for (const junk of [undefined, null, "x", 3, {}, { using: 1 }, { using: [], picked: "a" }]) expect(keysFrom(junk), String(junk)).toEqual(KEYS_START);
   });
   test("a change is shared with every line on the page, and whoever listens hears it", () => {
@@ -61,7 +67,10 @@ describe("every line that names a key", () => {
     const h = keyHint("showme", S.showMeKeyHint, off);
     expect(h).toBe(S.keyHintOff.replace("{job}", S.keyJobs.showme));
     expect(h).toContain(S.keysTitle); expect(h).not.toMatch(/Control|Option|Command/);
-    expect(keyHint("showme", S.showMeKeyHint)).toContain("Control, Option, Command and S");
+    expect(keyHint("showme", S.showMeKeyHint, swap("showme", "control-option-command-s"))).toContain("Control, Option, Command and S");
+    // F28: a job with no keys yet says so calmly, and where to add one; never that another app has them.
+    expect(keyHint("showme", S.showMeKeyHint)).toBe(S.keyHintNoKey.replace("{job}", S.keyJobs.showme));
+    expect(keyHint("showme", S.showMeKeyHint)).not.toMatch(/another app|Control|Option|Command/);
     expect(keyHint("accept", S.phHotkeys, swap("accept", null), S.phHotkeysOff)).toBe(S.phHotkeysOff);
   });
   test("the Prompt help result names its use keys only when the app could take them for this result", () => {
@@ -115,13 +124,15 @@ describe("every line that names a key", () => {
     expect(keysIn("Control, Option, Command and K or Control, Option, Command and F", both)).toBe("Control, Option, Shift, Command and K or Control, Option, Command and U");
     // A job without keys is named by its job, never by keys that do not work, and the text ends with where to pick others
     // (the same words a hint uses, keyHint), once for each such job however often it is named.
-    expect(keysIn(say, swap("problem", null))).toBe(`Press the keys for Point at the problem in ${PRODUCT} to find the same place in your project. Point at the problem: another app is using its keys. Pick other keys in Settings, under Keys to remember.`);
+    expect(keysIn(say, swap("problem", null))).toBe(`Press the keys for Fix it in ${PRODUCT} to find the same place in your project. Fix it: another app is using its keys. Pick other keys in Settings, under Keys to remember.`);
     const twice = keysIn("Press Control, Option, Command and F. Then Control, Option, Command and F again.", swap("problem", null));
     expect(twice).not.toContain("Control, Option, Command and F");
-    expect(twice.split(S.keyHintOff.replace("{job}", "Point at the problem")).length).toBe(2);
+    expect(twice.split(S.keyHintOff.replace("{job}", "Fix it")).length).toBe(2);
     for (const t of [keysIn(say, swap("problem", null)), twice]) { expect(t).not.toContain("{"); expect(t).not.toContain("—"); }
     // A job without keys that the text does not name adds nothing.
     expect(keysIn(say, swap("showme", null))).toBe(say);
+    // F28: text written with a job's old usual keys, for a job that has none now, names the job and where to add a key.
+    expect(keysIn("Press Control, Option, Command and K to open Home.", KEYS_START)).toBe(`Press ${S.keysForJob.replace("{job}", S.keyJobs.card)} to open Home. ${S.keyHintNoKey.replace("{job}", S.keyJobs.card)}`);
   });
 });
 

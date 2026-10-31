@@ -13,6 +13,7 @@ import { AssistService, ImageStore } from "../src/lanes.ts";
 import { Ledger } from "../src/ledger.ts";
 import { LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT } from "../src/spending.ts";
 import { TaskLog } from "../src/tasklog.ts";
+import { RunnerSettings } from "../src/settings.ts";
 import { NAMES } from "../src/names.ts";
 import { toBase64 } from "../src/attach.ts";
 import { parseCommand, parseEvent, serialize, type Command, type Event } from "../../protocol/index.ts";
@@ -29,13 +30,20 @@ const EVERYDAY_NONE = JSON.stringify({ found: false });
 
 /** The engine's side as main.ts wires it: one runner (the ledger and the limit), and Prompt help / Show me how reading the
  *  same runner's roomFor and bookSpend. Every lane answers at a fixed price, and counts how often it was asked. */
+/** Second Look starts off since F28; these tests book its cost, so it is switched on. */
+function secondLookOn(): RunnerSettings {
+  const settings = new RunnerSettings();
+  settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "secondLook.on": true } } as never);
+  return settings;
+}
 function rig(o: { limit?: number; ledger?: Ledger; price?: number } = {}) {
   const price = o.price ?? 0.05;
   const events: Event[] = [];
   const asked = { explainer: 0, checker: 0, describer: 0, fast: 0, vision: 0, look: 0 };
   const ledger = o.ledger ?? new Ledger(":memory:");
+  const settings = secondLookOn();
   const runner = new AgentRunner({
-    shadowRoot: tmp("s"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), ledger, dailyCeilingUsd: o.limit ?? 10,
+    shadowRoot: tmp("s"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), ledger, dailyCeilingUsd: o.limit ?? 10, settings,
     explainer: async (req) => { asked.explainer++; return { text: /diagram/i.test(req.system) ? GOOD_DIAGRAM : "It means the page asked for a name that was not there yet. It is safe to try again.", costUsd: price }; },
     checker: { canSearch: false, run: async () => { asked.checker++; return { text: LOOK, costUsd: price }; } },
     describer: async () => { asked.describer++; return { text: "A blue button that says Join.", costUsd: price }; },
@@ -88,7 +96,7 @@ describe("with no project open, a light call is booked against the stand in's da
   });
   test("Second Look books what a failed check still cost", async () => {
     const r = rig();
-    const bad = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: () => {}, ledger: r.ledger, dailyCeilingUsd: 10, checker: { canSearch: false, run: async () => ({ text: "not json", costUsd: 0.004 }) } });
+    const bad = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: () => {}, ledger: r.ledger, dailyCeilingUsd: 10, settings: secondLookOn(), checker: { canSearch: false, run: async () => ({ text: "not json", costUsd: 0.004 }) } });
     await bad.handle({ v: 1, id: "c", type: "secondlook.check", req: "sl", app: "com.openai.chat", text: "The sky is blue." } as never);
     expect(r.ledger.spentToday(NO_PROJECT)).toBeCloseTo(0.004, 6);
   });

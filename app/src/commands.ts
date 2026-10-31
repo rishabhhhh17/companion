@@ -100,8 +100,9 @@ export const shipLive = (project: string, url: string): Command => ({ v: 1, id: 
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });
 export const addMemory = (project: string, scope: "project" | "profile", text: string, source: string): Command => ({ v: 1, id: id(), type: "memory.add", project, scope, text, source });
 export const checkMac = (): Command => ({ v: 1, id: id(), type: "doctor.check" });
-// Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails.
-export const findProblem = (project: string): Command => ({ v: 1, id: id(), type: "problem.find", project, agent: AGENT });
+// Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails. `first`: the first
+// run's first check of the real project (M49): the engine saves a safety copy first and asks before installing anything.
+export const findProblem = (project: string, first = false): Command => ({ v: 1, id: id(), type: "problem.find", project, agent: AGENT, ...(first ? { first: true } : {}) });
 // About this project, and installing its packages when the person presses the button.
 export const inspectProject = (project: string): Command => ({ v: 1, id: id(), type: "project.inspect", project });
 export const installPackages = (project: string): Command => ({ v: 1, id: id(), type: "project.install", project });

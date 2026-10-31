@@ -13,7 +13,7 @@ import { LIVELINESS, livelinessOf, waterOf, WATERS, type Liveliness } from "./lo
 import type { Pose } from "./characters.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { takeIfLost } from "./focus.ts";
-import { keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
@@ -537,7 +537,7 @@ function KeysRows({ keys }: { keys: Keys }) {
     const r = rows.find((x) => x.job === job)!;
     return (
       <Row key={job} id={`set-key-${job}`} label={r.name} description={(S.keyJobLines as Record<string, string>)[job]} more={r.line && !r.problem ? [r.line] : undefined}
-        control={<span className="set-pair"><KeyLabel chord={keys.using[job]} />{!keys.using[job] && <span className="set-quiet">{S.keysNone}</span>}
+        control={<span className="set-pair"><KeyLabel chord={keys.using[job]} />{!keys.using[job] && <span className="set-quiet">{r.none ? S.keysNoKeyYet : S.keysNone}</span>}
           <Button size="sm" disabled={busy} label={S.keysChangeFor(r.name)} expanded={open === job} onClick={() => setOpen(job)}>{keys.using[job] ? S.keysChange : S.setFrame.addKey}</Button></span>}>
         {r.line && r.problem && <p className="set-problem" role="alert">{r.line}</p>}
         {talkCost(keys.using[job] ?? "") && <Note text={talkCost(keys.using[job] ?? "")} />}
@@ -550,8 +550,12 @@ function KeysRows({ keys }: { keys: Keys }) {
     void invoke("reset_keys").then((v) => { setKeysNow(keysFrom(v)); c.say(resetLine(v)); }).catch((e) => c.say(keyProblem(String(e)))).finally(() => setBusy(false));
   };
   const rest = rows.map((r) => r.job).filter((j) => !F28_JOBS.includes(j));
+  // F28, once after the update: the jobs on this Mac that lost their old usual keys (never a key the person picked).
+  const dropped = droppedLine(keys);
+  const seen = () => { void invoke("keys_notice_seen").then((v) => setKeysNow(keysFrom(v))).catch(() => {}); };
   return (<>
     <Group id="keys.keys" title={S.setGroupTitles["keys.keys"]} footer={<Button size="sm" disabled={busy} onClick={reset}>{S.setRows.restoreKeys}</Button>}>
+      {dropped && <div className="set-pair" role="status"><Note text={dropped} /><Button size="sm" onClick={seen}>{S.keysDroppedOk}</Button></div>}
       {F28_JOBS.map(row)}
     </Group>
     <Disclosure id="keys.others" title={S.setRows.otherJobs} count={rest.length} open={others} onToggle={setOthers}>
@@ -687,6 +691,7 @@ function ItemRows({ item, parentOff = "", indent }: { item: Item; parentOff?: st
 function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
   const c = useCtx();
   for (const i of items) { const k = keyOf(i); if (k) useSetting(k); }
+  useSetting("groups.cutNotice");
   if (items.length === 1 && typeof items[0] === "string" && items[0] === "keys.hotkeys") return <KeysRows keys={c.keys} />;
   const only = items.length === 1 && typeof items[0] !== "string" ? items[0].fixed : null;
   // A few parts are a whole group on their own, with their own card.
@@ -696,8 +701,11 @@ function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
   if (only === "danger") return <DangerZone />;
   const title = (S.setGroupTitles as Record<string, string>)[id];
   const foot = (S.setGroupFoot as Record<string, string>)[id];
+  // F28, once after the update: the tools that now start off and that this Mac had not used (settings.rs launch_cut).
+  const cut = id === "general.tools" ? cutNoticeLine() : "";
   return (
     <Group id={id} title={title || undefined} footer={foot}>
+      {cut && <div className="set-pair" role="status"><Note text={cut} /><Button size="sm" onClick={() => void changeSetting("groups.cutNotice", [])}>{S.cutNoticeOk}</Button></div>}
       {items.map((i) => <ItemRows key={typeof i === "string" ? i : `fixed:${i.fixed}`} item={i} />)}
     </Group>
   );
@@ -716,7 +724,8 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "made": return <MadeRow />;
     case "logs": return <LogsRow />;
     case "acknowledgements": return <AckRow />;
-    case "google": return placeShown("google") && setting("watch.on") === true ? <GoogleSection /> : null;
+    // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
+    case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
     default: return null;
   }
 }
@@ -1081,7 +1090,7 @@ function FlowflowPreview() {
  *  Shown in More options with Watch routines, and only while they are on. */
 type GoogleAccount = { id: string; email: string; name: string; label: string; apps: string[]; signin: boolean };
 const GOOGLE_APPS = ["gmail", "calendar", "drive"] as const;
-function GoogleSection() {
+function GoogleSection({ connecting }: { connecting: boolean }) {
   const [st, setSt] = useState<{ ready: boolean; busy: boolean; accounts: GoogleAccount[] } | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [problem, setProblem] = useState("");
@@ -1103,13 +1112,17 @@ function GoogleSection() {
   if (!st) return null;
   const me = st.accounts.find((a) => a.signin);
   const connected = st.accounts.filter((a) => a.apps.length > 0);
+  const parts = googleParts(st.accounts, connecting);
+  if (!parts.section) return null;
   return (<>
-    <Row id={fixedAnchor("google")} label={S.google.signInTitle} description={me ? S.google.signedIn(me.name, me.email) : (st.ready ? S.google.signInLine : S.google.notSetUp)}
-      control={me ? <Button size="sm" onClick={() => drop(me.id, true)}>{S.google.signOut}</Button> : <Button size="sm" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</Button>} />
-    {connected.map((a) => (
-      <Row key={a.id} label={`${a.label} ${a.email}`} description={a.apps.map((x) => S.google.apps[x]).join(", ")}
+    {parts.signIn && <Row id={fixedAnchor("google")} label={S.google.signInTitle} description={me ? S.google.signedIn(me.name, me.email) : (st.ready ? S.google.signInLine : S.google.notSetUp)}
+      control={me ? <Button size="sm" onClick={() => drop(me.id, true)}>{S.google.signOut}</Button> : <Button size="sm" disabled={!st.ready || waiting} onClick={() => start(true)}>{S.google.signIn}</Button>} />}
+    {connected.map((a, i) => (
+      <Row key={a.id} id={!parts.signIn && i === 0 ? fixedAnchor("google") : undefined} label={`${a.label} ${a.email}`} description={a.apps.map((x) => S.google.apps[x]).join(", ")}
         control={<Button kind="danger" size="sm" onClick={() => drop(a.id, false)}>{S.google.disconnect}</Button>} />
     ))}
+    {!parts.connect && <Note text={S.google.connectOff} />}
+    {parts.connect && <>
     <Row label={S.google.connectTitle} description={connected.length === 0 ? S.google.none : undefined} more={[S.google.connectLine]} />
     {GOOGLE_APPS.map((x) => (
       <Row key={x} indent label={S.google.apps[x]} description={S.google.appLines[x]}
@@ -1122,6 +1135,7 @@ function GoogleSection() {
       {waiting && <Note text={S.google.waiting} live />}
       <Problem text={problem} />
     </Row>
+    </>}
   </>);
 }
 

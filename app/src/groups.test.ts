@@ -24,15 +24,15 @@ const RECEIPT = { type: "receipt", agent: "a", changed: [{ file: "a.txt", kind: 
 const dup = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) !== i);
 
 describe("the catalog is complete and consistent", () => {
-  test("four groups with a switch, and the one that never has one", () => {
-    expect(SWITCHED.map((g) => g.id)).toEqual(["flow", "guide", "voice", "files"]);
+  test("five groups with a switch (Prompt help split out of Voice), and the one that never has one", () => {
+    expect(SWITCHED.map((g) => g.id)).toEqual(["flow", "guide", "voice", "files", "prompt"]);
     expect(GROUPS.filter((g) => !g.switch).map((g) => g.id)).toEqual(["core"]);
   });
-  test("each switch is a registry switch, usual on, read by the shell, the engine and the pages", () => {
+  test("each switch is a registry switch, usual on but file conversion (F28), read by the shell, the engine and the pages", () => {
     for (const g of SWITCHED) {
       const d = defOf(g.switch!)!;
       expect(d, g.id).toBeTruthy();
-      expect(d.kind).toBe("switch"); expect(d.default).toBe(true); expect(d.section).toBe("groups"); expect(d.store).toBe("settings");
+      expect(d.kind).toBe("switch"); expect(d.default, g.id).toBe(g.id !== "files"); expect(d.section).toBe("groups"); expect(d.store).toBe("settings");
       expect(d.applies).toEqual(["shell", "runner", "pages"]);
     }
   });
@@ -134,8 +134,12 @@ describe("a group switched off", () => {
     expect(permissionNeeded("screenRecording", off("guide"))).toBe(false);
     expect(permissionNeeded("microphone", off("guide", "flow", "files"))).toBe(true);
     expect(permissionNeeded("microphone", off("voice"))).toBe(false);
-    expect(permissionNeeded("accessibility", off("voice"))).toBe(false);
+    // Talking off: Prompt help (split out of Voice) still reads text you select, so Accessibility may still be asked.
+    expect(permissionNeeded("accessibility", off("voice"))).toBe(true);
+    expect(permissionNeeded("accessibility", off("voice", "prompt"))).toBe(false);
     expect(permissionNeeded("accessibility", off("guide", "flow", "files"))).toBe(true);
+    // F28: Type by voice, a tool with its own switch, asks for nothing while it is off.
+    expect(permissionNeeded("microphone", (k) => (k === "voice.on" ? false : undefined))).toBe(false);
   });
 });
 
@@ -158,7 +162,9 @@ describe("tried: a real use only", () => {
     expect(usedBy({ type: "error.explained", ok: true })).toEqual(["errorHelp"]);
     expect(usedBy({ type: "bisect.result", outcome: "found" })).toEqual(["whichTask"]);
     expect(usedBy({ type: "problem.found", verdict: "failed" })).toEqual(["findProblem"]);
-    expect(usedBy({ type: "diagram.ready", made: true })).toEqual(["explain"]);
+    expect(usedBy({ type: "diagram.ready", made: true }, { read: (k) => (k === "drawIt.on" ? true : undefined) })).toEqual(["drawIt"]);
+    // Draw it starts off (F28): a use of a tool that is off is no use.
+    expect(usedBy({ type: "diagram.ready", made: true })).toEqual([]);
     expect(usedBy({ type: "explain.ready" })).toEqual(["explain"]);
     expect(usedBy({ type: "teach.result", verdict: "passed" })).toEqual(["yourTurn"]);
   });
@@ -274,7 +280,7 @@ describe("Home's invitations", () => {
     const i = invitation(none, false)!;
     expect(i.tool).toBe("drive");
     expect(i.line).toBe(S.groups.tools.drive.invite);
-    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "watch", "connections", "whereWasI"]);
+    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI"]);
   });
   test("a tool leaves the list once tried, and the invitation moves on", () => {
     const r = (k: string) => (k === "groups.tried" ? ["drive", "followUp"] : undefined);
@@ -358,9 +364,9 @@ describe("the working group on the island and the character", () => {
 });
 
 describe("the registry's side", () => {
-  test("the six new switches and the tried list are in the groups section, and the tried list is hidden from the page", () => {
+  test("the group switches and the tried list are in the groups section, and the tried list is hidden from the page", () => {
     const keys = REGISTRY.settings.filter((d) => d.section === "groups").map((d) => d.key);
-    expect(keys).toEqual(["flow.on", "guide.on", "voice.on", "files.on", "groups.islandName", "groups.showUntried", "groups.tried"]);
+    expect(keys).toEqual(["flow.on", "guide.on", "voice.on", "files.on", "prompt.on", "groups.islandName", "groups.showUntried", "groups.tried", "groups.cutNotice"]);
     expect(defOf("groups.tried")!.hidden).toBe(true);
     expect(defOf("groups.tried")!.allowedItems!.sort()).toEqual(TOOLS.filter((t) => t.tried).map((t) => t.id).sort());
     expect(defOf("groups.islandName")!.default).toBe(true); expect(defOf("groups.showUntried")!.default).toBe(true);
@@ -425,7 +431,7 @@ describe("the pages are wired to the catalog", () => {
   test("the tools tried are kept and reset like any setting but never drawn as a row or found by a search", () => {
     expect(shownSettings().map((d) => d.key)).not.toContain("groups.tried");
     expect(searchSettings("tried").sections.flatMap((s) => s.keys)).not.toContain("groups.tried");
-    expect(searchSettings("").sections.find((s) => s.id === "groups")!.keys).toEqual(["flow.on", "guide.on", "voice.on", "files.on", "groups.islandName", "groups.showUntried"]);
+    expect(searchSettings("").sections.find((s) => s.id === "groups")!.keys).toEqual(["flow.on", "guide.on", "voice.on", "files.on", "prompt.on", "groups.islandName", "groups.showUntried"]);
     expect(searchSettings("group").sections.some((s) => s.id === "groups")).toBe(true);
   });
   test("the first run shows one short line for each group and a switch for it", () => {

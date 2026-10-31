@@ -27,7 +27,7 @@ describe("what is said", () => {
     // A job without keys: never keys that do not work, and where to pick others.
     const off = lineFor({ walk: walk({ say }), showme: null }, { ...moved, using: { ...moved.using, problem: null } })?.text ?? "";
     expect(off).not.toContain("Control, Option, Command and F");
-    expect(off).toContain(S.keyHintOff.replace("{job}", "Point at the problem"));
+    expect(off).toContain(S.keyHintOff.replace("{job}", S.keyJobs.problem));
   });
   test("asking 'did that work' keeps the step's key, so the step is not said twice", () => {
     expect(lineFor({ walk: walk({ stage: "asking" }), showme: null })?.key).toBe("walk:w1:0:main");

@@ -36,7 +36,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     expect(mainKeys("fixing")).toEqual(["rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
     expect(mainKeys("flowflow")).toEqual(["character.lively", "look.water", "look.size", "character.name", "character.edge", "character.peek", "character.stick", "character.follow", "sound.on"]);
-    expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate"]);
+    // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
+    expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
     expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused"]);
     expect(mainKeys("about")).toEqual(["updates.daily"]);
     expect(mainKeys("more")).toEqual([]);

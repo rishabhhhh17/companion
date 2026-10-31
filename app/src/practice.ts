@@ -70,8 +70,12 @@ export function rowState(r: RecordRow | undefined): RowState {
   if (r?.done) return "done";
   return r?.path && r.there ? "inProgress" : "notStarted";
 }
-/** Node that is not on this Mac at all: only then does a practice wait (its checks run on an older Node too). */
-export const nodeMissing = (doctor: DoctorItem[] | null): DoctorItem | null => doctor?.find((d) => d.id === "node" && d.missing === true) ?? null;
+/** Node that is not on this Mac at all, with nothing else to run the practices on: only then does a practice wait (its
+ *  checks run on an older Node too, and on the engine's own Bun when Node is missing; runner/src/proof/practicerun.ts). */
+export const nodeMissing = (doctor: DoctorItem[] | null): DoctorItem | null => doctor?.find((d) => d.id === "node" && d.missing === true && d.practiceRuns !== true) ?? null;
+/** Node is not on this Mac, but the practices run without it (on the engine's own Bun): they do not wait, and Learn says
+ *  in one calm line that the person's own web projects will still need Node. */
+export const practiceWithoutNode = (doctor: DoctorItem[] | null): DoctorItem | null => doctor?.find((d) => d.id === "node" && d.missing === true && d.practiceRuns === true) ?? null;
 
 /** Whether the Mac check should run (again): there is no report yet, or it said Node is missing. A person who installed Node
  *  while Companion was open would otherwise stay blocked until it was restarted. */

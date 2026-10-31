@@ -10,7 +10,8 @@ import { S } from "./strings.ts";
 
 const W = S.firstLook;
 
-export function FirstLook({ onGo }: { onGo: () => void }) {
+/** `goLabel`: the last button's words (the first run's Continue; Done on Learn's tour). */
+export function FirstLook({ onGo, goLabel = W.go }: { onGo: () => void; goLabel?: string }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // Where the run is: a step chosen by hand, or the time since it started playing.
@@ -83,7 +84,7 @@ export function FirstLook({ onGo }: { onGo: () => void }) {
         {!done && (reduced || picked !== null) && <button className="btn" type="button" onClick={step}>{W.nextStep}</button>}
         {!done && !reduced && picked === null && <button className="btn" type="button" onClick={() => { setPaused((p) => !p); if (paused) { const t = performance.now() - (now - startedAt); setStartedAt(t); setNow(performance.now()); } }}>{paused ? W.play : W.pause}</button>}
         {done && <button className="btn" type="button" onClick={again}>{W.again}</button>}
-        <button className="btn primary lg fl-go" type="button" onClick={onGo}>{W.go}</button>
+        <button className="btn primary lg fl-go" type="button" onClick={onGo}>{goLabel}</button>
       </div>
     </section>
   );

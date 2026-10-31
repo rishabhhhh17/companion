@@ -26,6 +26,64 @@ pub const DAMAGED: &str = "settings.damaged.json";
 pub const UNREADABLE: &str = "unreadable";
 /// The one migration so far: the choices the pages kept in their own storage before the registry.
 pub const PAGE_STORAGE_MARK: &str = "pageStorage.v1";
+/// The overhaul spec (3.4, 7.2): Prompt help split out of `voice.on` into `prompt.on`. A Companion where the person had
+/// switched voice off keeps Prompt help off too, once; after that the two switches are apart. A new settings file starts
+/// with the mark, so turning talking off later never turns Prompt help off.
+pub const PROMPT_SPLIT_MARK: &str = "promptSplit.v1";
+
+/// Copies `voice.on` into `prompt.on`, once (the mark). Only a voice the person switched off is copied (the usual value
+/// is on, and only what differs is kept), and never over a `prompt.on` already there. Returns whether anything changed.
+pub fn split_prompt(f: &mut File) -> bool {
+    if f.migrated.iter().any(|m| m == PROMPT_SPLIT_MARK) { return false; }
+    if f.values.get("voice.on") == Some(&json!(false)) && !f.values.contains_key("prompt.on") && !f.held.contains_key("prompt.on") {
+        f.values.insert("prompt.on".into(), json!(false));
+    }
+    f.migrated.push(PROMPT_SPLIT_MARK.to_string());
+    true
+}
+/// F28, the launch cut: the side tools' usual value went from on to off. Only values that differ from the usual one are
+/// kept, so a person who used one while it was on by usual has nothing written down, and the new usual would turn it off
+/// with no word. Once (the mark), on a Companion used before: a tool there is evidence the person relied on keeps its old
+/// value, written down as theirs; every other one that changed is said once in Settings (`CUT_NOTICE`). A new settings
+/// file starts with the mark.
+pub const LAUNCH_CUT_MARK: &str = "launchCut.v1";
+/// The hidden list Settings reads to say, once, which tools now start off (it empties it when the person has seen it).
+pub const CUT_NOTICE: &str = "groups.cutNotice";
+/// Each switch the cut changed, the tool it belongs to (its id in groups.tried and in the notice), and the job whose key
+/// the person may have picked for it. Draw it was part of Explain before, so nothing tells it apart: it is only said.
+pub const LAUNCH_CUT: &[(&str, &str, Option<&str>)] = &[
+    ("files.on", "convert", None),
+    ("watch.on", "watch", None),
+    ("secondLook.on", "secondLook", Some("secondlook")),
+    ("talk.dictate", "dictate", Some("dictate")),
+    ("drawIt.on", "drawIt", None),
+];
+/// What the shell knows of how this Companion was used before the cut, from its own files: the jobs with a key the person
+/// picked (keys.json), and whether watch routines are set up (the engine's watch.json).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UsedBefore { pub picked: Vec<String>, pub watches: bool }
+
+/// Whether the engine's watch.json holds any watch routine (only that it has one; nothing else in it is read).
+pub fn has_watches(text: &str) -> bool {
+    serde_json::from_str::<Value>(text).ok().and_then(|v| v.get("watches").and_then(Value::as_array).map(|a| !a.is_empty())).unwrap_or(false)
+}
+/// The launch cut, once. Returns whether the file changed (it is then saved). A value the person wrote down is never
+/// touched; a tool they used (groups.tried), picked a key for, or (watch routines) set up keeps its old value, on; the
+/// rest that changed are named in `CUT_NOTICE`.
+pub fn launch_cut(f: &mut File, before: &UsedBefore) -> bool {
+    if f.migrated.iter().any(|m| m == LAUNCH_CUT_MARK) { return false; }
+    let tried: Vec<String> = f.values.get("groups.tried").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    let mut tell: Vec<String> = vec![];
+    for (key, tool, job) in LAUNCH_CUT {
+        if f.values.contains_key(*key) || f.held.contains_key(*key) || f.cut_own.iter().any(|k| k == key) { continue; }   // the person's own value
+        let relied = tried.iter().any(|t| t == tool) || job.is_some_and(|j| before.picked.iter().any(|p| p == j)) || (*key == "watch.on" && before.watches);
+        if relied { f.values.insert((*key).to_string(), json!(true)); } else { tell.push((*tool).to_string()); }
+    }
+    if !tell.is_empty() && !f.values.contains_key(CUT_NOTICE) { f.values.insert(CUT_NOTICE.to_string(), json!(tell)); }
+    f.migrated.push(LAUNCH_CUT_MARK.to_string());
+    f.cut_own.clear();
+    true
+}
 /// The stores the engine keeps itself, reached only through its own commands (spending.set, explain.set, memory.pause,
 /// metrics.set), which only the shell sends.
 pub const RUNNER_STORES: &[&str] = &["spending", "memory", "metrics"];
@@ -268,7 +326,12 @@ pub fn validate_key(r: &Registry, key: &str, v: &Value) -> Result<Value, &'stati
 /// version knows but refuses (a newer version's new choice or wider range): never in force here, written back exactly as
 /// they were, until that setting is set or reset in this version, so going back a version loses nothing (T16).
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct File { pub values: Map<String, Value>, pub projects: Map<String, Value>, pub migrated: Vec<String>, pub extra: Map<String, Value>, pub held: Map<String, Value>, pub held_projects: Map<String, Value> }
+pub struct File {
+    pub values: Map<String, Value>, pub projects: Map<String, Value>, pub migrated: Vec<String>, pub extra: Map<String, Value>, pub held: Map<String, Value>, pub held_projects: Map<String, Value>,
+    /// The launch cut's switches this file wrote down itself before the cut (read before the usual values are dropped, as
+    /// an off that is now the usual is): the person's own, never said again. Not saved; empty once the cut is done.
+    pub cut_own: Vec<String>,
+}
 
 /// Something wrong with what was read: the whole file (`damaged`, key None) or one value (`badValue`).
 #[derive(Clone, Debug, PartialEq)]
@@ -308,12 +371,17 @@ fn clean(r: &Registry, m: &Map<String, Value>, project: bool, problems: &mut Vec
 
 /// Reads the file's text (None when there is none). Ok(None) is a missing file; Err is a damaged one.
 pub fn parse_file(r: &Registry, text: Option<&str>) -> (File, Vec<Problem>, bool) {
-    let Some(text) = text else { return (File::default(), vec![], false) };
+    // A new file has nothing to split (prompt.on and voice.on start apart).
+    // A new file has nothing to split (prompt.on and voice.on start apart), and nothing from before the launch cut.
+    let Some(text) = text else { return (File { migrated: vec![PROMPT_SPLIT_MARK.to_string(), LAUNCH_CUT_MARK.to_string()], ..File::default() }, vec![], false) };
     let damaged = || (File::default(), vec![Problem { key: None, code: "damaged" }], true);
     let Ok(Value::Object(top)) = serde_json::from_str::<Value>(text) else { return damaged() };
     let obj = |k: &str| match top.get(k) { None => Some(Map::new()), Some(Value::Object(m)) => Some(m.clone()), Some(_) => None };
     let (Some(values), Some(projects)) = (obj("values"), obj("projects")) else { return damaged() };
     let mut problems = vec![];
+    // Read before the usual values are dropped: a Prompt help written down at all (even on) is the person's own.
+    let prompt_written = values.contains_key("prompt.on");
+    let cut_own: Vec<String> = LAUNCH_CUT.iter().filter(|(k, _, _)| values.contains_key(*k)).map(|(k, _, _)| (*k).to_string()).collect();
     let (values, held) = clean(r, &values, false, &mut problems);
     let (mut kept, mut held_projects) = (Map::new(), Map::new());
     for (p, m) in projects {
@@ -328,7 +396,10 @@ pub fn parse_file(r: &Registry, text: Option<&str>) -> (File, Vec<Problem>, bool
     }
     let migrated = top.get("migrated").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
     let extra = top.into_iter().filter(|(k, _)| !["version", "values", "projects", "migrated"].contains(&k.as_str())).collect();
-    (File { values, projects: kept, migrated, extra, held, held_projects }, problems, false)
+    let mut f = File { values, projects: kept, migrated, extra, held, held_projects, cut_own };
+    if prompt_written && !f.migrated.iter().any(|m| m == PROMPT_SPLIT_MARK) { f.migrated.push(PROMPT_SPLIT_MARK.to_string()); }
+    split_prompt(&mut f);
+    (f, problems, false)
 }
 
 /// `values` with the values held for it (refused here, kept as stored) where this version has none of its own.
@@ -381,7 +452,7 @@ pub fn load(r: &Registry, dir: &Path) -> (File, Vec<Problem>) {
     };
     let (mut f, problems, damaged) = parse_file(r, text.as_deref());
     if damaged {
-        f.migrated = vec![PAGE_STORAGE_MARK.to_string()];
+        f.migrated = vec![PAGE_STORAGE_MARK.to_string(), PROMPT_SPLIT_MARK.to_string(), LAUNCH_CUT_MARK.to_string()];
         if std::fs::rename(&p, dir.join(DAMAGED)).is_ok() { let _ = save(dir, &f); }
     }
     (f, problems)
@@ -752,11 +823,78 @@ mod tests {
         assert_eq!(snap(10.006, 1.0, 0.01, 500.0).as_f64(), Some(10.01));
     }
     #[test]
+    fn prompt_help_is_split_out_of_voice_once_copying_only_a_voice_the_person_switched_off() {
+        let r = registry();
+        // Talking switched off before the split: Prompt help stays off with it, once.
+        let (f, _, _) = parse_file(r, Some(r#"{"version":1,"values":{"voice.on":false},"migrated":["pageStorage.v1"]}"#));
+        assert_eq!(value_of(r, &f, "prompt.on", None), Some(json!(false)));
+        assert_eq!(value_of(r, &f, "voice.on", None), Some(json!(false)));
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string(), PROMPT_SPLIT_MARK.to_string()]);
+        // After the split the two are apart: talking off again later leaves Prompt help as it is.
+        let (mut f, _, _) = parse_file(r, Some(r#"{"version":1,"values":{},"migrated":["pageStorage.v1","promptSplit.v1"]}"#));
+        set(r, &mut f, "voice.on", &json!(false), None).unwrap();
+        let (again, _, _) = parse_file(r, Some(&to_json(&f).to_string()));
+        assert_eq!(value_of(r, &again, "prompt.on", None), Some(json!(true)));
+        // Talking on (usual), or a Prompt help already set, is never touched.
+        let (f, _, _) = parse_file(r, Some(r#"{"version":1,"values":{},"migrated":["pageStorage.v1"]}"#));
+        assert_eq!(value_of(r, &f, "prompt.on", None), Some(json!(true)));
+        let (f, _, _) = parse_file(r, Some(r#"{"version":1,"values":{"voice.on":false,"prompt.on":true},"migrated":["pageStorage.v1"]}"#));
+        assert_eq!(value_of(r, &f, "prompt.on", None), Some(json!(true)), "{f:?}");
+        let mut f = File::default();
+        assert!(split_prompt(&mut f) && !split_prompt(&mut f), "once");
+    }
+    #[test]
+    fn the_f28_usual_values_change_and_a_value_the_person_set_stays() {
+        // F28: the side tools start off, installs before a check usually ask (M49). Only the usual value changes: a value
+        // the person set that differs from the new usual one is kept as it is.
+        let r = registry();
+        let f: Value = serde_json::from_str(include_str!("../../../protocol/fixtures/launch-cut.json")).unwrap();
+        for (k, v) in f["usual"].as_object().unwrap() { assert_eq!(&r.get(k).unwrap().default, v, "{k}"); }
+        let (file, problems, _) = parse_file(r, Some(r#"{"version":1,"values":{"secondLook.on":true,"files.on":true,"watch.on":true,"talk.dictate":true,"drawIt.on":true,"panel.showHello":true},"projects":{"p_000000000000":{"check.install":"auto"}},"migrated":["pageStorage.v1"]}"#));
+        assert!(problems.is_empty());
+        for k in ["secondLook.on", "files.on", "watch.on", "talk.dictate", "drawIt.on", "panel.showHello"] { assert_eq!(value_of(r, &file, k, None), Some(json!(true)), "{k}"); }
+        let usual = parse_file(r, Some(r#"{"version":1,"values":{},"migrated":["pageStorage.v1"]}"#)).0;
+        for k in ["secondLook.on", "files.on", "watch.on", "talk.dictate", "drawIt.on", "panel.showHello"] { assert_eq!(value_of(r, &usual, k, None), Some(json!(false)), "{k}"); }
+        assert_eq!(value_of(r, &usual, "check.install", None), Some(json!("ask")));
+        assert_eq!(file.projects["p_000000000000"]["check.install"], json!("auto"), "Always, set by the person, is kept");
+    }
+    #[test]
+    fn the_launch_cut_keeps_the_tools_the_person_relied_on_and_says_the_rest_once() {
+        // protocol/fixtures/launch-cut.json cutMigration, read by the pages and the engine too.
+        let r = registry();
+        let fx: Value = serde_json::from_str(include_str!("../../../protocol/fixtures/launch-cut.json")).unwrap();
+        for c in fx["cutMigration"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let (mut f, problems, _) = parse_file(r, c["settings"].as_str());
+            assert!(problems.is_empty(), "{name}");
+            let before = UsedBefore { picked: c["picked"].as_array().unwrap().iter().map(|x| x.as_str().unwrap().to_string()).collect(), watches: c["watches"].as_bool().unwrap() };
+            let had_mark = f.migrated.iter().any(|m| m == LAUNCH_CUT_MARK);
+            assert_eq!(launch_cut(&mut f, &before), !had_mark, "{name}");
+            for (k, v) in c["values"].as_object().unwrap() { assert_eq!(value_of(r, &f, k, None).as_ref(), Some(v), "{name}: {k}"); }
+            assert_eq!(value_of(r, &f, CUT_NOTICE, None), Some(c["notice"].clone()), "{name}");
+            assert!(f.migrated.iter().any(|m| m == LAUNCH_CUT_MARK), "{name}");
+            // Once: after a save and a read, it changes nothing more, and every value is valid in the registry.
+            let (mut again, problems, _) = parse_file(r, Some(&to_json(&f).to_string()));
+            assert!(problems.is_empty(), "{name}: {problems:?}");
+            assert!(!launch_cut(&mut again, &UsedBefore { picked: vec!["dictate".into(), "secondlook".into()], watches: true }), "{name}");
+            for (k, v) in c["values"].as_object().unwrap() { assert_eq!(value_of(r, &again, k, None).as_ref(), Some(v), "{name}: {k}"); }
+        }
+        // Every switch the cut covers is one whose usual value is now off, and every tool it names is a catalog tool.
+        for (k, tool, _) in LAUNCH_CUT {
+            assert_eq!(r.get(k).unwrap().default, json!(false), "{k}");
+            assert!(r.get(CUT_NOTICE).unwrap().allowed_items.as_ref().unwrap().iter().any(|x| x == tool), "{tool}");
+            assert!(crate::groups::catalog().tools.iter().any(|t| t.id == *tool), "{tool}");
+        }
+        assert!(has_watches(r#"{"version":1,"watches":[{"id":"a"}]}"#));
+        for t in [r#"{"version":1,"watches":[]}"#, "not json", "{}", r#"{"watches":{}}"#] { assert!(!has_watches(t), "{t}"); }
+    }
+    #[test]
     fn a_missing_file_gives_the_usual_values() {
         let r = registry();
         let d = dir("missing");
         let (f, problems) = load(r, &d);
-        assert_eq!(f, File::default());
+        // A new file starts with the prompt split's mark, so turning talking off later never turns Prompt help off.
+        assert_eq!(f, File { migrated: vec![PROMPT_SPLIT_MARK.to_string(), LAUNCH_CUT_MARK.to_string()], ..File::default() });
         assert!(problems.is_empty());
         let e = effective(r, &f, None);
         assert_eq!(e["work.maxTurns"], json!(80));
@@ -803,7 +941,7 @@ mod tests {
         std::fs::write(d.join(FILE), "{\"version\":1,\"values\":{\"fun.reactions\":fal").unwrap();
         let (mut f, problems) = load(r, &d);
         assert_eq!(problems, vec![Problem { key: None, code: "damaged" }]);
-        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string(), PROMPT_SPLIT_MARK.to_string(), LAUNCH_CUT_MARK.to_string()]);
         // The migration the page would send now writes nothing.
         let mut old = Map::new();
         old.insert("fun.reactions".into(), json!(false));
@@ -813,7 +951,7 @@ mod tests {
         // The fresh file with the mark is written at once, so the next start has it too (the damaged one stays aside).
         let (again, problems) = load(r, &d);
         assert!(problems.is_empty(), "{problems:?}");
-        assert_eq!(again.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        assert_eq!(again.migrated, vec![PAGE_STORAGE_MARK.to_string(), PROMPT_SPLIT_MARK.to_string(), LAUNCH_CUT_MARK.to_string()]);
         assert!(again.values.is_empty());
         assert!(d.join(DAMAGED).exists());
         let _ = std::fs::remove_dir_all(&d);
@@ -838,7 +976,7 @@ mod tests {
         assert_eq!(ready_to_save(r, &d, &mut f, &mut problems), Ok(true));
         assert!(problems.is_empty());
         assert_eq!(value_of(r, &f, "fun.reactions", None), Some(json!(false)));
-        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string()]);
+        assert_eq!(f.migrated, vec![PAGE_STORAGE_MARK.to_string(), PROMPT_SPLIT_MARK.to_string()]);
         // A file read fine needs nothing more.
         assert_eq!(ready_to_save(r, &d, &mut f, &mut problems), Ok(false));
         // No permission to read it: the same, and the file is untouched.
@@ -878,7 +1016,7 @@ mod tests {
         assert_eq!(back["values"]["later.setting"], json!({"a":1}));
         assert_eq!(back["values"]["work.maxTurns"], json!(120));
         assert_eq!(back["projects"]["p_000000000000"]["later.project"], json!(7));
-        assert_eq!(back["migrated"], json!(["pageStorage.v1", "later.v2"]));
+        assert_eq!(back["migrated"], json!(["pageStorage.v1", "later.v2", "promptSplit.v1"]));
         assert_eq!(back["comment"], json!("kept"));
         let d = dir("roundtrip");
         save(&d, &f).unwrap();
@@ -1055,7 +1193,7 @@ mod tests {
         let m = keymap::Map::DEFAULT.with(keymap::Action::Stop, stop);
         assert_eq!(keys_from(&keys_value(&m)), Ok(m));
         assert_eq!(keys_from(&json!({})), Ok(keymap::Map::DEFAULT));
-        let card = keymap::id(keymap::default(keymap::Action::Card));
+        let card = keymap::id(keymap::suggested(keymap::Action::Card));
         let spare = keymap::id(keymap::choices(keymap::Action::Card)[2]);
         assert_eq!(keymap::choices(keymap::Action::Card)[2], keymap::choices(keymap::Action::Stop)[2], "a spare chord is on both lists");
         for bad in [json!(null), json!([]), json!("ctrl"), json!({ "stop": "nonsense" }), json!({ "stop": card }), json!({ "card": spare, "stop": spare })] {

@@ -327,14 +327,16 @@ export function KeyLabel({ chord, hidden }: { chord: string | null | undefined; 
 export type VerdictSize = "card" | "headline" | "small";
 /** A result in words, from M45's verdict function only (verdict.ts): its mark in the result's colour, its headline, and an
  *  optional quiet line under it ("Checked 2 hours ago"). The colour is on the mark only, never on the words. */
-export function VerdictLine({ verdict, size = "small", sub }: { verdict: Verdict; size?: VerdictSize; sub?: ReactNode }) {
+export function VerdictLine({ verdict, size = "small", sub, inline }: { verdict: Verdict; size?: VerdictSize; sub?: ReactNode; inline?: boolean }) {
   const { mark, tone } = verdictMark(verdict);
+  // `inline`: inside a heading (the first run's first check), so the line is a span and the heading stays a heading.
+  const Tag = inline ? "span" : "div";
   return (
-    <div className="ui-verdict" data-size={size} data-tone={tone}>
+    <Tag className="ui-verdict" data-size={size} data-tone={tone}>
       <span className="ui-verdict-mark" aria-hidden="true"><Icon name={mark} size={size === "small" ? 16 : 20} /></span>
       <span className="ui-verdict-words">{verdict.headline}</span>
       {sub ? <span className="ui-verdict-sub">{sub}</span> : null}
-    </div>
+    </Tag>
   );
 }
 

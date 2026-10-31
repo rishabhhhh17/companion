@@ -1,7 +1,7 @@
 // Settings page helpers: plain words only, so they can be tested without a screen.
 import { keyLooksRight } from "./onboarding.ts";
 import { S, PRODUCT } from "./strings.ts";
-import { canPick, chordLabel, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { canPick, chordLabel, hasKeys, JOBS, KEY_DEFAULTS, keyHint, keysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import type { Spending } from "./model.ts";
 import { setting } from "./settingsStore.ts";
 
@@ -100,18 +100,21 @@ export const voiceHint = (k: Keys = keysNow()): string => keyHint("talk", S.voic
 export const talkSharedNote = (k: Keys = keysNow()): string => (k.using.talk === TALK_DEFAULT ? S.talkKeysShared : "");
 
 /** Every hotkey a person can press at any time, in words, with the keys in use now (shown at the end of the first run).
- *  hotkeys.test.ts checks that each names the keys keymap.rs registers for its job. */
-export const keyHints = (k: Keys = keysNow()): string[] => [
-  keyHint("card", S.cardHint, k), keyHint("problem", S.pointHint, k), keyHint("showme", S.showMeKeyHint, k),
-  keyHint("read", S.phKeyHint, k), keyHint("explain", S.errKeyHint, k), keyHint("secondlook", S.slKeyHint, k), voiceHint(k), keyHint("dictate", S.dictateHint, k), keyHint("stop", S.stopHint, k),
-];
+ *  hotkeys.test.ts checks that each names the keys keymap.rs registers for its job. A job with no keys picked (F28) is
+ *  left out: there is nothing to press. */
+export const keyHints = (k: Keys = keysNow()): string[] => ([
+  ["card", keyHint("card", S.cardHint, k)], ["problem", keyHint("problem", S.pointHint, k)], ["showme", keyHint("showme", S.showMeKeyHint, k)],
+  ["read", keyHint("read", S.phKeyHint, k)], ["explain", keyHint("explain", S.errKeyHint, k)], ["secondlook", keyHint("secondlook", S.slKeyHint, k)], ["talk", voiceHint(k)], ["dictate", keyHint("dictate", S.dictateHint, k)], ["stop", keyHint("stop", S.stopHint, k)],
+] as [Job, string][]).filter(([j]) => hasKeys(j, k)).map(([, line]) => line);
 
 /** One row of Keys to remember in Settings: the job, its keys now, and a line when something needs saying. `problem` when
- *  the job has no keys, or is not on the ones the person picked. */
-export type KeyRow = { job: Job; name: string; keys: string; line: string; problem: boolean };
+ *  the job has no keys because another app holds them, or is not on the ones the person picked. `none`: no keys picked
+ *  yet (F28), which is no problem: the row offers Add a key. */
+export type KeyRow = { job: Job; name: string; keys: string; line: string; problem: boolean; none?: boolean };
 export function keyRows(k: Keys = keysNow()): KeyRow[] {
   return JOBS.map((job) => {
     const using = k.using[job], picked = k.picked[job];
+    if (picked === null) return { job, name: jobName(job), keys: S.keysNoKeyYet, line: "", problem: false, none: true };
     const row = (line: string, problem: boolean): KeyRow => ({ job, name: jobName(job), keys: using ? chordLabel(using) : S.keysNone, line, problem });
     if (!using) return row((job === "stop" ? S.keysStopOff : job === "talk" ? S.talkKeysOff : S.keysOff).replace("{keys}", chordLabel(picked)), true);
     if (using !== picked) return row((job === "talk" ? S.talkKeysFellBack : S.keysFellBack).replace("{picked}", chordLabel(picked)).replace("{using}", chordLabel(using)), true);
@@ -127,7 +130,7 @@ export function keyRows(k: Keys = keysNow()): KeyRow[] {
 export function pickerLines(c: Choices, k: Keys = keysNow()): string[] {
   const out: string[] = [];
   const using = k.using[c.job], picked = k.picked[c.job];
-  if (!using && canPick(c, picked)) out.push(S.keysFreeNow.replace("{keys}", chordLabel(picked)));
+  if (!using && picked && canPick(c, picked)) out.push(S.keysFreeNow.replace("{keys}", chordLabel(picked)));
   const said = using !== picked ? picked : null;
   if (c.choices.some((id) => id !== said && !c.ours[id] && !canPick(c, id))) out.push(S.keysNotFree);
   if (c.choices.some((id) => c.ours[id])) out.push(S.keysOurs);
@@ -138,6 +141,25 @@ export const keyChangedLine = (job: Job, k: Keys = keysNow()): string => {
   const id = k.using[job];
   return id ? S.keysChanged(jobName(job), chordLabel(id)) : "";
 };
+/** The one calm line Settings says once after the update to F28's four keys: the jobs on this Mac that lost their old
+ *  usual keys. Empty when there is nothing to say. Never a key the person picked (keymap.rs dropped_by_new_usual). */
+export const droppedLine = (k: Keys = keysNow()): string => (k.dropped?.length ? S.keysDropped(k.dropped.map(jobName).join(", ")) : "");
+/** The one calm line Settings says once after the launch cut (F28; settings.rs launch_cut): the tools on this Mac that now
+ *  start off and that the person had not used. Never one they used, picked a key for or set up: those stayed on. Empty when
+ *  there is nothing to say (a new Companion, or once seen). */
+export function cutNoticeLine(read: (key: string) => unknown = setting): string {
+  const v = read("groups.cutNotice");
+  const tools = S.groups.tools as Record<string, { name: string }>;
+  const names = (Array.isArray(v) ? v : []).filter((t): t is string => typeof t === "string" && !!tools[t]).map((t) => tools[t].name);
+  return names.length ? S.cutNotice(names.join(", ")) : "";
+}
+/** What the Google section shows (M21, F28). Connecting a new account is part of watch routines (watch.on, usually off), but
+ *  an account already kept always shows, so it can be seen and disconnected (rule 6): it keeps working until then. */
+export function googleParts(accounts: readonly { signin?: boolean; apps: readonly string[] }[], connecting: boolean): { section: boolean; signIn: boolean; connect: boolean } {
+  if (connecting) return { section: true, signIn: true, connect: true };
+  const signIn = accounts.some((a) => a.signin);
+  return { section: signIn || accounts.some((a) => a.apps.length > 0), signIn, connect: false };
+}
 /** What Reset to the usual keys says, from the app's answer: each job that kept its keys because another app has its usual ones. */
 export function resetLine(v: unknown): string {
   const raw = typeof v === "object" && v !== null ? (v as { kept?: unknown }).kept : undefined;

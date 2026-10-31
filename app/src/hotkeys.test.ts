@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { S, PRODUCT } from "./strings.ts";
 import { keyHints, TALK_DEFAULT } from "./settings.ts";
-import { chordLabel, JOBS, KEY_DEFAULTS, KEYS_START, keyHint, withKeys, type Job, type Keys } from "./keys.ts";
+import { chordLabel, JOBS, KEY_DEFAULTS, KEY_USUAL, KEYS_START, keyHint, withKeys, type Job, type Keys } from "./keys.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const main = read("../src-tauri/src/main.rs");
@@ -22,21 +22,27 @@ function rust() {
   const keys = Object.fromEntries([...keymapRs.matchAll(/\(Key::(\w+), Code::\w+, "(\w+)", "(\w+)"\)/g)].map((m) => [m[1], { id: m[2], word: m[3] }]));
   const jobIds = Object.fromEntries([...body(keymapRs, "pub fn id(self)").matchAll(/Action::(\w+) => "([a-z]+)"/g)].map((m) => [m[1], m[2]]));
   const chord = (modNames: string, key: string) => [...mods.filter((m) => modNames.split("|").map((x) => x.trim()).includes(m.name)).map((m) => m.id), keys[key]?.id].join("-");
-  const defaults = Object.fromEntries([...body(keymapRs, "pub const DEFAULTS", "];").matchAll(/\(Action::(\w+), Chord::new\(([A-Z |]+), Key::(\w+)\)\)/g)].map((m) => [jobIds[m[1]], chord(m[2], m[3])]));
+  const defaults = Object.fromEntries([...body(keymapRs, "pub const SUGGESTED", "];").matchAll(/\(Action::(\w+), Chord::new\(([A-Z |]+), Key::(\w+)\)\)/g)].map((m) => [jobIds[m[1]], chord(m[2], m[3])]));
+  // F28: the jobs that have keys by usual (keymap.rs USUAL); every other job has none until the person picks.
+  const usual = [...body(keymapRs, "pub const USUAL", "];").matchAll(/Action::(\w+)/g)].map((m) => jobIds[m[1]]);
   const talk = [...body(talkRs, "pub const CHOICES", "];").matchAll(/Chord::new\((OPTION|CONTROL), Key::(\w+)\)/g)].map((m) => chord(m[1], m[2]));
-  return { mods, keys, jobIds, defaults, talk };
+  return { mods, keys, jobIds, defaults, usual, talk };
 }
 /** The letters a sentence names as "Control, Option, Command and X". */
 const named = (t: string) => [...t.matchAll(/Control, Option, Command and ([A-Z])\b/g)].map((m) => m[1]);
 /** Two key chords a sentence names, such as "Option and Space" (not the end of "Control, Option, Command and K"). */
 const namedChords = (t: string) => [...t.matchAll(/(?<!, )\b(Option|Control|Command|Shift) and (Space|Return|Enter|Tab|Backquote|Escape|Esc|[A-Z])\b/g)].map((m) => `${m[1]} and ${m[2]}`);
 const letterOf = (id: string) => id.split("-").pop()!.toUpperCase();
-const keys = (job: Job, id: string | null): Keys => ({ using: { ...KEYS_START.using, [job]: id }, picked: { ...KEYS_START.picked, [job]: id ?? KEY_DEFAULTS[job] } });
+/** Every job on its own suggested keys (the usual keys before F28), so every hint can be checked filled. */
+const EVERY: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_DEFAULTS } };
+const keys = (job: Job, id: string | null): Keys => ({ using: { ...EVERY.using, [job]: id }, picked: { ...EVERY.picked, [job]: id ?? KEY_DEFAULTS[job] } });
 
 describe("the keys main.rs registers", () => {
   test("the usual keys in keymap.rs are the page's, and both name them with the same words", () => {
     const r = rust();
     expect(r.defaults).toEqual(KEY_DEFAULTS);
+    expect(Object.fromEntries(JOBS.map((j) => [j, r.usual.includes(j) ? KEY_DEFAULTS[j] : null]))).toEqual(KEY_USUAL);
+    expect(r.usual.sort()).toEqual(["accept", "problem", "read", "stop", "talk"]);
     expect(Object.values(r.jobIds)).toEqual([...JOBS]);
     for (const m of r.mods) expect((S.keyWords as Record<string, string>)[m.id], m.id).toBe(m.word);
     for (const k of Object.values(r.keys)) expect(chordLabel(`control-${k.id}`), k.id).toBe(`Control and ${k.word}`);
@@ -129,7 +135,7 @@ describe("every hint names the keys in use", () => {
   });
   test("filled with the usual keys, each names the keys main.rs registers for its job", () => {
     for (const [t, j] of lines) {
-      const filled = withKeys(t, j, KEYS_START);
+      const filled = withKeys(t, j, EVERY);
       if (j === "talk") expect(namedChords(filled), t).toEqual(["Option and Space"]);
       else expect(named(filled), t).toEqual([letterOf(KEY_DEFAULTS[j])]);
     }
@@ -147,14 +153,20 @@ describe("every hint names the keys in use", () => {
     }
   });
   test("the hint list names every job a person can press any time, with the keys in use", () => {
-    const all = keyHints();
+    const all = keyHints(EVERY);
     for (const j of JOBS.filter((j) => j !== "talk" && j !== "dictate" && j !== "accept")) expect(all.flatMap(named), j).toContain(letterOf(KEY_DEFAULTS[j]));
     expect(all.flatMap(namedChords)).toEqual(["Option and Space"]);
     expect(all.filter((h) => h.includes("Option, Shift and Space"))).toEqual([S.dictateHint.replace("{keys}", "Option, Shift and Space")]);
     const moved = keyHints(keys("stop", "control-option-shift-command-x"));
     expect(moved.at(-1)).toBe("Press Control, Option, Shift, Command and X to stop everything at once.");
     for (const id of rust().talk) expect(keyHints(keys("talk", id)).flatMap(namedChords), id).toEqual([chordLabel(id)]);
-    expect(keyHint("card", S.cardHint)).toBe(withKeys(S.cardHint, "card"));
+    expect(keyHint("card", S.cardHint, EVERY)).toBe(withKeys(S.cardHint, "card", EVERY));
+    // F28: with the usual keys, only the four jobs are named; a job with no keys yet is left out of the list.
+    const usual = keyHints(KEYS_START);
+    expect(usual.flatMap(named).sort()).toEqual(["F", "R", "X"]);
+    expect(usual.flatMap(namedChords)).toEqual(["Option and Space"]);
+    expect(usual.length).toBe(4);
+    expect(keyHint("card", S.cardHint, KEYS_START)).toBe(S.keyHintNoKey.replace("{job}", S.keyJobs.card));
   });
   test("the Prompt help result names Esc, and the card hint names the Esc the card itself handles", () => {
     expect(S.phHotkeys).toContain("Esc"); expect(S.phHotkeysOff).toContain("Esc");
@@ -239,7 +251,8 @@ describe("the hints are shown where a person looks", () => {
   test("at the end of the first run, and every job with its keys in Settings", () => {
     const onboarding = read("./onboarding.tsx");
     const page = read("./settingsPage.tsx");
-    expect(onboarding).toContain("keyHints(keys)");
+    // M49: the four keys that can be pressed now, by name with their caps; every job and its keys are in Settings, Keys.
+    expect(onboarding).toContain("keyRows(keys)");
     expect(onboarding).toContain("S.keysTitle");
     // Settings (settingsPage.tsx; the overhaul spec, 3.4): the registry's keys.hotkeys is drawn as rows, one per job.
     expect(body(page, "function ItemRows")).toContain('if (item === "keys.hotkeys") return null;');

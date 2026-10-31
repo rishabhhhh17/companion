@@ -2,6 +2,38 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Review fixes for the launch cut and the first run: 31 Oct 2026
+
+- **An update never quietly turns off what you used.** If you used file conversion, watch routines, Second Look or Type by voice, set up a watch, or picked a key for one of them, it stays on after the update, and so does the key. The tools you had not used now start off, and Settings, General says which ones once.
+- **Your Google accounts stay in Settings.** An account you connected keeps working and can always be seen and disconnected there, even with watch routines off. Connecting a new one needs watch routines on.
+- **No more buttons that say they are switched off.** Draw why on a found problem now shows only when Draw it for me is on.
+- **The first check says why it could not run.** If the check cannot start (for example, Apple's developer tools are missing), the first run shows the reason and the fix, and says "stopped" only when you stopped it. VoiceOver now hears the result.
+- **Only your own answers are saved.** Answering one setup question no longer saves the other pre-filled answers as yours.
+- **Home agrees with the first check.** After it, Home says the checks pass, or that there is a problem with Fix it, never "Not checked yet".
+- **Smaller fixes.** Flowflow now shows on the hello with Less motion on, and on every screen after a fold was left open. The tools list says it may ask for Accessibility too. On a Mac without Node, Which task broke it runs a practice's earlier versions too, and a practice that reaches for the internet is told apart from a real failure.
+
+## The practices without Node: 31 Oct 2026
+
+- **You can try a practice before you install Node.** On a Mac without Node, the practice projects now run their checks and their page on the runtime Squibby already carries, inside the same safety box as every check, with no internet. Your own projects still use Node, and Learn says so in one line.
+- **Point at the problem now finds the line in a practice copy.** Practice copies have spaces in their folder names, and that hid the failing line, with Node too. It now shows the line the practice is about.
+
+## A shorter first run: 31 Oct 2026
+
+- **Three screens instead of nine.** Hello, Your Claude and Your project. You can watch the recorded fix again from the hello, skip any step, and go back from every one.
+- **Honest lines next to the key.** Your key stays in your Mac's Keychain and goes only to Claude. You pay Anthropic directly, Squibby stops at your daily limit, and the plan line says exactly what the Plan card says (early access, nothing charged).
+- **Start from where your project is.** Choose a folder on your Mac, paste a GitHub link (Lovable projects through their GitHub link), or try a practice first.
+- **A first check of your real project.** Squibby saves a safety copy first, asks before installing anything, and shows the result in one line. If something fails, Fix it on Home picks it up from there.
+- **Flowflow's choices and the optional questions are still there,** folded under the result, and nothing you skip is saved for you.
+
+## The launch cut: 31 Oct 2026
+
+- **Squibby starts as one product.** Out of the box it does one job: finds what broke in your project, fixes it, proves it, and lets you undo it. Prompt help, hold to talk and Show me how stay on.
+- **The extras start off, and nothing is gone.** File conversion, watch routines and connecting Google, Second Look, Draw it and Type by voice in any app are all still there. Each has a switch in Settings, and search finds every one. If you used Squibby before, a tool you had used stays on (see the review fixes above).
+- **Four keys to remember.** Fix it, Hold to talk, Prompt help and Stop everything have keys from the start. The other jobs wait in Settings, Keys and voice, with Add a key. If you used Squibby before, every key you picked yourself is kept and still works; only jobs still on their old usual keys lose them, and Settings says so once.
+- **Prompt help has its own switch.** Turning off talking no longer turns off Prompt help, the error explainer or Second Look. If you had talking off, Prompt help stays off too, once.
+- **Installs ask first.** Before a check installs your project's packages, Squibby now asks you by default. You can still choose Always or Never in Settings, Fixing.
+- **The first run shows the real switches.** Its list of tools starts as Settings is, so pressing Next never turns anything on.
+
 ## More safety fixes: 31 Oct 2026
 
 - **The before picture runs in the safety box too.** When Squibby starts the earlier version of your project to take the before picture, it now runs in the same safety box as every other check. If the box cannot be used, there is simply no before picture.

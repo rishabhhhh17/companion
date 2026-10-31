@@ -14,7 +14,7 @@ describe("the settings for checking a project", () => {
   test("each one is there, in Checking your project, with today's behaviour as its usual value", () => {
     const want: Record<string, unknown> = {
       "rules.house": [], "check.mustSee": [], "check.press": "", "check.afterPress": "", "check.start": "auto", "check.skip": [],
-      "check.time": "normal", "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true,
+      "check.time": "normal", "check.install": "ask", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true,
       "pictures.keep": 200, "rescue.readDeployLog": true,
     };
     for (const [k, v] of Object.entries(want)) {

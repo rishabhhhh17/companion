@@ -77,6 +77,14 @@ describe("finding which task broke it", () => {
     for (const e of s.events) expect(parseEvent(JSON.stringify(e)).ok, e.type).toBe(true);
     expect(of(s.events, "bisect.progress")[0]).toMatchObject({ run: 1, maxRuns: MAX_RUNS, what: "now" });
   });
+  test("each private copy is checked as the person's project (a practice copy stays a practice, so it runs without Node too)", async () => {
+    const seen: (string | undefined)[] = [];
+    const s = setup({ breaks: 3, judge: async (ctx) => { seen.push(ctx.identity); return readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing; } });
+    await s.runTasks();
+    await s.bisect();
+    expect(seen.length).toBeGreaterThan(0);
+    for (const id of seen) expect(id).toBe(s.project);
+  });
   test(`at most six checks, each in a private copy in ${PRODUCT_S} folder that is deleted afterwards`, async () => {
     const s = setup({ breaks: 2, tasks: 9 });
     await s.runTasks();

@@ -1335,11 +1335,28 @@ static SETTINGS: Mutex<Option<SettingsNow>> = Mutex::new(None);
 fn with_settings<R>(f: impl FnOnce(&mut SettingsNow) -> R) -> R {
     let mut g = SETTINGS.lock().unwrap_or_else(|e| e.into_inner());
     let s = g.get_or_insert_with(|| {
-        let (file, problems) = settings::load(settings::registry(), &data_dir());
+        let (mut file, problems) = settings::load(settings::registry(), &data_dir());
+        settings_cut(&mut file, &problems);
         if !problems.is_empty() { log("settings_problems", json!({ "count": problems.len(), "damaged": problems.iter().any(|p| p.code == "damaged"), "unreadable": problems.iter().any(|p| p.code == settings::UNREADABLE) })); }
         SettingsNow { file, problems }
     });
     f(s)
+}
+/// F28, once on a Companion used before (settings::launch_cut): the tools the person relied on keep their old value, the
+/// rest that now start off are said once in Settings. Evidence only from Companion's own files: the keys picked (keys.json)
+/// and whether watch routines are set up (the engine's watch.json). Never on a settings file that could not be read.
+fn settings_cut(file: &mut settings::File, problems: &[settings::Problem]) {
+    if problems.iter().any(|p| p.code == settings::UNREADABLE) { return; }
+    if file.migrated.iter().any(|m| m == settings::LAUNCH_CUT_MARK) { return; }
+    let saved = keymap::saved_text(std::fs::read(keys_path()));
+    let old_talk = std::fs::read_to_string(data_dir().join(keymap::OLD_TALK_FILE)).ok();
+    let (picked, _) = keymap::parse(saved.as_deref(), old_talk.as_deref());
+    let watches = std::fs::read_to_string(data_dir().join("runner").join("watch.json")).ok().is_some_and(|t| settings::has_watches(&t));
+    let before = settings::UsedBefore { picked: keymap::ACTIONS.iter().filter(|a| picked.get(**a).is_some()).map(|a| a.id().to_string()).collect(), watches };
+    if settings::launch_cut(file, &before) {
+        let kept: Vec<&str> = settings::LAUNCH_CUT.iter().filter(|(k, _, _)| file.values.get(*k) == Some(&json!(true))).map(|(k, _, _)| *k).collect();
+        log("settings_launch_cut", json!({ "kept": kept, "saved": settings::save(&data_dir(), file).is_ok() }));
+    }
 }
 fn project_opt() -> Option<String> { let p = current_project(); (!p.is_empty()).then_some(p) }
 /// The value in force of a setting kept in settings.json (the usual one when it is not set), for the shell's own readers.
@@ -1366,7 +1383,7 @@ fn send_settings(app: &AppHandle) { let _ = app.state::<runner::Runner>().send_l
 /// readable, the change is refused and nothing is saved over it; readable now, the engine is given what it holds, and
 /// Ok(true) says it was read again just now (the page was shown the usual values, not the person's own).
 fn settings_writable(app: &AppHandle) -> Result<bool, &'static str> {
-    let again = with_settings(|s| settings::ready_to_save(settings::registry(), &data_dir(), &mut s.file, &mut s.problems))?;
+    let again = with_settings(|s| { let r = settings::ready_to_save(settings::registry(), &data_dir(), &mut s.file, &mut s.problems); if r == Ok(true) { settings_cut(&mut s.file, &s.problems); } r })?;
     if again { log("settings_read_again", json!({})); send_settings(app); }
     Ok(again)
 }
@@ -1512,18 +1529,19 @@ fn groups_applied(app: &AppHandle) {
             }
         }
     }
-    let bit = |g: &str| groups::catalog().switches().iter().position(|k| *k == format!("{g}.on")).map_or(0, |i| 1u32 << i);
+    let bit = |key: &str| groups::catalog().switches().iter().position(|k| *k == key).map_or(0, |i| 1u32 << i);
     let newly_off = now & !was;
-    if newly_off & bit("voice") != 0 {
+    // Talking (voice.on) and Type by voice (talk.dictate, F28): the microphone and what is being said.
+    if newly_off & (bit("voice.on") | bit("talk.dictate")) != 0 {
         TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset();
         voice_send(app, VoiceMsg::Cancel);
-        speech_off(app);
-        phelp::dismiss(app);
-        errhelp::dismiss(app);
-        seclook::dismiss(app);
     }
-    if newly_off & bit("guide") != 0 { showme_stop(app); }
-    if newly_off & bit("files") != 0 { drop_stop_all(); }
+    if newly_off & bit("voice.on") != 0 { speech_off(app); }
+    // The keys that read text you select (prompt.on, split from voice.on): Prompt help, the error explainer, Second Look.
+    if newly_off & bit("prompt.on") != 0 { phelp::dismiss(app); errhelp::dismiss(app); }
+    if newly_off & (bit("prompt.on") | bit("secondLook.on")) != 0 { seclook::dismiss(app); }
+    if newly_off & bit("guide.on") != 0 { showme_stop(app); }
+    if newly_off & bit("files.on") != 0 { drop_stop_all(); }
     if now != was { log("groups_applied", json!({ "off": now })); }
 }
 
@@ -3789,6 +3807,10 @@ static ACCEPT_ARMED: AtomicBool = AtomicBool::new(false);
 /// M36: the Type key shares it, so only one hold uses the microphone at a time (talkkeys::Holding).
 static TALK_HELD: Mutex<talkkeys::Holding> = Mutex::new(talkkeys::Holding::new());
 
+/// F28: the jobs whose old usual keys the new usual keys took away on this Mac, said once in Settings until the person
+/// has seen it (keymap::dropped_by_new_usual). Kept in keys.json with the keys.
+static KEYS_DROPPED: Mutex<Vec<keymap::Action>> = Mutex::new(Vec::new());
+fn keys_dropped() -> Vec<keymap::Action> { KEYS_DROPPED.lock().unwrap_or_else(|e| e.into_inner()).clone() }
 fn keys_path() -> PathBuf { data_dir().join(keymap::FILE) }
 fn key_using(a: keymap::Action) -> Option<keymap::Chord> { keymap::decode(KEYS_USING[a.index()].load(Ordering::SeqCst)) }
 fn set_key_using(a: keymap::Action, c: Option<keymap::Chord>) { KEYS_USING[a.index()].store(c.map(keymap::encode).unwrap_or(keymap::NONE), Ordering::SeqCst); }
@@ -3817,7 +3839,7 @@ fn is_hold_job(a: keymap::Action) -> bool { matches!(a, keymap::Action::Talk | k
 /// Saves what the person picked. Only one file keeps the keys: hold to talk's old one goes once the new one is written.
 fn save_keys(m: &keymap::Map) -> bool {
     let _ = std::fs::create_dir_all(data_dir());
-    let ok = logfile::write_atomic(&keys_path(), keymap::to_json(m).to_string().as_bytes()).is_ok();
+    let ok = logfile::write_atomic(&keys_path(), keymap::file_json(m, &keys_dropped()).to_string().as_bytes()).is_ok();
     if ok { let _ = std::fs::remove_file(data_dir().join(keymap::OLD_TALK_FILE)); }
     ok
 }
@@ -3834,6 +3856,12 @@ fn start_keys(app: &AppHandle) -> KeysLaunch {
     let saved = keymap::saved_text(std::fs::read(keys_path()));
     let old_talk = std::fs::read_to_string(data_dir().join(keymap::OLD_TALK_FILE)).ok();
     let (picked, damaged) = keymap::parse(saved.as_deref(), old_talk.as_deref());
+    // F28: four jobs keep keys by usual. A Companion used before (anything of it on this Mac) keeps every key the person
+    // picked; the jobs still on their old usual keys have none now, and Settings says so once.
+    let used_before = saved.is_some() || old_talk.is_some() || settings::path(&data_dir()).exists();
+    let dropped = keymap::dropped_by_new_usual(saved.as_deref(), used_before);
+    let rewrite = !keymap::on_new_usual(saved.as_deref());
+    *KEYS_DROPPED.lock().unwrap_or_else(|e| e.into_inner()) = dropped.clone();
     let gs = app.global_shortcut();
     // Use a suggestion's keys are let go again at once (keymap::keep_registered): they are taken only for a result.
     // A job whose group is switched off is tried and let go at once, like use a suggestion (groups.rs).
@@ -3845,19 +3873,38 @@ fn start_keys(app: &AppHandle) -> KeysLaunch {
         |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()));
     *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = picked;
     for a in keymap::ACTIONS { set_key_using(a, started[a.index()].using()); }
-    if damaged { let _ = save_keys(&picked); }
+    // A damaged file is written back repaired; a file from before F28 (or none) is written once on the new usual keys,
+    // with what they took away, so this happens only once.
+    if damaged || rewrite { let _ = save_keys(&picked); }
+    if !dropped.is_empty() { log("keys_new_usual", json!({ "dropped": dropped.iter().map(|a| a.id()).collect::<Vec<_>>() })); }
     let without: Vec<&str> = keymap::ACTIONS.iter().filter(|a| started[a.index()].using().is_none()).map(|a| a.id()).collect();
     log("keys", json!({ "changed": keymap::to_json(&picked)["keys"], "damaged": damaged, "without": without }));
     // The launch notice speaks only of jobs that are meant to work: a job whose group is off is not "taken" by anyone.
     let mut shown = started;
-    for a in keymap::ACTIONS { if held[a.index()] { shown[a.index()] = keymap::Started::Ready(started[a.index()].picked()); } }
+    for a in keymap::ACTIONS { if held[a.index()] { shown[a.index()] = started[a.index()].picked().map_or(keymap::Started::NoKeys, keymap::Started::Ready); } }
     KeysLaunch { started: shown, damaged }
 }
 
 /// Settings and the first run: the keys every job uses now (none when another app holds them) and the ones picked.
 /// Registers nothing.
 #[tauri::command]
-fn key_map() -> Value { keymap::state_json(&keys_using(), &keys_picked()) }
+fn key_map() -> Value { keys_state(&keys_using(), &keys_picked()) }
+/// What the page is told about the keys, with the jobs F28 took keys from while the person has not seen that yet.
+fn keys_state(using: &keymap::Using, picked: &keymap::Map) -> Value {
+    let mut v = keymap::state_json(using, picked);
+    v["dropped"] = json!(keys_dropped().iter().map(|a| a.id()).collect::<Vec<_>>());
+    v
+}
+
+/// Settings, Keys: the person has seen the line about the jobs that no longer have keys (F28). It is not said again.
+#[tauri::command]
+fn keys_notice_seen(window: tauri::WebviewWindow) -> Result<Value, String> {
+    if settings::only_card(window.label()).is_err() { return Err("not_card".into()); }
+    let _one = KEYS_SWITCH.lock().unwrap_or_else(|e| e.into_inner());
+    let before = std::mem::take(&mut *KEYS_DROPPED.lock().unwrap_or_else(|e| e.into_inner()));
+    if !before.is_empty() && !save_keys(&keys_picked()) { *KEYS_DROPPED.lock().unwrap_or_else(|e| e.into_inner()) = before; return Err("not_saved".into()); }
+    Ok(keys_state(&keys_using(), &keys_picked()))
+}
 
 /// Settings, Change: which of one job's short list can be pressed on this Mac now. Each chord on it that no job has is
 /// registered and let go again at once (keymap::free); the job's own keys are never touched. Only from the card, one
@@ -3897,7 +3944,7 @@ fn set_key(app: AppHandle, window: tauri::WebviewWindow, action: String, id: Str
             if is_hold_job(a) && was != Some(wanted) { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(&app, VoiceMsg::Cancel); }
             log("key_set", json!({ "action": a.id(), "id": keymap::id(wanted) }));
             settings_told(&app, &["keys.hotkeys".to_string()]);
-            Ok(keymap::state_json(&keys_using(), &next))
+            Ok(keys_state(&keys_using(), &next))
         }
         Err(p) => { log("key_not_set", json!({ "action": a.id(), "id": keymap::id(wanted), "why": p.code() })); Err(p.code().into()) }
     }
@@ -3931,7 +3978,7 @@ fn keys_to_usual(app: &AppHandle) -> Result<Value, &'static str> {
             if using[talk] != done.using[talk] || using[typing] != done.using[typing] { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
             let kept: Vec<&str> = done.kept.iter().map(|a| a.id()).collect();
             log("keys_reset", json!({ "kept": kept }));
-            let mut v = keymap::state_json(&done.using, &done.picked);
+            let mut v = keys_state(&done.using, &done.picked);
             v["kept"] = json!(kept);
             Ok(v)
         }
@@ -3950,6 +3997,16 @@ fn keys_restore(app: &AppHandle, wanted: &keymap::Map) -> Vec<keymap::Action> {
         let (picked, want) = (keys_picked(), wanted.get(a));
         if picked.get(a) == want { continue; }
         let (before, was) = (key_registered(a), key_using(a));
+        // Back to no keys (a job that had none before): let go of what it has now and save.
+        let Some(want) = want else {
+            let next = picked.without(a);
+            if !save_keys(&next) { failed.push(a); continue; }
+            if let Some(c) = before { let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok()); }
+            *KEYS_PICKED.lock().unwrap_or_else(|e| e.into_inner()) = next;
+            set_key_using(a, None);
+            if is_hold_job(a) && was.is_some() { TALK_HELD.lock().unwrap_or_else(|e| e.into_inner()).reset(); voice_send(app, VoiceMsg::Cancel); }
+            continue;
+        };
         let keep = key_keep(a, ACCEPT_ARMED.load(Ordering::SeqCst));
         match keymap::switch(a, want, before, keep, &picked, &key_others(a, &picked), |c| gs.register(keymap::shortcut(c)).is_ok(), save_keys, |c| let_go_logged(c, gs.unregister(keymap::shortcut(c)).is_ok())) {
             Ok(next) => {
@@ -4128,7 +4185,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 // The Type key (M36): switched off in Settings, or no Accessibility yet (asked here, the first time it is
                 // used, rule 8). Nothing listens either way.
                 if mode == talkkeys::Mode::Type {
-                    if setting_now("talk.dictate") == json!(false) { hold.cancel(); say_voice(&app, "error", "Typing by voice is off. Turn it on in Settings, Voice.", json!({})); continue; }
+                    if setting_now("talk.dictate") == json!(false) { hold.cancel(); say_voice(&app, "error", "Type by voice is off. Turn it on in Settings, Keys and voice.", json!({})); continue; }
                     if !ax::trusted(true) { hold.cancel(); say_voice(&app, "needs_access", concat!("To type for you, ", crate::product!(), " needs Accessibility. Allow it in the box macOS shows (or System Settings, Privacy and Security, Accessibility), then hold the keys again."), json!({})); continue; }
                 }
                 stops_at = VOICE_STOPS.load(Ordering::SeqCst);
@@ -4726,7 +4783,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -4869,8 +4926,8 @@ fn main() {
             // Every job's keys: the saved ones, else the usual ones (keymap.rs; hold to talk is two keys, F18.3). Another app
             // may already own some of them. That must never stop Companion from opening; the one notice says what to do.
             let launch = start_keys(app.handle());
-            if launch.damaged || launch.started.iter().any(|s| s.using() != Some(s.picked())) {
-                let off: Vec<&str> = keymap::ACTIONS.iter().filter(|a| launch.started[a.index()].using() != Some(launch.started[a.index()].picked())).map(|a| a.id()).collect();
+            if launch.damaged || launch.started.iter().any(|s| s.using() != s.picked()) {
+                let off: Vec<&str> = keymap::ACTIONS.iter().filter(|a| launch.started[a.index()].using() != launch.started[a.index()].picked()).map(|a| a.id()).collect();
                 log("hotkey_unavailable", json!({ "which": off, "damaged": launch.damaged }));
             }
             if let Some(message) = keymap::launch_notice(&launch.started, launch.damaged) {

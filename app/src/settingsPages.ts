@@ -38,7 +38,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     more: [
       { id: "more.general.notch", items: ["island.showWork", "island.openDelay", "island.closeDelay", "island.followDelay", "panel.showWork", "panel.size"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "look.theme"] },
-      { id: "more.general.tools", items: ["flow.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
+      { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
       { id: "more.general.files", parent: "files.on", items: ["drop.on", "drop.imageFormat", "drop.docFormat", "drop.audioFormat", "drop.videoFormat", "drop.resizeTo", "drop.quality", "drop.sampleRate", "drop.saveTo", "attach.docLimit"] },
       { id: "more.general.watch", items: ["watch.schedule", "watch.dailyHour", "watch.quiet", "watch.quietFrom", "watch.quietTo", "where.after", f("google")] },
@@ -72,10 +72,12 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     groups: [
       { id: "keys.keys", items: ["keys.hotkeys"] },
       { id: "keys.talking", items: ["voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate"] },
+      // The overhaul spec (3.4): Prompt help split out of voice.on, so turning talking off no longer turns it off.
+      { id: "keys.prompt", items: ["prompt.on"] },
     ],
     more: [
       { id: "more.keys.talking", parent: "voice.on", items: ["talk.speakReplies", "talk.autoSend", "talk.followUpByPointing", "talk.shortSteps", "talk.maxHold", "speak.alsoSay"] },
-      { id: "more.keys.prompt", parent: "voice.on", items: ["ph.style", "ph.useProjectInfo", "ph.handBack", "ph.appAnswers"] },
+      { id: "more.keys.prompt", parent: "prompt.on", items: ["ph.style", "ph.useProjectInfo", "ph.handBack", "ph.appAnswers"] },
     ],
   },
   privacy: {

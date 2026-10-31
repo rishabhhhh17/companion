@@ -28,5 +28,9 @@ The executive review found the product trying to be many products at once (F16 s
 - **F19, F20, F21, F23, F26:** their features stay built; only their default switch changes to off.
 - **M42:** Home's two column layout gives way to one column. Its visual language stays.
 
+## Notes
+- **Existing installs (review, 31 Oct 2026).** Settings keeps only values that differ from the usual one, so a person who used a side tool while it was on by usual had nothing written down. Once, on a Companion used before, a tool there is evidence the person relied on (it is in the tried list, they picked a key for it, or they set up watch routines) keeps its old value, on; the others start off as decided, and Settings says once which ones. New installs start exactly as decided. Nothing in the decision changes.
+- **Google connections.** Connecting a new Google account is part of watch routines and starts off. An account already connected keeps working and always shows in Settings, so it can be disconnected (rule 6).
+
 ## Revisit only if
 Real users on real Macs show that a switched off group is what they came for, or that Still reads as broken.

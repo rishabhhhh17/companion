@@ -125,9 +125,9 @@ const LOCAL_NAME = /^(?:localhost|127(?:\.\d+){3}|::1|\[::1\]|0\.0\.0\.0|[\w.-]+
 /** Whether a command's output says the box itself stopped it, not the project: a write to a fixed temporary folder outside
  *  the project (/tmp, which the box does not give; the command has a temporary folder of its own), a browser that keeps its
  *  own sandbox on (macOS allows only one), or, with no internet in the box, a name on the internet that could not be looked
- *  up or reached (Next's font download among them). Reading a private place is never one of these: that stays the
+ *  up or reached (Next's font download among them; `bun`: the command ran on the engine's own Bun, which says ECONNREFUSED). Reading a private place is never one of these: that stays the
  *  project's failure. Null when the output says nothing of the kind. */
-export function boxRefusal(output: string, net: Net): "write" | "browser" | "net" | null {
+export function boxRefusal(output: string, net: Net, o: { bun?: boolean } = {}): "write" | "browser" | "net" | null {
   if (/sandbox initialization failed|sandbox_apply|sandbox_init\b/i.test(output)) return "browser";
   for (const line of output.split("\n")) {
     if (/Operation not permitted|\bEPERM\b/i.test(line) && /(?:^|[\s'"`(:=])\/(?:private\/)?(?:var\/)?tmp\//.test(line)) return "write";
@@ -136,6 +136,10 @@ export function boxRefusal(output: string, net: Net): "write" | "browser" | "net
     if (/Failed to fetch font|Failed to download `[^`]+` from Google Fonts/.test(output)) return "net";
     for (const m of output.matchAll(/\b(?:getaddrinfo )?(?:ENOTFOUND|EAI_AGAIN)\s+([^\s'"`,)]+)/g)) if (!LOCAL_NAME.test(m[1])) return "net";
     for (const m of output.matchAll(/\bconnect EPERM\s+([0-9a-f.:[\]]+?)(?::\d+)?(?=\s|$)/gi)) if (!LOCAL_NAME.test(m[1])) return "net";
+    // The engine's own Bun (a practice without Node, practicerun.ts) reports the box's refusal as ECONNREFUSED, where Node
+    // says EPERM (spikes/practice-bun, RESULTS.md). Only for an address that is not this Mac's: a local server that is down
+    // is still the project's own failure.
+    if (o.bun) for (const m of output.matchAll(/\bconnect ECONNREFUSED\s+([0-9a-f.:[\]]+?)(?::\d+)?(?=\s|$)/gi)) if (!LOCAL_NAME.test(m[1])) return "net";
   }
   return null;
 }

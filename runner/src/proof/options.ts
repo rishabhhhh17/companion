@@ -1,6 +1,7 @@
 // What the person chose in Settings for checking a project (the registry's "Checking your project" section, T16; area 2 of
 // docs/milestones/M11-customize-plan.md). Read once when a task or a check starts (RunnerSettings.get), so one already
-// running keeps what it started with. Every usual value is exactly today's behaviour. What can never change stays in code:
+// running keeps what it started with. Every usual value is today's behaviour, except installs: since F28 and M49 a check
+// usually asks before it installs the project's packages (check.install "ask"). What can never change stays in code:
 // the start check and the browser check always run (F14), a check left out is a gap (so at best "passed with gaps"), a
 // button whose words sound risky is never pressed, and an unanswered install question is a no.
 import type { Rule } from "../rules.ts";
@@ -19,7 +20,7 @@ export type CheckSettings = {
   install: InstallMode;
   pageSize: PageSize;
 };
-export const USUAL_CHECK: CheckSettings = { mustSee: [], press: "", afterPress: "", start: "auto", skip: [], time: "normal", install: "auto", pageSize: "desktop" };
+export const USUAL_CHECK: CheckSettings = { mustSee: [], press: "", afterPress: "", start: "auto", skip: [], time: "normal", install: "ask", pageSize: "desktop" };
 
 /** Time allowed for checks: normal is today's limits, longer twice them, longest four times. */
 export const TIME_FACTOR: Record<CheckTime, number> = { normal: 1, longer: 2, longest: 4 };
@@ -41,7 +42,7 @@ export function checkSettings(get: (key: string) => unknown): CheckSettings {
     start: isStartScript(start) ? start : "auto",
     skip: words(get("check.skip")).filter((x): x is SkipName => (SKIPPABLE as readonly string[]).includes(x)),
     time: oneOf(get("check.time"), ["normal", "longer", "longest"] as const, "normal"),
-    install: oneOf(get("check.install"), ["auto", "ask", "never"] as const, "auto"),
+    install: oneOf(get("check.install"), ["auto", "ask", "never"] as const, "ask"),
     pageSize: oneOf(get("check.pageSize"), ["desktop", "phone", "both"] as const, "desktop"),
   };
 }

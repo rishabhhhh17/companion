@@ -12,7 +12,7 @@ import { VERCEL_LESSON } from "../../runner/src/lessongen.ts";
 import { FIX_ASK, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 import { canFollowUp, canRetry, initial, lessonWordsOnly, reduce, type Model } from "./model.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { COPY_BASE, CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
+import { COPY_BASE, CATALOG, FIRST_PRACTICE, usesSmallFix, pointFixRoute, workingOn, backTo, canStart, copyOf, gateFinding, isExpected, lessonsShown, listRows, markFor, nextPractice, nodeMissing, needsMacCheck, practiceNotes, practiceWithoutNode, practiceOf, recordFrom, resumeOnOpen, rowState, startOrOpen, type PracticeEntry, type PracticeRecord } from "./practice.ts";
 import { S, PRODUCT, PRODUCT_S, NAMES } from "./strings.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -418,6 +418,31 @@ describe("the record and the list on Learn", () => {
     expect(canStart(false, e, null)).toBe(true);
     expect(canStart(true, e, null)).toBe(false);
     expect(canStart(false, e, noNode)).toBe(false);
+  });
+  // M49: on a Mac with no Node, the practices run on the engine's own Bun (runner/src/proof/practicerun.ts, spikes/practice-bun).
+  test("Node missing but the practices run without it: nothing waits, no Needs Node, and Learn says once that own projects need Node", () => {
+    const e = entry("signup");
+    const away = [{ id: "node", label: "Node", ok: false, detail: "Node is not installed.", fix: "Install it from nodejs.org.", missing: true as const, practiceRuns: true as const }];
+    const none = [{ id: "node", label: "Node", ok: false, detail: "Node is not installed.", fix: "Install it from nodejs.org.", missing: true as const }];
+    const here = [{ id: "node", label: "Node", ok: true, detail: "Node 22" }];
+    // Node missing with Bun: starts, no wait, no checking the Mac again and again.
+    expect(canStart(false, e, away)).toBe(true);
+    expect(nodeMissing(away)).toBeNull();
+    expect(listRows(NO, away).some((r) => r.needsNode)).toBe(false);
+    expect(needsMacCheck(away)).toBe(false);
+    expect(practiceWithoutNode(away)?.fix).toBe("Install it from nodejs.org.");
+    // Neither: the practice waits for Node, as before.
+    expect(canStart(false, e, none)).toBe(false);
+    expect(practiceWithoutNode(none)).toBeNull();
+    expect(listRows(NO, none).every((r) => r.needsNode)).toBe(true);
+    // Node here: nothing to say.
+    expect(canStart(false, e, here)).toBe(true);
+    expect(practiceWithoutNode(here)).toBeNull();
+    expect(S.practiceWithoutNode("Install it from nodejs.org.")).toBe("Node is not on this Mac. The practices run without it, but most of your own web projects need it. Install it from nodejs.org.");
+    expect(S.practiceWithoutNode("")).not.toMatch(/\s$/);
+    const panel = readFileSync(join(import.meta.dir, "./practicePanel.tsx"), "utf8"), card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
+    expect(panel).toContain('{withoutNode != null && !rows.some((r) => r.needsNode) && <div className="line muted">{S.practiceWithoutNode(withoutNode)}</div>}');
+    expect(card).toContain("withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? \"\")}");
   });
   test("after a practice: the next one not done in catalog order, then round to the start, and none when all are done", () => {
     expect(nextPractice(NO, "signup")?.id).toBe("setting");

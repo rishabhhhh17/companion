@@ -26,7 +26,7 @@ import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
-import { groupsOff, newlyOff, refusal, stopGroupWork } from "./groups.ts";
+import { newlyOff, offNow, refusal, stopGroupWork } from "./groups.ts";
 import { slowFactor } from "./proof/options.ts";
 import { WATCH_FILE, WatchEngine } from "./watch.ts";
 import { GhCli } from "./connections.ts";
@@ -117,9 +117,9 @@ function dispatch(cmd: Command) {
   if (cmd.type === "auth.check") { void announceAuth(); return; }
   // The settings line from the shell: each value checked again, names (never values) in the answer.
   if (cmd.type === "settings.apply") {
-    const before = groupsOff((k) => runnerSettings.get(k));
+    const before = offNow((k) => runnerSettings.get(k));
     say({ type: "settings.applied", ...runnerSettings.apply(plan.admit(cmd) as typeof cmd) });
-    stopGroups(newlyOff(before, groupsOff((k) => runnerSettings.get(k))));
+    stopGroups(newlyOff(before, offNow((k) => runnerSettings.get(k))));
     return;
   }
   // A tool whose group is switched off does nothing (F20): the shell refuses it first, and this is the second check.

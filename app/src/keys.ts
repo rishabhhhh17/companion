@@ -7,13 +7,22 @@ import { S } from "./strings.ts";
 export type Job = "card" | "problem" | "showme" | "read" | "accept" | "explain" | "secondlook" | "talk" | "dictate" | "stop";
 /** In the order Settings shows them, the same as keymap.rs ACTIONS (hotkeys.test.ts checks). */
 export const JOBS: readonly Job[] = ["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"];
-/** Each job's usual keys, the ones Companion always had; hotkeys.test.ts checks them against keymap.rs DEFAULTS. */
+/** Each job's own suggested keys, the ones Companion always had, first on its list (keymap.rs SUGGESTED; hotkeys.test.ts
+ *  checks). Lessons and the engine's lines are written with these, and keysIn puts in the keys in use. */
 export const KEY_DEFAULTS: Readonly<Record<Job, string>> = {
   card: "control-option-command-k", problem: "control-option-command-f", showme: "control-option-command-s", read: "control-option-command-r",
   accept: "control-option-command-a", explain: "control-option-command-e", secondlook: "control-option-command-c", talk: "option-space", dictate: "option-shift-space", stop: "control-option-command-x",
 };
-export type Keys = { using: Record<Job, string | null>; picked: Record<Job, string> };
-export const KEYS_START: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_DEFAULTS } };
+/** F28: the usual keys. Four jobs (Fix it, Hold to talk, Prompt help, Stop everything) and use a suggestion have their own;
+ *  the others have none until the person picks some (keymap.rs DEFAULTS; hotkeys.test.ts checks). */
+export const KEY_USUAL: Readonly<Record<Job, string | null>> = {
+  card: null, problem: KEY_DEFAULTS.problem, showme: null, read: KEY_DEFAULTS.read, accept: KEY_DEFAULTS.accept,
+  explain: null, secondlook: null, talk: KEY_DEFAULTS.talk, dictate: null, stop: KEY_DEFAULTS.stop,
+};
+/** `picked` null: no keys picked for that job (F28: not yet). `dropped`: the jobs whose old usual keys F28 took on this Mac,
+ *  said once in Settings until the person has seen it; only there when there is something to say. */
+export type Keys = { using: Record<Job, string | null>; picked: Record<Job, string | null>; dropped?: Job[] };
+export const KEYS_START: Keys = { using: { ...KEY_USUAL }, picked: { ...KEY_USUAL } };
 
 // A chord's id is keymap.rs's: the modifiers in the Mac's order (Control, Option, Shift, Command), then the key.
 const MODS = ["control", "option", "shift", "command"] as const;
@@ -41,11 +50,13 @@ export function keysFrom(v: unknown): Keys {
   const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
   const using = (typeof o.using === "object" && o.using !== null ? o.using : {}) as Record<string, unknown>;
   const picked = (typeof o.picked === "object" && o.picked !== null ? o.picked : {}) as Record<string, unknown>;
-  const out: Keys = { using: { ...KEY_DEFAULTS }, picked: { ...KEY_DEFAULTS } };
+  const out: Keys = { using: { ...KEY_USUAL }, picked: { ...KEY_USUAL } };
   for (const j of JOBS) {
     if (using[j] === null) out.using[j] = null; else if (isChord(using[j])) out.using[j] = using[j];
-    if (isChord(picked[j])) out.picked[j] = picked[j];
+    if (picked[j] === null && j !== "stop") out.picked[j] = null; else if (isChord(picked[j])) out.picked[j] = picked[j];
   }
+  const dropped = Array.isArray(o.dropped) ? JOBS.filter((j) => (o.dropped as unknown[]).includes(j) && KEY_USUAL[j] === null) : [];
+  if (dropped.length) out.dropped = dropped;
   return out;
 }
 
@@ -63,10 +74,12 @@ export const keysOf = (job: Job, k: Keys = now): string => { const id = k.using[
 /** A line that names a job's keys ("{keys}"), filled with the keys in use. A line said after the keys were pressed names
  *  "its keys" in the rare case they changed since. */
 export const withKeys = (template: string, job: Job, k: Keys = now): string => template.replace("{keys}", keysOf(job, k) || S.itsKeys);
-/** A hint about a job: filled with its keys, or, when another app holds them, where to pick others (never keys that do
- *  not work). `off` replaces that line where something better fits. */
+/** Whether a job has keys picked (F28: five jobs have none until the person picks). */
+export const hasKeys = (job: Job, k: Keys = now): boolean => k.picked[job] !== null;
+/** A hint about a job: filled with its keys; with none picked yet, where to add one; when another app holds them, where to
+ *  pick others (never keys that do not work). `off` replaces the last line where something better fits. */
 export const keyHint = (job: Job, template: string, k: Keys = now, off?: string): string =>
-  (k.using[job] ? withKeys(template, job, k) : off ?? S.keyHintOff.replace("{job}", jobName(job)));
+  (k.using[job] ? withKeys(template, job, k) : !hasKeys(job, k) ? S.keyHintNoKey.replace("{job}", jobName(job)) : off ?? S.keyHintOff.replace("{job}", jobName(job)));
 
 /** The Prompt help result's line: its use keys only when the app could take them for this result (ph_ready answers;
  *  another app may have taken them since launch), else only Esc. */
@@ -102,7 +115,7 @@ export function keysIn(text: string, k: Keys = now): string {
     if (!off.includes(j)) off.push(j);
     return S.keysForJob.replace("{job}", jobName(j));
   });
-  return [out, ...off.map((j) => S.keyHintOff.replace("{job}", jobName(j)))].join(" ");
+  return [out, ...off.map((j) => (hasKeys(j, k) ? S.keyHintOff : S.keyHintNoKey).replace("{job}", jobName(j)))].join(" ");
 }
 
 /** What the app sends when Change is pressed (key_choices): the job's short list, the chords that can be pressed now, and

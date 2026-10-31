@@ -2,7 +2,9 @@
 //!
 //! `protocol/groups.json` is the one catalog (read here with include_str!, by the pages in `app/src/groups.ts` and by the
 //! engine in `runner/src/groups.ts`). A tool is one thing a person can do; a group is a set of related tools with one
-//! switch in the settings registry (`flow.on`, `guide.on`, `voice.on`, `files.on`). Every hotkey, every shell command and
+//! switch in the settings registry (`flow.on`, `guide.on`, `voice.on`, `files.on`, `prompt.on`). A tool may also have a
+//! switch of its own (F28: Second Look `secondLook.on`, Type by voice `talk.dictate`, Draw it `drawIt.on`): it is on only
+//! while its group is on and its own switch is not off, and off it is held back exactly as a group is. Every hotkey, every shell command and
 //! every command the engine takes is in exactly one tool, so there is no way to add a way in that skips its group; the
 //! tests below read main.rs, keymap.rs and protocol/index.ts and fail on one that is missing or listed twice.
 //!
@@ -24,9 +26,10 @@ pub const CATALOG_TEXT: &str = include_str!("../../../protocol/groups.json");
 pub struct Group { pub id: String, pub switch: Option<String> }
 #[derive(Clone, Debug, PartialEq)]
 pub struct Tool {
-    pub id: String, pub group: String, pub hotkeys: Vec<String>, pub tried: Option<String>, pub commands: Vec<String>,
-    pub runner: Vec<String>, pub agent_modes: Vec<String>, pub stays: Vec<String>,
+    pub id: String, pub group: String, pub switch: Option<String>, pub hotkeys: Vec<String>, pub tried: Option<String>, pub commands: Vec<String>,
+    pub runner: Vec<String>, pub agent_modes: Vec<String>, pub stays: Vec<String>, pub settings: Vec<String>,
 }
+impl Tool { pub fn settings_has(&self, key: &str) -> bool { self.settings.iter().any(|s| s == key) } }
 #[derive(Debug)]
 pub struct Catalog {
     pub off_line: String, pub groups: Vec<Group>, pub tools: Vec<Tool>,
@@ -40,9 +43,10 @@ pub fn parse(text: &str) -> Result<Catalog, String> {
     let groups: Vec<Group> = v.get("groups").and_then(Value::as_array).ok_or("no groups")?.iter()
         .map(|g| Group { id: g["id"].as_str().unwrap_or("").to_string(), switch: g.get("switch").and_then(Value::as_str).map(str::to_string) }).collect();
     let tools: Vec<Tool> = v.get("tools").and_then(Value::as_array).ok_or("no tools")?.iter().map(|t| Tool {
-        id: t["id"].as_str().unwrap_or("").to_string(), group: t["group"].as_str().unwrap_or("").to_string(), hotkeys: strs(t.get("hotkeys")),
+        id: t["id"].as_str().unwrap_or("").to_string(), group: t["group"].as_str().unwrap_or("").to_string(),
+        switch: t.get("switch").and_then(Value::as_str).map(str::to_string), hotkeys: strs(t.get("hotkeys")),
         tried: t.get("tried").and_then(Value::as_str).map(str::to_string), commands: strs(t.get("commands")), runner: strs(t.get("runner")),
-        agent_modes: strs(t.get("agentModes")), stays: strs(t.get("stays")),
+        agent_modes: strs(t.get("agentModes")), stays: strs(t.get("stays")), settings: strs(t.get("settings")),
     }).collect();
     let (mut by_command, mut by_hotkey, mut by_runner, mut by_mode) = (HashMap::new(), HashMap::new(), HashMap::new(), HashMap::new());
     for (i, t) in tools.iter().enumerate() {
@@ -64,6 +68,10 @@ impl Catalog {
     pub fn tool(&self, id: &str) -> Option<&Tool> { self.tools.iter().find(|t| t.id == id) }
     /// The switch (a settings key) of the group a tool is in; none for the core.
     pub fn switch_of(&self, t: &Tool) -> Option<&str> { self.groups.iter().find(|g| g.id == t.group).and_then(|g| g.switch.as_deref()) }
+    /// Every switch a tool follows: its group's, then its own (F28). It is on only while none of them is off.
+    pub fn switches_of<'a>(&'a self, t: &'a Tool) -> Vec<&'a str> { self.switch_of(t).into_iter().chain(t.switch.as_deref()).collect() }
+    /// Is this tool off, because its group or its own switch is off?
+    pub fn tool_off(&self, is_off: &dyn Fn(&str) -> bool, t: &Tool) -> bool { self.switches_of(t).into_iter().any(is_off) }
     pub fn of_command(&self, name: &str) -> Option<&Tool> { self.by_command.get(name).map(|i| &self.tools[*i]) }
     pub fn of_hotkey(&self, id: &str) -> Option<&Tool> { self.by_hotkey.get(id).map(|i| &self.tools[*i]) }
     /// The tool an engine command belongs to. agent.start belongs to the tool of its mode.
@@ -71,11 +79,15 @@ impl Catalog {
         if ty == "agent.start" { return mode.and_then(|m| self.by_mode.get(m)).map(|i| &self.tools[*i]); }
         self.by_runner.get(ty).map(|i| &self.tools[*i])
     }
-    /// Every group switch (a settings key).
-    pub fn switches(&self) -> Vec<&str> { self.groups.iter().filter_map(|g| g.switch.as_deref()).collect() }
+    /// Every switch (a settings key): the groups', in the catalog's order, then each tool's own, once each.
+    pub fn switches(&self) -> Vec<&str> {
+        let mut v: Vec<&str> = self.groups.iter().filter_map(|g| g.switch.as_deref()).collect();
+        for t in &self.tools { if let Some(s) = t.switch.as_deref() { if !v.contains(&s) { v.push(s); } } }
+        v
+    }
 }
 
-/// Is this settings key one of the group switches?
+/// Is this settings key one of the switches, a group's or a tool's own?
 pub fn is_switch(key: &str) -> bool { catalog().switches().contains(&key) }
 
 /// The one plain line a refused command answers with.
@@ -86,8 +98,7 @@ pub fn off_line() -> &'static str { catalog().off_line.as_str() }
 pub fn refuse_command(is_off: &dyn Fn(&str) -> bool, name: &str) -> Option<&'static str> {
     let c = catalog();
     let t = c.of_command(name)?;
-    let sw = c.switch_of(t)?;
-    (is_off(sw) && !t.stays.iter().any(|s| s == name)).then(off_line)
+    (c.tool_off(is_off, t) && !t.stays.iter().any(|s| s == name)).then(off_line)
 }
 
 /// The same for a command a page sends to the engine (`cmd` has a type, and agent.start a mode).
@@ -95,15 +106,14 @@ pub fn refuse_runner(is_off: &dyn Fn(&str) -> bool, cmd: &Value) -> Option<&'sta
     let c = catalog();
     let ty = cmd.get("type").and_then(Value::as_str)?;
     let t = c.of_runner(ty, cmd.get("mode").and_then(Value::as_str))?;
-    let sw = c.switch_of(t)?;
-    (is_off(sw) && !t.stays.iter().any(|s| s == ty)).then(off_line)
+    (c.tool_off(is_off, t) && !t.stays.iter().any(|s| s == ty)).then(off_line)
 }
 
 /// Whether a hotkey's job (a keymap job id) is held back because its tool's group is switched off. The core's keys
 /// (the ask box, Stop everything) are never held.
 pub fn hotkey_held(is_off: &dyn Fn(&str) -> bool, job: &str) -> bool {
     let c = catalog();
-    c.of_hotkey(job).and_then(|t| c.switch_of(t)).is_some_and(is_off)
+    c.of_hotkey(job).is_some_and(|t| c.tool_off(is_off, t))
 }
 
 /// A page may say it saw a real use only of a tool it can see being used.
@@ -116,7 +126,7 @@ pub fn tried_after(current: &[String], tool: &str, is_off: &dyn Fn(&str) -> bool
     let c = catalog();
     let t = c.tool(tool)?;
     t.tried.as_ref()?;
-    if c.switch_of(t).is_some_and(is_off) || current.iter().any(|x| x == tool) { return None; }
+    if c.tool_off(is_off, t) || current.iter().any(|x| x == tool) { return None; }
     let mut next = current.to_vec();
     next.push(tool.to_string());
     Some(next)
@@ -131,7 +141,10 @@ mod tests {
     const MAIN: &str = include_str!("main.rs");
     const RUNNER: &str = include_str!("runner.rs");
     const PROTOCOL: &str = include_str!("../../../protocol/index.ts");
-    const SWITCHED: [(&str, &str); 4] = [("flow", "flow.on"), ("guide", "guide.on"), ("voice", "voice.on"), ("files", "files.on")];
+    const SWITCHED: [(&str, &str); 5] = [("flow", "flow.on"), ("guide", "guide.on"), ("voice", "voice.on"), ("files", "files.on"), ("prompt", "prompt.on")];
+    const ALL_OFF: [&str; 5] = ["flow.on", "guide.on", "voice.on", "files.on", "prompt.on"];
+    /// F28: the tools with a switch of their own, and that switch.
+    const OWN: [(&str, &str); 3] = [("secondLook", "secondLook.on"), ("dictate", "talk.dictate"), ("drawIt", "drawIt.on")];
 
     fn off<'a>(keys: &'a [&'a str]) -> impl Fn(&str) -> bool + 'a { move |k| keys.contains(&k) }
     fn tools_in(g: &str) -> Vec<&'static Tool> { catalog().tools.iter().filter(|t| t.group == g).collect() }
@@ -144,10 +157,10 @@ mod tests {
     fn dups(v: &[String]) -> Vec<String> { let mut s = v.to_vec(); s.sort(); s.windows(2).filter(|w| w[0] == w[1]).map(|w| w[0].clone()).collect() }
 
     #[test]
-    fn the_catalog_reads_and_has_four_switched_groups_and_the_core() {
+    fn the_catalog_reads_and_has_five_switched_groups_and_the_core() {
         let c = catalog();
         let ids: Vec<&str> = c.groups.iter().map(|g| g.id.as_str()).collect();
-        assert_eq!(ids, ["flow", "guide", "voice", "files", "core"]);
+        assert_eq!(ids, ["flow", "guide", "voice", "files", "prompt", "core"]);
         for (g, sw) in SWITCHED { assert_eq!(c.groups.iter().find(|x| x.id == g).unwrap().switch.as_deref(), Some(sw)); }
         assert_eq!(c.groups.iter().find(|g| g.id == "core").unwrap().switch, None);
         assert!(c.tools.iter().all(|t| c.groups.iter().any(|g| g.id == t.group)), "every tool is in a known group");
@@ -155,11 +168,12 @@ mod tests {
         assert!(off_line().contains("switched off in Settings"));
     }
     #[test]
-    fn each_switch_is_a_registry_switch_usual_on_that_the_engine_is_also_given() {
+    fn each_switch_is_a_registry_switch_that_the_engine_is_also_given_and_only_files_starts_off() {
         let r = crate::settings::registry();
         for (_, sw) in SWITCHED {
             let d = r.get(sw).unwrap_or_else(|| panic!("{sw} is in the registry"));
-            assert_eq!(d.default, json!(true));
+            // F28: one product at launch. File conversion starts off; Fix (flow), Show me how, talking and Prompt help stay on.
+            assert_eq!(d.default, json!(sw != "files.on"), "{sw}");
             assert!(d.applies_to("shell") && d.applies_to("runner") && d.applies_to("pages"), "{sw}");
             assert!(crate::settings::needs_apply(d), "{sw}: the engine is given it");
             assert!(is_switch(sw));
@@ -177,7 +191,7 @@ mod tests {
         assert_eq!(got, ids, "every key map job is in a tool, and none is invented");
         assert_eq!(c.of_hotkey("stop").unwrap().group, "core");
         assert_eq!(c.of_hotkey("card").unwrap().group, "core");
-        for (job, g) in [("problem", "flow"), ("showme", "guide"), ("read", "voice"), ("accept", "voice"), ("explain", "voice"), ("talk", "voice")] { assert_eq!(c.of_hotkey(job).unwrap().group, g, "{job}"); }
+        for (job, g) in [("problem", "flow"), ("showme", "guide"), ("read", "prompt"), ("accept", "prompt"), ("explain", "prompt"), ("secondlook", "prompt"), ("talk", "voice"), ("dictate", "voice")] { assert_eq!(c.of_hotkey(job).unwrap().group, g, "{job}"); }
     }
     #[test]
     fn every_shell_command_is_in_exactly_one_tool_and_none_is_listed_that_does_not_exist() {
@@ -253,10 +267,12 @@ mod tests {
         let expected: Vec<&str> = tools_in(g).iter().flat_map(|t| t.hotkeys.iter().map(String::as_str)).collect();
         for a in keymap::ACTIONS { assert_eq!(held[a.index()], expected.contains(&a.id()), "{g} off: {}", a.id()); }
         assert!(!held[Action::Stop.index()] && !held[Action::Card.index()], "Stop everything and the ask box are never held");
+        // Every job given its own suggested keys, so a job with no key by default is tested too.
+        let every = Map(keymap::ACTIONS.map(|a| Some(keymap::suggested(a))));
         let registered = std::cell::RefCell::new(std::collections::HashSet::<Chord>::new());
-        let started = keymap::start_held(&Map::DEFAULT, &held, |_, c| registered.borrow_mut().insert(c), |c| { registered.borrow_mut().remove(&c); });
+        let started = keymap::start_held(&every, &held, |_, c| registered.borrow_mut().insert(c), |c| { registered.borrow_mut().remove(&c); });
         for a in keymap::ACTIONS {
-            let c = keymap::default(a);
+            let c = keymap::suggested(a);
             let live = registered.borrow().contains(&c);
             // use a suggestion is registered only while a result shows, so it is never live at start.
             let should = !held[a.index()] && !a.armed_only();
@@ -268,11 +284,68 @@ mod tests {
     #[test] fn guide_off_refuses_its_commands_and_keys_and_only_those() { refused_with_group_off("guide", "guide.on"); keys_let_go_with_group_off("guide", "guide.on"); }
     #[test] fn voice_off_refuses_its_commands_and_keys_and_only_those() { refused_with_group_off("voice", "voice.on"); keys_let_go_with_group_off("voice", "voice.on"); }
     #[test] fn files_off_refuses_its_commands_and_only_those() { refused_with_group_off("files", "files.on"); keys_let_go_with_group_off("files", "files.on"); }
+    #[test] fn prompt_off_refuses_its_commands_and_keys_and_only_those() { refused_with_group_off("prompt", "prompt.on"); keys_let_go_with_group_off("prompt", "prompt.on"); }
+
+    // ---- a tool with a switch of its own (F28) ----
+
+    #[test]
+    fn a_tools_own_switch_holds_back_that_tool_only_and_its_group_still_holds_it_back_too() {
+        let c = catalog();
+        let nothing = off(&[]);
+        for (id, sw) in OWN {
+            let t = c.tool(id).unwrap_or_else(|| panic!("{id}"));
+            assert_eq!(t.switch.as_deref(), Some(sw), "{id}");
+            assert!(is_switch(sw), "{sw}: a change to it lets the keys go or takes them back");
+            let group_sw = c.switch_of(t).unwrap();
+            let (mine, theirs) = ([sw], [group_sw]);
+            for is_off in [off(&mine), off(&theirs)] {
+                assert!(c.tool_off(&is_off, t), "{id}");
+                for cmd in &t.commands { assert_eq!(refuse_command(&is_off, cmd).is_some(), !t.stays.contains(cmd), "{id}: {cmd}"); }
+                for r in &t.runner { assert_eq!(refuse_runner(&is_off, &json!({ "type": r })).is_some(), !t.stays.contains(r), "{id}: {r}"); }
+                for h in &t.hotkeys { assert!(hotkey_held(&is_off, h), "{id}: {h} is let go"); }
+                assert_eq!(tried_after(&[], id, &is_off), None, "{id}: a refused use is not a use");
+            }
+            assert!(!c.tool_off(&nothing, t));
+            // Only this tool: every other tool of its group still works with its own switch off.
+            let own_keys = [sw];
+            let own = off(&own_keys);
+            for other in c.tools.iter().filter(|o| o.group == t.group && o.switch.as_deref() != Some(sw)) {
+                assert!(!c.tool_off(&own, other), "{id} off leaves {} on", other.id);
+                for cmd in &other.commands { assert_eq!(refuse_command(&own, cmd), None, "{cmd}"); }
+                for h in &other.hotkeys { assert!(!hotkey_held(&own, h), "{h}"); }
+            }
+        }
+    }
+    #[test]
+    fn every_switch_a_tool_follows_is_a_registry_switch_each_side_is_given() {
+        let r = crate::settings::registry();
+        for t in &catalog().tools {
+            let Some(sw) = t.switch.as_deref() else { continue };
+            let d = r.get(sw).unwrap_or_else(|| panic!("{sw} is in the registry"));
+            assert_eq!(d.kind, crate::settings::Kind::Switch, "{sw}");
+            assert!(d.applies_to("shell") && d.applies_to("pages"), "{sw}: the shell and the pages both hold the tool back");
+            if !t.runner.is_empty() { assert!(d.applies_to("runner") && crate::settings::needs_apply(d), "{sw}: the engine refuses too"); }
+            assert!(t.settings_has(sw), "{sw}: the tool lists its own switch among its settings");
+        }
+        // Every switch: the five groups' first, then the three tools' own, each once.
+        assert_eq!(catalog().switches(), ["flow.on", "guide.on", "voice.on", "files.on", "prompt.on", "drawIt.on", "talk.dictate", "secondLook.on"]);
+    }
+    #[test]
+    fn the_f28_launch_cut_starts_the_side_tools_off_and_keeps_fix_proof_undo_prompt_help_talk_and_show_me_on() {
+        // F28: one product at launch. Every one of these stays built and is turned on again in Settings.
+        let fixture: Value = serde_json::from_str(include_str!("../../../protocol/fixtures/launch-cut.json")).unwrap();
+        let r = crate::settings::registry();
+        let usual = |k: &str| r.get(k).unwrap_or_else(|| panic!("{k}")).default.clone();
+        for (k, v) in fixture["usual"].as_object().unwrap() { assert_eq!(&usual(k), v, "{k}"); }
+        let off_now = |k: &str| usual(k) == json!(false);
+        let c = catalog();
+        for id in fixture["toolsOff"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) { assert!(c.tool_off(&off_now, c.tool(id).unwrap()), "{id} starts off"); }
+        for id in fixture["toolsOn"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()) { assert!(!c.tool_off(&off_now, c.tool(id).unwrap()), "{id} stays on"); }
+    }
 
     #[test]
     fn with_every_group_off_stop_everything_the_ask_box_settings_and_the_rest_of_the_core_still_work() {
-        let all = ["flow.on", "guide.on", "voice.on", "files.on"];
-        let is_off = off(&all);
+        let is_off = off(&ALL_OFF);
         for t in tools_in("core") {
             for c in &t.commands { assert_eq!(refuse_command(&is_off, c), None, "{c}"); }
             for r in &t.runner { assert_eq!(refuse_runner(&is_off, &json!({ "type": r })), None, "{r}"); }
@@ -285,14 +358,14 @@ mod tests {
     }
     #[test]
     fn what_only_takes_back_stays_available_so_nothing_is_lost_by_switching_a_group_off() {
-        let is_off = off(&["flow.on", "guide.on", "voice.on", "files.on"]);
+        let is_off = off(&ALL_OFF);
         for r in ["checkpoint.restore", "bisect.undo", "walk.stop"] { assert_eq!(refuse_runner(&is_off, &json!({ "type": r })), None, "{r}"); }
         for c in ["remove_practice", "remove_all_practices", "ph_dismiss", "ph_disarm", "ph_restore", "eh_dismiss", "drop_stop", "drop_close", "drop_reveal"] { assert_eq!(refuse_command(&is_off, c), None, "{c}"); }
         for c in ["ph_accept", "ph_ready", "drop_pick", "drop_now", "showme_start", "speak", "voice_download", "point_problem", "create_practice"] { assert_eq!(refuse_command(&is_off, c), Some(off_line()), "{c}"); }
     }
     #[test]
     fn an_unknown_command_or_a_command_with_no_type_is_not_this_modules_to_refuse() {
-        let is_off = off(&["flow.on", "guide.on", "voice.on", "files.on"]);
+        let is_off = off(&ALL_OFF);
         assert_eq!(refuse_command(&is_off, "plugin:window|close"), None);
         assert_eq!(refuse_runner(&is_off, &json!({})), None);
         assert_eq!(refuse_runner(&is_off, &json!({ "type": 7 })), None);
@@ -365,10 +438,11 @@ mod tests {
         assert_eq!(tried_after(&[], "nothing", &none), None);
         assert_eq!(tried_after(&[], "talk", &off(&["voice.on"])), None, "a refused use is not a use");
         assert_eq!(tried_after(&[], "talk", &off(&["flow.on"])), Some(vec!["talk".to_string()]));
+        assert_eq!(tried_after(&[], "promptHelp", &off(&["voice.on"])), Some(vec!["promptHelp".to_string()]), "talking off leaves Prompt help on (the split)");
     }
     #[test]
     fn a_page_can_mark_only_the_tools_a_page_sees_used() {
-        for t in ["drive", "rescue", "showMe", "lessons", "promptHelp", "errorHelp", "undo"] { assert!(page_may_mark(t), "{t}"); }
+        for t in ["drive", "rescue", "showMe", "lessons", "promptHelp", "errorHelp", "undo", "drawIt"] { assert!(page_may_mark(t), "{t}"); }
         for t in ["talk", "speak", "convert", "practice", "stop", "settings", "nothing"] { assert!(!page_may_mark(t), "{t}: the shell sees it, or it cannot be tried"); }
     }
 }

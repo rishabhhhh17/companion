@@ -105,11 +105,11 @@ mod tests {
         assert_eq!(src.matches("read_and_send(&").count(), 2);
         assert_eq!(main.matches("seclook::on_hotkey(").count(), 1);
         assert!(main.contains("keymap::Action::SecondLook => seclook::on_hotkey(app, open_card),"));
-        // Stop everything and Voice going off drop a read under way.
+        // Stop everything, and Prompt help or Second Look going off, drop a read under way (talking going off no longer
+        // does: the overhaul split Prompt help, with Second Look, out of voice.on).
         let stop = &main[main.find("fn showme_stop(").unwrap()..];
         assert!(stop[..stop.find("\n}\n").unwrap()].contains("seclook::dismiss(app);"));
-        let groups = &main[main.find("if newly_off & bit(\"voice\") != 0 {").unwrap()..];
-        assert!(groups[..groups.find("\n    }\n").unwrap()].contains("seclook::dismiss(app);"));
+        assert!(main.contains("if newly_off & (bit(\"prompt.on\") | bit(\"secondLook.on\")) != 0 { seclook::dismiss(app); }"));
         // A read that a Stop or newer press overtook is never sent.
         let send = &src[src.find("fn read_and_send(").unwrap()..];
         assert!(send.find("if GEN.load(Ordering::SeqCst) != gen { return; }").unwrap() < send.find("secondsel::command(").unwrap());

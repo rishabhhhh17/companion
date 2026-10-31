@@ -1,11 +1,12 @@
 // The error explainer, as the card sees it: the light and the read happen in the app (errhelp.rs); the card shows each
 // stage, then the two sentences, where it lives, Show me where and Fix it. Only the answer to this press counts.
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import { ERROR_FIX_PROMPT, fixError } from "./commands.ts";
 import { ehLines, initial, reduce, type Model } from "./model.ts";
 import { S, PRODUCT } from "./strings.ts";
 import { need } from "./home.ts";
+import { KEY_DEFAULTS, KEYS_START, setKeysNow } from "./keys.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -14,6 +15,9 @@ const where = { kind: "line", file: "src/App.tsx", line: 5, lineText: "const tot
 const answer = (o: Record<string, unknown> = {}) => ev({ type: "error.explained", req: "eh_1", project: "p", ok: true, sentences: ["A number was given words instead.", "Use a number on line 5."], where, excerpt: "src/App.tsx(5,9): error TS2322", evidence: "src/App.tsx(5,9): error TS2322: Type 'string' is not assignable to type 'number'.", usdEstimate: 0.0004, ...o });
 
 describe("each stage on the card", () => {
+  // These lines follow a press of the error key, which has no keys until the person picks some (F28): here it has its own.
+  beforeAll(() => setKeysNow({ using: { ...KEYS_START.using, explain: KEY_DEFAULTS.explain }, picked: { ...KEYS_START.picked, explain: KEY_DEFAULTS.explain } }));
+  afterAll(() => setKeysNow(KEYS_START));
   test("reading, then thinking for this press, then the answer", () => {
     let m = run([stage("reading", { app: "Terminal" })]);
     expect(ehLines(m)).toEqual(["Reading what you selected in Terminal."]);

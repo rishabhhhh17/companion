@@ -16,7 +16,7 @@ import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCh
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, costWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
-import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
+import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
@@ -822,7 +822,7 @@ function Card() {
   const askedId = useRef("");
   useEffect(() => { if (!m.diagram) asked.current = false; }, [m.diagram]);
   const drawIt = (question: string, problem?: { kind?: string; file?: string; line?: number; message?: string }) => {
-    if (!projectRef.current || asked.current || !toolOn("explain")) return;
+    if (!projectRef.current || asked.current || !toolOn("drawIt")) return;
     // M33: with no problem on screen, Draw it draws a picture of the question (HeyClicky style); with one, the diagram.
     const cmd = askDiagram(projectRef.current, question, problem, problem ? undefined : "sketch");
     asked.current = true; askedId.current = (cmd as { id: string }).id; dispatch({ type: "ui.diagramAsked", ask: (cmd as { id: string }).id, project: projectRef.current });
@@ -852,6 +852,12 @@ function Card() {
   const focusOnShow = useRef((el: HTMLInputElement | null) => { el?.focus(); }).current;
   const [copying, setCopying] = useState(false);
   const openLink = () => { const u = link.trim(); if (!u || copying) return; dispatch({ type: "ui.cloneNoteClosed" }); void invoke("clone_project", { url: u }).then(() => { setLinkOpen(false); setLink(""); setCopying(true); }).catch((e) => { if (String(e)) setFolderNote(String(e)); }); };
+  // The same Open from a link, from the first run's Your project (M49): it says its own note there, so it only throws.
+  const cloneLink = (u: string) => { dispatch({ type: "ui.cloneNoteClosed" }); return invoke("clone_project", { url: u }).then(() => { setCopying(true); }); };
+  // The first run's first check of the real project (M49): the free check with a safety copy first and installs set to ask.
+  // `fresh`: an error or notice from before this press is not this check's reason (the first run shows only this one's).
+  const firstCheck = () => { pressed(); dispatch({ type: "ui.findProblem", fresh: true }); void sendOrExplain(findProblem(project, true), () => dispatch({ type: "ui.pointClosed" })); };
+  const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
   // The project's watches (F21): asked for whenever the folder is known or changes, and when Flow is switched back on.
@@ -1542,7 +1548,8 @@ function Card() {
       )}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
 
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding} />}
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
+        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
       {onboarded && (<>
       {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
           founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
@@ -1699,7 +1706,7 @@ function Card() {
         : <section className="panel" aria-label={S.firstLook.watch}><div className="row"><button className="btn" type="button" onClick={() => setTour(true)}>{S.firstLook.watch}</button></div></section>)}
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
       {groups.groupOn("guide") && show("practice") && (
-        <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
+        <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? "")} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
           openId={m.practice && m.practice.project === project ? m.practice.kind : null}
           act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} />
       )}
@@ -2181,7 +2188,7 @@ function Card() {
           {m.point.stage !== "checking" && (
             <div className="row">
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
-              {m.point.stage === "found" && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
+              {m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => {
                 const pt = m.point!;
                 // The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.

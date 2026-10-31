@@ -1,0 +1,42 @@
+{
+  "about": "F28, the launch cut: one product at launch (Fix it, with proof, a receipt and Undo). Read by the shell (groups.rs, keymap.rs tests), the engine (runner/test/launch-cut.test.ts) and the pages (app/src/launchCut.test.ts), so all three agree. `usual`: the registry's usual values the cut sets or keeps. `toolsOff`: tools that start off and are turned on in Settings; `toolsOn`: the hero and what stays on. `keys`: the jobs with keys by usual (the four of F28, plus use a suggestion, which works only while a Prompt help suggestion shows) and the jobs with none until the person picks. `keyMigration`: a keys.json from before F28 (null: none on this Mac), whether this Companion was used before, and what each job then has (null: no keys) and which jobs Settings says lost their keys. A key the person picked is never taken. `cutMigration`: an install from before F28 (settings: its settings.json, null for none; picked: the jobs with a key the person picked; watches: watch routines set up), the values in force after the one time migration (settings.rs launch_cut), and the tools Settings then says start off (groups.cutNotice). A tool the person used, picked a key for or set up watches for keeps its old value.",
+  "usual": {
+    "flow.on": true, "guide.on": true, "voice.on": true, "prompt.on": true, "files.on": false,
+    "watch.on": false, "secondLook.on": false, "talk.dictate": false, "drawIt.on": false, "panel.showHello": false,
+    "check.install": "ask", "undo.protectMyEdits": true, "pictures.make": true, "drop.on": true
+  },
+  "toolsOff": ["convert", "secondLook", "dictate", "drawIt"],
+  "toolsOn": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "whichTask", "talk", "speak", "promptHelp", "errorHelp", "showMe", "lessons", "practice"],
+  "keys": {
+    "bound": { "problem": "control-option-command-f", "read": "control-option-command-r", "accept": "control-option-command-a", "talk": "option-space", "stop": "control-option-command-x" },
+    "unbound": ["card", "showme", "explain", "secondlook", "dictate"]
+  },
+  "keyMigration": [
+    { "name": "a new Companion: the four keys, nothing said", "saved": null, "usedBefore": false,
+      "keys": { "card": null, "problem": "control-option-command-f", "showme": null, "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "option-space", "dictate": null, "stop": "control-option-command-x" },
+      "dropped": [] },
+    { "name": "used before, nothing ever picked: the five on their old usual keys lose them, said once", "saved": null, "usedBefore": true,
+      "keys": { "card": null, "problem": "control-option-command-f", "showme": null, "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "option-space", "dictate": null, "stop": "control-option-command-x" },
+      "dropped": ["card", "showme", "explain", "secondlook", "dictate"] },
+    { "name": "keys the person picked are all kept, and only the jobs still on their old usual keys lose them", "saved": "{\"keys\":{\"card\":\"control-option-command-j\",\"dictate\":\"control-option-return\",\"stop\":\"control-option-command-l\"}}", "usedBefore": true,
+      "keys": { "card": "control-option-command-j", "problem": "control-option-command-f", "showme": null, "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "option-space", "dictate": "control-option-return", "stop": "control-option-command-l" },
+      "dropped": ["showme", "explain", "secondlook"] },
+    { "name": "a file already on the new usual keys: nothing more is taken, and what is still to be said stays", "saved": "{\"keys\":{\"showme\":\"control-option-command-s\"},\"usual\":2,\"dropped\":[\"card\",\"explain\"]}", "usedBefore": true,
+      "keys": { "card": null, "problem": "control-option-command-f", "showme": "control-option-command-s", "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "option-space", "dictate": null, "stop": "control-option-command-x" },
+      "dropped": ["card", "explain"] },
+    { "name": "seen: a file on the new usual keys with nothing to say", "saved": "{\"keys\":{},\"usual\":2}", "usedBefore": true,
+      "keys": { "card": null, "problem": "control-option-command-f", "showme": null, "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "option-space", "dictate": null, "stop": "control-option-command-x" },
+      "dropped": [] },
+    { "name": "hold to talk's keys from before every key could change are kept", "saved": null, "oldTalk": "{\"holdToTalk\":\"control-return\"}", "usedBefore": true,
+      "keys": { "card": null, "problem": "control-option-command-f", "showme": null, "read": "control-option-command-r", "accept": "control-option-command-a", "explain": null, "secondlook": null, "talk": "control-return", "dictate": null, "stop": "control-option-command-x" },
+      "dropped": ["card", "showme", "explain", "secondlook", "dictate"] }
+  ],
+  "cutMigration": [
+    {"name": "a new Companion: nothing from before, nothing said", "settings": null, "picked": [], "watches": false, "values": {"files.on": false, "watch.on": false, "secondLook.on": false, "talk.dictate": false, "drawIt.on": false}, "notice": []},
+    {"name": "used before, nothing set and nothing used: every tool that changed is said once", "settings": "{\"version\":1,\"values\":{},\"migrated\":[\"pageStorage.v1\"]}", "picked": [], "watches": false, "values": {"files.on": false, "watch.on": false, "secondLook.on": false, "talk.dictate": false, "drawIt.on": false}, "notice": ["convert", "watch", "secondLook", "dictate", "drawIt"]},
+    {"name": "tools the person used stay on, and a key they picked keeps its job on", "settings": "{\"version\":1,\"values\":{\"groups.tried\":[\"convert\",\"watch\",\"drive\"]},\"migrated\":[\"pageStorage.v1\"]}", "picked": ["dictate", "stop"], "watches": false, "values": {"files.on": true, "watch.on": true, "secondLook.on": false, "talk.dictate": true, "drawIt.on": false}, "notice": ["secondLook", "drawIt"]},
+    {"name": "a value the person wrote down is kept and not said; watch routines set up keep watching", "settings": "{\"version\":1,\"values\":{\"files.on\":false},\"migrated\":[\"pageStorage.v1\"]}", "picked": ["secondlook"], "watches": true, "values": {"files.on": false, "watch.on": true, "secondLook.on": true, "talk.dictate": false, "drawIt.on": false}, "notice": ["dictate", "drawIt"]},
+    {"name": "used every one: only Draw it is said, since nothing told it apart from Explain before", "settings": "{\"version\":1,\"values\":{\"groups.tried\":[\"convert\",\"secondLook\",\"dictate\"]},\"migrated\":[\"pageStorage.v1\"]}", "picked": [], "watches": true, "values": {"files.on": true, "watch.on": true, "secondLook.on": true, "talk.dictate": true, "drawIt.on": false}, "notice": ["drawIt"]},
+    {"name": "done once: a file with the mark is never changed again", "settings": "{\"version\":1,\"values\":{},\"migrated\":[\"pageStorage.v1\",\"promptSplit.v1\",\"launchCut.v1\"]}", "picked": ["dictate"], "watches": true, "values": {"files.on": false, "watch.on": false, "secondLook.on": false, "talk.dictate": false, "drawIt.on": false}, "notice": []}
+  ]
+}

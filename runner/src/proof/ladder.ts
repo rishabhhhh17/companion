@@ -13,6 +13,7 @@ import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { boxRefusal, boxWorks, type Net } from "./box.ts";
 import { startServer } from "./server.ts";
+import { onEngineBun, withPracticeBun } from "./practicerun.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
 import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, swiftInBox, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
@@ -74,6 +75,9 @@ export type LadderOptions = {
   noServer?: boolean;
   // How the project is read (tests give a fixed one); detectProject by default.
   detect?: (dir: string) => Detected;
+  // The person's project when `project` is a private copy of it (which task broke it checks each earlier version in one):
+  // its folder name is the one that says whether it is a practice (practicerun.ts isPracticeProject). `project` by default.
+  identity?: string;
   // How long to wait before each new try of a command this Mac had no room to start (NO_ROOM_WAITS_MS by default).
   noRoomWaitsMs?: number[];
   // What the person chose in Settings for checking this project (options.ts). Missing ones are their usual values, which
@@ -221,6 +225,12 @@ function looksLikeSite(start: NonNullable<Detected["start"]>, dir: string): bool
   try { const p = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")); return Object.keys({ ...(p.dependencies ?? {}), ...(p.devDependencies ?? {}) }).some((d) => WEB_PACKAGE.test(d)); } catch { return false; }
 }
 
+/** The ladder's own reading of a project: detectProject, with a practice copy on the engine's own Bun when Node is not on
+ *  this Mac (practicerun.ts). identity: the folder whose name says whether it is a practice, the person's project when
+ *  `dir` is a private copy of an earlier version (which task broke it). `o` is for tests: Node and the Bun to take. */
+export const readProject = (dir: string, identity: string = dir, o: { node?: boolean; bun?: string | null } = {}): Detected =>
+  withPracticeBun(detectProject(dir), dir, { identity, ...o }).det;
+
 export async function runLadder(o: LadderOptions): Promise<LadderResult> {
   const r = await runRungs(o);
   if (!o.review || (r.verdict !== "passed" && r.verdict !== "passed_with_gaps")) return r;
@@ -259,7 +269,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // the Python ones, so Point at the problem still says first what to install.
   const left: string[] = [];
   const skip = new Set((o.check?.skip ?? []).filter((x) => (SKIPPABLE as readonly string[]).includes(x)));
-  const found = (o.detect ?? detectProject)(o.project);
+  // A practice copy on a Mac with no Node runs its tests and server on the engine's own Bun (practicerun.ts); every other
+  // project, and a practice with Node here, is read exactly as before.
+  const found = (o.detect ?? ((d: string) => readProject(d, o.identity ?? d)))(o.project);
   const started = withStartScript(found, o.project, o.check?.start);
   const det: Detected = started.det;
   if (started.gap) left.push(started.gap);
@@ -303,9 +315,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   };
 
   // The box stopped this command (only ever when it ran in the box): the plain words, kept as a gap.
-  const boxGap = (output: string, what: string, net: Net = "local"): string | null => {
+  const boxGap = (output: string, what: string, net: Net = "local", command?: string): string | null => {
     if (!boxed) return null;
-    const kind = boxRefusal(output, net);
+    const kind = boxRefusal(output, net, { bun: onEngineBun(command) });
     if (!kind) return null;
     const words = BOX_STOPPED[kind](what);
     if (!left.includes(words)) left.push(words);
@@ -488,7 +500,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
     // The box itself stopped the tests (a fixed /tmp path, a browser with its own sandbox, the internet): a gap, never a failure.
-    const stopped = r.code !== 0 && !r.timedOut && !why ? boxGap(r.stdout + "\n" + r.stderr, "the tests", nat && online ? "open" : "local") : null;
+    const stopped = r.code !== 0 && !r.timedOut && !why ? boxGap(r.stdout + "\n" + r.stderr, "the tests", nat && online ? "open" : "local", det.tests.command) : null;
     // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed. When the test files do
     // have tests, something stops pytest finding them (a conftest.py, the project's pytest settings), so the tests were not
     // checked: a gap, never a pass. Not a failure either: the same may have been true before the task.
@@ -606,7 +618,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const startGap = srv.ok ? null : held(srv.output ?? srv.reason, "start")
       ?? (nat ? gap(srv.output ?? srv.reason, undefined, "the server") : null)
       ?? (det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null);
-    const startBox = srv.ok || startGap || det.start.kind !== "server" ? null : boxGap(srv.output ?? srv.reason, "the server", nat && online ? "open" : "local");
+    const startBox = srv.ok || startGap || det.start.kind !== "server" ? null : boxGap(srv.output ?? srv.reason, "the server", nat && online ? "open" : "local", det.start.command);
     if (startBox) {
       cannotTell(false, "start", "browser");
       finish("start", "skipped", startBox, t0);

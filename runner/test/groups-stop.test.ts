@@ -58,7 +58,7 @@ describe("Flow switched off ends Flow's work only", () => {
     expect(t.engine.calls[0].signal.aborted).toBe(true);
     await p;
   });
-  test("Voice off ends the error explainer and does not end a task", async () => {
+  test("Prompt help off ends the error explainer and does not end a task", async () => {
     let seen: AbortSignal | undefined;
     const explainer = (_r: unknown, signal: AbortSignal) => { seen = signal; return new Promise<never>(() => {}); };
     const t = rig([[slow("working")]], { explainer });
@@ -66,7 +66,9 @@ describe("Flow switched off ends Flow's work only", () => {
     await waitFor(() => t.engine.calls.length === 1);
     const pe = t.runner.handle({ v: 1, id: "e", type: "error.explain", req: "e1", app: "Terminal", text: "TypeError: x is not a function" } as never);
     await waitFor(() => !!seen);
-    await t.runner.stopGroup("voice");
+    await t.runner.stopGroup("secondLook");
+    expect(seen!.aborted, "Second Look going off leaves the error explainer alone").toBe(false);
+    await t.runner.stopGroup("prompt");
     expect(t.engine.calls[0].signal.aborted).toBe(false);
     expect(seen!.aborted).toBe(true);
     await pe;
@@ -86,7 +88,7 @@ describe("Flow switched off ends Flow's work only", () => {
   });
 });
 
-describe("Guide and Voice cancel only their own questions", () => {
+describe("Guide and Prompt help cancel only their own questions", () => {
   function assistRig() {
     const signals: Record<string, AbortSignal> = {};
     const images = new ImageStore();
@@ -110,9 +112,9 @@ describe("Guide and Voice cancel only their own questions", () => {
     expect(a.signals.prompt.aborted).toBe(false);
     a.svc.cancelAll();
   });
-  test("Voice off drops Prompt help, not the screen question or its screenshot", async () => {
+  test("Prompt help off drops Prompt help, not the screen question or its screenshot", async () => {
     const a = assistRig(); await ask(a);
-    a.svc.cancel("voice");
+    a.svc.cancel("prompt");
     expect(a.signals.prompt.aborted).toBe(true);
     expect(a.signals.locate.aborted).toBe(false); expect(a.images.get("s1")).toBeDefined();
     a.svc.cancelAll();
@@ -135,9 +137,21 @@ describe("what each switched group stops, as the program asks for it", () => {
     const p = parts(); stopGroupWork(["guide"], p.parts);
     expect(p.calls.sort()).toEqual(["assist:guide", "walks"]);
   });
-  test("Voice: Prompt help and the error explainer; never a task, a lesson or a screen question", () => {
+  test("Prompt help (split out of Voice): Prompt help, the error explainer and Second Look; never a task, a lesson or a screen question", () => {
+    const p = parts(); stopGroupWork(["prompt"], p.parts);
+    expect(p.calls.sort()).toEqual(["assist:prompt", "runner:prompt"]);
+  });
+  test("Voice (talking only, since the split) stops nothing of the engine's", () => {
     const p = parts(); stopGroupWork(["voice"], p.parts);
-    expect(p.calls.sort()).toEqual(["assist:voice", "runner:voice"]);
+    expect(p.calls).toEqual([]);
+  });
+  test("F28: Second Look or Draw it switched off on its own ends only its own work", () => {
+    const a = parts(); stopGroupWork(["secondLook"], a.parts);
+    expect(a.calls).toEqual(["runner:secondLook"]);
+    const b = parts(); stopGroupWork(["drawIt"], b.parts);
+    expect(b.calls).toEqual(["runner:drawIt"]);
+    const c = parts(); stopGroupWork(["flow", "drawIt"], c.parts);
+    expect(c.calls.sort()).toEqual(["browser", "runner:flow"]);
   });
   test("Files, or nothing, stops nothing here (the shell ends the conversion)", () => {
     const p = parts(); stopGroupWork(["files"], p.parts); stopGroupWork([], p.parts);

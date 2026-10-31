@@ -38,20 +38,20 @@ describe("the shipped list of settings", () => {
       ...AREA_1,
       // Area 2, checking your project (settings-checks-registry.test.ts).
       "rules.house": [], "check.mustSee": [], "check.press": "", "check.afterPress": "", "check.start": "auto", "check.skip": [], "check.time": "normal",
-      "check.install": "auto", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
+      "check.install": "ask", "check.pageSize": "desktop", "net.slow": false, "pictures.make": true, "pictures.keep": 200, "rescue.readDeployLog": true,
       // Area 3: memory, Explain and teaching (settings-memory.test.ts)
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
       "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
-      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true, "talk.dictate": true, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true, "talk.dictate": false, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
       "character.peek": true, "character.stick": true, "character.peekIdle": false,
       // Area 5: pointing, talking and other apps.
       "point.ringSeconds": 10, "point.yourTurnSeconds": 90, "point.colour": "orange", "point.lettering": "plain", "point.guesses": "softRing",
-      "point.pace": "normal", "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
-      "ph.handBack": "paste", "ph.appAnswers": null, "secondLook.on": true, "secondLook.searches": 3, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
+      "point.pace": "normal", "drawIt.on": false, "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
+      "ph.handBack": "paste", "ph.appAnswers": null, "secondLook.on": false, "secondLook.searches": 3, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
       // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
       "point.fixWith": "rescue",
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
@@ -69,17 +69,17 @@ describe("the shipped list of settings", () => {
       "showme.everydayTutor": false, "talk.shortSteps": false,
       // Groups of tools (F20, M12): every group on, the island names the working group, Home invites to tools not tried yet,
       // and nothing is tried at first (the list is set only by a real use).
-      "flow.on": true, "guide.on": true, "voice.on": true, "files.on": true, "groups.islandName": true, "groups.showUntried": true, "groups.tried": [],
+      "flow.on": true, "guide.on": true, "voice.on": true, "files.on": false, "prompt.on": true, "groups.islandName": true, "groups.showUntried": true, "groups.tried": [], "groups.cutNotice": [],
       // F21: Watch routines are on (they only matter once a watch exists), a new watch is checked every 30 minutes, once a day at
       // 9, alerts are held back 22:00 to 07:00 only when the person turns quiet hours on, and Rescue may read a failed GitHub run.
-      "watch.on": true, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
+      "watch.on": false, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
       // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
       "make.folder": "home",
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
       // M19: make it yours.
       "look.water": "ocean", "look.theme": "night", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
-      "panel.showHello": true, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
+      "panel.showHello": false, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
       // M46 (F28): Flowflow holds still unless it has news, rests in Low Power Mode, and the Show me how ring lands at once.
       "character.lively": "still", "character.restLowPower": true, "point.fly": false,

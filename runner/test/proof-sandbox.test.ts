@@ -15,7 +15,8 @@ import { runLadder, type LadderOptions } from "../src/proof/ladder.ts";
 import { memoryApprovals } from "../src/proof/approvedruns.ts";
 import { runCommand, type RunOptions, type RunResult } from "../src/proof/exec.ts";
 import { startServer } from "../src/proof/server.ts";
-import { boxArgs, boxProfile, boxWorks, SANDBOX_EXEC, type Box } from "../src/proof/box.ts";
+import { boxArgs, boxProfile, boxRefusal, boxWorks, SANDBOX_EXEC, type Box } from "../src/proof/box.ts";
+import { bunTests } from "../src/proof/practicerun.ts";
 import type { Detected } from "../src/proof/detect.ts";
 import type { BrowserResult } from "../src/proof/browser.ts";
 
@@ -390,6 +391,28 @@ describe("a refusal by the box itself is a gap, never the project's failure", ()
     expect((await check({ code: 1, stderr: "cat: /Users/someone/.ssh/id_rsa: Operation not permitted" })).verdict).toBe("failed");
     expect((await check({ code: 1, stderr: "Error: getaddrinfo ENOTFOUND localhost" })).verdict).toBe("failed");
     expect((await check({ code: 1, stderr: BOX_SAID[0][1] }, { box: false, askScripts: async () => true })).verdict).toBe("failed");
+  });
+  test("the engine's own Bun says ECONNREFUSED where Node says EPERM: on Bun, an address on the internet is the box's gap; a local one stays a failure", async () => {
+    const said = "error: connect ECONNREFUSED 192.0.2.1:80";
+    expect(boxRefusal(said, "local", { bun: true })).toBe("net");
+    expect(boxRefusal(said, "local")).toBeNull();
+    expect(boxRefusal(said, "open", { bun: true })).toBeNull();
+    expect(boxRefusal("error: connect ECONNREFUSED 127.0.0.1:3000", "local", { bun: true })).toBeNull();
+    expect(boxRefusal("connect ECONNREFUSED ::1:3000", "local", { bun: true })).toBeNull();
+    // Through the ladder: the tests command is a practice's on the engine's Bun.
+    const BUN = "/Applications/Example.app/Contents/Resources/engine/bin/bun";
+    const onBun = (stderr: string) => check({ code: 1, stderr }, { detect: () => det(bunTests(BUN)), run: (async (c: string) => (c === bunTests(BUN) ? res({ code: 1, stderr }) : res())) as never });
+    expect((await onBun(said)).verdict).toBe("passed_with_gaps");
+    expect((await onBun("error: connect ECONNREFUSED 127.0.0.1:3000")).verdict).toBe("failed");
+    // The same words from a command that is not on the engine's Bun stay the project's own failure.
+    expect((await check({ code: 1, stderr: said })).verdict).toBe("failed");
+  });
+  test.skipIf(!HAS_BOX)("on this Mac: Bun's real words for a connection the box refused are read as the box's", async () => {
+    const w = world();
+    put(w.project, { "c.js": `const s = require("node:net").connect(80, "192.0.2.1"); s.on("connect", () => { console.log("connected"); process.exit(0); }); s.on("error", (e) => { console.error(String(e)); process.exit(3); }); setTimeout(() => { console.log("timeout"); process.exit(4); }, 5000);` });
+    const out = await boxed(w.project, w.home, `${JSON.stringify(process.execPath)} c.js`);
+    expect(out.code).toBe(3);
+    expect(boxRefusal(out.stdout + "\n" + out.stderr, "local", { bun: true })).toBe("net");
   });
   test.skipIf(!HAS_BOX)("on this Mac: a test that writes a hard coded /tmp path is refused there and said as a gap", async () => {
     const w = world();

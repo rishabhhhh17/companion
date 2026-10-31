@@ -77,12 +77,14 @@ describe("pages it found", () => {
 });
 
 describe("Home and the groups", () => {
-  test("its card opens Now and must show; it lights the Voice group while it reads and thinks; a real answer marks it tried", () => {
+  test("its card opens Now and must show; it lights the Prompt help group while it reads and thinks; a real answer marks it tried", () => {
     expect(need(thinking())).toBeNull();
     expect(need(run([stage("reading", { app: "ChatGPT" })]))).toMatchObject({ tab: "now", mustShow: true, why: S.slTitle });
     expect(need(reduce(thinking(), result() as never))).toMatchObject({ tab: "now" });
-    expect(activeGroup(thinking())).toBe("voice");
-    expect(usedBy({ type: "secondlook.result", ok: true })).toEqual(["secondLook"]);
+    expect(activeGroup(thinking())).toBe("prompt");
+    // F28: Second Look starts off; a use counts once it is turned on.
+    expect(usedBy({ type: "secondlook.result", ok: true }, { read: (k) => (k === "secondLook.on" ? true : undefined) })).toEqual(["secondLook"]);
+    expect(usedBy({ type: "secondlook.result", ok: true })).toEqual([]);
     expect(usedBy({ type: "secondlook.result", ok: false })).toEqual([]);
   });
   test("the shared protocol fixtures are answers the card can show", () => {

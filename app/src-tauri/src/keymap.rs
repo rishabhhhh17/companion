@@ -6,7 +6,13 @@
 //! nothing reads key events and nothing asks for Input Monitoring (rule 8). A modifier alone, a double tap or the Fn key
 //! are not possible, and no list here has one.
 //!
-//! The usual keys are the ones Companion always had. Each job also has a short list a person can pick from in Settings:
+//! F28: only four jobs have keys by usual: Point at the problem (Fix it), hold to talk, Prompt help and Stop everything,
+//! plus use a suggestion, which works only while a Prompt help suggestion shows. The other five (open Home, Show me how,
+//! explain an error, Second Look, type by voice) keep their own suggested keys (`SUGGESTED`, first on their list) and have
+//! no keys until the person picks some in Settings. An install from before F28 keeps every key the person picked; only a
+//! job still on its old usual keys loses them, and Settings says so once, calmly (`dropped_by_new_usual`).
+//!
+//! Each job also has a short list a person can pick from in Settings:
 //! a letter job its own letter with Shift added, or one of a few spare letters no job uses by default, all with Control,
 //! Option and Command; hold to talk its own two key list (talkkeys.rs). No two jobs may share keys. The spare letters sit
 //! in the same place on QWERTY, QWERTZ and AZERTY keyboards (the hot key service names a key by its place, not its label).
@@ -166,8 +172,9 @@ impl Action {
     pub fn armed_only(self) -> bool { self == Action::Accept }
 }
 
-/// Each job's usual keys, the ones Companion always had. hotkeys.test.ts reads this table and checks every hint against it.
-pub const DEFAULTS: [(Action, Chord); N] = [
+/// Each job's own suggested keys, the ones Companion always had: first on its list, and the usual keys of the jobs that
+/// have keys by usual. hotkeys.test.ts reads this table and checks every hint against it.
+pub const SUGGESTED: [(Action, Chord); N] = [
     (Action::Card, Chord::new(CONTROL | OPTION | COMMAND, Key::K)),
     (Action::Problem, Chord::new(CONTROL | OPTION | COMMAND, Key::F)),
     (Action::ShowMe, Chord::new(CONTROL | OPTION | COMMAND, Key::S)),
@@ -181,17 +188,28 @@ pub const DEFAULTS: [(Action, Chord); N] = [
     (Action::Dictate, Chord::new(OPTION | SHIFT, Key::Space)),
     (Action::Stop, Chord::new(CONTROL | OPTION | COMMAND, Key::X)),
 ];
-pub fn default(a: Action) -> Chord { DEFAULTS[a.index()].1 }
+pub const fn suggested(a: Action) -> Chord { SUGGESTED[a as usize].1 }
+/// F28: the jobs that have keys by usual. Every other job has none until the person picks some.
+pub const USUAL: [Action; 5] = [Action::Problem, Action::Read, Action::Accept, Action::Talk, Action::Stop];
+const fn has_usual(a: Action) -> bool { let mut i = 0; while i < USUAL.len() { if USUAL[i] as usize == a as usize { return true; } i += 1; } false }
+/// Each job's usual keys: its suggested keys for the four jobs of F28 and use a suggestion, none for the others.
+pub const DEFAULTS: [(Action, Option<Chord>); N] = {
+    let mut t = [(Action::Card, None); N];
+    let mut i = 0;
+    while i < N { let a = SUGGESTED[i].0; t[i] = (a, if has_usual(a) { Some(SUGGESTED[i].1) } else { None }); i += 1; }
+    t
+};
+pub fn default(a: Action) -> Option<Chord> { DEFAULTS[a.index()].1 }
 
 /// The spare letters every letter job may pick, none of them a job's usual letter. Each is in the same place on QWERTY,
 /// QWERTZ and AZERTY keyboards.
 pub const SPARE: [Key; 6] = [Key::I, Key::J, Key::L, Key::O, Key::P, Key::U];
 
-/// The short list a job's keys can be picked from, its usual keys first. Hold to talk's own list is in talkkeys.rs.
+/// The short list a job's keys can be picked from, its suggested keys first. Hold to talk's own list is in talkkeys.rs.
 pub fn choices(a: Action) -> Vec<Chord> {
     if a == Action::Talk { return crate::talkkeys::CHOICES.to_vec(); }
     if a == Action::Dictate { return crate::talkkeys::DICTATE_CHOICES.to_vec(); }
-    let d = default(a);
+    let d = suggested(a);
     let mut v = vec![d, Chord::new(d.mods | SHIFT, d.key)];
     v.extend(SPARE.iter().map(|k| Chord::new(LETTER, *k)));
     v
@@ -217,13 +235,16 @@ pub fn custom_ok(c: Chord) -> bool { why_not(c).is_none() }
 /// May this chord be a job's keys: on its short list, or one the person picked that passes `why_not`.
 pub fn allowed(a: Action, c: Chord) -> bool { choices(a).contains(&c) || custom_ok(c) }
 
-/// The keys every job uses, in the order of `ACTIONS`.
+/// The keys every job is to use, in the order of `ACTIONS`: none for a job with no keys (F28: not picked yet).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Map(pub [Chord; N]);
+pub struct Map(pub [Option<Chord>; N]);
 impl Map {
-    pub const DEFAULT: Map = { let mut m = [DEFAULTS[0].1; N]; let mut i = 0; while i < N { m[i] = DEFAULTS[i].1; i += 1; } Map(m) };
-    pub fn get(&self, a: Action) -> Chord { self.0[a.index()] }
-    pub fn with(mut self, a: Action, c: Chord) -> Map { self.0[a.index()] = c; self }
+    pub const DEFAULT: Map = { let mut m = [None; N]; let mut i = 0; while i < N { m[i] = DEFAULTS[i].1; i += 1; } Map(m) };
+    /// Every job on its own suggested keys: the usual keys from before F28.
+    pub const EVERY: Map = { let mut m = [None; N]; let mut i = 0; while i < N { m[i] = Some(SUGGESTED[i].1); i += 1; } Map(m) };
+    pub fn get(&self, a: Action) -> Option<Chord> { self.0[a.index()] }
+    pub fn with(mut self, a: Action, c: Chord) -> Map { self.0[a.index()] = Some(c); self }
+    pub fn without(mut self, a: Action) -> Map { self.0[a.index()] = None; self }
 }
 /// What each job uses right now (registered, or for use a suggestion, armed while a result shows), none when another app
 /// holds its keys.
@@ -237,12 +258,12 @@ pub fn registered(a: Action, using: Option<Chord>, armed: bool) -> Option<Chord>
 /// Every other job's keys, in use and picked (they differ after a fall back): Companion's own, so never offered to `a`,
 /// never touched for it, and never saved for it (two jobs on the same keys would be a damaged file at the next launch).
 pub fn others(a: Action, using: &Using, picked: &Map) -> Vec<(Action, Chord)> {
-    ACTIONS.into_iter().filter(|b| *b != a).flat_map(|b| [using[b.index()], Some(picked.get(b))].into_iter().flatten().map(move |c| (b, c))).collect()
+    ACTIONS.into_iter().filter(|b| *b != a).flat_map(|b| [using[b.index()], picked.get(b)].into_iter().flatten().map(move |c| (b, c))).collect()
 }
 
 /// Every job whose keys another job also has.
 pub fn clashes(m: &Map) -> Vec<Action> {
-    ACTIONS.into_iter().filter(|a| ACTIONS.iter().any(|b| b != a && m.get(*b) == m.get(*a))).collect()
+    ACTIONS.into_iter().filter(|a| m.get(*a).is_some() && ACTIONS.iter().any(|b| b != a && m.get(*b) == m.get(*a))).collect()
 }
 
 /// The file, in Companion's own folder.
@@ -253,7 +274,14 @@ pub const OLD_TALK_FILE: &str = "talk-keys.json";
 /// What was read: the keys to use, and whether the file was damaged (the person is then told once, at launch).
 pub fn parse(text: Option<&str>, old_talk: Option<&str>) -> (Map, bool) {
     let on_list = |a: Action, v: Option<&Value>| v.and_then(Value::as_str).and_then(from_id).filter(|c| choices(a).contains(c));
-    let picked_ok = |a: Action, v: Option<&Value>| v.and_then(Value::as_str).and_then(from_id).filter(|c| allowed(a, *c));
+    // A job's entry: keys on its list or picked within the rules, or null for no keys at all (never Stop everything's).
+    let picked_ok = |a: Action, v: Option<&Value>| -> Option<Option<Chord>> {
+        match v {
+            Some(Value::Null) if a != Action::Stop => Some(None),
+            // Never another job's own suggested keys (as Change refuses them): each job can always be given its own.
+            _ => v.and_then(Value::as_str).and_then(from_id).filter(|c| allowed(a, *c) && !SUGGESTED.iter().any(|(b, d)| *b != a && d == c)).map(Some),
+        }
+    };
     let Some(text) = text else {
         // Nothing saved yet: hold to talk's keys from before, if they were picked. That file never said anything when it
         // could not be read, and still does not.
@@ -267,13 +295,13 @@ pub fn parse(text: Option<&str>, old_talk: Option<&str>) -> (Map, bool) {
     // A job this version does not know (a newer Companion's) is left alone.
     for a in ACTIONS {
         let Some(entry) = keys.get(a.id()) else { continue };
-        match picked_ok(a, Some(entry)) { Some(c) => m = m.with(a, c), None => damaged = true }
+        match picked_ok(a, Some(entry)) { Some(c) => m.0[a.index()] = c, None => damaged = true }
     }
     // No two jobs on the same keys: each goes back to its own (no job's usual keys are on another job's list, tested).
     let clash = clashes(&m);
     if !clash.is_empty() {
         damaged = true;
-        for a in clash { m = m.with(a, default(a)); }
+        for a in clash { m.0[a.index()] = default(a); }
         if !clashes(&m).is_empty() { return (Map::DEFAULT, true); }
     }
     (m, damaged)
@@ -289,10 +317,40 @@ pub fn saved_text(r: std::io::Result<Vec<u8>>) -> Option<String> {
         Ok(b) => Some(String::from_utf8(b).unwrap_or_default()),
     }
 }
-/// What is written: only the jobs whose keys differ from the usual ones.
+/// What is written: only the jobs whose keys differ from the usual ones (null for a job whose usual keys were taken away).
 pub fn to_json(m: &Map) -> Value {
-    let keys: serde_json::Map<String, Value> = ACTIONS.iter().filter(|a| m.get(**a) != default(**a)).map(|a| (a.id().to_string(), json!(id(m.get(*a))))).collect();
+    let keys: serde_json::Map<String, Value> = ACTIONS.iter().filter(|a| m.get(**a) != default(**a)).map(|a| (a.id().to_string(), m.get(*a).map_or(Value::Null, |c| json!(id(c))))).collect();
     json!({ "keys": keys })
+}
+
+/// Which usual keys the saved file was written against: 2 since F28 (four jobs with keys). A file without it, or no file
+/// at all in a Companion that was used before, is from before.
+pub const USUAL_VERSION: u64 = 2;
+/// The whole saved file: the keys, which usual keys they were written against, and the jobs whose old usual keys F28 took
+/// away (said once in Settings, until the person has seen it).
+pub fn file_json(m: &Map, dropped: &[Action]) -> Value {
+    let mut v = to_json(m);
+    v["usual"] = json!(USUAL_VERSION);
+    if !dropped.is_empty() { v["dropped"] = json!(dropped.iter().map(|a| a.id()).collect::<Vec<_>>()); }
+    v
+}
+/// Whether the saved file was written against F28's usual keys.
+pub fn on_new_usual(text: Option<&str>) -> bool {
+    text.and_then(|t| serde_json::from_str::<Value>(t).ok()).and_then(|v| v.get("usual").and_then(Value::as_u64)).is_some_and(|n| n >= USUAL_VERSION)
+}
+/// The jobs F28 took keys from in a Companion that was used before (`used_before`: anything of it was on this Mac): the
+/// jobs that had keys by usual before and have none now, and that the person never picked keys for (no entry in the
+/// file). A key the person picked is never taken. Nothing for a new Companion, or a file already on the new usual keys,
+/// whose own list of what was taken (still to be seen) is read back as it is.
+pub fn dropped_by_new_usual(text: Option<&str>, used_before: bool) -> Vec<Action> {
+    let v: Option<Value> = text.and_then(|t| serde_json::from_str(t).ok());
+    if on_new_usual(text) {
+        let listed = v.as_ref().and_then(|v| v.get("dropped")).and_then(Value::as_array).cloned().unwrap_or_default();
+        return ACTIONS.into_iter().filter(|a| default(*a).is_none() && listed.iter().any(|x| x.as_str() == Some(a.id()))).collect();
+    }
+    if !used_before && text.is_none() { return vec![]; }
+    let keys = v.as_ref().and_then(|v| v.get("keys")).and_then(Value::as_object);
+    ACTIONS.into_iter().filter(|a| default(*a).is_none() && !keys.is_some_and(|k| k.contains_key(a.id()))).collect()
 }
 
 /// How a job's keys started at launch.
@@ -304,16 +362,20 @@ pub enum Started {
     FellBack { picked: Chord, using: Chord },
     /// Another app holds the keys the person expects (and the usual ones too): the job has no keys until they pick.
     Taken(Chord),
+    /// F28: no keys picked for this job, and none by usual. Nothing is tried, and nothing is said at launch.
+    NoKeys,
 }
 impl Started {
-    pub fn using(&self) -> Option<Chord> { match self { Started::Ready(c) => Some(*c), Started::FellBack { using, .. } => Some(*using), Started::Taken(_) => None } }
-    pub fn picked(&self) -> Chord { match self { Started::Ready(c) | Started::Taken(c) => *c, Started::FellBack { picked, .. } => *picked } }
+    pub fn using(&self) -> Option<Chord> { match self { Started::Ready(c) => Some(*c), Started::FellBack { using, .. } => Some(*using), Started::Taken(_) | Started::NoKeys => None } }
+    pub fn picked(&self) -> Option<Chord> { match self { Started::Ready(c) | Started::Taken(c) => Some(*c), Started::FellBack { picked, .. } => Some(*picked), Started::NoKeys => None } }
 }
 
-/// The two tries every job gets: the keys picked, else the usual ones. Nothing else is tried behind the person's back.
-fn try_keys(p: Chord, d: Chord, mut register: impl FnMut(Chord) -> bool) -> Started {
+/// The two tries every job gets: the keys picked, else the usual ones. Nothing else is tried behind the person's back,
+/// and a job with no keys picked tries nothing.
+fn try_keys(p: Option<Chord>, d: Option<Chord>, mut register: impl FnMut(Chord) -> bool) -> Started {
+    let Some(p) = p else { return Started::NoKeys };
     if register(p) { Started::Ready(p) }
-    else if p != d && register(d) { Started::FellBack { picked: p, using: d } }
+    else if let Some(d) = d.filter(|d| *d != p && register(*d)) { Started::FellBack { picked: p, using: d } }
     else { Started::Taken(p) }
 }
 
@@ -344,7 +406,7 @@ pub fn start_held(picked: &Map, held: &[bool; N], mut register: impl FnMut(Actio
 /// every try fails: then only the button and Esc work, and the result names no keys.
 pub fn arm(a: Action, using: Option<Chord>, picked: &Map, mut register: impl FnMut(Chord) -> bool) -> Option<Chord> {
     let mut tried: Vec<Chord> = vec![];
-    for c in [using, Some(picked.get(a)), Some(default(a))].into_iter().flatten() {
+    for c in [using, picked.get(a), default(a)].into_iter().flatten() {
         if tried.contains(&c) { continue; }
         tried.push(c);
         if register(c) { return Some(c); }
@@ -404,7 +466,7 @@ pub fn free(a: Action, current: Option<Chord>, others: &[(Action, Chord)], mut r
 /// What the page is told about every job: the keys used now (none when another app holds them) and the ones picked.
 pub fn state_json(using: &Using, picked: &Map) -> Value {
     let used: serde_json::Map<String, Value> = ACTIONS.iter().map(|a| (a.id().to_string(), using[a.index()].map_or(Value::Null, |c| json!(id(c))))).collect();
-    let chosen: serde_json::Map<String, Value> = ACTIONS.iter().map(|a| (a.id().to_string(), json!(id(picked.get(*a))))).collect();
+    let chosen: serde_json::Map<String, Value> = ACTIONS.iter().map(|a| (a.id().to_string(), picked.get(*a).map_or(Value::Null, |c| json!(id(c))))).collect();
     json!({ "using": used, "picked": chosen })
 }
 /// What the page is told when Change is pressed: the list, which can be pressed, and which other job has the others.
@@ -438,8 +500,9 @@ pub fn switch(
     register: impl FnOnce(Chord) -> bool, save: impl FnOnce(&Map) -> bool, mut unregister: impl FnMut(Chord),
 ) -> Result<Map, NotChanged> {
     if !choices(a).contains(&wanted) { if let Some(why) = why_not(wanted) { return Err(why); } }
-    // Another job's keys, in use or picked, and every other job's usual keys: Companion's own, even while that job has others.
-    if others.iter().any(|(_, c)| *c == wanted) || DEFAULTS.iter().any(|(b, d)| *b != a && *d == wanted) { return Err(NotChanged::InUse); }
+    // Another job's keys, in use or picked, and every other job's suggested keys: Companion's own, even while that job has
+    // others or none yet (so each job can always be given its own).
+    if others.iter().any(|(_, c)| *c == wanted) || SUGGESTED.iter().any(|(b, d)| *b != a && *d == wanted) { return Err(NotChanged::InUse); }
     let next = picked.with(a, wanted);
     if current == Some(wanted) { return if save(&next) { Ok(next) } else { Err(NotChanged::NotSaved) }; }
     if !register(wanted) { return Err(NotChanged::Taken); }
@@ -454,28 +517,34 @@ pub fn switch(
 pub struct Reset { pub picked: Map, pub using: Using, pub kept: Vec<Action> }
 /// Settings: every job back to its usual keys. `registered` is what is registered for each job now (use a suggestion
 /// only while a result shows), `keep` whether a job's keys stay registered after. A job whose usual keys another app
-/// holds keeps what it has (so Stop everything keeps working keys). Saved once, only if every new chord worked; if saving
-/// fails, every new chord is let go and nothing changes.
+/// holds keeps what it has (so Stop everything keeps working keys). A job with no usual keys (F28) has none after: what
+/// it had is let go. Saved once, only if every new chord worked; if saving fails, every new chord is let go and nothing
+/// changes.
 pub fn reset(
     picked: &Map, using: &Using, registered: &Using, keep: impl Fn(Action) -> bool,
     mut register: impl FnMut(Chord) -> bool, save: impl FnOnce(&Map) -> bool, mut unregister: impl FnMut(Chord),
 ) -> Result<Reset, NotChanged> {
-    let (mut next, mut now, mut kept, mut fresh) = (*picked, *using, vec![], vec![]);
+    let (mut next, mut now, mut kept, mut fresh, mut cleared) = (*picked, *using, vec![], vec![], vec![]);
     for a in ACTIONS {
-        let (d, i) = (default(a), a.index());
-        if picked.get(a) == d && using[i] == Some(d) { continue; }
+        let i = a.index();
+        let Some(d) = default(a) else {
+            if picked.get(a).is_some() || using[i].is_some() { next = next.without(a); now[i] = None; cleared.push(a); }
+            continue;
+        };
+        if picked.get(a) == Some(d) && using[i] == Some(d) { continue; }
         // Already on its usual keys after a fall back: only the choice that failed is forgotten.
         if registered[i] == Some(d) { next = next.with(a, d); now[i] = Some(d); continue; }
         if register(d) { fresh.push(a); next = next.with(a, d); now[i] = Some(d); } else { kept.push(a); }
     }
     if next != *picked && !save(&next) {
-        for a in &fresh { unregister(default(*a)); }
+        for a in &fresh { if let Some(d) = default(*a) { unregister(d); } }
         return Err(NotChanged::NotSaved);
     }
     for a in fresh {
-        if !keep(a) { unregister(default(a)); }
+        if !keep(a) { if let Some(d) = default(a) { unregister(d); } }
         if let Some(old) = registered[a.index()] { unregister(old); }
     }
+    for a in cleared { if let Some(old) = registered[a.index()] { unregister(old); } }
     Ok(Reset { picked: next, using: now, kept })
 }
 
@@ -491,16 +560,20 @@ mod tests {
     const OPT_SPACE: Chord = Chord::new(OPTION, Key::Space);
     const OPT_RETURN: Chord = Chord::new(OPTION, Key::Return);
     const CTRL_RETURN: Chord = Chord::new(CONTROL, Key::Return);
+    // Most tests here are about how the keys work, with every job given keys: `Map::EVERY`, the usual keys from before
+    // F28, and `old(a)`, a job's own suggested keys. The F28 tests (at the end) use the usual keys as they are now.
+    fn old(a: Action) -> Chord { suggested(a) }
 
     #[test]
     fn the_usual_keys_are_exactly_the_ones_companion_always_had() {
         let three = Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER;
         for (a, code) in [(Card, Code::KeyK), (Problem, Code::KeyF), (ShowMe, Code::KeyS), (Read, Code::KeyR), (Accept, Code::KeyA), (Explain, Code::KeyE), (SecondLook, Code::KeyC), (Stop, Code::KeyX)] {
-            assert_eq!(shortcut(default(a)), Shortcut::new(Some(three), code), "{a:?}");
+            assert_eq!(shortcut(old(a)), Shortcut::new(Some(three), code), "{a:?}");
         }
-        assert_eq!(shortcut(default(Talk)), Shortcut::new(Some(Modifiers::ALT), Code::Space));
-        for (i, (a, c)) in DEFAULTS.iter().enumerate() { assert_eq!(*a, ACTIONS[i]); assert_eq!(a.index(), i); assert_eq!(Map::DEFAULT.get(*a), *c); }
-        assert!(clashes(&Map::DEFAULT).is_empty(), "the usual keys are all different");
+        assert_eq!(shortcut(old(Talk)), Shortcut::new(Some(Modifiers::ALT), Code::Space));
+        for (i, (a, c)) in SUGGESTED.iter().enumerate() { assert_eq!(*a, ACTIONS[i]); assert_eq!(a.index(), i); assert_eq!(Map::EVERY.get(*a), Some(*c)); }
+        for (i, (a, c)) in DEFAULTS.iter().enumerate() { assert_eq!(*a, ACTIONS[i]); assert_eq!(Map::DEFAULT.get(*a), *c); assert_eq!(c.is_some(), USUAL.contains(a), "{a:?}"); }
+        assert!(clashes(&Map::EVERY).is_empty(), "the suggested keys are all different");
     }
     #[test]
     fn every_job_has_its_own_id_and_reads_back() {
@@ -530,7 +603,7 @@ mod tests {
     fn every_choice_is_a_chord_never_a_modifier_alone_never_fn_and_each_list_is_short() {
         for a in ACTIONS {
             let list = choices(a);
-            assert_eq!(list[0], default(a), "{a:?}: the usual keys come first");
+            assert_eq!(list[0], old(a), "{a:?}: the usual keys come first");
             assert!(list.len() <= 8, "{a:?}: a short list");
             let uniq: std::collections::HashSet<_> = list.iter().collect();
             assert_eq!(uniq.len(), list.len(), "{a:?}");
@@ -548,11 +621,11 @@ mod tests {
         assert_eq!(choices(Card), vec![k(Key::K), shift(Key::K), k(Key::I), k(Key::J), k(Key::L), k(Key::O), k(Key::P), k(Key::U)]);
         assert_eq!(choices(Stop), vec![k(Key::X), shift(Key::X), k(Key::I), k(Key::J), k(Key::L), k(Key::O), k(Key::P), k(Key::U)]);
         assert_eq!(choices(Talk), vec![OPT_SPACE, OPT_RETURN, CTRL_RETURN]);
-        for s in SPARE { assert!(DEFAULTS.iter().all(|(_, d)| d.key != s), "{s:?} is nobody's usual letter"); }
+        for s in SPARE { assert!(SUGGESTED.iter().all(|(_, d)| d.key != s), "{s:?} is nobody's own letter"); }
     }
     #[test]
     fn a_jobs_usual_keys_are_on_no_other_jobs_list_so_falling_back_never_takes_another_jobs_keys() {
-        for a in ACTIONS { for b in ACTIONS { if a != b { assert!(!choices(b).contains(&default(a)), "{a:?}'s usual keys on {b:?}'s list"); } } }
+        for a in ACTIONS { for b in ACTIONS { if a != b { assert!(!choices(b).contains(&old(a)), "{a:?}'s usual keys on {b:?}'s list"); } } }
     }
 
     #[test]
@@ -635,17 +708,17 @@ mod tests {
     #[test]
     fn at_launch_use_a_suggestions_keys_are_only_tried_and_let_go_at_once_and_every_other_jobs_stay() {
         // T11: Control, Option, Command and A are taken from other apps only while a Prompt help result shows.
-        let (s, _, gone) = ask_and_let_go(&[], &Map::DEFAULT);
+        let (s, _, gone) = ask_and_let_go(&[], &Map::EVERY);
         assert_eq!(s[Accept.index()], Started::Ready(k(Key::A)), "tried, so Settings and the first result know they are free");
         assert_eq!(gone, vec![k(Key::A)], "only use a suggestion's keys are let go");
         // Picked keys another app holds: the usual ones are tried and let go; the ones that failed were never taken.
-        let (s, _, gone) = ask_and_let_go(&[k(Key::U)], &Map::DEFAULT.with(Accept, k(Key::U)));
+        let (s, _, gone) = ask_and_let_go(&[k(Key::U)], &Map::EVERY.with(Accept, k(Key::U)));
         assert_eq!(s[Accept.index()], Started::FellBack { picked: k(Key::U), using: k(Key::A) });
         assert_eq!(gone, vec![k(Key::A)]);
-        let (_, _, gone) = ask_and_let_go(&[], &Map::DEFAULT.with(Accept, k(Key::U)).with(Card, k(Key::J)));
+        let (_, _, gone) = ask_and_let_go(&[], &Map::EVERY.with(Accept, k(Key::U)).with(Card, k(Key::J)));
         assert_eq!(gone, vec![k(Key::U)]);
         // Taken altogether: nothing to let go.
-        let (s, _, gone) = ask_and_let_go(&[k(Key::A)], &Map::DEFAULT);
+        let (s, _, gone) = ask_and_let_go(&[k(Key::A)], &Map::EVERY);
         assert_eq!(s[Accept.index()], Started::Taken(k(Key::A))); assert!(gone.is_empty(), "{gone:?}");
     }
 
@@ -659,7 +732,7 @@ mod tests {
     #[test]
     fn what_is_registered_for_use_a_suggestion_is_nothing_while_no_result_shows() {
         for a in ACTIONS {
-            let c = default(a);
+            let c = old(a);
             assert_eq!(registered(a, Some(c), true), Some(c), "{a:?}");
             assert_eq!(registered(a, Some(c), false), (a != Accept).then_some(c), "{a:?}");
             assert_eq!(registered(a, None, true), None); assert_eq!(registered(a, None, false), None);
@@ -668,7 +741,7 @@ mod tests {
     #[test]
     fn every_other_jobs_keys_in_use_and_picked_are_companions_own_and_never_the_jobs_own() {
         // Show me how fell back to its usual keys (J taken at launch); hold to talk has none; Read picked L.
-        let picked = Map::DEFAULT.with(ShowMe, k(Key::J)).with(Read, k(Key::L));
+        let picked = Map::EVERY.with(ShowMe, k(Key::J)).with(Read, k(Key::L));
         let mut using = all_used(); using[Read.index()] = Some(k(Key::L)); using[Talk.index()] = None;
         let o = others(Card, &using, &picked);
         assert!(o.iter().all(|(b, _)| *b != Card), "{o:?}");
@@ -692,8 +765,8 @@ mod tests {
     }
     #[test]
     fn a_result_takes_the_use_keys_in_use_and_nothing_else_when_they_are_free() {
-        assert_eq!(try_arm(Some(k(Key::A)), &Map::DEFAULT, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
-        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        assert_eq!(try_arm(Some(k(Key::A)), &Map::EVERY, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
+        let picked = Map::EVERY.with(Accept, k(Key::U));
         assert_eq!(try_arm(Some(k(Key::U)), &picked, &[]), (Some(k(Key::U)), vec![k(Key::U)]));
         // After a fall back at launch the usual keys are in use, and stay so while they work.
         assert_eq!(try_arm(Some(k(Key::A)), &picked, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
@@ -701,52 +774,57 @@ mod tests {
     #[test]
     fn use_keys_another_app_held_at_launch_are_tried_again_for_each_result_picked_first_then_the_usual_ones() {
         // Another app held A when Companion opened and has let go since: the keys work from the next result on.
-        assert_eq!(try_arm(None, &Map::DEFAULT, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
-        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        assert_eq!(try_arm(None, &Map::EVERY, &[]), (Some(k(Key::A)), vec![k(Key::A)]));
+        let picked = Map::EVERY.with(Accept, k(Key::U));
         assert_eq!(try_arm(None, &picked, &[]), (Some(k(Key::U)), vec![k(Key::U)]));
         assert_eq!(try_arm(None, &picked, &[k(Key::U)]), (Some(k(Key::A)), vec![k(Key::U), k(Key::A)]));
         assert_eq!(try_arm(None, &picked, &[k(Key::U), k(Key::A)]), (None, vec![k(Key::U), k(Key::A)]));
-        assert_eq!(try_arm(None, &Map::DEFAULT, &[k(Key::A)]), (None, vec![k(Key::A)]), "the usual keys are tried once");
+        assert_eq!(try_arm(None, &Map::EVERY, &[k(Key::A)]), (None, vec![k(Key::A)]), "the usual keys are tried once");
     }
     #[test]
     fn use_keys_another_app_took_since_launch_fall_back_the_same_way() {
-        let picked = Map::DEFAULT.with(Accept, k(Key::U));
+        let picked = Map::EVERY.with(Accept, k(Key::U));
         assert_eq!(try_arm(Some(k(Key::U)), &picked, &[k(Key::U)]), (Some(k(Key::A)), vec![k(Key::U), k(Key::A)]), "each chord tried once");
         assert_eq!(try_arm(Some(k(Key::A)), &picked, &[k(Key::A)]), (Some(k(Key::U)), vec![k(Key::A), k(Key::U)]));
-        assert_eq!(try_arm(Some(k(Key::A)), &Map::DEFAULT, &[k(Key::A)]), (None, vec![k(Key::A)]));
+        assert_eq!(try_arm(Some(k(Key::A)), &Map::EVERY, &[k(Key::A)]), (None, vec![k(Key::A)]));
     }
     #[test]
     fn at_launch_every_job_gets_its_usual_keys_when_they_are_free() {
-        let (s, asked) = ask(&[], &Map::DEFAULT);
-        assert_eq!(s, ACTIONS.map(|a| Started::Ready(default(a))));
-        assert_eq!(asked, ACTIONS.map(|a| format!("{} {}", a.id(), id(default(a)))));
+        let (s, asked) = ask(&[], &Map::EVERY);
+        assert_eq!(s, ACTIONS.map(|a| Started::Ready(old(a))));
+        assert_eq!(asked, ACTIONS.map(|a| format!("{} {}", a.id(), id(old(a)))));
     }
     #[test]
     fn at_launch_keys_another_app_holds_fall_back_to_the_usual_ones_and_stay_saved() {
-        let (s, asked) = ask(&[k(Key::J)], &Map::DEFAULT.with(ShowMe, k(Key::J)));
-        assert_eq!(s[ShowMe.index()], Started::FellBack { picked: k(Key::J), using: k(Key::S) });
-        assert_eq!(s[ShowMe.index()].using(), Some(k(Key::S))); assert_eq!(s[ShowMe.index()].picked(), k(Key::J));
-        assert_eq!(asked.iter().filter(|l| l.starts_with("showme ")).collect::<Vec<_>>(), ["showme control-option-command-j", "showme control-option-command-s"]);
+        // Prompt help has usual keys (F28): picked keys another app holds fall back to them.
+        let (s, asked) = ask(&[k(Key::J)], &Map::EVERY.with(Read, k(Key::J)));
+        assert_eq!(s[Read.index()], Started::FellBack { picked: k(Key::J), using: k(Key::R) });
+        assert_eq!(s[Read.index()].using(), Some(k(Key::R))); assert_eq!(s[Read.index()].picked(), Some(k(Key::J)));
+        assert_eq!(asked.iter().filter(|l| l.starts_with("read ")).collect::<Vec<_>>(), ["read control-option-command-j", "read control-option-command-r"]);
+        // Show me how has none by usual: keys another app holds leave it without keys, and nothing else is tried.
+        let (s, asked) = ask(&[k(Key::J)], &Map::EVERY.with(ShowMe, k(Key::J)));
+        assert_eq!(s[ShowMe.index()], Started::Taken(k(Key::J)));
+        assert_eq!(asked.iter().filter(|l| l.starts_with("showme ")).collect::<Vec<_>>(), ["showme control-option-command-j"]);
     }
     #[test]
     fn at_launch_usual_keys_another_app_holds_leave_the_job_without_keys_and_nothing_else_is_tried() {
-        let (s, asked) = ask(&[k(Key::R)], &Map::DEFAULT);
+        let (s, asked) = ask(&[k(Key::R)], &Map::EVERY);
         assert_eq!(s[Read.index()], Started::Taken(k(Key::R))); assert_eq!(s[Read.index()].using(), None);
         assert_eq!(asked.iter().filter(|l| l.starts_with("read ")).count(), 1);
-        let (s, asked) = ask(&[k(Key::J), k(Key::R)], &Map::DEFAULT.with(Read, k(Key::J)));
+        let (s, asked) = ask(&[k(Key::J), k(Key::R)], &Map::EVERY.with(Read, k(Key::J)));
         assert_eq!(s[Read.index()], Started::Taken(k(Key::J)), "named by the person's own choice");
         assert_eq!(asked.iter().filter(|l| l.starts_with("read ")).collect::<Vec<_>>(), ["read control-option-command-j", "read control-option-command-r"]);
     }
     #[test]
     fn at_launch_stop_everything_tries_its_keys_then_its_usual_ones_and_nothing_else() {
-        let (s, _) = ask(&[k(Key::L)], &Map::DEFAULT.with(Stop, k(Key::L)));
+        let (s, _) = ask(&[k(Key::L)], &Map::EVERY.with(Stop, k(Key::L)));
         assert_eq!(s[Stop.index()], Started::FellBack { picked: k(Key::L), using: k(Key::X) });
-        let (s, asked) = ask(&[k(Key::L), k(Key::X)], &Map::DEFAULT.with(Stop, k(Key::L)));
+        let (s, asked) = ask(&[k(Key::L), k(Key::X)], &Map::EVERY.with(Stop, k(Key::L)));
         assert_eq!(s[Stop.index()], Started::Taken(k(Key::L)));
         assert_eq!(asked.iter().filter(|l| l.starts_with("stop ")).collect::<Vec<_>>(), ["stop control-option-command-l", "stop control-option-command-x"]);
     }
 
-    fn ready() -> [Started; N] { ACTIONS.map(|a| Started::Ready(default(a))) }
+    fn ready() -> [Started; N] { ACTIONS.map(|a| Started::Ready(old(a))) }
     #[test]
     fn the_launch_notice_is_quiet_when_everything_works_as_picked() {
         assert_eq!(launch_notice(&ready(), false), None);
@@ -823,66 +901,71 @@ mod tests {
 
     /// Records every call a switch makes, in order.
     fn calls() -> RefCell<Vec<String>> { RefCell::new(vec![]) }
+    /// What a map holds apart from every job on its own suggested keys (these tests start from `Map::EVERY`).
+    fn from_every(m: &Map) -> Value {
+        let o: serde_json::Map<String, Value> = ACTIONS.iter().filter(|a| m.get(**a) != Some(suggested(**a))).map(|a| (a.id().to_string(), m.get(*a).map_or(Value::Null, |c| json!(id(c))))).collect();
+        Value::Object(o)
+    }
     fn try_switch(a: Action, wanted: Chord, current: Option<Chord>, keep: bool, picked: &Map, others: &[(Action, Chord)], works: bool, saves: bool) -> (Result<Map, NotChanged>, Vec<String>) {
         let log = calls();
         let r = switch(a, wanted, current, keep, picked, others,
             |c| { log.borrow_mut().push(format!("register {}", id(c))); works },
-            |m| { log.borrow_mut().push(format!("save {}", to_json(m)["keys"])); saves },
+            |m| { log.borrow_mut().push(format!("save {}", from_every(m))); saves },
             |c| log.borrow_mut().push(format!("unregister {}", id(c))));
         (r, log.into_inner())
     }
     #[test]
     fn changing_registers_the_new_keys_saves_them_then_lets_the_old_ones_go() {
-        let (r, log) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT.with(Card, k(Key::J))));
+        let (r, log) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &Map::EVERY, &[], true, true);
+        assert_eq!(r, Ok(Map::EVERY.with(Card, k(Key::J))));
         assert_eq!(log, ["register control-option-command-j", "save {\"card\":\"control-option-command-j\"}", "unregister control-option-command-k"]);
     }
     #[test]
     fn keys_another_app_holds_change_nothing_and_are_not_saved() {
-        let (r, log) = try_switch(Stop, k(Key::L), Some(k(Key::X)), true, &Map::DEFAULT, &[], false, true);
+        let (r, log) = try_switch(Stop, k(Key::L), Some(k(Key::X)), true, &Map::EVERY, &[], false, true);
         assert_eq!(r, Err(NotChanged::Taken)); assert_eq!(NotChanged::Taken.code(), "taken");
         assert_eq!(log, ["register control-option-command-l"], "Stop everything keeps its working keys");
     }
     #[test]
     fn if_the_choice_cannot_be_saved_the_new_keys_are_let_go_and_the_old_ones_stay() {
-        let (r, log) = try_switch(Stop, k(Key::L), Some(k(Key::X)), true, &Map::DEFAULT, &[], true, false);
+        let (r, log) = try_switch(Stop, k(Key::L), Some(k(Key::X)), true, &Map::EVERY, &[], true, false);
         assert_eq!(r, Err(NotChanged::NotSaved)); assert_eq!(NotChanged::NotSaved.code(), "not_saved");
         assert_eq!(log, ["register control-option-command-l", "save {\"stop\":\"control-option-command-l\"}", "unregister control-option-command-l"]);
     }
     #[test]
     fn keys_another_job_has_or_that_cannot_be_a_chord_are_refused_without_touching_anything() {
-        let (r, log) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &Map::DEFAULT, &[(ShowMe, k(Key::J))], true, true);
+        let (r, log) = try_switch(Card, k(Key::J), Some(k(Key::K)), true, &Map::EVERY, &[(ShowMe, k(Key::J))], true, true);
         assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty()); assert_eq!(NotChanged::InUse.code(), "in_use");
         // Another job's usual keys, even when that job picked others for now.
-        let (r, log) = try_switch(Card, k(Key::F), Some(k(Key::K)), true, &Map::DEFAULT.with(Problem, k(Key::J)), &[(Problem, k(Key::J))], true, true);
+        let (r, log) = try_switch(Card, k(Key::F), Some(k(Key::K)), true, &Map::EVERY.with(Problem, k(Key::J)), &[(Problem, k(Key::J))], true, true);
         assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty());
-        let (r, log) = try_switch(Card, OPT_SPACE, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
+        let (r, log) = try_switch(Card, OPT_SPACE, Some(k(Key::K)), true, &Map::EVERY, &[], true, true);
         assert_eq!(r, Err(NotChanged::NotEnoughKeys)); assert!(log.is_empty());
         assert_eq!(NotChanged::NotEnoughKeys.code(), "not_enough"); assert_eq!(NotChanged::Reserved.code(), "reserved");
     }
     #[test]
     fn picking_the_keys_already_in_use_only_saves_them() {
         // For example after a fall back: the person keeps the usual keys, and the choice that failed is forgotten.
-        let picked = Map::DEFAULT.with(ShowMe, k(Key::J));
+        let picked = Map::EVERY.with(ShowMe, k(Key::J));
         let (r, log) = try_switch(ShowMe, k(Key::S), Some(k(Key::S)), true, &picked, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT)); assert_eq!(log, ["save {}"]);
+        assert_eq!(r, Ok(Map::EVERY)); assert_eq!(log, ["save {}"]);
         let (r, _) = try_switch(ShowMe, k(Key::S), Some(k(Key::S)), true, &picked, &[], true, false);
         assert_eq!(r, Err(NotChanged::NotSaved));
     }
     #[test]
     fn a_job_without_keys_gets_them_with_nothing_to_let_go() {
-        let (r, log) = try_switch(Talk, CTRL_RETURN, None, true, &Map::DEFAULT, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT.with(Talk, CTRL_RETURN)));
+        let (r, log) = try_switch(Talk, CTRL_RETURN, None, true, &Map::EVERY, &[], true, true);
+        assert_eq!(r, Ok(Map::EVERY.with(Talk, CTRL_RETURN)));
         assert_eq!(log, ["register control-return", "save {\"talk\":\"control-return\"}"]);
     }
     #[test]
     fn use_a_suggestion_while_no_result_shows_is_only_tried_then_let_go() {
-        let (r, log) = try_switch(Accept, k(Key::U), None, false, &Map::DEFAULT, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT.with(Accept, k(Key::U))));
+        let (r, log) = try_switch(Accept, k(Key::U), None, false, &Map::EVERY, &[], true, true);
+        assert_eq!(r, Ok(Map::EVERY.with(Accept, k(Key::U))));
         assert_eq!(log, ["register control-option-command-u", "save {\"accept\":\"control-option-command-u\"}", "unregister control-option-command-u"]);
     }
 
-    fn all_used() -> Using { ACTIONS.map(|a| Some(default(a))) }
+    fn all_used() -> Using { ACTIONS.map(|a| Some(old(a))) }
     fn try_reset(picked: &Map, using: &Using, registered: &Using, held_elsewhere: &[Chord], saves: bool) -> (Result<Reset, NotChanged>, Vec<String>) {
         let log = calls();
         let r = reset(picked, using, registered, |a| keep_registered(a, false),
@@ -893,17 +976,19 @@ mod tests {
     }
     #[test]
     fn reset_puts_every_changed_job_back_to_its_usual_keys_saving_once() {
-        let picked = Map::DEFAULT.with(Card, k(Key::J)).with(Talk, OPT_RETURN);
+        // F28: the jobs with no usual keys have none after a reset; what they had is let go once the reset is saved.
+        let picked = Map::EVERY.with(Card, k(Key::J)).with(Talk, OPT_RETURN);
         let mut using = all_used(); using[Card.index()] = Some(k(Key::J)); using[Talk.index()] = Some(OPT_RETURN);
         let mut registered = using; registered[Accept.index()] = None;
         let (r, log) = try_reset(&picked, &using, &registered, &[], true);
-        assert_eq!(r, Ok(Reset { picked: Map::DEFAULT, using: all_used(), kept: vec![] }));
-        assert_eq!(log, ["register control-option-command-k", "register option-space", "save {}", "unregister control-option-command-j", "unregister option-return"]);
+        assert_eq!(r, Ok(Reset { picked: Map::DEFAULT, using: Map::DEFAULT.0, kept: vec![] }));
+        assert_eq!(log, ["register option-space", "save {}", "unregister option-return", "unregister control-option-command-j", "unregister control-option-command-s",
+            "unregister control-option-command-e", "unregister control-option-command-c", "unregister option-shift-space"]);
     }
     #[test]
     fn reset_leaves_a_job_whose_usual_keys_another_app_holds_with_what_it_has() {
         let picked = Map::DEFAULT.with(Stop, k(Key::L));
-        let mut using = all_used(); using[Stop.index()] = Some(k(Key::L));
+        let mut using = Map::DEFAULT.0; using[Stop.index()] = Some(k(Key::L));
         let (r, log) = try_reset(&picked, &using, &using, &[k(Key::X)], true);
         let r = r.unwrap();
         assert_eq!(r.kept, vec![Stop]); assert_eq!(r.picked, picked); assert_eq!(r.using[Stop.index()], Some(k(Key::L)), "Stop everything keeps working keys");
@@ -911,33 +996,38 @@ mod tests {
     }
     #[test]
     fn reset_forgets_a_choice_that_fell_back_and_turns_on_a_job_whose_usual_keys_are_free_again() {
-        let picked = Map::DEFAULT.with(ShowMe, k(Key::J));
-        let mut using = all_used(); using[Talk.index()] = None;   // fell back for Show me how; hold to talk off since launch
+        let picked = Map::DEFAULT.with(Read, k(Key::J));
+        let mut using = Map::DEFAULT.0; using[Talk.index()] = None;   // fell back for Prompt help; hold to talk off since launch
         let (r, log) = try_reset(&picked, &using, &using, &[], true);
         let r = r.unwrap();
-        assert_eq!(r.picked, Map::DEFAULT); assert_eq!(r.using, all_used()); assert!(r.kept.is_empty());
+        assert_eq!(r.picked, Map::DEFAULT); assert_eq!(r.using, Map::DEFAULT.0); assert!(r.kept.is_empty());
         assert_eq!(log, ["register option-space", "save {}"]);
     }
     #[test]
     fn reset_that_cannot_be_saved_lets_every_new_chord_go_and_changes_nothing() {
-        let picked = Map::DEFAULT.with(Card, k(Key::J));
-        let mut using = all_used(); using[Card.index()] = Some(k(Key::J));
+        let picked = Map::DEFAULT.with(Problem, k(Key::J));
+        let mut using = Map::DEFAULT.0; using[Problem.index()] = Some(k(Key::J));
         let (r, log) = try_reset(&picked, &using, &using, &[], false);
         assert_eq!(r, Err(NotChanged::NotSaved));
-        assert_eq!(log, ["register control-option-command-k", "save {}", "unregister control-option-command-k"]);
+        assert_eq!(log, ["register control-option-command-f", "save {}", "unregister control-option-command-f"]);
+        // Keys picked for a job with no usual keys are not let go when the reset cannot be saved.
+        let picked = Map::DEFAULT.with(Card, k(Key::J));
+        let mut using = Map::DEFAULT.0; using[Card.index()] = Some(k(Key::J));
+        let (r, log) = try_reset(&picked, &using, &using, &[], false);
+        assert_eq!(r, Err(NotChanged::NotSaved)); assert_eq!(log, ["save {}"]);
     }
     #[test]
     fn reset_of_use_a_suggestion_while_no_result_shows_only_tries_its_usual_keys() {
         let picked = Map::DEFAULT.with(Accept, k(Key::U));
-        let mut using = all_used(); using[Accept.index()] = Some(k(Key::U));
+        let mut using = Map::DEFAULT.0; using[Accept.index()] = Some(k(Key::U));
         let mut registered = using; registered[Accept.index()] = None;
         let (r, log) = try_reset(&picked, &using, &registered, &[], true);
-        assert_eq!(r.unwrap().using, all_used());
+        assert_eq!(r.unwrap().using, Map::DEFAULT.0);
         assert_eq!(log, ["register control-option-command-a", "save {}", "unregister control-option-command-a"]);
     }
     #[test]
     fn nothing_to_reset_touches_nothing() {
-        let (r, log) = try_reset(&Map::DEFAULT, &all_used(), &all_used(), &[], true);
+        let (r, log) = try_reset(&Map::DEFAULT, &Map::DEFAULT.0, &Map::DEFAULT.0, &[], true);
         assert_eq!(r.unwrap().kept, vec![]); assert!(log.is_empty(), "{log:?}");
     }
 
@@ -948,7 +1038,9 @@ mod tests {
         // A damaged file is written back repaired, so the person is told once; the old hold to talk file goes only after
         // the new one is written.
         let start = body("fn start_keys(");
-        assert!(start.contains("keymap::parse(") && start.contains("if damaged { let _ = save_keys(&picked); }"), "{start}");
+        assert!(start.contains("keymap::parse(") && start.contains("if damaged || rewrite { let _ = save_keys(&picked); }"), "{start}");
+        // F28: what the new usual keys took away is worked out from the file as it was read, before anything is written.
+        assert!(start.find("keymap::dropped_by_new_usual(saved.as_deref(), used_before)").unwrap() < start.find("save_keys(&picked)").unwrap(), "{start}");
         assert!(start.contains("keymap::saved_text(std::fs::read(keys_path()))"), "only a missing file is nothing saved: {start}");
         let save = body("fn save_keys(");
         assert!(save.find("write_atomic(").unwrap() < save.find("remove_file(").unwrap() && save.contains("if ok {"), "{save}");
@@ -1021,7 +1113,7 @@ mod tests {
     #[test]
     fn the_page_is_told_every_jobs_keys_now_and_picked() {
         let mut using = all_used(); using[Talk.index()] = None;
-        let v = state_json(&using, &Map::DEFAULT.with(Card, k(Key::J)));
+        let v = state_json(&using, &Map::EVERY.with(Card, k(Key::J)));
         assert_eq!(v["using"]["card"], "control-option-command-k"); assert_eq!(v["using"]["talk"], Value::Null);
         assert_eq!(v["picked"]["card"], "control-option-command-j"); assert_eq!(v["picked"]["stop"], "control-option-command-x");
         assert_eq!(v["using"].as_object().unwrap().len(), N); assert_eq!(v["picked"].as_object().unwrap().len(), N);
@@ -1081,31 +1173,31 @@ mod tests {
     #[test]
     fn a_picked_chord_is_registered_saved_and_the_old_keys_let_go_like_any_change() {
         let want = m(CONTROL | OPTION, Key::Z);
-        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT.with(Card, want)));
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::EVERY, &[], true, true);
+        assert_eq!(r, Ok(Map::EVERY.with(Card, want)));
         assert_eq!(log, ["register control-option-z", "save {\"card\":\"control-option-z\"}", "unregister control-option-command-k"]);
         // Hold to talk may take one too.
-        let (r, _) = try_switch(Talk, m(CONTROL | SHIFT, Key::M), Some(OPT_SPACE), true, &Map::DEFAULT, &[], true, true);
-        assert_eq!(r, Ok(Map::DEFAULT.with(Talk, m(CONTROL | SHIFT, Key::M))));
+        let (r, _) = try_switch(Talk, m(CONTROL | SHIFT, Key::M), Some(OPT_SPACE), true, &Map::EVERY, &[], true, true);
+        assert_eq!(r, Ok(Map::EVERY.with(Talk, m(CONTROL | SHIFT, Key::M))));
     }
     #[test]
     fn a_picked_chord_another_app_holds_or_another_job_has_changes_nothing() {
         let want = m(CONTROL | OPTION, Key::Z);
-        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT, &[], false, true);
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::EVERY, &[], false, true);
         assert_eq!(r, Err(NotChanged::Taken)); assert_eq!(log, ["register control-option-z"]);
-        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::DEFAULT.with(Read, want), &[(Read, want)], true, true);
+        let (r, log) = try_switch(Card, want, Some(k(Key::K)), true, &Map::EVERY.with(Read, want), &[(Read, want)], true, true);
         assert_eq!(r, Err(NotChanged::InUse)); assert!(log.is_empty());
     }
     #[test]
     fn a_chord_that_cannot_be_picked_never_reaches_the_keyboard_service() {
         for (c, why) in [(m(OPTION, Key::Z), NotChanged::NotEnoughKeys), (m(OPTION | SHIFT, Key::Z), NotChanged::NotEnoughKeys), (m(COMMAND | SHIFT, Key::N4), NotChanged::Reserved), (m(CONTROL | COMMAND, Key::Q), NotChanged::Reserved)] {
-            let (r, log) = try_switch(Card, c, Some(k(Key::K)), true, &Map::DEFAULT, &[], true, true);
+            let (r, log) = try_switch(Card, c, Some(k(Key::K)), true, &Map::EVERY, &[], true, true);
             assert_eq!(r, Err(why), "{}", id(c)); assert!(log.is_empty(), "{}", id(c));
         }
     }
     #[test]
     fn picked_chords_are_saved_and_read_back_and_a_file_with_a_bad_one_is_repaired() {
-        let picked = Map::DEFAULT.with(Card, m(CONTROL | OPTION, Key::Z)).with(Talk, m(CONTROL | SHIFT, Key::M));
+        let picked = Map::EVERY.with(Card, m(CONTROL | OPTION, Key::Z)).with(Talk, m(CONTROL | SHIFT, Key::M));
         assert_eq!(parse(Some(&to_json(&picked).to_string()), None), (picked, false));
         // A hand edited file is checked the same way as a change: the page is never trusted, nor the file.
         for bad in ["option-z", "option-shift-z", "command-shift-4", "control-command-q"] {
@@ -1114,5 +1206,87 @@ mod tests {
         }
         // The old hold to talk file only ever held its three presets.
         assert_eq!(parse(None, Some("{\"holdToTalk\":\"control-option-z\"}")), (Map::DEFAULT, false));
+    }
+
+    // ---- F28: four jobs with keys by usual, and an install from before keeps every key the person picked ----
+
+    fn fixture() -> Value { serde_json::from_str(include_str!("../../../protocol/fixtures/launch-cut.json")).unwrap() }
+    fn map_of(v: &Value) -> Map {
+        let mut m = Map([None; N]);
+        for a in ACTIONS { m.0[a.index()] = v[a.id()].as_str().map(|s| from_id(s).unwrap_or_else(|| panic!("{s}"))); }
+        m
+    }
+    #[test]
+    fn the_usual_keys_are_f28s_four_jobs_and_use_a_suggestion_and_the_rest_have_none() {
+        let f = fixture();
+        for (job, chord) in f["keys"]["bound"].as_object().unwrap() {
+            let a = Action::from_id(job).unwrap();
+            assert_eq!(default(a).map(id).as_deref(), chord.as_str(), "{job}");
+            assert_eq!(default(a), Some(suggested(a)), "{job}: its usual keys are its own suggested ones");
+        }
+        let unbound: Vec<&str> = f["keys"]["unbound"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+        for a in ACTIONS { assert_eq!(default(a).is_none(), unbound.contains(&a.id()), "{a:?}"); }
+        assert_eq!(unbound.len() + f["keys"]["bound"].as_object().unwrap().len(), N);
+        assert!(default(Stop).is_some() && default(Talk).is_some(), "rule 11: Stop everything always has keys by usual");
+        // A job with no keys still offers its own suggested keys first.
+        for a in ACTIONS { assert_eq!(choices(a)[0], suggested(a), "{a:?}"); }
+    }
+    #[test]
+    fn an_install_from_before_keeps_every_key_the_person_picked_and_only_old_usual_keys_go() {
+        for c in fixture()["keyMigration"].as_array().unwrap() {
+            let name = c["name"].as_str().unwrap();
+            let saved = c["saved"].as_str();
+            let old_talk = c.get("oldTalk").and_then(Value::as_str);
+            let (m, damaged) = parse(saved, old_talk);
+            assert!(!damaged, "{name}");
+            assert_eq!(m, map_of(&c["keys"]), "{name}");
+            let dropped: Vec<&str> = dropped_by_new_usual(saved, c["usedBefore"].as_bool().unwrap()).iter().map(|a| a.id()).collect();
+            let want: Vec<&str> = c["dropped"].as_array().unwrap().iter().map(|v| v.as_str().unwrap()).collect();
+            assert_eq!(dropped, want, "{name}");
+            // Written once on the new usual keys, it reads back the same and nothing more is taken.
+            let file = file_json(&m, &dropped_by_new_usual(saved, c["usedBefore"].as_bool().unwrap())).to_string();
+            assert!(on_new_usual(Some(&file)), "{name}");
+            assert_eq!(parse(Some(&file), None), (m, false), "{name}");
+            assert_eq!(dropped_by_new_usual(Some(&file), true).iter().map(|a| a.id()).collect::<Vec<_>>(), want, "{name}: still to be said");
+            let seen = file_json(&m, &[]).to_string();
+            assert!(dropped_by_new_usual(Some(&seen), true).is_empty(), "{name}: said once");
+        }
+        // Never a job that has keys by usual, and a file from before with no keys entry at all counts as nothing picked.
+        assert!(dropped_by_new_usual(Some("not json"), true).iter().all(|a| default(*a).is_none()));
+        assert!(!on_new_usual(None) && !on_new_usual(Some("{\"keys\":{}}")) && !on_new_usual(Some("{\"keys\":{},\"usual\":1}")));
+    }
+    #[test]
+    fn a_job_with_no_keys_tries_nothing_at_launch_and_the_launch_notice_says_nothing_about_it() {
+        let (s, asked) = ask(&[], &Map::DEFAULT);
+        for a in ACTIONS {
+            if default(a).is_none() { assert_eq!(s[a.index()], Started::NoKeys, "{a:?}"); assert!(!asked.iter().any(|l| l.starts_with(&format!("{} ", a.id()))), "{a:?}"); }
+            else { assert_eq!(s[a.index()], Started::Ready(default(a).unwrap()), "{a:?}"); }
+        }
+        assert_eq!(launch_notice(&s, false), None);
+        assert_eq!(Started::NoKeys.using(), None); assert_eq!(Started::NoKeys.picked(), None);
+        // Picked keys another app holds, for a job with no usual keys: it has none for now, and the notice says so.
+        let (s, _) = ask(&[k(Key::J)], &Map::DEFAULT.with(Card, k(Key::J)));
+        assert_eq!(s[Card.index()], Started::Taken(k(Key::J)));
+        assert!(launch_notice(&s, false).unwrap().contains("open the ask box"));
+    }
+    #[test]
+    fn a_job_with_no_keys_can_be_given_its_own_suggested_keys_and_no_other_job_can_take_them() {
+        let (r, log) = try_switch(ShowMe, k(Key::S), None, true, &Map::DEFAULT, &[], true, true);
+        assert_eq!(r, Ok(Map::DEFAULT.with(ShowMe, k(Key::S))));
+        assert_eq!(log[0], "register control-option-command-s");
+        // Open Home has no keys yet, but its own K is still kept for it.
+        assert_eq!(try_switch(Stop, k(Key::K), Some(k(Key::X)), true, &Map::DEFAULT, &[], true, true).0, Err(NotChanged::InUse));
+        // And with no keys, nobody clashes.
+        assert!(clashes(&Map::DEFAULT).is_empty() && clashes(&Map([None; N])).is_empty());
+    }
+    #[test]
+    fn no_keys_is_written_as_null_only_where_the_usual_keys_were_taken_away_and_never_for_stop_everything() {
+        let m = Map::DEFAULT.without(Read).with(Card, k(Key::J));
+        assert_eq!(to_json(&m), json!({ "keys": { "card": "control-option-command-j", "read": null } }));
+        assert_eq!(parse(Some(&to_json(&m).to_string()), None), (m, false));
+        assert_eq!(parse(Some("{\"keys\":{\"stop\":null}}"), None), (Map::DEFAULT, true), "Stop everything never loses its keys");
+        assert_eq!(file_json(&Map::DEFAULT, &[Card, ShowMe]), json!({ "keys": {}, "usual": 2, "dropped": ["card", "showme"] }));
+        assert_eq!(file_json(&Map::DEFAULT, &[]), json!({ "keys": {}, "usual": 2 }));
+        assert_eq!(state_json(&Map::DEFAULT.0, &Map::DEFAULT)["picked"]["card"], Value::Null);
     }
 }

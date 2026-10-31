@@ -117,7 +117,7 @@ mod tests {
         assert_eq!(keymap::id(DEFAULT), "option-space");
         assert_eq!(label(DEFAULT), "Option and Space");
         assert_eq!(shortcut(DEFAULT), Shortcut::new(Some(Modifiers::ALT), Code::Space));
-        assert_eq!(keymap::default(Action::Talk), DEFAULT);
+        assert_eq!(keymap::default(Action::Talk), Some(DEFAULT));
         assert_eq!(keymap::choices(Action::Talk), CHOICES.to_vec());
     }
     #[test]
@@ -208,7 +208,8 @@ mod tests {
     }
     #[test]
     fn the_type_keys_are_their_own_and_skip_the_language_key() {
-        assert_eq!(keymap::default(Action::Dictate), DICTATE_CHOICES[0]);
+        assert_eq!(keymap::suggested(Action::Dictate), DICTATE_CHOICES[0]);
+        assert_eq!(keymap::default(Action::Dictate), None, "F28: Type by voice has no keys until the person picks");
         assert_eq!(keymap::choices(Action::Dictate), DICTATE_CHOICES.to_vec());
         assert_eq!(label(DICTATE_CHOICES[0]), "Option, Shift and Space");
         for c in DICTATE_CHOICES {

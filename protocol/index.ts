@@ -100,7 +100,9 @@ export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; 
 export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
-export type ProblemFind = Envelope & { type: "problem.find"; project: string; agent: string };
+/** first: the first run's first check of the real project (M49): installs are set to ask (auto is held to ask), on the
+ *  usual approval card. Without it, Point at the problem never installs and never asks. */
+export type ProblemFind = Envelope & { type: "problem.find"; project: string; agent: string; first?: boolean };
 export type DiagramAsk = Envelope & { type: "diagram.ask"; project: string; question: string; problem?: { kind?: string; file?: string; line?: number; message?: string }; /** M33: a drawn picture (sketch.ts) instead of boxes and arrows. */ style?: "sketch" };
 export type ProjectInspect = Envelope & { type: "project.inspect"; project: string };
 export type ProjectInstall = Envelope & { type: "project.install"; project: string };
@@ -448,7 +450,7 @@ const COMMANDS: Record<string, Check[]> = {
   "ship.rollback": [str("project"), (m) => (m.confirm === true ? null : 'a rollback needs "confirm": true')],
   "auth.check": [],
   "doctor.check": [],
-  "problem.find": [str("project"), str("agent")],
+  "problem.find": [str("project"), str("agent"), opt("first", bool("first"))],
   "diagram.ask": [str("project"), str("question"), opt("style", oneOf("style", ["sketch"]))],
   "metrics.set": [bool("enabled")],
   "metrics.note": [str("name")],

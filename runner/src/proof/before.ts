@@ -12,6 +12,7 @@ import { changesData, detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
 import { needsDownload, serverEnv, swiftInBox } from "./native.ts";
 import { boxWorks } from "./box.ts";
+import { withPracticeBun } from "./practicerun.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
 // not be photographed for some other reason (too slow, a port in use), which says nothing about whether it worked.
@@ -32,7 +33,7 @@ export async function captureBefore(o: {
     borrowPackages(join(o.project, "node_modules"), join(dir, "node_modules"));
     borrowVenv(o.project, dir);
     if (o.signal?.aborted) return { none: "cancelled" };
-    const found = detectProject(dir);
+    const found = withPracticeBun(detectProject(dir), dir, { identity: o.project }).det;   // a practice without Node: on the engine's own Bun
     const started = withStartScript(found, dir, o.start);
     const det = started.det;
     if (!det.start) return { none: "no_page" };

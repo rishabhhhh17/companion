@@ -49,7 +49,8 @@ describe("a web search has a price, and it is counted", () => {
     expect(d.min).toBe(0);
     expect(d.max).toBe(MAX_SEARCHES);
     expect(MAX_SEARCHES).toBeLessThanOrEqual(5);
-    expect(defOf("secondLook.on")).toMatchObject({ kind: "switch", default: true });
+    // F28: off until the person turns it on in Settings.
+    expect(defOf("secondLook.on")).toMatchObject({ kind: "switch", default: false });
   });
 });
 
@@ -185,7 +186,8 @@ describe("the secondlook.check command", () => {
     const ledger = new Ledger(":memory:");
     if (o.spentAlready) ledger.add(project, o.spentAlready);
     const settings = new RunnerSettings();
-    if (o.values) settings.apply({ v: 1, id: "s", type: "settings.apply", values: o.values } as never);
+    // Second Look starts off since F28; these tests are about it switched on, unless they say otherwise.
+    settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "secondLook.on": true, ...o.values } } as never);
     const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), ledger, dailyCeilingUsd: 10, settings, ...(o.checker ? { checker: o.checker } : {}) });
     const ask = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "c1", type: "secondlook.check", req: "sl_1", app: "com.openai.chat", text: ANSWER, project, ...extra } as never);
     const answer = () => of(events, "secondlook.result");
@@ -229,14 +231,14 @@ describe("the secondlook.check command", () => {
     expect(s.answer()[0]).toMatchObject({ ok: false });
     expect(s.answer()[0].reason).toMatch(/Settings/);
   });
-  test("Stop everything ends it, and a Voice switch going off ends it too", async () => {
-    for (const how of ["stop", "voice"] as const) {
+  test("Stop everything ends it, and Prompt help or Second Look going off ends it too", async () => {
+    for (const how of ["stop", "prompt", "secondLook"] as const) {
       let signal: AbortSignal | undefined;
       const s = setup({ checker: { run: (_req, _d, sg) => { signal = sg; return new Promise((_r, no) => sg.addEventListener("abort", () => no(new Error("stopped")), { once: true })); } } });
       const p = s.ask();
       await Bun.sleep(20);
       if (how === "stop") await s.runner.handle({ v: 1, id: "x", type: "agent.interruptAll", reason: "stop" });
-      else await s.runner.stopGroup("voice");
+      else await s.runner.stopGroup(how);
       await p;
       expect(signal?.aborted, how).toBe(true);
       expect(s.answer()[0], how).toMatchObject({ ok: false, reason: "Stopped." });

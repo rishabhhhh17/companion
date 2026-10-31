@@ -9,17 +9,18 @@ import type { Model } from "./model.ts";
 import { setting, subscribe } from "./settingsStore.ts";
 import { S } from "./strings.ts";
 
-export type GroupId = "flow" | "guide" | "voice" | "files" | "core";
+export type GroupId = "flow" | "guide" | "voice" | "files" | "prompt" | "core";
 export type SwitchedId = Exclude<GroupId, "core">;
 export type Permission = "screenRecording" | "accessibility" | "microphone";
 export type Group = { id: GroupId; switch: string | null; states: string[] };
 export type Tool = {
-  id: ToolId; group: GroupId; hotkeys?: string[]; tried?: "page" | "shell"; permissions: Permission[]; settings: string[];
+  /** `switch`: the tool's own switch (F28), besides its group's. */
+  id: ToolId; group: GroupId; switch?: string; hotkeys?: string[]; tried?: "page" | "shell"; permissions: Permission[]; settings: string[];
   commands: string[]; runner: string[]; agentModes?: string[]; stays?: string[];
 };
 export type ToolId =
   | "askBox" | "engine" | "stop" | "projects" | "account" | "settings" | "memory" | "ship" | "research"
-  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "whichTask" | "watch" | "connections" | "whereWasI"
+  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "drawIt" | "whichTask" | "watch" | "connections" | "whereWasI"
   | "showMe" | "lessons" | "yourTurn" | "practice"
   | "talk" | "speak" | "promptHelp" | "errorHelp" | "secondLook" | "convert";
 
@@ -43,12 +44,18 @@ export function groupOn(g: GroupId, read: Read = setting): boolean {
   const k = switchKey(g);
   return !k || read(k) !== false;
 }
-export const toolOn = (tool: ToolId, read: Read = setting): boolean => groupOn(groupOf(tool), read);
+/** A tool is on while its group is on and its own switch (F28: Second Look, Type by voice, Draw it), if it has one, is not off. */
+export const toolOn = (tool: ToolId, read: Read = setting): boolean => {
+  const own = toolIndex.get(tool)?.switch;
+  return groupOn(groupOf(tool), read) && (!own || read(own) !== false);
+};
 export const offGroups = (read: Read = setting): SwitchedId[] => SWITCHED.filter((g) => !groupOn(g.id, read)).map((g) => g.id as SwitchedId);
+/** Every switch, a group's or a tool's own, that is off now. */
+const offSwitches = (read: Read = setting): string[] => [...offGroups(read).map((g) => switchKey(g)!), ...TOOLS.filter((t) => t.switch && read(t.switch) === false).map((t) => t.switch!)];
 
-/** Re-renders when a group is switched, and gives the reader for the groups as they are now. */
+/** Re-renders when a group or a tool's own switch is switched, and gives the reader for the groups as they are now. */
 export function useGroups(): { on: (tool: ToolId) => boolean; groupOn: (g: GroupId) => boolean } {
-  useSyncExternalStore(subscribe, () => offGroups().join(","), () => "");
+  useSyncExternalStore(subscribe, () => offSwitches().join(","), () => "");
   return { on: (t) => toolOn(t), groupOn: (g) => groupOn(g) };
 }
 
@@ -58,12 +65,14 @@ export function useGroups(): { on: (tool: ToolId) => boolean; groupOn: (g: Group
  *  group that is off is not drawn. */
 export const ASK_BUTTONS: { id: string; tool: ToolId }[] = [
   { id: "start", tool: "drive" }, { id: "plan", tool: "drive" }, { id: "rescue", tool: "rescue" }, { id: "research", tool: "research" },
-  { id: "shipCheck", tool: "ship" }, { id: "online", tool: "ship" }, { id: "showMe", tool: "showMe" }, { id: "drawIt", tool: "explain" },
+  { id: "shipCheck", tool: "ship" }, { id: "online", tool: "ship" }, { id: "showMe", tool: "showMe" }, { id: "drawIt", tool: "drawIt" },
 ];
 const OTHER_ENTRIES: { id: string; tool: ToolId }[] = [
   { id: "whichTask", tool: "whichTask" }, { id: "findProblem", tool: "findProblem" }, { id: "autoSend", tool: "talk" }, { id: "voiceTry", tool: "speak" },
   // A practice (Guide) leans on three Flow tools: its check (Point at the problem), its fix (a task) and its drawing (Draw it for me).
-  { id: "practiceFind", tool: "findProblem" }, { id: "practiceFix", tool: "drive" }, { id: "practiceWhy", tool: "explain" },
+  { id: "practiceFind", tool: "findProblem" }, { id: "practiceFix", tool: "drive" }, { id: "practiceWhy", tool: "drawIt" },
+  // Draw why on Point at the problem's result (the hero Fix it card) is Draw it for me too.
+  { id: "pointWhy", tool: "drawIt" },
 ];
 const ENTRY = new Map<string, ToolId>([...ASK_BUTTONS, ...OTHER_ENTRIES].map((b) => [b.id, b.tool]));
 export const buttonShown = (id: string, read: Read = setting): boolean => { const t = ENTRY.get(id); return !t || toolOn(t, read); };
@@ -129,7 +138,7 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
     case "proof.result": tool = ev.verdict === "passed" || ev.verdict === "passed_with_gaps" || ev.verdict === "failed" ? "proof" : null; break;
     case "checkpoint.restored": tool = "undo"; break;
     case "explain.ready": tool = "explain"; break;
-    case "diagram.ready": tool = ev.made === true ? "explain" : null; break;
+    case "diagram.ready": tool = ev.made === true ? "drawIt" : null; break;
     case "bisect.result": tool = ["found", "not_failing", "already_failing", "after_last_task", "outside_change", "unsure"].includes(String(ev.outcome)) ? "whichTask" : null; break;
     case "problem.found": tool = ev.verdict && ev.verdict !== "cancelled" ? "findProblem" : null; break;
     case "walk.step": tool = "lessons"; break;
@@ -173,7 +182,8 @@ const RUNNING = ["thinking", "working", "checking"];
 /** Which group the thing going on belongs to, or none. `drop`: a file is being converted. */
 export function activeGroup(m: Model, drop = false): GroupId | null {
   if (m.voice && ["listening", "transcribing"].includes(m.voice.stage)) return "voice";
-  if ((m.ph && ["reading", "thinking"].includes(m.ph.stage)) || (m.eh && ["reading", "thinking"].includes(m.eh.stage)) || (m.sl && ["reading", "thinking"].includes(m.sl.stage))) return "voice";
+  // The keys that read text you select: Prompt help, split out of Voice (the overhaul spec, 3.4).
+  if ((m.ph && ["reading", "thinking"].includes(m.ph.stage)) || (m.eh && ["reading", "thinking"].includes(m.eh.stage)) || (m.sl && ["reading", "thinking"].includes(m.sl.stage))) return "prompt";
   if (m.walk || m.practice || (m.showme && ["looking", "thinking", "pointing", "pointing_roughly"].includes(m.showme.stage))) return "guide";
   if (m.diagram?.stage === "asking" || m.point?.stage === "checking" || m.bisect?.stage === "running") return "flow";
   if (m.runnerUp && Object.values(m.agents).some((s) => RUNNING.includes(s))) return "flow";
@@ -194,5 +204,6 @@ export function groupLook(m: Model, g: GroupId | null, drop = false): { group: G
   if (g === "guide") return { group: g, state: m.showme && ["pointing", "pointing_roughly"].includes(m.showme.stage) ? "lit" : "calm" };
   if (g === "voice") return { group: g, state: m.voice?.stage === "listening" ? "listening" : "calm" };
   if (g === "files") return { group: g, state: drop ? "busy" : "calm" };
+  if (g === "prompt") return { group: g, state: [m.ph?.stage, m.eh?.stage, m.sl?.stage].includes("reading") ? "reading" : "calm" };
   return { group: g, state: "calm" };
 }

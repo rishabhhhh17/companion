@@ -22,6 +22,7 @@ From the executive review (`docs/design/2026-10-30-executive-review.md`, section
 - One Settings surface in the Night look, grouped by the current pages, with a test.
 - The non hero groups start off. Four default global keys.
 - Fix the broken and confusing controls the review names.
+- Status (31 Oct 2026): built on branch m48/launch, with the review fixes: a one time settings migration (`settings.rs` launch_cut, mark `launchCut.v1`) keeps on a side tool an existing install used (groups.tried, a key picked for it, watch routines set up) and says the rest once in Settings, General (`groups.cutNotice`); connected Google accounts always show to disconnect; Draw why follows Draw it's own switch. Waits on the hands on Mac session.
 
 ## M48: Home and the result card (F28 Home, F28 notch hover)
 - The status headline and the one next step chosen by status, in one column.
@@ -35,3 +36,4 @@ From the executive review (`docs/design/2026-10-30-executive-review.md`, section
 - A first check of the real project, with a safety copy first and installs set to ask.
 - The practice runs without the person installing Node (a [verify] spike first).
 - Flowflow choices and F05's questions after the first proven fix (F05 timing needs the founder's yes; until then they stay where they are).
+- Status (31 Oct 2026): built on branch m48/launch, with the review fixes: the first check says why it could not run and says stopped only after the person's Stop, one live line for VoiceOver, only the questions answered are saved, Home's status reads the first check's result, and a practice's earlier versions (which task broke it) and its in box internet refusals are read right on Bun. Not proven: a real Mac without Node, and the first run seen on a real Mac.

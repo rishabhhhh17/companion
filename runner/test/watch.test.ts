@@ -24,7 +24,8 @@ function rig(o: { settings?: Record<string, unknown>; random?: () => number; tim
   const clock = { t: START };
   const events: any[] = [];
   const problems: string[] = [];
-  const settings: Record<string, unknown> = { ...(o.settings ?? {}) };
+  // Watch routines start off since F28 (the launch cut); these tests are about them turned on, unless they say otherwise.
+  const settings: Record<string, unknown> = { "watch.on": true, ...(o.settings ?? {}) };
   const calls: string[] = [];
   // What each check answers next; a function can wait for the test (gate) or never end until it is stopped.
   const script: { site: (() => Promise<Answer>)[]; deploy: (() => Promise<Answer>)[]; ci: (() => Promise<Answer>)[]; project: (() => Promise<Answer>)[] } = { site: [], deploy: [], ci: [], project: [] };

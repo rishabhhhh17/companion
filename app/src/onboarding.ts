@@ -1,24 +1,27 @@
 // The first run, as plain decisions: which step comes next, what each answer changes, and what a key must look like.
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
-import { switchKey, type SwitchedId } from "./groups.ts";
+import { SWITCHED, switchKey, type SwitchedId } from "./groups.ts";
+import { setting } from "./settingsStore.ts";
 import type { Liveliness } from "./lookfeel.ts";
+import { numberWords } from "./settingsRows.ts";
+import { S } from "./strings.ts";
+import type { Verdict } from "./verdict.ts";
 
-// The first run (M18, 28 Oct 2026, the whole flow): a hello, then see it work before anything is asked (F17, F05: a demo runs
-// before anything is connected), then choose your companion and make it yours, say what it should help with, connect Claude,
-// pick a folder, and a last screen with the real shortcuts, the practice project and the optional questions (F05). "look" is
-// a recording of the signup practice (firstLook.ts): it spends nothing and needs no key, no Node and no folder. Permissions
-// are asked when a feature first needs one, never here. The water at the foot of Home rises with every step (LEVEL).
-export const STEPS = ["hello", "look", "pick", "yours", "powers", "claude", "connect", "folder", "ready"] as const;
-/** The steps that must be done; the rest can be skipped. */
-export const REQUIRED: readonly Step[] = ["connect", "folder"];
+// The first run (M49, three screens): Hello (the water and Flowflow, one line on what it does, and the recorded fix to
+// watch again), Your Claude (the key, with the honest privacy, cost and plan lines), and Your project (a folder, GitHub or
+// Lovable, or a practice). Then a first check of the real project: a safety copy first, installs set to ask, and the result
+// in the verdict line. Every step can be skipped and has a way back. Flowflow's choices and the optional questions (F05)
+// stay in the first run, folded on its last screen, until the founder says when they move. Permissions are asked when a
+// feature first needs one, never here. The water at the foot rises with every step (LEVEL).
+export const STEPS = ["hello", "claude", "project", "check"] as const;
 export type Step = (typeof STEPS)[number];
-/** The steps counted in words ("2 of 5"): the hello and the recording come before the count, the last screen after it. */
-export const COUNTED: readonly Step[] = ["pick", "yours", "powers", "connect", "folder"];
+/** The three screens, counted in words ("2 of 3"). The first check comes after them and is not counted. */
+export const COUNTED: readonly Step[] = ["hello", "claude", "project"];
 export function countOf(step: Step): { n: number; of: number } | null { const i = COUNTED.indexOf(step); return i < 0 ? null : { n: i + 1, of: COUNTED.length }; }
-/** How high the water stands at each step, in percent of Home's height: it rises as you go and is nearly full at the end. The
- *  hello sits Flowflow in the surface; the recording keeps it low, out of the way. */
-export const LEVEL: Record<Step, number> = { hello: 34, look: 10, pick: 24, yours: 36, powers: 48, claude: 54, connect: 60, folder: 72, ready: 86 };
+/** How high the water stands at each step, in percent of Home's height. The hello sits Flowflow in the surface; after it
+ *  the water drops low, out of the way of the words, and rises with every step, Flowflow riding on it. */
+export const LEVEL: Record<Step, number> = { hello: 34, claude: 16, project: 20, check: 24 };
 
 /** Make it yours: the name (empty keeps the character's own), how lively, and which edge it lives on. Null: not chosen here,
  *  so the setting is left as it is (the person may have moved the character already). */
@@ -47,12 +50,19 @@ export const DEFAULT_ANSWERS: Answers = { explain: true, short: false, plain: tr
 /** `claude`: whether Anthropic's Claude is installed (M22; false only while it is not, undefined when not asked). */
 export type Context = { connected: boolean; project: string; claude?: boolean };
 
-/// A step you cannot leave yet: Companion cannot work without Claude connected or a folder to work in.
+/// When Continue is offered: Your Claude once Claude is connected, Your project once a folder is chosen. Every step can
+/// still be skipped (skipTo), so nothing is a dead end.
 export function canContinue(step: Step, c: Context): boolean {
-  if (step === "claude") return c.claude !== false;
-  if (step === "connect") return c.connected;
-  if (step === "folder") return c.project.length > 0;
+  if (step === "claude") return c.connected;
+  if (step === "project") return c.project.length > 0;
   return true;
+}
+/** Where Skip goes: on to the next screen, or out of the first run ("done") where the next step needs what was skipped
+ *  (the first check needs a project). Home then says what is still missing, with a button straight to it. */
+export function skipTo(step: Step): Step | "done" {
+  if (step === "hello") return "claude";
+  if (step === "claude") return "project";
+  return "done";
 }
 
 export function next(step: Step): Step | null { const i = STEPS.indexOf(step); return i < 0 || i === STEPS.length - 1 ? null : STEPS[i + 1]; }
@@ -66,27 +76,38 @@ export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: stri
   { key: "autoSend", ask: "When you talk to me, should I send it as soon as you let go?", yes: "Yes, send it", no: "No, let me check it first", yesEffect: "Spoken requests for work of three words or more are sent straight away. Words that mean wait or stop, and questions about your screen, still wait in the box.", noEffect: "Your words wait in the box until you press Start." },
 ];
 
+/** Every question, as if each was answered (tests, and a caller that has nothing to narrow). */
+export const ALL_ANSWERED: ReadonlySet<keyof Answers> = new Set(QUESTIONS.map((q) => q.key));
 /// What the answers change in Settings (the registry, T16): Explain after a task for every project (yes is its usual,
-/// reasons and a quick check question; no is off), and auto send. Sent through the shell like any other change in Settings.
-export function settingsFor(a: Answers): [string, unknown][] {
-  return [["explain.mode", a.explain ? "reasonsAndQuestion" : "off"], ["talk.autoSend", a.autoSend]];
+/// reasons and a quick check question; no is off), and auto send. Only the questions the person answered (`picked`): a
+/// pre-filled answer they never touched is not theirs (rule 15). Sent through the shell like any other change in Settings.
+export function settingsFor(a: Answers, picked: ReadonlySet<keyof Answers> = ALL_ANSWERED): [string, unknown][] {
+  const out: [string, unknown][] = [];
+  if (picked.has("explain")) out.push(["explain.mode", a.explain ? "reasonsAndQuestion" : "off"]);
+  if (picked.has("autoSend")) out.push(["talk.autoSend", a.autoSend]);
+  return out;
 }
 
-/// The groups the person switched off in the first run (F20 item 6), as the settings Settings changes: a group left on
-/// changes nothing. Sent through the shell like any other change.
-export function groupSettingsFor(off: readonly SwitchedId[]): [string, unknown][] {
-  return off.map((g) => [switchKey(g)!, false] as [string, unknown]);
+/// The groups as the person left them in the first run (F20 item 6), as the settings Settings changes: only a group whose
+/// switch now differs from the value in force (`read`). The first run starts from the values in force, so with F28 file
+/// conversion shows off, and pressing Next changes nothing. Sent through the shell like any other change.
+export function groupSettingsFor(off: readonly SwitchedId[], read: (key: string) => unknown = setting): [string, unknown][] {
+  return SWITCHED.flatMap((g) => {
+    const key = switchKey(g.id as SwitchedId)!, on = !off.includes(g.id as SwitchedId);
+    return (read(key) !== false) === on ? [] : [[key, on] as [string, unknown]];
+  });
 }
 
 export function effectsOf(a: Answers): string[] {
   return QUESTIONS.map((q) => (a[q.key] ? q.yesEffect : q.noEffect));
 }
 
-/// What the answers add to your profile, as commands for the engine (lines with the source "your answer at setup").
-export function commandsFor(a: Answers, project: string, add: (scope: "profile", text: string, source: string) => Command): Command[] {
+/// What the answers add to your profile, as commands for the engine (lines with the source "your answer at setup"). Only
+/// the questions the person answered (`picked`): "your answer at setup" is never said of a pre-filled one (rule 15).
+export function commandsFor(a: Answers, project: string, add: (scope: "profile", text: string, source: string) => Command, picked: ReadonlySet<keyof Answers> = ALL_ANSWERED): Command[] {
   const out: Command[] = [];
-  if (a.short) out.push(add("profile", "Prefers short answers", "your answer at setup"));
-  if (a.plain) out.push(add("profile", "Prefers plain words, no jargon", "your answer at setup"));
+  if (a.short && picked.has("short")) out.push(add("profile", "Prefers short answers", "your answer at setup"));
+  if (a.plain && picked.has("plain")) out.push(add("profile", "Prefers plain words, no jargon", "your answer at setup"));
   void project;
   return out;
 }
@@ -110,4 +131,68 @@ export type KeyTested = { result: "works" | "refused" | "no_connection" | "unkno
 export function keyCheck(savedAt: number | null, tested: KeyTested | null): KeyTested["result"] | "checking" | null {
   if (savedAt === null) return null;
   return tested && tested.at >= savedAt ? tested.result : "checking";
+}
+
+/** The keys named on the last screen: the four that have keys by usual (F28): Fix it, Hold to talk, Prompt help and Stop
+ *  everything. A job whose key the person took away is left out (only keys that can be pressed are named). */
+export const FIRST_KEYS: readonly string[] = ["problem", "talk", "read", "stop"];
+
+// ---------- Your Claude: the honest lines ----------
+
+const stop = (t: string) => (/[.!?]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`);
+/** The three lines over the key field, each true of this Mac now: where the key goes (only to Claude, from the Keychain),
+ *  what it costs (Anthropic bills the person directly; the daily limit in force, which Settings changes), and the plan,
+ *  from the Plan card's own state (planCard: with payments off, early access and nothing charged). */
+export function honestLines(o: { limitUsd: number; plan: { line: string; facts: readonly string[] } }): { privacy: string; cost: string; plan: string } {
+  return {
+    privacy: S.fr.keyPrivacy,
+    cost: S.fr.keyCost(numberWords(o.limitUsd, "dollars")),
+    plan: S.fr.keyPlan([o.plan.line, ...o.plan.facts].filter((t) => t.trim()).map(stop).join(" ")),
+  };
+}
+
+// ---------- the first check ----------
+
+/** The check as the first run sees it: the point state the engine's answer fills (model.ts point). */
+export type PointNow = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string } | null;
+/** Where the first check is: not asked yet, running, waiting on an install question, answered, or ended with no answer
+ *  (Stop, or refused). An answer from before this press is never this check's: the press sets the point to checking. */
+export type CheckStage = "idle" | "checking" | "asking" | "done" | "stopped";
+export function checkStage(asked: boolean, point: PointNow, asking: boolean): CheckStage {
+  if (!asked) return "idle";
+  if (point?.stage === "checking") return asking ? "asking" : "checking";
+  return point ? "done" : "stopped";
+}
+/** The line under "Not checked yet" when the first check ended with no answer: "stopped" only after the person's own Stop
+ *  (Stop the check, Back, Skip); otherwise why it could not run, from the engine or the shell (no Apple developer tools,
+ *  already working, the engine not running, switched off), or a plain could not run when nothing said why. */
+export function checkEndLine(stoppedByMe: boolean, why: string | null): string {
+  if (stoppedByMe) return S.fr.checkStopped;
+  return why?.trim() ? why.trim() : S.fr.checkCouldNot;
+}
+/** What the check screen's one live line says (it is always there, so VoiceOver hears each change): the check running,
+ *  the install question, the verdict's own words (headline and line), or the line under Not checked yet. */
+export function checkAnnounce(stage: CheckStage, name: string, result: Verdict | null, endLine: string): string {
+  if (stage === "checking") return `${S.fr.checking(name)}. ${S.fr.checkPromise}`;
+  if (stage === "asking") return S.fr.checkAsk;
+  if (result) return result.say;
+  if (stage === "stopped") return S.verdict.say(S.home.notChecked, endLine);
+  return "";
+}
+/** The install questions this check is waiting on: the engine's install cards (risk "install") for the agent it runs on. */
+export function installAsks<T extends { risk: string; agent: string }>(approvals: readonly T[], agent: string): T[] {
+  return approvals.filter((a) => a.risk === "install" && a.agent === agent);
+}
+/** The first check's result in the verdict line (ui/parts.tsx VerdictLine): the project's own checks, never a fix, so it is
+ *  never "proven" (M45: only a fix's verdict can be). A tick only when every check that ran passed and nothing was left. */
+export function firstCheckVerdict(point: Exclude<PointNow, null>, name: string): Verdict | null {
+  const v = (kind: Verdict["kind"], headline: string, line: string | null, tone: Verdict["tone"], icon: Verdict["icon"]): Verdict =>
+    ({ kind, headline, line, say: S.verdict.say(headline, line), tone, icon, offer: null, proven: false });
+  switch (point.stage) {
+    case "clear": return v("noChange", S.fr.checkClear(name), S.fr.checkClearLine, "good", "tick");
+    case "gaps": return v("partial", S.fr.checkGaps(name), S.fr.checkGapsLine, "mixed", "wait");
+    case "nothing": return v("noChange", S.fr.checkNothing(name), S.fr.checkNothingLine, "plain", "wait");
+    case "found": return v("failed", S.home.failing(name), point.label ? S.fr.checkFoundAt(point.label) : S.fr.checkFoundLine, "bad", "cross");
+    default: return null;
+  }
 }

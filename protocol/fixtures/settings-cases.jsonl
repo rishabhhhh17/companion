@@ -294,3 +294,10 @@
 {"key": "make.folder", "value": "", "ok": false, "reason": "notChoice"}
 {"key": "make.folder", "value": 1, "ok": false, "reason": "notChoice"}
 {"key": "make.folder", "value": null, "ok": false, "reason": "notChoice"}
+{"key": "prompt.on", "value": true, "ok": true, "normalized": true}
+{"key": "prompt.on", "value": false, "ok": true, "normalized": false}
+{"key": "prompt.on", "value": "on", "ok": false, "reason": "notSwitch"}
+{"key": "drawIt.on", "value": true, "ok": true, "normalized": true}
+{"key": "drawIt.on", "value": 1, "ok": false, "reason": "notSwitch"}
+{"key": "check.install", "value": "ask", "ok": true, "normalized": "ask"}
+{"key": "groups.tried", "value": ["drawIt", "explain"], "ok": true, "normalized": ["drawIt", "explain"]}

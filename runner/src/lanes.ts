@@ -437,7 +437,7 @@ export const SEEN_MS = 5 * 60_000;
 
 export class AssistService {
   private active = new Map<string, AbortController>();
-  private kind = new Map<string, "guide" | "voice">();   // whose question each one in flight is: Show me is Guide, Prompt help is Voice
+  private kind = new Map<string, "guide" | "prompt">();   // whose question each one in flight is: Show me is Guide, Prompt help is Prompt help (split out of Voice)
   private n = 0;
   // The spreadsheet error the last first look read, with a few plain words read beside it, in memory only: a look again says
   // Fixed only when the same place is read again (everyday.ts sameView). Forgotten on Stop everything.
@@ -457,7 +457,7 @@ export class AssistService {
   cancelAll() { for (const ac of this.active.values()) ac.abort(); this.o.images.clear(); this.seen = null; }
   /** A group was switched off (F20): only its own questions are dropped. Guide: the questions about the screen and any
    *  screenshot still held. Voice: Prompt help. */
-  cancel(group: "guide" | "voice") {
+  cancel(group: "guide" | "prompt") {
     for (const [req, ac] of this.active) if (this.kind.get(req) === group) ac.abort();
     if (group === "guide") this.o.images.clear();
   }
@@ -489,7 +489,7 @@ export class AssistService {
     if (this.atLimit(cmd.project)) return this.emit({ type: "assist.error", req: cmd.req, reason: limitReached(cmd.project) });
     const book = (usd: number) => this.book(cmd.project, usd);
     const ac = new AbortController();
-    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "voice");
+    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "prompt");
     try {
       // Code, links, commands and error text are set aside first, so they come back exactly as they were.
       const { masked, spans } = protect(cmd.text);
