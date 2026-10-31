@@ -36,7 +36,7 @@ const CACHES = [
 ];
 // Companion's own data folders among them: where it keeps its private copies of a project (which task broke it, the visual
 // receipt's earlier version), which a check in the box must still read (proof/box.ts).
-const OWN_DATA = SENSITIVE.filter((p) => /^Library\/Application Support\/(?:Companion|dev\.companion\.app)/.test(p));
+const OWN_DATA = SENSITIVE.filter((p) => p.startsWith("Library/Application Support/Companion") || p.startsWith("Library/Application Support/dev.companion.app"));
 export const ownDataPaths = (home: string): string[] => OWN_DATA.map((p) => `${home}/${p}`);
 export const cachePaths = (home: string): string[] => CACHES.map((p) => `${home}/${p}`);
 export const sensitivePaths = (home: string): string[] => SENSITIVE.map((p) => `${home}/${p}`);

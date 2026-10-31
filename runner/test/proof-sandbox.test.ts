@@ -55,7 +55,7 @@ describe("the box's rules are written so no folder name can change them", () => 
     expect(args[0]).toBe("-p");
     expect(args).toContain(`${Object.entries(p.params).find(([, v]) => v === realpathSync(project))![0]}=${realpathSync(project)}`);
   });
-  test("the private places of sandbox.ts, Companion's own data and the Keychain are refused for reading; the internet only when asked for", () => {
+  test("the private places of sandbox.ts, the app's own data and the Keychain are refused for reading; the internet only when asked for", () => {
     const w = world();
     const local = boxProfile({ project: w.project, net: "local" }, { home: w.home, tmp: join(w.root, "t"), data: join(w.root, "data") });
     const values = Object.values(local.params);
@@ -92,14 +92,14 @@ describe.skipIf(!HAS_BOX)("in the box, on this Mac", () => {
     expect(tmpUsed.length).toBeGreaterThan(0);
     expect(existsSync(tmpUsed)).toBe(false);
   });
-  test("the watch's way of running a command (it ends when Companion ends) is in the box too", async () => {
+  test("the watch's way of running a command (it ends when the app ends) is in the box too", async () => {
     const w = world();
     const r = await boxed(w.project, w.home, `echo ok > made.txt; echo x > ${JSON.stringify(join(w.outside, "marker"))}; true`, "local", { endWithUs: true });
     expect(r.code).toBe(0);
     expect(existsSync(join(w.project, "made.txt"))).toBe(true);
     expect(existsSync(join(w.outside, "marker"))).toBe(false);
   });
-  test("a command cannot read the private places, or Companion's own data", async () => {
+  test("a command cannot read the private places, or the app's own data", async () => {
     const w = world();
     const was = process.env.COMPANION_DATA;
     process.env.COMPANION_DATA = join(w.home, "Library/Application Support/Companion/runner");
@@ -131,7 +131,7 @@ describe.skipIf(!HAS_BOX)("in the box, on this Mac", () => {
     expect(out.code).not.toBe(9);
     expect(out.stdout).toMatch(/refused: Operation not permitted/);
   });
-  test("the server rung's server runs in the box, and Companion still reaches it on this Mac", async () => {
+  test("the server rung's server runs in the box, and the app still reaches it on this Mac", async () => {
     const w = world();
     put(w.project, { "server.js": `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response("up") });` });
     const srv = await startServer({ kind: "server", command: `echo x > ${JSON.stringify(join(w.outside, "m"))}; ${JSON.stringify(process.execPath)} server.js`, env: { HOME: w.home } }, { cwd: w.project, timeoutMs: 15_000, box: { project: w.project, net: "local" } });
@@ -285,7 +285,7 @@ describe("the visual receipt's earlier version is started in the box too", () =>
   });
 });
 
-describe.skipIf(!HAS_BOX)("Companion's own copies in its data folder, on this Mac", () => {
+describe.skipIf(!HAS_BOX)("the app's own copies in its data folder, on this Mac", () => {
   test("an earlier version started from a copy inside the data folder can read its own files, and nothing else of the data folder; a write outside the copy is refused", async () => {
     const w = dataWorld();
     const proj = join(w.root, "live");
