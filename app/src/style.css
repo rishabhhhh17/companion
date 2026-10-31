@@ -491,10 +491,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-steps { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 1.2em); display: grid; gap: var(--space-1); border-radius: var(--r-card); background: var(--fr-card-2); color: var(--fr-ink); font-size: var(--t-small); box-shadow: inset 0 0 0 1px var(--fr-edge); }
 .fr-keyrow { display: flex; gap: var(--space-2); }
 .fr-ok { margin: 0; color: var(--fg); font: 700 var(--t-answer) var(--font); }
-.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1.5px dashed var(--fr-folder-edge); border-radius: var(--r-card); background: color-mix(in srgb, var(--water) 8%, var(--fr-sky)); color: var(--fr-ink); text-align: left; cursor: default; }
+.fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1px solid var(--fr-folder-edge); border-radius: var(--r-card); background: color-mix(in srgb, var(--water) 8%, var(--fr-sky)); color: var(--fr-ink); text-align: left; cursor: default; }
 .fr-folder b { font: 700 var(--t-answer) var(--font); }
 .fr-folder span { color: var(--fg-2); font-size: var(--t-caption); overflow-wrap: anywhere; }
-.fr-folder:hover { border-color: var(--water); }
 .fr-tips { display: grid; gap: var(--space-2); }
 .fr-tip { display: flex; align-items: center; gap: var(--space-3); color: var(--fg); font-size: var(--t-body); }
 /* M49: Flowflow lives on the water after the hello, at the right of the waterline, riding it up as the steps go on. */

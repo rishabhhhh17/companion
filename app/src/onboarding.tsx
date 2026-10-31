@@ -214,7 +214,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {ok && check !== "refused" ? <p className="fr-ok" role="status">{check ? S.obKeyCheck[check] : S.obConnected}</p> : (<>
           <div className="fr-keyrow">
             <Field type="password" wide value={key} label={S.obKeyLabel} placeholder="sk-ant-..." error={keyNote || (check === "refused" ? S.obKeyCheck.refused : undefined)} onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) saveKey(); }} />
-            <Button kind="secondary" size="lg" className="fr-save" onClick={saveKey}>{S.fr.keyTest}</Button>
+            <Button kind="secondary" className="fr-save" onClick={saveKey}>{S.fr.keyTest}</Button>
           </div>
           {fold("how", S.fr.keyHow, <ol className="fr-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>)}
           <Button kind="quiet" className="fr-link" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.obGetKey}</Button>
@@ -239,7 +239,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
             {linkOpen && (<div className="fr-linkbox">
               <div className="fr-keyrow">
                 <Field wide value={link} label={S.openLinkLabel} placeholder="https://github.com/name/project" error={linkNote || cloneNote || undefined} onChange={setLink} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); }} />
-                <Button kind="secondary" size="lg" disabled={copying} onClick={openLink}>{S.openLinkGo}</Button>
+                <Button kind="secondary" disabled={copying} onClick={openLink}>{S.openLinkGo}</Button>
               </div>
               <p className="fr-small">{copying ? S.copying : S.fr.linkLovable}</p>
             </div>)}

@@ -392,7 +392,7 @@ export const S = {
     "prompt.on": "Rewrite a prompt in any app with its key, then paste it back. Also the error key.",
     "talk.speak": "Short answers are spoken.",
     "talk.captions": "Your words appear as you speak.",
-    "talk.dictate": "Pick its key below, then hold it in any app and speak to type. Usually off.",
+    "talk.dictate": "Hold its key in any app and speak, and your words are typed there. Add its key under Other jobs.",
     "sharing.hide": `${PRODUCT} is left out of shares and recordings.`,
     "calls.quiet": `While a call app is in front, ${PRODUCT} doesn't speak and Flowflow stays still.`,
     "memory.paused": `${PRODUCT} stops learning about your projects until you turn this off.`,

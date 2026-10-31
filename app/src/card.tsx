@@ -559,6 +559,7 @@ function Card() {
   // changed and the turn are not about what is in the files (M45). Put my fix back on a turn is not an Undo.
   const undone = receiptUndone(m.receipt) || (m.undo?.stage === "done" && !m.undo.back);
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
+  const routinesOn = useSetting("watch.on") === true;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
   const bv = browserView(m);
   useEffect(() => { if (m.runnerUp) void send(checkBrowser()).catch(() => {}); }, [m.runnerUp]);
@@ -2374,7 +2375,8 @@ function Card() {
         </section>
       )}
       {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} />}
-      {show("watch") && project && groups.on("watch") && (
+      {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
+      {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
           <summary>{S.watch.title}</summary>
           <WatchPanel watches={watchesOf(m.watches, project)} asked={m.watchAsked} fixOn={groups.on("connections") && groups.on("drive")} h={watchHandlers} />

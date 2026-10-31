@@ -175,6 +175,14 @@ describe("an install from before the cut (settings.rs launch_cut)", () => {
   });
 });
 
+describe("Home leaves out what starts off", () => {
+  test("the Watches fold shows only while watch routines are on or the folder already has watches", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain('const routinesOn = useSetting("watch.on") === true;');
+    expect(card).toContain('{show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (');
+  });
+});
+
 describe("Home after the first check agrees with it", () => {
   const P = "/Users/me/shop";
   test("a passing check says the checks pass, never Not checked yet, and is not called proven", () => {
