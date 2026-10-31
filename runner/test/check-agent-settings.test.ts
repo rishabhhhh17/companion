@@ -15,7 +15,7 @@ import { RunnerSettings } from "../src/settings.ts";
 import { CheckpointStore } from "../src/checkpoints.ts";
 import { DEFAULT_LIMITS, scaleLimits, type LadderResult } from "../src/proof/ladder.ts";
 import { USUAL_CHECK, VIEWPORTS } from "../src/proof/options.ts";
-import { DOWNLOAD_ASK } from "../src/proof/native.ts";
+import { DOWNLOAD_ASK, INTERNET_ASK } from "../src/proof/native.ts";
 import { VercelCli, type DeployLogReader } from "../src/ship/deploy.ts";
 import { installBrowser } from "../src/proof/browser.ts";
 import { BrowserSetup } from "../src/proof/browsersetup.ts";
@@ -129,6 +129,34 @@ describe("the install question (check.install ask, or the house rule)", () => {
     expect(req.title).toContain("go build -buildvcs=false ./...");
     expect(req.title).not.toContain(DOWNLOAD_ASK);
     expect(req.title).toMatch(/Without them, the check runs on the project as it is/);
+  });
+  test("for a JavaScript build that needs the internet (Next's fonts) the card says so, and that the box still holds", async () => {
+    const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); }, { command: `${INTERNET_ASK}npm run build` });
+    expect(await t.run()).toBe(false);
+    const req = of(t.r.events, "approval.request")[0];
+    expect(req).toMatchObject({ risk: "network", action: "Running: npm run build" });
+    expect(req.title).toMatch(/build needs the internet, for example to fetch its fonts/);
+    expect(req.title).toContain("npm run build");
+    expect(req.title).not.toContain(INTERNET_ASK);
+    expect(req.title).toMatch(/can still only save files inside this project, but it can reach websites and services on the internet/);
+  });
+  test("the build's internet question is asked once per task: a fix round's check keeps the answer, a yes or a no", async () => {
+    for (const decision of ["allow", "deny"] as const) {
+      const got: boolean[] = [];
+      const r = rig({ proof: async (ctx) => { got.push(await ctx.askInstall!(`${INTERNET_ASK}npm run build`)); got.push(await ctx.askInstall!(`${INTERNET_ASK}npm run lint`)); return passed; } });
+      const done = r.task();
+      await waitFor(() => of(r.events, "approval.request").length > 0);
+      const req = of(r.events, "approval.request")[0];
+      await r.runner.handle({ v: 1, id: "x", type: "approval.resolve", approval: req.approval, decision, scope: "once" });
+      await done;
+      expect(got).toEqual(decision === "allow" ? [true, true] : [false, false]);
+      expect(of(r.events, "approval.request")).toHaveLength(1);
+    }
+  });
+  test("a native build's download card shows the command without the marker", async () => {
+    const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); }, { command: `${DOWNLOAD_ASK}go build ./...` });
+    await t.run();
+    expect(of(t.r.events, "approval.request")[0]).toMatchObject({ risk: "install", action: "Running: go build ./..." });
   });
   test("a no is a no", async () => {
     const t = asking(async (r, req) => { await r.runner.handle({ v: 1, id: "n", type: "approval.resolve", approval: req.approval, decision: "deny", scope: "once" }); });

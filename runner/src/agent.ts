@@ -61,7 +61,7 @@ import { cloneTarget } from "./proof/clone.ts";
 import { diagramContext, diagramRequest, parseDiagram } from "./diagram.ts";
 import { detectProject, type Detected } from "./proof/detect.ts";
 import { editableInside, pythonPaths, type PythonPaths } from "./proof/python.ts";
-import { DOWNLOAD_ASK } from "./proof/native.ts";
+import { DOWNLOAD_ASK, INTERNET_ASK } from "./proof/native.ts";
 import { drawReceipt } from "./proof/picture.ts";
 import { attachmentsBlock, checkAttachments, type Picture, type TextFile } from "./attach.ts";
 import type { PageShot } from "./proof/browser.ts";
@@ -178,7 +178,9 @@ function pruneOldest(dir: string, keep: number) {
 // taskScopeCovers); it ends with the task, and a Drive plan, which the person sees as one task, hands the same one to every
 // step. shells: the background commands this conversation started, which it may read and stop. Neither crosses tasks.
 // webSearch: false when Let tasks search the web is off for this task (work.webSearch), so a search asked for anyway is refused.
-type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string>; webSearch?: boolean };
+type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string>; webSearch?: boolean;
+  /** The answer to a build's internet or download question, kept for the whole task so a fix round never asks again. */
+  netAnswers?: Map<string, boolean> };
 const newSession = (agent: string, abort: AbortController, taskAllowed: Set<string> = new Set()): Session => ({ agent, abort, pending: new Map(), taskAllowed, shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
 // resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session).
@@ -541,9 +543,25 @@ export class AgentRunner {
    *  answer after it ran out changes nothing. */
   private installAsker(s: Session | undefined, agent: string, checkpoint: string): (command: string) => Promise<boolean> {
     // A Go, Rust, Java, Kotlin, Swift or Xcode build fetches its packages itself; the ladder marks that question (DOWNLOAD_ASK).
-    return this.checkAsker(s, agent, checkpoint, (command) => command.startsWith(DOWNLOAD_ASK)
-      ? `Building this project may download the packages it needs from the internet (${clip(command.slice(DOWNLOAD_ASK.length), 60)}). Download them so it can be checked? Without them, the check runs on the project as it is.`
-      : `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`);
+    // A JavaScript build that needs the internet (Next's Google Fonts, say) is marked INTERNET_ASK: a "Go online?" card.
+    // Either answer is kept for the task (Session.netAnswers), so each fix round's check does not ask again.
+    const marker = (command: string) => (command.startsWith(DOWNLOAD_ASK) ? DOWNLOAD_ASK : command.startsWith(INTERNET_ASK) ? INTERNET_ASK : "");
+    const bare = (command: string) => command.slice(marker(command).length);
+    const ask = this.checkAsker(s, agent, checkpoint, (command) => marker(command) === DOWNLOAD_ASK
+      ? `Building this project may download the packages it needs from the internet (${clip(bare(command), 60)}). Download them so it can be checked? Without them, the check runs on the project as it is.`
+      : marker(command) === INTERNET_ASK
+      ? `This project's build needs the internet, for example to fetch its fonts (${clip(bare(command), 60)}). Let the build go online so it can be checked? It can still only save files inside this project, but it can reach websites and services on the internet. Without it, the build is left out of the check.`
+      : `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`,
+    { risk: (command) => (marker(command) === INTERNET_ASK ? "network" : "install"), action: bare });
+    return async (command) => {
+      const m = marker(command);
+      if (!m || !s) return ask(command);
+      const kept = s.netAnswers?.get(m);
+      if (kept !== undefined) return kept;
+      const yes = await ask(command);
+      if (!s.abort.signal.aborted) (s.netAnswers ??= new Map()).set(m, yes);
+      return yes;
+    };
   }
   /** The question for a task that changed the project's scripts or packages: they run on this Mac (in the safety box for
    *  checks, proof/box.ts), so the check runs them only on a yes (ladder.ts askScripts). "unboxed": the box cannot be used
@@ -554,7 +572,7 @@ export class AgentRunner {
       : `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac in a safety box that keeps them to this project. Without a yes, the work is not checked.`);
     return (byTask, unboxed) => ask(unboxed ? "unboxed" : byTask ? "task" : "since");
   }
-  private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string): (command: string) => Promise<boolean> {
+  private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string, o: { risk?: (command: string) => string; action?: (command: string) => string } = {}): (command: string) => Promise<boolean> {
     return async (command) => {
       if (!s || s.abort.signal.aborted) return false;
       // After the answer the agent goes back to what it was doing (a task or Rescue: checking). Ship's check has a stand in
@@ -563,7 +581,7 @@ export class AgentRunner {
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
       const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
-      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString(), action: `Running: ${clip(redact(command), 200)}` } as never);
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: o.risk?.(command) ?? "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString(), action: `Running: ${clip(redact(o.action?.(command) ?? command), 200)}` } as never);
       this.state(agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const yes = await new Promise<boolean>((res) => {

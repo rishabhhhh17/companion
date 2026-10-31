@@ -164,8 +164,8 @@ describe("the first check of the real project", () => {
     expect(checkStage(true, null, false)).toBe("stopped");
   });
   test("the install question is shown on the check screen, Don't allow first, and neither answer is silver", () => {
-    const asks = installAsks([{ id: "a", risk: "install", agent: "builder-1" }, { id: "b", risk: "irreversible", agent: "builder-1" }, { id: "c", risk: "install", agent: "other" }], "builder-1");
-    expect(asks.map((a) => a.id)).toEqual(["a"]);
+    const asks = installAsks([{ id: "a", risk: "install", agent: "builder-1" }, { id: "b", risk: "irreversible", agent: "builder-1" }, { id: "c", risk: "install", agent: "other" }, { id: "d", risk: "network", agent: "builder-1" }], "builder-1");
+    expect(asks.map((a) => a.id)).toEqual(["a", "d"]);
     const chk = stepOf(read("./onboarding.tsx"), "check");
     const no = chk.indexOf("onClick={() => answer(a.id, false)}"), yes = chk.indexOf("onClick={() => answer(a.id, true)}");
     expect(no).toBeGreaterThan(0); expect(yes).toBeGreaterThan(no);

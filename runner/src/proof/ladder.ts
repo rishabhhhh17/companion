@@ -11,11 +11,12 @@ import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } 
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
+import { lookup } from "node:dns/promises";
 import { boxRefusal, boxWorks, type Net } from "./box.ts";
 import { startServer } from "./server.ts";
 import { onEngineBun, withPracticeBun } from "./practicerun.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
-import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, swiftInBox, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
+import { DOWNLOAD_ASK, INTERNET_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, swiftInBox, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 import { readRunFiles, runPrint, withInstallConfig, type RunApprovals } from "./approvedruns.ts";
@@ -86,6 +87,9 @@ export type LadderOptions = {
   // The install question (check.install "ask", or the house rule): true only for a yes. No answer, a Stop or no way to
   // ask is a no, and the check then runs on the project as it is, with a gap.
   askInstall?: (command: string) => Promise<boolean>;
+  /** Whether this Mac reaches the internet now (outside the box): asked only when a step given the internet still could not
+   *  reach it, to tell an offline Mac from the project's own bad address. Usually a name lookup of Anthropic's API. */
+  reachable?: () => Promise<boolean>;
   // The question for a check whose scripts, packages, lock file, .replit or .claude/launch.json differ from what the person
   // last said yes to running (approvals), or, without a record, that the task changed: they are run only on a yes. byTask:
   // this task made the change (else it came since the last yes, by a task that got a no or by hand). unboxed: the safety
@@ -179,7 +183,20 @@ const BOX_STOPPED = {
   write: (what: string) => `The safety box for checks stopped ${what} from writing to a temporary folder outside the project (/tmp), so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
   browser: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} start${what === "the tests" ? "" : "s"} a browser with its own sandbox, which cannot run inside the safety box for checks, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
   net: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} need${what === "the tests" ? "" : "s"} the internet, which the safety box for checks does not give ${what === "the tests" ? "them" : "it"}, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
+  git: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} tried to change Git's folder for this project, which checks never do, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
 } as const;
+/** An install whose own step tried to change Git's settings (husky setting itself up): run again with a stand-in Git folder in
+ *  the command's own temporary folder, so that step has somewhere harmless to write and the install's own exit code decides.
+ *  The project's real Git folder is never written (rule 10; the box keeps it). */
+export const GIT_STAND_IN = 'GIT_DIR="${TMPDIR:-/tmp/}squibby-git"; export GIT_DIR; git init -q --bare "$GIT_DIR" >/dev/null 2>&1; ';
+const GIT_KEPT = "The install tried to change Git's settings for this project (tools like husky do this to check your code each time you save a version). Checks never change them, so it ran with a stand-in instead, and your project's Git settings are as they were.";
+/** What an install is told, beside CI: leave git hooks alone (husky, lefthook, simple-git-hooks), since the box keeps git's folder. */
+const INSTALL_ENV = { CI: "1", HUSKY: "0", LEFTHOOK: "0", SKIP_INSTALL_SIMPLE_GIT_HOOKS: "1" };
+/** A JavaScript build that was given the internet after the box stopped it, and still could not reach it, on a Mac that is
+ *  offline now (reachable). With the Mac online, the same words are the project's own failure (a bad address, say). */
+const NO_INTERNET = (what: string) => `${what[0].toUpperCase()}${what.slice(1)} needs the internet, and this Mac is not connected to the internet right now, so it could not run here. That says nothing about your code.`;
+/** The usual answer to "is this Mac online?": a name lookup of the one service Squibby always needs, within three seconds. */
+const anthropicReachable = (): Promise<boolean> => Promise.race([lookup("api.anthropic.com").then(() => true, () => false), new Promise<boolean>((res) => setTimeout(() => res(false), 3000))]);
 const WITHOUT_PACKAGES = {
   typecheck: "The type check could not run because the project's packages are not installed.",
   lint: "The lint check could not run because the project's packages are not installed.",
@@ -393,7 +410,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const screened = (command: string, install = false, own = !!py || !!nat) => !own && changesData(command, o.project, install);
   // May a build download packages? Decided once. Point at the problem and earlier versions never do; "never" never does;
   // "ask" asks, always on its own card (a yes to running the changed scripts does not count); "auto" does. Whatever the answer, the offline try comes first.
-  const mayDownload = async (command: string): Promise<boolean> => {
+  const mayDownload = async (command: string, ask = DOWNLOAD_ASK): Promise<boolean> => {
     if (download !== null) return download;
     if (o.noInstall) { netWhy = "noInstall"; return (download = false); }
     const rules = loadRules(o.project);
@@ -401,7 +418,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (mode === "never") { netWhy = "never"; return (download = false); }
     if (mode === "auto") return (download = true);
     // A yes to the changed scripts card is not this answer: that card never says a build may download packages.
-    const yes = !!o.askInstall && await o.askInstall(`${DOWNLOAD_ASK}${command.replace(/^(?:[A-Z_]+=\S+\s+)+/, "")}`).then((x) => x === true, () => false);
+    const yes = !!o.askInstall && await o.askInstall(`${ask}${command.replace(/^(?:[A-Z_]+=\S+\s+)+/, "")}`).then((x) => x === true, () => false);
     netWhy = "no";
     return (download = yes);
   };
@@ -444,14 +461,16 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (risky) { const why = changesDataGap("install"); left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else {
-      const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" }, ...inBox("open") });
+      let r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: INSTALL_ENV, ...inBox("open") });
+      const gitKept = boxed && r.code !== 0 && !r.timedOut && !r.aborted && !cancelled() && boxRefusal(r.stdout + "\n" + r.stderr, "open") === "git";
+      if (gitKept) r = await run(`${GIT_STAND_IN}${command}`, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: INSTALL_ENV, ...inBox("open") });
       // Stop (or Stop everything) ended the command: that says nothing about the project, so it is never a failure.
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) return noRoom("install", t0);
       const installBox = r.code !== 0 && !r.timedOut ? boxGap(r.stdout + "\n" + r.stderr, "the install", "open") : null;
       if (installBox) { heldBack = true; finish("install", "skipped", installBox, t0); }
       else if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install"), undefined, { summary: INSTALL_FAILED_SUMMARY }));
-      else finish("install", "passed", "Installed.", t0);
+      else finish("install", "passed", gitKept ? `Installed. ${GIT_KEPT}` : "Installed.", t0);
     }
   } else finish("install", "skipped", "Nothing new to install.", t0);
 
@@ -467,13 +486,24 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       if (screened(c.command)) { const w = changesDataGap(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
-      const r = nat ? await nativeRun(c, limits.checkMs, {}) : await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}), ...inBox("local") });
+      let r = nat ? await nativeRun(c, limits.checkMs, {}) : await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}), ...inBox(online ? "open" : "local") });
+      // A JavaScript build the box stopped because it needs the internet (Next's Google Fonts, say): the same question as a
+      // native build's download, once for the whole check, and with a yes it runs again in the box with the internet. The
+      // tests and the server never get it.
+      if (!nat && !py && !online && boxed && r.code !== 0 && !r.timedOut && !r.aborted && !cancelled() && boxRefusal(r.stdout + "\n" + r.stderr, "local") === "net" && await mayDownload(c.command, INTERNET_ASK) && !cancelled()) {
+        online = true;
+        r = await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...inBox("open") });
+      }
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
         const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`);
         if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
-        const stopped = r.timedOut ? null : boxGap(r.stdout + "\n" + r.stderr, c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`, nat && online ? "open" : "local");
+        const what = c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`;
+        // With the internet given, the same refusal means this Mac could not reach it: still not the code's failure.
+        const offline = !nat && !py && online && boxed && !r.timedOut && boxRefusal(r.stdout + "\n" + r.stderr, "local") === "net" && !(await (o.reachable ?? anthropicReachable)()) ? NO_INTERNET(what) : null;
+        if (offline && !left.includes(offline)) left.push(offline);
+        const stopped = r.timedOut ? null : offline ?? boxGap(r.stdout + "\n" + r.stderr, what, online ? "open" : "local");
         if (stopped) { missed.push(stopped); tried.push({ name: c.name, status: "not_started" }); continue; }
         tried.push({ name: c.name, status: "failed" });
         return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks"), undefined, { summary: checkFailedSummary(c.name) }));

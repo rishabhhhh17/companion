@@ -179,9 +179,10 @@ export function checkAnnounce(stage: CheckStage, name: string, result: Verdict |
   if (stage === "stopped") return S.verdict.say(S.home.notChecked, endLine);
   return "";
 }
-/** The install questions this check is waiting on: the engine's install cards (risk "install") for the agent it runs on. */
+/** The questions this check is waiting on, for the agent it runs on: an install card (risk "install") and a build's
+ *  "Go online?" card (risk "network", a build that needs the internet, runner/src/proof/ladder.ts INTERNET_ASK). */
 export function installAsks<T extends { risk: string; agent: string }>(approvals: readonly T[], agent: string): T[] {
-  return approvals.filter((a) => a.risk === "install" && a.agent === agent);
+  return approvals.filter((a) => (a.risk === "install" || a.risk === "network") && a.agent === agent);
 }
 /** The first check's result in the verdict line (ui/parts.tsx VerdictLine): the project's own checks, never a fix, so it is
  *  never "proven" (M45: only a fix's verdict can be). A tick only when every check that ran passed and nothing was left. */

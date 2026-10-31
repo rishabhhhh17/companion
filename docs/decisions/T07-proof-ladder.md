@@ -128,5 +128,22 @@ Spike `spikes/practice-bun` (README and RESULTS), run on this Mac with Bun 1.4.2
 - **Not proven.** A real Mac without Node (this one has it; the tool path was made without it), and the Bun inside a signed, hardened `Squibby.app` run through `sandbox-exec`. A runner compiled with `bun build --compile` would not be named bun, so it would simply keep today's behaviour.
 - Tested: `runner/test/practice-bun.test.ts` (the three cases of the rule, only a practice copy, the translated commands, Bun's report read, the Mac check, and the four practices through the real ladder in the box with no Node on the tool path, failing at the catalog's place and passing after the fix), `app/src/practice.test.ts`.
 
+## What the build settled (JavaScript builds that need the internet, and Git settings on install, 31 Oct 2026)
+
+**The internet question.** The safety box gives checks no internet. A Next.js build using `next/font/google` downloads its fonts at build time, so in the box it always failed with "Failed to fetch font", and `boxRefusal` turned that into a gap. Every fix on such a project would have ended partly proven. Seatbelt cannot allow one host name (only addresses and ports), so the box cannot let just the font servers through.
+- **The question.** The ladder now asks with marker `INTERNET_ASK`, using the same `check.install` setting and house rule as a native build's download (`mayDownload`).
+- **Where it shows.** The engine shows it as a "Go online?" card (risk "network") with the bare command, and keeps the answer for the task (`Session.netAnswers`), so a fix round never asks again. The first run's check screen shows network cards too.
+- **On a yes.** That check step, and the later check steps, run again in the box with `net: "open"`. Writes stay confined to the project and the package caches. Reads of private places stay refused. The internet is open. The tests and the server stay on loopback.
+- **A step that still cannot reach the internet.** The engine checks whether this Mac is online (a name lookup of api.anthropic.com, 3 s, `reachable`). Offline, it is a gap (`NO_INTERNET`). Online, it is the step's failure: a mistyped address is the project's bug.
+- **Never asked.** Point at the problem (`noInstall`) and installs set to Never never ask and never go online.
+
+**Git settings on install.** Seen on this Mac in a throwaway repo: the box keeps `.git` (rule 10), so `git config core.hooksPath` in a `prepare` step fails with "could not lock config file .git/config: Operation not permitted", and npm exits 255. That read as the project's install failing.
+- **The fix.** Installs now get `HUSKY=0`, `LEFTHOOK=0` and `SKIP_INSTALL_SIMPLE_GIT_HOOKS=1`, and `boxRefusal` reads a refused write into `.git/` as "git".
+- **On "git".** The install runs once more with `GIT_STAND_IN`, a bare stand-in Git folder in the command's own TMPDIR (`GIT_DIR`), and that run's exit code decides. A real install failure in the same output still fails. The stand-in also avoids a chained step being skipped.
+- **Seen on this Mac.** The stand-in run passes, and the real `.git/config` is unchanged.
+- **Any other step.** A refused `.git` write is a gap (`BOX_STOPPED.git`).
+
+**Tests:** `runner/test/proof-sandbox.test.ts` (the real box included), `runner/test/check-agent-settings.test.ts`, `app/src/onboarding.test.ts`. Reviewed adversarially (11 findings, all fixed).
+
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.

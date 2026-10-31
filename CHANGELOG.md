@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Builds that need the internet: 31 Oct 2026
+
+- **Next.js projects with Google Fonts can be fully checked.** Checks run in a safety box with no internet, so a build that fetches its fonts used to be left out of the check. Now Squibby asks once per task, "Go online?", and on a yes runs the build again with the internet. It can still only save files inside your project, but it can reach websites while it runs. The tests and your page never get the internet. With installs set to Automatically it does not ask; set to Never, it never goes online.
+- **An offline Mac is not blamed on your code.** If the build still cannot reach the internet, Squibby checks whether your Mac is online. Offline, the check says so. Online, a build that cannot reach an address is a real failure, such as a mistyped address.
+- **Projects whose install changes Git's settings are checked properly.** Checks never change your project's Git folder, so an install step that changes Git's settings (husky and tools like it, which check your code each time you save a version) used to make the whole install look broken. Now those tools are told to skip during a check. If a project's own install step still tries, the install runs once more with a stand-in Git folder, and its own result decides. Your project's Git settings stay as they were.
+
 ## Review fixes for the launch cut and the first run: 31 Oct 2026
 
 - **An update never quietly turns off what you used.** If you used file conversion, watch routines, Second Look or Type by voice, set up a watch, or picked a key for one of them, it stays on after the update, and so does the key. The tools you had not used now start off, and Settings, General says which ones once.

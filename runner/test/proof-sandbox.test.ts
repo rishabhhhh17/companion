@@ -11,11 +11,12 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CheckpointStore } from "../src/checkpoints.ts";
-import { runLadder, type LadderOptions } from "../src/proof/ladder.ts";
+import { GIT_STAND_IN, runLadder, type LadderOptions } from "../src/proof/ladder.ts";
 import { memoryApprovals } from "../src/proof/approvedruns.ts";
 import { runCommand, type RunOptions, type RunResult } from "../src/proof/exec.ts";
 import { startServer } from "../src/proof/server.ts";
 import { boxArgs, boxProfile, boxRefusal, boxWorks, SANDBOX_EXEC, type Box } from "../src/proof/box.ts";
+import { INTERNET_ASK } from "../src/proof/native.ts";
 import { bunTests } from "../src/proof/practicerun.ts";
 import type { Detected } from "../src/proof/detect.ts";
 import type { BrowserResult } from "../src/proof/browser.ts";
@@ -382,7 +383,7 @@ describe("a refusal by the box itself is a gap, never the project's failure", ()
     });
   }
   test("a build stopped by the box is a gap too, and which task broke it reads it as could not run", async () => {
-    const r = await check({ code: 1, stderr: BOX_SAID[4][1] }, {}, "build");
+    const r = await check({ code: 1, stderr: BOX_SAID[4][1] }, { check: { install: "ask" } as never, askInstall: async () => false }, "build");
     expect(r.verdict).not.toBe("failed");
     expect(r.checks?.find((c) => c.name === "build")?.status).toBe("not_started");
   });
@@ -427,4 +428,145 @@ describe("a refusal by the box itself is a gap, never the project's failure", ()
       expect(r.gaps?.join(" ")).toMatch(/safety box/);
     } finally { rmSync(target, { force: true }); }
   }, 30_000);
+});
+
+describe("a JavaScript build that needs the internet (Next's Google Fonts) asks once, and on a yes runs again in the box with it", () => {
+  const FONT = "Failed to fetch font `Geist`.\nURL: https://fonts.googleapis.com/css2?family=Geist";
+  const det: Detected = { kind: "node", packageManager: null, lockfile: null, checks: [{ name: "lint", command: "lint" }, { name: "build", command: "build" }], tests: { command: "tests" }, start: null };
+  async function check(o: Partial<LadderOptions> = {}, lintNeedsNet = false) {
+    const dir = tmp("net");
+    put(dir, { "package.json": pkg({}) });
+    const store = new CheckpointStore(tmp("s"), dir);
+    const s = await store.snapshot("as it is");
+    const ran: { command: string; net?: string }[] = [], asked: string[] = [];
+    const result = await runLadder({ project: dir, store, beforeId: s.id, afterId: s.id, detect: () => det, box: true, browser: okBrowser as never, check: { install: "ask" } as never, reachable: async () => false,
+      askInstall: async (c: string) => { asked.push(c); return true; },
+      run: (async (command: string, ro: RunOptions) => {
+        ran.push({ command, net: ro.box?.net });
+        const needs = command === "build" || (lintNeedsNet && command === "lint");
+        return needs && ro.box?.net !== "open" ? res({ code: 1, stderr: FONT }) : res();
+      }) as never, ...o });
+    return { result, ran, asked };
+  }
+  test("on a yes the build runs again with the internet, still in the box, and passes; the tests never get it", async () => {
+    const r = await check();
+    expect(r.asked).toEqual([`${INTERNET_ASK}build`]);
+    expect(r.ran).toEqual([{ command: "lint", net: "local" }, { command: "build", net: "local" }, { command: "build", net: "open" }, { command: "tests", net: "local" }]);
+    expect(r.result.verdict).toBe("passed");
+  });
+  test("one question for the whole check, even when two steps need the internet", async () => {
+    const r = await check({}, true);
+    expect(r.asked).toEqual([`${INTERNET_ASK}lint`]);
+    expect(r.ran.filter((x) => x.net === "open").map((x) => x.command)).toEqual(["lint", "build"]);
+    expect(r.result.verdict).toBe("passed");
+  });
+  test("on a no it stays the box's gap, never the project's failure, and nothing runs with the internet", async () => {
+    const r = await check({ askInstall: async () => false });
+    expect(r.ran.some((x) => x.net === "open")).toBe(false);
+    expect(r.result.verdict).toBe("passed_with_gaps");
+    expect(r.result.gaps?.join(" ")).toMatch(/needs the internet/);
+  });
+  test("installs set to never, and Point at the problem, never ask and never give the internet", async () => {
+    for (const o of [{ check: { install: "never" } as never }, { noInstall: true }] as Partial<LadderOptions>[]) {
+      const r = await check(o);
+      expect(r.asked).toEqual([]);
+      expect(r.ran.some((x) => x.net === "open")).toBe(false);
+      expect(r.result.verdict).not.toBe("failed");
+    }
+  });
+  test("a real build failure is never asked about, and a build that fails again with the internet is the project's failure", async () => {
+    const real = await check({ run: (async (c: string) => (c === "build" ? res({ code: 1, stderr: "Type error: x is not a number" }) : res())) as never });
+    expect(real.asked).toEqual([]);
+    expect(real.result.verdict).toBe("failed");
+    const again = await check({ run: (async (c: string, ro: RunOptions) => (c === "build" ? res({ code: 1, stderr: ro.box?.net === "open" ? "Type error: x is not a number" : FONT }) : res())) as never });
+    expect(again.asked).toEqual([`${INTERNET_ASK}build`]);
+    expect(again.result.verdict).toBe("failed");
+  });
+  test("a Mac with no internet at all: the build that fails the same way with the internet is a gap, never the project's failure", async () => {
+    const r = await check({ run: (async (c: string) => (c === "build" ? res({ code: 1, stderr: FONT }) : res())) as never });
+    expect(r.asked).toEqual([`${INTERNET_ASK}build`]);
+    expect(r.result.verdict).toBe("passed_with_gaps");
+    expect(r.result.gaps?.join(" ")).toMatch(/not connected to the internet right now/);
+    expect(r.result.checks?.find((x) => x.name === "build")?.status).toBe("not_started");
+  });
+  test("with this Mac online, a build that still cannot reach a name (a mistyped address) is the project's failure", async () => {
+    const BAD = "TypeError: fetch failed\n  [cause]: Error: getaddrinfo ENOTFOUND api.exmaple.com";
+    const r = await check({ reachable: async () => true, run: (async (c: string, ro: RunOptions) => (c === "build" ? res({ code: 1, stderr: ro.box?.net === "open" ? BAD : FONT }) : res())) as never });
+    expect(r.asked).toEqual([`${INTERNET_ASK}build`]);
+    expect(r.result.verdict).toBe("failed");
+    expect(r.result.failedAt?.rung).toBe("checks");
+  });
+  test("installs set to always: no question, the build just gets the internet after the box stopped it", async () => {
+    const r = await check({ check: { install: "auto" } as never });
+    expect(r.asked).toEqual([]);
+    expect(r.ran.filter((x) => x.net === "open").map((x) => x.command)).toEqual(["build"]);
+    expect(r.result.verdict).toBe("passed");
+  });
+});
+
+describe("an install that writes git's settings (husky, git hooks) is the box's doing, never the project's failure", () => {
+  const GIT_SAID = "> x@1.0.0 prepare\n> git config core.hooksPath .husky/_\n\nerror: could not lock config file .git/config: Operation not permitted\nnpm error code 255";
+  test("the real box keeps git's folder unchanged, and its words are read as the box's", async () => {
+    const w = world();
+    rmSync(join(w.project, ".git"), { recursive: true, force: true });
+    const init = await runCommand("git init -q .", { cwd: w.project, timeoutMs: 30_000, env: { HOME: w.home } });
+    expect(init.code).toBe(0);
+    const before = readFileSync(join(w.project, ".git", "config"), "utf8");
+    const r = await boxed(w.project, w.home, "git config core.hooksPath .husky/_", "open");
+    expect(r.code).not.toBe(0);
+    expect(readFileSync(join(w.project, ".git", "config"), "utf8")).toBe(before);
+    expect(boxRefusal(r.stdout + "\n" + r.stderr, "open")).toBe("git");
+  });
+  test("reading git's folder, or a failure that only names it, is never the box's", () => {
+    expect(boxRefusal("fatal: not a git repository (or any of the parent directories): .git", "open")).toBeNull();
+    expect(boxRefusal("AssertionError: expected '.git/config' to exist", "local")).toBeNull();
+  });
+  async function install(first: string, again: string | null = "", o: Partial<LadderOptions> = {}) {
+    const dir = tmp("gi");
+    put(dir, { "package.json": pkg({ build: "vite build" }) });
+    const store = new CheckpointStore(tmp("s"), dir);
+    const b = await store.snapshot("before");
+    put(dir, { "package.json": pkg({ build: "vite build" }, { zod: "4" }) });
+    const a = await store.snapshot("after");
+    const ran: { command: string; env?: Record<string, string> }[] = [];
+    const result = await runLadder({ project: dir, store, beforeId: b.id, afterId: a.id, box: true, askScripts: async () => true, browser: okBrowser as never,
+      run: (async (command: string, ro: RunOptions) => {
+        ran.push({ command, env: ro.env as Record<string, string> });
+        if (command === "npm install") return first ? res({ code: 255, stderr: first }) : res();
+        if (command === `${GIT_STAND_IN}npm install`) return again === null ? res() : again ? res({ code: 1, stderr: again }) : res();
+        return res();
+      }) as never, ...o });
+    return { result, ran };
+  }
+  test("the install runs once more with a stand-in Git folder, and its own exit code decides: here it passes", async () => {
+    const r = await install(GIT_SAID, null);
+    expect(r.ran.map((x) => x.command).slice(0, 2)).toEqual(["npm install", `${GIT_STAND_IN}npm install`]);
+    expect(r.result.verdict).toBe("passed");
+    expect(r.result.steps.find((x) => x.rung === "install")?.detail).toMatch(/stand-in/);
+    expect(r.ran.map((x) => x.command)).toContain("npm run build");
+  });
+  test("a real install failure in the same run is still the project's failure", async () => {
+    const E404 = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/zodd";
+    const r = await install(`${GIT_SAID}\n${E404}`, E404);
+    expect(r.result.verdict).toBe("failed");
+    expect(r.result.failedAt?.rung).toBe("install");
+  });
+  test("a real install failure with no Git line is never run twice", async () => {
+    const r = await install("npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/zodd");
+    expect(r.result.verdict).toBe("failed");
+    expect(r.ran.filter((x) => x.command.includes("npm install"))).toHaveLength(1);
+  });
+  test("the stand-in in the real box: Git's step succeeds there, and the project's own Git settings stay as they were", async () => {
+    const w = world();
+    rmSync(join(w.project, ".git"), { recursive: true, force: true });
+    expect((await runCommand("git init -q .", { cwd: w.project, timeoutMs: 30_000, env: { HOME: w.home } })).code).toBe(0);
+    const before = readFileSync(join(w.project, ".git", "config"), "utf8");
+    const r = await boxed(w.project, w.home, `${GIT_STAND_IN}git config core.hooksPath .husky/_`, "open");
+    expect(r.code).toBe(0);
+    expect(readFileSync(join(w.project, ".git", "config"), "utf8")).toBe(before);
+  });
+  test("the install is told to leave git hooks alone (husky, lefthook, simple-git-hooks)", async () => {
+    const r = await install("");
+    expect(r.ran.find((x) => x.command === "npm install")?.env).toMatchObject({ CI: "1", HUSKY: "0", LEFTHOOK: "0", SKIP_INSTALL_SIMPLE_GIT_HOOKS: "1" });
+  });
 });

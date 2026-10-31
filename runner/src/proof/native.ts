@@ -487,6 +487,8 @@ export function detectNative(dir: string, o: NativeEnv = {}): NativeDetected | n
 
 /** The install question for a build that needs to download packages starts with this, so the card can say it in its own words. */
 export const DOWNLOAD_ASK = "download: ";
+/** The same question for a JavaScript build the safety box stopped because it needs the internet (Next's Google Fonts, say). */
+export const INTERNET_ASK = "internet: ";
 /** What a wrapper (mvnw, gradlew) run offline says when its build tool is not on this Mac: it would have to download it first. */
 export const WRAPPER_NOT_CACHED = `${PRODUCT} did not run the project's wrapper: its build tool is not on this Mac yet, and the wrapper would download it first.`;
 export type NetWhy = "noInstall" | "no" | "never";
