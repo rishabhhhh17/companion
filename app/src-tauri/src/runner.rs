@@ -113,7 +113,8 @@ pub fn split_lines(buf: &mut Vec<u8>, chunk: &[u8]) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq)]
 /// `claude`: where Anthropic's Claude build is once installed at first run (claude_install.rs, M22). Each engine start
 /// passes it as COMPANION_CLAUDE_BIN only when the file is there; a development run uses the SDK package's own.
-pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String>, pub claude: Option<PathBuf> }
+/// `developer`: a development build (cfg debug_assertions), the only kind that takes the engine from the developer's own setup.
+pub struct Locations { pub bun: PathBuf, pub runner: PathBuf, pub data: PathBuf, pub env: BTreeMap<String, String>, pub claude: Option<PathBuf>, pub developer: bool }
 
 /// The only settings the developer file may pass to the runner. Keys, tokens and anything that could
 /// switch accounts are refused here, so a settings file can never carry a secret into the runner.
@@ -130,7 +131,7 @@ pub fn allowed_env(dev: &Value) -> BTreeMap<String, String> {
 }
 
 #[cfg(test)]
-pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> { locations_with_bundle(dev_json, env, data, None) }
+pub fn locations(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf) -> Result<Locations, String> { locations_for(dev_json, env, data, None, true) }
 
 /// Where the engine is inside the installed app: `Contents/Resources/engine` holds `bin/bun` and `runner/src/main.ts`
 /// (staged by app/scripts/stage-engine.sh). None when not running from an installed app (a development run).
@@ -138,12 +139,20 @@ pub fn bundled_engine(exe: &std::path::Path) -> Option<PathBuf> {
     exe.ancestors().find(|a| a.file_name().is_some_and(|n| n == "Contents")).map(|c| c.join("Resources/engine"))
 }
 
-/// The developer file first, then the environment, then the engine that came with the app.
+/// The developer file first, then the environment, then the engine that came with the app. Only a development build
+/// (cfg debug_assertions) looks at the first two.
 pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf, bundle: Option<PathBuf>) -> Result<Locations, String> {
+    locations_for(dev_json, env, data, bundle, cfg!(debug_assertions))
+}
+
+/// Where the engine is, for a development build (`developer`) or a release. A release never takes Bun or the runner from
+/// dev.json, COMPANION_BUN or COMPANION_RUNNER: the shell hands the engine the person's key from the Keychain, so it runs
+/// only the engine sealed inside the app (a file or a variable any program on the Mac could set must not choose it).
+pub fn locations_for(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String>, data: PathBuf, bundle: Option<PathBuf>, developer: bool) -> Result<Locations, String> {
     let dev: Value = dev_json.and_then(|s| serde_json::from_str(s).ok()).unwrap_or(Value::Null);
     let pick = |key: &str, var: &str| dev.get(key).and_then(Value::as_str).map(str::to_string).or_else(|| env(var));
     let in_bundle = |rel: &str| bundle.as_ref().map(|b| b.join(rel)).filter(|p| p.is_file());
-    let (dev_bun, dev_runner) = (pick("bun", "COMPANION_BUN"), pick("runner", "COMPANION_RUNNER"));
+    let (dev_bun, dev_runner) = if developer { (pick("bun", "COMPANION_BUN"), pick("runner", "COMPANION_RUNNER")) } else { (None, None) };
     // Both from the developer's setup or both from the installed app, never a mix of two different engines.
     let (bun, runner) = match (dev_bun, dev_runner) {
         (Some(b), Some(r)) => (PathBuf::from(b), PathBuf::from(r)),
@@ -151,11 +160,41 @@ pub fn locations_with_bundle(dev_json: Option<&str>, env: &dyn Fn(&str) -> Optio
         (None, Some(_)) => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         (None, None) => match (in_bundle("bin/bun"), in_bundle("runner/src/main.ts")) {
             (Some(b), Some(r)) => (b, r),
-            _ if bundle.is_some() => return Err(concat!("Part of ", crate::product!(), " is missing from this copy of the app. Download ", crate::product!(), " again and replace this one.").into()),
+            _ if bundle.is_some() || !developer => return Err(concat!("Part of ", crate::product!(), " is missing from this copy of the app. Download ", crate::product!(), " again and replace this one.").into()),
             _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
-    Ok(Locations { bun, runner, data, env: allowed_env(&dev), claude: None })
+    Ok(Locations { bun, runner, data, env: allowed_env(&dev), claude: None, developer })
+}
+
+/// What the engine is told about Anthropic's Claude at each start.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClaudeEnv {
+    /// The installed build, checked just now (claude_install::cleared): its path and which file was checked.
+    Set(PathBuf, String),
+    /// Nothing checked, in a release: a COMPANION_CLAUDE_BIN the app itself was started with is taken away, so the engine
+    /// never hands the key to a program the environment named.
+    Remove,
+    /// Nothing checked, in a development build: the developer's own COMPANION_CLAUDE_BIN, if any, still reaches the engine.
+    Leave,
+}
+pub fn claude_env(developer: bool, cleared: Option<(PathBuf, String)>) -> ClaudeEnv {
+    match cleared { Some((p, id)) => ClaudeEnv::Set(p, id), None if developer => ClaudeEnv::Leave, None => ClaudeEnv::Remove }
+}
+
+/// The engine's command line and environment for one start. `cleared` is the installed Claude build once its signature
+/// was checked for this exact file (claude_install::cleared).
+pub fn engine_command(loc: &Locations, cleared: Option<(PathBuf, String)>) -> Command {
+    use std::os::unix::process::CommandExt;
+    // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
+    let mut c = Command::new(&loc.bun);
+    c.arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app");
+    match claude_env(loc.developer, cleared) {
+        ClaudeEnv::Set(p, id) => { c.env("COMPANION_CLAUDE_BIN", p).env("COMPANION_CLAUDE_ID", id); }
+        ClaudeEnv::Remove => { c.env_remove("COMPANION_CLAUDE_BIN").env_remove("COMPANION_CLAUDE_ID"); }
+        ClaudeEnv::Leave => {}
+    }
+    c
 }
 
 /// What a person reads when the helper that runs Claude cannot start, is not there yet, or does not answer. Plain words;
@@ -408,12 +447,12 @@ impl Runner {
         std::fs::create_dir_all(&loc.data).map_err(|e| e.to_string())?;
         let loc = loc.clone();
         let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
-            use std::os::unix::process::CommandExt;
-            // Its own process group, so that when the engine has to be ended by force, what it started goes with it.
-            let mut c = Command::new(&loc.bun);
-            c.arg(&loc.runner).process_group(0).env("COMPANION_DATA", &loc.data).envs(&loc.env).env("COMPANION_KEY_SOURCE", "app");
-            if let Some(p) = loc.claude.as_ref().filter(|p| p.is_file()) { c.env("COMPANION_CLAUDE_BIN", p); }
-            c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+            // Anthropic's Claude is checked again at every start, not only when it was installed (once per change of the
+            // file, claude_install::cleared): a file that is no longer Anthropic's signed build is never handed the key.
+            let installed = loc.claude.as_ref().filter(|p| p.is_file());
+            let cleared = installed.and_then(|p| crate::claude_install::cleared(p).map(|id| (p.clone(), id)));
+            if installed.is_some() && cleared.is_none() { crate::log("failure_detail", detail_line("claude.check", None, "the installed Claude build did not pass its signature check at this start, so it was not used")); }
+            engine_command(&loc, cleared).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
         });
         // Fail loudly now, not later, if the engine cannot be started at all.
         let first = spawn().map_err(|e| { crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}"))); HELPER_DOWN.to_string() })?;
@@ -809,6 +848,53 @@ mod tests {
         let e = locations_with_bundle(None, &none, "/d".into(), Some(eng)).unwrap_err();
         assert!(e.contains("missing from this copy") && e.ends_with('.'));
         let _ = std::fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_release_never_takes_the_engine_from_the_developer_file_or_the_environment() {
+        let root = std::env::temp_dir().join(format!("companion-release-{}", std::process::id())); let _ = std::fs::remove_dir_all(&root);
+        let eng = root.join(concat!(crate::product!(), ".app/Contents/Resources/engine"));
+        std::fs::create_dir_all(eng.join("bin")).unwrap(); std::fs::create_dir_all(eng.join("runner/src")).unwrap();
+        std::fs::write(eng.join("bin/bun"), "x").unwrap(); std::fs::write(eng.join("runner/src/main.ts"), "x").unwrap();
+        let env = |k: &str| match k { "COMPANION_BUN" => Some("/env/bun".into()), "COMPANION_RUNNER" => Some("/env/main.ts".into()), _ => None };
+        let dev = r#"{"bun":"/dev/bun","runner":"/dev/r","env":{"COMPANION_ROUTE":"plan"}}"#;
+        // A release: the engine sealed in the app, whatever dev.json or the environment say.
+        let l = locations_for(Some(dev), &env, "/d".into(), Some(eng.clone()), false).unwrap();
+        assert_eq!((l.bun.clone(), l.runner.clone()), (eng.join("bin/bun"), eng.join("runner/src/main.ts")));
+        assert!(!l.developer);
+        let l = locations_for(Some(r#"{"bun":"/dev/bun"}"#), &env, "/d".into(), Some(eng.clone()), false).unwrap();
+        assert_eq!(l.bun, eng.join("bin/bun"), "half a developer setup changes nothing either");
+        // A release with no engine of its own never falls back to one named elsewhere.
+        let e = locations_for(Some(dev), &env, "/d".into(), None, false).unwrap_err();
+        assert!(!e.is_empty());
+        // A development build keeps working exactly as before: dev.json, then the environment.
+        let l = locations_for(Some(dev), &env, "/d".into(), Some(eng.clone()), true).unwrap();
+        assert_eq!((l.bun, l.runner), (PathBuf::from("/dev/bun"), PathBuf::from("/dev/r")));
+        let l = locations_for(None, &env, "/d".into(), Some(eng.clone()), true).unwrap();
+        assert_eq!((l.bun, l.runner), (PathBuf::from("/env/bun"), PathBuf::from("/env/main.ts")));
+        assert!(l.developer);
+        // The build this test runs in is a development one, and the app's own entry point follows it.
+        assert_eq!(locations_with_bundle(Some(dev), &env, "/d".into(), Some(eng.clone())).unwrap().developer, cfg!(debug_assertions));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+    #[test]
+    fn a_release_takes_away_an_inherited_claude_path_and_only_a_checked_build_is_passed() {
+        let checked = Some((PathBuf::from("/data/claude/1/claude"), "1:2:3".to_string()));
+        assert_eq!(claude_env(false, None), ClaudeEnv::Remove);
+        assert_eq!(claude_env(true, None), ClaudeEnv::Leave);
+        assert_eq!(claude_env(false, checked.clone()), ClaudeEnv::Set(PathBuf::from("/data/claude/1/claude"), "1:2:3".into()));
+        assert_eq!(claude_env(true, checked.clone()), ClaudeEnv::Set(PathBuf::from("/data/claude/1/claude"), "1:2:3".into()));
+        let env_of = |developer: bool, cleared: Option<(PathBuf, String)>| -> BTreeMap<String, Option<String>> {
+            let loc = Locations { bun: "/b".into(), runner: "/r".into(), data: "/d".into(), env: BTreeMap::new(), claude: None, developer };
+            engine_command(&loc, cleared).get_envs().map(|(k, v)| (k.to_string_lossy().into_owned(), v.map(|v| v.to_string_lossy().into_owned()))).collect()
+        };
+        let r = env_of(false, None);
+        assert_eq!(r.get("COMPANION_CLAUDE_BIN"), Some(&None), "removed, not inherited: {r:?}");
+        assert_eq!(r.get("COMPANION_CLAUDE_ID"), Some(&None));
+        assert!(!env_of(true, None).contains_key("COMPANION_CLAUDE_BIN"), "a development build leaves the developer's own");
+        let s = env_of(false, checked);
+        assert_eq!(s.get("COMPANION_CLAUDE_BIN"), Some(&Some("/data/claude/1/claude".to_string())));
+        assert_eq!(s.get("COMPANION_CLAUDE_ID"), Some(&Some("1:2:3".to_string())));
+        assert_eq!(s.get("COMPANION_KEY_SOURCE"), Some(&Some("app".to_string())));
     }
     #[test]
     fn locations_carry_the_safe_settings() {

@@ -23,8 +23,8 @@ const res = (o: Partial<RunResult> = {}): RunResult => ({ code: 0, signal: null,
 const fixture = (name: string, root: string) => readFileSync(join(import.meta.dir, "fixtures", "errors", `${name}.txt`), "utf8").replaceAll("{{ROOT}}", root);
 
 // A stand in for the project's own Python: it acts like `python -m flask run --host H --port P` or
-// `python manage.py runserver H:P` (or crashes, or is missing flask), and writes down how it was started, outside the
-// project. "serve-db" and "crash-db" also do what Django's runserver does on its way up: open the default SQLite database,
+// `python manage.py runserver H:P` (or crashes, or is missing flask), and writes down how it was started, in its own .venv
+// folder (a check runs in the safety box for checks, which lets it write only in the project: box.ts). "serve-db" and "crash-db" also do what Django's runserver does on its way up: open the default SQLite database,
 // which makes an empty db.sqlite3 when there is none (its migration check only reads).
 function fakePython(dir: string, mode: "serve" | "crash" | "no-flask" | "serve-db" | "crash-db", log: string) {
   const script = `#!${process.execPath}
@@ -49,7 +49,7 @@ const FLASK_APP = "from flask import Flask\n\napp = Flask(__name__)\n\n\n@app.ro
 const okBrowser = async (url: string): Promise<BrowserResult> => ({ ok: true, problems: [], consoleErrors: [], failedRequests: [], visited: [url], ms: 1 }) as never;
 
 async function ladder(files: Record<string, string>, o: { run?: (c: string, x: any) => Promise<RunResult>; browser?: (url: string) => Promise<BrowserResult>; python?: Parameters<typeof fakePython>[1]; detect?: (d: string) => ReturnType<typeof detectProject>; noInstall?: boolean } = {}) {
-  const dir = tmp(), log = join(tmp(), "started.json");
+  const dir = tmp(), log = join(dir, ".venv", "started.json");
   put(dir, files);
   if (o.python) fakePython(dir, o.python, log);
   const store = new CheckpointStore(tmp(), dir);

@@ -4,7 +4,7 @@
 
 import { GOOGLE_SERVER, googleServer } from "./google/tools.ts";
 import { googleConnected, googleDeps, googleNote } from "./google/state.ts";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { query as realQuery, type HookCallbackMatcher } from "@anthropic-ai/claude-agent-sdk";
 import { homedir } from "node:os";
@@ -41,10 +41,20 @@ export function shellFacts(input: any): ShellFacts | undefined {
 // taken for one. It never asks for a secret in chat: the answer would be sent to Claude and saved in its conversation.
 export const COMPANION_APPEND = `You are working inside a user's project folder for a ${PRODUCT} task. Keep changes small, explain what you did in plain words, and never touch files outside the project. If something only the person can give is missing (a setting's value, an account, a choice between two ways), do every part you can without it, then end your final message with one short question about it, on its own last line. Otherwise never end your final message with a question or an offer to do more. Never make up a value they have to give. Never ask for a password, a key or any other secret: say which setting is needed and where to add it (the project's .env file, or the host's settings), so the person adds it themselves. Never write a password, token or secret yourself. A setting that is plainly not secret (a shop name, a currency, a public web address) you may add to the .env file yourself, as one added line with a command such as printf 'NAME=value\\n' >> .env, never by rewriting the file; ${PRODUCT} asks the person first and shows only the setting's name. ${PRODUCT} never lets you read the .env file or any private settings file (it can hold keys): the names a project needs are in its .env.example or its README, and a line can be renamed in place with sed -i without reading it. When the request quotes an error or a failed check, first check that it still applies (read the file and line it names, and look at whether the thing it names is still missing or wrong). If it no longer applies, change nothing and say in plain words that it looks already fixed and why. Never make up a cause for an error you cannot find. Talk to the person in everyday words. Never say "hook", "sandbox", "permission mode", the names of tools, or the names of ${PRODUCT}'s own files and folders. When something is not allowed, say "${PRODUCT} does not let tasks" followed by the plain reason, and what the person can do instead (do it themselves, change a setting, or answer a question).`;
 
-// The Claude binary that ships inside the pinned SDK package. Never one found on PATH.
-export function resolveClaudeBinary(override?: string): string {
+/** Which version of a file this is: inode, size and modification time in nanoseconds, as the shell's claude_install.rs
+ *  file_id writes it. Undefined when there is no such file. */
+export function fileId(p: string): string | undefined {
+  try { const s = statSync(p, { bigint: true }); return s.isFile() ? `${s.ino}:${s.size}:${s.mtimeNs}` : undefined; } catch { return undefined; }
+}
+export const CLAUDE_CHANGED = `Claude on this Mac has changed since ${PRODUCT} checked it, so it was not started. Quit ${PRODUCT} and open it again.`;
+
+// The Claude binary that ships inside the pinned SDK package. Never one found on PATH. `checkedId`: the version of the
+// installed build the shell checked at this engine start (COMPANION_CLAUDE_ID); a file that is no longer that version is
+// never started, so a swap while the engine runs never gets the key.
+export function resolveClaudeBinary(override?: string, checkedId?: string): string {
   if (override) {
     if (!existsSync(override)) throw new Error(`Claude binary not found at ${override}`);
+    if (checkedId && fileId(override) !== checkedId) throw new Error(CLAUDE_CHANGED);
     return override;
   }
   const pkg = Bun.resolveSync("@anthropic-ai/claude-agent-sdk/package.json", import.meta.dir);

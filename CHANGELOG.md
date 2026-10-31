@@ -2,6 +2,12 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Checks run in a safety box: 31 Oct 2026
+
+- **Checking the work can no longer reach past your project.** When Squibby checks a change, the project's build, tests and server now run in macOS's own safety box, like Claude's own commands: they can change only the project folder and the package caches, cannot read your keys, logins or Companion's own data, and cannot reach the internet. Installing packages still can, and only after you allowed it.
+- **A Mac where the box does not work asks first.** If the box cannot be used, nothing of the project's runs until you say yes on the card, and a check with nobody to ask runs nothing and says why.
+- **An unfinished task cannot slip changed scripts past the card.** If a task changes the project's scripts and stops before its check, the next check (Point at the problem, Put it online) treats them as changed and asks, or runs nothing. Python projects get the same card.
+
 ## Pro is built, and switched off: 31 Oct 2026
 
 - **Nothing changes for anyone yet.** Payments are off. Every feature stays free, nothing is charged, nothing is held back, and Squibby talks to no payment service.

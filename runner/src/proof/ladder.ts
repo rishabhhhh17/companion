@@ -11,9 +11,10 @@ import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } 
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
+import { boxWorks, type Net } from "./box.ts";
 import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
-import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
+import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, swiftInBox, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
 import { readRunFiles, runPrint, type RunApprovals } from "./approvedruns.ts";
@@ -81,14 +82,20 @@ export type LadderOptions = {
   // ask is a no, and the check then runs on the project as it is, with a gap.
   askInstall?: (command: string) => Promise<boolean>;
   // The question for a check whose scripts, packages, lock file, .replit or .claude/launch.json differ from what the person
-  // last said yes to running (approvals), or, without a record, that the task changed: those run on this Mac outside the
-  // sandbox Claude's own commands get, so they are run only on a yes. byTask: this task made the change (else it came
-  // since the last yes, by a task that got a no or by hand). True only for a yes.
-  askScripts?: (byTask: boolean) => Promise<boolean>;
+  // last said yes to running (approvals), or, without a record, that the task changed: they are run only on a yes. byTask:
+  // this task made the change (else it came since the last yes, by a task that got a no or by hand). unboxed: the safety
+  // box for checks cannot be used on this Mac, so this check asks whatever changed, and a yes runs it outside the box.
+  // True only for a yes.
+  askScripts?: (byTask: boolean, unboxed?: boolean) => Promise<boolean>;
   // What the person said yes to running in this project (approvedruns.ts), kept across checks. Every flow gives it, so a
   // no holds for the next ship check and Point at the problem too: with no way to ask, nothing that differs from it runs.
-  // An empty record starts with the project as it was before this check. Without it, only a change made by the task asks.
+  // An empty record starts with the project as it was before this check (a task fills it as it starts, from the project
+  // before the agent wrote anything, so this is only a project no agent has written to). Without it, only a change made
+  // by the task asks.
   approvals?: RunApprovals;
+  // Whether the project's commands run in the safety box for checks (box.ts): by default, whether it works on this Mac for
+  // this project. Where it does not, nothing runs without a yes in this check, and with no way to ask nothing runs.
+  box?: boolean;
 };
 
 const LABELS: Record<Rung, string> = {
@@ -149,13 +156,17 @@ const NOT_INSTALLED_NEVER = "The project's packages are not installed, and Setti
 const CHANGES_DATA_WORDS = { install: "The project's install steps", typecheck: "The type check script", lint: "The lint script", build: "The build script", test: "The test script", start: "The start script" } as const;
 const changesDataGap = (what: keyof typeof CHANGES_DATA_WORDS) => `${CHANGES_DATA_WORDS[what]} also changes a database or puts something online, so ${PRODUCT} did not run it${what === "start" ? ", and the page was not checked" : what === "install" ? " and checked the project as it is" : ""}.`;
 // The task changed what the project runs, and no yes came to running it.
-const RUN_CHANGED_NO = "This task changed the project's scripts or packages, which run on this Mac outside the safety box, and you did not say yes to running them, so the install, build, tests and server were not run.";
+const RUN_CHANGED_NO = "This task changed the project's scripts or packages, which run on this Mac, and you did not say yes to running them, so the install, build, tests and server were not run.";
 const RUN_CHANGED_SHORT = "Not run: this task changed the project's scripts or packages, and running them needs your yes.";
 // The scripts or packages changed since the person last said yes to running them, by a task that got a no or by hand.
-const RUN_SINCE_NO = "The project's scripts or packages changed since you last said yes to running them. They run on this Mac outside the safety box, and you did not say yes this time, so the install, build, tests and server were not run.";
+const RUN_SINCE_NO = "The project's scripts or packages changed since you last said yes to running them. They run on this Mac, and you did not say yes this time, so the install, build, tests and server were not run.";
 const RUN_SINCE_SHORT = "Not run: the project's scripts or packages changed since you last said yes to running them.";
 // The same, in a check that has no way to ask (Point at the problem, Your turn, which task broke it).
-const RUN_UNASKED = "The project's scripts or packages changed since you last said yes to running them, and they run on this Mac outside the safety box, so the install, build, tests and server were not run here. You are asked about them in the next task's check or in Put it online.";
+const RUN_UNASKED = "The project's scripts or packages changed since you last said yes to running them, and they run on this Mac, so the install, build, tests and server were not run here. You are asked about them in the next task's check or in Put it online.";
+// The safety box for checks cannot be used on this Mac: nothing of the project's runs without a yes in this check.
+const RUN_UNBOXED_NO = "The safety box for checks is not working on this Mac, and you did not say yes to running the project's install, build, tests and server without it, so they were not run.";
+const RUN_UNBOXED_SHORT = "Not run: the safety box for checks is not working on this Mac, and running them without it needs your yes.";
+const RUN_UNBOXED_UNASKED = "The safety box for checks is not working on this Mac, so the project's install, build, tests and server were not run here. You are asked about them in the next task's check or in Put it online.";
 // A step that could not run because the project's packages were not installed for this check.
 const WITHOUT_PACKAGES = {
   typecheck: "The type check could not run because the project's packages are not installed.",
@@ -224,6 +235,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const limits = { ...DEFAULT_LIMITS, ...(o.limits ?? {}) };
   const runOnce = o.run ?? runCommand;
   const run: typeof runOnce = async (command, ro) => {
+    if (ro.box && nat?.ecosystem === "swift") command = swiftInBox(command);
     let r = await runOnce(command, ro);
     for (const ms of o.noRoomWaitsMs ?? NO_ROOM_WAITS_MS) {
       if (!couldNotStart(r) || o.signal?.aborted) break;
@@ -309,27 +321,36 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (cancelled()) return result("cancelled");
   let t0 = Date.now(); emit("install", "running");
   const [bf, af] = [await readRunFiles(o.store, o.beforeId), await readRunFiles(o.store, o.afterId)];
+  // Every command of the project's runs in the safety box for checks (box.ts): writes only to the project and the package
+  // caches, none of the private places, and no internet but for an install or a download the person allowed. Where the box
+  // cannot be used on this Mac, nothing runs without a yes in this check (below).
+  const boxed = o.box ?? await boxWorks(o.project);
+  if (cancelled()) return result("cancelled");
+  const inBox = (net: Net): Pick<RunOptions, "box"> => (boxed ? { box: { project: o.project, net } } : {});
   // What the check would run differs from what the person said yes to (or, with no record, the task changed it): none of
-  // it runs without a yes, since it runs outside the sandbox (rule 13). A yes covers installing the packages too, so the
-  // person answers one card, and it is remembered. [verify] Running the checks under the same sandbox as Claude's own
-  // commands would make this question unneeded.
+  // it runs without a yes (rule 13). A yes covers installing the packages too, so the person answers one card, and it is
+  // remembered. A Python project is asked the same way: its start from .replit or .claude/launch.json is the project's.
   let runYes = false, noRun = false, runShort = RUN_CHANGED_SHORT;
   const [printBefore, printAfter] = [runPrint(bf), runPrint(af)];
   let unapproved: "task" | "since" | null = null;
-  if (!py && o.approvals) {
+  if (o.approvals) {
     if (o.approvals.empty()) o.approvals.add(printBefore);
     if (!o.approvals.has(printAfter)) unapproved = printAfter !== printBefore ? "task" : "since";
-  } else if (!py && o.askScripts && printAfter !== printBefore) unapproved = "task";
+  } else if (o.askScripts && printAfter !== printBefore) unapproved = "task";
+  // No box: anything the task changed (its tests, sources and configs, not only its scripts) would run outside it, and so
+  // would anything an earlier task changed that was never checked. So this check asks whatever changed, and with no way to
+  // ask runs nothing.
+  if (!boxed) unapproved ??= o.beforeId !== o.afterId ? "task" : "since";
   if (unapproved) {
     if (o.askScripts) {
-      runYes = await o.askScripts(unapproved === "task").then((x) => x === true, () => false);
+      runYes = await (boxed ? o.askScripts(unapproved === "task") : o.askScripts(unapproved === "task", true)).then((x) => x === true, () => false);
       if (cancelled()) return result("cancelled");
     }
     if (runYes) o.approvals?.add(printAfter);
     else {
       noRun = true;
-      runShort = o.askScripts && unapproved === "task" ? RUN_CHANGED_SHORT : RUN_SINCE_SHORT;
-      left.push(!o.askScripts ? RUN_UNASKED : unapproved === "task" ? RUN_CHANGED_NO : RUN_SINCE_NO);
+      runShort = !boxed ? RUN_UNBOXED_SHORT : o.askScripts && unapproved === "task" ? RUN_CHANGED_SHORT : RUN_SINCE_SHORT;
+      left.push(!boxed ? (o.askScripts ? RUN_UNBOXED_NO : RUN_UNBOXED_UNASKED) : !o.askScripts ? RUN_UNASKED : unapproved === "task" ? RUN_CHANGED_NO : RUN_SINCE_NO);
     }
   }
   // Scripts that change a database or put something online are never run by a check.
@@ -354,14 +375,15 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // not on this Mac yet (and a download is allowed) the command that may download. A wrapper whose build tool is not here
   // yet has no offline way, so it counts as having asked for a download.
   const nativeRun = async (c: { command: string; offline?: string | null }, limitMs: number, env: Record<string, string>): Promise<RunResult> => {
-    const go = (command: string) => run(command, { cwd: o.project, timeoutMs: limitMs, signal: o.signal, env });
-    if (online) return go(c.command);
+    // Only the way that may download gets the internet, and only once a download is allowed.
+    const go = (command: string, net: Net = "local") => run(command, { cwd: o.project, timeoutMs: limitMs, signal: o.signal, env, ...inBox(net) });
+    if (online) return go(c.command, "open");
     let r: RunResult;
     if (c.offline) {
       r = await go(c.offline);
       if (r.code === 0 || r.timedOut || r.aborted || cancelled() || couldNotStart(r) || !needsDownload(r.stdout + "\n" + r.stderr, nat!.ecosystem)) return r;
     } else r = { code: 1, signal: null, stdout: "", stderr: WRAPPER_NOT_CACHED, timedOut: false, ms: 0 };
-    if (await mayDownload(c.command) && !cancelled()) { online = true; return go(c.command); }
+    if (await mayDownload(c.command) && !cancelled()) { online = true; return go(c.command, "open"); }
     return r;
   };
   // Python packages are never installed by Companion; the note says what it uses. With no Python to use (none on this
@@ -388,7 +410,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (risky) { const why = changesDataGap("install"); left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else if (!yes) { const why = mode === "never" ? NOT_INSTALLED_NEVER : NOT_INSTALLED_NO; left.push(why); heldBack = true; finish("install", "skipped", why, t0); }
     else {
-      const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" } });
+      const r = await run(command, { cwd: o.project, timeoutMs: limits.installMs, signal: o.signal, env: { CI: "1" }, ...inBox("open") });
       // Stop (or Stop everything) ended the command: that says nothing about the project, so it is never a failure.
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) return noRoom("install", t0);
@@ -409,7 +431,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       if (screened(c.command)) { const w = changesDataGap(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
-      const r = nat ? await nativeRun(c, limits.checkMs, {}) : await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}) });
+      const r = nat ? await nativeRun(c, limits.checkMs, {}) : await run(c.command, { cwd: o.project, timeoutMs: limits.checkMs, signal: o.signal, ...(py ? { env: pyEnv } : {}), ...inBox("local") });
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) { tried.push({ name: c.name, status: "not_started" }); return noRoom("checks", t0); }
       if (r.code !== 0 || r.timedOut) {
@@ -435,7 +457,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   else if (det.tests && noRun) finish("tests", "skipped", runShort, t0);
   else if (det.tests && screened(det.tests.command)) { const w = changesDataGap("test"); left.push(w); finish("tests", "skipped", w, t0); }
   else if (det.tests) {
-    const r = nat ? await nativeRun(det.tests, limits.testMs, { CI: "1" }) : await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv } });
+    const r = nat ? await nativeRun(det.tests, limits.testMs, { CI: "1" }) : await run(det.tests.command, { cwd: o.project, timeoutMs: limits.testMs, signal: o.signal, env: { CI: "1", ...pyEnv }, ...inBox("local") });
     if (r.aborted || cancelled()) return result("cancelled");
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
@@ -492,7 +514,13 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   const dbBefore = py ? databaseFiles(o.project) : null;
   // A Go, Rust, Java, Kotlin or Swift project's server is told whether it may fetch packages, and never a toolchain.
   // Maven and Gradle get their offline switch in the command itself, when no download is allowed (serverOffline).
-  const serve = (start: NonNullable<Detected["start"]>, allow = online) => (o.server ?? startServer)(nat && start.kind === "server" ? { ...start, ...(allow ? {} : { command: serverOffline(start.command, nat).command }), env: { ...(start.env ?? {}), ...serverEnv(allow) } } : start, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal });
+  // The server runs in the box too: it may listen on this Mac and Companion reaches it, and it reaches the internet only
+  // when a download was allowed.
+  const serve = (start: NonNullable<Detected["start"]>, allow = online) => {
+    const command = (c: string) => (boxed && nat?.ecosystem === "swift" ? swiftInBox(c) : c);
+    const s = nat && start.kind === "server" ? { ...start, command: command(allow ? start.command : serverOffline(start.command, nat).command), env: { ...(start.env ?? {}), ...serverEnv(allow) } } : start;
+    return (o.server ?? startServer)(s, { cwd: o.project, timeoutMs: limits.startMs, scriptText: textOf(start), signal: o.signal, ...inBox(nat && allow ? "open" : "local") });
+  };
   // A start that cannot run without downloading (a wrapper whose build tool is not here yet, swift run on a project with remote
   // packages) is a download like a build's: the same question, once, and without a yes it is not started and is said as a gap.
   if (nat && det.start.kind === "server" && !online && serverOffline(det.start.command, nat).download) {

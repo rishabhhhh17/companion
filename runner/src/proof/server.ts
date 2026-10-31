@@ -5,6 +5,7 @@ import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve, sep } from "node:path";
 import { minimalEnv } from "../env.ts";
+import { openBox, SANDBOX_EXEC, type Box } from "./box.ts";
 import type { Start } from "./detect.ts";
 import type { PythonServer } from "./python.ts";
 
@@ -19,6 +20,9 @@ export function busyPort(output: string): number | null {
   if (m) return Number(m[1] ?? m[2] ?? m[3]);
   return /\bEADDRINUSE\b|address already in use/i.test(output) ? 0 : null;
 }
+
+/** What the server rung says when the safety box for checks could not be set up on this Mac. */
+export const BOX_NOT_STARTED = "The safety box for checks could not be set up on this Mac, so the project was not started.";
 
 export function freePort(): Promise<number> {
   return new Promise((res, rej) => {
@@ -70,21 +74,27 @@ async function answers(port: number): Promise<string | null> {
 
 const tail = (s: string, n = 600) => s.trim().slice(-n);
 
-export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string; signal?: AbortSignal }): Promise<Running | Failed> {
+// box: the project's server runs in the safety box for proof checks (box.ts). It may listen and answer on this Mac, and
+// Companion reaches it from outside; with net "local" it reaches nothing beyond this Mac. A box that cannot be made starts
+// nothing.
+export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string; signal?: AbortSignal; box?: Box }): Promise<Running | Failed> {
   if (start.kind === "static") return serveStatic(start.dir);
 
   const hinted = start.port && start.autoPort === false && !(await portBusy(start.port));
   const port = hinted ? start.port! : await freePort();
   const url = `http://127.0.0.1:${port}/`;
   const command = start.command + (start.python ? pythonPortArgs(start.python, port) : portArgs(o.scriptText ?? "", port));
-  const child = spawn("sh", ["-c", command], {
-    cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"],
-    env: { ...minimalEnv(), ...(start.env ?? {}), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" },
-  });
+  const env: Record<string, string> = { ...minimalEnv(), ...(start.env ?? {}), PORT: String(port), HOST: "127.0.0.1", BROWSER: "none", FORCE_COLOR: "0", NO_COLOR: "1" };
+  const box = o.box ? openBox(o.box, env.HOME) : null;
+  if (o.box && !box) return { ok: false, reason: BOX_NOT_STARTED, output: BOX_NOT_STARTED };
+  if (box) env.TMPDIR = `${box.tmp}/`;
+  const child = box
+    ? spawn(SANDBOX_EXEC, [...box.args, "/bin/sh", "-c", command], { cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"], env })
+    : spawn("sh", ["-c", command], { cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"], env });
   let output = "", exited = false, exitCode: number | null = null;
   const grab = (c: Buffer) => { output = (output + c.toString("utf8")).slice(-4000); };
   child.stdout!.on("data", grab); child.stderr!.on("data", grab);
-  child.on("close", (code) => { exited = true; exitCode = code; });
+  child.on("close", (code) => { exited = true; exitCode = code; box?.close(); });
   const kill = (sig: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, sig); } catch { /* gone */ } };
   const stop = async () => {
     kill("SIGTERM");

@@ -8,7 +8,8 @@ import { setting } from "./settingsStore.ts";
 // receiptPictures: how many receipt pictures are kept now (wipe.rs), so lowering "Pictures to keep" can say first how many go.
 // practiceCopies: how many practice copies Companion made and recorded are still in the home folder (practice.rs).
 /** pro (data_inventory, wipe.rs pro_inventory): what Delete everything does with Pro, null while payments are off. */
-export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number; practiceCopies?: number; pro?: unknown };
+// googleAccounts: how many Google accounts are connected (wipe.rs, data_inventory); Delete everything disconnects them too.
+export type Inventory = { items: { id: string; label: string; bytes: number }[]; keySaved: boolean; projectsWithNotes: number; receiptPictures?: number; practiceCopies?: number; googleAccounts?: number; pro?: unknown };
 export type PermissionKind = "screen_recording" | "accessibility" | "microphone";
 /** What the app reports (permissions.rs, page_word). "off" is for Accessibility and Screen Recording, where macOS cannot
  * tell never asked from said no; the microphone reports which one it is ("not_asked", "not_allowed", "restricted"). */
@@ -44,7 +45,7 @@ export function permissionRow(kind: PermissionKind, s: PermissionState): { label
 }
 
 export function deletableLines(inv: Inventory): string[] {
-  return [...inv.items.map((i) => `${i.label}: ${formatBytes(i.bytes)}`), ...(inv.keySaved ? ["Your saved Claude key (in your Keychain)"] : [])];
+  return [...inv.items.map((i) => `${i.label}: ${formatBytes(i.bytes)}`), ...(inv.keySaved ? ["Your saved Claude key (in your Keychain)"] : []), ...((inv.googleAccounts ?? 0) > 0 ? [S.deleteGoogleLine(inv.googleAccounts ?? 0)] : [])];
 }
 
 export type NumbersSummary = { enabled: boolean; totals: Record<string, number>; rates: Record<string, number | null> };

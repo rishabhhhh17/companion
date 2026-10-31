@@ -103,7 +103,7 @@ export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<
 // askInstall: the install question on the approval card (true only for a yes; no answer, a no or a Stop is false).
 // askScripts: the question for a task that changed the project's scripts or packages, on the same card and the same terms.
 // noServer, run: a watch builds and tests only, and its commands end with Companion (F21).
-export type ProofContext = { project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; noServer?: boolean; run?: (command: string, o: RunOptions) => Promise<RunResult>; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean) => Promise<boolean>; approvals?: RunApprovals };
+export type ProofContext = { project: string; store: Pick<CheckpointStore, "readFiles">; beforeId: string; afterId: string; onStep: (u: StepUpdate) => void; signal: AbortSignal; review?: () => Promise<Review | null>; noInstall?: boolean; noServer?: boolean; run?: (command: string, o: RunOptions) => Promise<RunResult>; check?: CheckSettings; limits?: Limits; askInstall?: (command: string) => Promise<boolean>; askScripts?: (byTask: boolean, unboxed?: boolean) => Promise<boolean>; approvals?: RunApprovals };
 export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 
 export type RunnerOptions = {
@@ -545,12 +545,14 @@ export class AgentRunner {
       ? `Building this project may download the packages it needs from the internet (${clip(command.slice(DOWNLOAD_ASK.length), 60)}). Download them so it can be checked? Without them, the check runs on the project as it is.`
       : `Install this project's packages (${clip(command, 60)}) so it can be checked? Without them, the check runs on the project as it is.`);
   }
-  /** The question for a task that changed the project's scripts or packages: they run on this Mac outside the sandbox
-   *  Claude's own commands get, so the check runs them only on a yes (ladder.ts askScripts). The same card and rules as
-   *  the install question. */
-  private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): (byTask: boolean) => Promise<boolean> {
-    const ask = this.checkAsker(s, agent, checkpoint, (why) => `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac outside the safety box Claude's own commands get. Without a yes, the work is not checked.`);
-    return (byTask) => ask(byTask ? "task" : "since");
+  /** The question for a task that changed the project's scripts or packages: they run on this Mac (in the safety box for
+   *  checks, proof/box.ts), so the check runs them only on a yes (ladder.ts askScripts). "unboxed": the box cannot be used
+   *  on this Mac, so the check asks about whatever changed. The same card and rules as the install question. */
+  private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): (byTask: boolean, unboxed?: boolean) => Promise<boolean> {
+    const ask = this.checkAsker(s, agent, checkpoint, (why) => why === "unboxed"
+      ? "The safety box for checks is not working on this Mac. Run the project's install, build, tests and server without it to check the work? Without the box they can reach your files and the internet. Without a yes, the work is not checked."
+      : `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac in a safety box that keeps them to this project. Without a yes, the work is not checked.`);
+    return (byTask, unboxed) => ask(unboxed ? "unboxed" : byTask ? "task" : "since");
   }
   private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string): (command: string) => Promise<boolean> {
     return async (command) => {
@@ -972,6 +974,10 @@ export class AgentRunner {
     this.sessions.set(cmd.agent, session);
 
     const before = await store.snapshot(`Before: ${lbl.slice(0, 60)}`);
+    // An empty record of what the person said yes to running starts here, with the project as it was before the agent wrote
+    // anything. Filled by a later check instead, it would take this task's own changes as the person's (a task can end on
+    // an error, a limit or Stop before its check), and run them unasked (approvedruns.ts, ladder.ts).
+    try { const ap = this.approvals(cmd.project); if (ap.empty()) ap.add(runPrint(await readRunFiles(store, before.id))); } catch { /* not filled: the first check fills it from its own starting point, as before */ }
     // Anything that differs from what our last step left was changed by the person since (Undo keeps those files as they are).
     await store.noteTaskStart(before.id).catch(() => undefined);
     started.store = store;

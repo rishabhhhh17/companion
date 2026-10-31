@@ -80,7 +80,7 @@ const inflight = new Set<Promise<unknown>>();
 // The browser check's one time download: only on the person's press, ended by Stop everything, by the app closing, and by
 // this engine being ended by force (the installer ends with it).
 // The zero cost warm up (warm.ts): only the real engine has a Claude binary to read through.
-const warmer = new Warmer({ binary: () => (settings.engine === "sdk" ? resolveClaudeBinary(settings.claudeBin) : null) });
+const warmer = new Warmer({ binary: () => (settings.engine === "sdk" ? resolveClaudeBinary(settings.claudeBin, settings.claudeBinId) : null) });
 const browser = new BrowserSetup({ emit: say, timeoutMs: () => 15 * 60_000 * slow(), ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
 
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.

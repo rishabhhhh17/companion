@@ -54,6 +54,13 @@ describe(`what ${PRODUCT} keeps, and deleting it`, () => {
     expect(deletableLines(inv)).toEqual(["Your task history and spending record: 12 KB", "The speech model for hold to talk: 141 MB", "Your saved Claude key (in your Keychain)"]);
   });
   test("with no key saved there is no key line", () => expect(deletableLines({ ...inv, keySaved: false }).some((l) => /key/i.test(l))).toBe(false));
+  test("Google connections are named when there are any, since they go too", () => {
+    expect(deletableLines({ ...inv, googleAccounts: 2 }).at(-1)).toBe(S.deleteGoogleLine(2));
+    expect(S.deleteGoogleLine(1)).toMatch(/Google/);
+    expect(S.deleteGoogleLine(2)).not.toBe(S.deleteGoogleLine(1));
+    expect(deletableLines({ ...inv, googleAccounts: 0 }).some((l) => /Google/.test(l))).toBe(false);
+    expect(deletableLines(inv).some((l) => /Google/.test(l))).toBe(false);
+  });
   test("the confirmation is exact words, so a stray call cannot delete anything", () => expect(DELETE_PHRASE).toBe("delete everything"));
 });
 

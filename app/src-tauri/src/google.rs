@@ -7,7 +7,8 @@
 //! The parts that decide things are plain code here, tested without a network: the PKCE pair, the sign in address, the
 //! scopes for each app, reading the loopback answer (the state must match), reading the token answer and the ID token's
 //! name and email, and what is kept. The network goes through the Mac's own curl with the secrets on its standard input,
-//! never on its command line (a command line can be read by any program on the Mac).
+//! never on its command line (a command line can be read by any program on the Mac), and curl reads no settings file and
+//! none of the app's environment (`post_form_with`).
 
 use base64::Engine;
 use serde_json::{json, Value};
@@ -141,6 +142,23 @@ pub fn refresh_form(client_id: &str, client_secret: &str, refresh: &str) -> Stri
     f.iter().map(|(k, v)| format!("{k}={}", enc(v))).collect::<Vec<_>>().join("&")
 }
 
+/// The form that asks Google to revoke a token (on curl's standard input).
+pub fn revoke_form(token: &str) -> String { format!("token={}", enc(token)) }
+
+/// Every Google connection gone, for Delete everything (wipe.rs): `index` is the list of kept accounts, `read` gives an
+/// account's Keychain item, `revoke` asks Google to revoke a refresh token (best effort: no answer from Google, no
+/// network, still goes on), and `delete` removes an item (true when it is gone). Each account's item goes first and the
+/// list last, so an account whose item could not be removed is still listed for the next try. True when all went.
+pub fn forget_all(index: &[String], read: &dyn Fn(&str) -> Option<String>, revoke: &dyn Fn(&str), delete: &dyn Fn(&str) -> bool) -> bool {
+    let mut all = true;
+    for sub in index {
+        let account = keychain_account(sub);
+        if let Some(k) = read(&account).as_deref().and_then(kept_from) { if !k.refresh.is_empty() { revoke(&k.refresh); } }
+        all &= delete(&account);
+    }
+    all && delete("index")
+}
+
 /// Google's token answer, read: an access token and how long it lasts, a refresh token (only on the first sign in), the ID
 /// token's person, and the scopes Google really granted (the person may untick some).
 #[derive(Debug, PartialEq)]
@@ -226,10 +244,20 @@ pub fn client(config: &str) -> Option<(String, String)> {
 }
 
 /// Posts a form to Google through the Mac's curl, the form on its standard input. Gives back the body Google answered.
-pub fn post_form(url: &str, form: &str) -> Result<String, String> {
+pub fn post_form(url: &str, form: &str) -> Result<String, String> { post_form_with("/usr/bin/curl", url, form) }
+
+/// curl's arguments for one form post: fixed flags and the address only, never a secret.
+pub fn curl_args(url: &str) -> Vec<String> {
+    ["-q", "-sS", "--proto", "=https", "--max-time", "20", "-X", "POST", "-H", "Content-Type: application/x-www-form-urlencoded", "--data-binary", "@-", url].iter().map(|s| s.to_string()).collect()
+}
+
+/// `post_form` with the program named (tests give a stand in that prints what it was given).
+pub fn post_form_with(program: &str, url: &str, form: &str) -> Result<String, String> {
     use std::io::Write;
-    let mut child = std::process::Command::new("/usr/bin/curl")
-        .args(["-sS", "--max-time", "20", "-X", "POST", "-H", "Content-Type: application/x-www-form-urlencoded", "--data-binary", "@-", url])
+    // -q (first) stops curl reading any settings file, and a cleared environment keeps the app's HOME, CURL_HOME,
+    // XDG_CONFIG_HOME and proxy variables away from it: what the person or another program set there never sees these forms.
+    let mut child = std::process::Command::new(program)
+        .args(curl_args(url)).env_clear().env("PATH", "/usr/bin:/bin")
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null())
         .spawn().map_err(|_| "Could not reach Google.".to_string())?;
     child.stdin.take().ok_or("Could not reach Google.")?.write_all(form.as_bytes()).map_err(|_| "Could not reach Google.".to_string())?;
@@ -268,6 +296,67 @@ pub fn wait_for_code(listener: std::net::TcpListener, state: &str, product: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn delete_everything_revokes_every_google_connection_and_removes_its_keychain_items() {
+        use std::cell::RefCell;
+        let item = |sub: &str, refresh: &str| kept_json(&Kept { person: Person { sub: sub.into(), email: format!("{sub}@example.com"), name: "n".into(), picture: "".into() }, refresh: refresh.into(), label: "Work".into(), apps: vec![App::Drive], signin: false });
+        let store = RefCell::new(std::collections::BTreeMap::from([
+            ("index".to_string(), r#"["a","b"]"#.to_string()), ("google:a".to_string(), item("a", "1//refresh-a")), ("google:b".to_string(), item("b", "1//refresh-b")),
+        ]));
+        let (revoked, order) = (RefCell::new(Vec::<String>::new()), RefCell::new(Vec::<String>::new()));
+        let ok = forget_all(&["a".into(), "b".into()], &|a| store.borrow().get(a).cloned(), &|t| revoked.borrow_mut().push(t.into()),
+            &|a| { order.borrow_mut().push(a.into()); store.borrow_mut().remove(a); true });
+        assert!(ok);
+        assert_eq!(*revoked.borrow(), vec!["1//refresh-a", "1//refresh-b"], "each refresh token is revoked at Google");
+        assert_eq!(*order.borrow(), vec!["google:a", "google:b", "index"], "the list goes last");
+        assert!(store.borrow().is_empty(), "nothing of Google is left in the Keychain");
+        assert_eq!(revoke_form("1//a+b"), "token=1%2F%2Fa%2Bb");
+        // An item that cannot be removed: reported, and the list stays so the next try still finds it.
+        let order = RefCell::new(Vec::<String>::new());
+        let ok = forget_all(&["a".into()], &|_| Some(item("a", "r")), &|_| {}, &|a| { order.borrow_mut().push(a.into()); a != "google:a" });
+        assert!(!ok);
+        assert_eq!(*order.borrow(), vec!["google:a"], "the list is kept");
+        // A damaged item (no token to revoke) is still removed; and with nothing kept, only the list is cleared.
+        let order = RefCell::new(Vec::<String>::new());
+        assert!(forget_all(&["c".into()], &|_| Some("not json".into()), &|_| panic!("nothing to revoke"), &|a| { order.borrow_mut().push(a.into()); true }));
+        assert_eq!(*order.borrow(), vec!["google:c", "index"]);
+        let order = RefCell::new(Vec::<String>::new());
+        assert!(forget_all(&[], &|_| None, &|_| {}, &|a| { order.borrow_mut().push(a.into()); true }));
+        assert_eq!(*order.borrow(), vec!["index"]);
+    }
+
+    #[test]
+    fn google_requests_never_read_a_curl_settings_file_or_the_apps_environment() {
+        // The forms carry the refresh token and the sign in code. A ~/.curlrc (or CURL_HOME, XDG_CONFIG_HOME, a proxy
+        // variable) could send them to a trace file or another server, so curl is told to read no settings file (-q,
+        // which works only as the first argument) and is started with nothing of the app's environment but a plain PATH.
+        let args = curl_args(TOKEN_URL);
+        assert_eq!(args[0], "-q", "{args:?}");
+        assert!(args.windows(2).any(|w| w[0] == "--proto" && w[1] == "=https"), "https only: {args:?}");
+        assert_eq!(args.last().map(String::as_str), Some(TOKEN_URL));
+        assert!(!args.iter().any(|a| a.contains("refresh_token") || a.contains("code_verifier")), "no secret on the command line");
+        // A stand in for curl that prints what it was given: its arguments, then its whole environment.
+        let dir = std::env::temp_dir().join(format!("google-curl-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join("curl");
+        std::fs::write(&fake, "#!/bin/sh\ncat >/dev/null\nfor a in \"$@\"; do echo \"arg:$a\"; done\n/usr/bin/env\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(std::env::var_os("HOME").is_some(), "the test itself has a home folder to leak");
+        let out = post_form_with(fake.to_str().unwrap(), TOKEN_URL, "refresh_token=DUMMY&client_id=x").unwrap();
+        assert!(out.lines().next() == Some("arg:-q"), "{out}");
+        let env: Vec<&str> = out.lines().filter(|l| !l.starts_with("arg:")).collect();
+        // Failure messages name the variables only, never their values (the test's own environment can hold secrets).
+        let names: Vec<&str> = env.iter().map(|l| l.split('=').next().unwrap_or("")).collect();
+        assert!(env.contains(&"PATH=/usr/bin:/bin"), "{names:?}");
+        for k in ["HOME", "CURL_HOME", "XDG_CONFIG_HOME", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "SSL_CERT_FILE"] {
+            assert!(!names.contains(&k), "{k} reached curl: {names:?}");
+        }
+        // Only what the shell running the stand in adds itself may be there besides PATH.
+        assert!(names.iter().all(|n| ["PATH", "PWD", "SHLVL", "_"].contains(n)), "{names:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn token_with(payload: Value) -> String { format!("x.{}.y", b64url(payload.to_string().as_bytes())) }
 

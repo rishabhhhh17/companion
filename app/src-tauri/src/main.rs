@@ -1974,7 +1974,11 @@ fn claude_status(window: tauri::WebviewWindow) -> Result<Value, String> {
     if window.label() != "card" { return Err("not_card".into()); }   // only Home asks (the first run and its notice)
     if let Some(s) = CLAUDE_STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone() { return Ok(s.json()); }
     let bundled = std::env::current_exe().ok().and_then(|e| runner::bundled_engine(&e)).is_some_and(|b| b.is_dir());
-    let ready = !bundled || claude_install::installed(&claude_root(), &claude_install::pin()).is_some();
+    let installed = claude_install::installed(&claude_root(), &claude_install::pin());
+    // The engine start checks the installed build again (claude_install::cleared); one it refused is not used, and Home
+    // says so calmly with Get it again. This only reads that answer, so it never waits on the check.
+    if bundled && installed.as_deref().is_some_and(claude_install::refused) { return Ok(claude_install::Status::Failed(claude_install::CHANGED.into()).json()); }
+    let ready = !bundled || installed.is_some();
     Ok(if ready { claude_install::Status::Ready } else { claude_install::Status::Missing }.json())
 }
 
@@ -2093,7 +2097,7 @@ fn google_disconnect(app: AppHandle, window: tauri::WebviewWindow, id: String, s
     if sign_out_only == Some(true) && !k.apps.is_empty() { k.signin = false; google_keep(&k)?; }
     else {
         let token = k.refresh.clone();
-        std::thread::spawn(move || { let _ = google::post_form(google::REVOKE_URL, &format!("token={}", token)); });
+        std::thread::spawn(move || { let _ = google::post_form(google::REVOKE_URL, &google::revoke_form(&token)); });
         google_forget(&sub);
     }
     log("google_disconnected", json!({}));
@@ -2947,6 +2951,8 @@ async fn data_inventory() -> Value {
         let mut v = wipe::inventory(std::path::Path::new(&home_dir()), &data_dir(), key_saved(), &projects);
         // How many practice copies Delete everything could also move to the Trash (only when the person ticks that line).
         v["practiceCopies"] = json!(practice::copies(&practice_record().0, std::path::Path::new(&home_dir())).len());
+        // How many Google accounts are connected: Delete everything disconnects them too (wipe.rs, google.rs forget_all).
+        v["googleAccounts"] = json!(google_index().len());
         // Pro on this Mac (wipe.rs pro_inventory): null while payments are off, so the screen is as it was.
         v["pro"] = wipe::pro_inventory(license::billing().payments_on(), || keystore::exists(&keystore::service(), license::ACCOUNT), || keystore::exists(&keystore::service(), trial::ACCOUNT));
         v
@@ -3251,6 +3257,11 @@ fn wipe_helper_mode() -> bool {
     wipe::run_helper(&home, &data, &projects, with_projects, &wipe::Helper {
         parent_gone: &|| !std::process::Command::new("/bin/kill").args(["-0", &pid]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success()),
         delete_key: &|| { keystore::delete_item(&keystore::service(), keystore::ACCOUNT) || keystore::gone(&keystore::service(), keystore::ACCOUNT) },
+        // Every Google connection (google.rs SERVICE): revoked at Google when it answers, then its Keychain items removed.
+        delete_google: &|| google::forget_all(&google_index(),
+            &|a| security_framework::passwords::get_generic_password(google::SERVICE, a).ok().map(|b| String::from_utf8_lossy(&b).into_owned()),
+            &|t| { let _ = google::post_form(google::REVOKE_URL, &google::revoke_form(t)); },
+            &|a| keystore::delete_item(google::SERVICE, a) || keystore::gone(google::SERVICE, a)),
         relaunch: &|| { if let Some(b) = &bundle { let _ = std::process::Command::new("/usr/bin/open").arg("-n").arg(b).status(); } },   // not from a built app (a development run): nothing to open
         wait: &|| std::thread::sleep(Duration::from_millis(150)),
     });

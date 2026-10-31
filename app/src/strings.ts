@@ -979,6 +979,8 @@ export const S = {
   deleteSure: `Delete everything ${PRODUCT} keeps?`,
   deleteExplain: `This removes the list above from this Mac and cannot be undone. The undo snapshots go too, so earlier changes could no longer be undone. Your projects' own files are never touched. macOS will ask you once more before anything is deleted. ${PRODUCT} opens again afterwards, as if it were new.`,
   deleteProjects: `Also remove ${PRODUCT_S} own notes inside my projects ({n} have some): what ${PRODUCT} wrote in the .companion folder, and ${PRODUCT_S} block in AGENTS.md and CLAUDE.md. Your own rules.txt and every other line stay.`,
+  // The delete list's line for Google connections (settings.ts deletableLines): they are disconnected at Google too.
+  deleteGoogleLine: (n: number) => (n === 1 ? "Your Google connection (disconnected at Google too)" : `Your ${n} Google connections (disconnected at Google too)`),
   deleteYes: "Yes, delete everything",
   deleting: "Deleting…",
   // The first run's practice step (onboarding.ts, right after Connect).

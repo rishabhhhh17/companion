@@ -82,7 +82,8 @@ describe("a healthy project of each kind, checked without downloading anything",
     expect(gradle.commands).toHaveLength(1);
     expect(gradle.commands[0]).toMatch(/^gradle build -x test -q --offline /);
     const swift = await check({ "Package.swift": "// swift-tools-version:5.9\n", "Tests/xTests/A.swift": "import XCTest\n" });
-    expect(swift.commands).toEqual(["swift build --disable-automatic-resolution", "swift test --disable-automatic-resolution"]);
+    // In the safety box for checks, SwiftPM is told not to make a sandbox of its own (macOS allows one): native.ts swiftInBox.
+    expect(swift.commands).toEqual(["swift build --disable-sandbox --disable-automatic-resolution", "swift test --disable-sandbox --disable-automatic-resolution"]);
     for (const r of [rust, mvn, gradle, swift]) expect(r.result.verdict).toBe("passed");
   });
 });
@@ -539,7 +540,7 @@ describe("a server named in .claude/launch.json follows the same download rules 
     // With no packages to fetch there is nothing to hold back.
     const none: string[] = [];
     await check({ "Package.swift": "// swift-tools-version:5.9\n", ...launch("swift", ["run"]) }, { check: { install: "never" } as never, server: serverSpy(none) });
-    expect(none).toEqual(["swift run"]);
+    expect(none).toEqual(["swift run --disable-sandbox"]);   // in the safety box for checks (native.ts swiftInBox)
   });
   test("with downloads allowed, the wrapper is started as written", async () => {
     const seen: string[] = [];

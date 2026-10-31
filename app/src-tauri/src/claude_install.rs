@@ -131,6 +131,59 @@ fn content_length(url: &str) -> Option<u64> {
     String::from_utf8_lossy(&out.stdout).lines().rev().find_map(|l| { let (k, v) = l.split_once(':')?; k.eq_ignore_ascii_case("content-length").then(|| v.trim().parse().ok()).flatten() })
 }
 
+// ---------- checked again at every engine start ----------
+//
+// The install checks the download by hash and signature, but the file then sits in Squibby's own folder, which any program
+// of this Mac user can write. So before each engine start the shell checks the file again (the same `verify`) and hands
+// the engine its path only when it passes. The answer is remembered for one version of the file (its inode, size and
+// time of change, `file_id`), so the check runs once per change, not at every restart. Remembered in memory only: a note
+// on disk could be written by the same programs that could change the file.
+
+/// Which version of a file this is: its inode, size and modification time in nanoseconds. A file that is replaced or
+/// written again has a different one. The engine compares the same three before each Claude start (sdkEngine.ts fileId).
+pub fn file_id(p: &Path) -> Option<String> {
+    use std::os::unix::fs::MetadataExt;
+    let m = std::fs::metadata(p).ok().filter(|m| m.is_file())?;
+    Some(format!("{}:{}:{}", m.ino(), m.len(), m.mtime() as i128 * 1_000_000_000 + m.mtime_nsec() as i128))
+}
+
+/// What the last check found: the file's version and whether it passed.
+pub type Seen = Option<(String, bool)>;
+
+/// Whether `p` may be handed to the engine now, and the version that was checked. `verify` runs only for a version not
+/// checked before; a file that changes while it is checked is refused.
+pub fn launch_check(p: &Path, seen: &mut Seen, verify: &dyn Fn(&Path) -> bool) -> Option<String> {
+    let id = file_id(p)?;
+    if let Some((was, ok)) = seen.as_ref() { if *was == id { return ok.then_some(id); } }
+    let ok = verify(p) && file_id(p).as_deref() == Some(id.as_str());
+    *seen = Some((id.clone(), ok));
+    ok.then_some(id)
+}
+
+static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(None);
+
+/// The installed build at `p`, checked against this app's pin (once per change of the file). Some(version) when it may
+/// be used. The engine start logs a refusal (without the path), and Home shows it (`refused`).
+pub fn cleared(p: &Path) -> Option<String> {
+    let mut seen = SEEN.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let before = seen.clone();
+    let pin = pin();
+    let r = launch_check(p, &mut seen, &|f| verify(f, &pin));
+    if seen != before { *SEEN.lock().unwrap_or_else(|e| e.into_inner()) = seen; }
+    r
+}
+
+/// Whether the file at `p` is the very version the last check refused (Home then says so and offers to get it again).
+/// It never runs the check itself, so it never waits on codesign.
+pub fn refused(p: &Path) -> bool {
+    let Some(id) = file_id(p) else { return false };
+    matches!(SEEN.lock().unwrap_or_else(|e| e.into_inner()).as_ref(), Some((was, false)) if *was == id)
+}
+
+/// What Home says when the check refused the installed build. Calm, and the way on is Get it again (`install` puts a
+/// fresh copy from Anthropic in its place).
+pub const CHANGED: &str = concat!("Claude on this Mac has changed since it was installed, so ", crate::product!(), " is not using it. Get it again from Anthropic to go on.");
+
 /// Anthropic's signature on `path`, checked by the Mac: valid and strict, and Anthropic's team and identifier.
 pub fn verify(path: &Path, pin: &Pin) -> bool {
     let valid = std::process::Command::new("/usr/bin/codesign").args(["--verify", "--strict"]).arg(path)
@@ -206,6 +259,67 @@ mod tests {
         std::fs::write(&not_signed, b"#!/bin/sh\n").unwrap();
         assert!(!verify(&not_signed, &p()), "an unsigned file is refused");
         let _ = std::fs::remove_file(&not_signed);
+    }
+
+    #[test]
+    fn the_installed_build_is_checked_once_per_change_of_the_file_and_never_used_when_it_fails() {
+        use std::cell::Cell;
+        let dir = std::env::temp_dir().join(format!("claude-launch-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude");
+        std::fs::write(&f, b"anthropic build").unwrap();
+        let calls = Cell::new(0); let pass = Cell::new(true);
+        let fake = |_: &Path| { calls.set(calls.get() + 1); pass.get() };
+        let mut seen: Seen = None;
+        let first = launch_check(&f, &mut seen, &fake);
+        assert_eq!(first, file_id(&f));
+        assert!(first.is_some());
+        assert_eq!(launch_check(&f, &mut seen, &fake), first, "the same file again");
+        assert_eq!(calls.get(), 1, "checked once, not at every start");
+        // The file is written again (another program swapped its bytes): checked again, and refused when it fails.
+        pass.set(false);
+        std::fs::write(&f, b"something else entirely").unwrap();
+        assert_eq!(launch_check(&f, &mut seen, &fake), None);
+        assert_eq!(calls.get(), 2);
+        assert_eq!(launch_check(&f, &mut seen, &fake), None, "still refused");
+        assert_eq!(calls.get(), 2, "a refusal is remembered for that version too");
+        // Replaced by a new file (a new inode): checked again; the good build passes.
+        pass.set(true);
+        let tmp = dir.join("new"); std::fs::write(&tmp, b"anthropic build").unwrap(); std::fs::rename(&tmp, &f).unwrap();
+        assert!(launch_check(&f, &mut seen, &fake).is_some());
+        assert_eq!(calls.get(), 3);
+        // Gone: nothing to hand over, and no check runs.
+        std::fs::remove_file(&f).unwrap();
+        assert_eq!(launch_check(&f, &mut seen, &fake), None);
+        assert_eq!(calls.get(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn a_file_that_changes_while_it_is_checked_is_refused() {
+        let dir = std::env::temp_dir().join(format!("claude-swap-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude");
+        std::fs::write(&f, b"anthropic build").unwrap();
+        // The verifier sees the good file, and something swaps it before the engine would start.
+        let swap = |p: &Path| { let t = p.with_file_name("evil"); std::fs::write(&t, b"another program").unwrap(); std::fs::rename(&t, p).unwrap(); true };
+        let mut seen: Seen = None;
+        assert_eq!(launch_check(&f, &mut seen, &swap), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn an_unsigned_file_at_the_installed_place_is_never_cleared_for_the_engine() {
+        // The real check (codesign) on a file that is not Anthropic's: refused, and Home can say so.
+        let dir = std::env::temp_dir().join(format!("claude-cleared-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude");
+        std::fs::write(&f, b"#!/bin/sh\necho not claude\n").unwrap();
+        assert_eq!(cleared(&f), None);
+        assert!(refused(&f));
+        // Anthropic's own build (the SDK package's copy, on a development Mac) is cleared as it is, and is then not refused.
+        // In this one test, because the remembered answer is one for the whole app.
+        let local = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../runner/node_modules/@anthropic-ai/claude-agent-sdk-darwin-arm64/claude");
+        if local.is_file() { assert_eq!(cleared(&local), file_id(&local)); assert!(!refused(&local)); assert!(!refused(&f), "only the last check is remembered"); }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// The whole install for real (network, about the size of Anthropic's build). Run by hand: cargo test real_install -- --ignored

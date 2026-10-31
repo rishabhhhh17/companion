@@ -18,7 +18,7 @@ export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan" | "managed"; data: string;
   // The light lanes (Prompt help, Explain, Draw it for me, Show me how, pictures, everyday looks): Claude Code (today's default)
   // or straight on the Messages API ("direct", F22 update). Managed usage always uses direct, sent to Companion's own server.
-  lanes: "claude_code" | "direct"; managedBase?: string; ref: KeychainRef; claudeBin?: string; script: Step[]; model?: string; assistStub: boolean;
+  lanes: "claude_code" | "direct"; managedBase?: string; ref: KeychainRef; claudeBin?: string; claudeBinId?: string; script: Step[]; model?: string; assistStub: boolean;
   // For testing, the two small lanes' models can be switched too (the defaults are in models.ts).
   fastModel?: string; visionModel?: string;
   // Experimental pointing through the Computer Use tool (API key route only). Off unless COMPANION_AIM=computer_use.
@@ -46,6 +46,7 @@ export function readSettings(env: Record<string, string | undefined>): Settings 
     data: env.COMPANION_DATA ?? join(homedir(), "Library", "Application Support", "Companion", "runner"),
     ref: { service: env.COMPANION_KEYCHAIN_SERVICE ?? DEFAULT_REF.service, account: env.COMPANION_KEYCHAIN_ACCOUNT ?? DEFAULT_REF.account },
     claudeBin: env.COMPANION_CLAUDE_BIN,
+    ...(env.COMPANION_CLAUDE_ID ? { claudeBinId: env.COMPANION_CLAUDE_ID } : {}),
     model: env.COMPANION_MODEL || undefined,
     fastModel: setting(env.COMPANION_FAST_MODEL),
     visionModel: setting(env.COMPANION_VISION_MODEL),
@@ -90,7 +91,7 @@ async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: R
   if (s.route === "managed") throw new Error(MANAGED_NEEDS_OWN_CLAUDE);
   const a = await currentAuth(s);
   if (a.method === "none") throw new Error(NOT_CONNECTED);
-  return { claudeBinary: resolveClaudeBinary(s.claudeBin), env: engineEnv(a, s.data) };
+  return { claudeBinary: resolveClaudeBinary(s.claudeBin, s.claudeBinId), env: engineEnv(a, s.data) };
 }
 
 // Tests only: a fake SDK in place of the real one (and a plain folder in place of the in memory drive), so the wiring

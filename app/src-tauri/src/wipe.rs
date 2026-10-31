@@ -15,7 +15,12 @@
 //!
 //! The free fix count lives in the engine's data folder (runner SQLite), so it goes with everything else and starts
 //! again at 0; the screen says so. Questions about Pro appear only while payments are on (`pro_inventory`).
-//! Google connections live under their own service (google.rs) and are not touched here.
+//!
+//! Google connections live under their own service (google.rs `SERVICE`): the list of accounts and one item per account
+//! holding its refresh token. The helper removes them all, just before the Claude key and under the same rule (only when
+//! everything else went): each refresh token is first revoked at Google, best effort (with no answer from Google the item
+//! still goes), then each item, then the list (google.rs `forget_all`). Otherwise the app, opened again, would trade the
+//! kept tokens for new ones and Gmail, Calendar and Drive would work again for whoever uses this Mac next.
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -224,6 +229,8 @@ pub fn clean_project(project: &Path) -> Vec<String> {
 pub struct Helper<'a> {
     pub parent_gone: &'a dyn Fn() -> bool,
     pub delete_key: &'a dyn Fn() -> bool,
+    /// Revokes every Google connection at Google (best effort) and removes its Keychain items (google.rs forget_all).
+    pub delete_google: &'a dyn Fn() -> bool,
     pub relaunch: &'a dyn Fn(),
     pub wait: &'a dyn Fn(),
 }
@@ -244,8 +251,13 @@ pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects:
         if failed.is_empty() { break; }
         (h.wait)();
     }
-    // The key goes only when everything else did, so a half finished wipe never leaves the app without its key.
-    if failed.is_empty() {
+    // The key goes only when everything else did, so a half finished wipe never leaves the app without its key. The
+    // Google connections go just before it.
+    if failed.is_empty() && !(h.delete_google)() {
+        let _ = fs::create_dir_all(data);
+        let _ = fs::write(data.join("wipe-note.txt"), "Everything else was deleted, but your Google connections could not all be removed from the Keychain, so your saved Claude key was kept too. Use Settings, Delete everything again, or disconnect each Google account in Settings.");
+        failed.push("your Google connections".to_string());
+    } else if failed.is_empty() {
         if !(h.delete_key)() {
             // A key that could not be removed must not be reported as deleted.
             let _ = fs::create_dir_all(data);
@@ -515,11 +527,11 @@ mod tests {
         let p = m.root.join("site6"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
         let log = RefCell::new(Vec::<String>::new()); let polls = RefCell::new(0);
         let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
-            parent_gone: &|| { *polls.borrow_mut() += 1; *polls.borrow() > 3 }, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {},
+            parent_gone: &|| { *polls.borrow_mut() += 1; *polls.borrow() > 3 }, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| { log.borrow_mut().push("google".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {},
         });
         assert!(failed.is_empty());
         assert_eq!(*polls.borrow(), 4);   // it kept waiting until the app had gone
-        assert_eq!(*log.borrow(), vec!["key", "relaunch"]);
+        assert_eq!(*log.borrow(), vec!["google", "key", "relaunch"], "Google connections go too, and the Claude key last");
         assert!(!m.data.join("runner/tasks.db").exists() && !p.join(".companion").exists() && m.data.join("dev.json").exists());
     }
     #[test]
@@ -529,7 +541,7 @@ mod tests {
         let p = m.root.join("site7"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
         let log = RefCell::new(Vec::<String>::new()); let waits = RefCell::new(0);
         let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
-            parent_gone: &|| false, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| *waits.borrow_mut() += 1,
+            parent_gone: &|| false, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| { log.borrow_mut().push("google".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| *waits.borrow_mut() += 1,
         });
         assert_eq!(failed, vec![concat!(crate::product!(), " did not close in time").to_string()]);
         assert_eq!(*waits.borrow(), 200, "it waited the whole time");
@@ -545,7 +557,7 @@ mod tests {
         // A folder that cannot be emptied: no permission to remove things from it.
         let stuck = m.data.join("runner/shadow/x"); fs::set_permissions(&stuck, fs::Permissions::from_mode(0o500)).unwrap();
         let log = RefCell::new(Vec::<String>::new());
-        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| { log.borrow_mut().push("key".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {} });
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| { log.borrow_mut().push("google".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {} });
         fs::set_permissions(&stuck, fs::Permissions::from_mode(0o700)).unwrap();
         assert!(!failed.is_empty());
         assert_eq!(*log.borrow(), vec!["relaunch"]);   // no key deletion, but the app opens
@@ -567,7 +579,7 @@ mod tests {
         let m = mac("samename");
         let other = m.home.join("Library/Application Support/Companion/their-data.db");
         write(&other, "not ours").unwrap();
-        run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| true, relaunch: &|| {}, wait: &|| {} });
+        run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| true, delete_google: &|| true, relaunch: &|| {}, wait: &|| {} });
         assert!(other.exists(), "only our own browsers folder may be removed from a folder named like the product");
         assert!(!m.home.join("Library/Application Support/Companion/browsers").exists());
     }
@@ -602,9 +614,30 @@ mod tests {
         assert_eq!(fs::read_dir(m.data.join("runner")).map(|d| d.count()).unwrap_or(0), 0, "nothing of the engine's is left");
     }
     #[test]
+    fn google_connections_that_could_not_be_removed_are_named_and_the_key_stays() {
+        use std::cell::RefCell;
+        let m = mac("googlefail");
+        let log = RefCell::new(Vec::<String>::new());
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| false, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {} });
+        assert!(failed.iter().any(|f| f.contains("Google")), "{failed:?}");
+        assert_eq!(*log.borrow(), vec!["relaunch"], "the Claude key stays until everything else went");
+        let note = fs::read_to_string(m.data.join("wipe-note.txt")).unwrap();
+        assert!(note.contains("Google") && note.contains("Delete everything again"), "{note}");
+    }
+    #[test]
+    fn the_wipe_helper_removes_the_google_connections_of_companions_own_google_service() {
+        let main = include_str!("main.rs");
+        let helper = &main[main.find("fn wipe_helper_mode()").unwrap()..]; let helper = &helper[..helper.find("\n}\n").unwrap()];
+        let g = &helper[helper.find("delete_google:").expect("a Google step")..];
+        assert!(g.contains("google::forget_all(") && g.contains("google::REVOKE_URL") && g.contains("google::SERVICE"), "{g}");
+        // The contract at the top of this file says so too.
+        let top = &include_str!("wipe.rs")[..2400];
+        assert!(top.contains("Google connections") && top.contains("revoked") && !top.contains("are not touched here"), "{top}");
+    }
+    #[test]
     fn a_key_that_could_not_be_removed_is_never_reported_as_deleted() {
         let m = mac("keyfail");
-        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| false, relaunch: &|| {}, wait: &|| {} });
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| false, delete_google: &|| true, relaunch: &|| {}, wait: &|| {} });
         assert!(failed.iter().any(|f| f.contains("key")), "{failed:?}");
         let note = fs::read_to_string(m.data.join("wipe-note.txt")).unwrap();
         assert!(note.contains("Keychain Access"), "{note}");

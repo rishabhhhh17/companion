@@ -199,6 +199,11 @@ export function swiftPlan(f: { hasTests: boolean }): Plan {
   return { checks: [{ name: "build", ...one("build") }], tests: f.hasTests ? one("test") : null };
 }
 
+/** In the safety box for checks (box.ts), SwiftPM cannot put the package's manifest and plugins in a sandbox of its own:
+ *  macOS gives a program one sandbox, and the box is already one ("sandbox_apply: Operation not permitted", seen on this
+ *  Mac). So it is told not to try, and the box holds them instead, with the same rules as the rest of the check. */
+export const swiftInBox = (command: string): string => command.replace(/^((?:[A-Z_]+=\S+\s+)*swift (?:build|test|run))(?=\s|$)/, "$1 --disable-sandbox");
+
 export type XcodeFacts = { container: { kind: "project" | "workspace"; name: string }; scheme: string | null; testScheme: string | null; skipTesting: string[]; developerDir: string | null };
 // Signing off, so no certificate or account is ever touched; the Mac as the only destination, so no simulator or device.
 // No archive, export, install or provisioning update is ever in a command.
