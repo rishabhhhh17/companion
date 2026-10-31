@@ -2,6 +2,11 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## cargo install asks first: 31 Oct 2026
+
+- **Installing a Rust tool for your whole Mac now needs your tap.** `cargo install` puts a program in your Mac's own tools folder, outside your project, where Undo cannot reach it. It used to run with no question. It now asks like the other installs on your Mac (Homebrew, global npm), and the card says Undo cannot take it back. Building, testing and running a Rust project are unchanged.
+- **Still allowed without a card, and worth knowing:** `npm install` inside your project (your package list is saved and Undo puts it back, but the installed packages are not, so reinstall to get them again), and deleting `node_modules` or `dist`.
+
 ## Builds that need the internet: 31 Oct 2026
 
 - **Next.js projects with Google Fonts can be fully checked.** Checks run in a safety box with no internet, so a build that fetches its fonts used to be left out of the check. Now Squibby asks once per task, "Go online?", and on a yes runs the build again with the internet. It can still only save files inside your project, but it can reach websites while it runs. The tests and your page never get the internet. With installs set to Automatically it does not ask; set to Never, it never goes online.

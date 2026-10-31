@@ -521,6 +521,9 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
     // Outside the project, so Undo cannot take these back (technical_research section 6).
     if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", "This changes software installed on your Mac, not just your project.", false);
+    // cargo install and uninstall write the tool into ~/.cargo/bin, for the whole Mac and outside every snapshot. A toolchain
+    // word (cargo +nightly install) comes first and is skipped.
+    if (name === "cargo" && ["install", "uninstall"].includes(args.find((a) => !a.startsWith("+")) ?? "")) return ask("install", "This installs a tool for your whole Mac, not just this project.", false);
     if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "This installs Python packages for your whole Mac, not just this project.", false);
     return allow();
   }

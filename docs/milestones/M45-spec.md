@@ -682,6 +682,7 @@ Add a CHANGELOG line for the receipt change.
 - **Layout.** The result card, Undo inside it, "Stop and undo my changes", and Home's layout are M48. M45 changes words, tones and which buttons may show.
 - **Allowed actions that Undo can't take back.** These stay allowed and keep `undoable:true`: `rm -rf node_modules dist` (excluded from snapshots, and `safety.test.ts:106` wrongly says "undo covers it"), `npm install`, `git fetch`, a plain `curl` GET, Bash writes to ignored files, pip into a virtual environment outside the project, and `cargo install` with no tap at all (`safety.ts:503`). Flag these as a separate follow up.
   - Changing `cargo install` adds a new prompt. It is a rule 13 safety gap, so tell the founder; do not fold it into M45.
+  - **Done 31 Oct 2026 (branch m48/launch):** `cargo install` and `cargo uninstall` now ask (risk install, not undoable) in `safety.ts`, with tests in `runner/test/safety.test.ts`. The founder is told in the 31 Oct report. `npm install`, `rm -rf node_modules dist`, `git fetch`, a plain `curl` GET, Bash writes to ignored files and pip into a virtual environment stay allowed on purpose: they change only this project or the network read, and the CHANGELOG says what Undo does not bring back.
 
 **Wording is the founder's.** "Fixed and proven", "Not fixed yet" and "Undone" are copy and can be changed in one place. Not every task is a fix, so the undone line depends on whether a fix existed (`undoneFix` against `undoneOther`).
 

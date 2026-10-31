@@ -103,7 +103,7 @@ describe("other dangerous commands", () => {
     expect(bash(p, "rm -rf ../other").decision).toBe("deny");
     expect(bash(p, "rm -rf $HOME").decision).toBe("deny");
   });
-  test("deleting inside the project is allowed (undo covers it)", () => {
+  test("deleting inside the project is allowed (undo covers your files; node_modules and dist are never in a snapshot, so a reinstall brings them back)", () => {
     const p = proj();
     expect(bash(p, "rm -rf node_modules dist").decision).toBe("allow");
     expect(bash(p, `rm ${join(p, "old.txt")}`).decision).toBe("allow");
@@ -133,6 +133,18 @@ describe("other dangerous commands", () => {
       expect(v.undoable, c).toBe(false);
     });
   }
+  // M45 spec follow up: cargo install writes to ~/.cargo/bin (the whole Mac), outside every snapshot, and used to run with no card.
+  for (const c of ["cargo install ripgrep", "cargo install --locked tauri-cli", "cargo install --path .", "cargo uninstall ripgrep", "cargo +nightly install x", "cargo install --root /tmp/x y"]) {
+    test(`cargo install is a tap and not undoable: ${c}`, () => {
+      const v = bash(proj(), c);
+      expect(v.decision, c).toBe("ask");
+      expect(v.risk, c).toBe("install");
+      expect(v.undoable, c).toBe(false);
+    });
+  }
+  test("cargo build, test, check and run stay allowed", () => {
+    for (const c of ["cargo build", "cargo test", "cargo check", "cargo run", "cargo fmt", "cargo clippy"]) expect(bash(proj(), c).decision, c).toBe("allow");
+  });
   test("pip install outside a project environment is marked not undoable", () => {
     const was = process.env.VIRTUAL_ENV;
     delete process.env.VIRTUAL_ENV;
