@@ -241,3 +241,167 @@ describe("a Python project goes through the same scripts card (ladder.ts no long
     expect(r.ran.length).toBeGreaterThan(0);
   });
 });
+
+// ---------- review of 31 Oct 2026: the paths the first round left open ----------
+import { captureBefore } from "../src/proof/before.ts";
+import { spawnSync } from "node:child_process";
+import { homedir } from "node:os";
+
+const pageShot = { jpeg: "", w: 1, h: 1, items: [] };
+// A stand in home with Companion's data where the shipped app keeps it, so a copy is made exactly where the app makes it.
+function dataWorld() {
+  const w = world();
+  const data = join(w.home, "Library/Application Support/dev.companion.app/runner");
+  put(data, { "shadow/secret.txt": "canary-shadow\n" });
+  return { ...w, data, work: join(data, "work") };
+}
+async function withEnv<T>(vars: Record<string, string>, f: () => Promise<T>): Promise<T> {
+  const was: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(vars)) { was[k] = process.env[k]; process.env[k] = v; }
+  try { return await f(); } finally { for (const [k, v] of Object.entries(was)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+}
+
+describe("the visual receipt's earlier version is started in the box too", () => {
+  async function before(box: boolean | undefined) {
+    const dir = tmp("vb");
+    put(dir, { "package.json": pkg({ dev: "vite" }), "index.html": "<h1>x</h1>" });
+    const store = new CheckpointStore(tmp("s"), dir);
+    const s = await store.snapshot("before");
+    const seen: { box?: Box; cwd: string }[] = [];
+    const b = await captureBefore({ store, beforeId: s.id, project: dir, workDir: tmp("work"), ...(box === undefined ? {} : { box }),
+      server: (async (_st: unknown, so: { box?: Box; cwd: string }) => { seen.push({ box: so.box, cwd: so.cwd }); return { ok: false, reason: "The server stopped on its own (error code 1).", output: "" }; }) as never,
+      browser: (async () => ({ ok: true, problems: [], consoleErrors: [], failedRequests: [], visited: [], ms: 1, shot: pageShot })) as never });
+    return { b, seen };
+  }
+  test("its server gets the box, with only this Mac's own addresses, for the copy and nothing else", async () => {
+    const { seen } = await before(true);
+    expect(seen.length).toBe(1);
+    expect(seen[0].box).toEqual({ project: seen[0].cwd, net: "local" });
+  });
+  test("where the box cannot be used, the earlier version is never started outside it: there is just no picture", async () => {
+    const { b, seen } = await before(false);
+    expect(seen).toEqual([]);
+    expect(b).toEqual({ none: "not_pictured" });
+  });
+});
+
+describe.skipIf(!HAS_BOX)("Companion's own copies in its data folder, on this Mac", () => {
+  test("an earlier version started from a copy inside the data folder can read its own files, and nothing else of the data folder; a write outside the copy is refused", async () => {
+    const w = dataWorld();
+    const proj = join(w.root, "live");
+    put(proj, {
+      ".claude/launch.json": JSON.stringify({ configurations: [{ runtimeExecutable: process.execPath, runtimeArgs: ["server.js"] }] }),
+      "server.js": [
+        `const fs = require("node:fs");`,
+        `try { fs.writeFileSync(${JSON.stringify(join(w.outside, "marker"))}, "x"); } catch {}`,
+        `let shadow = "refused"; try { shadow = fs.readFileSync("../../shadow/secret.txt", "utf8"); } catch {}`,
+        `const own = fs.readFileSync("server.js", "utf8").length > 0 ? "own-ok" : "own-empty";`,
+        `Bun.serve({ hostname: "127.0.0.1", port: Number(process.env.PORT), fetch: () => new Response(own + " " + shadow) });`,
+      ].join("\n"),
+    });
+    const store = new CheckpointStore(tmp("s"), proj);
+    const s = await store.snapshot("before");
+    let body = "";
+    const b = await withEnv({ HOME: w.home, COMPANION_DATA: w.data }, () => captureBefore({ store, beforeId: s.id, project: proj, workDir: w.work, startMs: 20_000,
+      browser: (async (url: string) => { body = await (await fetch(url)).text(); return { ok: true, problems: [], consoleErrors: [], failedRequests: [], visited: [url], ms: 1, shot: pageShot }; }) as never }));
+    expect("shot" in b).toBe(true);
+    expect(body).toContain("own-ok");
+    expect(body).not.toContain("canary-shadow");
+    expect(existsSync(join(w.outside, "marker"))).toBe(false);
+  }, 60_000);
+  test("which task broke it: a check of a copy inside the data folder runs and passes, and the sibling shadow folder stays unreadable", async () => {
+    const w = dataWorld();
+    const copy = join(w.work, "bisect-x");
+    put(copy, { "package.json": pkg({}), "test.sh": `cat package.json > /dev/null && echo tested\n` });
+    const store = new CheckpointStore(tmp("s"), copy);
+    const s = await store.snapshot("as it is");
+    const r = await withEnv({ HOME: w.home, COMPANION_DATA: w.data }, () => runLadder({ project: copy, store, beforeId: s.id, afterId: s.id, noInstall: true,
+      detect: () => ({ kind: "node", packageManager: null, lockfile: null, checks: [], tests: { command: "sh test.sh" }, start: null }), browser: okBrowser as never }));
+    expect(r.steps.find((x) => x.rung === "tests")?.status).toBe("passed");
+    const peek = await withEnv({ COMPANION_DATA: w.data }, () => boxed(copy, w.home, `cat ../../shadow/secret.txt; ls ..; true`));
+    expect(peek.stdout).not.toContain("canary-shadow");
+    expect(peek.stdout).not.toContain("bisect-x");
+  }, 60_000);
+  test("the box is only said to work for a project it can read", async () => {
+    const w = world();
+    const hidden = join(w.home, ".ssh", "proj");
+    mkdirSync(hidden, { recursive: true });
+    expect(await boxWorks(hidden, { home: w.home })).toBe(false);
+    expect(await boxWorks(w.project, { home: w.home })).toBe(true);
+  });
+});
+
+describe.skipIf(!HAS_BOX)("no way out through the Mac's settings store", () => {
+  test("the rules refuse writing preferences", () => {
+    const w = world();
+    expect(boxProfile({ project: w.project, net: "local" }, { home: w.home, tmp: join(w.root, "t") }).text).toContain("(deny user-preference-write)");
+    expect(boxProfile({ project: w.project, net: "open" }, { home: w.home, tmp: join(w.root, "t") }).text).toContain("(deny user-preference-write)");
+  });
+  test("defaults write in the box lands nowhere", async () => {
+    const w = world();
+    const domain = `com.example.companion-box-probe-${process.pid}-${Date.now()}`;
+    const plist = join(homedir(), "Library/Preferences", `${domain}.plist`);
+    try {
+      const r = await boxed(w.project, w.home, `/usr/bin/defaults write ${domain} probe boxed-write-landed`);
+      expect(r.code).not.toBe(0);
+      const read = spawnSync("/usr/bin/defaults", ["read", domain, "probe"], { encoding: "utf8" });
+      expect(read.stdout).not.toContain("boxed-write-landed");
+    } finally {
+      spawnSync("/usr/bin/defaults", ["delete", domain], { stdio: "ignore" });
+      rmSync(plist, { force: true });
+    }
+  });
+});
+
+describe("a refusal by the box itself is a gap, never the project's failure", () => {
+  const det = (tests: string): Detected => ({ kind: "node", packageManager: null, lockfile: null, checks: [{ name: "build", command: "build" }], tests: { command: tests }, start: null });
+  async function check(out: { code: number; stderr: string }, o: Partial<LadderOptions> = {}, where: "build" | "test" = "test") {
+    const dir = tmp("bg");
+    put(dir, { "package.json": pkg({}) });
+    const store = new CheckpointStore(tmp("s"), dir);
+    const s = await store.snapshot("as it is");
+    return runLadder({ project: dir, store, beforeId: s.id, afterId: s.id, detect: () => det("tests"), box: true, browser: okBrowser as never,
+      run: (async (c: string) => ((where === "build") === (c === "build") ? res(out) : res())) as never, ...o });
+  }
+  const BOX_SAID = [
+    ["a hard coded /tmp path", "Error: EPERM: operation not permitted, open '/tmp/app-cache.json'"],
+    ["a shell write to /tmp", "sh: /tmp/companion-review-probe: Operation not permitted"],
+    ["a browser that keeps its own sandbox on", "[1031/101010.1:FATAL:sandbox] sandbox initialization failed: Operation not permitted\nGPU process isn't usable. Goodbye."],
+    ["a name lookup on the internet", "Error: getaddrinfo ENOTFOUND fonts.googleapis.com"],
+    ["Next's font download", "Failed to fetch font `Geist`.\nURL: https://fonts.googleapis.com/css2?family=Geist"],
+  ] as const;
+  for (const [what, stderr] of BOX_SAID) {
+    test(`tests stopped by the box (${what}) are a gap, and nobody is sent to fix them`, async () => {
+      const r = await check({ code: 1, stderr });
+      expect(r.verdict).toBe("passed_with_gaps");
+      expect(r.failedAt).toBeUndefined();
+      expect(r.steps.find((x) => x.rung === "tests")?.status).toBe("skipped");
+      expect(r.gaps?.join(" ")).toMatch(/safety box/);
+      expect(r.unclear?.some((u) => u.rung === "tests")).toBe(true);
+    });
+  }
+  test("a build stopped by the box is a gap too, and which task broke it reads it as could not run", async () => {
+    const r = await check({ code: 1, stderr: BOX_SAID[4][1] }, {}, "build");
+    expect(r.verdict).not.toBe("failed");
+    expect(r.checks?.find((c) => c.name === "build")?.status).toBe("not_started");
+  });
+  test("a real failure stays a failure, also one that reads a private place, and so does anything without the box", async () => {
+    expect((await check({ code: 1, stderr: "AssertionError: expected 2 to be 3" })).verdict).toBe("failed");
+    expect((await check({ code: 1, stderr: "cat: /Users/someone/.ssh/id_rsa: Operation not permitted" })).verdict).toBe("failed");
+    expect((await check({ code: 1, stderr: "Error: getaddrinfo ENOTFOUND localhost" })).verdict).toBe("failed");
+    expect((await check({ code: 1, stderr: BOX_SAID[0][1] }, { box: false, askScripts: async () => true })).verdict).toBe("failed");
+  });
+  test.skipIf(!HAS_BOX)("on this Mac: a test that writes a hard coded /tmp path is refused there and said as a gap", async () => {
+    const w = world();
+    const target = `/tmp/companion-review-probe-${process.pid}-${Date.now()}`;
+    put(w.project, { "package.json": pkg({}), "t.sh": `echo x > ${target} || exit 1\n` });
+    const store = new CheckpointStore(tmp("s"), w.project);
+    const s = await store.snapshot("as it is");
+    try {
+      const r = await withEnv({ HOME: w.home }, () => runLadder({ project: w.project, store, beforeId: s.id, afterId: s.id, noInstall: true, detect: () => ({ kind: "node", packageManager: null, lockfile: null, checks: [{ name: "build", command: "true" }], tests: { command: "sh t.sh" }, start: null }), browser: okBrowser as never }));
+      expect(existsSync(target)).toBe(false);
+      expect(r.verdict).toBe("passed_with_gaps");
+      expect(r.gaps?.join(" ")).toMatch(/safety box/);
+    } finally { rmSync(target, { force: true }); }
+  }, 30_000);
+});

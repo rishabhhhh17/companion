@@ -26,6 +26,22 @@ describe("a web address that leads home", () => {
     const refused: Verdict = { decision: "deny", reason: "x", undoable: true };
     expect(await withLookup(refused, "WebFetch", { url: "https://good.example.com" }, look)).toBe(refused);
   });
+  // Review of 31 Oct 2026: a name that made the fetch ask (it may carry data) was looked up before the card was answered, so
+  // the name left this Mac even on a no. It is looked up only after a yes now.
+  test("a fetch that asks is not looked up before the card is answered", async () => {
+    let lookups = 0;
+    const look = async () => { lookups++; return ["93.184.216.34"]; };
+    const asks: Verdict = { decision: "ask", risk: "network", reason: "this web address looks like it carries data in it", undoable: false };
+    expect(await withLookup(asks, "WebFetch", { url: "https://a1b2c3d4e5f6g7h8i9j0k1l2.evil.example/x" }, look)).toBe(asks);
+    expect(lookups).toBe(0);
+  });
+  test("after a yes, the name is looked up, and one that leads home is still refused", () => {
+    const src = require("node:fs").readFileSync(new URL("../src/agent.ts", import.meta.url), "utf8") as string;
+    const yes = src.indexOf("if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);");
+    const after = src.indexOf("await leadsHome(", src.indexOf('this.emit({ type: "approval.resolved"'));
+    expect(after).toBeGreaterThan(0);
+    expect(after).toBeLessThan(yes);
+  });
   test("the engine asks before every tool call, in tasks and in the look-only flows", () => {
     const src = require("node:fs").readFileSync(new URL("../src/agent.ts", import.meta.url), "utf8") as string;
     expect(src).toContain("const base = await withLookup(evaluate(");

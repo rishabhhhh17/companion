@@ -169,6 +169,8 @@ describe("a private settings file is not read by a task", () => {
     "cat .e*", "cat .env*", "cat .*", "diff .env .env.example", "wc -c .env | cat .env", "echo $(cat .env)", "cat \"$PWD/.env\"",
     "grep -r SECRET .", "grep -R SECRET .", "egrep -rn SECRET .", "grep -rn SECRET src .", "grep --recursive SECRET .", "grep -d recurse SECRET .", "rg --hidden SECRET", "rg -uu SECRET",
     "printf 'A=1\\n' >> .env && sed 's/=.*/=<hidden>/' .env", "printf 'A=1\\n' >> .env && cat .env",
+    // $'...' quoting (review of 31 Oct 2026): \' stays inside the quote, so a reader that ends the quote there misses whole commands.
+    "echo $'\\'' ; cat .env ; echo ''", "sh -c \"echo $'\\'' ; cat .env\"", "echo $'\\'' ; rm .companion/rules.txt ; echo ''", "echo $'a\\'b' && cat .env", "echo $\"x\" ; cat .env",
   ];
   for (const c of MUST_DENY) test(JSON.stringify(c), () => expect(sh(c).decision, c).toBe("deny"));
   test("a write that does not read stays a tap, not a refusal", () => {
@@ -177,5 +179,31 @@ describe("a private settings file is not read by a task", () => {
   test("looking for it, templates, and searches that skip it stay allowed", () => {
     for (const c of ["cat .env.example", "cat .env.sample", "ls -a .env", "ls .env", "test -f .env", "[ -f .env ]", "stat .env", "wc -l .env", "git check-ignore -q .env", "git status", "git ls-files", "rg SECRET", "rg SECRET src",
       "grep -r X --exclude='.env*' .", "grep -rn x src/", "grep -r x --exclude-dir=node_modules --exclude=.env .", "cat notes.txt", "grep A notes.txt", "head -5 README.md", "ls -a"]) expect(sh(c).decision, c).toBe("allow");
+  });
+});
+
+// Review of 31 Oct 2026: $'...' (ANSI-C quoting) keeps \' inside the quote. The reader now follows it the way bash and zsh
+// do, and any line that uses it still asks at least, since its escapes ($'\x63at') can spell a command no reader sees.
+describe("$'...' quoting cannot hide a command", () => {
+  test("what it hides is judged: a write to .env still taps, a decoded name never runs unasked", () => {
+    for (const c of ["echo $'\\'' ; echo x >> .env ; echo ''", "echo $'\\'' ; git push ; echo ''", "$'\\x63at' .env", "echo $'\\x41' > notes.txt", "eval $'echo hi'"]) expect(sh(c).decision, c).not.toBe("allow");
+  });
+  test("a $ inside plain quotes is no such quote, so everyday commands stay allowed", () => {
+    for (const c of ["grep -n 'foo$' notes.txt", "echo 'costs $' ; ls", "echo \"$'\" ; ls", "sed -n '/x$/p' notes.txt"]) expect(sh(c).decision, c).toBe("allow");
+  });
+  // The hidden command is real: bash and zsh both run it. Only a temporary folder with a dummy value, nothing else.
+  const shells = ["/bin/bash", "/bin/zsh"].filter((x) => require("node:fs").existsSync(x));
+  test.skipIf(!shells.length)("bash and zsh read these lines the way the checker now does", () => {
+    const { mkdtempSync, realpathSync, writeFileSync: w } = require("node:fs") as typeof import("node:fs");
+    const d = realpathSync(mkdtempSync(`${require("node:os").tmpdir()}/companion-ansi-`));
+    try {
+      w(`${d}/.env`, "DUMMY_SECRET=fixture-value\n");
+      const lines = ["echo $'\\'' ; cat .env ; echo ''", "echo $'a\\'b' && cat .env"];
+      for (const sh0 of shells) for (const line of lines) {
+        const out = require("node:child_process").spawnSync(sh0, ["-c", line], { cwd: d, encoding: "utf8" }).stdout as string;
+        expect(out, `${sh0}: ${line}`).toContain("fixture-value");
+        expect(evaluate({ tool: "Bash", input: { command: line } } as never, { project: d } as never).decision, line).toBe("deny");
+      }
+    } finally { rmSync(d, { recursive: true, force: true }); }
   });
 });

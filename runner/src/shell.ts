@@ -5,6 +5,11 @@ import { basename } from "node:path";
 // A command line with line continuations joined ("git\<newline> push" is "git push").
 export const normalize = (cmd: string): string => cmd.replace(/\\\r?\n/g, "");
 
+// $'...' (ANSI-C quoting, in bash and zsh): a backslash escapes the next character, so \' is a quote inside it, not its
+// end. The escapes the checker reads the same as the shell; any other (\x63, \u, \c) is kept as written, and a line with
+// this quoting always asks at least (hasAnsiQuote), since such an escape can spell a word no reader sees.
+const ANSI: Record<string, string> = { "\\": "\\", "'": "'", '"': '"', "?": "?", n: "\n", t: "\t", r: "\r" };
+
 // Split into commands and words. Quote aware; `$(...)`, backticks, subshells, pipes and `;` all start a new command.
 export function parseShell(raw: string): string[][] {
   const cmd = normalize(raw);
@@ -12,18 +17,26 @@ export function parseShell(raw: string): string[][] {
   let words: string[] = [];
   let word = "";
   let has = false;
-  let q: "" | "'" | '"' = "";
+  let q: "" | "'" | '"' | "$" = "";   // "$": inside $'...'
   const endWord = () => { if (has) words.push(word); word = ""; has = false; };
   const endCmd = () => { endWord(); if (words.length) commands.push(words); words = []; };
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
     if (q === "'") { if (c === "'") q = ""; else { word += c; has = true; } continue; }
+    if (q === "$") {
+      if (c === "'") q = "";
+      else if (c === "\\" && i + 1 < cmd.length) { const e = cmd[++i]; word += ANSI[e] ?? `\\${e}`; }
+      else word += c;
+      has = true; continue;
+    }
     if (c === "$" && cmd[i + 1] === "(") { word += "$("; has = true; endCmd(); i++; continue; }
     if (c === "`") { endCmd(); continue; }
     if (q === '"') {
-      if (c === '"') q = ""; else if (c === "\\" && i + 1 < cmd.length) { word += cmd[++i]; } else word += c;
+      // Inside "...", a backslash escapes only $ ` " \ and a newline; before anything else it stays (as the shell keeps it).
+      if (c === '"') q = ""; else if (c === "\\" && i + 1 < cmd.length) { const e = cmd[++i]; word += /[$`"\\\n]/.test(e) ? e : `\\${e}`; } else word += c;
       has = true; continue;
     }
+    if (c === "$" && cmd[i + 1] === "'") { q = "$"; has = true; i++; continue; }
     if (c === "'" || c === '"') { q = c; has = true; continue; }
     if (c === "\\" && i + 1 < cmd.length) { word += cmd[++i]; has = true; continue; }
     if (/\s/.test(c) && c !== "\n") { endWord(); continue; }
@@ -32,6 +45,21 @@ export function parseShell(raw: string): string[][] {
   }
   endCmd();
   return commands.map((w) => w.map((x) => x.replace(/^\$\($/, "")).filter((x) => x.length > 0));
+}
+
+/** Whether the line uses $'...' quoting outside other quotes (inside "..." or '...' a $' is just text). */
+export function hasAnsiQuote(raw: string): boolean {
+  const cmd = normalize(raw);
+  let q: "" | "'" | '"' = "";
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    if (q === "'") { if (c === "'") q = ""; continue; }
+    if (q === '"') { if (c === '"') q = ""; else if (c === "\\") i++; continue; }
+    if (c === "\\") { i++; continue; }
+    if (c === "$" && cmd[i + 1] === "'") return true;
+    if (c === "'" || c === '"') q = c;
+  }
+  return false;
 }
 
 // The command builds part of itself while it runs ($VAR, $(...), backticks), so it cannot be fully checked in advance.
@@ -128,13 +156,14 @@ export function nestedStrings(cmd: string, depth = 0): string[] {
 export function withoutHereDocs(raw: string): string {
   const cmd = normalize(raw);
   let out = "";
-  let q: "" | "'" | '"' = "";
+  let q: "" | "'" | '"' | "$" = "";   // "$": inside $'...', which ends at a ' that no backslash escapes
   // Inside arithmetic, $(( )), (( )) or $[ ], << shifts bits; it starts no here document.
   let arith = 0, closer = "";
   const pending: { word: string; tabs: boolean }[] = [];
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
-    if (q) { out += c; if (c === q) q = ""; else if (c === "\\" && q === '"' && i + 1 < cmd.length) out += cmd[++i]; continue; }
+    if (q) { out += c; if (c === (q === "$" ? "'" : q)) q = ""; else if (c === "\\" && q !== "'" && i + 1 < cmd.length) out += cmd[++i]; continue; }
+    if (c === "$" && cmd[i + 1] === "'") { q = "$"; out += "$'"; i++; continue; }
     if (c === "'" || c === '"') { q = c; out += c; continue; }
     if (c === "\\" && i + 1 < cmd.length) { out += c + cmd[++i]; continue; }
     if (arith) {
@@ -195,10 +224,11 @@ export function withoutHereDocs(raw: string): string {
 export function redirectTargets(raw: string): string[] {
   const cmd = withoutHereDocs(raw);
   const out: string[] = [];
-  let q: "" | "'" | '"' = "";
+  let q: "" | "'" | '"' | "$" = "";
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
-    if (q) { if (c === q) q = ""; else if (c === "\\" && q === '"') i++; continue; }
+    if (q) { if (c === (q === "$" ? "'" : q)) q = ""; else if (c === "\\" && q !== "'") i++; continue; }
+    if (c === "$" && cmd[i + 1] === "'") { q = "$"; i++; continue; }
     if (c === "'" || c === '"') { q = c; continue; }
     if (c === "\\") { i++; continue; }
     if (c !== ">") continue;
@@ -228,10 +258,11 @@ export function redirectTargets(raw: string): string[] {
 export function inputTargets(raw: string): string[] {
   const cmd = withoutHereDocs(raw);
   const out: string[] = [];
-  let q: "" | "'" | '"' = "";
+  let q: "" | "'" | '"' | "$" = "";
   for (let i = 0; i < cmd.length; i++) {
     const c = cmd[i];
-    if (q) { if (c === q) q = ""; else if (c === "\\" && q === '"') i++; continue; }
+    if (q) { if (c === (q === "$" ? "'" : q)) q = ""; else if (c === "\\" && q !== "'") i++; continue; }
+    if (c === "$" && cmd[i + 1] === "'") { q = "$"; i++; continue; }
     if (c === "'" || c === '"') { q = c; continue; }
     if (c === "\\") { i++; continue; }
     if (c !== "<") continue;

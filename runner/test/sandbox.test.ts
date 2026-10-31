@@ -67,6 +67,17 @@ describe("the sandbox settings", () => {
     for (const c of cachePaths(HOME)) expect(denied.has(c), c).toBe(false);
   });
   test("reading the sensitive places is refused", () => expect(s.filesystem.denyRead).toEqual(sensitivePaths(HOME)));
+  // Review of 31 Oct 2026: the safety hook refuses writes to the project's .companion and .claude folders, but a script the
+  // agent runs is not seen by the hook. The operating system sandbox refuses them too now.
+  test("the project's own .companion and .claude folders are never written by a command", () => {
+    const p: any = sandboxSettings(HOME, "darwin", "/Users/someone/proj");
+    expect(p.filesystem.denyWrite).toEqual(["/Users/someone/proj/.companion", "/Users/someone/proj/.claude"]);
+    expect(p.filesystem.denyRead).toEqual(sensitivePaths(HOME));
+    expect(p.filesystem.allowWrite).toEqual(cachePaths(HOME));
+    const src = require("node:fs").readFileSync(new URL("../src/sdkEngine.ts", import.meta.url), "utf8") as string;
+    expect(src).toContain("sandbox: sandboxSettings(homedir(), process.platform, c.project)");
+  });
+
   // Real run, 21 Oct 2026: an approved `git init` printed ".git: Operation not permitted" because Claude Code's sandbox refuses to
   // create a .git folder, so a yes did nothing. Exactly that one command, with no arguments and no wildcard, runs outside the
   // sandbox once the person has said yes (an excluded command still goes through the safety hook and the approval card first).

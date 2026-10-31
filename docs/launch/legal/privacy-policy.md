@@ -112,7 +112,7 @@ Hiding keys, numbers and tokens works by looking for patterns. It can miss thing
 
 ## 7. Deleting your data
 
-**Settings, Delete everything** shows you what will go and asks for a second confirmation. It then quits the app, removes the app's own folders (task history, undo snapshots, receipt pictures, beta numbers, lessons, practice record, memory, the speech model, the hidden browser, settings, recent folders and the activity log, and the app's web view storage), removes your saved key from the Keychain, and relaunches. The key is removed only if everything else was removed. If something cannot be removed, the app says so plainly the next time it starts.
+**Settings, Delete everything** shows you what will go and asks for a second confirmation. It then quits the app, removes the app's own folders (task history, undo snapshots, receipt pictures, beta numbers, lessons, practice record, memory, the speech model, the hidden browser, settings, recent folders and the activity log, and the app's web view storage), disconnects every Google account you connected (it asks Google to cancel the app's access when Google answers, and removes the saved sign in from the Keychain either way), removes your saved key from the Keychain, and relaunches. The Google connections and the key are removed only if everything else was removed. If something cannot be removed, the app says so plainly the next time it starts.
 
 It can also, if you tick that line, remove the app's own notes inside your projects (the `.companion` notes and the app's marked block in `AGENTS.md` and `CLAUDE.md`). Your `rules.txt` and the rest of your files stay. Practice-project copies in your home folder stay unless you tick the line to move them to the Trash.
 

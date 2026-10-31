@@ -1,7 +1,8 @@
 // What the person has said yes to running, per project: a fingerprint of everything a check would run that a task can change
-// (package.json's scripts and packages, the lock files, .replit and .claude/launch.json). A check runs those on this Mac
-// outside the sandbox Claude's own commands get, so whenever they differ from every version the person said yes to (or the
-// project as it was before Companion first checked it), the check asks again or runs none of them (ladder.ts).
+// (package.json's scripts and packages, the lock files, .replit and .claude/launch.json, the package managers' own settings
+// files, and a native project's build files). A check runs those on this Mac in the safety box for checks (box.ts), and an
+// install runs them with the internet, so whenever they differ from every version the person said yes to (or the project as
+// it was before Companion first checked it), the check asks again or runs none of them (ladder.ts).
 // Kept next to the project's snapshots, outside the project, so a task cannot write it.
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -65,6 +66,15 @@ export const NATIVE_RUN_FILE = /(?:^|\/)(?:go\.(?:mod|sum|work)|Cargo\.(?:toml|l
 /** Binary files a build runs code from: the wrapper jars. They are fingerprinted by their bytes, never read as text. */
 export const NATIVE_BINARY_RUN_FILE = /(?:^|\/)(?:gradle-wrapper|maven-wrapper)\.jar$/;
 export const isRunFile = (p: string): boolean => (RUN_FILES as readonly string[]).includes(p);
+/** A package manager's own settings files at the top of the project, which can make an install run code: .npmrc
+ *  (script-shell, node-options), .yarnrc (yarn-path), .yarnrc.yml (yarnPath, plugins), .pnpmfile.cjs, pnpm-workspace.yaml and
+ *  bunfig.toml (preload). Each is part of the fingerprint only when it is there, so a project without them keeps the
+ *  fingerprint it had. */
+export const INSTALL_CONFIG_FILES = [".npmrc", ".yarnrc", ".yarnrc.yml", ".pnpmfile.cjs", "pnpm-workspace.yaml", "bunfig.toml"] as const;
+export const isInstallConfigFile = (p: string): boolean => (INSTALL_CONFIG_FILES as readonly string[]).includes(p);
+/** The programs those settings run: a Yarn of the project's own and its plugins (.yarn/releases, .yarn/plugins), stood for by
+ *  the id of their content (they are big). */
+export const isInstallCodeFile = (p: string): boolean => /^\.yarn\/(?:releases|plugins)\/[^/]+(?:\/[^/]+)*$/.test(p);
 const inSkipped = (p: string) => p.split("/").slice(0, -1).some((part) => NATIVE_SKIP_DIRS.has(part));
 export const isNativeRunFile = (p: string): boolean => NATIVE_RUN_FILE.test(p) && !inSkipped(p);
 export const isNativeBinaryRunFile = (p: string): boolean => NATIVE_BINARY_RUN_FILE.test(p) && !inSkipped(p);
@@ -81,9 +91,17 @@ export const blobId = (bytes: Uint8Array): string => createHash("sha1").update(`
  *  and a native project's build files. Those can be big (an Xcode project), so they are read up to 2 MB. The wrapper jars are
  *  stood for by the id of their content. */
 export async function readRunFiles(store: RunFileStore, id: string): Promise<Record<string, string>> {
-  const out = { ...(await store.readFiles(id, isRunFile)), ...(await store.readFiles(id, isNativeRunFile, NATIVE_MAX)) };
-  if (store.fileIds) for (const [path, oid] of Object.entries(await store.fileIds(id, isNativeBinaryRunFile))) out[path] = `${BINARY_MARK}${oid}`;
+  const out = { ...(await store.readFiles(id, (p) => isRunFile(p) || isInstallConfigFile(p))), ...(await store.readFiles(id, isNativeRunFile, NATIVE_MAX)) };
+  if (store.fileIds) for (const [path, oid] of Object.entries(await store.fileIds(id, (p) => isNativeBinaryRunFile(p) || isInstallCodeFile(p)))) out[path] = `${BINARY_MARK}${oid}`;
   return out;
+}
+
+/** A saved version's run files with the package managers' own settings files and programs as the project folder holds them
+ *  now (livefiles.ts liveInstallConfig) in place of the saved ones: what an install or a script would really read. */
+export function withInstallConfig(files: Record<string, string>, live: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(files)) if (!isInstallConfigFile(k) && !isInstallCodeFile(k)) out[k] = v;
+  return { ...out, ...live };
 }
 
 /** One fingerprint of everything in RUN_FILES that a check would run, and of a native project's build files. A project with
@@ -94,6 +112,6 @@ export function runPrint(files: Record<string, string | undefined>): string {
     const v = f === "package.json" ? runsOf(files[f]) : files[f];
     h.update(`${f}\0${v === undefined ? "\u0001none" : v}\0`);
   }
-  for (const f of Object.keys(files).filter((k) => !(RUN_FILES as readonly string[]).includes(k) && (isNativeRunFile(k) || isNativeBinaryRunFile(k))).sort()) h.update(`${f}\0${files[f] ?? "\u0001none"}\0`);
+  for (const f of Object.keys(files).filter((k) => !(RUN_FILES as readonly string[]).includes(k) && (isNativeRunFile(k) || isNativeBinaryRunFile(k) || isInstallConfigFile(k) || isInstallCodeFile(k))).sort()) h.update(`${f}\0${files[f] ?? "\u0001none"}\0`);
   return h.digest("hex");
 }

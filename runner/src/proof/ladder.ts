@@ -11,13 +11,14 @@ import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } 
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
-import { boxWorks, type Net } from "./box.ts";
+import { boxRefusal, boxWorks, type Net } from "./box.ts";
 import { startServer } from "./server.ts";
 import { databaseFiles, missingModule, missingWords, removeNewEmptyDatabases } from "./python.ts";
 import { DOWNLOAD_ASK, needsDownload, nativeGap, ranNoTests, serverEnv, serverHeldBack, serverOffline, swiftInBox, withoutNoise, WRAPPER_NOT_CACHED, type NetWhy } from "./native.ts";
 import type { Review } from "./review.ts";
 import { analyzeScripts, analyzeTests, isTestFile } from "./testguard.ts";
-import { readRunFiles, runPrint, type RunApprovals } from "./approvedruns.ts";
+import { readRunFiles, runPrint, withInstallConfig, type RunApprovals } from "./approvedruns.ts";
+import { liveInstallConfig } from "./livefiles.ts";
 import { PRODUCT } from "../names.ts";
 
 export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "review";
@@ -168,6 +169,13 @@ const RUN_UNBOXED_NO = "The safety box for checks is not working on this Mac, an
 const RUN_UNBOXED_SHORT = "Not run: the safety box for checks is not working on this Mac, and running them without it needs your yes.";
 const RUN_UNBOXED_UNASKED = "The safety box for checks is not working on this Mac, so the project's install, build, tests and server were not run here. You are asked about them in the next task's check or in Put it online.";
 // A step that could not run because the project's packages were not installed for this check.
+// A step the safety box for checks itself stopped (box.ts boxRefusal): it could not run here, which says nothing about the
+// code, so it is a gap and never sends the agent to fix anything.
+const BOX_STOPPED = {
+  write: (what: string) => `The safety box for checks stopped ${what} from writing to a temporary folder outside the project (/tmp), so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
+  browser: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} start${what === "the tests" ? "" : "s"} a browser with its own sandbox, which cannot run inside the safety box for checks, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
+  net: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} need${what === "the tests" ? "" : "s"} the internet, which the safety box for checks does not give ${what === "the tests" ? "them" : "it"}, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
+} as const;
 const WITHOUT_PACKAGES = {
   typecheck: "The type check could not run because the project's packages are not installed.",
   lint: "The lint check could not run because the project's packages are not installed.",
@@ -276,6 +284,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (!left.includes(words)) left.push(words);
     return words;
   };
+  let boxed = false;                        // the project's commands run in the safety box for checks (decided below)
   let online = false;                       // the way that may download has been used
   let download: boolean | null = null;      // whether a build may download: decided once, the first time one needs to
   let netWhy: NetWhy = "no";
@@ -293,6 +302,15 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     return words;
   };
 
+  // The box stopped this command (only ever when it ran in the box): the plain words, kept as a gap.
+  const boxGap = (output: string, what: string, net: Net = "local"): string | null => {
+    if (!boxed) return null;
+    const kind = boxRefusal(output, net);
+    if (!kind) return null;
+    const words = BOX_STOPPED[kind](what);
+    if (!left.includes(words)) left.push(words);
+    return words;
+  };
   const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
   const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser", more: { summary?: string; forModel?: string } = {}): Step => {
     const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}) };
@@ -324,14 +342,18 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   // Every command of the project's runs in the safety box for checks (box.ts): writes only to the project and the package
   // caches, none of the private places, and no internet but for an install or a download the person allowed. Where the box
   // cannot be used on this Mac, nothing runs without a yes in this check (below).
-  const boxed = o.box ?? await boxWorks(o.project);
+  boxed = o.box ?? await boxWorks(o.project);
   if (cancelled()) return result("cancelled");
   const inBox = (net: Net): Pick<RunOptions, "box"> => (boxed ? { box: { project: o.project, net } } : {});
   // What the check would run differs from what the person said yes to (or, with no record, the task changed it): none of
   // it runs without a yes (rule 13). A yes covers installing the packages too, so the person answers one card, and it is
   // remembered. A Python project is asked the same way: its start from .replit or .claude/launch.json is the project's.
   let runYes = false, noRun = false, runShort = RUN_CHANGED_SHORT;
-  const [printBefore, printAfter] = [runPrint(bf), runPrint(af)];
+  // A package manager's settings file git ignores (an .npmrc often is) is in no saved version, yet the commands read it: what
+  // is said yes to is the project folder's own. The saved version alone is remembered beside it on a yes, so which task
+  // broke it (which checks copies made from saved versions, without such files) still finds that yes.
+  const afRun = o.afterId === "live" ? af : withInstallConfig(af, await liveInstallConfig(o.project));
+  const [printBefore, printAfter, printSaved] = [runPrint(bf), runPrint(afRun), runPrint(af)];
   let unapproved: "task" | "since" | null = null;
   if (o.approvals) {
     if (o.approvals.empty()) o.approvals.add(printBefore);
@@ -346,7 +368,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       runYes = await (boxed ? o.askScripts(unapproved === "task") : o.askScripts(unapproved === "task", true)).then((x) => x === true, () => false);
       if (cancelled()) return result("cancelled");
     }
-    if (runYes) o.approvals?.add(printAfter);
+    if (runYes) { o.approvals?.add(printAfter); if (printSaved !== printAfter) o.approvals?.add(printSaved); }
     else {
       noRun = true;
       runShort = !boxed ? RUN_UNBOXED_SHORT : o.askScripts && unapproved === "task" ? RUN_CHANGED_SHORT : RUN_SINCE_SHORT;
@@ -414,8 +436,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       // Stop (or Stop everything) ended the command: that says nothing about the project, so it is never a failure.
       if (r.aborted || cancelled()) return result("cancelled");
       if (couldNotStart(r)) return noRoom("install", t0);
-      if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install"), undefined, { summary: INSTALL_FAILED_SUMMARY }));
-      finish("install", "passed", "Installed.", t0);
+      const installBox = r.code !== 0 && !r.timedOut ? boxGap(r.stdout + "\n" + r.stderr, "the install", "open") : null;
+      if (installBox) { heldBack = true; finish("install", "skipped", installBox, t0); }
+      else if (r.code !== 0 || r.timedOut) return result("failed", finish("install", "failed", gist(r, limits.installMs), t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "install"), undefined, { summary: INSTALL_FAILED_SUMMARY }));
+      else finish("install", "passed", "Installed.", t0);
     }
   } else finish("install", "skipped", "Nothing new to install.", t0);
 
@@ -437,6 +461,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (r.code !== 0 || r.timedOut) {
         const why = r.timedOut ? null : held(r.stdout + "\n" + r.stderr, c.name) ?? gap(r.stdout + "\n" + r.stderr, c.tool, c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`);
         if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
+        const stopped = r.timedOut ? null : boxGap(r.stdout + "\n" + r.stderr, c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`, nat && online ? "open" : "local");
+        if (stopped) { missed.push(stopped); tried.push({ name: c.name, status: "not_started" }); continue; }
         tried.push({ name: c.name, status: "failed" });
         return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks"), undefined, { summary: checkFailedSummary(c.name) }));
       }
@@ -461,6 +487,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (r.aborted || cancelled()) return result("cancelled");
     if (couldNotStart(r)) return noRoom("tests", t0);
     const why = r.code !== 0 && !r.timedOut ? held(r.stdout + "\n" + r.stderr, "test") ?? gap(r.stdout + "\n" + r.stderr, det.tests.tool, "the tests") : null;
+    // The box itself stopped the tests (a fixed /tmp path, a browser with its own sandbox, the internet): a gap, never a failure.
+    const stopped = r.code !== 0 && !r.timedOut && !why ? boxGap(r.stdout + "\n" + r.stderr, "the tests", nat && online ? "open" : "local") : null;
     // pytest's exit code 5 means it collected no tests: nothing was checked, and nothing failed. When the test files do
     // have tests, something stops pytest finding them (a conftest.py, the project's pytest settings), so the tests were not
     // checked: a gap, never a pass. Not a failure either: the same may have been true before the task.
@@ -470,6 +498,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       else finish("tests", "skipped", "pytest found no tests to run.", t0);
     }
     else if (why) { cannotTell(true, "tests"); finish("tests", "skipped", why, t0); }
+    else if (stopped) { cannotTell(false, "tests"); finish("tests", "skipped", stopped, t0); }
     // Exit code 0 with no test run at all (XCTest's "Executed 0 tests", cargo's "running 0 tests"): nothing was checked, so it is
     // a gap, never a pass, and not a failure either.
     else if (nat && r.code === 0 && !r.timedOut && ranNoTests(r.stdout + "\n" + r.stderr, nat.ecosystem)) {
@@ -577,6 +606,13 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     const startGap = srv.ok ? null : held(srv.output ?? srv.reason, "start")
       ?? (nat ? gap(srv.output ?? srv.reason, undefined, "the server") : null)
       ?? (det.start.kind === "server" && det.start.python ? gap(srv.output ?? srv.reason, det.start.python === "uvicorn" ? "uvicorn" : det.start.python, "the server") : null);
+    const startBox = srv.ok || startGap || det.start.kind !== "server" ? null : boxGap(srv.output ?? srv.reason, "the server", nat && online ? "open" : "local");
+    if (startBox) {
+      cannotTell(false, "start", "browser");
+      finish("start", "skipped", startBox, t0);
+      finish("browser", "skipped", "There is no page to open.", Date.now());
+      return hasEvidence(steps) ? result("passed") : unchecked();
+    }
     if (startGap) {
       cannotTell(true, "start", "browser");
       finish("start", "skipped", startGap, t0);

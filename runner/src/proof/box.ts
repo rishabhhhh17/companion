@@ -3,7 +3,10 @@
 // (sandbox-exec), with the rules Claude's own commands get (sandbox.ts):
 //   - writes only to the project, the package managers' download caches, and a temporary folder of its own (TMPDIR);
 //     never to git's folder, Claude's or Companion's settings in the project, or editor settings that run code;
-//   - no reading the private places (logins, keys, Companion's own data, the Keychain, browsers, mail);
+//   - no reading the private places (logins, keys, Companion's own data, the Keychain, browsers, mail). The one exception is
+//     the project itself when it is one of Companion's own private copies inside its data folder (which task broke it, the
+//     visual receipt's earlier version): that copy is what is being checked, and the rest of the data folder stays refused;
+//   - no writing the Mac's settings of any app (preferences), which would land outside the project and the box;
 //   - for the build, the checks, the tests and the server: no internet, only this Mac's own addresses. Host names cannot be
 //     told apart here (the sandbox sees addresses, not names), so the package registries are not reachable either. An
 //     install, and a build the person allowed to download, keep the internet (their own approved rung, net "open");
@@ -14,7 +17,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { cachePaths, sensitivePaths } from "../sandbox.ts";
+import { cachePaths, ownDataPaths, sensitivePaths } from "../sandbox.ts";
 
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** "local": only this Mac's own addresses. "open": the internet too (an install, a build allowed to download). */
@@ -54,6 +57,9 @@ export function boxProfile(b: Box, at: { home: string; tmp: string; data?: strin
   const kept = [...KEPT_DIRS.map((d) => `(subpath ${param(join(project, d))})`), ...KEPT_FILES.map((f) => `(literal ${param(join(project, f))})`)].join(" ");
   const unreadable = [...sensitivePaths(at.home), ...(at.data ? [at.data] : [])].map((p) => `(subpath ${param(p)})`).join(" ");
   const own = `(subpath ${param(project)}) (subpath ${param(at.tmp)})`;
+  // A private copy inside Companion's own data folder is the project being checked: it is read like any project.
+  const ownData = [...ownDataPaths(at.home), ...(at.data ? [at.data] : [])].map(real);
+  const isCopy = ownData.some((d) => project.startsWith(d + "/"));
   const text = [
     "(version 1)",
     "(allow default)",
@@ -61,6 +67,8 @@ export function boxProfile(b: Box, at: { home: string; tmp: string; data?: strin
     `(allow file-write* ${writable} (subpath "/dev"))`,
     `(deny file-write* ${kept})`,
     `(deny file-read* ${unreadable})`,
+    ...(isCopy ? [`(allow file-read* (subpath ${param(project)}))`] : []),
+    "(deny user-preference-write)",
     "(deny lsopen)",
     "(deny appleevent-send)",
     "(deny job-creation)",
@@ -97,7 +105,8 @@ export function openBox(b: Box, home: string): Opened | null {
   catch { close(); return null; }
 }
 
-/** Whether the box works for this project: the same rules a check gets, tried on /usr/bin/true. False when sandbox-exec is
+/** Whether the box works for this project: the same rules a check gets, tried by listing the project from inside it (a box
+ *  that cannot read the project would fail every check for a reason that is not the project's). False when sandbox-exec is
  *  missing or refuses them; the ladder then runs nothing without a yes (ladder.ts). */
 export function boxWorks(project: string, o: { home?: string; timeoutMs?: number } = {}): Promise<boolean> {
   const opened = openBox({ project, net: "local" }, o.home ?? process.env.HOME ?? homedir());
@@ -105,9 +114,28 @@ export function boxWorks(project: string, o: { home?: string; timeoutMs?: number
   return new Promise((resolve) => {
     let done = false;
     const end = (ok: boolean) => { if (done) return; done = true; clearTimeout(t); opened.close(); resolve(ok); };
-    const child = spawn(SANDBOX_EXEC, [...opened.args, "/usr/bin/true"], { stdio: "ignore" });
+    const child = spawn(SANDBOX_EXEC, [...opened.args, "/bin/ls", "-a"], { cwd: project, stdio: "ignore" });
     const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } end(false); }, o.timeoutMs ?? 10_000);
     child.on("error", () => end(false));
     child.on("exit", (code) => end(code === 0));
   });
+}
+
+const LOCAL_NAME = /^(?:localhost|127(?:\.\d+){3}|::1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)$/i;
+/** Whether a command's output says the box itself stopped it, not the project: a write to a fixed temporary folder outside
+ *  the project (/tmp, which the box does not give; the command has a temporary folder of its own), a browser that keeps its
+ *  own sandbox on (macOS allows only one), or, with no internet in the box, a name on the internet that could not be looked
+ *  up or reached (Next's font download among them). Reading a private place is never one of these: that stays the
+ *  project's failure. Null when the output says nothing of the kind. */
+export function boxRefusal(output: string, net: Net): "write" | "browser" | "net" | null {
+  if (/sandbox initialization failed|sandbox_apply|sandbox_init\b/i.test(output)) return "browser";
+  for (const line of output.split("\n")) {
+    if (/Operation not permitted|\bEPERM\b/i.test(line) && /(?:^|[\s'"`(:=])\/(?:private\/)?(?:var\/)?tmp\//.test(line)) return "write";
+  }
+  if (net === "local") {
+    if (/Failed to fetch font|Failed to download `[^`]+` from Google Fonts/.test(output)) return "net";
+    for (const m of output.matchAll(/\b(?:getaddrinfo )?(?:ENOTFOUND|EAI_AGAIN)\s+([^\s'"`,)]+)/g)) if (!LOCAL_NAME.test(m[1])) return "net";
+    for (const m of output.matchAll(/\bconnect EPERM\s+([0-9a-f.:[\]]+?)(?::\d+)?(?=\s|$)/gi)) if (!LOCAL_NAME.test(m[1])) return "net";
+  }
+  return null;
 }

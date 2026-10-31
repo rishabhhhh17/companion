@@ -5,7 +5,7 @@
 import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { commandsOf, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
+import { commandsOf, hasAnsiQuote, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
 import { isSafeUrl } from "./research.ts";
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -301,9 +301,10 @@ export function evaluate(call: ToolCall, ctx: Context): Verdict {
   return ask("irreversible", `This uses a tool that has not been checked yet (${tool}). It might send or change something.`, false);
 }
 
-// A part of an address that reads like encoded data rather than a word: code-like characters only, with both letters and
-// digits in it.
-const encodedLike = (part: string) => part.length >= 6 && /^[A-Za-z0-9+_=%-]+$/.test(part) && /[0-9]/.test(part) && /[A-Za-z]/.test(part);
+// A piece of an address (split at every character that is not a letter or a digit) that reads like code rather than a
+// word: letters and digits mixed, or a capital letter after the first one in a long piece (base64, a key). A word with a
+// capital first letter ("Reference") is a word.
+const codeLike = (t: string) => (/[0-9]/.test(t) && /[A-Za-z]/.test(t)) || (t.length >= 6 && /[a-z]/.test(t) && /^.+[A-Z]/.test(t));
 /** Can data leave inside this web address? Returns the reason, "invalid", or null when it looks like an ordinary page. */
 /** Launch check (15 Oct 2026, "a website that resolves to a private address could slip past the network check"): a web
  *  address whose name looks public but leads to this Mac or a private network (a name pointed home, DNS rebinding). The name
@@ -320,9 +321,11 @@ export async function leadsHome(url: string, lookup: (host: string) => Promise<s
   for (const a of addresses) { const why = privateReason(a); if (why) return `that address leads to ${why}, so it is not opened`; }
   return null;
 }
-/** The network verdict for a web address after its name was looked up: refused when it leads home, else the verdict as it was. */
+/** The network verdict for a web address after its name was looked up: refused when it leads home, else the verdict as it was.
+ *  A fetch that asks is not looked up yet: its name may be the very data that made it ask, and a lookup would send that
+ *  name out before the person answered. It is looked up after a yes (agent.ts), and refused then if it leads home. */
 export async function withLookup(v: Verdict, tool: string, input: Record<string, unknown>, lookup?: (host: string) => Promise<string[]>): Promise<Verdict> {
-  if (tool !== "WebFetch" || v.decision === "deny") return v;
+  if (tool !== "WebFetch" || v.decision !== "allow") return v;
   const why = await leadsHome(String(input.url ?? ""), lookup);
   return why ? deny("network", why) : v;
 }
@@ -332,13 +335,14 @@ export function carriesData(url: string): string | null {
   try { u = new URL(url); } catch { return "invalid"; }
   if (u.search.length > 1) return "this web address carries data in it";
   // Data can ride in the path and in the host name as well ("/aGVsbG8gc2VjcmV0", "/sk-ant/api03/...", "<data>.example.com"):
-  // an unusually long address, a long code-like name before the site's own name, or code-like parts that add up to a long
-  // run anywhere in it, is not how a documentation page is named. The parts are counted together, so splitting the data
-  // into short pieces does not hide it.
+  // an unusually long address, a long code-like name before the site's own name, code-like pieces that add up to a long run
+  // anywhere in it, or more free text in the path and names than a documentation page has, is not how a page is named.
+  // Every piece is counted, however short and whatever it is cut by (a slash, a dot, a dash), so cutting or punctuating the
+  // data differently does not hide it. Plain words under that limit still pass: a page name cannot be told from a sentence.
   const labels = u.hostname.split(".").slice(0, -2);
-  const parts = [...labels, ...u.pathname.split("/")];
-  const coded = parts.filter(encodedLike).reduce((n, part) => n + part.length, 0);
-  if (url.length > 300 || coded >= 40 || labels.some((l) => l.length >= 20 && /[0-9]/.test(l) && /^[A-Za-z0-9-]+$/.test(l))) return "this web address looks like it carries data in it";
+  const free = `${labels.join(".")}${u.pathname}`;
+  const coded = free.split(/[^A-Za-z0-9]+/).filter(codeLike).reduce((n, t) => n + t.length, 0);
+  if (url.length > 300 || free.length > 120 || coded >= 24 || labels.some((l) => l.length >= 20 && /[0-9]/.test(l) && /^[A-Za-z0-9-]+$/.test(l))) return "this web address looks like it carries data in it";
   return null;
 }
 
@@ -425,7 +429,9 @@ function globMayMatchSettings(arg: string): boolean {
 }
 
 function evaluateBash(cmd: string, ctx: Context): Verdict {
-  let out = allow();
+  // $'...' quoting is read the way the shell reads it (shell.ts), so what it would hide is judged below. Its escapes can still
+  // spell a word no reader sees ($'\x63at'), so such a line never runs without a tap, here or inside sh -c, eval or env -S.
+  let out = [cmd, ...nestedStrings(cmd)].some(hasAnsiQuote) ? ask("irreversible", "This command uses a kind of quoting that can't be fully checked first.", false) : allow();
   const commands = commandsOf(cmd);
   const dynamic = hasDynamic(cmd);
   if (commands.some((w) => w[0] === "<too deep>")) return ask("irreversible", "This command is too tangled to check first.", false);

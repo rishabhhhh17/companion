@@ -40,11 +40,11 @@ import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules, withHouseRule } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
+import { buildChildEnv, evaluate, evaluateReadOnly, leadsHome, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
-import { fileApprovals, readRunFiles, runPrint, type RunApprovals } from "./proof/approvedruns.ts";
-import { liveFiles } from "./proof/livefiles.ts";
+import { fileApprovals, readRunFiles, runPrint, withInstallConfig, type RunApprovals } from "./proof/approvedruns.ts";
+import { liveFiles, liveInstallConfig } from "./proof/livefiles.ts";
 import { checkSettings, slowFactor, TIME_FACTOR, VIEWPORTS, type CheckSettings } from "./proof/options.ts";
 import { borrowVenv, captureBefore, ownPackages, packageFolders, sweepWork } from "./proof/before.ts";
 import { classify, couldNotRun, findFirstBad, isLockfile, isManifest, MAX_RUNS, packagesKey, taskPoints, WINDOW, type TaskPoint } from "./bisect.ts";
@@ -977,7 +977,9 @@ export class AgentRunner {
     // An empty record of what the person said yes to running starts here, with the project as it was before the agent wrote
     // anything. Filled by a later check instead, it would take this task's own changes as the person's (a task can end on
     // an error, a limit or Stop before its check), and run them unasked (approvedruns.ts, ladder.ts).
-    try { const ap = this.approvals(cmd.project); if (ap.empty()) ap.add(runPrint(await readRunFiles(store, before.id))); } catch { /* not filled: the first check fills it from its own starting point, as before */ }
+    // With the package managers' settings files as the folder holds them now, before the agent writes (one git ignores is in
+    // no saved version); the saved version alone beside it, for which task broke it.
+    try { const ap = this.approvals(cmd.project); if (ap.empty()) { const saved = await readRunFiles(store, before.id); const live = runPrint(withInstallConfig(saved, await liveInstallConfig(cmd.project))); ap.add(runPrint(saved)); if (live !== runPrint(saved)) ap.add(live); } } catch { /* not filled: the first check fills it from its own starting point, as before */ }
     // Anything that differs from what our last step left was changed by the person since (Undo keeps those files as they are).
     await store.noteTaskStart(before.id).catch(() => undefined);
     started.store = store;
@@ -2254,6 +2256,9 @@ export class AgentRunner {
       this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
       if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : `The person said no to this, so ${PRODUCT} did not run it. Carry on without it, or end with one short question if you need them to choose.` }; }
       if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
+      // A web address that asked was not looked up before the answer (withLookup): it is now, and one that leads to this Mac
+      // or a private network is still refused.
+      if (tool.name === "WebFetch") { const home = await leadsHome(String(tool.input.url ?? "")); if (home) { tell("blocked"); return { allow: false, reason: refusal(home) }; } }
       if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");
     }

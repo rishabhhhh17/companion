@@ -1,9 +1,9 @@
 // Start the project's own server for the browser check, on a port nobody else is using, and stop it
 // completely afterwards. A server that was already running is never mistaken for ours.
 import { spawn } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { createServer } from "node:net";
-import { join, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { openBox, SANDBOX_EXEC, type Box } from "./box.ts";
 import type { Start } from "./detect.ts";
@@ -77,8 +77,10 @@ const tail = (s: string, n = 600) => s.trim().slice(-n);
 // box: the project's server runs in the safety box for proof checks (box.ts). It may listen and answer on this Mac, and
 // Companion reaches it from outside; with net "local" it reaches nothing beyond this Mac. A box that cannot be made starts
 // nothing.
-export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string; signal?: AbortSignal; box?: Box }): Promise<Running | Failed> {
-  if (start.kind === "static") return serveStatic(start.dir);
+// borrowedFrom: for a static folder, the project a copy borrows its installed packages from by links (before.ts); files
+// whose real place is in that project's installed packages (a node_modules folder) may be served too, and nothing else of it.
+export async function startServer(start: Start, o: { cwd: string; timeoutMs: number; scriptText?: string; signal?: AbortSignal; box?: Box; borrowedFrom?: string }): Promise<Running | Failed> {
+  if (start.kind === "static") return serveStatic(start.dir, [o.cwd], o.borrowedFrom ? [o.borrowedFrom] : []);
 
   const hinted = start.port && start.autoPort === false && !(await portBusy(start.port));
   const port = hinted ? start.port! : await freePort();
@@ -124,18 +126,38 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
   return { ok: false, reason: `The server did not start within ${Math.round(o.timeoutMs / 1000)} seconds. ${tail(output)}`.trim(), output };
 }
 
-// A plain folder of files, served from this process, only on this Mac, never above the folder.
-async function serveStatic(dir: string): Promise<Running | Failed> {
+// A plain folder of files, served from this process, only on this Mac, never above the folder. Only a file whose real
+// place (every link followed) is inside the folder, the project folder it sits in, or the installed packages (a
+// node_modules folder) of the project a copy borrows them from (`packagesOf`), is served; never a dotfile or anything in a dot folder (.env, .git, .claude), by the address
+// asked for or by where a link really leads, except inside installed packages (node_modules/.pnpm); and only to a
+// request for this server's own address, so another name pointed at this Mac (a rebinding web page) gets nothing.
+async function serveStatic(dir: string, also: string[] = [], packagesOf: string[] = []): Promise<Running | Failed> {
   const root = resolve(dir);
+  const real = (p: string) => { try { return realpathSync(p); } catch { return null; } };
+  const roots = [root, ...also].map(real).filter((r): r is string => !!r).map((r) => ({ r, packagesOnly: false }));
+  roots.push(...packagesOf.map(real).filter((r): r is string => !!r).map((r) => ({ r, packagesOnly: true })));
+  if (!roots.length) return { ok: false, reason: "The folder to show is not there." };
+  const dotted = (segs: string[]) => { const nm = segs.indexOf("node_modules"); return segs.some((s, i) => s.startsWith(".") && (nm < 0 || i < nm)); };
+  const allowed = (file: string) => roots.some(({ r, packagesOnly }) => {
+    if (file !== r && !file.startsWith(r + sep)) return false;
+    const segs = relative(r, file).split(sep).filter(Boolean);
+    return !dotted(segs) && (!packagesOnly || segs.includes("node_modules"));
+  });
+  const notFound = () => new Response("not found", { status: 404 });
   const server = Bun.serve({
     hostname: "127.0.0.1", port: 0,
     fetch(req) {
+      const host = req.headers.get("host") ?? "";
+      if (host !== `127.0.0.1:${server.port}` && host !== `localhost:${server.port}`) return new Response("not this server", { status: 421 });
       let p: string;
       try { p = decodeURIComponent(new URL(req.url).pathname); } catch { return new Response("bad request", { status: 400 }); }
+      if (p.split(/[\\/]/).some((s) => s.startsWith("."))) return notFound();
       let file = resolve(join(root, p));
-      if (file !== root && !file.startsWith(root + sep)) return new Response("not found", { status: 404 });
-      if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
-      return existsSync(file) && statSync(file).isFile() ? new Response(Bun.file(file)) : new Response("not found", { status: 404 });
+      if (file !== root && !file.startsWith(root + sep)) return notFound();
+      let at = real(file);
+      if (at && statSync(at).isDirectory()) at = real(join(at, "index.html"));
+      if (!at || !allowed(at) || !statSync(at).isFile()) return notFound();
+      return new Response(Bun.file(at));
     },
   });
   return { ok: true, url: `http://127.0.0.1:${server.port}/`, port: server.port ?? 0, stop: async () => { server.stop(true); } };

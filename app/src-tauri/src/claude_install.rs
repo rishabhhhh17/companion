@@ -136,15 +136,17 @@ fn content_length(url: &str) -> Option<u64> {
 // The install checks the download by hash and signature, but the file then sits in Squibby's own folder, which any program
 // of this Mac user can write. So before each engine start the shell checks the file again (the same `verify`) and hands
 // the engine its path only when it passes. The answer is remembered for one version of the file (its inode, size and
-// time of change, `file_id`), so the check runs once per change, not at every restart. Remembered in memory only: a note
+// times of change, `file_id`), so the check runs once per change, not at every restart. Remembered in memory only: a note
 // on disk could be written by the same programs that could change the file.
 
-/// Which version of a file this is: its inode, size and modification time in nanoseconds. A file that is replaced or
-/// written again has a different one. The engine compares the same three before each Claude start (sdkEngine.ts fileId).
+/// Which version of a file this is: its inode, size, and modification and change times in nanoseconds. A file that is
+/// replaced or written again has a different one: any program can put the modification time back, but not the change
+/// time. The engine compares the same four before each Claude start (sdkEngine.ts fileId).
 pub fn file_id(p: &Path) -> Option<String> {
     use std::os::unix::fs::MetadataExt;
     let m = std::fs::metadata(p).ok().filter(|m| m.is_file())?;
-    Some(format!("{}:{}:{}", m.ino(), m.len(), m.mtime() as i128 * 1_000_000_000 + m.mtime_nsec() as i128))
+    let ns = |s: i64, n: i64| s as i128 * 1_000_000_000 + n as i128;
+    Some(format!("{}:{}:{}:{}", m.ino(), m.len(), ns(m.mtime(), m.mtime_nsec()), ns(m.ctime(), m.ctime_nsec())))
 }
 
 /// What the last check found: the file's version and whether it passed.
@@ -292,6 +294,28 @@ mod tests {
         std::fs::remove_file(&f).unwrap();
         assert_eq!(launch_check(&f, &mut seen, &fake), None);
         assert_eq!(calls.get(), 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    #[test]
+    fn a_file_rewritten_in_place_with_its_old_size_and_time_put_back_is_checked_again() {
+        // Any program of this user can set a file's modification time back (utimes), but not its change time: the version
+        // of a file includes the change time, so the same size and the old time never pass for the checked file.
+        use std::cell::Cell;
+        let dir = std::env::temp_dir().join(format!("claude-utimes-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("claude");
+        std::fs::write(&f, b"anthropic build").unwrap();
+        let calls = Cell::new(0);
+        let fake = |_: &Path| { calls.set(calls.get() + 1); calls.get() == 1 };
+        let mut seen: Seen = None;
+        assert!(launch_check(&f, &mut seen, &fake).is_some());
+        let old = std::fs::metadata(&f).unwrap().modified().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&f, b"someone's build").unwrap();   // the same length
+        std::fs::File::options().write(true).open(&f).unwrap().set_modified(old).unwrap();
+        assert_eq!(std::fs::metadata(&f).unwrap().modified().unwrap(), old, "the old time is back");
+        assert_eq!(launch_check(&f, &mut seen, &fake), None, "checked again, and refused");
+        assert_eq!(calls.get(), 2);
         let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]

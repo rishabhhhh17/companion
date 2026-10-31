@@ -2,11 +2,23 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## More safety fixes: 31 Oct 2026
+
+- **The before picture runs in the safety box too.** When Squibby starts the earlier version of your project to take the before picture, it now runs in the same safety box as every other check. If the box cannot be used, there is simply no before picture.
+- **Which task broke it works again.** Squibby's private copies of your project can be checked inside the box, so the search no longer blames the wrong task.
+- **The box no longer gets blamed on your code.** When the safety box itself stops a step, for example a test that needs the internet or a browser of its own, Squibby says so as something it could not check, and does not ask the agent to fix working code.
+- **Package manager settings count as scripts.** A change to a project's package manager settings files is asked about like a change to its scripts, before anything installs.
+- **Checks cannot change your Mac's settings.** A check in the safety box can no longer write settings for any app.
+- **Tighter rules for the agent's commands and web pages.** An unusual way of writing a command is now read correctly and asked about, more kinds of web addresses that could carry your data ask first, and an address that asks is not looked up until you say yes.
+
 ## Checks run in a safety box: 31 Oct 2026
 
 - **Checking the work can no longer reach past your project.** When Squibby checks a change, the project's build, tests and server now run in macOS's own safety box, like Claude's own commands: they can change only the project folder and the package caches, cannot read your keys, logins or Companion's own data, and cannot reach the internet. Installing packages still can, and only after you allowed it.
 - **A Mac where the box does not work asks first.** If the box cannot be used, nothing of the project's runs until you say yes on the card, and a check with nobody to ask runs nothing and says why.
 - **An unfinished task cannot slip changed scripts past the card.** If a task changes the project's scripts and stops before its check, the next check (Point at the problem, Put it online) treats them as changed and asks, or runs nothing. Python projects get the same card.
+- **Delete everything now disconnects Google too.** Any Google account you connected is disconnected at Google and its saved sign in removed from the Keychain, and the delete list says so.
+- **Claude is checked every time Squibby starts it, not only when it was installed.** If the Claude program on your Mac changed since it was installed, Squibby does not use it and offers to get it again from Anthropic.
+- **A plain page is shown more carefully.** When Squibby opens a project's plain page for a check, its little server hands out only the project's own page files: never hidden files such as `.env`, never a file a link points to outside the project, and never to a request for any other address.
 
 ## Pro is built, and switched off: 31 Oct 2026
 

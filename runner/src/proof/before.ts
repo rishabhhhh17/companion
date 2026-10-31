@@ -1,5 +1,8 @@
 // The "before" picture for a visual receipt: the project as it was before the task, copied into a private folder in
 // Companion's own data (never the project), started on its own port, opened once in the hidden browser, then deleted.
+// The earlier version's own server is the project's code like any check's (an earlier task may have changed it, and it may
+// borrow the project's installed packages), so it runs in the safety box for checks (box.ts), with only this Mac's own
+// addresses. Where the box cannot be used it is never started: there is just no picture.
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runCommand, shq } from "./exec.ts";
@@ -7,7 +10,8 @@ import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, type BrowserOptions, type BrowserResult, type PageShot } from "./browser.ts";
 import { changesData, detectProject, withStartScript } from "./detect.ts";
 import { startServer } from "./server.ts";
-import { needsDownload, serverEnv } from "./native.ts";
+import { needsDownload, serverEnv, swiftInBox } from "./native.ts";
+import { boxWorks } from "./box.ts";
 
 // no_page: the earlier version had nothing to open. crashed: its server stopped with an error. not_pictured: it could
 // not be photographed for some other reason (too slow, a port in use), which says nothing about whether it worked.
@@ -19,6 +23,7 @@ export async function captureBefore(o: {
   // How this project is checked (Settings): its start script ("auto" is the one found) and the page size of the picture.
   start?: string; viewport?: { width: number; height: number };
   server?: typeof startServer;   // how the copy is started (tests give a stand in); startServer by default
+  box?: boolean;                 // whether the safety box for checks works for the copy (tests say); boxWorks by default
 }): Promise<Before> {
   mkdirSync(o.workDir, { recursive: true, mode: 0o700 });
   const dir = mkdtempSync(join(o.workDir, "before-"));
@@ -35,11 +40,15 @@ export async function captureBefore(o: {
     if (det.start.kind === "server" && !det.start.python && changesData(det.start.command, dir)) return { none: "not_pictured" };
     // A Go, Rust, Java, Kotlin or Swift project's earlier version is started the offline way: it never downloads a package.
     const nat = det.native;
-    const serve = (start: NonNullable<typeof det.start>) => {
-      if (nat && start.kind === "server") start = { ...start, env: { ...(start.env ?? {}), ...serverEnv(false) } };
+    // The project's own server runs only in the box; a plain folder is served by Companion itself.
+    let boxed: boolean | undefined;
+    const serve = async (start: NonNullable<typeof det.start>): ReturnType<typeof startServer> => {
+      if (start.kind === "server" && !(boxed ??= o.box ?? await boxWorks(dir))) return { ok: false, reason: "The safety box for checks is not working on this Mac, so the earlier version was not started." };
+      if (nat && start.kind === "server") start = { ...start, command: nat.ecosystem === "swift" ? swiftInBox(start.command) : start.command, env: { ...(start.env ?? {}), ...serverEnv(false) } };
       let scriptText = "";
       try { const m = /(?:npm|pnpm|yarn|bun) run (\S+)/.exec(start.kind === "server" ? start.command : ""); if (m) scriptText = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")).scripts?.[m[1]] ?? ""; } catch { /* no script text */ }
-      return (o.server ?? startServer)(start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal });
+      // A plain folder may serve the packages it borrows from the project (borrowPackages links them), nothing else of it.
+      return (o.server ?? startServer)(start, { cwd: dir, timeoutMs: o.startMs ?? 60_000, scriptText, signal: o.signal, borrowedFrom: o.project, ...(start.kind === "server" ? { box: { project: dir, net: "local" as const } } : {}) });
     };
     let srv = await serve(det.start);
     // As the check does: a start script chosen in Settings that finishes on its own gives way to the usual start, so a page

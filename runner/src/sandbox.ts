@@ -34,10 +34,18 @@ const CACHES = [
   ".cargo/.package-cache", ".cargo/.package-cache-mutate", ".cargo/.global-cache",   // cargo's lock and usage files, which it writes beside the registry
   "go/pkg/mod", ".m2/repository", ".gradle/caches", ".gradle/native", ".gradle/daemon", "Library/Developer/Xcode/DerivedData",
 ];
+// Companion's own data folders among them: where it keeps its private copies of a project (which task broke it, the visual
+// receipt's earlier version), which a check in the box must still read (proof/box.ts).
+const OWN_DATA = SENSITIVE.filter((p) => /^Library\/Application Support\/(?:Companion|dev\.companion\.app)/.test(p));
+export const ownDataPaths = (home: string): string[] => OWN_DATA.map((p) => `${home}/${p}`);
 export const cachePaths = (home: string): string[] => CACHES.map((p) => `${home}/${p}`);
 export const sensitivePaths = (home: string): string[] => SENSITIVE.map((p) => `${home}/${p}`);
 
-export function sandboxSettings(home: string, platform: string = process.platform) {
+/** project: the folder the task works in. Its .companion folder (the house rules, memory) and .claude folder are never
+ *  written by a command, as the safety hook already refuses for the file tools and for writes a command names; a script the
+ *  agent runs is not seen by the hook, so the sandbox refuses them too. [verify] on a real run (real-sandbox.ts) that Claude
+ *  Code's sandbox applies denyWrite to a script's own writes. Not .git: an approved git change must still be able to run. */
+export function sandboxSettings(home: string, platform: string = process.platform, project?: string) {
   return {
     enabled: platform === "darwin",
     // Claude Code would otherwise run a shell command inside the sandbox without asking (its default). Companion's safety
@@ -51,7 +59,7 @@ export function sandboxSettings(home: string, platform: string = process.platfor
     // safety hook, which asks first (git changes need a tap), so it only ever runs after a yes. Any other git change stays inside.
     excludedCommands: ["git init"],
     network: { allowedDomains: REGISTRY_DOMAINS, strictAllowlist: true, allowLocalBinding: true },
-    filesystem: { denyRead: sensitivePaths(home), allowWrite: cachePaths(home) },
+    filesystem: { denyRead: sensitivePaths(home), allowWrite: cachePaths(home), ...(project ? { denyWrite: [join(project, ".companion"), join(project, ".claude")] } : {}) },
   };
 }
 
