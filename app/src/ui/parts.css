@@ -21,8 +21,8 @@ button, select, input, textarea { font: inherit; }
 .btn:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; cursor: not-allowed; }
 .btn.sm { min-height: var(--h-sm); padding: 0 var(--space-3); font-size: var(--t-small); line-height: var(--lh-small); }
 .btn.lg { min-height: var(--h-lg); }
-/* The one main button on a screen: flat silver, one edge of light on top, one darker edge below, and no band. */
-.btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
+/* The one main button on a screen: a neutral white pill, one edge of light on top, one soft 1 point edge below, and no band. */
+.btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; border-radius: var(--r-pill); background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
 .btn.primary:hover:not(:disabled) { background: var(--main-hover); }
 .btn.primary:active:not(:disabled) { background: var(--main-press); box-shadow: var(--main-shadow-press); }
 /* A Pro tag inside the main button takes the button's own words, and its edge is drawn in them (payments spec section 3). */
@@ -36,7 +36,7 @@ button, select, input, textarea { font: inherit; }
 .btn.quiet:hover:not(:disabled), .btn.quiet:active:not(:disabled) { background: transparent; color: var(--fg); }
 .btn.quiet:disabled { background: transparent; color: var(--ink-disabled); }
 /* A quiet button that opens a place (Home's top bar): the open one is filled, a change of fill and not of colour alone. */
-.btn.quiet[aria-pressed="true"] { background: var(--surface-2); color: var(--fg); }
+.btn.quiet[aria-pressed="true"] { border-radius: var(--r-pill); background: var(--surface-2); color: var(--fg); }
 .btn.danger { border-color: var(--bad-edge); color: var(--bad); }
 .btn.danger:hover:not(:disabled) { background: var(--bad-hover); }
 .btn.danger:active:not(:disabled) { background: var(--bad-press); }
@@ -50,7 +50,7 @@ button, select, input, textarea { font: inherit; }
 /* ---------- Group and Row ---------- */
 .ui-group { margin: 0; }
 .ui-group + .ui-group { margin-top: var(--space-6); }
-.ui-group-title { margin: 0 0 var(--space-2) var(--space-4); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.ui-group-title { margin: 0 0 var(--space-2) var(--space-4); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-label); }
 .ui-group-card { container: group / inline-size; background: var(--surface-1); border: var(--hair) solid var(--line); border-radius: var(--r-card); }
 .ui-group-card.pad { padding: var(--space-3) var(--space-4); }
 .ui-group-foot { margin: var(--space-2) var(--space-4) 0; color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
@@ -58,7 +58,8 @@ button, select, input, textarea { font: inherit; }
 .ui-disc { margin: 0; }
 .ui-disc + .ui-disc, .ui-group + .ui-disc { margin-top: var(--space-2); }
 .ui-disc + .ui-group { margin-top: var(--space-6); }
-.ui-disc-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: 0 var(--space-4); border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
+/* A topic's head is a plain row with its chevron, not a card of its own over the card of its rows (M51 polish: a double box). */
+.ui-disc-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: 0 var(--space-4); border: 0; border-bottom: var(--hair) solid var(--line); border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
 .ui-disc-head:hover { background: var(--surface-2); }
 .ui-disc-head:focus-visible { outline-offset: calc(var(--ring) * -1); }
 .ui-disc-title { flex: 1; min-width: 0; overflow-wrap: anywhere; }
@@ -84,7 +85,9 @@ button, select, input, textarea { font: inherit; }
 .ui-row-more { display: grid; gap: var(--space-2); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-row-more > p { margin: 0; }
 .ui-row-extra { flex: 1 0 100%; min-width: 0; }
-.ui-row-info { opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+/* The info button never makes its line taller than the label, so every row has the same gap from its name to its words
+   (M51 polish: rows with one had a taller gap). */
+.ui-row-info { margin-block: calc((var(--lh-label) - var(--h-sm)) / 2); opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .ui-row:hover .ui-row-info, .ui-row:focus-within .ui-row-info, .ui-row-info[aria-expanded="true"] { opacity: 1; }
 /* A segmented choice takes its own line under the words, the full width of the row, so it never wraps half under. */
 .ui-row:has(> .ui-row-control > .ui-seg) > .ui-row-control { flex-basis: 100%; margin-inline-start: 0; }
@@ -115,8 +118,9 @@ button, select, input, textarea { font: inherit; }
 /* ---------- Switch: on is filled, off is hollow ---------- */
 .ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
 .ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transform-origin: left center; transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
-.ui-switch[aria-checked="true"] { background: var(--fg); box-shadow: none; }
-.ui-switch[aria-checked="true"]::after { background: var(--bg); transform: translateX(var(--knob-travel)); }
+/* On is the accent, the water chosen (M51 polish: white on dark read as a plain preferences list), its knob the page's own. */
+.ui-switch[aria-checked="true"] { background: var(--pick); box-shadow: none; }
+.ui-switch[aria-checked="true"]::after { background: var(--pick-ink); transform: translateX(var(--knob-travel)); }
 .ui-switch:hover:not(:disabled):not([aria-checked="true"]) { box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control-hover); }
 .ui-switch:active:not(:disabled)::after { transform: scaleX(var(--knob-stretch)); }
 .ui-switch[aria-checked="true"]:active:not(:disabled)::after { transform: translateX(calc(var(--knob-travel) - var(--knob-press) + var(--knob))) scaleX(var(--knob-stretch)); }
@@ -128,7 +132,8 @@ button, select, input, textarea { font: inherit; }
 
 /* ---------- Segmented: two or three options, all the same width ---------- */
 .ui-seg { position: relative; display: inline-grid; grid-template-columns: repeat(var(--n), minmax(var(--w-seg), 1fr)); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-sm); padding: var(--space-seg); background: var(--inset); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
-.ui-seg-thumb { position: absolute; top: var(--space-seg); bottom: var(--space-seg); left: var(--space-seg); width: calc((100% - var(--space-seg) * 2) / var(--n)); box-sizing: border-box; background: var(--surface-3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-2) var(--ease-out); pointer-events: none; }
+/* The picked option: a wash of the water with an accent edge, so the choice in use stands out by edge and fill (M51 polish). */
+.ui-seg-thumb { position: absolute; top: var(--space-seg); bottom: var(--space-seg); left: var(--space-seg); width: calc((100% - var(--space-seg) * 2) / var(--n)); box-sizing: border-box; background: var(--pick-wash); border: var(--hair) solid var(--pick); border-radius: var(--r-thumb); transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-2) var(--ease-out); pointer-events: none; }
 .ui-seg[data-none] .ui-seg-thumb { opacity: 0; }
 .ui-seg-opt { position: relative; z-index: 1; min-width: 0; margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); overflow-wrap: normal; transition: color var(--dur-1) var(--ease-out); }
 .ui-seg-opt:hover:not(:disabled), .ui-seg-opt[aria-checked="true"] { color: var(--fg); }
@@ -186,21 +191,23 @@ button, select, input, textarea { font: inherit; }
 .ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: auto; box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .ui-pic:hover:not(:disabled) { border-color: var(--line-strong); }
 .ui-pic:active:not(:disabled) { transform: scale(var(--press-pic)); }
-.ui-pic[aria-checked="true"] { border-color: var(--fg); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--fg); }
+.ui-pic[aria-checked="true"] { border-color: var(--pick); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--pick); }
 .ui-pic:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); cursor: not-allowed; }
 .ui-pic:disabled .ui-pic-label { color: var(--ink-disabled); }
 .ui-pic:disabled .ui-pic-stage { filter: grayscale(1); }
 .ui-pic-stage { display: grid; place-items: center; width: 100%; min-height: var(--h-pic); }
 .ui-pic-label { color: var(--fg); font: var(--t-caption) / var(--lh-caption) var(--font); text-align: center; overflow-wrap: anywhere; }
-.ui-pic-tick { position: absolute; top: var(--space-1); right: var(--space-1); display: grid; place-items: center; width: var(--icon-md); height: var(--icon-md); border-radius: var(--r-round); background: var(--fg); color: var(--bg); }
+.ui-pic-tick { position: absolute; top: var(--space-1); right: var(--space-1); display: grid; place-items: center; width: var(--icon-md); height: var(--icon-md); border-radius: var(--r-round); background: var(--pick); color: var(--pick-ink); }
 
 /* ---------- Card ---------- */
 .ui-card { margin: 0 0 var(--space-3); padding: var(--space-4) var(--space-5); background: var(--surface-1); border: var(--hair) solid var(--line); border-radius: var(--r-card); }
-.ui-card-title { margin: 0 0 var(--space-2); color: var(--fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: 0; }
+.ui-card-title { margin: 0 0 var(--space-2); color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); letter-spacing: var(--track-title); }
 
 /* ---------- Key label: each key its own cap ---------- */
 .ui-keys { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-key); }
-.ui-key { display: inline-grid; place-items: center; min-width: var(--h-key); min-height: var(--h-key); box-sizing: border-box; padding: 0 var(--space-key-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-key); background: var(--surface-2); color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-label) var(--font); }
+.ui-key { display: inline-grid; place-items: center; min-width: var(--h-key); min-height: var(--h-key); box-sizing: border-box; padding: 0 var(--space-key-x); border: var(--hair) solid var(--key-edge); border-radius: var(--r-key); background: var(--key-fill); box-shadow: inset 0 var(--hair) 0 var(--key-lip), 0 var(--hair) 0 var(--key-drop); color: var(--fg); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+/* Held: the talk keys are down (the app's own state, never a key being read). The cap drops 1 point and takes the water's wash. */
+.ui-key[data-down], [data-talking] .ask-keys .ui-key { transform: translateY(var(--hair)); background: var(--key-down); box-shadow: inset 0 var(--hair) 0 var(--key-lip); }
 
 /* ---------- Verdict line: the colour is on the mark only ---------- */
 .ui-verdict { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-2); align-items: center; }
@@ -212,9 +219,11 @@ button, select, input, textarea { font: inherit; }
 .ui-verdict[data-size="headline"] .ui-verdict-words { font: var(--w-bold) var(--t-display) / var(--lh-display) var(--font); letter-spacing: var(--track-display); }
 .ui-verdict[data-size="card"] .ui-verdict-words { font: var(--w-bold) var(--t-verdict) / var(--lh-verdict) var(--font); letter-spacing: var(--track-verdict); }
 .ui-verdict-sub { grid-column: 2; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.ui-verdict[data-bare] { grid-template-columns: minmax(0, 1fr); }
+.ui-verdict[data-bare] .ui-verdict-sub { grid-column: 1; }
 
 /* ---------- Proof chip: a fact that cannot be pressed ---------- */
-.ui-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.ui-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-pill); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
 .ui-chip-mark { display: grid; place-items: center; color: var(--fg-2); }
 .ui-chip[data-kind="pass"] .ui-chip-mark, .ui-chip[data-kind="allowed"] .ui-chip-mark { color: var(--ok); }
 .ui-chip[data-kind="fail"] .ui-chip-mark { color: var(--bad); }
@@ -234,10 +243,11 @@ button, select, input, textarea { font: inherit; }
 .ui-recent-text { display: flex; flex-direction: column; min-width: 0; }
 .ui-recent-name { color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
 .ui-recent-meta { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.ui-recent-cost { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
 
 /* ---------- Sidebar item: the open page is a filled row; no stripe, no coloured dot ---------- */
 .sb-list { display: grid; gap: var(--hair); margin: 0; padding: 0; list-style: none; }
-.sb-head { margin: var(--space-4) 0 var(--space-1) var(--space-field-x); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.sb-head { margin: var(--space-4) 0 var(--space-1) var(--space-field-x); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-label); }
 .sb-head:first-child { margin-top: 0; }
 .sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: 0 var(--space-field-x); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-1) var(--ease-out); }
 .sb-item .ic { flex: none; color: var(--fg-2); }
@@ -250,8 +260,13 @@ button, select, input, textarea { font: inherit; }
 .sb-dot { flex: none; width: var(--dot); height: var(--dot); margin-left: auto; border-radius: var(--r-round); background: var(--amber); }
 .sb-sep { height: var(--hair); margin: var(--space-2) var(--space-field-x); background: var(--line); list-style: none; }
 @media (forced-colors: active) { .sb-item[aria-current="page"] { outline: var(--ring) solid Highlight; } }
-/* Folded under Home's big text (style.css): the list is one scrolling strip, so the sidebar is two controls tall, not eleven. */
-@container home (width < 44rem) { .sb-list { display: flex; gap: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); } .sb-item { width: auto; flex: none; white-space: nowrap; } .sb-sep { display: none; } }
+/* The strip around the list, and its two arrows: shown only folded, and only at an end with more pages past it. */
+.sb-strip { position: relative; }
+.sb-strip .btn.sb-more { display: none; }
+/* Folded under Home's big text, or in the tall Home (style.css): the list is one scrolling strip, so the sidebar is two
+   controls tall, not eleven. A word is never cut with no sign of more (M51 review): an end with more past it fades out and
+   shows an arrow that scrolls that way (settingsPage.tsx sets data-more from ui/strip.ts). */
+@container home (width < 44rem) { .sb-list { display: flex; gap: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); scroll-padding-inline: calc(var(--space-7) * 2.5); scrollbar-width: none; } .sb-item { width: auto; flex: none; white-space: nowrap; } .sb-sep { display: none; } .sb-strip[data-more~="right"] .sb-list { -webkit-mask-image: linear-gradient(90deg, var(--mask-solid) calc(100% - var(--space-7) * 2.5), transparent calc(100% - var(--space-7))); mask-image: linear-gradient(90deg, var(--mask-solid) calc(100% - var(--space-7) * 2.5), transparent calc(100% - var(--space-7))); } .sb-strip[data-more~="left"] .sb-list { -webkit-mask-image: linear-gradient(90deg, transparent var(--space-7), var(--mask-solid) calc(var(--space-7) * 2.5)); mask-image: linear-gradient(90deg, transparent var(--space-7), var(--mask-solid) calc(var(--space-7) * 2.5)); } .sb-strip[data-more="left right"] .sb-list { -webkit-mask-image: linear-gradient(90deg, transparent var(--space-7), var(--mask-solid) calc(var(--space-7) * 2.5), var(--mask-solid) calc(100% - var(--space-7) * 2.5), transparent calc(100% - var(--space-7))); mask-image: linear-gradient(90deg, transparent var(--space-7), var(--mask-solid) calc(var(--space-7) * 2.5), var(--mask-solid) calc(100% - var(--space-7) * 2.5), transparent calc(100% - var(--space-7))); } .sb-strip .btn.sb-more { display: grid; place-items: center; position: absolute; z-index: 1; top: calc((var(--h-md) - var(--h-sm)) / 2); border-color: var(--line-strong); border-radius: var(--r-round); background: var(--surface-2); color: var(--fg); box-shadow: var(--shadow-raised); } .sb-strip .sb-more-left { left: 0; } .sb-strip .sb-more-right { right: 0; } .sb-more-right .ic { rotate: 180deg; } .sb-strip:not([data-more~="left"]) .sb-more-left, .sb-strip:not([data-more~="right"]) .sb-more-right { display: none; } }
 
 /* ---------- Sheet: slides over the content column from the right ---------- */
 .ui-sheet-layer { position: fixed; inset: 0; z-index: 30; }

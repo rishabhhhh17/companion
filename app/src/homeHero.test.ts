@@ -28,8 +28,9 @@ describe("Home is Night in both Mac themes (Paper only when chosen)", () => {
   });
   test("one token set, Night, near black with white words, that no Mac theme changes", () => {
     // The overhaul spec, 2.1: one token per role in ui/tokens.css; the Mac's light or dark has no rule at all.
-    expect(night).toContain("--bg: #0B0B0C;");
-    expect(night).toContain("--fg: #F5F5F7;");
+    // M51 (the founder, 1 Nov 2026): the graphite look, a neutral #111111 page with #FAFAFA words.
+    expect(night).toMatch(/--bg: #111111;/);
+    expect(night).toMatch(/--fg: #FAFAFA;/);
     expect(css).not.toMatch(/prefers-color-scheme/);
     expect(css).not.toMatch(/:root\.home-page \{/);
   });
@@ -38,7 +39,7 @@ describe("Home is Night in both Mac themes (Paper only when chosen)", () => {
     const shape = /\n\.home \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(shape).toContain("background: var(--bg)");
     expect(shape).toMatch(/border-radius: 0 0 var\(--r-xl\) var\(--r-xl\)/);
-    expect(tokens).toContain("--r-xl: 30px;");
+    expect(tokens).toContain("--r-xl: 24px;");   // M51: the open notch's own bottom corner
   });
 });
 
@@ -162,7 +163,7 @@ describe("one ask field, and the main button does what the existing paths do", (
   test("the ask field keeps its id and its keys; its placeholder is the spec's; Start is a quiet drawing, never a second silver", () => {
     expect(card).toContain("placeholder={S.home.ask} aria-label={S.home.ask}");
     expect(S.home.ask).toBe("Or tell me what's wrong");
-    expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} onClick={submit}>');
+    expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}>');
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
   test("Fix it and Check my project run the same check as the Fix it key, in the project; Check before going live runs the ship check", () => {
@@ -323,7 +324,8 @@ describe("the status headline (F28, 4.1)", () => {
       const s = homeStatus(withHistory([r]), P, NOW);
       expect(s.kind, JSON.stringify(r)).toBe("unchecked");
       expect([s.verdict.icon, s.verdict.proven, s.verdict.tone], JSON.stringify(r)).toEqual(["wait", false, "plain"]);
-      expect(s.sub.startsWith("Last time: "), s.sub).toBe(true);
+      // M51 polish: "Last task", not "Last time", so the line under "Not checked yet" never reads as a check that happened.
+      expect(s.sub.startsWith("Last task: "), s.sub).toBe(true);
     }
     // The last row says it; an older proven fix does not make a newer stop or failure read as works.
     const newer = homeStatus(withHistory([row({}), row({ id: 2, startedAt: "2026-10-31T11:00:00Z", endedAt: "2026-10-31T11:05:00Z", status: "interrupted", proof: "skipped" })]), P, NOW);
@@ -392,10 +394,12 @@ describe("one main button per state", () => {
     for (const b of ["findProblem", "shipCheck"]) expect(groups, b).toContain(`"${b}"`);
   });
   test("while a job runs, some Stop is in reach on every place (review, 31 Oct)", () => {
-    // Now: in the hero, or in the working card. Every other place (Settings, History, Memory, Learn): in the top bar.
+    // Now: in the hero, or in the working card. Every other place (Settings, History, Memory, Learn): in the top bar, except
+    // Learn while its practice fixes or checks, where the practice card's own Stop is the one Stop (M51 review; barStopCan,
+    // lookFixes.test.ts).
     expect(card).toContain("{stopCan(m) && !jobShown && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
-    expect(bar).toContain('{home.tab !== "now" && stopCan(m) && <Button kind="secondary" size="sm" className="bar-stop"');
+    expect(bar).toContain('{barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
     expect(bar).toContain("onClick={() => void send(stopAgent())}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
     // Drawn before the places, and outside the Settings condition, so Settings gets it too.
     expect(bar.indexOf("bar-stop")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));

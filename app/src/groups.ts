@@ -155,13 +155,16 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
   return tool && toolOn(tool, read) ? [tool] : [];
 }
 
+/** The tools whose invitation points at a finished task ("under a finished task", "on a finished task", "after a fix"). */
+export const NEEDS_FINISHED: readonly string[] = ["followUp", "undo", "yourTurn"];
 /** The one invitation Home may show: the first tool not tried yet in a group that is on, in the catalog's order. Nothing
- *  with Home's setting off, while work is going on (`busy`), or when everything has been tried. */
-export function invitation(read: Read = setting, busy = false): { tool: ToolId; group: GroupId; line: string } | null {
+ *  with Home's setting off, while work is going on (`busy`), or when everything has been tried. `finished`: whether a task
+ *  in this project has finished; until one has, a tool that needs one is passed over (M51 polish). */
+export function invitation(read: Read = setting, busy = false, finished = true): { tool: ToolId; group: GroupId; line: string } | null {
   if (busy || read("groups.showUntried") === false) return null;
   for (const g of SWITCHED) {
     if (!groupOn(g.id, read)) continue;
-    const t = untriedIn(g.id, read)[0];
+    const t = untriedIn(g.id, read).find((x) => finished || !NEEDS_FINISHED.includes(x.id));
     if (t) return { tool: t.id, group: g.id, line: S.groups.tools[t.id as keyof typeof S.groups.tools].invite };
   }
   return null;

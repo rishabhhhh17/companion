@@ -4,8 +4,9 @@ import type { Def } from "../../../protocol/settings.ts";
 
 export type Control = "switch" | "segmented" | "menu" | "pictures" | "stepper" | "field" | "editor";
 
-/** Choices a person picks by looking (the water, how lively Flowflow is): picture cards, never a menu. */
-export const VISUAL_CHOICES: readonly string[] = ["look.water", "character.lively"];
+/** Choices a person picks by looking (the water, how lively Flowflow is, and since M51's polish Home's layout, theme, main
+ *  button and corners): picture cards, never a menu or words alone. */
+export const VISUAL_CHOICES: readonly string[] = ["look.water", "character.lively", "look.layout", "look.theme", "look.gloss", "look.corners"];
 /** A segmented control holds two or three options; four or more are a menu (Apple HIG: a pop up past 3 to 5). */
 export const SEGMENTED_MAX = 3;
 

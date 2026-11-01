@@ -1,0 +1,197 @@
+/* The look's own pieces (the Clicky pass): the thread of a practice, the checks that ran, the notes, Flowflow's one short line,
+   and the one glossy water pill. The tokens are in ui/tokens.css; this file writes no colour of its own (ui/styleLint.test.ts
+   reads it with the others, through ui/cssFiles.ts). Fun lives in three places only: Flowflow's small moves, one short line per
+   moment, and the proof itself. Nothing here loops except the live work dot. */
+
+/* ---------- Flowflow's one line, in a small bubble: 90 percent over a blur, the only translucent thing ---------- */
+.say { position: relative; display: inline-block; max-width: min(160px, 60%); box-sizing: border-box; padding: 4px var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-bubble); background: var(--bubble); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); width: max-content; box-shadow: var(--shadow-raised); animation: say-in var(--dur-3) var(--ease-out) both; }
+.say::after { content: ""; position: absolute; right: -4px; bottom: 7px; width: 7px; min-height: 7px; box-sizing: border-box; background: var(--bubble); border-right: var(--hair) solid var(--line-strong); border-top: var(--hair) solid var(--line-strong); rotate: 45deg; }
+@keyframes say-in { from { opacity: 0; translate: 0 4px; } }
+.hero .say { position: absolute; z-index: 2; right: calc(var(--space-6) - 4px); bottom: calc(var(--line-up) + var(--char) * .7 + 4px); }
+.hero .say::after { right: calc(var(--char) * .42); bottom: -4px; rotate: 135deg; }
+
+/* ---------- The practice card: Flowflow peeks over its top edge ----------
+   The peek is in the flow just above the card (practicePanel.tsx), never laid over the page: a longer line or bigger text
+   makes it taller and pushes the card down, so it can never reach the tab row (M51 review). Its foot tucks a quarter under
+   the card, which is drawn over it. */
+.home .view .panel.practice { position: relative; z-index: 1; }
+.pr-peek { --peek: 48px; position: relative; z-index: 0; display: flex; justify-content: flex-end; align-items: flex-end; gap: var(--space-2); margin: var(--space-1) var(--space-4) calc(var(--peek) * -.25); pointer-events: none; animation: say-in var(--dur-3) var(--ease-out) both; }
+.pr-peek .say { margin-bottom: calc(var(--peek) * .25 + var(--space-2)); max-width: 220px; }
+.pr-char { display: block; flex: none; width: var(--peek); height: var(--peek); object-fit: contain; object-position: center top; }
+
+/* ---------- The thread: find, fix, prove. A hairline, three nodes; a node fills with the water when the next stage is reached ---------- */
+.thread { list-style: none; margin: var(--space-3) 0 var(--space-4); padding: 0; }
+.thread-step { position: relative; display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; min-height: 28px; }
+.thread-step + .thread-step::before { content: ""; position: absolute; left: 6px; top: -14px; bottom: 50%; width: var(--hair); background: var(--line-strong); transition: background-color var(--dur-3) var(--ease-out); }
+.thread-step[data-state="done"]::before, .thread-step[data-state="now"]::before { background: var(--water); }
+.thread-node { position: relative; z-index: 1; display: grid; place-items: center; width: 14px; aspect-ratio: 1; box-sizing: border-box; border: var(--hair-2) solid var(--edge-control); border-radius: var(--r-round); background: var(--surface-1); transition: background-color var(--dur-3) var(--ease-out), border-color var(--dur-3) var(--ease-out); }
+.thread-step[data-state="now"] .thread-node { border-color: var(--water); }
+.thread-step[data-state="done"] .thread-node { border-color: var(--water); }
+.thread-tick { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--r-round); background: var(--water); color: var(--gel-ink); }
+.thread-label { color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
+.thread-step[data-state="todo"] .thread-label, .thread-step[data-state="failed"] .thread-label { color: var(--fg-2); }
+.thread-state { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.thread-step[data-state="now"] .thread-state { color: var(--fg); }
+.thread .live { width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--water); animation: live-dot 1.6s ease-in-out infinite; }
+@keyframes live-dot { 50% { opacity: .35; scale: .8; } }
+
+/* The failing line as a proof row: where it is, then the line itself, both in the system mono, on the inset like a code
+   view (failingLine.tsx). */
+.failing { display: grid; justify-items: start; gap: var(--space-1); margin: var(--space-1) 0 var(--space-3); padding: var(--space-2) var(--space-3); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: var(--inset); user-select: text; -webkit-user-select: text; }
+.failing-at { color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); overflow-wrap: anywhere; }
+.failing-code { max-width: 100%; color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font-code); white-space: pre-wrap; overflow-wrap: anywhere; }
+/* The line Flowflow found, drawn as a code review draws a failing line: a quiet red wash with a red rule at its left edge,
+   in the page's own words (M51 polish: the solid highlighter yellow was the loudest thing on the screen and read as a
+   worksheet). The wash wipes in left to right once. */
+.found-line { padding: 1px var(--space-1); border-radius: var(--r-key); background: linear-gradient(var(--removed), var(--removed)) no-repeat left / 100% 100%; box-shadow: inset var(--hair-2) 0 0 var(--bad); color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; animation: marker-in var(--dur-3) var(--ease-out) 150ms both; }
+@keyframes marker-in { from { background-size: 0 100%; } }
+
+/* The checks that ran, one tick each, 90 ms apart; the tick draws itself. Detail in the code face. */
+.checks { list-style: none; margin: var(--space-2) 0 var(--space-3); padding: 0; border: var(--hair) solid var(--line); border-radius: var(--r-control); background: var(--surface-2); }
+.checks li { display: grid; grid-template-columns: 14px minmax(0, 1fr); column-gap: var(--space-2); align-items: baseline; padding: 6px var(--space-3); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); animation: check-in var(--dur-3) var(--ease-out) both; }
+.checks li + li { border-top: var(--hair) solid var(--line); }
+.checks li:nth-child(2) { animation-delay: 90ms; } .checks li:nth-child(3) { animation-delay: 180ms; } .checks li:nth-child(4) { animation-delay: 270ms; }
+.check-mark { display: grid; place-items: center; align-self: center; color: var(--fg-2); }
+.checks li[data-status="passed"] .check-mark { color: var(--ok); }
+.checks li[data-status="failed"] .check-mark { color: var(--bad); }
+.check-label { color: var(--fg); }
+.check-detail { grid-column: 2; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); overflow-wrap: anywhere; }
+@keyframes check-in { from { opacity: 0; translate: 0 3px; } }
+
+/* What a fix changed: file names in the code face, a hairline between rows; and the cost under it, like the foot of a slip. */
+.changes li b { font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font-code); overflow-wrap: anywhere; }
+.changes-dir { font-size: var(--t-caption); }
+/* How each file changed, in the code face at the row's end (the proof rows of M51). */
+.changes-kind { margin-left: auto; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); }
+.slip { font-variant-numeric: tabular-nums; }
+
+/* A proven fix: the card glows once in the water, 400 ms, then nothing. The reward is the evidence. */
+.home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-2) var(--ease-out) both, proven-glow var(--dur-4) var(--ease-out) 300ms 1; }
+@keyframes proven-glow { 40% { box-shadow: 0 0 0 var(--hair) var(--water), 0 0 20px var(--gel-glow); } }
+
+/* The practice list: a hairline between rows, the state in plain words. */
+.pr-item { padding: var(--space-3) 0; margin: 0; border-top: var(--hair) solid var(--line); }
+.pr-item:first-of-type { border-top: 0; padding-top: var(--space-2); }
+.pr-name { font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); letter-spacing: var(--track-title); }
+.pr-state { margin-left: var(--space-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.pr-state[data-state="done"] { color: var(--ok); }
+
+/* ---------- Notes: a flat card, never a sticky note. The fact first, then its source and what you can do with it ---------- */
+.note { margin: 0 0 var(--space-2); padding: 12px 14px; border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.note-text { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-body) var(--font); letter-spacing: var(--track-body); user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
+.note-src { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-top: 10px; padding-top: 6px; border-top: var(--hair) solid var(--line); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.note-acts { display: inline-flex; gap: 2px; margin-right: -6px; }
+.note-btn { min-height: 24px; margin: 0; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-2); font: inherit; cursor: default; }
+.note-btn:hover { background: var(--surface-3); color: var(--fg); }
+
+/* ---------- The one glossy thing: the water gel pill (the final "do it" or "prove it" of a flow), once per view ---------- */
+button.gel.primary, .hero-main button.primary { position: relative; overflow: clip; border-color: var(--gel-edge); background: linear-gradient(180deg, var(--gel-hi) 0, var(--gel-mid) 50%, var(--gel-lo) 100%); color: var(--gel-ink); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), 0 2px 8px var(--gel-glow); }
+button.gel.primary::before, .hero-main button.primary::before { content: ""; position: absolute; left: 4px; right: 4px; top: 1px; height: 46%; border-radius: 999px 999px 50% 50% / 999px 999px 40% 40%; background: linear-gradient(180deg, var(--gel-gloss), transparent); pointer-events: none; }
+button.gel.primary:hover:not(:disabled), .hero-main button.primary:hover:not(:disabled) { filter: brightness(1.05); }
+button.gel.primary:active:not(:disabled), .hero-main button.primary:active:not(:disabled) { filter: brightness(.95); box-shadow: inset 0 var(--hair) 1px var(--gel-lip); }
+button.gel.primary:disabled::before, .hero-main button.primary:disabled::before { display: none; }
+
+/* ---------- An item's tile (M51 step 3, after HeyClicky): a soft coloured square with a simple drawing, one per item in the
+   side list, History and Learn (itemMarks.tsx). Five fixed tints (ui/tokens.css), picked by data-tint; Plain icons turns
+   every tint grey by tokens. Decoration only: the item's words name it. ---------- */
+.tile { display: inline-grid; place-items: center; flex: none; width: var(--tile); aspect-ratio: 1; border-radius: var(--r-tile); background: var(--tile-bg); color: var(--tile-ink); }
+.tile.tile-lg { width: var(--tile-lg); }
+.tile .ic { color: inherit; }
+.tile[data-tint="sky"] { --tile-bg: var(--tint-sky); --tile-ink: var(--tint-sky-ink); }
+.tile[data-tint="mint"] { --tile-bg: var(--tint-mint); --tile-ink: var(--tint-mint-ink); }
+.tile[data-tint="rose"] { --tile-bg: var(--tint-rose); --tile-ink: var(--tint-rose-ink); }
+.tile[data-tint="sun"] { --tile-bg: var(--tint-sun); --tile-ink: var(--tint-sun-ink); }
+.tile[data-tint="lilac"] { --tile-bg: var(--tint-lilac); --tile-ink: var(--tint-lilac-ink); }
+/* Making it better, and anything else: grey, so colour always means a kind a person looks for. */
+.tile[data-tint="plain"] { --tile-bg: var(--surface-3); --tile-ink: var(--fg-2); }
+
+/* ---------- A badge: a small upright outlined label with a hairline edge, in sentence case (never capitals), in the
+   colour of what it means: working the water's, proven the green, needs you the amber, new the page's second words. It
+   sits at the row's end (M51 polish, after HeyClicky's badges). Stamps off hides it by a token, and the plain words or
+   mark it stood for (.unstamped) show instead. ---------- */
+.stamp { display: var(--stamp-display); align-items: center; flex: none; box-sizing: border-box; min-height: var(--lh-caption); padding: 0 var(--space-1); border: var(--hair) solid currentColor; border-radius: var(--r-stamp); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-body); rotate: var(--stamp-tilt); }
+.stamp[data-stamp="working"] { color: var(--stamp-working); }
+.stamp[data-stamp="proven"] { color: var(--ok); }
+.stamp[data-stamp="needsYou"] { color: var(--amber); }
+.unstamped { display: var(--unstamped-display); }
+
+/* Learn: the tile beside the practice's name, the badge after it. */
+.pr-head { display: flex; align-items: flex-start; gap: var(--space-2) var(--space-3); }
+.pr-head-text { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; }
+.pr-head .tile { margin-top: 1px; }
+.pr-head-text .pr-state { margin-left: 0; }
+
+/* History (M51 polish): one grid per task, the same in both layouts. The tile, then the name over one quiet line (how it
+   ended, when, what it cost), then the badge at the row's end, always in the same column. A hairline between tasks, no
+   card around them. How it ended is said once: by the badge when there is one, else in the quiet line. */
+.hist-list { margin: 0; padding: 0; list-style: none; }
+.hist-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: start; padding: var(--space-2) 0; border-top: var(--hair) solid var(--line); }
+.hist-row:first-child { border-top: 0; }
+.hist-row > .tile { margin-top: 2px; }
+.hist-main { display: grid; gap: var(--space-desc); min-width: 0; }
+.hist-name { color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
+.hist-meta { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.hist-row > .stamp { margin-top: 2px; }
+.hist-row > .hist-extra { grid-column: 2 / -1; }
+
+/* ---------- Settings' Look pictures (M51 polish): a small drawing per option, so Home's look is chosen by looking ----------
+   A window: a side column and a main column with two lines of words and the water's pill. The theme pictures take each
+   theme's own colours (fixed tokens); the layout pictures take the theme in use. Drawings only, never words. */
+.sw-win { --sw-bg: var(--bg); --sw-card: var(--surface-3); --sw-line: var(--line-strong); --sw-ink: var(--fg-2); display: flex; gap: var(--space-1); width: 82%; aspect-ratio: 8 / 5; box-sizing: border-box; padding: var(--space-1); border: var(--hair) solid var(--sw-line); border-radius: var(--r-control); background: var(--sw-bg); }
+.sw-win[data-sw="graphite"] { --sw-bg: var(--sw-graphite-bg); --sw-card: var(--sw-graphite-card); --sw-line: var(--sw-graphite-line); --sw-ink: var(--sw-graphite-ink); }
+.sw-win[data-sw="paper"] { --sw-bg: var(--sw-paper-bg); --sw-card: var(--sw-paper-card); --sw-line: var(--sw-paper-line); --sw-ink: var(--sw-paper-ink); }
+.sw-win[data-sw="deep"] { --sw-bg: var(--sw-deep-bg); --sw-card: var(--sw-deep-card); --sw-line: var(--sw-deep-line); --sw-ink: var(--sw-deep-ink); }
+.sw-side { flex: 0 0 30%; border-radius: var(--r-key); background: var(--sw-card); }
+.sw-main { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-1); min-width: 0; padding: var(--space-1) 0; }
+.sw-main i { display: block; width: 76%; min-height: 3px; border-radius: var(--r-key); background: var(--sw-ink); opacity: .7; }
+.sw-main i + i { width: 52%; opacity: .4; }
+.sw-main b { display: block; width: 46%; min-height: 7px; margin-top: auto; border-radius: var(--r-pill); background: var(--water); }
+/* Tall: one column, the places along its top. */
+.sw-win[data-sw="tall"] { flex-direction: column; width: 46%; aspect-ratio: 4 / 5; }
+.sw-win[data-sw="tall"] .sw-side { flex: 0 0 16%; }
+/* The main button, glossy or flat. */
+.sw-pill { display: block; width: 70%; min-height: 18px; border: var(--hair) solid var(--gel-edge); border-radius: var(--r-pill); background: var(--water); }
+.sw-pill[data-sw="on"] { background: linear-gradient(180deg, var(--sw-gel-hi) 0, var(--water) 55%); box-shadow: inset 0 var(--hair) 0 var(--sw-gel-lip), 0 2px 8px var(--sw-gel-glow); }
+/* Corners: a card with two lines, its corners soft or crisp. */
+.sw-corner { display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); width: 64%; aspect-ratio: 3 / 2; box-sizing: border-box; padding: var(--space-2); border: var(--hair) solid var(--line-strong); background: var(--surface-3); }
+.sw-corner[data-sw="soft"] { border-radius: var(--sw-r-soft); }
+.sw-corner[data-sw="crisp"] { border-radius: var(--sw-r-crisp); }
+.sw-corner i { display: block; width: 80%; min-height: 3px; border-radius: var(--r-key); background: var(--fg-2); }
+.sw-corner i + i { width: 50%; }
+
+/* ------------------------------------------------------------------------------------------------------------------ */
+/* M51 polish (screens against HeyClicky, 1 Nov 2026). */
+/* A place's own section that is not a card: History's list, Learn's tour button. The page is the list; no box inside it. */
+.home .view .panel.bare { padding: 0; border: 0; background: transparent; }
+/* Over Now's headline while a practice runs, so a practice never reads like real work. */
+.hero-tag { display: inline-flex; align-items: center; min-height: var(--lh-caption); padding: 0 var(--space-1); border: var(--hair) solid var(--line-strong); border-radius: var(--r-stamp); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+/* The one invitation under the ask box: room from the box's edge. */
+.home .askwrap .ask-hint { margin-top: var(--space-2); }
+/* In the tall Home the cards under the ask box keep a clear gap from it. */
+.home:not([data-side]) .askwrap { margin-bottom: var(--space-3); }
+/* A step that is done in Finish setting up: a tick and the word, never a pill that looks pressable. */
+.set-done { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.set-done .ic { color: var(--ok); }
+/* Settings' page scrolls under a fade at its foot, never a row cut mid sentence; its own bottom padding sits under the fade,
+   so the last row is clear once scrolled to. */
+.home[data-view="settings"] .settings-content { -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); }
+/* The first run: where you are as a short bar per step, the ones reached in the water. */
+.fr-dots { display: inline-flex; gap: var(--space-1); margin-right: var(--space-2); vertical-align: middle; }
+.fr-dots i { display: block; width: 14px; min-height: 3px; border-radius: var(--r-key); background: var(--fr-edge-slot); }
+.fr-dots i[data-on] { background: var(--water); }
+/* Its main button is a pill on the right, as wide as its words, with the skip link on the same line at the left (a full
+   width white slab took the screen). With big text in a narrow Home they stack, the button full width again. */
+.fr-slide > .fr-key { align-self: flex-end; width: auto; min-width: calc(180rem / 14); }
+.fr-slide > .fr-skip { align-self: flex-start; min-height: var(--h-lg); margin-bottom: calc(var(--h-lg) * -1); }
+@container home (width < 30rem) { .fr-slide > .fr-key { align-self: stretch; } .fr-slide > .fr-skip { margin-bottom: var(--space-2); } }
+/* The wide Settings: its list of pages is Home's list on the left, the same column, fill and hairline, as tall as Home, and
+   the page beside it under the top row, so Home and Settings are one frame (M51 polish). Folded (Large text and up) it lays
+   out as before. */
+@container home (width >= 44rem) {
+  .home[data-layout="wide"][data-view="settings"] .inner { display: grid; grid-template-columns: var(--w-side) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); flex: 1 1 auto; min-height: 0; padding: 0; }
+  .home[data-layout="wide"][data-view="settings"] .view, .home[data-layout="wide"][data-view="settings"] .settings-frame { display: contents; }
+  .home[data-layout="wide"][data-view="settings"] .inner > *, .home[data-layout="wide"][data-view="settings"] .work > *, .home[data-layout="wide"][data-view="settings"] .view > * { grid-column: 2; margin-inline: var(--space-6); }
+  .home[data-layout="wide"][data-view="settings"] .bar { grid-row: 1; margin-top: var(--space-3); }
+  .home[data-layout="wide"][data-view="settings"] .settings-side { grid-column: 1; grid-row: 1 / -1; position: static; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--space-3) var(--space-2) var(--space-2); border-right: var(--hair) solid var(--line); background: var(--surface-1); }
+  .home[data-layout="wide"][data-view="settings"] .settings-content { grid-column: 2; grid-row: 2; max-width: none; margin-inline: 0; padding: 0 var(--space-6) var(--fade); }
+}

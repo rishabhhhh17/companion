@@ -155,11 +155,12 @@ describe("it does not cry wolf", () => {
     await r.start();
     expect(of(r.events, "loop.stuck").length).toBe(0);
     expect(r.log.list()[0].status).toBe("not_done");
-  });
+  }, 20_000);
+  // Three real task runs in a row: well under a second alone, but past bun's 5 s default on a loaded Mac (1 Nov 2026).
   test("two identical failures then a pass is just a fix", async () => {
     const r = setup(writes(3), [bad("x"), bad("x"), ok()]);
     await r.start();
     expect(of(r.events, "loop.stuck").length).toBe(0);
     expect(r.log.list()[0].status).toBe("done");
-  });
+  }, 20_000);
 });

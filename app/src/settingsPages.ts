@@ -1,11 +1,11 @@
-// Settings' pages (the overhaul spec, 3.2 to 3.4; F28 and T17: one Settings, inside Home). Eight pages in the sidebar, each
+// Settings' pages (the overhaul spec, 3.2 to 3.4; F28 and T17: one Settings, inside Home). Nine pages in the sidebar, each
 // a title, one line and a few Groups of Rows; everything else is in More options, in a section per page and a closed topic
 // per subject. Every visible setting in protocol/settings.json has exactly one place here (settingsPages.test.ts), and
 // search finds every one (settingsSearch.ts). The parts of Settings that are not settings (the plan, the key, the
 // permissions, the danger zone) are named `{ fixed }` and searched by their words in strings.ts (S.setFixed).
 import type { IconName } from "./icons.tsx";
 
-export type PageId = "account" | "general" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
+export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
 export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview";
 export type Item = string | { fixed: Fixed };
@@ -37,12 +37,23 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       { id: "more.general.notch", items: ["island.showWork", "island.openDelay", "island.closeDelay", "island.followDelay", "panel.showWork", "panel.size"] },
-      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "look.theme"] },
+      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size"] },
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
       { id: "more.general.files", parent: "files.on", items: ["drop.on", "drop.imageFormat", "drop.docFormat", "drop.audioFormat", "drop.videoFormat", "drop.resizeTo", "drop.quality", "drop.sampleRate", "drop.saveTo", "attach.docLimit"] },
       { id: "more.general.watch", items: ["watch.schedule", "watch.dailyHour", "watch.quiet", "watch.quietFrom", "watch.quietTo", "where.after", f("google")] },
     ],
+  },
+  // M51 polish (the founder, 1 Nov 2026: "as much customization as possible", "very unique"): Home's whole look on a page of
+  // its own, one step from the sidebar, beside the water's colour, chosen by looking at pictures. It was three levels deep in
+  // More options as words only.
+  look: {
+    icon: "image",
+    groups: [
+      { id: "look.home", items: ["look.layout", "look.theme", "look.water"] },
+      { id: "look.details", items: ["look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"] },
+    ],
+    more: [],
   },
   fixing: {
     icon: "wrench",
@@ -61,7 +72,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     groups: [
       { id: "flowflow.preview", items: [f("preview")] },
       { id: "flowflow.lively", items: ["character.lively"] },
-      { id: "flowflow.look", items: ["look.water", "look.size", "character.name"] },
+      { id: "flowflow.look", items: ["look.size", "character.name"] },
       { id: "flowflow.place", items: ["character.edge", "character.dockWhen", "character.peek", "character.follow"] },
       { id: "flowflow.sound", items: ["sound.on"] },
     ],
@@ -105,8 +116,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   more: { icon: "more", groups: [], more: [] },
 };
 
-/** The sidebar, in order: the six pages, a hairline, then About and More options (the spec, 3.2). */
-export const SIDEBAR: readonly PageId[] = ["account", "general", "fixing", "flowflow", "keys", "privacy", "about", "more"];
+/** The sidebar, in order: the seven pages (Look since M51), a hairline, then About and More options (the spec, 3.2). */
+export const SIDEBAR: readonly PageId[] = ["account", "general", "look", "fixing", "flowflow", "keys", "privacy", "about", "more"];
 /** The hairline sits before this page. */
 export const HAIRLINE_BEFORE: PageId = "about";
 export const FIRST_PAGE: PageId = "general";
@@ -116,8 +127,14 @@ export const isPage = (id: string): id is PageId => Object.hasOwn(PAGES, id);
 export const ROW_OWNS: Readonly<Record<string, readonly string[]>> = { "character.peek": ["character.peek", "character.stick"] };
 /** Child rows on a page: indented under their parent switch, and dimmed with why while it is off. */
 export const CHILD_OF: Readonly<Record<string, string>> = { "talk.voice": "voice.on", "talk.speak": "voice.on", "talk.captions": "voice.on", "talk.dictate": "voice.on" };
-/** Options kept in the registry but not offered (the Deep theme is hidden, T17). A value already set to one still works. */
-export const HIDDEN_OPTIONS: Readonly<Record<string, readonly string[]>> = { "look.theme": ["deep"] };
+/** Options kept in the registry but not offered. A value already set to one still works. Night is the theme from before
+ *  M51: Graphite replaced it, so it is kept only so a saved "night" checks out (it reads as Graphite, OPTION_ALIASES). Deep,
+ *  hidden until it had a full, tested look (T17), is offered since M51. */
+export const HIDDEN_OPTIONS: Readonly<Record<string, readonly string[]>> = { "look.theme": ["night"] };
+/** A saved value that reads as another option. A row shows and compares the option it reads as, so a saved "night" shows
+ *  Graphite picked and is not marked as changed. */
+export const OPTION_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = { "look.theme": { night: "graphite" } };
+export const shownValue = (key: string, v: unknown): unknown => (typeof v === "string" && OPTION_ALIASES[key]?.[v]) || v;
 
 const keysOf = (items: readonly Item[]): string[] => items.flatMap((i) => (typeof i === "string" ? [...(ROW_OWNS[i] ?? [i])] : []));
 /** Every setting key on a page's main level. */

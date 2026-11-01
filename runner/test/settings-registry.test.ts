@@ -78,11 +78,16 @@ describe("the shipped list of settings", () => {
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
       // M19: make it yours.
-      "look.water": "ocean", "look.theme": "night", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "look.water": "ocean", "look.theme": "graphite", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
       "panel.showHello": false, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
       // M46 (F28): Flowflow holds still unless it has news, rests in Low Power Mode, and the Show me how ring lands at once.
       "character.lively": "lively", "character.restLowPower": true, "point.fly": false,
+      // M51 (1 Nov 2026, the founder: the tall panel "looks so vertical"): Home is wide by default; tall stays a choice.
+      "look.layout": "wide",
+      // M51 step 3 (the founder: "as much customization as possible"): the graphite look is the usual theme (a saved "night"
+      // still reads, as Graphite), with roomy spacing, coloured item icons, stamps on, the glossy button and soft corners.
+      "look.density": "comfortable", "look.icons": "colour", "look.stamps": true, "look.gloss": "on", "look.corners": "soft",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -100,6 +105,16 @@ describe("the shipped list of settings", () => {
     expect(defOf("island.display")!.options).toEqual(["follow", "builtIn", "main"]);
     expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);
+    // M51: the layout, wide (the usual) or the tall panel. The shell sizes Home and keeps the character clear of it from it
+    // (island.rs HomeSize::of), and the pages lay Home out by it.
+    expect(defOf("look.layout")).toMatchObject({ section: "look", kind: "choice", default: "wide", options: ["wide", "tall"], scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
+    // M51 step 3: the theme keeps "night" as an option so a value saved before still checks out (it reads as Graphite), and
+    // the five look choices reach the pages only, live, kept in settings.json.
+    expect(defOf("look.theme")).toMatchObject({ section: "look", kind: "choice", default: "graphite", options: ["graphite", "paper", "deep", "night"], applies: ["pages"], store: "settings", live: true });
+    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["colour", "plain"]], ["look.gloss", ["on", "flat"]], ["look.corners", ["soft", "crisp"]]] as const) {
+      expect(defOf(k), k).toMatchObject({ section: "look", kind: "choice", default: options[0], options: [...options], scope: "app", applies: ["pages"], store: "settings", live: true });
+    }
+    expect(defOf("look.stamps")).toMatchObject({ section: "look", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(defOf("character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
     expect(defOf("character.motion")!.options).toEqual(["followMac", "less"]);
     // M46 (F28): How lively, in the order Settings shows the three choices; Still is the usual one.

@@ -22,7 +22,7 @@ export function ChangesCard({ changed }: { changed: { file: string; kind: string
             <li key={c.file} data-kind={c.kind}>
               <span className="changes-mark" aria-hidden="true">{MARK[c.kind] ?? "●"}</span>
               <span className="sr">{(S as unknown as Record<string, string>)[c.kind] ?? c.kind}: </span>
-              <b>{name}</b>{dir && <span className="changes-dir">{dir}</span>}
+              <b>{name}</b>{dir && <span className="changes-dir">{dir}</span>}<span className="changes-kind" aria-hidden="true">{(S as unknown as Record<string, string>)[c.kind] ?? c.kind}</span>
             </li>
           );
         })}

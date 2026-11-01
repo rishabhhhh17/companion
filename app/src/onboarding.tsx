@@ -184,7 +184,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
       <div className="fr-tank" aria-hidden="true"><Waterline under />{step !== "hello" && open === null && <div className="fr-float"><HomeCharacter as={look} /></div>}</div>
       <div className="fr-top">
         {back(step) && <button className="fr-back" type="button" aria-label={S.obBack} onClick={() => { if (stage === "checking" || stage === "asking") stopCheck(); go(back(step)); }}>&#8592;</button>}
-        {count && <span className="fr-count">{S.fr.count(count.n, count.of)}</span>}
+        {/* Where the person is: a short bar per step, the ones reached in the water, then the words (M51 polish). */}
+        {count && <span className="fr-count"><span className="fr-dots" aria-hidden="true">{Array.from({ length: count.of }, (_, i) => <i key={i} data-on={i < count.n || undefined} />)}</span>{S.fr.count(count.n, count.of)}</span>}
       </div>
 
       <div className="fr-slide" key={step} data-dir={dir}>

@@ -102,9 +102,9 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuil
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 
 const DOCK: (f64, f64) = (160.0, 160.0);
-// Home's size (the card, F18): CARD is the usual width (380, for its tabs) and least height, the size Home's window is made
-// at. The size in force (home.size: standard or large) is `home_size()`, one definition in island.rs (HomeSize), used by
-// resize_card, by card_spot and by everything that keeps clear of Home.
+// Home's size (the card, F18): CARD is the usual width and least height (wide, M51), the size Home's window is made at. The
+// size in force (look.layout: wide or tall, and home.size: standard or large) is `home_size()`, one definition in island.rs
+// (HomeSize), used by resize_card, by card_spot and by everything that keeps clear of Home.
 use island::CARD;
 
 static RUN: OnceLock<String> = OnceLock::new();
@@ -1299,8 +1299,8 @@ fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETT
 fn home_setting_applied(app: &AppHandle, key: &str) {
     match key {
         // The island shown or hidden, on another display, or Home another size: everything is put back where it belongs.
-        "island.show" | "island.display" | "home.size" => {
-            let size = key == "home.size";
+        "island.show" | "island.display" | "home.size" | "look.layout" => {
+            let size = key == "home.size" || key == "look.layout";
             let _ = app.run_on_main_thread(move || {
                 let Some(mtm) = MainThreadMarker::new() else { return };
                 let hs = home_set();

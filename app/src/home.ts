@@ -87,7 +87,9 @@ export function need(m: Model): Need | null {
   if (m.ph && PH_NEEDS.includes(m.ph.stage)) return { key: `ph:${m.ph.stage}`, tab: "now", why: S.phTitle, mustShow: true };
   if (m.eh && EH_NEEDS.includes(m.eh.stage)) return { key: `eh:${m.eh.req ?? ""}:${m.eh.stage}`, tab: "now", why: S.ehTitle, mustShow: true };
   if (m.sl && SL_NEEDS.includes(m.sl.stage)) return { key: `sl:${m.sl.req ?? ""}:${m.sl.stage}`, tab: "now", why: S.slTitle, mustShow: true };
-  if (m.point?.stage === "found") return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
+  // During a practice, the problem it found is the practice's own and is shown in its card on Learn: it never marks Now
+  // (M51 review: a stray dot on the back arrow while the practice fixed).
+  if (m.point?.stage === "found" && !m.practice) return { key: `point:${m.point.label ?? ""}`, tab: "now", why: S.pointTitle };
   // An everyday look's answer (everyday.ts): what is wrong, whether it is fixed, or Did that work?
   if (m.everyday && EVERYDAY_NEEDS.includes(m.everyday.stage)) return { key: `everyday:${m.everyday.req ?? ""}:${m.everyday.stage}`, tab: "now", why: S.everydayTitle };
   // A pointer during a lesson belongs to the lesson, which is on Learn (its problems are above).

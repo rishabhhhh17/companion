@@ -26,16 +26,20 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
       expect(searchSettingsFor(wordsOf(d.key).label).some((r) => "key" in r.hit && r.hit.key === d.key), d.key).toBe(false);
     }
   });
-  test("each page's main level holds at most 10 settings, and the main levels together are about 35", () => {
+  // M51 polish (the founder, 1 Nov 2026: "as much customization as possible", "very unique"): Home's look came up from More
+  // options to a page of its own, seven more settings one press away, so the main levels together are about 45 now.
+  test("each page's main level holds at most 10 settings, and the main levels together are about 45", () => {
     for (const p of SIDEBAR) expect(mainKeys(p).length, p).toBeLessThanOrEqual(10);
-    expect(MAIN.size).toBeGreaterThanOrEqual(30);
-    expect(MAIN.size).toBeLessThanOrEqual(40);
+    expect(MAIN.size).toBeGreaterThanOrEqual(38);
+    expect(MAIN.size).toBeLessThanOrEqual(48);
   });
   test("the main levels are the ones the spec names", () => {
     expect(mainKeys("account")).toEqual(["spend.dailyLimit"]);
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     expect(mainKeys("fixing")).toEqual(["rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
-    expect(mainKeys("flowflow")).toEqual(["character.lively", "look.water", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
+    // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
+    expect(mainKeys("look")).toEqual(["look.layout", "look.theme", "look.water", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
+    expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
     expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused"]);
@@ -54,8 +58,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
 });
 
 describe("the sidebar and the groups (the spec, 3.2)", () => {
-  test("eight pages, in order, a hairline before About, and Settings opens on General the first time", () => {
-    expect(SIDEBAR).toEqual(["account", "general", "fixing", "flowflow", "keys", "privacy", "about", "more"]);
+  test("nine pages, in order (Look after General since M51), a hairline before About, and Settings opens on General the first time", () => {
+    expect(SIDEBAR).toEqual(["account", "general", "look", "fixing", "flowflow", "keys", "privacy", "about", "more"]);
     expect(HAIRLINE_BEFORE).toBe("about");
     expect(FIRST_PAGE).toBe("general");
     for (const p of SIDEBAR) { expect(S.pages[p].title, p).toBeTruthy(); expect(S.pages[p].sub, p).toBeTruthy(); }
@@ -103,9 +107,11 @@ describe("At rest: one control for two keys (the spec, 3.4)", () => {
     for (const v of AT_REST) { const w = Object.fromEntries(atRestWrites(v)); expect(atRestOf(w["character.peek"], w["character.stick"] ?? true)).toBe(v); }
     expect(Object.keys(S.setRows.atRest.options)).toEqual([...AT_REST]);
   });
-  test("the Deep theme is hidden, and Paper stays (T17)", () => {
-    expect(HIDDEN_OPTIONS["look.theme"]).toEqual(["deep"]);
-    expect(REGISTRY.settings.find((d) => d.key === "look.theme")?.options).toContain("paper");
+  // M51 (the founder, 1 Nov 2026): Deep, hidden until it had a full, tested look (T17), is offered; the old Night is kept
+  // only so a saved value still checks out, and is not offered (it reads as Graphite).
+  test("the old Night theme is kept but not offered; Graphite, Paper and Deep are (M51)", () => {
+    expect(HIDDEN_OPTIONS["look.theme"]).toEqual(["night"]);
+    expect(REGISTRY.settings.find((d) => d.key === "look.theme")?.options).toEqual(["graphite", "paper", "deep", "night"]);
   });
 });
 

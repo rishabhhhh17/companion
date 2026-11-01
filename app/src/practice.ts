@@ -165,3 +165,24 @@ type Working = Parameters<typeof isBusy>[0] & { walk?: { stage?: string } | null
  *  Trash: any task or check (isBusy), a lesson that is open, or the practice's own lesson or checks after its fix. */
 export const workingOn = (m: Working): boolean =>
   isBusy(m) || (!!m.walk && !["done", "stopped"].includes(m.walk.stage ?? "")) || ["lesson", "proving"].includes(m.practice?.stage ?? "");
+
+
+// ---------- the thread: find, fix, prove ----------
+
+export type NodeState = "todo" | "now" | "done" | "failed";
+export type Thread = { find: NodeState; fix: NodeState; prove: NodeState };
+/** Where the person is in find, fix, prove, from the practice's own stage and nothing else: a step is done only when the stage
+ *  after it was reached, and the third step is empty ("failed") when the checks did not pass. Plain code, so the picture can
+ *  never say more than the model knows (rule 14). */
+export function threadOf(p: { stage: string; result?: unknown }): Thread {
+  switch (p.stage) {
+    case "start": return { find: "now", fix: "todo", prove: "todo" };
+    case "found": case "lesson": case "fixing": return { find: "done", fix: "now", prove: "todo" };
+    case "proving": return { find: "done", fix: "done", prove: "now" };
+    case "done": return { find: "done", fix: "done", prove: "done" };
+    // A fix that ended with a receipt but did not pass: the fix happened, its proof did not. No receipt: the fix itself failed.
+    case "failed": return p.result ? { find: "done", fix: "done", prove: "failed" } : { find: "done", fix: "failed", prove: "todo" };
+    case "blocked": return { find: "failed", fix: "todo", prove: "todo" };
+    default: return { find: "todo", fix: "todo", prove: "todo" };
+  }
+}

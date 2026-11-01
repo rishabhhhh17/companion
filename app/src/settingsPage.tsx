@@ -6,6 +6,8 @@
 // a named group, switches are role switch, choices a radio group with the arrows or a menu past three.
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { HomeCharacter } from "./homeCharacter.tsx";
+import { Icon } from "./icons.tsx";
+import { stripEdges } from "./ui/strip.ts";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Waterline } from "./waterline.tsx";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
@@ -24,7 +26,7 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
@@ -395,11 +397,12 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
   const c = useCtx();
   const { project, facts, inv } = c;
   useSetting(d.key);
-  const value = d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key);
+  // A value kept from before that reads as another option (a saved "night" is Graphite, settingsPages.ts OPTION_ALIASES).
+  const value = shownValue(d.key, d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key));
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
   // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always. A hidden
-  // option (the Deep theme) is not offered, though a value already set to it still works.
+  // option (the old Night theme, read as Graphite) is not offered, though a value already set to it still works.
   const offered = offeredOptions(d.key);
   const hidden = HIDDEN_OPTIONS[d.key] ?? [];
   const options = (r.options ?? []).filter((o) => (!offered || offered.includes(o.id)) && !hidden.includes(o.id));
@@ -458,6 +461,7 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
     // M30: the water's colour is a row of pictures, as HeyClicky shows its cursor colours; how lively too (F28).
     if (d.key === "look.water") return <WaterSwatches value={String(value)} onChange={change} labelId={labelId} />;
     if (d.key === "character.lively") return <LivelyPictures value={String(value)} onChange={change} labelId={labelId} disabled={off} />;
+    if (d.key in LOOK_PICTURE) return <LookPictures d={d} value={String(value)} onChange={change} labelId={labelId} disabled={off} />;
     if (d.key === "check.start") return <ChoiceControl d={d} value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
     if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={inv?.receiptPictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} inputId={inputId} />;
     switch (d.kind) {
@@ -824,7 +828,7 @@ function SetupGroup() {
   return (
     <Group id="general.setup" title={S.setGroupTitles["general.setup"]}>
       {items.map((i) => <Row key={i.id} id={i.id === "key" ? fixedAnchor("setup") : undefined} label={i.label} description={i.desc}
-        control={i.done ? <ProofChip kind="pass" label={S.setRows.setupDone} /> : <Button size="sm" onClick={i.act}>{i.button}</Button>} />)}
+        control={i.done ? <span className="set-done"><Icon name="tick" size={12} />{S.setRows.setupDone}</span> : <Button size="sm" onClick={i.act}>{i.button}</Button>} />)}
     </Group>
   );
 }
@@ -1057,6 +1061,22 @@ function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: 
     {tagged && !card && <p className="set-note">{S.plan.partOfPro.looks}</p>}
     {card && <LimitPanel view={{ reason: "looks" }} status={status} usage={c.usage} say={(l) => c.say(l)} onClose={() => setCard(false)} />}
   </>);
+}
+
+/** Home's layout, theme, main button and corners, chosen by looking (M51 polish; ui/controlRule.ts VISUAL_CHOICES): a small
+ *  drawing of each option, in the colours it gives and with the water chosen in it, its name under it. Drawings only, from
+ *  tokens (ui/look.css .sw-*): the theme pictures keep each theme's own colours whatever theme is on. */
+const LOOK_PICTURE: Readonly<Record<string, (o: string) => ReactNode>> = {
+  "look.layout": (o) => <span className="sw-win" data-sw={o}><span className="sw-side" /><span className="sw-main"><i /><i /><b /></span></span>,
+  "look.theme": (o) => <span className="sw-win" data-sw={o}><span className="sw-side" /><span className="sw-main"><i /><i /><b /></span></span>,
+  "look.gloss": (o) => <span className="sw-pill" data-sw={o} />,
+  "look.corners": (o) => <span className="sw-corner" data-sw={o}><i /><i /></span>,
+};
+function LookPictures({ d, value, onChange, labelId, disabled }: { d: Def; value: string; onChange: (v: string) => void; labelId: string; disabled: boolean }) {
+  const opts = (d.options ?? []).filter((o) => !(HIDDEN_OPTIONS[d.key] ?? []).includes(o));
+  const words = (o: string) => S.setSeg[d.key]?.[o] ?? (S.set as Record<string, { options?: Record<string, string> }>)[d.key]?.options?.[o] ?? o;
+  return <PictureChoice labelledBy={labelId} value={opts.includes(value) ? value : String(d.default)} onChange={onChange} disabled={disabled}
+    options={opts.map((o) => ({ id: o, label: words(o), picture: LOOK_PICTURE[d.key](o) }))} />;
 }
 
 /** How lively Flowflow is (character.lively, F28): a Picture choice, a calm pose for Still, a turn for Gentle, a splash for
@@ -1367,6 +1387,22 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
   const say = (text: string, undo?: () => void) => setToast((t) => ({ text, undo, n: (t?.n ?? 0) + 1 }));
   const ctx: Ctx = { project, working, practiceBusy, keys, facts, inv, spending, usage, go, say, reload: load, onLesson, onPracticeList, onMemory, onPickFolder, onStepAside };
   const problems = (snapshotNow()?.problems ?? []).map((p) => (p.code === "damaged" ? S.setDamaged : p.code === "unreadable" ? S.setUnreadable : p.code === "rulesUnreadable" ? S.setRulesUnreadable : p.key ? S.setBadValue(wordsOf(p.key).label) : "")).filter(Boolean);
+  // Narrow, the sidebar is one strip that scrolls sideways (M51 review: it cut a word with no sign of more). Which ends have
+  // more past them, so the page fades that end and shows an arrow there; the open page is always scrolled into the strip.
+  const [more, setMore] = useState("");
+  const measure = () => { const el = side.current; if (el) setMore(stripEdges(el.scrollLeft, el.scrollWidth, el.clientWidth)); };
+  useLayoutEffect(() => {
+    side.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    measure();
+  }, [page, q]);
+  useEffect(() => {
+    const el = side.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const nudge = (way: 1 | -1) => side.current?.scrollBy({ left: way * side.current.clientWidth * 0.7, behavior: "smooth" });
   // Up and down move through the sidebar's pages (the open one follows).
   const sideKey = (e: ReactKeyboardEvent<HTMLUListElement>) => {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -1383,12 +1419,17 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
             <Field type="search" wide inputRef={search} value={q} placeholder={S.setFrame.search} label={S.setFrame.search} onChange={setQ}
               onKeyDown={(e) => { if (e.key === "Escape" && !e.nativeEvent.isComposing && q) { e.preventDefault(); e.stopPropagation(); setQ(""); } }} />
           </div>
-          <ul className="sb-list" ref={side} onKeyDown={sideKey}>
-            {SIDEBAR.map((id) => (<li key={id}>
-              {id === HAIRLINE_BEFORE && <div className="sb-sep" role="separator" />}
-              <SidebarItem icon={PAGES[id].icon} label={S.pages[id].title} selected={!q && page === id} onClick={() => { setQ(""); onPlace(id); }} />
-            </li>))}
-          </ul>
+          <div className="sb-strip" data-more={more || undefined}>
+            <ul className="sb-list" ref={side} onKeyDown={sideKey} onScroll={measure}>
+              {SIDEBAR.map((id) => (<li key={id}>
+                {id === HAIRLINE_BEFORE && <div className="sb-sep" role="separator" />}
+                <SidebarItem icon={PAGES[id].icon} label={S.pages[id].title} selected={!q && page === id} onClick={() => { setQ(""); onPlace(id); }} />
+              </li>))}
+            </ul>
+            {/* Out of the tab order: Tab and the arrow keys already bring each page into view (focus scrolls it); these are for the pointer. */}
+            <Button kind="icon" className="sb-more sb-more-left" tabIndex={-1} label={S.setFrame.stripBack} onClick={() => nudge(-1)}><Icon name="back" size={12} /></Button>
+            <Button kind="icon" className="sb-more sb-more-right" tabIndex={-1} label={S.setFrame.stripMore} onClick={() => nudge(1)}><Icon name="back" size={12} /></Button>
+          </div>
         </nav>
         <div className="settings-content" ref={content} role="region" aria-label={q ? S.setFrame.search : S.pages[page].title}>
           {problems.map((p, i) => <p className="set-problem" key={i}>{p}</p>)}

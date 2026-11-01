@@ -668,8 +668,10 @@ mod tests {
         // Home on the right edge, a Terminal window on the left. Level with the error line is beside the short card, so the
         // spot slides to just below it; then the card grows down over it as the explanation comes in.
         let (window, target) = ([40.0, 100.0, 900.0, 500.0], [400.0, 505.0, 200.0, 30.0]);
-        let short = crate::docking::card_frame(HOME_RIGHT, CARD, s.work, Edge::Right);
-        let tallest = crate::docking::card_frame(HOME_RIGHT, (CARD.0, CARD_MAX_H), s.work, Edge::Right);
+        // Only the tall Home grows with what it shows (the wide one, the usual since M51, has one height): its sizes here.
+        let tall = crate::island::HomeSize::STANDARD;
+        let short = crate::docking::card_frame(HOME_RIGHT, (tall.w, tall.min_h), s.work, Edge::Right);
+        let tallest = crate::docking::card_frame(HOME_RIGHT, (tall.w, tall.max_h), s.work, Edge::Right);
         let (spot, side) = go(plan(&ask(&s, window, target, &[short], HOME_RIGHT)));
         assert!(!overlaps(spot, short) && overlaps(spot, tallest), "the layout the review found: {spot:?}");
         let mut r = Roamer::new();
@@ -932,7 +934,7 @@ mod tests {
             let w = s.work;
             let island = crate::island::island_frame(&s, crate::island::Mode::Peek);
             for (edge, pct) in [(Edge::Left, 0.5), (Edge::Right, 0.5), (Edge::Top, 0.2), (Edge::Top, 0.8), (Edge::Bottom, 0.5)] {
-                let home = crate::docking::place(&s, SIZE, edge, pct, crate::island::HomeSize::STANDARD);
+                let home = crate::docking::place(&s, SIZE, edge, pct, crate::island::HomeSize::USUAL);
                 let open = home_open(&s, home, CARD_MAX_H);
                 assert!(!overlaps(home, open) && !overlaps(home, island), "{} {edge:?}: home itself is clear", s.id);
                 for wx in [0.0, 60.0, 300.0, 520.0, 800.0] { for wy in [0.0, 40.0, 200.0, 420.0] { for ww in [300.0, 600.0, 900.0, 1300.0] { for wh in [200.0, 450.0, 700.0] {

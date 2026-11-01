@@ -777,26 +777,31 @@ const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return 
 const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const colourIn = (v: string) => /(var\([^)]+\)|#[0-9a-f]{3,6}\b|rgba?\([^)]+\)|color-mix\(.+\)|\btransparent\b)/i.exec(v)?.[1] ?? null;
 
-describe("text, controls and marks meet WCAG AA in Night and Paper (part 4)", () => {
-  // The look's tokens are in ui/tokens.css: Night on :root (the usual theme, every page), Paper on :root[data-theme="paper"]
-  // (look.theme, Home and Settings only), and each with the Mac's More contrast. Every rule of the three stylesheets is read.
+describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and Deep (part 4)", () => {
+  // The look's tokens are in ui/tokens.css: Night, now called Graphite (M51), on :root (the usual theme, every page), Paper
+  // on :root[data-theme="paper"] and Deep on :root[data-theme="deep"] (look.theme, Home and Settings only), and each with
+  // the Mac's More contrast. Every rule of the stylesheets is read.
   const css = rules(ALL_CSS());
   const tokRules = rules(TOKENS_CSS());
   const decls = (sel: string, media: RegExp | null) => Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === sel && (media ? media.test(r.media ?? "") : !r.media))?.decl ?? {}).filter(([k]) => k.startsWith("--")));
-  const night = decls(":root", null), paper = { ...night, ...decls(':root[data-theme="paper"]', null) };
+  const night = decls(":root", null), paper = { ...night, ...decls(':root[data-theme="paper"]', null) }, deep = { ...night, ...decls(':root[data-theme="deep"]', null) };
   const more = /prefers-contrast: more/;
-  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper],
-    ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }]];
+  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper], ["Deep", deep],
+    ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }],
+    ["Deep, more contrast", { ...deep, ...decls(':root[data-theme="deep"]', more) }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.
   const DISABLED = /:disabled|\[data-disabled\]|\[aria-disabled/;
-  test("Night is the usual theme on every page, Paper is the only other, and the Mac's light or dark changes nothing", () => {
-    expect(night["--bg"]).toBe("#0B0B0C");
-    expect(paper["--bg"]).toBe("#F2F2F4");
+  test("Night (Graphite) is the usual theme on every page, Paper and Deep are the others, and the Mac's light or dark changes nothing", () => {
+    // The graphite look (M51, the founder, 1 Nov 2026): the usual page is #111111, Paper's is white, Deep's a dark sea blue.
+    expect(night["--bg"]).toBe("#111111");
+    expect(paper["--bg"]).toBe("#FFFFFF");
+    expect(deep["--bg"]).toBe("#0B1622");
     expect(css.some((r) => /prefers-color-scheme/.test(r.media ?? "")), "no rule follows the Mac's light or dark").toBe(false);
-    // Deep is hidden (founder call 3, T17): no rule draws it, so a stored "deep" reads as Night.
-    expect(ALL_CSS()).not.toContain('data-theme="deep"');
+    // Deep was hidden until it had a full, tested look (founder call 3, T17); M51 offers it, with every check here run on it.
+    expect(TOKENS_CSS()).toContain(':root[data-theme="deep"] {');
+    expect(themes.map(([n]) => n)).toEqual(expect.arrayContaining(["Deep", "Deep, more contrast"]));
     expect(themes[1][1]["--bg"]).not.toBe(night["--bg"]);
   });
   test("--fg-3 colours only disabled words and marks, never words that must be read", () => {
@@ -864,6 +869,17 @@ describe("text, controls and marks meet WCAG AA in Night and Paper (part 4)", ()
         const fg = words(still);
         expect(ratio(fg, fill(still)), still).toBeGreaterThanOrEqual(4.5);
         expect(ratio(c(one(hover)!.decl.color ?? one(still)!.decl.color), fill(hover)), hover).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+    test(`${theme}: the marker reads as a highlighter, a clear yellow, and its words reach 4.5 to 1 on it (M51)`, () => {
+      for (const s of ["--bg", "--surface-1", "--surface-2", "--inset"]) {
+        const m = over(c("var(--marker)"), c(`var(${s})`));
+        expect(ratio(c("var(--marker-ink)"), m), `the marker's words on it, over ${s}`).toBeGreaterThanOrEqual(4.5);
+        // A highlighter, not an olive: red and green high and close, blue well under them (a muddy olive is dark).
+        const [r, g, b] = m;
+        expect(Math.min(r, g), `the marker over ${s} is bright`).toBeGreaterThanOrEqual(200);
+        expect(Math.abs(r - g), `the marker over ${s} is yellow, not orange or lime`).toBeLessThanOrEqual(40);
+        expect(Math.min(r, g) - b, `the marker over ${s} is saturated`).toBeGreaterThanOrEqual(60);
       }
     });
     test(`${theme}: what was added or removed in a diff is readable on its tint`, () => {

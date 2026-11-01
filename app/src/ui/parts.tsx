@@ -317,10 +317,11 @@ export function Card({ title, id, className = "", labelId, children }: { title?:
 /** A key chord as the Mac's own caps (⌃ ⌥ ⌘ F), one cap each. VoiceOver reads the words ("Control, Option, Command and
  *  F"), or nothing when `hidden` (inside a control whose own name already says it). Nothing for a chord the app does not
  *  write. */
-export function KeyLabel({ chord, hidden }: { chord: string | null | undefined; hidden?: boolean }) {
+export function KeyLabel({ chord, hidden, down }: { chord: string | null | undefined; hidden?: boolean; down?: boolean }) {
   const caps = keycaps(chord);
   if (!caps.length) return null;
-  const cs = caps.map((c, i) => <kbd key={i} className="ui-key">{c}</kbd>);
+  // `down`: the talk keys are held (the app's own voice state, never a key being read): the caps press.
+  const cs = caps.map((c, i) => <kbd key={i} className="ui-key" data-down={down ? "" : undefined}>{c}</kbd>);
   return hidden ? <span className="ui-keys" aria-hidden="true">{cs}</span> : <span className="ui-keys" role="img" aria-label={chordLabel(chord!)}>{cs}</span>;
 }
 
@@ -331,9 +332,12 @@ export function VerdictLine({ verdict, size = "small", sub, inline }: { verdict:
   const { mark, tone } = verdictMark(verdict);
   // `inline`: inside a heading (the first run's first check), so the line is a span and the heading stays a heading.
   const Tag = inline ? "span" : "div";
+  // A headline that is not a result (Not checked yet, Pick a project folder) has no mark: a lone grey dot before big words
+  // read as a stray bullet (M51 polish). A result keeps its tick or cross.
+  const bare = size === "headline" && tone === "plain";
   return (
-    <Tag className="ui-verdict" data-size={size} data-tone={tone}>
-      <span className="ui-verdict-mark" aria-hidden="true"><Icon name={mark} size={size === "small" ? 16 : 20} /></span>
+    <Tag className="ui-verdict" data-size={size} data-tone={tone} data-bare={bare || undefined}>
+      {!bare && <span className="ui-verdict-mark" aria-hidden="true"><Icon name={mark} size={size === "small" ? 16 : 20} /></span>}
       <span className="ui-verdict-words">{verdict.headline}</span>
       {sub ? <span className="ui-verdict-sub">{sub}</span> : null}
     </Tag>
@@ -357,7 +361,8 @@ export function RecentRow({ verdict, name, meta, cost, onOpen }: { verdict: Verd
     <button type="button" className="ui-recent" data-tone={tone} aria-label={`${S.ui.openReceipt(name)}. ${verdict.headline}. ${meta}. ${cost}`} onClick={onOpen}>
       <span className="ui-recent-mark" aria-hidden="true"><Icon name={mark} size={16} /></span>
       <span className="ui-recent-text"><span className="ui-recent-name">{name}</span><span className="ui-recent-meta">{meta}</span></span>
-      <span className="ui-chip" data-kind="cost" aria-hidden="true">{cost}</span>
+      {/* What it cost, as plain quiet words at the row's end: an outlined pill here looked like a button that did nothing (M51 polish). */}
+      <span className="ui-recent-cost" aria-hidden="true">{cost}</span>
     </button>
   );
 }

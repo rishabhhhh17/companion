@@ -96,7 +96,8 @@ describe("no colour literal anywhere outside tokens.css (Hallmark rule 48)", () 
   test("the first run keeps Night's own words, colour for colour", () => {
     const root = Object.fromEntries(tokens.find((r) => r.sel === ":root" && !r.at)!.decl);
     for (const [fr, night] of [["--fr-fg", "--fg"], ["--fr-fg-2", "--fg-2"], ["--fr-bad", "--bad"], ["--fr-ok", "--ok"], ["--fr-amber", "--amber"]]) expect(root[fr].toUpperCase(), fr).toBe(root[night].toUpperCase());
-    expect(root["--fr-sky"]).toBe("var(--notch)");
+    // M51 polish: the first run's sky is Graphite's page, so the first run and Home are one place (it was the notch's black).
+    expect(root["--fr-sky"]).toBe(root["--bg"]);
     expect(root["--notch"]).toBe("#000000");
   });
 });

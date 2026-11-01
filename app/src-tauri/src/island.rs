@@ -23,21 +23,46 @@ impl HomeSize {
     /// Large: 680 wide, 320 to 760 tall, for larger text. No wider: on the smallest display we place on (1024 wide) the
     /// character, 160 plus its margin, must still fit beside Home (docking.rs, never under it); 720 failed that (27 Oct 2026).
     pub const LARGE: HomeSize = HomeSize { w: 680.0, min_h: 320.0, max_h: 760.0 };
-    /// The size a home.size word names; anything else is the usual one.
-    pub fn of(word: &str) -> HomeSize { if word == "large" { HomeSize::LARGE } else { HomeSize::STANDARD } }
+    /// Wide (M51, 1 Nov 2026, the founder: the tall panel "looks so vertical"; HeyClicky's wide window "looks so much
+    /// better"): the usual layout (look.layout). A landscape window with the places and the recent work in a list on the
+    /// left and the work on the right, and one height, so its list stays put and the work scrolls beside it.
+    /// 688 wide is the widest Home can be: on the smallest display we place on (1024 wide) the character, 160 plus the
+    /// clear margin, must still fit beside Home on the top edge and on the side edges (docking.rs, never under it); 720, the
+    /// first guess, failed that. 480 tall leaves a 13 inch MacBook Air (1470 by 956, its work area 850 tall with the Dock
+    /// below) well over 300 points free under Home, and fits under the notch of a 14 inch at its largest text (745 tall).
+    pub const WIDE: HomeSize = HomeSize { w: 688.0, min_h: 480.0, max_h: 480.0 };
+    /// Wide and Large (home.size large): as wide, and taller, for larger text. The display still bounds it (home_frame).
+    pub const WIDE_LARGE: HomeSize = HomeSize { w: 688.0, min_h: 560.0, max_h: 560.0 };
+    /// The usual size: wide, at the standard size.
+    pub const USUAL: HomeSize = HomeSize::WIDE;
+    /// The size the home.size word and the look.layout word name together. Tall is the panel from before M51; anything
+    /// else is wide, the usual layout. A size word other than large is the standard size.
+    pub fn of(size: &str, layout: &str) -> HomeSize {
+        let large = size == "large";
+        match (layout == "tall", large) {
+            (true, false) => HomeSize::STANDARD,
+            (true, true) => HomeSize::LARGE,
+            (false, false) => HomeSize::WIDE,
+            (false, true) => HomeSize::WIDE_LARGE,
+        }
+    }
+    /// A size with one height: the wide ones. Home keeps that height whatever it shows (its list on the left stays put).
+    pub fn fixed(&self) -> bool { self.min_h == self.max_h }
 }
-/// Settings' fixed height inside Home (the overhaul spec, 3.1): its sidebar stays put and its pages scroll.
+/// Settings' fixed height inside the tall Home (the overhaul spec, 3.1): its sidebar stays put and its pages scroll.
 pub const SETTINGS_H: f64 = 640.0;
-/// The size Home takes while Settings is open in it: at least the Large width (its 184 sidebar and 520 column fit), and one
-/// fixed height, so moving between pages never makes Home jump. The display still bounds it (card_spot). Closed: as set.
+/// The size Home takes while Settings is open in it. In the tall Home: at least the Large width (its 184 sidebar and 520
+/// column fit), and one fixed height, so moving between pages never makes Home jump. In the wide Home: Home's own size, which
+/// already has one height and is wider than Large, with Settings' own list on the left in place of Home's; so opening
+/// Settings never makes Home jump either. The display still bounds it (card_spot). Closed: as set.
 pub fn with_settings(base: HomeSize, open: bool) -> HomeSize {
-    if !open { return base; }
+    if !open || base.fixed() { return base; }
     HomeSize { w: base.w.max(HomeSize::LARGE.w), min_h: SETTINGS_H, max_h: SETTINGS_H }
 }
 /// The usual size, as Home's window is made at launch (before any setting is read) and as the tests name it.
-pub const CARD: (f64, f64) = (HomeSize::STANDARD.w, HomeSize::STANDARD.min_h);
+pub const CARD: (f64, f64) = (HomeSize::USUAL.w, HomeSize::USUAL.min_h);
 #[cfg_attr(not(test), allow(dead_code))]   // the tests name the usual tallest; the app reads the size in force
-pub const CARD_MAX_H: f64 = HomeSize::STANDARD.max_h;
+pub const CARD_MAX_H: f64 = HomeSize::USUAL.max_h;
 
 /// The camera housing of a display that has one: its left edge counted from the display's left edge, its width and height.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -403,12 +428,19 @@ pub fn last_json(id: &str) -> String { serde_json::json!({ "screen": id }).to_st
 mod tests {
     #[test]
     fn settings_in_home_is_large_and_one_fixed_height() {
-        assert_eq!(with_settings(HomeSize::STANDARD, false), HomeSize::STANDARD);
-        assert_eq!(with_settings(HomeSize::LARGE, false), HomeSize::LARGE);
+        for base in [HomeSize::STANDARD, HomeSize::LARGE, HomeSize::WIDE, HomeSize::WIDE_LARGE] { assert_eq!(with_settings(base, false), base); }
+        // The tall Home: Settings takes the Large width and its own one height.
         for base in [HomeSize::STANDARD, HomeSize::LARGE] {
             let s = with_settings(base, true);
             assert_eq!((s.w, s.min_h, s.max_h), (HomeSize::LARGE.w, SETTINGS_H, SETTINGS_H));
         }
+        // The wide Home (M51): Settings opens at Home's own size, which is wider than Large and has one height, so Home never
+        // jumps when Settings opens or closes.
+        for base in [HomeSize::WIDE, HomeSize::WIDE_LARGE] {
+            assert_eq!(with_settings(base, true), base);
+            assert!(base.fixed() && base.w >= HomeSize::LARGE.w);
+        }
+        assert!(!HomeSize::STANDARD.fixed() && !HomeSize::LARGE.fixed(), "the tall Home grows with what it shows");
         // The page tells the shell (card.tsx), and every place the size is read goes through home_size (main.rs).
         let main = include_str!("main.rs");
         assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
@@ -620,7 +652,8 @@ mod tests {
         assert!(inside(l, mac.work), "{l:?}");
         assert_eq!(card_spot(None, home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), None, "no display at all: nowhere");
         assert_eq!(card_spot(Some(&mac), home, &[], |_: &str| Edge::Right, (CARD.0, 300.0)), Some(home_frame(&mac, (CARD.0, 300.0))));
-        assert_eq!((CARD, CARD_MAX_H), ((640.0, 300.0), 640.0), "Home is 640 wide, from 300 tall, and grows to 640");
+        // M51 (1 Nov 2026, the founder approved the wide Home): the usual Home is 688 wide with one height, 480.
+        assert_eq!((CARD, CARD_MAX_H), ((688.0, 480.0), 480.0), "Home is 688 wide and 480 tall");
     }
     fn main_body(name: &str) -> String {
         let main = include_str!("main.rs");
@@ -841,13 +874,40 @@ mod tests {
 
     // ---- M11 area 4: the settings for Home, the island and the character (protocol/settings.json) ----
     #[test]
-    fn home_is_600_by_420_to_640_and_large_is_680_by_460_to_760() {
+    fn home_is_wide_by_default_and_the_tall_panel_keeps_its_two_sizes() {
+        // The tall panel (look.layout tall): exactly the sizes it had before M51.
         assert_eq!(HomeSize::STANDARD, HomeSize { w: 640.0, min_h: 300.0, max_h: 640.0 });
         assert_eq!(HomeSize::LARGE, HomeSize { w: 680.0, min_h: 320.0, max_h: 760.0 });
-        assert_eq!((CARD, CARD_MAX_H), ((HomeSize::STANDARD.w, HomeSize::STANDARD.min_h), HomeSize::STANDARD.max_h), "the usual size is today's");
-        assert_eq!(HomeSize::of("standard"), HomeSize::STANDARD);
-        assert_eq!(HomeSize::of("large"), HomeSize::LARGE);
-        for junk in ["", "Large", "huge"] { assert_eq!(HomeSize::of(junk), HomeSize::STANDARD, "{junk}"); }
+        // The wide Home (M51, the usual): landscape, one height each.
+        assert_eq!(HomeSize::WIDE, HomeSize { w: 688.0, min_h: 480.0, max_h: 480.0 });
+        assert_eq!(HomeSize::WIDE_LARGE, HomeSize { w: 688.0, min_h: 560.0, max_h: 560.0 });
+        assert!(HomeSize::WIDE.w > HomeSize::WIDE.max_h && HomeSize::WIDE_LARGE.w > HomeSize::WIDE_LARGE.max_h, "landscape");
+        assert_eq!(HomeSize::USUAL, HomeSize::WIDE);
+        assert_eq!((CARD, CARD_MAX_H), ((HomeSize::USUAL.w, HomeSize::USUAL.min_h), HomeSize::USUAL.max_h), "the window is made at the usual size");
+        assert_eq!(HomeSize::of("standard", "wide"), HomeSize::WIDE);
+        assert_eq!(HomeSize::of("large", "wide"), HomeSize::WIDE_LARGE);
+        assert_eq!(HomeSize::of("standard", "tall"), HomeSize::STANDARD);
+        assert_eq!(HomeSize::of("large", "tall"), HomeSize::LARGE);
+        for junk in ["", "Large", "huge"] {
+            assert_eq!(HomeSize::of(junk, "wide"), HomeSize::WIDE, "{junk}");
+            assert_eq!(HomeSize::of(junk, "tall"), HomeSize::STANDARD, "{junk}");
+            assert_eq!(HomeSize::of("standard", junk), HomeSize::WIDE, "a layout word that is not tall is the usual, wide");
+        }
+    }
+    #[test]
+    fn the_wide_home_fits_a_13_inch_air_under_the_notch_with_room_at_both_sizes() {
+        // A 13 inch MacBook Air at its default size: 1470 by 956, the notch 32 tall, the Dock below (work area 850 tall).
+        let air = Display { id: "1470x956@0,0".into(), frame: [0.0, 0.0, 1470.0, 956.0], work: [0.0, 32.0, 1470.0, 850.0], primary: true, notch: notch_from(1470.0, 32.0, 642.5, 642.5) };
+        for size in [HomeSize::WIDE, HomeSize::WIDE_LARGE] {
+            let h = home_frame(&air, (size.w, size.max_h));
+            assert_eq!((h[2], h[3]), (size.w, size.max_h), "never cut by the display: {h:?}");
+            assert!(inside(h, air.work) && h[1] >= 32.0 + GAP, "under the notch, inside the work area: {h:?}");
+            assert!((cx(h) - 735.0).abs() < 0.01, "centred under the notch: {h:?}");
+            let below = air.work[1] + air.work[3] - (h[1] + h[3]);
+            assert!(below >= 240.0, "room under Home on an Air: {below}");
+            let beside = (air.work[2] - h[2]) / 2.0;
+            assert!(beside >= 160.0 + 2.0 * crate::docking::CLEAR_MARGIN, "room for the character beside Home: {beside}");
+        }
     }
     #[test]
     fn a_large_home_drops_from_the_island_or_sits_beside_the_character_at_its_own_size() {

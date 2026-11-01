@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { REGISTRY, defOf } from "../../protocol/settings.ts";
 import {
   ASK_BUTTONS, GROUPS, SWITCHED, TOOLS, askButtons, buttonShown, groupOf, groupOn, groupLook, groupView, invitation, learnShown, offLine, permissionNeeded,
-  toolById, toolOn, triedList, untriedIn, usedBy, activeGroup, switchKey, followPendingAfter, refusalNotice, type GroupId, type ToolId,
+  toolById, toolOn, triedList, untriedIn, usedBy, activeGroup, switchKey, followPendingAfter, refusalNotice, type GroupId, type ToolId, NEEDS_FINISHED,
 } from "./groups.ts";
 import { initial } from "./model.ts";
 import { islandLine } from "./home.ts";
@@ -287,6 +287,17 @@ describe("Home's invitations", () => {
     expect(untriedIn("flow", r).map((t) => t.id)[0]).toBe("rescue");
     expect(invitation(r, false)!.tool).toBe("rescue");
   });
+  // M51 polish: "Try a follow up under a finished task" under the ask box made no sense before any task had finished.
+  test("a tool that needs a finished task is not invited until one has finished; the next one is", () => {
+    const r = (k: string) => (k === "groups.tried" ? ["drive"] : undefined);
+    expect(NEEDS_FINISHED).toEqual(["followUp", "undo", "yourTurn"]);
+    expect(invitation(r, false, true)!.tool).toBe("followUp");
+    expect(invitation(r, false, false)!.tool).toBe("rescue");
+    expect(invitation(r, false)!.tool, "finished is assumed when not said").toBe("followUp");
+    const onlyUndoLeft = (k: string) => (k === "groups.tried" ? TOOLS.filter((t) => t.tried && t.id !== "undo").map((t) => t.id) : undefined);
+    expect(invitation(onlyUndoLeft, false, false)).toBeNull();
+    expect(invitation(onlyUndoLeft, false, true)!.tool).toBe("undo");
+  });
   test("nothing is invited for a group that is off, with the setting off, or while work is going on", () => {
     expect(invitation((k) => (k === "groups.showUntried" ? false : undefined), false)).toBeNull();
     expect(invitation(none, true)).toBeNull();
@@ -404,7 +415,8 @@ describe("the pages are wired to the catalog", () => {
     expect(sp).toContain('setting("talk.speakReplies") === true && toolOn("speak")');
   });
   test("one invitation line on Now, from the first tool not tried yet, only when nothing is working", () => {
-    expect(card).toContain("invitation(setting, working)");
+    // M51 polish: and only invites a tool that needs a finished task once one has finished.
+    expect(card).toContain('invitation(setting, working, m.history.some((h) => h.status === "done"))');
   });
   test("the island starts its line with the group at work when the setting is on, and the dock names the look for the art", () => {
     const m = { ...initial(), runnerUp: true };

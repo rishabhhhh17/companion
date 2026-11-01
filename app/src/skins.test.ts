@@ -74,7 +74,14 @@ describe("the chrome does not read a skin", () => {
     // a grey with the faintest cool cast; its dark edge is the only part of it past the line. The fixed colours (the notch,
     // the first run, the recorded fix's page) keep the same marks under their own names. Everything else is grey.
     const SEMANTIC = ["--amber", "--ok", "--bad", "--water", "--water-hi", "--water-deep", "--sea", "--sea-deep", "--silver-edge",
-      "--notch-ok", "--notch-bad", "--fr-ok", "--fr-bad", "--fr-amber", "--fr-note", "--fr-drop-deep", "--fl-ok", "--fl-bad"];
+      "--notch-ok", "--notch-bad", "--fr-ok", "--fr-bad", "--fr-amber", "--fr-note", "--fr-drop-deep", "--fl-ok", "--fl-bad",
+      // M51 (the founder, 1 Nov 2026): the marker, the one highlighter on the line Flowflow found, and its ink.
+      "--marker", "--marker-ink",
+      // M51 step 3 (the founder asked for HeyClicky's kind of fun): the five soft tints of the items' tiles and their inks. They
+      // mark which item is which, never a state; Plain icons in Settings turns them grey.
+      "--tint-sky", "--tint-sky-ink", "--tint-mint", "--tint-mint-ink", "--tint-rose", "--tint-rose-ink", "--tint-sun", "--tint-sun-ink", "--tint-lilac", "--tint-lilac-ink",
+      // M51 polish: Settings' picture of the Deep theme, in Deep's own blues (a picture of a theme, never the chrome).
+      "--sw-deep-bg", "--sw-deep-card", "--sw-deep-line", "--sw-deep-ink"];
     for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);
@@ -98,7 +105,7 @@ describe("the chrome does not read a skin", () => {
     const parts = PARTS_CSS(), tokens = TOKENS_CSS();
     expect(parts).toMatch(/\n\.btn\.primary \{[^}]*background: var\(--main\); color: var\(--main-ink\); box-shadow: var\(--main-shadow\); \}/);
     expect(tokens).toMatch(/--main: var\(--silver\);/);
-    expect(tokens).toMatch(/--silver: #E9ECF1;/);
+    expect(tokens).toMatch(/--silver: #FAFAFA;/);   // M51: the neutral white pill of the graphite look
     expect(tokens).toMatch(/--silver-ink: #0A0A0B;/);
     expect(tokens).toMatch(/--main-shadow: inset 0 1px 0 var\(--silver-lip\), 0 1px 0 var\(--silver-edge\);/);
     // Paper's main button is ink: silver on white reads as disabled.

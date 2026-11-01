@@ -72,6 +72,11 @@ export const bringBackCan = (m: Model, project: string): boolean =>
 
 /** Stop shows only while something works (not while a finished task waits for an answer: nothing runs then). */
 export const stopCan = (m: Model): boolean => cardWorking(m);
+/** Stop in the top row of a place: only where the open place has no Stop of its own. Now has one (the hero or the working
+ *  card), and Learn has the practice's own (Stop the fix, Stop the checks) while it fixes or checks, so there is one Stop,
+ *  in the card (M51 review, 1 Nov). */
+export const barStopCan = (m: Model, tab: Tab): boolean =>
+  stopCan(m) && tab !== "now" && !(tab === "learn" && ["fixing", "proving"].includes(m.practice?.stage ?? ""));
 
 // ---- the recent fixes ----
 

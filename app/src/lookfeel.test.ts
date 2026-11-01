@@ -39,13 +39,18 @@ describe("the water's colour", () => {
     expect(set).toEqual(waterVars("lagoon"));
     expect(set["--water"]).toBe(WATER_TINTS.lagoon.mid);
     expect(attrs["data-theme"]).toBe("deep");
+    // A theme saved before M51 as "night" reads as Graphite, the look that replaced it.
+    applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { attrs[k] = v; } }, "lagoon", "night");
+    expect(attrs["data-theme"]).toBe("graphite");
   });
 });
 
 describe("Home's theme", () => {
-  test("night is the usual; deep sea and paper are the others", () => {
-    expect(themeOf("paper")).toBe("paper"); expect(themeOf(3)).toBe("night");
-    expect(def("look.theme")).toMatchObject({ default: "night", options: ["night", "deep", "paper"] });
+  // M51 (the founder, 1 Nov 2026): Graphite replaced Night as the usual dark look, and Deep is offered. "night" stays an
+  // option in the registry, so a value saved before still checks out, and it reads as Graphite.
+  test("graphite is the usual; paper and deep are the others; a saved night reads as graphite", () => {
+    expect(themeOf("paper")).toBe("paper"); expect(themeOf("deep")).toBe("deep"); expect(themeOf(3)).toBe("graphite"); expect(themeOf("night")).toBe("graphite");
+    expect(def("look.theme")).toMatchObject({ default: "graphite", options: ["graphite", "paper", "deep", "night"] });
   });
   test("paper keeps every word readable (its tokens in ui/tokens.css)", () => {
     const css = readFileSync(new URL("./ui/tokens.css", import.meta.url), "utf8");
@@ -58,8 +63,8 @@ describe("Home's theme", () => {
     // Paper's main button is ink with the page's colour for its words (silver on white reads as disabled).
     expect(block).toMatch(/--main: var\(--fg\);[^}]*--main-ink: var\(--bg\);/);
     expect(ratio(tok("bg"), tok("fg"))).toBeGreaterThanOrEqual(4.5);
-    // The Deep theme is hidden (founder call 3): no rule draws it, so a stored "deep" reads as Night.
-    expect(css).not.toContain('data-theme="deep"');
+    // Deep is offered since M51, with its own tokens (lookChoices.test.ts and a11y.test.ts check its contrast).
+    expect(css).toContain(':root[data-theme="deep"] {');
   });
 });
 

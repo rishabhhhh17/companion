@@ -21,7 +21,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F07](F07-curious-is-the-whole-companion.md) | The Curious path is the whole companion, not only Build |
 | [F08](F08-modes-gated-on-retention.md) | Build first; Learn, Work and Team gated on retention |
 | [F09](F09-remote-approvals-pwa-telegram.md) | Remote approvals through a phone web app and Telegram; no WhatsApp |
-| [F10](F10-bring-your-own-claude.md) | Bring your own Claude |
+| [F10](F10-bring-your-own-claude.md) | Bring your own Claude (replaced by F29, 1 Nov 2026) |
 | [F11](F11-never-watch-never-steal-focus.md) | Never watch passively; never steal focus |
 | [F12](F12-names-open-yc-not-a-focus.md) | Names are open; YC is not a focus |
 | [F13](F13-undo-never-writes-your-git.md) | Undo never writes your git: no undo helper, no per agent worktrees (7 Oct 2026) |
@@ -40,6 +40,8 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F26](F26-type-by-voice-anywhere.md) | Type by voice into any app (30 Oct 2026; default switch amended by F28) |
 | [F27](F27-flowflow-glass-water-and-water-ring.md) | Flowflow is clear glass water, and a water ring rides the pointer (30 Oct 2026) |
 | [F28](F28-one-product-status-first-quiet-by-choice.md) | The launch cut: one product (Fix it with proof, a receipt and Undo), Home tells the state first, the notch is bare, the person picks how lively Flowflow is (30 Oct 2026) |
+| [F29](F29-squibby-pays-and-picks-the-model.md) | People pay Squibby, Squibby picks the model and pays for it; nobody signs in to an AI provider (1 Nov 2026; replaces F10) |
+| [F30](F30-a-companion-to-every-ai-coding-tool.md) | A companion to every AI coding tool, for everyone: review every change your AI makes (1 Nov 2026; partly unparks F06) |
 
 ## Technical decisions (accepted, open items checked where shown)
 

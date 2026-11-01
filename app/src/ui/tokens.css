@@ -1,23 +1,26 @@
 /* The design tokens (docs/design/2026-10-31-uiux-overhaul-spec.md, 2.1). This file is the only place a colour is written
    as a value, in any stylesheet or page, and the only place parts.css finds a size, a radius or a duration
-   (ui/styleLint.test.ts checks both). Two themes: Night, the usual one, on :root, and Paper (look.theme = paper) on :root[data-theme="paper"].
-   A stored "deep" has no rule here, so it reads as Night until Deep has a full, tested look (founder call 3, T17). The
-   notch and its panel stay black in every theme, because they are the hardware notch (the island page never takes
-   data-theme="paper": useLook.ts, keepNight). Contrast is computed from these
-   values in a11y.test.ts (4.5 to 1 for words, 3 to 1 for controls and marks). */
+   (ui/styleLint.test.ts checks both). Three themes (look.theme, M51): Graphite, the usual one, on :root (a stored "night"
+   from before reads as Graphite, lookfeel.ts themeOf), Paper on :root[data-theme="paper"] and Deep on
+   :root[data-theme="deep"]. The notch and its panel stay black in every theme, because they are the hardware notch (the
+   island page never takes a theme: useLook.ts, keepNight). Contrast is computed from these values in a11y.test.ts and
+   lookChoices.test.ts (4.5 to 1 for words, 3 to 1 for controls and marks).
+   The other look choices (M51 step 3: density, icons, stamps, gloss, corners) are also switches here, on the root's data
+   attributes (lookfeel.ts lookAttrs), at the foot of this file. Their usual values have no rule at all, so the usual look is
+   exactly :root's. */
 
 :root {
   color-scheme: dark;
 
   /* ---------- Colour, Night ---------- */
-  --bg: #0B0B0C;                       /* the page: Home and Settings */
-  --surface-1: #141416;                /* a card */
-  --surface-2: #1A1A1D;                /* hover fill, menus, sheets, toasts */
-  --surface-3: #232327;                /* selected sidebar item, segmented thumb, pressed */
-  --inset: #08080A;                    /* inside a field, a segmented track or a stepper */
-  --fg: #F5F5F7;                       /* primary words and icons */
-  --fg-2: #A1A1A6;                     /* every other readable word */
-  --fg-3: #6E6E73;                     /* disabled words and decoration only, never words that must be read */
+  --bg: #111111;                       /* the page: Home and Settings. Neutral on purpose: no tint, so every water sits well on it */
+  --surface-1: #171717;                /* a card */
+  --surface-2: #1C1C1C;                /* hover fill, menus, sheets, toasts, a field, a key cap at rest */
+  --surface-3: #242424;                /* selected sidebar item, segmented thumb, pressed, the speech bubble */
+  --inset: #1C1C1C;                    /* inside a field, a segmented track or a stepper */
+  --fg: #FAFAFA;                       /* primary words and icons */
+  --fg-2: #A4A4A4;                     /* every other readable word (about 7 to 1 on a card) */
+  --fg-3: #8A8A8A;                     /* captions and sources (about 5 to 1); disabled words and decoration may use it too */
   --line: rgba(255, 255, 255, .08);    /* hairlines, card edges, row separators */
   --line-strong: rgba(255, 255, 255, .16);   /* a secondary button's or a chip's edge */
   /* The edge a control is found by when nothing else draws it (a text field, a switch that is off): 3 to 1 on every
@@ -26,23 +29,77 @@
   --edge-control-hover: rgba(255, 255, 255, .5);
   --knob-off: rgba(245, 245, 247, .55);
   --focus: rgba(245, 245, 247, .9);
-  --ok: #4CC27F;                       /* proven only */
-  --amber: #FFB020;                    /* needs you only */
-  --bad: #FF6B5E;                      /* not fixed, refused, the danger zone only */
-  --bad-edge: rgba(255, 107, 94, .45);
-  --bad-hover: rgba(255, 107, 94, .1);
-  --bad-press: rgba(255, 107, 94, .16);
+  --ok: #34D399;                       /* proven only */
+  --amber: #FFB224;                    /* needs you only */
+  --bad: #F0605F;                      /* not fixed, refused, the danger zone only (#E5484D falls under 4.5 to 1 as words, so this tint) */
+  --bad-edge: rgba(240, 96, 95, .45);
+  --bad-hover: rgba(240, 96, 95, .1);
+  --bad-press: rgba(240, 96, 95, .16);
   --water: #59D2FF;                    /* "Squibby is acting" only */
-  --silver: #E9ECF1;                   /* the one main button's fill */
-  --silver-hover: #F4F6F8;
-  --silver-press: #D9DDE3;
+  --silver: #FAFAFA;                   /* the one main button's fill: neutral white, never a colour */
+  --silver-hover: #FFFFFF;
+  --silver-press: #E4E4E4;
   --silver-lip: rgba(255, 255, 255, .9);
-  --silver-edge: #5C6168;
+  --silver-edge: rgba(0, 0, 0, .35);   /* its one 1 px soft edge underneath, never a hard step */
   --silver-ink: #0A0A0B;
   --scrim: rgba(0, 0, 0, .5);
-  --shadow-raised: 0 12px 32px rgba(0, 0, 0, .45);
-  --added: rgba(60, 180, 90, .25);     /* a line a fix added, behind words */
-  --removed: rgba(220, 70, 70, .22);   /* a line a fix took away, behind words */
+  /* Depth is steps and hairlines. A floating small thing (menu, toast, sheet) gets two soft shadows; a card on dark gets none. */
+  --shadow-raised: 0 8px 14px rgba(0, 0, 0, .42), 0 2px 4px rgba(0, 0, 0, .26);
+  --added: rgba(52, 211, 153, .16);    /* a line a fix added, behind words */
+  --removed: rgba(240, 96, 95, .16);   /* a line a fix took away, behind words */
+  /* The marker: the one highlight that is not water, for the line Flowflow found or the key phrase of a note. A real
+     highlighter yellow, solid, with its own dark ink on top (about 12 to 1). A thin yellow over the dark page came out a
+     muddy olive under white words (M51 review), so it is never a tint here. */
+  --marker: #F2D53C;
+  --marker-ink: #161616;
+  /* A key cap: a quiet object, flatter and smaller than a real key. Its edge underneath is 1 px, never more. Pressed (the
+     talk keys held) it drops 1 px and takes the water's wash. */
+  --key-fill: #1C1C1C;
+  --key-edge: rgba(255, 255, 255, .12);
+  --key-lip: rgba(255, 255, 255, .06);
+  --key-drop: rgba(0, 0, 0, .5);
+  --key-down: color-mix(in srgb, var(--water) 14%, #1C1C1C);
+  /* The water gel pill, the one glossy thing: the water's own light at the top, its body in the middle, a touch lighter at the
+     foot, a border one step deeper, a faint white sheen on its top half. M51 polish (next to HeyClicky's restrained pill): the
+     sheen, the lip and the glow are a third of what they were, so it reads as one calm accent, not a toy button. The words
+     are ink on all five waters (8 to 1 or more). */
+  --gel-hi: color-mix(in srgb, var(--water) 82%, #FFFFFF);
+  --gel-mid: var(--water);
+  --gel-lo: color-mix(in srgb, var(--water) 94%, #FFFFFF);
+  --gel-edge: color-mix(in srgb, var(--water-deep) 70%, transparent);
+  --gel-lip: rgba(255, 255, 255, .45);
+  --gel-gloss: rgba(255, 255, 255, .14);
+  --gel-glow: color-mix(in srgb, var(--water) 12%, transparent);
+  /* The accent (M51 polish): what is picked in Settings, a switch that is on and the picked option of a segmented choice,
+     in the water chosen, mixed into the page's words so it reaches 3 to 1 on every surface with every water, in every theme
+     (lookChoices.test.ts). The knob and a picked option's words read on it. */
+  --pick: color-mix(in srgb, var(--water) 55%, var(--fg));
+  --pick-ink: var(--bg);
+  --pick-wash: color-mix(in srgb, var(--water) 16%, var(--surface-3));
+  --gel-ink: #0A0A0B;                  /* dark on every water, light or deep (8 to 1 or more), in Night and in Paper */
+  /* The speech bubble: 90 percent opaque over a blur, the one translucent thing, never a content card. */
+  --bubble: rgba(36, 36, 36, .9);
+  /* An item's tile in a list (M51 step 3, after HeyClicky): a small square with a line drawing. Each tint means one kind of
+     work (itemLook.ts KIND_TINT), the same with every water. M51 polish: on the dark themes a deep wash of the hue with a
+     light ink of it (pastel squares on graphite read as an emoji picker); Paper keeps the pastels with a deep ink. The ink is
+     4.5 to 1 or more on its tile (lookChoices.test.ts). Plain icons (look.icons) make every tile grey. --tile-bg and
+     --tile-ink are the tile's own pair; a tile picks its tint by data-tint (ui/look.css). */
+  --tint-sky: #172A40;   --tint-sky-ink: #9CCBFF;
+  --tint-mint: #13291F;  --tint-mint-ink: #86DDB4;
+  --tint-rose: #301823;  --tint-rose-ink: #FFA6C9;
+  --tint-sun: #2C2513;   --tint-sun-ink: #F0CF78;
+  --tint-lilac: #231E3B; --tint-lilac-ink: #BFB1FF;
+  --tile-bg: var(--tint-sky);
+  --tile-ink: var(--tint-sky-ink);
+  /* A badge on an item (working, new, proven, needs you): a small outlined label, upright (M51 polish: the tilt read as a
+     sticker on a notebook; the token stays so a look could lean it again). Stamps off (look.stamps) hides every badge and
+     shows the plain words or mark it stood for (.unstamped). */
+  --stamp-display: inline-flex;
+  --unstamped-display: none;
+  --stamp-tilt: 0deg;
+  /* Working is the water's (Squibby is acting), mixed into the page's words: light on the dark themes, dark on Paper, and
+     4.5 to 1 with every water (the water is set on the page for the water chosen, over the theme's own). */
+  --stamp-working: color-mix(in srgb, var(--water) 40%, var(--fg));
   /* A control that cannot be used: its own fill and ink (and the not allowed pointer, parts.css), never a fade alone. The
      ink is exempt from 4.5 to 1 (WCAG 1.4.3) but stays legible: 3 to 1 on the fill (a11y.test.ts). */
   --fill-disabled: var(--surface-3);
@@ -60,15 +117,16 @@
      choice (display.textSize) reaches every word; the values are at Standard, a 14 px root. ---------- */
   --font: -apple-system, sans-serif;
   --font-code: ui-monospace, Menlo, monospace;
-  --t-caption: calc(12rem / 14);  --lh-caption: calc(16rem / 14);
-  --t-small: calc(13rem / 14);    --lh-small: calc(18rem / 14);
-  --t-label: calc(14rem / 14);    --lh-label: calc(20rem / 14);
-  --t-body: calc(15rem / 14);     --lh-body: calc(22rem / 14);
-  --t-answer: calc(16rem / 14);   --lh-answer: calc(24rem / 14);
-  --t-display: calc(22rem / 14);  --lh-display: calc(28rem / 14);
-  --t-verdict: calc(28rem / 14);  --lh-verdict: calc(34rem / 14);
-  --w-regular: 400; --w-strong: 590; --w-bold: 700;
-  --track-display: -0.01em; --track-verdict: -0.015em;
+  --t-caption: calc(11rem / 14);  --lh-caption: calc(14rem / 14);    /* a label, a source line */
+  --t-small: calc(12rem / 14);    --lh-small: calc(16rem / 14);      /* secondary words, a key cap */
+  --t-label: calc(13rem / 14);    --lh-label: calc(18rem / 14);      /* a button, a row's name */
+  --t-body: calc(13rem / 14);     --lh-body: calc(19rem / 14);       /* body words */
+  --t-answer: calc(15rem / 14);   --lh-answer: calc(22rem / 14);     /* a card's title, an answer */
+  --t-display: calc(22rem / 14);  --lh-display: calc(26rem / 14);    /* Home's headline, a page title */
+  --t-verdict: calc(22rem / 14);  --lh-verdict: calc(26rem / 14);    /* a result's verdict */
+  /* Three weights only: 400 words, 500 labels and buttons, 600 a headline and a card's title. Tight tracking on big words. */
+  --w-regular: 400; --w-strong: 500; --w-bold: 600;
+  --track-display: -0.022em; --track-verdict: -0.025em; --track-title: -0.01em; --track-body: -0.005em; --track-label: 0.04em;
 
   /* ---------- Space: every gap snaps to these ---------- */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
@@ -76,20 +134,24 @@
   --space-field-x: 10px;               /* inside a field, a sidebar item */
   --space-btn-x: 16px;                 /* a primary button */
   --space-btn2-x: 14px;                /* a secondary button */
-  --space-key-x: 5px;                  /* inside a key cap */
-  --gap-key: 3px;                      /* between two key caps */
+  --space-key-x: 6px;                  /* inside a key cap */
+  --gap-key: 4px;                      /* between two key caps */
   --space-seg: 2px;                    /* the segmented track's inside */
   --space-desc: 2px;                   /* label to description */
   --space-indent: 32px;                /* a child row's label column (16 more than a row) */
 
   /* ---------- Radii ---------- */
-  --r-key: 4px;                        /* key labels */
+  --r-key: 6px;                        /* key labels */
   --r-thumb: 6px;                      /* segmented thumb, proof chips */
   --r-control: 8px;                    /* buttons, fields, segmented track, menus, sidebar items, recent rows */
   --r-card: 12px;                      /* cards, the ask field, sheets */
-  --r-panel: 20px;                     /* Home panel bottom corners (the notch shape keeps its own 30) */
+  --r-panel: 24px;                     /* Home panel bottom corners */
+  --r-panel-top: 6px;                  /* and where it meets the notch */
   --r-round: 50%;                      /* the status dot only */
   --r-switch: 10px;                    /* a switch's track, half its height */
+  --r-tile: 6px;                       /* an item's tile (M51) */
+  --r-stamp: 4px;                      /* a badge: a small rounded label (M51 polish; it was a capsule) */
+  --r-bubble: 10px;                    /* Flowflow's speech bubble */
 
   /* ---------- Sizes ---------- */
   --h-sm: 28px;                        /* segmented, menus and steppers in rows, icon buttons, small buttons */
@@ -99,10 +161,12 @@
   --h-bar: 44px;                       /* Home's top bar */
   --h-ask: 44px;                       /* the ask field */
   --h-chip: 24px;                      /* a proof chip */
-  --h-key: 20px;                       /* a key cap */
+  --h-key: 22px;                       /* a key cap */
   --h-menu-item: 28px;
   --w-seg: 56px;                       /* the least a segmented option is */
   --w-stepper-value: 56px;
+  --w-side: calc(204rem / 14);         /* the wide Home's list on the left (M51): 204 at Standard, grows with the text */
+  --h-side-row: calc(28rem / 14);      /* one row of that list: a place or a task, one line (M51 polish, after HeyClicky) */
   --w-row-label: 12rem;                /* the least a row's words get beside a control (168 at Standard) */
   --w-switch: 36px; --h-switch: 20px; --knob: 16px; --knob-press: 20px; --knob-inset: 2px; --knob-travel: 16px;
   --knob-stretch: 1.25;                /* a pressed knob stretches to --knob-press (20 over 16), by transform */
@@ -111,6 +175,9 @@
   --w-toast-max: 440px;
   --w-sheet: 100%;                     /* a sheet is as wide as the content column it covers (set by its page) */
   --icon-sm: 12px; --icon-md: 16px; --icon-lg: 20px;
+  --tile: 18px;                        /* an item's tile in the side list (M51) */
+  --tile-lg: 24px;                     /* and in History and Learn */
+  --fade: 24px;                        /* how tall the fade is where a list or a page scrolls on past its edge */
   --dot: 6px;                          /* the changed dot, the needs attention dot */
   --hair: 1px; --hair-2: 1.5px;        /* a hairline; a thick line (switch off edge, picked picture) */
   --ring: 2px; --ring-offset: 2px;     /* the focus ring */
@@ -130,7 +197,7 @@
      it. --r-xl is the hardware notch's own corner (Home hangs from it); --r-pill is only the island's pill shape and the
      character's own label, never a control. ---------- */
   --danger: var(--bad);
-  --r-xl: 30px;
+  --r-xl: 24px;
   --r-pill: 999px;
   --dur: var(--dur-2); --dur-slow: var(--dur-3); --ease: var(--ease-out);
 
@@ -184,22 +251,22 @@
   --shadow-drop-card: 0 2px 16px rgba(0, 0, 0, .25);
   /* The first run: the notch's black sky, Night's words (the same values as :root's, kept so Paper never reaches it), its
      dark cards, and the white fields a person types in. */
-  --fr-sky: var(--notch);
-  --fr-fg: #F5F5F7;
-  --fr-fg-2: #A1A1A6;
-  --fr-bad: #FF6B5E;
-  --fr-ok: #4CC27F;
-  --fr-amber: #FFB020;
+  --fr-sky: #111111;                   /* Graphite's page, so the first run and Home are one place (M51 polish; it was the notch's black) */
+  --fr-fg: #FAFAFA;
+  --fr-fg-2: #A4A4A4;
+  --fr-bad: #F0605F;
+  --fr-ok: #34D399;
+  --fr-amber: #FFB224;
   --fr-ink: #FFFFFF;
   --fr-hover: rgba(255, 255, 255, .12);
-  --fr-card: #121216;
-  --fr-card-2: #101013;
-  --fr-slot: #0A0A0C;
+  --fr-card: #141414;
+  --fr-card-2: #101010;
+  --fr-slot: #0A0A0A;
   --fr-edge: rgba(255, 255, 255, .1);
   --fr-edge-slot: rgba(255, 255, 255, .18);
   --fr-hole: rgba(255, 255, 255, .3);
   --fr-folder-edge: rgba(255, 255, 255, .35);
-  --fr-soon: #1E1E22;
+  --fr-soon: #1E1E1E;
   --fr-soon-ink: #B4B4BC;
   --fr-note: #FFCF73;
   --fr-tick: #F5F5F7;
@@ -212,6 +279,16 @@
   --fr-glow: rgba(220, 226, 235, .55);
   --fr-drop-light: #FFFFFF;            /* the falling drop's highlight */
   --fr-drop-deep: #1676C8;             /* and its deep blue, Ocean's, whatever water is chosen later */
+  /* Settings' theme pictures (M51 polish): a small window in each theme's own page, card, line and words, the same whatever
+     theme is on, so each picture shows its own theme. */
+  --sw-graphite-bg: #111111; --sw-graphite-card: #1C1C1C; --sw-graphite-line: #2E2E2E; --sw-graphite-ink: #FAFAFA;
+  --sw-paper-bg: #FFFFFF;    --sw-paper-card: #F2F2F2;    --sw-paper-line: #DEDCDA;    --sw-paper-ink: #2C2826;
+  --sw-deep-bg: #0B1622;     --sw-deep-card: #142536;     --sw-deep-line: #23384E;     --sw-deep-ink: #F3F7FB;
+  /* The main button's two pictures, glossy and flat, drawn the same whatever is chosen, and the two corners. */
+  --sw-gel-hi: color-mix(in srgb, var(--water) 82%, #FFFFFF);
+  --sw-gel-lip: rgba(255, 255, 255, .45);
+  --sw-gel-glow: color-mix(in srgb, var(--water) 12%, transparent);
+  --sw-r-soft: 10px; --sw-r-crisp: 3px;
   /* The recorded fix's picture of a web page: a light page with its own greys, red and green. */
   --fl-page: #F5F5F7;
   --fl-ink: #111111;
@@ -239,44 +316,144 @@
 /* ---------- Colour, Paper (look.theme = paper): Home and Settings only ---------- */
 :root[data-theme="paper"] {
   color-scheme: light;
-  --bg: #F2F2F4;
-  --surface-1: #FFFFFF;
-  --surface-2: #F7F7F8;
-  --surface-3: #E6E6EA;
-  --inset: #ECECEF;
-  --fg: #1D1D1F;
-  --fg-2: #636368;                     /* the spec's #6B6B70 falls under 4.5 to 1 on --surface-3 and --inset */
-  --fg-3: #A1A1A6;
-  --line: rgba(0, 0, 0, .08);
-  --line-strong: rgba(0, 0, 0, .18);
-  --edge-control: rgba(0, 0, 0, .46);
-  --edge-control-hover: rgba(0, 0, 0, .58);
-  --knob-off: rgba(29, 29, 31, .6);
-  --focus: rgba(29, 29, 31, .85);
-  --ok: #187A42;
-  --amber: #B87300;
-  --bad: #A93226;                      /* the spec's #C0392B falls under 4.5 to 1 on a danger button's pressed tint */
-  --bad-edge: rgba(169, 50, 38, .45);
-  --bad-hover: rgba(169, 50, 38, .08);
-  --bad-press: rgba(169, 50, 38, .14);
+  --bg: #FFFFFF;
+  --surface-1: #FAFAFA;
+  --surface-2: #F5F5F5;
+  --surface-3: #EDEDED;
+  --inset: #F5F5F5;
+  --fg: #2C2826;                       /* warm near black, softer than pure black */
+  --fg-2: #5F5A57;                     /* #756F6C is 4.3 to 1 on the selected fill, so this one */
+  --fg-3: #8A8480;
+  --line: #EAE8E6;
+  --line-strong: rgba(44, 40, 38, .2);
+  --edge-control: rgba(44, 40, 38, .58);
+  --edge-control-hover: rgba(44, 40, 38, .68);
+  --knob-off: rgba(44, 40, 38, .62);
+  --focus: rgba(44, 40, 38, .85);
+  --ok: #0E7E4E;
+  --amber: #8F5B00;
+  --bad: #B3261E;
+  --bad-edge: rgba(179, 38, 30, .45);
+  --bad-hover: rgba(179, 38, 30, .08);
+  --bad-press: rgba(179, 38, 30, .14);
   --water: #1676C8;
   --pond: var(--surface-1);            /* a light sky over the same water, never a black box on a light page */
-  --added: rgba(24, 122, 66, .18);
-  --removed: rgba(169, 50, 38, .16);
-  --ink-disabled: #808085;             /* --fg-3 is about 2 to 1 on --surface-3 here; this keeps a disabled word legible */
+  --added: rgba(14, 126, 78, .12);
+  --removed: rgba(179, 38, 30, .1);
+  --marker: #FFEE8A;                   /* the same highlighter on white, a little lighter, under Paper's own ink */
+  --marker-ink: #2C2826;
+  --key-fill: #F8F8F8;
+  --key-edge: #D9D7D5;
+  --key-lip: #FFFFFF;
+  --key-drop: #CFCDCB;
+  --key-down: color-mix(in srgb, var(--water) 14%, #F0F0F0);
+  --bubble: rgba(255, 255, 255, .92);
+  /* The accent on white leans further into the ink, so a light water (lime) still stands out on a picked option's wash. */
+  --pick: color-mix(in srgb, var(--water) 45%, var(--fg));
+  /* The tiles on white: the pastels, with a deep ink of the same hue. */
+  --tint-sky: #CFE5FF;   --tint-sky-ink: #1B4F8A;
+  --tint-mint: #C8F0DC;  --tint-mint-ink: #145C3B;
+  --tint-rose: #FFD3E2;  --tint-rose-ink: #8C2350;
+  --tint-sun: #FFE9AE;   --tint-sun-ink: #6B4A00;
+  --tint-lilac: #E2DAFF; --tint-lilac-ink: #4A3699;
+  --ink-disabled: #8A8480;             /* --fg-3 is under 3 to 1 on --surface-3 here; this keeps a disabled word legible */
   /* Silver on white reads as disabled, so Paper's main button is ink, with no lip and no edge. */
   --main: var(--fg);
-  --main-hover: #3A3A3D;
-  --main-press: #000000;
+  --main-hover: #46403D;
+  --main-press: #1A1816;
   --main-ink: var(--bg);
   --main-shadow: none;
   --main-shadow-press: none;
-  --shadow-raised: 0 12px 32px rgba(0, 0, 0, .16);
+  --shadow-raised: 0 8px 14px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .08);
   --scrim: rgba(0, 0, 0, .25);
+}
+
+/* ---------- Colour, Deep (look.theme = deep, M51): a dark sea blue, the same steps as Graphite with a cool cast ----------
+   Home and Settings only. The main button stays the neutral white pill; the marks keep their meanings. */
+:root[data-theme="deep"] {
+  --bg: #0B1622;
+  --surface-1: #0F1D2C;
+  --surface-2: #142536;
+  --surface-3: #1B2F44;
+  --inset: #142536;
+  --fg: #F3F7FB;
+  --fg-2: #A9BACB;
+  --fg-3: #8A9CAF;
+  --line: rgba(190, 220, 255, .1);
+  --line-strong: rgba(190, 220, 255, .2);
+  --edge-control: rgba(190, 220, 255, .42);
+  --edge-control-hover: rgba(190, 220, 255, .54);
+  --knob-off: rgba(225, 236, 247, .58);
+  --focus: rgba(240, 246, 252, .9);
+  --bad: #F47372;
+  --bad-edge: rgba(244, 115, 114, .45);
+  --bad-hover: rgba(244, 115, 114, .1);
+  --bad-press: rgba(244, 115, 114, .16);
+  --pond: #06101A;                     /* the sky over Flowflow's water: deeper than the page, never a black box */
+  --key-fill: #142536;
+  --key-edge: rgba(190, 220, 255, .14);
+  --key-down: color-mix(in srgb, var(--water) 14%, #142536);
+  --bubble: rgba(27, 47, 68, .9);
+  --shadow-raised: 0 8px 14px rgba(0, 6, 14, .5), 0 2px 4px rgba(0, 6, 14, .3);
+  --scrim: rgba(2, 8, 16, .55);
 }
 
 /* More contrast, from the Mac's own setting. */
 @media (prefers-contrast: more) {
   :root { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
   :root[data-theme="paper"] { --line: rgba(0, 0, 0, .24); --line-strong: rgba(0, 0, 0, .4); --fg-2: #4A4A4F; --edge-control: rgba(0, 0, 0, .6); }
+  :root[data-theme="deep"] { --line: rgba(190, 220, 255, .26); --line-strong: rgba(190, 220, 255, .42); --fg-2: #C9D5E2; --edge-control: rgba(190, 220, 255, .62); }
+}
+
+/* ---------- The look choices (M51 step 3; the founder, 1 Nov 2026: "as much customization as possible") ----------
+   Each is a data attribute on the page's root (lookfeel.ts lookAttrs) and only switches tokens here; no other stylesheet
+   reads the attributes. The usual value of each (comfortable, colour, on, on, soft) has no rule, so it is :root's look. */
+
+/* Density: compact pulls the spaces and the heights of rows, fields and buttons in. A target stays 24 points or more. */
+:root[data-density="compact"] {
+  --space-3: 8px; --space-4: 12px; --space-5: 16px; --space-6: 20px; --space-7: 24px;
+  --space-row-y: 6px;
+  --space-field-x: 8px;
+  --h-md: 28px;
+  --h-lg: 36px;
+  --h-row: 36px;
+  --h-bar: 36px;
+  --h-ask: 36px;
+  --tile-lg: 20px;
+}
+
+/* Icons: plain makes every tile grey, its drawing in the second ink (4.5 to 1 on --surface-3 in every theme). */
+:root[data-icons="plain"] {
+  --tint-sky: var(--surface-3);   --tint-sky-ink: var(--fg-2);
+  --tint-mint: var(--surface-3);  --tint-mint-ink: var(--fg-2);
+  --tint-rose: var(--surface-3);  --tint-rose-ink: var(--fg-2);
+  --tint-sun: var(--surface-3);   --tint-sun-ink: var(--fg-2);
+  --tint-lilac: var(--surface-3); --tint-lilac-ink: var(--fg-2);
+}
+
+/* Stamps: off hides every stamp, and the plain words or mark each stood for show instead. */
+:root[data-stamps="off"] {
+  --stamp-display: none;
+  --unstamped-display: inline-flex;
+}
+
+/* The glossy button: flat keeps the water's own colour and its edge, without the shine, the light lip or the glow. */
+:root[data-gloss="flat"] {
+  --gel-hi: var(--water);
+  --gel-lo: var(--water);
+  --gel-lip: transparent;
+  --gel-gloss: transparent;
+  --gel-glow: transparent;
+}
+
+/* Corners: crisp halves every rounded corner except the notch's own, a switch and the round status dot. */
+:root[data-corners="crisp"] {
+  --r-key: 3px;
+  --r-thumb: 3px;
+  --r-control: 4px;
+  --r-card: 6px;
+  --r-panel: 12px;
+  --r-tile: 3px;
+  --r-stamp: 2px;
+  --r-bubble: 4px;
 }

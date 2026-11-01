@@ -17,7 +17,7 @@
 ## Calls made with it (31 Oct 2026)
 - One Settings, inside Home. The separate Settings window is retired.
 - The silver becomes flat: one fill, one edge of light, no band. It sits on one main button per screen. The founder asked for this on 31 Oct ("everywhere on the silver lining, there's always a random middle line").
-- The Deep theme is hidden. Paper stays, with its own tested tokens.
+- The Deep theme is hidden. Paper stays, with its own tested tokens. (1 Nov 2026, M51, the founder's approved plan `docs/milestones/M51-look.md`: Deep is offered again, with its own tokens and the same contrast tests as the others; Graphite replaced Night as the usual dark look, and a saved "night" reads as Graphite.)
 - The menu bar sun goes, as F28's bare notch asks.
 - Delete everything keeps the trial date (payments spec section 10, Option 2), so a trial cannot restart by deleting. The screen names what it keeps ("the date your trial started"), and the free fix count still starts again. Option 2, not Option 1: Option 1 would let anyone restart the 14 day trial with one button, and naming the one kept item on the screen keeps the wipe honest. An earlier draft of this record said "option 1" by mistake; the founder's call of 31 Oct 2026 is Option 2.
 - The free plan is 3 proven fixes a calendar month. Undo does not give a fix back, and Bring the fix back never counts again, so fix, Undo, new fix, Bring back cannot keep more than 3. The activation limit (3 Macs) is a Dodo dashboard setting, not code.

@@ -2,6 +2,39 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Calmer and tighter, next to HeyClicky: 1 Nov 2026
+
+- **The list on the left fits about ten tasks, not three.** Each task is one line, its name cut short with "…" (the whole name shows when you point at it, and in History), with a small label at the end only when it is working, needs you or is new. A finished, proven task shows a green tick there instead.
+- **The colours in your lists mean something now.** A fix is always rose, going live green, a question blue, an explanation lilac, something new yellow; tidying up and anything else stay grey. On the dark themes the squares are deep and quiet, not pastel.
+- **The labels stand up straight** and are small and outlined, no longer tilted stickers. The glossy main button is calmer: less shine, less glow.
+- **Look has its own page in Settings,** right under General, and you pick by looking: little pictures of Wide and Tall, of Graphite, Paper and Deep, of the glossy and flat button and of soft and crisp corners, with the water colour beside them. What you picked shows in your water colour, and switches that are on are in your water colour too.
+- **History is cleaner.** No box around it, every task in the same three columns, how it ended said once, and when it happened. Task names no longer start with "Before:".
+- **Home at rest has no empty gap:** the water goes on down to the ask box. The tip under the box only suggests a follow up once a task has finished. "Not checked yet" no longer has a stray dot, and the line under it says "Last task", so it never reads like a check that happened.
+- **A practice says it is a practice** on Now, and Fix it is not offered again while the fix runs. The failing line is marked like a code review (a soft red with a red edge), not a bright yellow highlighter.
+- **The first run matches Home:** the same dark grey, a short bar per step, and Continue as a button on the right with Skip on the same line, not a full width white bar.
+- **Settings in the wide Home uses the same left column as Home,** and a page that scrolls fades out at its foot instead of cutting a sentence. Flowflow's page is called Character now. Flowflow's lines start with a capital, like every other line.
+
+## Make it yours: 1 Nov 2026
+
+- **Your lists have a bit of colour.** Each task in your recent work and in History, and each practice in Learn, has a small soft coloured square with a drawing of what kind of work it was: a wrench for a fix, a magnifier for a question, an arrow for going live.
+- **Small tilted stamps say where things are:** Working while a task runs, Needs you while it waits for you, Proven once its checks passed, and New for ten minutes after an answer or a change that is not proven yet. Nothing counts anything; a stamp only says what is true.
+- **New choices in Settings,** all in one place (search "Look"; since the polish above, the Look page): Layout (Wide or Tall), Theme (Graphite, Paper, or Deep, a dark sea blue), Spacing (Comfortable or Compact), List icons (Colour or Plain), Stamps (on or off), Glossy button (On or Flat) and Corners (Soft or Crisp). Each changes at once, and each has a usual value that gives the look from before.
+- **If you had picked the old Night theme,** it now shows as Graphite, the dark look that replaced it. Nothing you saved is lost.
+
+## Home is wide now: 1 Nov 2026
+
+- **Home opens as a wide window, not a tall strip.** Your places (Now, Learn, History, Memory) sit in a list on the left with small drawings, your recent work under them with how each one ended, and Settings at the bottom of the list. The work is on the right, and the box to ask runs along the bottom of it, like a chat app. Home is 688 by 480 points, so a 13 inch MacBook Air still has plenty of room under it, and the character still keeps clear of it on every edge.
+- **Settings in the wide Home has its own list of sections on the left,** in place of Home's list, and opens at the same size, so nothing jumps.
+- **The tall panel is still there if you like it:** search Settings for "Layout" and pick Tall. Home size Large makes the wide Home taller.
+- **Bigger text still fits.** At the Large text size the list stays on the left; above that, the places go back along the top so the words keep their room.
+
+## A grown up look, first step: 1 Nov 2026
+
+- **Home is graphite now.** Soft dark greys in steps, thin lines between them, and one glossy water button per screen. The words are a little tighter and smaller, like a Mac app. Flowflow is exactly as it was.
+- **Practice shows find, fix, prove as three steps on a thin line,** each saying where it is in words. Flowflow peeks over the card with one short line, like "found it." Once proven, you see each check that ran, with its result in the code face.
+- **The failing line looks like proof.** Where it is (file and line) and the line itself show in the code face, with a yellow highlighter on the line, in Practice and under Find the problem on Home. Each file a fix changed says how it changed.
+- **Fixed from the first try of this look:** no stray dot on the back arrow while a practice fixes, one Stop (in the practice card, not also in the top row), Flowflow no longer pokes into the tab row, the highlighter is a real yellow with dark words, the first run's links line up with the headings, the Settings page strip fades and shows an arrow at the end that has more pages instead of cutting a word, and no little sparks over Flowflow when a practice is proven.
+
 ## The edge, the water ring and the ask box: 1 Nov 2026
 
 - **Pushing the character into a screen edge now just goes in, with no bounce.** Push it hard into the edge, or throw it at the edge, and it goes straight in. Keep it there for about two seconds and it rests there (the water flattens while you hold it, so you can see it will stay). If you are only playing with it near the edge, it stays exactly where you let go. The old "always sticks when I let go near an edge" is a choice in Settings, Flowflow, "Going into the edge".

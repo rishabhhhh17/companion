@@ -25,7 +25,7 @@ import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, key
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { barPlaces, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, stopCan, undoCan, type MainAct } from "./homeHero.ts";
+import { agoWords, barPlaces, barStopCan, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, stopCan, undoCan, type MainAct } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { livelinessOf } from "./lookfeel.ts";
@@ -35,6 +35,10 @@ import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
+import { layoutOf, sideOn, sidePlaces, sideRecent } from "./homeLayout.ts";
+import { HomeSide } from "./homeSide.tsx";
+import { historyStamp, taskName } from "./itemLook.ts";
+import { ItemTile, Stamp } from "./itemMarks.tsx";
 
 /** M40: an action's keys, as Key labels at the end of its row (only to see; the row's own name is what is read out). */
 function Caps({ id }: { id: string | null | undefined }) {
@@ -60,12 +64,15 @@ import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyFiltering, historyUn
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
+import { FailingLine, lineOf } from "./failingLine.tsx";
 import { Button, KeyLabel, Menu, ProofChip, Switch, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
 import { planNow, usePlan } from "./usePlan.ts";
 import "./style.css";
+import "./ui/look.css";
+import "./ui/wide.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 // Beta numbers: a fixed name, counted only if the person turned numbers on.
@@ -235,7 +242,7 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
 // the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
 // focus: the task a recent fix on Now opened (F28): its row is scrolled to and flashes once, as a Settings search hit does.
-function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null }) {
+function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
@@ -243,8 +250,9 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
   const offers = project ? shown.map((h) => historyUndo(items, h, u?.stage === "done" ? u.checkpoint : null)) : [];
   const explainWhy = offers.includes("older");
   return (
-    <section className="panel" aria-label={S.recentTitle}>
-      <h2>{S.recentTitle}</h2>
+    // M51 polish: no card around the list (the page is the list), its heading for VoiceOver only (the page is titled History).
+    <section className="panel bare hist" aria-label={S.recentTitle}>
+      <h2 className="sr">{S.recentTitle}</h2>
       {items.length === 0 && <div className="line muted">{S.homeHistoryNone}</div>}
       {items.length > 0 && (
         <div className="row" role="search">
@@ -257,9 +265,18 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
       )}
       {items.length > 0 && <div className={filtering ? "line muted" : "sr"} role="status" aria-live="polite">{filtering ? (shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch) : ""}</div>}
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
-      {shown.map((h, i) => { const backId = `${undoId}-${h.id}`; return (
-        <div className="line" key={h.id} id={`history-${h.id}`} data-flash={focus === h.id || undefined}>
-          <div>{h.label} <span className="muted">· {historyWords(h)} · {costWords(h.usd)}</span></div>
+      {/* M51 polish: one grid per task, the same in both layouts: the tile, the name over one quiet line (how it ended, when,
+          what it cost), the badge at the row's end. How it ended is said once: the badge says it when there is one (and is
+          read out), else the quiet line does. The name is the words asked, never the safety copy's "Before:". */}
+      {shown.length > 0 && <ul className="hist-list">{shown.map((h, i) => { const backId = `${undoId}-${h.id}`; const name = taskName(h.label); const stamp = historyStamp(h, now); return (
+        <li className="hist-row" key={h.id} id={`history-${h.id}`} data-flash={focus === h.id || undefined}>
+          <ItemTile label={name} big />
+          <div className="hist-main">
+            <span className="hist-name">{name}</span>
+            <span className="hist-meta"><span className={stamp ? "unstamped" : undefined}>{historyWords(h)}{"\u00a0·\u00a0"}</span>{agoWords(h.endedAt ?? h.startedAt, now)} · {costWords(h.usd)}</span>
+          </div>
+          {stamp && <Stamp kind={stamp} spoken />}
+          <div className="hist-extra">
           {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
           {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
             {u.stage === "confirm" && (
@@ -273,8 +290,9 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
             {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
             {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}{u.recovered ? ` ${S.undoRecovered}` : ""}{u.large ? ` ${S.undoLarge}` : ""}</div>}
           </>)}
-        </div>
-      ); })}
+          </div>
+        </li>
+      ); })}</ul>}
       {explainWhy && <div className="line muted">{S.historyUndoWhy}</div>}
     </section>
   );
@@ -292,7 +310,7 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
       <h2>{title}</h2>
       {lines.length === 0 && <div className="line muted">{S.memoryEmpty}</div>}
       {lines.map((l) => (
-        <div className="line" key={l.id}>
+        <div className="note" key={l.id} role="group" aria-label={l.text}>
           {editing === l.id ? (
             <div className="row">
               <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
@@ -300,11 +318,15 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
             </div>
           ) : (
             <>
-              {l.text} <span className="muted">· {S.memoryFrom} {l.source}{l.date ? `, ${l.date}` : ""}</span>
-              <span className="row">
-                <button id={editId(l.id)} className="btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
-                <button className="btn danger" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
-              </span>
+              {/* A note is a flat card: the fact in plain words, then its source and what to do with it, so every line can be forgotten. */}
+              <p className="note-text">{l.text}</p>
+              <div className="note-src">
+                <span>{S.memoryFrom} {l.source}{l.date ? `, ${l.date}` : ""}</span>
+                <span className="note-acts">
+                  <button id={editId(l.id)} className="note-btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
+                  <button className="note-btn" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
+                </span>
+              </div>
             </>
           )}
         </div>
@@ -322,7 +344,7 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 }
 
 function Card() {
-  useLook();   // the water's colour and Home's theme chosen in Settings (M19)
+  useLook({ choices: true });   // the water's colour, Home's theme (M19) and the other look choices (M51) chosen in Settings
   const [m, dispatch] = useModel();
   // Pro (the payments spec, T17): the plan on this Mac, from the shell. With payments off it is { paymentsOn: false } and
   // nothing on Home changes: no tag, no limit card, no line under Fix it.
@@ -1454,6 +1476,8 @@ function Card() {
   };
 
   const hero = heroWords(m, project, needNow);
+  // A practice runs in this folder: Now says so over its headline (M51 polish), so a practice never reads as real work.
+  const practiceNow = !!m.practice && m.practice.project === project && !!project;
   // F28, the overhaul spec 4.1: what Now is about, how the project is (from its last check only), and the one main button
   // that status picks (homeHero.ts). The clock moves each second while a job works (its time so far), else twice a minute
   // (Checked 2 hours ago), and only while Home is open.
@@ -1480,7 +1504,11 @@ function Card() {
     if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome();
   };
   const lastFree = main === "fix" ? lastFreeLine(pro, usage) : null;
-  const places = barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
+  // The layout (look.layout, M51): wide, the usual, has the places and the recent work in a list on the left (homeSide.tsx)
+  // while it fits (homeLayout.ts sideOn); then the top row has no places of its own. Tall is the one column from before.
+  const layout = layoutOf(useSetting("look.layout"));
+  const side = sideOn({ layout, text: textSizeFrom(useSetting("display.textSize")), onboarded, tab: home.tab });
+  const places = side ? [] : barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
   // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
   const lively = livelinessOf(useSetting("character.lively"));
   // The working card: when this job started (its time so far), and whether it is drawn (Stop lives in it then).
@@ -1511,13 +1539,21 @@ function Card() {
   }, [m.undo?.stage]);
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   return (
-    <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-tone={hero.tone}
+    <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       <div className="inner" ref={inner}>
+      {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
+      {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={needNow?.tab ?? null} recent={sideRecent(project ? m.history : [])} now={clock}
+        onPick={pickTab} onSettings={gear} onOpen={openRecent} />}
+      <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
+      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
+        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
+      {/* The work: one column (in the wide Home, beside the list, with the ask box along its bottom; otherwise no box at all). */}
+      <div className="work">
       {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
           link, the folders used before); in a place, a back arrow and its name. On the right, quiet buttons with words
           (Learn only until the first practice is done, History, Memory, Settings), then Close. A place that waits for the
@@ -1526,14 +1562,16 @@ function Card() {
         <header className="bar">
           {home.tab === "now" && <Menu id={linkId} value="" size="sm" label={S.folderLabel} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noFolder} options={folderOptions} onChange={pickFromFolderMenu} />}
           {home.tab !== "now" && <>
-            <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>
+            {!side && <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>}
             <h1 id="home-title" className="view-title">{viewTitle}</h1>
           </>}
           <nav className="places" aria-label={S.look.placesLabel}>
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
                 working card). */}
-            {home.tab !== "now" && stopCan(m) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
+            {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
             {/* In Settings the sidebar is the only way around: the place buttons step back (the spec, 3.1). */}
+            {/* The tall Home (M51 polish): Now is a place in the row too, so the open place always shows which it is. */}
+            {home.tab !== "settings" && !side && <Button kind="quiet" size="sm" pressed={home.tab === "now"} onClick={() => pickTab("now")}>{S.look.now}</Button>}
             {home.tab !== "settings" && places.map((t) => {
               const waits = needNow?.tab === t && t !== home.tab;
               return (
@@ -1547,10 +1585,6 @@ function Card() {
           </nav>
         </header>
       )}
-      <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
-
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
-        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
       {onboarded && (<>
       {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
           founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
@@ -1558,12 +1592,14 @@ function Card() {
       <section className="hero" hidden={home.tab !== "now"} data-mode={mode} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
         <div className="home-pond" data-lively={lively} aria-hidden="true">
           <div className="ch-water"><Waterline under /></div>
+          {(() => { const say = hero.tone === "working" ? S.look.say.working : hero.tone === "notDone" ? S.look.say.notDone : hero.tone === "needsYou" ? S.look.say.needsYou : hero.tone === "done" && !!m.receipt && !m.research && !m.rescue ? S.look.say.done : ""; return say ? <span className="say" key={say}>{say}</span> : null; })()}
           <div className="ch-char"><HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} /></div>
         </div>
         <div className="hero-words">
           {statusFirst
             ? <div id={home.tab === "now" ? "home-title" : undefined} className="status-head" role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" sub={status.sub || undefined} /></div>
             : <>
+              {practiceNow && <span className="hero-tag">{S.look.practiceTag}</span>}
               <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
               <p className="subline">{hero.line}</p>
               {hero.detail && <p className="subline muted">{hero.detail}</p>}
@@ -1574,6 +1610,8 @@ function Card() {
           {stopCan(m) && !jobShown && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
         </div>
       </section>
+      {/* The wide Home at rest (M51 polish): the sea goes on down to the ask box, so there is no dead band under the status. */}
+      {side && home.tab === "now" && mode === "rest" && <div className="sea-fill" aria-hidden="true" />}
           {/* The one ask field, under the status (27 Oct 2026, F28). Only hidden on the other places, never taken away: a draft,
               and the words from hold to talk, stay in it. Return starts; the hold to talk keys sit inside it on the right. */}
           <div className="askwrap" hidden={!show("ask")}>
@@ -1591,7 +1629,8 @@ function Card() {
               }} />
             {/* A click may never open the microphone (rule 5): the keys to hold are only shown, with what they do in the tooltip. */}
             {groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} /></span>}
-            {!working && buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} onClick={submit}><Icon name="send" size={16} /></Button>}
+            {/* While a job works the arrow stays, greyed, so the box keeps its shape (M51 polish); Stop is on the job's card. */}
+            {buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}><Icon name="send" size={16} /></Button>}
           </div>
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
@@ -1612,7 +1651,7 @@ function Card() {
           {attachNotes.map((n, i) => <div className="line" role="status" key={i}>{n}</div>)}
           <div className="sr" id="ask-keys">{S.askKeysHint}</div>
           {/* The invitation to try a tool, only while nothing else is on Now. */}
-      {mode === "rest" && (() => { const inv = invitation(setting, working); return inv ? <div className="line muted" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
+      {mode === "rest" && (() => { const inv = invitation(setting, working, m.history.some((h) => h.status === "done")); return inv ? <div className="line muted ask-hint" role="note" aria-label={S.groups.tryTitle}>{inv.line}</div> : null; })()}
           {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
           {/* Every other way to ask, and the options, behind one quiet line (customizable everything: nothing is dropped). The
               check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
@@ -1641,7 +1680,7 @@ function Card() {
           <ClaudeNotice />
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
-      {home.tab === "now" && show("ask") && mode === "rest" && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
+      {home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
@@ -1679,6 +1718,7 @@ function Card() {
         return <PracticePanel p={pr} entry={entry} folder={project.split("/").filter(Boolean).at(-1) ?? project} keys={keys} checking={m.point?.stage === "checking"} drawing={m.diagram?.stage === "asking"} busy={workingOn(m)}
           nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={practiceNote} next={pr.stage === "done" ? nextPractice(practiceRec, pr.kind) : null}
           undo={m.undo} explain={pr.result && m.explain?.checkpoint === pr.result.checkpoint ? <ExplainBox e={m.explain} key={m.explain.checkpoint} /> : null}
+          checks={m.task?.proof?.steps ?? []}
           act={{
             find: practiceFind,
             fix: () => practiceFix(pr),
@@ -1704,7 +1744,7 @@ function Card() {
       {/* The recorded first run, again on a press (it costs nothing and changes nothing; firstLook.ts). */}
       {home.tab === "learn" && (tour
         ? <section className="panel onboarding look" aria-label={S.firstLook.watch}><FirstLook onGo={() => setTour(false)} /></section>
-        : <section className="panel" aria-label={S.firstLook.watch}><div className="row"><button className="btn" type="button" onClick={() => setTour(true)}>{S.firstLook.watch}</button></div></section>)}
+        : <section className="panel bare" aria-label={S.firstLook.watch}><div className="row"><button className="btn" type="button" onClick={() => setTour(true)}>{S.firstLook.watch}</button></div></section>)}
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
       {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? "")} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
@@ -2184,13 +2224,16 @@ function Card() {
           {m.point.note && <div className="line muted" role="note">{m.point.note}</div>}
           {m.point.stage === "found" && <>
             <div className="line"><b>{m.point.label}</b></div>
-            <div className="line">{m.point.problem && m.point.problem.kind === "line" ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
+            <div className="line">{m.point.problem && m.point.problem.kind === "line" && !lineOf(m.point.problem) ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
+            {/* M51: where it is and the line itself, as a proof row in the system mono. */}
+            <FailingLine problem={m.point.problem} />
           </>}
           {m.point.stage !== "checking" && (
             <div className="row">
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
-              {m.point.stage === "found" && <button className="btn primary" type="button" onClick={() => {
+              {/* While a fix already runs (a practice's, or one asked for from Learn), Fix it is not offered again (M51 polish). */}
+              {m.point.stage === "found" && !working && <button className="btn primary" type="button" onClick={() => {
                 const pt = m.point!;
                 // The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.
                 putAside(pt.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" });
@@ -2203,7 +2246,7 @@ function Card() {
                 else if (route === "smallFix") { pressed(); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(project, { label: pt.label, detail: pt.message, problem: pt.problem })); }
                 else void send(diagnose(project));
               }}>{S.pointFix}</button>}
-              {m.point.stage === "found" && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
+              {m.point.stage === "found" && !working && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
               {["clear", "gaps", "nothing"].includes(m.point.stage) && everydayOn && <button className="btn" type="button" onClick={() => { pressed(); putAside(m.point?.agent); dispatch({ type: "ui.pointClosed" }); lookEveryday(); }}>{S.everydayLookInstead}</button>}
               <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
@@ -2374,7 +2417,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
@@ -2401,6 +2444,7 @@ function Card() {
       </div>}
       </div>
       </>)}
+      </div>
       </div>
     </main>
   );

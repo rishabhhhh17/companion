@@ -78,7 +78,7 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
   test("one main button: the ask field's Start is a quiet drawing, and every other way to ask is behind one quiet line", () => {
     const more = card.indexOf('<details className="more">');
     expect(more).toBeGreaterThan(-1);
-    const startAt = card.indexOf('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} onClick={submit}>');
+    const startAt = card.indexOf('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}>');
     expect(startAt).toBeGreaterThan(-1);
     expect(startAt).toBeLessThan(more);
     expect(card).not.toContain('"btn primary icon send"');
@@ -103,9 +103,10 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
     expect(answer).toContain("font-size: var(--t-answer)");
     expect(answer).toContain("line-height: 1.5");
     expect(answer).toMatch(/max-width: (4\d|5\d|6\d|70)ch/);
-    // The scale (ui/tokens.css): the answer is 16 and the body 15 at the usual size, in rem so the text size choice reaches it.
-    expect(TOKENS_CSS()).toMatch(/--t-answer: calc\(16rem \/ 14\);/);
-    expect(TOKENS_CSS()).toMatch(/--t-body: calc\(15rem \/ 14\);/);
+    // The scale (ui/tokens.css, the graphite look of M51): the answer is 15 and the body 13 at the usual size, in rem so the
+    // text size choice reaches it.
+    expect(TOKENS_CSS()).toMatch(/--t-answer: calc\(15rem \/ 14\);/);
+    expect(TOKENS_CSS()).toMatch(/--t-body: calc\(13rem \/ 14\);/);
     for (const reply of ['<div className="answer">{m.research.answer}</div>', '<div className="answer">{m.rescue.summary}</div>', '<div className="answer">{m.about.about}</div>', '<div className="answer" role={w.help ? "status" : undefined}>', '<li className="line answer" key={i}>{b}</li>']) expect(card, reply).toContain(reply);
     expect(card).toContain('ehLines(m).map((l, i) => <div className="answer" key={i}>');
     expect(card).toContain('slLines(m).map((l, i) => <div className="answer" key={i}>');
@@ -116,7 +117,9 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
     expect(css).toMatch(/\.home \.view \.panel \{ background: var\(--surface-1\); border: 1px solid var\(--line\); border-radius: var\(--r-card\);/);
     expect(TOKENS_CSS()).toMatch(/--r-card: 12px;/);
     expect(css).not.toMatch(/\.panel[^{]*\{[^}]*inset 0 1px 0 rgba\(255, 255, 255/);
-    expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-answer); }");
+    // M51: a card's words are body size, its title the answer size.
+    expect(css).toContain(".home .view .panel .line, .home .view .panel .proof { font-size: var(--t-body); line-height: 1.5; }");
+    expect(css).toMatch(/\.home \.view \.panel > h2 \{ font-size: var\(--t-answer\);/);
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
   test("the result card: the verdict first at verdict size, what changed, the checks as chips, then what it cost", () => {

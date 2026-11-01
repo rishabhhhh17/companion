@@ -20,9 +20,40 @@ export function waterOf(v: unknown): Water { return typeof v === "string" && (WA
 /** How far to turn the hue of Flowflow's pictures (drawn in ocean blue) to reach this water. */
 export function hueTurn(w: Water): number { return WATER_TINTS[w].hue - WATER_TINTS.ocean.hue; }
 
-export const THEMES = ["night", "deep", "paper"] as const;
+/** Home's theme (look.theme, M51): Graphite, the usual, Paper (light) or Deep (dark sea blue). A "night" saved before M51
+ *  reads as Graphite, the dark look that replaced it, so no saved value breaks; anything else odd is Graphite too. */
+export const THEMES = ["graphite", "paper", "deep"] as const;
 export type Theme = (typeof THEMES)[number];
-export function themeOf(v: unknown): Theme { return typeof v === "string" && (THEMES as readonly string[]).includes(v) ? (v as Theme) : "night"; }
+export function themeOf(v: unknown): Theme { return typeof v === "string" && (THEMES as readonly string[]).includes(v) ? (v as Theme) : "graphite"; }
+
+/** The other look choices (M51 step 3, the founder: "as much customization as possible"). Each becomes a data attribute on
+ *  the page's root, and ui/tokens.css switches tokens on it; no other code branches on them. The first of each is the usual
+ *  one, which has no rule, so the usual look is exactly :root's. */
+export const LOOK_CHOICES = {
+  "look.density": { attr: "data-density", values: ["comfortable", "compact"] },
+  "look.icons": { attr: "data-icons", values: ["colour", "plain"] },
+  "look.stamps": { attr: "data-stamps", values: ["on", "off"] },
+  "look.gloss": { attr: "data-gloss", values: ["on", "flat"] },
+  "look.corners": { attr: "data-corners", values: ["soft", "crisp"] },
+} as const;
+export type LookChoice = keyof typeof LOOK_CHOICES;
+/** A saved value as the attribute's value: Stamps is a switch (false is off); anything not one of the values is the usual. */
+export function choiceOf(key: LookChoice, v: unknown): string {
+  const { values } = LOOK_CHOICES[key];
+  if (key === "look.stamps") return v === false ? "off" : "on";
+  return typeof v === "string" && (values as readonly string[]).includes(v) ? v : values[0];
+}
+/** Every look attribute for the saved values: the theme and the five choices. */
+export function lookAttrs(values: Partial<Record<"look.theme" | LookChoice, unknown>>): Record<string, string> {
+  const out: Record<string, string> = { "data-theme": themeOf(values["look.theme"]) };
+  for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) out[LOOK_CHOICES[k].attr] = choiceOf(k, values[k]);
+  return out;
+}
+/** Sets the five choices on a page's root (Home and Settings; the island and the character keep the notch's look). */
+export function applyLookChoices(root: { setAttribute: (k: string, v: string) => void }, values: Partial<Record<LookChoice, unknown>>): void {
+  const attrs = lookAttrs(values);
+  for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) root.setAttribute(LOOK_CHOICES[k].attr, attrs[LOOK_CHOICES[k].attr]);
+}
 
 /** The CSS custom properties a page sets for the water chosen (style.css reads only these for water), with the turn of hue
  *  for Flowflow's pictures. */

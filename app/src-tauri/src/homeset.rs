@@ -14,7 +14,7 @@ use serde_json::Value;
 #[cfg_attr(not(test), allow(dead_code))]   // checked by the tests
 pub const KEYS: &[&str] = &[
     "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
-    "home.closeOnClickAway", "home.size", "character.linger", "character.motion", "character.overFullScreen",
+    "home.closeOnClickAway", "home.size", "look.layout", "character.linger", "character.motion", "character.overFullScreen",
     "character.peek", "character.stick", "character.peekIdle", "home.escStops",
 ];
 
@@ -31,7 +31,8 @@ pub struct HomeSet {
     pub follow_ms: u64,
     /// home.closeOnClickAway: a click in another app may close Home (the page decides when, home.ts).
     pub click_away: bool,
-    /// home.size: Home's width and tallest height; the character's clear zones come from the same numbers.
+    /// home.size and look.layout (wide, the usual, or tall): Home's width and tallest height; the character's clear zones
+    /// come from the same numbers.
     pub size: HomeSize,
     /// character.linger: how long the character stays beside a window once nothing about it is up.
     pub linger_ms: u64,
@@ -55,7 +56,7 @@ impl HomeSet {
     /// it just needs to dwell there… when I pull it, it needs to come out") it is on, stuck half in view at the edge.
     pub const USUAL: HomeSet = HomeSet {
         island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
-        size: HomeSize::STANDARD, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, stick: true, peek_idle: false, esc_stops: true,
+        size: HomeSize::USUAL, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, stick: true, peek_idle: false, esc_stops: true,
     };
 }
 
@@ -74,7 +75,7 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
         display: Where::of(&word("island.display")),
         follow_ms: ms(&v("island.followDelay"), u.follow_ms),
         click_away: on("home.closeOnClickAway", u.click_away),
-        size: HomeSize::of(&word("home.size")),
+        size: HomeSize::of(&word("home.size"), &word("look.layout")),
         linger_ms: ms(&v("character.linger"), u.linger_ms),
         less_motion: word("character.motion") == "less",
         over_full_screen: on("character.overFullScreen", u.over_full_screen),
@@ -96,7 +97,8 @@ mod tests {
         assert_eq!(read(registry(), &File::default()), HomeSet::USUAL);
         let u = HomeSet::USUAL;
         assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
-        assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::STANDARD, false, false));
+        // M51 (1 Nov 2026, the founder): Home is wide by default; the tall panel is a choice (look.layout).
+        assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::WIDE, false, false));
         assert_eq!((u.peek, u.stick, u.peek_idle), (true, true, false), "M37d: stuck half in view at its edge, out when the pointer comes");
     }
     #[test]
@@ -109,7 +111,11 @@ mod tests {
         assert_eq!((high.hover.in_ms, high.hover.out_ms, high.follow_ms, high.linger_ms), (1500, 1000, 10_000, 10_000));
         let flipped = with(&[("island.show", json!(false)), ("island.peekOnHover", json!(false)), ("home.closeOnClickAway", json!(false)), ("character.overFullScreen", json!(true)), ("character.motion", json!("less")), ("home.size", json!("large"))]);
         assert!(!flipped.island_show && !flipped.hover.peek && !flipped.click_away && flipped.over_full_screen && flipped.less_motion);
-        assert_eq!(flipped.size, HomeSize::LARGE);
+        assert_eq!(flipped.size, HomeSize::WIDE_LARGE, "Large in the usual, wide layout");
+        // look.layout: tall is the panel from before M51, at either size; wide is the usual.
+        assert_eq!(with(&[("look.layout", json!("tall"))]).size, HomeSize::STANDARD);
+        assert_eq!(with(&[("look.layout", json!("tall")), ("home.size", json!("large"))]).size, HomeSize::LARGE);
+        assert_eq!(with(&[("look.layout", json!("wide"))]).size, HomeSize::WIDE);
         let still = with(&[("character.peek", json!(false)), ("character.peekIdle", json!(false))]);
         assert!(!still.peek && !still.peek_idle);
         assert!(with(&[("character.peekIdle", json!(true))]).peek_idle, "turned on, it peeks in on its own");

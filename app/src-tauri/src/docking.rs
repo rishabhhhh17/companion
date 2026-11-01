@@ -831,21 +831,21 @@ mod tests {
 
     #[test]
     fn the_zones_hold_the_island_at_every_size_and_home_at_every_height_as_island_rs_draws_them() {
-        for s in island_screens() {
-            let (nz, hz, dz) = (notch_zone(&s), home_zone(&s, STD), dock_zone(&s, STD));
+        for s in island_screens() { for size in SIZES {
+            let (nz, hz, dz) = (notch_zone(&s), home_zone(&s, size), dock_zone(&s, size));
             for m in MODES {
                 let i = island::island_frame(&s, m);
                 assert!(holds(nz, i) && holds(dz, i), "{} {m:?}: the island {i:?} is outside the zone {nz:?}", s.id);
             }
-            for h in (CARD.1 as i32..=CARD_MAX_H as i32).step_by(10) {
-                let home = island::home_frame(&s, (CARD.0, h as f64));
-                assert!(holds(hz, home) && holds(dz, home), "{} Home {h} tall: {home:?} outside {hz:?}", s.id);
+            for h in (size.min_h as i32..=size.max_h as i32).step_by(10) {
+                let home = island::home_frame(&s, (size.w, h as f64));
+                assert!(holds(hz, home) && holds(dz, home), "{} {size:?} Home {h} tall: {home:?} outside {hz:?}", s.id);
                 assert!(home[0] - hz[0] >= CLEAR_MARGIN - 1e-9 && (hz[0] + hz[2]) - (home[0] + home[2]) >= CLEAR_MARGIN - 1e-9
-                    && (hz[1] + hz[3]) - (home[1] + home[3]) >= CLEAR_MARGIN - 1e-9, "{} with the gap on each side and below: {home:?} {hz:?}", s.id);
+                    && (hz[1] + hz[3]) - (home[1] + home[3]) >= CLEAR_MARGIN - 1e-9, "{} {size:?} with the gap on each side and below: {home:?} {hz:?}", s.id);
             }
             assert!(holds(dz, nz) && holds(dz, hz), "{}", s.id);
             assert_eq!(dz[1], s.frame[1], "{}: from the very top", s.id);
-        }
+        } }
         // For a real notch (up to 200 points, centred) and every display without one, the island's own zone keeps the
         // numbers it had before the merge, so trips beside a window lose no room to it.
         let (w, depth) = NOTCH_CLEAR;
@@ -855,29 +855,30 @@ mod tests {
     }
     #[test]
     fn the_character_never_docks_inside_the_island_or_homes_drop_down_zone() {
-        for s in island_screens() {
+        // At every size Home can be (M51: the wide Home, the usual, and the tall panel, each standard and large).
+        for s in island_screens() { for size in SIZES {
             let island_big = island::island_frame(&s, island::Mode::Peek);
-            let homes: Vec<Rect> = [CARD.1, 300.0, 450.0, CARD_MAX_H].iter().map(|h| island::home_frame(&s, (CARD.0, *h))).collect();
+            let homes: Vec<Rect> = [size.min_h, 300.0, 450.0, size.max_h].iter().map(|h| island::home_frame(&s, (size.w, *h))).collect();
             for e in EDGES { for i in 0..=200 {
-                let f = place(&s, SIZE, e, i as f64 / 200.0, STD);
+                let f = place(&s, SIZE, e, i as f64 / 200.0, size);
                 let why = format!("{} {e:?} {i}: {f:?}", s.id);
                 assert!(inside(f, s.work), "outside the work area: {why}");
                 for m in MODES { assert!(!overlaps(f, island::island_frame(&s, m)), "under the island ({m:?}): {why}"); }
-                for home in &homes { assert!(!overlaps(f, *home), "under Home {home:?}: {why}"); }
-                assert!(!overlaps(f, dock_zone(&s, STD)), "{why}");
+                for home in &homes { assert!(!overlaps(f, *home), "under Home {size:?} {home:?}: {why}"); }
+                assert!(!overlaps(f, dock_zone(&s, size)), "{size:?} {why}");
             } }
             // A drag along the top and along the bottom, the whole width: what is shown, and so saved, is clear too.
             let w = s.work;
             let mut x = w[0];
             while x <= w[0] + w[2] {
                 for y in [w[1] + 10.0, w[1] + w[3] - 10.0] {
-                    let (e, p) = snap_on(&s, SIZE, x, y, STD);
-                    let f = place(&s, SIZE, e, p, STD);
-                    assert!(!overlaps(f, island_big) && !overlaps(f, homes[3]), "{} drag at {x},{y}: {f:?}", s.id);
+                    let (e, p) = snap_on(&s, SIZE, x, y, size);
+                    let f = place(&s, SIZE, e, p, size);
+                    assert!(!overlaps(f, island_big) && !overlaps(f, homes[3]), "{} {size:?} drag at {x},{y}: {f:?}", s.id);
                 }
                 x += 9.0;
             }
-        }
+        } }
         // On a 14 inch MacBook Pro the top edge stops just beside Home at its widest, with the card's gap between them;
         // the bottom edge, below Home at its tallest, is not moved at all.
         let s = &island_screens()[0];
@@ -890,28 +891,31 @@ mod tests {
     }
 
     // ---- M11 area 4: Home's size, and the character's place from Settings (protocol/settings.json) ----
-    const STD: island::HomeSize = island::HomeSize::STANDARD;
+    /// The usual size (M51: the wide Home), and every size Home can be: the wide Home and the tall panel, standard and large.
+    const STD: island::HomeSize = island::HomeSize::USUAL;
     const LARGE: island::HomeSize = island::HomeSize::LARGE;
+    const SIZES: [island::HomeSize; 4] = [island::HomeSize::WIDE, island::HomeSize::WIDE_LARGE, island::HomeSize::STANDARD, island::HomeSize::LARGE];
     #[test]
     fn with_a_large_home_the_character_never_docks_under_it_at_its_tallest() {
-        for s in island_screens() {
-            let homes: Vec<Rect> = [LARGE.min_h, 300.0, 600.0, LARGE.max_h].iter().map(|h| island::home_frame(&s, (LARGE.w, *h))).collect();
-            let hz = home_zone(&s, LARGE);
+        // Each layout's Large, with the standard size of the same layout (the tall panel, and the wide Home of M51).
+        for (large, standard) in [(LARGE, island::HomeSize::STANDARD), (island::HomeSize::WIDE_LARGE, island::HomeSize::WIDE)] { for s in island_screens() {
+            let homes: Vec<Rect> = [large.min_h, 300.0, 600.0, large.max_h].iter().map(|h| island::home_frame(&s, (large.w, h.clamp(large.min_h, large.max_h)))).collect();
+            let hz = home_zone(&s, large);
             for home in &homes { assert!(holds(hz, *home), "{} {home:?} outside {hz:?}", s.id); }
-            assert!(holds(home_zone(&s, LARGE), home_zone(&s, STD)), "{}: the large zone holds the usual one", s.id);
+            assert!(holds(home_zone(&s, large), home_zone(&s, standard)), "{}: the large zone holds the standard one", s.id);
             for e in EDGES { for i in 0..=100 {
-                let f = place(&s, SIZE, e, i as f64 / 100.0, LARGE);
+                let f = place(&s, SIZE, e, i as f64 / 100.0, large);
                 assert!(inside(f, s.work), "{} {e:?} {i}: {f:?}", s.id);
                 for home in &homes { assert!(!overlaps(f, *home), "{} {e:?} {i}: under the large Home {home:?}: {f:?}", s.id); }
             } }
             // A drag along the top: what is shown, and so saved, is clear of the large Home too.
             let w = s.work;
             let mut x = w[0];
-            while x <= w[0] + w[2] { let (e, p) = snap_on(&s, SIZE, x, w[1] + 10.0, LARGE); assert!(!overlaps(place(&s, SIZE, e, p, LARGE), homes[3]), "{} drag at {x}", s.id); x += 11.0; }
-        }
-        // The usual size keeps every place exactly where it was.
+            while x <= w[0] + w[2] { let (e, p) = snap_on(&s, SIZE, x, w[1] + 10.0, large); assert!(!overlaps(place(&s, SIZE, e, p, large), homes[3]), "{} drag at {x}", s.id); x += 11.0; }
+        } }
+        // The usual size's zone is Home at the usual size, at its tallest, with the margin.
         let s = &island_screens()[0];
-        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (island::CARD.0, 640.0)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
+        assert_eq!(home_zone(s, STD), { let h = island::home_frame(s, (island::CARD.0, island::CARD_MAX_H)); widen([h[0], s.frame[1], h[2], h[1] + h[3] - s.frame[1]], CLEAR_MARGIN) });
     }
     #[test]
     fn same_place_on_every_display_fills_only_displays_with_no_place_yet() {

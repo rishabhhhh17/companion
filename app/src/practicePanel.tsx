@@ -2,18 +2,23 @@
 // the result, Undo and Explain right here), and the list of every practice in catalog order. What each shows is decided in
 // practice.ts and model.ts; card.tsx wires the buttons. Every control has words VoiceOver reads (a11y.test.ts), and every
 // confirm step takes the keyboard to its safe choice (confirm.tsx). A plain Done, never a score or praise (rule 16).
+import { practiceStamp } from "./itemLook.ts";
+import { ItemTile, Stamp } from "./itemMarks.tsx";
 import { useId, useState, type ReactNode } from "react";
+import { ChangesCard } from "./changesCard.tsx";
 import { ConfirmStep } from "./confirm.tsx";
+import { FailingLine, lineOf } from "./failingLine.tsx";
+import { FlowMini } from "./flowflowMini.tsx";
+import { Icon } from "./icons.tsx";
 import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
-import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type UndoState } from "./model.ts";
-import { costWords, timeWords, type ListRow, type PracticeEntry } from "./practice.ts";
+import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type ProofLine, type UndoState } from "./model.ts";
+import { costWords, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
 import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
 
 const placeLine = (w?: { file?: string; line?: number; message?: string }) => `${w?.file ? `${w.file}, line ${w.line}: ` : ""}${w?.message ?? ""}`;
-const kindWord = (k: string) => (S as unknown as Record<string, string>)[k] ?? k;
 
 export type PanelActions = {
   find: () => void; fix: () => void; lesson: () => void; stopFix: () => void; stopChecks: () => void; checkAgain: () => void; close: () => void;
@@ -22,6 +27,55 @@ export type PanelActions = {
   startOver: () => void; remove: () => void; next: (id: string) => void; back: () => void;
 };
 
+/** Find, fix, prove as a thread: a hairline with three nodes. A node fills with the water only when the stage after it was reached
+ *  (practice.ts threadOf); the third stays empty when the checks did not pass. The state is in words too, never colour alone. */
+function Thread({ t }: { t: ThreadState }) {
+  const rows: [keyof ThreadState, string][] = [["find", S.practiceThread.find], ["fix", S.practiceThread.fix], ["prove", S.practiceThread.prove]];
+  return (
+    <ol className="thread" aria-label={S.practiceThread.label}>
+      {rows.map(([k, label]) => (
+        <li key={k} className="thread-step" data-state={t[k]}>
+          <span className="thread-node" aria-hidden="true">{t[k] === "done" && <span className="thread-tick"><Icon name="tick" size={10} /></span>}</span>
+          <span className="thread-label">{label}</span>
+          <span className="thread-state">{S.practiceThread.state[t[k]]}{t[k] === "now" && <i className="live" aria-hidden="true" />}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** Flowflow on the card's top edge with one short line (decorative: the thread says the same in words). It stays out of the
+ *  work itself, never inside the steps, the buttons or the approval cards. */
+function Peek({ stage }: { stage: Practice["stage"] }) {
+  // Done rests: Flowflow's "done" plays its success flash, three drops that read as confetti over the card (M51 review). The
+  // bubble and the ticks already say the checks pass; the reward is the evidence.
+  const state = stage === "fixing" || stage === "proving" ? "working" : "idle";
+  // While the fix or its checks run, Now carries the line (M51 polish: the same "On it." in two places read as chatter).
+  const quiet = stage === "fixing" || stage === "proving";
+  return (
+    <div className="pr-peek" aria-hidden="true">
+      {!quiet && <span className="say" key={stage}>{S.practiceSay[stage]}</span>}
+      <FlowMini state={state} className="pr-char" />
+    </div>
+  );
+}
+
+/** What was checked, one tick each, from the checks that really ran (the task's own proof lines). */
+function Checks({ checks }: { checks: ProofLine[] }) {
+  if (checks.length === 0) return null;
+  return (
+    <ul className="checks" aria-label={S.practiceChecks}>
+      {checks.map((c) => (
+        <li key={c.rung} data-status={c.status}>
+          <span className="check-mark" aria-hidden="true"><Icon name={c.status === "passed" ? "tick" : c.status === "failed" ? "cross" : "dash"} size={12} /></span>
+          <span className="check-label">{c.label}<span className="sr">: {c.status === "passed" ? "passed" : c.status === "failed" ? "did not pass" : "not run"}</span></span>
+          {c.detail && <span className="check-detail">{c.detail}</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** The fix's result where the practice is: what changed, its cost, Show me what changed, Undo (asked first) and Explain. */
 function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoState | null; explain: ReactNode; act: PanelActions }) {
   const undoId = useId();
@@ -29,7 +83,10 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   return (
     <div role="group" aria-label={S.practiceChanged}>
-      {r.changed.length > 0 && <div className="line muted">{S.practiceChanged}: {r.changed.map((c) => `${c.file} (${kindWord(c.kind)})`).join(", ")} · {r.usdEstimate > 0 ? `${S.cost}: ${formatUsd(r.usdEstimate)}` : S.noCost}</div>}
+      {r.changed.length > 0 && <>
+        <ChangesCard changed={r.changed} />
+        <div className="line muted slip">{r.usdEstimate > 0 ? `${S.cost}: ${formatUsd(r.usdEstimate)}` : S.noCost}</div>
+      </>}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
         {r.changed.length > 0 && !mine && <button id={undoId} className="btn danger" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button>}
@@ -72,9 +129,9 @@ function CopyButtons({ act, busy, title }: { act: PanelActions; busy: boolean; t
   </>;
 }
 
-export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act }: {
+export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act, checks = [] }: {
   p: Practice; entry: PracticeEntry; folder: string; keys: Keys; checking: boolean; drawing: boolean; busy: boolean; nodeFix: string | null; note: string;
-  next: PracticeEntry | null; undo: UndoState | null; explain: ReactNode; act: PanelActions;
+  next: PracticeEntry | null; undo: UndoState | null; explain: ReactNode; act: PanelActions; checks?: ProofLine[];
 }) {
   const w = S.practices[entry.id];
   const task = entry.fix === "task", gate = entry.find === "gate";
@@ -90,10 +147,14 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
     : asks ? S.practiceAsks
     : entry.fix === "lesson" ? (p.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed)
     : entry.prove === "gate" && p.result?.proof !== "failed" ? S.practiceGateFailed : S.practiceFailed;
-  return (
-    <section className="panel" aria-label={S.practiceTitle}>
+  // Flowflow's peek is in the flow above the card, never laid over it, so it can never cross the tab row however tall its
+  // line grows with bigger text (M51 review); the card is drawn over its foot, so it peeks over the card's top edge.
+  return (<>
+    <Peek stage={p.stage} />
+    <section className="panel practice" aria-label={S.practiceTitle} data-stage={p.stage}>
       <h2>{S.practiceTitle}</h2>
       <div className="line muted">{w.title}</div>
+      <Thread t={threadOf(p)} />
       {note && <div className="line" role="status">{note}</div>}
       {p.stage === "start" && <>
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>
@@ -103,7 +164,9 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="row">{findButton}<button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button></div>
       </>}
       {p.stage === "found" && <>
-        <div className="line"><b>{S.practiceFound}</b> {placeLine(p.where)}</div>
+        {/* The words say what is wrong; the proof row under them shows where, and the line itself, in the system mono. */}
+        <div className="line"><b>{S.practiceFound}</b> {lineOf(p.problem) ? (p.where?.message ?? lineOf(p.problem)!.message) : placeLine(p.where)}</div>
+        <FailingLine problem={p.problem} />
         {p.undone && <div className="line">{S.practiceUndone}</div>}
         <div className="line muted">{w.foundMore}</div>
         {task && canFix && <div className="line muted">{S.practiceFixHelp}</div>}
@@ -112,7 +175,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
           {p.problem && <button className="btn" type="button" onClick={() => act.where(p.problem!)}>{S.pointWhere}</button>}
           {p.problem && canWhy && <button className="btn" type="button" disabled={drawing} onClick={() => act.why(p.problem!)}>{S.drawWhy}</button>}
           {task
-            ? canFix && <button className="btn primary" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
+            ? canFix && <button className="btn primary gel" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
             : <button className="btn primary" type="button" onClick={act.lesson}>{S.practiceSettingFix}</button>}
           <button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button>
         </div>
@@ -140,6 +203,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       </>}
       {p.stage === "done" && <>
         <div className="line"><b>{doneWords}</b></div>
+        {p.result?.proof !== undefined && <Checks checks={checks} />}
         {!p.already && <div className="line muted">{w.doneMore}</div>}
         {p.result && <ResultBox r={p.result} undo={undo} explain={explain} act={act} />}
         <div className="row">
@@ -168,7 +232,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="row"><button className="btn" type="button" onClick={act.close}>{S.pointClose}</button></div>
       </>}
     </section>
-  );
+  </>);
 }
 
 export type ListActions = { start: (id: string) => void; open: (id: string) => void; startOver: (id: string) => void; remove: (id: string) => void };
@@ -179,8 +243,11 @@ function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boo
   const overId = useId(), removeId = useId();
   const id = r.entry.id, blocked = busy || r.needsNode;
   return (
-    <div className="line" role="group" aria-label={r.title}>
-      <b>{r.title}</b> <span className="muted">· {S.practiceState[r.state]}</span>
+    <div className="line pr-item" role="group" aria-label={r.title}>
+      {/* M51 step 3: the practice's tile, its name, and a done one's Proven stamp in place of its plain state (shown again
+          while stamps are off in Settings). */}
+      <div className="pr-head"><ItemTile label={r.title} big kind="fix" />
+        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(r.state) ? " unstamped" : ""}`} data-state={r.state}>{S.practiceState[r.state]}</span>{practiceStamp(r.state) && <Stamp kind={practiceStamp(r.state)!} spoken />}</span></div>
       <div className="line">{r.teaches}</div>
       <div className="line muted">{r.time} · {r.cost}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
       {!ask && <div className="row">

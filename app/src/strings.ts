@@ -56,6 +56,8 @@ export const S = {
     files: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed`,
     // The side list and the top of what is open (the wide Home of 27 Oct 2026).
     back: "Back",
+    // M51 step 3: the small tilted stamps on items in the lists, in sentence case (itemLook.ts says which an item gets).
+    stamp: { working: "Working", new: "New", proven: "Proven", needsYou: "Needs you" },
     close: `Close ${PRODUCT}`,
     settingsPlaces: "Settings sections",
     // Home as one black panel under the notch (27 Oct 2026): the job in big words, one box to ask, three quick actions.
@@ -67,6 +69,12 @@ export const S = {
     chipExplain: "Explain an error",
     chipShowMe: "Show me",
     placesLabel: "Places",
+    // The wide Home's list on the left (M51): its recent work, under the places.
+    sideRecent: "Recent work",
+    // M51 polish: over Now's headline while a practice runs, so a practice never reads like real work.
+    practiceTag: "Practice",
+    // Home's top row in the tall layout (M51 polish): Now is a place too, so the open one always shows.
+    now: "Now",
     // Home's big words with nothing going on: an open question about the work, never "Ready" (the founder, 27 Oct 2026).
     idleHeadline: "What are we fixing?",
     inFolder: (name: string) => `In ${name}`,
@@ -75,6 +83,8 @@ export const S = {
     answerBelow: "The answer is just below.",
     working: (cost: string) => `Working · ${cost} so far`,
     workingFree: "Working",
+    // What Flowflow says over the water: one short line in sentence case (M51 polish), only at a moment that matters, never a feeling (rule 16).
+    say: { working: "On it.", done: "Checked. It passes.", notDone: "That did not pass.", needsYou: "Needs a tap." },
     doneLine: (proof: string, cost: string) => `${proof} · ${cost}`,
   },
   // Home at rest, status first (F28, the overhaul spec 4.1): how the project is, in its own name, from the last check only
@@ -88,7 +98,7 @@ export const S = {
     noProject: "Choose a project to start",
     checkedAgo: (ago: string) => `Checked ${ago}`,
     failedAgo: (ago: string) => `A check failed ${ago}`,
-    lastWas: (headline: string, ago: string) => `Last time: ${headline}, ${ago}`,
+    lastWas: (headline: string, ago: string) => `Last task: ${headline}, ${ago}`,
     inProject: (name: string) => `In ${name}`,
     // How long ago, in words (homeHero.ts agoWords).
     justNow: "just now",
@@ -356,8 +366,9 @@ export const S = {
   pages: {
     account: { title: "Account", sub: `Your plan, your Claude key and what ${PRODUCT} may spend.` },
     general: { title: "General", sub: "The notch, Home, text size and which tools are on." },
+    look: { title: "Look", sub: "Home's layout, theme and colour, and the small details. Pick by looking." },
     fixing: { title: "Fixing", sub: `How ${PRODUCT} fixes and checks your project.` },
-    flowflow: { title: "Flowflow", sub: "How it looks and how much it moves." },
+    flowflow: { title: "Character", sub: `${NAMES.character}, the water on your screen: how much it moves and where it lives.` },
     keys: { title: "Keys and voice", sub: `The keys for each job, and talking to ${PRODUCT}.` },
     privacy: { title: "Privacy", sub: `What ${PRODUCT} may see, what it keeps, and the danger zone.` },
     about: { title: "About", sub: "Version, help and practice projects." },
@@ -385,6 +396,13 @@ export const S = {
     "undo.protectMyEdits": "Undo leaves files you changed yourself and tells you which.",
     "character.lively": "Still: moves only when there is news. Gentle: a slow sway. Lively: watches your pointer.",
     "look.size": "How big it is on the edge of the screen.",
+    "look.layout": "Wide has a list of places on the left. Tall is one column.",
+    "look.theme": "Graphite is dark grey, Paper is light, Deep is dark blue.",
+    "look.density": "Compact fits more on screen with less space between things.",
+    "look.icons": "A small square per item, its colour saying what kind of work it was.",
+    "look.stamps": "Small labels on items: Working, New, Proven, Needs you.",
+    "look.gloss": "The one main button in each view: shiny water, or flat.",
+    "look.corners": "Soft rounds the corners of cards and buttons. Crisp keeps them tight.",
     "character.name": `What ${PRODUCT_S} character is called.`,
     "character.follow": "Still only follows while listening or pointing.",
     "character.dockWhen": "Pushed in hard, thrown at it, or held there two seconds. Playing near it leaves it where it is.",
@@ -426,14 +444,15 @@ export const S = {
     "drop.saveTo": { nextTo: "Next to it", downloads: "Downloads", desktop: "Desktop" },
     "attach.docLimit": { "20": "20 KB", "50": "50 KB", "100": "100 KB" },
     "talk.maxHold": { "30": "30 sec", "60": "1 min", "120": "2 min" },
-    "look.theme": { night: "Night", paper: "Paper" },
+    "look.theme": { graphite: "Graphite", paper: "Paper", deep: "Deep" },
   } as Record<string, Record<string, string>>,
   // The Groups on each page and the topics in More options (settingsPages.ts), by their anchors.
   setGroupTitles: {
     "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending",
+    "look.home": "Home", "look.details": "Details",
     "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
     "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
-    "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Look", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
+    "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.danger": "Danger zone",
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
@@ -471,6 +490,9 @@ export const S = {
   // The Settings frame (the spec, 3.1 to 3.3 and 3.7).
   setFrame: {
     sidebar: "Settings pages",
+    // The arrows at the ends of the pages strip when Home is narrow (M51): there are more pages that way.
+    stripBack: "Earlier pages",
+    stripMore: "More pages",
     search: "Search settings",
     noMatch: (q: string) => `No setting matches “${q}”. Try a plain word like sound, keys or plan.`,
     found: (n: number) => `${n} ${n === 1 ? "result" : "results"}.`,
@@ -1055,6 +1077,10 @@ export const S = {
     },
   } as Record<string, { title: string; teaches: string; start: string; foundMore: string; doneMore: string }>,
   practiceTitle: "Practice: find it, fix it, prove it",
+  // The thread under it: three steps, each with where it is in plain words, and the one short line Flowflow says at each.
+  practiceThread: { label: "The three steps", find: "Find it", fix: "Fix it", prove: "Prove it", state: { todo: "Waiting", now: "Now", done: "Done", failed: "Did not pass" } },
+  practiceSay: { start: "Ready.", found: "Found it.", fixing: "On it.", proving: "Checking it.", done: "Checked. It passes.", failed: "That did not pass.", blocked: "Could not run it." } as Record<string, string>,
+  practiceChecks: "What was checked",
   practiceStartIn: (folder: string, start: string) => `Your practice copy is the folder ${folder} in your home folder. ${start} This is the moment you would press the key.`,
   practiceStartGate: (folder: string, start: string) => `Your practice copy is the folder ${folder} in your home folder. ${start} This is the moment you would check before going live.`,
   practiceKeys: "The key is {keys}. You can press it, or press the button.",
@@ -1610,7 +1636,7 @@ export const S = {
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
     "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are, and puts a dot on that tab and a mark on the notch, or on the character when the notch is off. With Say answers out loud on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
-    "home.size": { label: "Home size", help: "Large makes Home wider and taller, which suits larger text. The character keeps clear of Home at either size.", also: ["bigger", "wider", "taller", "window"], options: { standard: "Standard", large: "Large" } },
+    "home.size": { label: "Home size", help: "Large makes Home bigger, which suits larger text: taller when Home is wide, wider and taller when it is tall. The character keeps clear of Home at either size.", also: ["bigger", "wider", "taller", "window"], options: { standard: "Standard", large: "Large" } },
     "character.edge": { label: "Screen edge", help: "Which edge of the screen the character lives on, on the display it is on now. You can also drag it to any edge or corner.", also: ["Edge for the character on this display", "place", "move", "corner", "side", "position"], options: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" } },
     "character.position": { label: "Position along that edge", help: "0 is the top or left end of the edge, 100 the bottom or right end. The character always keeps clear of the notch and of Home.", also: ["place", "move", "height", "corner"] },
     "character.sameEverywhere": { label: "Same place on every display", help: "On, a display where you have not placed the character yet gets this display's edge and position. Displays where you placed it keep their own.", also: ["monitor", "screens", "external", "place"] },
@@ -1625,7 +1651,13 @@ export const S = {
     "character.stick": { label: "Stick to the edge", help: "On, while it is tucked away half of it stays stuck to the edge of the screen like a drop of water on glass, so you can always see where it is. Off, it waits fully out of sight.", also: ["at rest", "half", "stick", "edge", "tuck", "half", "visible", "peek"] },
     "character.peekIdle": { label: "Peek in on its own", help: "Off, the character stays tucked away until you call it with the pointer. On, it also peeks in for a moment when work starts or finishes, and now and then while nothing happens (never more often than every 3 minutes). Never with less motion, and never during a presentation or a call.", also: ["peek", "idle", "fun", "motion", "curious"] },
     "look.water": { label: "Water", help: "The colour of the water: the character, the drop that shows you where to click, its ring and the waterline in Home, together. Ocean is the usual.", also: ["Water colour", "colour", "color", "theme", "tint", "blue", "green", "pink", "purple", "water"], options: { ocean: "Ocean", lagoon: "Lagoon", lime: "Lime", berry: "Berry", midnight: "Midnight" } },
-    "look.theme": { label: "Theme", help: "Night is black, Deep sea is dark blue, Paper is light. The notch stays black, like the notch itself.", also: ["Home's theme", "dark", "light", "theme", "colour", "theme", "dark", "light", "night", "background", "colour", "color"], options: { night: "Night", deep: "Deep sea", paper: "Paper" } },
+    "look.layout": { label: "Layout", help: "Wide puts the places and your recent work in a list on the left, the work on the right and the box to ask along the bottom. Tall is one column, with the places along the top. With text larger than Large, the places go along the top in both. The character keeps clear of Home in both.", also: ["Home's layout", "wide", "tall", "sidebar", "side list", "landscape", "vertical", "shape", "window"], options: { wide: "Wide", tall: "Tall" } },
+    "look.theme": { label: "Theme", help: "Graphite is dark grey, the usual. Paper is light. Deep is a dark sea blue. The notch stays black, like the notch itself.", also: ["Home's theme", "dark", "light", "theme", "colour", "night", "graphite", "grey", "deep", "dark blue", "sea", "paper", "white", "background", "color"], options: { graphite: "Graphite", paper: "Paper", deep: "Deep", night: "Graphite" } },
+    "look.density": { label: "Spacing", help: "Comfortable, the usual, gives everything room. Compact pulls rows, buttons and the space between them in, so more fits in Home at once. Buttons stay big enough to press.", also: ["density", "dense", "compact", "comfortable", "tight", "roomy", "padding", "space", "smaller rows", "fit more"], options: { comfortable: "Comfortable", compact: "Compact" } },
+    "look.icons": { label: "List icons", help: "Colour gives each item in your lists (recent work, History and Learn) a small square whose drawing and colour say what kind of work it was: a fix, going live, a question, an explanation or something new. Plain keeps the squares grey.", also: ["icons", "colour", "color", "coloured squares", "tiles", "plain", "grey", "list"], options: { colour: "Colour", plain: "Plain" } },
+    "look.stamps": { label: "Status labels", help: "Small labels at the end of items in your lists: Working while it runs, New for a few minutes after it finishes, Proven once its checks passed, and Needs you while it waits for you. Off shows the same in plain words or a small mark.", also: ["stamps", "status labels", "labels", "tags", "working", "proven", "new", "needs you", "marks"] },
+    "look.gloss": { label: "Glossy button", help: "The one main button in each view, in the water's colour. On gives it a soft shine. Flat keeps the colour without the shine or the glow.", also: ["glossy", "gloss", "shine", "shiny", "flat", "main button", "pill"], options: { on: "On", flat: "Flat" } },
+    "look.corners": { label: "Corners", help: "Soft, the usual, rounds the corners of cards, buttons and fields. Crisp makes them tighter, for a sharper look. The notch keeps its own shape.", also: ["corners", "rounded", "round", "radius", "sharp", "square", "crisp", "soft"], options: { soft: "Soft", crisp: "Crisp" } },
     "character.follow": { label: "Follow your pointer", help: "What follows your pointer when How lively is Lively. Its eyes: its eyes and body lean toward your pointer. A water ring: its eyes, plus a small ring of water around your pointer's tip. In Still and Gentle its eyes stay ahead, and the ring shows only while it is listening. Off: nothing follows, not even while it listens. Only where the pointer is, never what you type or what is on the screen, and never kept.", also: ["Follow my pointer", "pointer", "cursor", "mouse", "eyes", "follow", "drop", "ring", "water ring", "buddy"], options: { eyes: "Its eyes", drop: "A water ring", off: "Off" } },
     "look.size": { label: "Size", help: "How big the character is on the edge of the screen. Large is as big as it can be and still have room to move.", also: ["Character size", "size", "bigger", "smaller", "large", "small", "character"], options: { small: "Small", usual: "Usual", large: "Large" } },
     "sound.on": { label: "Play sounds", help: "Soft water sounds when a drop leaves to show you where to click, when you click the right thing, when work is done, and when something needs you. Made on your Mac, off unless you turn them on, and silent while a call app is in front if you chose that.", also: ["Sounds", "sound", "audio", "noise", "chime", "beep", "volume"] },

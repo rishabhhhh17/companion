@@ -1,0 +1,58 @@
+/* The wide Home (look.layout wide, the usual; M51 step 2, 1 Nov 2026, after HeyClicky's window, which the founder liked).
+   A list on the left: the places with their drawings, the recent work, Settings at its foot. The work on the right, one
+   column, the ask box along its bottom. Home is the one scroller, as before: the list stays put at the left (sticky), the
+   ask box stays at the bottom of the work (sticky), and the work scrolls between them. Every rule here applies only while
+   the list shows (data-side, homeLayout.ts sideOn): in the tall Home, in Settings and in the first run the work column is
+   no box at all, so they lay out exactly as before. Colours, sizes and corners are tokens (ui/tokens.css). */
+
+.work { display: contents; }
+
+.home[data-side] .inner { display: grid; grid-template-columns: var(--w-side) minmax(0, 1fr); align-items: start; flex: 1 0 auto; padding: 0; }
+
+/* The list on the left: as tall as Home, its own scroll if it ever needs one, and a hairline between it and the work. M51
+   polish (next to HeyClicky): compact one line rows, 28 tall, so the places and about ten tasks fit in Home's 480. */
+.home[data-side] .side { position: sticky; top: 0; height: calc(100vh - var(--hair)); box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-2) var(--space-2); border-right: var(--hair) solid var(--line); background: var(--surface-1); }
+/* A list item fills the list's width, one line high at Standard; a place's own words wrap rather than run off (Large). */
+.home[data-side] .side .sb-item { width: 100%; min-height: var(--h-side-row); padding-inline: var(--space-2); white-space: normal; }
+.side-list { display: grid; gap: var(--hair); margin: 0; padding: 0; list-style: none; }
+.side-title { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-body); }
+/* The recent work takes the room left and scrolls inside it, so Settings at the foot is always in view. Where it goes on past
+   its foot it fades out, never a row cut through with no sign of more; the fade sits over its own bottom padding, so the
+   last task is clear once scrolled to. */
+.side-recent { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: var(--fade); -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); }
+.side-foot { margin-top: auto; padding-top: var(--space-2); border-top: var(--hair) solid var(--line); }
+
+/* A recent task, one line: its tile, its name cut with an ellipsis (the whole name is its tooltip, what VoiceOver reads, and
+   its row in History), then at the row's end its badge, or, when it has none (or badges are off), the mark of how it ended
+   in that colour. */
+.side-work { align-items: center; gap: var(--space-2); }
+.side-mark { display: grid; place-items: center; flex: none; width: var(--icon-md); color: var(--fg-2); }
+.side-mark.unstamped { display: var(--unstamped-display); }
+.side-work .side-mark .ic { color: inherit; }   /* a list item's drawing is grey (parts.css); a mark takes its tone */
+.side-work[data-tone="good"] .side-mark { color: var(--ok); }
+.side-work[data-tone="mixed"] .side-mark, .side-work[data-tone="ask"] .side-mark { color: var(--amber); }
+.side-work[data-tone="bad"] .side-mark { color: var(--bad); }
+.side-name { display: -webkit-box; flex: 1 1 auto; min-width: 0; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; overflow-wrap: anywhere; color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); }
+
+/* The work: one column beside the list, at least as tall as Home, so the ask box sits at its bottom even when little shows. */
+.home[data-side] .work { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - var(--hair)); box-sizing: border-box; padding: var(--space-3) var(--space-6) 0; }
+.home[data-side] .work > * { flex: none; }
+/* The top row keeps only what is not a place: Stop while a job runs (beside Close), and Close. */
+.home[data-side] .places { flex: none; order: 0; margin: 0 0 0 auto; padding-right: calc(var(--h-sm) + var(--space-2)); }
+/* The ask box along the bottom of the work, as a chat app's composer: drawn after the rest, and kept in view while the work
+   scrolls under it. In the reading order it stays right under the status, where it always was. */
+.home[data-side] .work > .askwrap { order: 1; position: sticky; bottom: 0; z-index: 3; margin-top: auto; padding: var(--space-2) 0 var(--space-4); border-top: var(--hair) solid var(--line); background: var(--bg); }
+/* Work that scrolls under the ask box fades into it, never a card cut through mid line with no sign of more (M51 polish). */
+.home[data-side] .work > .askwrap::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--fade); background: linear-gradient(180deg, transparent, var(--bg)); pointer-events: none; }
+/* At rest, with nothing under the status yet, the water goes on down to the ask box: Flowflow floats on a sea that fills the
+   work, instead of a dead band between the waterline and the box (M51 polish). The water under the line is solid sea, and
+   the sea below it fades into the page at the ask box. */
+.home[data-side] .hero:has(+ .sea-fill) { margin-bottom: 0; }
+.home[data-side] .hero:has(+ .sea-fill) .ch-water { background: var(--sea); }
+.home[data-side] .sea-fill { flex: 1 0 var(--space-6); margin: 0 calc(var(--space-6) * -1); background: linear-gradient(180deg, var(--sea) 0, transparent 100%); }
+.home[data-side] .work > .askwrap .ask { margin-bottom: 0; }
+.home[data-side] .work > .askwrap details.more { margin-bottom: 0; }
+
+/* The first run in the wide Home (no list yet): it fills Home's one height instead of asking for its own 560, so Continue is
+   in view without scrolling. A longer step scrolls, as it does in the tall Home. */
+.home[data-layout="wide"] .fr { min-height: 0; }
