@@ -175,6 +175,17 @@ describe("clinging and pressing (M37c)", () => {
     for (let i = 0; i < 240; i++) e.update(1 / 60);
     expect(Math.abs(e.surface.press)).toBeLessThan(0.02);
   });
+  test("gone in at an edge it settles flat against it at once: no spring-back, no wobble (M51)", () => {
+    const e = new Engine37();
+    e.setSurface("right", 1, 0.9);
+    e.press(1);
+    for (let i = 0; i < 90; i++) e.update(1 / 60);
+    e.press(0.5, true);
+    let lowest = 1, highest = 0;
+    for (let i = 0; i < 120; i++) { e.update(1 / 60); lowest = Math.min(lowest, e.surface.press); highest = Math.max(highest, e.surface.press); }
+    expect(lowest).toBeGreaterThanOrEqual(0.49);
+    expect(highest).toBeLessThanOrEqual(0.51);
+  });
   test("a surface it does not know, or numbers that are not numbers, change nothing harmful", () => {
     const e = new Engine37();
     e.setSurface("sideways" as never, NaN, 9);

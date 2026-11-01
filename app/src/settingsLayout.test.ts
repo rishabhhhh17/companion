@@ -85,6 +85,17 @@ describe("Settings scrolls its page only, and a child row says one line (review,
     // Home's window is one fixed height while Settings is open, so the column has a height to scroll in.
     expect(rust).toContain("pub const SETTINGS_H: f64 = 640.0;");
   });
+  test("folded (big text), the sidebar is one scrolling strip, so it leaves the page most of the fixed 640 tall window", () => {
+    // Stacked as a column the sidebar took about 406 of 640 at Huge and left 3 to 4 lines of any page (review, 1 Nov).
+    const folded = /@container home \(width < 44rem\) \{([^\n]*)\}/.exec(parts);
+    expect(folded, "the folded block").toBeTruthy();
+    const block = folded![1];
+    expect(block).toMatch(/\.sb-list \{[^}]*display: flex;[^}]*overflow-x: auto;/);
+    expect(block).toMatch(/\.sb-item \{[^}]*width: auto;[^}]*flex: none;/);
+    expect(block).toMatch(/\.sb-sep \{[^}]*display: none;/);
+    // One row of tabs under the search box: the sidebar is two controls tall, not eleven.
+    expect(block).not.toMatch(/\.sb-list \{[^}]*display: grid/);
+  });
   test("while its parent is off, a child row's description is the Turn on line, not a second note under its own words", () => {
     const page = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     expect(page).toContain('const line = parentOff ? parentOff : d.key === "spend.dailyLimit"');

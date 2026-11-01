@@ -142,8 +142,24 @@ describe("other dangerous commands", () => {
       expect(v.undoable, c).toBe(false);
     });
   }
+  // A global flag before the subcommand (cargo takes them) must not hide the install, and neither must a flag's own value.
+  for (const c of ["cargo -q install x", "cargo --locked install x", "cargo --color never install x", "cargo --config net.offline=true install x", "cargo +nightly -q install x", "cargo -Z unstable-options install x", "cargo --manifest-path a/Cargo.toml install x", "cargo -q uninstall x"]) {
+    test(`cargo install after a global flag is still a tap: ${c}`, () => {
+      const v = bash(proj(), c);
+      expect(v.decision, c).toBe("ask");
+      expect(v.risk, c).toBe("install");
+      expect(v.undoable, c).toBe(false);
+    });
+  }
+  for (const c of ["brew --verbose install x", "brew -v upgrade", "gem --verbose install rails", "apt-get -y install x", "apt -y remove x", "port -v install x"]) {
+    test(`an install on the Mac after a flag is still a tap: ${c}`, () => {
+      const v = bash(proj(), c);
+      expect(v.decision, c).toBe("ask");
+      expect(v.risk, c).toBe("install");
+    });
+  }
   test("cargo build, test, check and run stay allowed", () => {
-    for (const c of ["cargo build", "cargo test", "cargo check", "cargo run", "cargo fmt", "cargo clippy"]) expect(bash(proj(), c).decision, c).toBe("allow");
+    for (const c of ["cargo build", "cargo test", "cargo check", "cargo run", "cargo fmt", "cargo clippy", "cargo -q build", "cargo --locked test", "cargo run -- install"]) expect(bash(proj(), c).decision, c).toBe("allow");
   });
   test("pip install outside a project environment is marked not undoable", () => {
     const was = process.env.VIRTUAL_ENV;

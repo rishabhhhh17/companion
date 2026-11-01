@@ -1,6 +1,6 @@
 # F19: Drop a file on the companion to convert it (20 Oct 2026)
 
-- **Status:** Founder decision, 20 Oct 2026. Adds to F17's "works on any app" screen features. Not to be reopened without the founder.
+- **Status:** Amended by F28 (30 Oct 2026, default switch only): the Files group switch (`files.on`) now starts off. The rest of this record stands. Founder decision, 20 Oct 2026. Adds to F17's "works on any app" screen features. Not to be reopened without the founder.
 - **Source:** the founder, after a Tangerine reel (hold Shift while dragging a file, a circular menu of conversions): "I wanna build this into the normal screen HeyClicky feature list."
 
 ## Decision

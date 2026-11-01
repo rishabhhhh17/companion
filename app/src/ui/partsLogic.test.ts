@@ -2,7 +2,7 @@
 // through a choice the way macOS does, a menu finds an option by its first letter and opens where it fits, and a verdict's
 // mark is only ever what verdict.ts decided.
 import { describe, expect, test } from "bun:test";
-import { clampTo, commitText, menuOpensUp, moveIndex, numberFromText, stepBy, typeahead, verdictMark } from "./partsLogic.ts";
+import { clampTo, commitText, menuOpensUp, moveIndex, numberFromText, stepBy, tabWrap, typeahead, verdictMark } from "./partsLogic.ts";
 import { verdictOf, type Facts } from "../verdict.ts";
 
 describe("Stepper", () => {
@@ -10,6 +10,14 @@ describe("Stepper", () => {
     expect(numberFromText("3")).toBe(3);
     expect(numberFromText(" 12.5 ")).toBe(12.5);
     expect(numberFromText("1,5")).toBe(1.5);
+    // A thousands comma is not a decimal point: "1,000" is a thousand, not 1.
+    expect(numberFromText("1,000")).toBe(1000);
+    expect(numberFromText("1,000,000")).toBe(1_000_000);
+    expect(numberFromText("1,250.5")).toBe(1250.5);
+    expect(numberFromText("−1,000")).toBe(-1000);
+    expect(numberFromText("0,25")).toBe(0.25);
+    expect(numberFromText("1,5,5")).toBeNull();
+    expect(numberFromText("12,34,567")).toBeNull();
     expect(numberFromText("−2")).toBe(-2);   // the minus sign the stepper itself shows
     expect(numberFromText(".5")).toBe(0.5);
     for (const t of ["", "abc", "3 seconds", "1e3", "--1", "1.2.3", "Infinity", "NaN"]) expect(numberFromText(t), t).toBeNull();
@@ -86,5 +94,17 @@ describe("Verdict line: the mark is only what verdict.ts decided (M45)", () => {
       expect(m.tone).toBe(v.tone);
       if (m.mark === "tick") expect(v.proven, JSON.stringify(f)).toBe(true);
     }
+  });
+});
+
+describe("Tab stays inside a dialog", () => {
+  test("from the last control it wraps to the first; Shift+Tab from the first or from the heading wraps to the last", () => {
+    expect(tabWrap(2, 3, false)).toBe(0);
+    expect(tabWrap(0, 3, true)).toBe(2);
+    expect(tabWrap(-1, 3, true)).toBe(2);
+    expect(tabWrap(-1, 3, false)).toBeNull();   // from the heading Tab goes on to the first control by itself
+    expect(tabWrap(1, 3, false)).toBeNull(); expect(tabWrap(1, 3, true)).toBeNull();
+    expect(tabWrap(0, 1, false)).toBe(0); expect(tabWrap(0, 1, true)).toBe(0);
+    expect(tabWrap(0, 0, false)).toBeNull();
   });
 });

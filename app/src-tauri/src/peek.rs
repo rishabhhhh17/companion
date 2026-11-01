@@ -661,13 +661,18 @@ mod wiring {
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }
         // The character's place and its trips go through the same helper, so a peek still moving never ends on an old target.
-        // M47: at once, except a let go near an edge, which springs onto it (docking::land_secs: never with less motion).
+        // M47, M51: at once, except a let go that goes in at an edge, which eases onto it with no overshoot (docking::land_secs: never with less motion).
         let apply = body("fn apply_dock(");
         assert!(apply.contains("set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES)"));
         assert!(apply.contains("let secs = if reason == \"drag\" { docking::land_secs(&landing, reduce_motion()) } else { None };"), "{apply}");
         assert!(body("fn apply_dock(").contains("peek_placed();"));
         assert!(body("fn roam_set(").contains("set_frame_moving(d, to_appkit(r, ph), None, None, &DOCK_MOVES)"));
-        assert!(body("fn set_frame_moving(").contains("let spring = secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);"));
+        // Only the character's own moves spring (peeking). Going in at an edge after a let go does not: apply_dock asks for a
+        // plain ease with LAND_EASE, which the one move uses up (M51: no bouncy feeling).
+        let helper = body("fn set_frame_moving(");
+        assert!(helper.contains("let ease = LAND_EASE.swap(false, Ordering::SeqCst);"), "{helper}");
+        assert!(helper.contains("let spring = !ease && secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);"), "{helper}");
+        assert!(apply.contains("if reason == \"drag\" { LAND_EASE.store(true, Ordering::SeqCst); }"), "{apply}");
     }
 
     #[test]

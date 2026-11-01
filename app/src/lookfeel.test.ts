@@ -64,14 +64,15 @@ describe("Home's theme", () => {
 });
 
 describe("how lively (M46, F28): Still, Gentle or Lively, one key of its own", () => {
-  test("the registry has its own key, Still by default, the three choices in order, and no mapping from the old ones", () => {
-    expect(def("character.lively")).toMatchObject({ default: "still", options: ["still", "gentle", "lively"], kind: "choice", live: true });
+  test("the registry has its own key, Lively by default (M51), the three choices in order, and no mapping from the old ones", () => {
+    expect(def("character.lively")).toMatchObject({ default: "lively", options: ["still", "gentle", "lively"], kind: "choice", live: true });
     expect((def("character.lively") as { from?: unknown }).from).toBeUndefined();
     expect(LIVELINESS).toEqual(["still", "gentle", "lively"]);
   });
-  test("anything that is not one of the three reads as Still, the usual: nothing old turns motion on", () => {
+  test("nothing set reads as the usual, Lively; a word that is not one of the three reads as Still: nothing old turns motion on", () => {
     for (const v of ["still", "gentle", "lively"] as const) expect(livelinessOf(v)).toBe(v);
-    for (const bad of [null, undefined, "", "calm", "Lively", true, false, 1, {}, "less", "followMac"]) expect(livelinessOf(bad)).toBe("still");
+    for (const unset of [null, undefined]) expect(livelinessOf(unset)).toBe("lively");
+    for (const bad of ["", "calm", "Lively", true, false, 1, {}, "less", "followMac"]) expect(livelinessOf(bad)).toBe("still");
   });
   test("the old two setting mapping is gone, and Less motion and reactions keep their own keys", () => {
     const src = readFileSync(new URL("./lookfeel.ts", import.meta.url), "utf8");

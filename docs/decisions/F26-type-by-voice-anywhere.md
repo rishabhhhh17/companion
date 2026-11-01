@@ -1,6 +1,6 @@
 # F26. Type by voice into any app
 
-- **Status:** Founder decision, 30 Oct 2026 ("do it"), after being told it changes the research's position on Wispr Flow.
+- **Status:** Amended by F28 (30 Oct 2026, default switch only): the Type by voice switch (`talk.dictate`) now starts off, not on as written below. The rest of this record stands. Founder decision, 30 Oct 2026 ("do it"), after being told it changes the research's position on Wispr Flow.
 - **Date:** 2026-10-30
 - **Related:** F17 and F18 (hold to talk), T11 (read through Accessibility, write by paste), T13 (on device Whisper), product_research.md sections 3, 4, 10, 12, M36
 

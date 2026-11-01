@@ -29,7 +29,17 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F15](F15-launch-priorities-and-new-ideas.md) | (amended by F17) Launch priorities (agents first, Prompt help, memory, Show me how last), the Pro memory idea, the website and onboarding (8 Oct 2026) |
 | [F16](F16-rescue-tutor-is-the-launch-hero.md) | The rescue tutor ("stuck? press the key") is the launch hero; what is parked (10 Oct 2026; amended by F17) |
 | [F17](F17-teaching-engine-and-launch-scope.md) | Source of truth for scope and order: Draw it for me and a teaching engine that works on any app, lesson packs for Lovable, Vercel and Supabase, settings guidance, the targeting and confidence rule, the launch list and build order (12 Oct 2026; amends F15 and F16) |
-| [F17](F17-guided-teaching-engine-for-builder-tools.md) | Keep Draw it for me and build a guided teaching engine for builder tools now (Lovable, Vercel, Supabase first); lessons are data (12 Oct 2026) |
+| [F18](F18-notch-home-companion-anywhere.md) | Home in the notch, the companion comes from anywhere, two key hold to talk (17 Oct 2026; amends F04 and F17) |
+| [F19](F19-drop-a-file-on-the-companion.md) | Drop a file on the companion to convert it (20 Oct 2026; default switch amended by F28) |
+| [F20](F20-elementals-groups.md) | Elementals: tools grouped by what they do on your Mac, one switch per group (21 Oct 2026; defaults amended by F28) |
+| [F21](F21-watch-connections-where-was-i.md) | Watch routines, read only builder connections and Where was I (22 Oct 2026; watch switch amended by F28) |
+| [F22](F22-company-pays-for-usage-gated.md) | The company pays for the model: built behind a switch, off until Anthropic says yes in writing (22 Oct 2026; proposed) |
+| [F23](F23-three-layers-hero-guide-helper.md) | Three layers: the hero for the niche, the guide for everyone, an AI helper for every LLM user (22 Oct 2026; default switch amended by F28) |
+| [F24](F24-product-name-squibby.md) | The product is called Squibby; the water character is Flowflow (22 Oct 2026) |
+| [F25](F25-pricing-free-and-pro.md) | Pricing: Free, and Pro at $10 a month (29 Oct 2026) |
+| [F26](F26-type-by-voice-anywhere.md) | Type by voice into any app (30 Oct 2026; default switch amended by F28) |
+| [F27](F27-flowflow-glass-water-and-water-ring.md) | Flowflow is clear glass water, and a water ring rides the pointer (30 Oct 2026) |
+| [F28](F28-one-product-status-first-quiet-by-choice.md) | The launch cut: one product (Fix it with proof, a receipt and Undo), Home tells the state first, the notch is bare, the person picks how lively Flowflow is (30 Oct 2026) |
 
 ## Technical decisions (accepted, open items checked where shown)
 
@@ -38,7 +48,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T01](T01-desktop-shell-tauri-nspanel.md) | Desktop shell: Tauri 2 + React, non activating panels | M0 spike (a) |
 | [T02](T02-engine-agent-sdk-pinned.md) | Engine: Claude Agent SDK, pinned to an exact version | M0 spikes (b), (g) |
 | [T03](T03-auth-bring-your-own-claude.md) | Auth: API key default, cloud credential, plan login behind a switch | M0 spike (c), email to Anthropic |
-| [T04](T04-runner-packaging-separate-signed-binary.md) | Runner packaging: Anthropic's binary shipped separately, never re-signed | M0 spike (b) |
+| [T04](T04-runner-packaging-separate-signed-binary.md) | Runner packaging: Anthropic's binary is never re-signed and never shipped in the app: it is installed at first run (M22), because bundling it is not allowed under the standard terms (update of 29 Oct 2026) | M0 spike (b) |
 | [T05](T05-safety-hooks-deny-rules-sandbox.md) | Safety: hooks, deny rules and the sandbox | M1 |
 | [T06](T06-undo-shadow-git-snapshots.md) | Undo: shadow git snapshots outside the project | M1 |
 | [T07](T07-proof-ladder.md) | Proof: exit codes first, eyes last | M3 |
@@ -51,6 +61,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T14](T14-local-data-markdown-and-sqlite.md) | Local data in markdown files and SQLite | M1 |
 | [T15](T15-connectors-and-scheduled-tasks.md) | Connectors, folder watching and scheduled tasks | M12 |
 | [T16](T16-settings-registry.md) | One settings registry (`protocol/settings.json`) read by the shell, the pages and the engine; `settings.json` kept by the shell only | M11 customize core; a real Mac check is still owed |
+| [T17](T17-pro-unlocks-with-a-dodo-license-key.md) | Pro unlocks with a Dodo license key, checked on the Mac (31 Oct 2026) | Dodo test mode; not yet proven |
 
 Still pending, written in the T records as options only (nothing is built for them until the founder decides):
 - T12: what to do if Claude Code keeps received screenshots on disk (spike (e) checks).

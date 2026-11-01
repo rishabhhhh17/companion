@@ -11,8 +11,8 @@ pub const POLL_MS: u64 = 50;
 pub const MOVED: f64 = 1.5;
 
 /// Whether the character's eyes follow the pointer: only with How lively at Lively (character.lively), and then with Its
-/// eyes or A water ring (character.follow), never with No. Nothing set (Null) or anything unknown is the usual one: Still
-/// for How lively, so the eyes stay ahead, and A water ring for what follows.
+/// eyes or A water ring (character.follow), never with No. Nothing set (Null) is the usual one: Lively for How lively
+/// (M51), so the eyes follow, and A water ring for what follows. A word it does not know is Still.
 pub fn follows(follow: &serde_json::Value, lively: &serde_json::Value) -> bool {
     crate::follow::is_lively(lively) && follow.as_str() != Some("off")
 }
@@ -39,15 +39,15 @@ mod tests {
     #[test]
     fn only_lively_with_its_eyes_or_the_water_ring_follows_the_pointer() {
         let null = serde_json::Value::Null;
-        // How lively (Null is the usual Still, and a word it does not know is Still too) by what follows (Null is the usual
+        // How lively (Null is the usual Lively, and a word it does not know is Still) by what follows (Null is the usual
         // water ring).
         for lively in [json!("still"), json!("gentle"), json!("lively"), null.clone(), json!("calm"), json!(true)] {
             for follow in [json!("eyes"), json!("drop"), json!("off"), null.clone()] {
-                let want = lively == json!("lively") && follow != json!("off");
+                let want = (lively == json!("lively") || lively.is_null()) && follow != json!("off");
                 assert_eq!(follows(&follow, &lively), want, "lively {lively}, follow {follow}");
             }
         }
-        assert!(!follows(&null, &null), "the usual: Still, so the eyes stay ahead");
+        assert!(follows(&null, &null), "the usual: Lively, so the eyes follow the pointer");
     }
     #[test]
     fn the_thread_reads_the_pointer_only_while_the_eyes_follow_it_and_otherwise_sleeps_with_no_timer() {

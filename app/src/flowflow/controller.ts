@@ -112,7 +112,7 @@ export class FlowflowController {
   arrive(fromX: number, fromY = 0): void { if (this.disposed || this.reduced) return; this.engine.arrive(fromX, fromY); this.news(); }
   /** M37c: the surface the water clings to, and how hard it is pushed into it (engine.ts Surface). */
   setSurface(side: Side | null, at = 1, cling = 0): void { if (this.disposed) return; this.engine.setSurface(side, at, cling); this.nudge(); }
-  press(amount: number): void { if (this.disposed) return; this.engine.press(amount); if (!this.reduced) this.lastNews = performance.now(); this.nudge(); }
+  press(amount: number, firm = false): void { if (this.disposed) return; this.engine.press(amount, firm); if (!this.reduced) this.lastNews = performance.now(); this.nudge(); }
   /** M46 (F28): Still, Gentle or Lively. A new choice is news, so it shows at once and then follows its own rule. */
   setLiveliness(m: Liveliness): void {
     if (this.disposed) return;

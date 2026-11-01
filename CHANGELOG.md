@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The edge, the water ring and the ask box: 1 Nov 2026
+
+- **Pushing the character into a screen edge now just goes in, with no bounce.** Push it hard into the edge, or throw it at the edge, and it goes straight in. Keep it there for about two seconds and it rests there (the water flattens while you hold it, so you can see it will stay). If you are only playing with it near the edge, it stays exactly where you let go. The old "always sticks when I let go near an edge" is a choice in Settings, Flowflow, "Going into the edge".
+- **The water ring follows your pointer again.** I had made Still the usual, and Still only showed the ring while you were talking. Lively is the usual now. Still and Gentle are still there for a quieter Mac.
+- **Typing in the ask box no longer turns the whole box white.** It gets a soft blue edge and glow instead.
+- **Six tests that started failing on 1 Nov** (they counted last month's fixes on the real clock) now run on a fixed date.
+- **Review round:** 26 problems found by reading every part of the app, each checked by a second reader, then fixed. Among them: `cargo` with a flag in front still asks before installing, a fix that has started counts against the free limit before it is proven, more of your logins and shell start-up files are out of reach of checks, a release build no longer passes developer settings to the engine, and the README, the decisions index and the repo map match the repo again.
+
 ## cargo install asks first: 31 Oct 2026
 
 - **Installing a Rust tool for your whole Mac now needs your tap.** `cargo install` puts a program in your Mac's own tools folder, outside your project, where Undo cannot reach it. It used to run with no question. It now asks like the other installs on your Mac (Homebrew, global npm), and the card says Undo cannot take it back. Building, testing and running a Rust project are unchanged.

@@ -97,9 +97,12 @@ html.home-page, body.home-page { background: transparent; }
 .headline { color: var(--fg); font-size: var(--t-display); font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; text-wrap: balance; margin: var(--space-2) 0 var(--space-1); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
 .subline { font-size: var(--t-small); line-height: 1.4; color: var(--fg-2); margin: var(--space-1) 0 0; }
 /* The ask box: a field with the mic and the send key inside it. Its edge is a control's edge (3 to 1, a11y.test.ts); on
-   focus it turns --fg. */
-.home .ask { align-items: flex-end; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface-1); border: 1px solid var(--edge-control); border-radius: var(--r-card); transition: border-color var(--dur-2) var(--ease-out); }
-.home .ask:focus-within { border-color: var(--fg); }
+   focus its edge turns the water colour with a soft glow, never white (the founder, 1 Nov 2026: typing turned the whole
+   box white). The field inside draws no outline of its own: the box is the one thing that shows focus. */
+.home .ask { align-items: flex-end; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface-1); border: 1px solid var(--edge-control); border-radius: var(--r-card); transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.home .ask:focus-within { border-color: var(--water); box-shadow: 0 0 0 3px color-mix(in srgb, var(--water) 22%, transparent); }
+.home .ask textarea { outline: 0; }
+.home .ask textarea:focus-visible { outline: var(--ring) solid transparent; }   /* the box shows focus; this one shows in forced colours */
 .home .ask textarea { border: 0; background: transparent; color: var(--fg); caret-color: var(--fg); padding: calc(8rem / 14) calc(6rem / 14); border-radius: var(--r-card); }
 .home .ask textarea::placeholder { color: var(--fg-2); }
 .home .ask .ask-mark { align-self: center; flex: none; display: grid; place-items: center; margin-left: calc(8rem / 14); color: var(--fg-2); }
@@ -489,7 +492,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* Make it yours. */
 /* Connect and the folder. */
 .fr-steps { margin: 0 0 var(--space-3); padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 1.2em); display: grid; gap: var(--space-1); border-radius: var(--r-card); background: var(--fr-card-2); color: var(--fr-ink); font-size: var(--t-small); box-shadow: inset 0 0 0 1px var(--fr-edge); }
-.fr-keyrow { display: flex; gap: var(--space-2); }
+.fr-keyrow { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-ok { margin: 0; color: var(--fg); font: 700 var(--t-answer) var(--font); }
 .fr-folder { display: grid; gap: 2px; padding: var(--space-4); border: 1px solid var(--fr-folder-edge); border-radius: var(--r-card); background: color-mix(in srgb, var(--water) 8%, var(--fr-sky)); color: var(--fr-ink); text-align: left; cursor: default; }
 .fr-folder b { font: 700 var(--t-answer) var(--font); }
@@ -499,6 +502,8 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* M49: Flowflow lives on the water after the hello, at the right of the waterline, riding it up as the steps go on. */
 .fr-tank .fr-float { position: absolute; right: var(--space-5); top: 0; width: calc(96rem / 14); translate: 0 -66%; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
 .fr-tank .fr-float .home-char { width: 100%; margin: 0; }
+/* A narrow window leaves the Your Claude step no room under the key row for the character, so it stays out of that step. */
+@media (max-width: 480px) { .fr[data-step="claude"] .fr-float { display: none; } }
 .fr-watch { align-self: flex-start; }
 /* Your Claude: the three honest lines over the key field. */
 .fr-honest { margin: 0 0 var(--space-4); padding: 0 0 0 1.1em; display: grid; gap: var(--space-2); max-width: 46ch; color: var(--fg-2); font-size: var(--t-small); line-height: 1.45; }

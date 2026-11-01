@@ -24,6 +24,10 @@ describe("places agents may never read", () => {
   test("the Keychain, browser data, mail and messages", () => {
     for (const s of ["Library/Keychains", "Library/Application Support/Google/Chrome", "Library/Safari", "Library/Cookies", "Library/Messages", "Library/Mail"]) expect(p, s).toContain(`${HOME}/${s}`);
   });
+  // The deploy tools' logins, the shell's start up files (they often export API keys) and the other tools' key files.
+  test("deploy tool logins, shell start up files and other key files", () => {
+    for (const s of ["Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify", ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".pgpass", ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile"]) expect(p, s).toContain(`${HOME}/${s}`);
+  });
   test("shell history", () => { expect(p).toContain(`${HOME}/.zsh_history`); expect(p).toContain(`${HOME}/.bash_history`); });
   test("every entry is a full path inside the home folder", () => { for (const x of p) { expect(x.startsWith(HOME + "/"), x).toBe(true); expect(x.includes("..")).toBe(false); } });
   test("ordinary places agents need are not on the list", () => {

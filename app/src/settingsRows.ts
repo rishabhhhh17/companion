@@ -56,14 +56,6 @@ export function rowModel(d: Def, value: unknown, usual: unknown, project: string
   };
 }
 
-/** A number as a person types it: digits with at most one point, a "$" in front is fine. Anything else is not a number. */
-export function numberFrom(text: string): number | null {
-  const t = text.trim().replace(/^\$\s*/, "");
-  if (!/^\d+(\.\d+)?$/.test(t)) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-}
-
 // ---------- search ----------
 
 /** Lower case, without accents, so "Cafe" finds "Café". */

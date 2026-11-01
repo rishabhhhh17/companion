@@ -2,9 +2,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
-import { changeSetting, useSetting } from "./settingsStore.ts";
-import { STEPS, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
-import type { Liveliness } from "./lookfeel.ts";
+import { changeSetting, setting as getSetting, useSetting } from "./settingsStore.ts";
+import { STEPS, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyShownFirst, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
+import { livelinessOf, type Liveliness } from "./lookfeel.ts";
+import { whatOf } from "./approvals.ts";
 import { keyRows, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -45,6 +46,11 @@ type Props = {
 
 const EDGES: Edge[] = ["left", "right", "top", "bottom"];
 const LIVELY: Liveliness[] = ["still", "gentle", "lively"];
+/** The choices in force for Make it yours, so a first run shown again starts from them and writes only what is changed. */
+const yoursNow = (): Pick<Yours, "name" | "lively" | "edge"> => {
+  const name = getSetting("character.name"), edge = getSetting("character.edge");
+  return { name: typeof name === "string" ? name : "", lively: livelinessOf(getSetting("character.lively")), edge: EDGES.includes(edge as Edge) ? (edge as Edge) : null };
+};
 const folderName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 type Fold = "how" | "yours" | "powers" | "keys" | "questions";
 
@@ -56,7 +62,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // The questions the person answered here: only their own answers are kept (rule 15), so a skip saves none of them, and
   // a pre-filled answer they never touched is never saved as theirs.
   const [answered, setAnswered] = useState<ReadonlySet<keyof Answers>>(() => new Set());
-  const [yours, setYours] = useState<Yours>(DEFAULT_YOURS);
+  const [yours, setYours] = useState<Yours>(() => ({ ...DEFAULT_YOURS, ...yoursNow() }));
   // The groups switched off here (F20), starting from the values in force (F28: the non hero groups start off).
   const [groupsOff, setGroupsOff] = useState<SwitchedId[]>(() => offGroups());
   const [key, setKey] = useState("");
@@ -98,7 +104,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // What was chosen on the way (the name, how lively, the edge, the groups) is kept however the first run ends; the answers
   // to the questions only when the person gave them and then finishes (Go to my project, or a skip after answering).
   const keepChoices = () => {
-    for (const [k, v] of yoursSettings(yours, own)) void changeSetting(k, v);
+    for (const [k, v] of yoursSettings(yours, own, yoursNow())) void changeSetting(k, v);
     for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);
   };
   const finish = () => {
@@ -172,7 +178,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // after a failure). A passing check of the project as it is is not a proven fix, so it rests rather than celebrates.
   const look: CharacterState = stage === "checking" ? "checking" : stage === "asking" || (stage === "done" && point?.stage === "found") ? "needsYou" : "idle";
   const fold = (id: Fold, title: string, body: React.ReactNode) => <Disclosure title={title} open={open === id} onToggle={(o) => setOpen(o ? id : null)}>{body}</Disclosure>;
-  const firstKeys = keyRows(keys).filter((r) => FIRST_KEYS.includes(r.job) && !r.none && keys.using[r.job as keyof typeof keys.using]);
+  const firstKeys = keyRows(keys).filter((r) => FIRST_KEYS.includes(r.job) && !r.none && keys.using[r.job as keyof typeof keys.using] && keyShownFirst(r.job, groupsOff));
   return (
     <section className="panel onboarding fr" data-step={step} aria-label={S.obTitle} ref={box} style={level}>
       <div className="fr-tank" aria-hidden="true"><Waterline under />{step !== "hello" && open === null && <div className="fr-float"><HomeCharacter as={look} /></div>}</div>
@@ -265,7 +271,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {asks.map((a) => (
           <Card key={a.id} title={S.fr.checkAsk} className="fr-ask">
             <p>{a.title}</p>
-            {a.action && <code className="fr-cmd">{a.action}</code>}
+            {(() => { const what = whatOf(a.action, project); return what && <code className="fr-cmd">{what}</code>; })()}
             <div className="row">
               <Button kind="secondary" cancel label={`${S.dontAllow}: ${a.title}`} onClick={() => answer(a.id, false)}>{S.dontAllow}</Button>
               <Button kind="secondary" label={`${S.allow}: ${a.title}`} onClick={() => answer(a.id, true)}>{S.allow}</Button>

@@ -1,6 +1,6 @@
 # F23. Three layers: the hero for the niche, the guide for everyone (HeyClicky class, agents on day one), and an AI helper for every LLM user
 
-- **Status:** Founder decision, 22 Oct 2026. It reopens F18 item 4 ("general assistant features are not in the launch") and un-parks things F16 and F17 parked. F10's gate still applies to the model bill: see F22.
+- **Status:** Amended by F28 (30 Oct 2026, default switch only): the Second Look switch (`secondLook.on`) and the Draw it switch (`drawIt.on`) now start off. The rest of this record stands. Founder decision, 22 Oct 2026. It reopens F18 item 4 ("general assistant features are not in the launch") and un-parks things F16 and F17 parked. F10's gate still applies to the model bill: see F22.
 - **Date:** 2026-10-22
 - **Source:** the founder, in the build session of 22 Oct 2026: "the hero product has to be where someone always does like niche, but the HeyClicky product has to be able to be used for everyone, and we also have features that make us better than HeyClicky." "I want my HeyClicky feature to do exactly what HeyClicky can do now. I don't mind having the agents run from the first day. They can be very basic agents: they can make websites, random things." "Our hero product is this. The cross sell is the HeyClicky thing, and a third cross sell is making your life easier with using AI." "Everyone with an LLM, whoever they are (CEOs, founders, engineers, non engineers)."
 - **Related:** F16, F17, F18, F22, M11 (`M11-match-and-beat.md`), M14 (`docs/milestones/M14-guide-agents-and-second-look-plan.md`)

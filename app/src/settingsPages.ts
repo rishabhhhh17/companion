@@ -62,7 +62,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "flowflow.preview", items: [f("preview")] },
       { id: "flowflow.lively", items: ["character.lively"] },
       { id: "flowflow.look", items: ["look.water", "look.size", "character.name"] },
-      { id: "flowflow.place", items: ["character.edge", "character.peek", "character.follow"] },
+      { id: "flowflow.place", items: ["character.edge", "character.dockWhen", "character.peek", "character.follow"] },
       { id: "flowflow.sound", items: ["sound.on"] },
     ],
     more: [{ id: "more.flowflow.motion", items: ["character.position", "character.sameEverywhere", "character.comeTo", "character.linger", "character.motion", "character.restLowPower", "character.overFullScreen", "character.peekIdle", "character.live", "fun.reactions", "sound.volume"] }],

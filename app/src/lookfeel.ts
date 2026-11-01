@@ -40,7 +40,7 @@ export function flowColours(w: Water): { light: string; deep: string } {
  *  motion (character.motion) stays the accessibility control and always wins. Anything else reads as Still. */
 export const LIVELINESS = ["still", "gentle", "lively"] as const;
 export type Liveliness = (typeof LIVELINESS)[number];
-export function livelinessOf(v: unknown): Liveliness { return typeof v === "string" && (LIVELINESS as readonly string[]).includes(v) ? (v as Liveliness) : "still"; }
+export function livelinessOf(v: unknown): Liveliness { return v == null ? "lively" : typeof v === "string" && (LIVELINESS as readonly string[]).includes(v) ? (v as Liveliness) : "still"; }
 
 /** The character's size on the edge. Its window stays 160 points square (main.rs DOCK), so large is only as big as still
  *  leaves the water room to wobble inside it. */

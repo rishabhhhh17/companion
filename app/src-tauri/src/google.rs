@@ -167,7 +167,7 @@ pub struct Tokens { pub access: String, pub expires_in: u64, pub refresh: Option
 pub struct Person { pub sub: String, pub email: String, pub name: String, pub picture: String }
 
 pub fn read_tokens(body: &str) -> Result<Tokens, String> {
-    let v: Value = serde_json::from_str(body).map_err(|_| "Google gave an answer Squibby could not read.".to_string())?;
+    let v: Value = serde_json::from_str(body).map_err(|_| concat!("Google gave an answer ", crate::product!(), " could not read.").to_string())?;
     if let Some(e) = v.get("error").and_then(Value::as_str) {
         return Err(match e { "invalid_grant" => "Google said the sign in has expired. Try again.".into(), "access_denied" => "Google said no to the sign in.".into(), _ => format!("Google said no ({e}).") });
     }

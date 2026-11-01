@@ -150,6 +150,16 @@ describe("the old product name is not in anything a person reads", () => {
     const rs = [...walk("app/src-tauri/src")].filter((f) => f.endsWith(".rs"));
     expect(leftovers(rs, (f) => stripRustComments(read(f)).split("\n"))).toEqual([]);
   });
+  // A rename must not leave one branch of a sentence on the old name: the engine's sentences take the name from names.ts.
+  test("engine sentences take the product's name from names.ts, never type it", () => {
+    const literal = /"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g;
+    const typed = new RegExp(`\\b${names.product}\\b`);
+    const found: string[] = [];
+    for (const f of ts("runner/src").filter((f) => f !== "runner/src/names.ts")) {
+      codeLinesTs(f).forEach((l, i) => { if ((l.match(literal) ?? []).some((s) => typed.test(s))) found.push(`${f}:${i + 1}: ${l.trim().slice(0, 160)}`); });
+    }
+    expect(found).toEqual([]);
+  });
   test("the stripper really removes comments and keeps strings", () => {
     const s = stripRustComments('let a = "x // not a comment"; // Companion\n/* Companion /* nested */ Companion */ let b = r#"keep Companion"#; let c = \'"\'; /// Companion');
     expect(s).toContain('"x // not a comment"'); expect(s).toContain('r#"keep Companion"#'); expect(s.match(/Companion/g)!.length).toBe(1);

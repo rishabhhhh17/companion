@@ -52,7 +52,8 @@ const fire = (ev: string, payload: unknown = null) => listeners.get(ev)?.({ payl
 const state = (name: string) => ({ name, captionOn: cap.classList.contains("on"), caption: cap.textContent, drawn: svg.querySelectorAll("ellipse, path, g").length, ellipses: svg.querySelectorAll("ellipse").length, pending: frames.length });
 const snap = (values: Record<string, unknown>) => ({ values, usual: {}, project: "", migrated: ["pageStorage.v1"], problems: [], changed: [] });
 /** M46: the flight is the opt in Fly to the place first (point.fly); these scenarios turn it on to keep it covered. */
-const FLY = snap({ "point.fly": true });
+// M51: Lively is the usual now, so the scenarios that are about the calm ring say so (character.lively: still).
+const FLY = snap({ "point.fly": true, "character.lively": "still" });
 
 const point = (caption: string, x: number, settings: unknown = FLY) => ({ rect: { x, y: 300, w: 80, h: 30 }, from: { x: 20, y: 20 }, caption, exact: true, hold: true, reduced: false, flyMs: 600, settings });
 
@@ -96,7 +97,7 @@ out.push(state("party with a caption and no ring"));
 // M46: with Fly to the place first off (the usual), the ring shows at the place at once: the caption is on as soon as the
 // ring is ordered, and no drop is drawn at all (only the ring's own line).
 fire("overlay-clear");
-fire("overlay-point", point("Click Save", 700, snap({})));
+fire("overlay-point", point("Click Save", 700, snap({ "character.lively": "still" })));
 out.push(state("no fly: at once"));
 // Outside Lively the ring draws in, then holds still: nothing is scheduled while it waits for the click.
 advance(1000);
@@ -117,9 +118,9 @@ advance(1000);
 out.push(state("lively: wobbles"));
 // A right click outside Lively: the ring turns green with the tick and the words, and nothing bursts or flies home.
 fire("overlay-clear");
-fire("overlay-point", point("Click Save", 700, snap({})));
+fire("overlay-point", point("Click Save", 700, snap({ "character.lively": "still" })));
 advance(400);
-fire("overlay-celebrate", { rect: { x: 700, y: 300, w: 80, h: 30 }, home: null, settings: snap({ "fun.reactions": true }) });
+fire("overlay-celebrate", { rect: { x: 700, y: 300, w: 80, h: 30 }, home: null, settings: snap({ "fun.reactions": true, "character.lively": "still" }) });
 out.push({ ...state("celebrate: still"), splash: svg.querySelectorAll("g.splash").length });
 
 for (const o of out) console.log(JSON.stringify(o));

@@ -208,15 +208,19 @@ pub fn read_curl(out: &str) -> Option<(u16, String)> {
     (code >= 100).then(|| (code, body.to_string()))
 }
 impl Transport for Curl {
-    fn post_json(&self, url: &str, body: &str) -> Option<(u16, String)> {
-        use std::io::Write;
-        if https_host(url).is_none() { return None; }
-        let mut child = std::process::Command::new("/usr/bin/curl").args(curl_args(url))
-            .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
-        child.stdin.take()?.write_all(body.as_bytes()).ok()?;
-        let out = child.wait_with_output().ok()?;
-        read_curl(&String::from_utf8_lossy(&out.stdout))
-    }
+    fn post_json(&self, url: &str, body: &str) -> Option<(u16, String)> { post_json_with("/usr/bin/curl", url, body) }
+}
+/// `post_json` with the program named (tests give a stand in that prints what it was given). curl reads no settings file
+/// (-q) and starts with nothing of the app's environment but a plain PATH, as google.rs does: SSLKEYLOGFILE, CURL_CA_BUNDLE,
+/// SSL_CERT_FILE, CURL_HOME and the proxy variables, set for the person's session by another program, never see the key.
+pub fn post_json_with(program: &str, url: &str, body: &str) -> Option<(u16, String)> {
+    use std::io::Write;
+    if https_host(url).is_none() { return None; }
+    let mut child = std::process::Command::new(program).args(curl_args(url)).env_clear().env("PATH", "/usr/bin:/bin")
+        .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
+    child.stdin.take()?.write_all(body.as_bytes()).ok()?;
+    let out = child.wait_with_output().ok()?;
+    read_curl(&String::from_utf8_lossy(&out.stdout))
 }
 
 // ---------- Dodo's answers ----------
@@ -748,7 +752,7 @@ pub mod tests {
         assert!(args.windows(2).any(|w| w[0] == "--proto" && w[1] == "=https"));
         assert!(!args.iter().any(|a| a.contains(KEY) || a.contains("license_key")));
         let src = include_str!("license.rs");
-        let post = &src[src.find("impl Transport for Curl").unwrap()..]; let post = &post[..post.find("\n}\n").unwrap()];
+        let post = &src[src.find("pub fn post_json_with").unwrap()..]; let post = &post[..post.find("\n}\n").unwrap()];
         assert!(post.contains(".args(curl_args(url))") && post.contains("write_all(body.as_bytes())"), "{post}");
         assert!(post.contains("stderr(std::process::Stdio::null())"));
         assert_eq!(read_curl("{\"valid\":true}\n200"), Some((200, "{\"valid\":true}".into())));
@@ -756,6 +760,32 @@ pub mod tests {
         assert_eq!(read_curl(""), None);
         assert_eq!(read_curl("a\nb\n404"), Some((404, "a\nb".into())));
         assert_eq!(Curl.post_json("http://test.dodopayments.com/x", "{}"), None, "never a plain http address");
+    }
+    #[test]
+    fn the_license_request_never_gives_curl_the_apps_environment() {
+        // The key travels on curl's standard input, so curl must not be steered by what another program set for the session
+        // (a TLS key log, another CA file, a proxy, a settings folder). A stand in prints its environment as the answer body.
+        let dir = std::env::temp_dir().join(format!("license-curl-{}", std::process::id())); let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join("curl");
+        std::fs::write(&fake, "#!/bin/sh\ncat >/dev/null\nfor a in \"$@\"; do echo \"arg:$a\"; done\n/usr/bin/env\nprintf '\\n200'\n").unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(std::env::var_os("HOME").is_some(), "the test itself has a home folder to leak");
+        let (code, out) = post_json_with(fake.to_str().unwrap(), "https://test.dodopayments.com/licenses/validate", "{}").unwrap();
+        assert_eq!(code, 200);
+        assert_eq!(out.lines().next(), Some("arg:-q"), "{out}");
+        let env: Vec<&str> = out.lines().filter(|l| !l.starts_with("arg:") && l.contains('=')).collect(); // curl's -w argument holds a newline, so one echoed argument spans two lines
+        // Failure messages name the variables only, never their values (the test's own environment can hold secrets).
+        let names: Vec<&str> = env.iter().map(|l| l.split('=').next().unwrap_or("")).collect();
+        assert!(env.contains(&"PATH=/usr/bin:/bin"), "{names:?}");
+        for k in ["HOME", "CURL_HOME", "XDG_CONFIG_HOME", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "SSL_CERT_FILE", "CURL_CA_BUNDLE", "SSLKEYLOGFILE"] {
+            assert!(!names.contains(&k), "{k} reached curl: {names:?}");
+        }
+        // Only what the shell running the stand in adds itself may be there besides PATH.
+        assert!(names.iter().all(|n| ["PATH", "PWD", "SHLVL", "_"].contains(n)), "{names:?}");
+        assert_eq!(post_json_with(fake.to_str().unwrap(), "http://test.dodopayments.com/x", "{}"), None, "never a plain http address");
+        let _ = std::fs::remove_dir_all(&dir);
     }
     #[test]
     fn a_key_that_does_not_look_like_one_is_refused_without_repeating_it() {

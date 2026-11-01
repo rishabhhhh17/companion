@@ -8,7 +8,7 @@ import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
 import type { Verdict } from "../verdict.ts";
-import { clampTo, commitText, menuOpensUp, moveIndex, stepBy, typeahead, verdictMark, type Range, type Stepped } from "./partsLogic.ts";
+import { clampTo, commitText, menuOpensUp, moveIndex, stepBy, tabWrap, typeahead, verdictMark, type Range, type Stepped } from "./partsLogic.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
 
@@ -374,6 +374,9 @@ export function SidebarItem({ icon, label, selected, attention, onClick, id }: {
   );
 }
 
+/** What Tab can reach inside a dialog: its enabled buttons, fields and links (the heading, tabindex -1, is reached by script). */
+const TABBABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 /** An editor that slides over the content column from the right: a title, Cancel, and Save, which waits until something
  *  changed. Closing with changes not saved asks first. Opened by the person's own press, so it takes the keyboard.
  *  `instant`: every change in it applies at once (a list of apps, the keys), so its one button is Done. */
@@ -381,6 +384,7 @@ export function Sheet({ title, dirty, onSave, onClose, saveLabel = S.ui.save, in
   const tid = useId();
   const head = useRef<HTMLHeadingElement>(null);
   const [asking, setAsking] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
   // The button that opened it gets the keyboard back when it closes, only by the rule every move in Home follows (focus.ts).
   const opener = useRef<HTMLElement | null>(typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null));
   useEffect(() => { head.current?.focus(); return () => { takeIfLost(() => opener.current); }; }, []);
@@ -388,8 +392,16 @@ export function Sheet({ title, dirty, onSave, onClose, saveLabel = S.ui.save, in
   return (
     <div className="ui-sheet-layer">
       <div className="ui-scrim" aria-hidden="true" onPointerDown={leave} />
-      <div className="ui-sheet" role="dialog" aria-modal="true" aria-labelledby={tid}
-        onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (asking) setAsking(false); else leave(); } }}>
+      <div className="ui-sheet" role="dialog" aria-modal="true" aria-labelledby={tid} ref={box}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); if (asking) setAsking(false); else leave(); }
+          // Tab never leaves the dialog for the covered page: at either end it wraps round.
+          if (e.key === "Tab" && !e.nativeEvent.isComposing) {
+            const els = [...(box.current?.querySelectorAll<HTMLElement>(TABBABLE) ?? [])];
+            const to = tabWrap(els.indexOf(document.activeElement as HTMLElement), els.length, e.shiftKey);
+            if (to !== null || els.length === 0) { e.preventDefault(); els[to ?? 0]?.focus(); }
+          }
+        }}>
         <div className="ui-sheet-head">
           <h2 className="ui-sheet-title" id={tid} ref={head} tabIndex={-1}>{title}</h2>
           <Button kind="quiet" onClick={leave}>{S.ui.cancel}</Button>

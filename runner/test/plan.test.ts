@@ -165,6 +165,38 @@ describe("what counts as one free fix", () => {
     expect(g.store.count("2026-10")).toBe(1);
     expect(g.usage()).toMatchObject({ used: 1, everUsed: true });
   });
+  test("fixes started before any is proven all count toward the limit", () => {
+    const g = gateOf({ limit: 3 });
+    g.gate.setState(free);
+    g.fix("a"); g.fix("b");                                // 2 of 3 proven
+    expect(g.gate.admit(start("c"))).not.toBeNull();       // the third is admitted, not yet proven
+    expect(g.gate.admit(start("d", { project: "/Users/me/other" }))).toBeNull();   // another project, same moment: refused
+    expect(g.limits().at(-1)).toMatchObject({ reason: "fixes", command: "agent.start", agent: "d" });
+    g.gate.proven(g.gate.ticketOf("c"), 1);
+    expect(g.store.count("2026-10")).toBe(3);
+    expect(g.gate.admit(start("d", { project: "/Users/me/other" }))).toBeNull();   // proven now counts, still at the limit
+  });
+  test("a fix that ends unproven gives its place back, and so does starting another task on the same agent", () => {
+    const g = gateOf({ limit: 1 });
+    g.gate.setState(free);
+    expect(g.gate.admit(start("a"))).not.toBeNull();
+    expect(g.gate.admit(start("b"))).toBeNull();           // a is still in flight
+    g.gate.ended(g.gate.ticketOf("a"));                    // it stopped, failed or ended unproven
+    expect(g.gate.admit(start("b"))).not.toBeNull();
+    expect(g.gate.admit(start("b"))).not.toBeNull();       // b's own earlier start, replaced by this one, holds no place of its own
+    expect(g.gate.admit(start("c"))).toBeNull();
+    g.gate.ended(g.gate.ticketOf("b"));
+    expect(g.gate.admit(start("c"))).not.toBeNull();
+  });
+  test("a follow up of an admitted fix does not take a second place", () => {
+    const g = gateOf({ limit: 2 });
+    g.gate.setState(free);
+    expect(g.gate.admit(start("a"))).not.toBeNull();
+    const send = { v: 1, id: "f", type: "agent.send", agent: "a", project: PROJECT, text: "again" } as Command;
+    expect(g.gate.admit(send)).toBe(send);
+    expect(g.gate.admit(start("b"))).not.toBeNull();       // 1 in flight + 1 new = 2, not 3
+    expect(g.gate.admit(start("c"))).toBeNull();
+  });
   test("a follow up or Try again on an admitted fix is free and counts with it", () => {
     const g = gateOf({ limit: 1 });
     g.gate.setState(free);

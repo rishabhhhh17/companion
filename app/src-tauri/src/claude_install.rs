@@ -108,7 +108,7 @@ pub fn install(root: &Path, pin: &Pin, progress: &dyn Fn(u64, Option<u64>)) -> R
         let ok = std::process::Command::new("/usr/bin/tar").arg("-xzf").arg(&tgz).arg("-C").arg(&work).arg("package/claude")
             .stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
         let got = work.join("package").join("claude");
-        if !ok || !got.is_file() { return Err(fail("The download was not the package Squibby expected.")); }
+        if !ok || !got.is_file() { return Err(fail(concat!("The download was not the package ", crate::product!(), " expected."))); }
         if !verify(&got, pin) { return Err(fail("The program was not signed by Anthropic, so it was not used.")); }
         let dir = target.parent().ok_or_else(|| fail("The pinned version is not valid."))?;
         std::fs::create_dir_all(dir).map_err(|_| fail("Could not make Claude's folder."))?;

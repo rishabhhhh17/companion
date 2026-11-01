@@ -70,9 +70,14 @@ describe("the parts", () => {
     expect(sh).toContain("{S.ui.discardChanges}");
     expect(sh).toContain('role="dialog" aria-modal="true"');
   });
+  test("a sheet keeps Tab inside itself: it wraps at both ends instead of reaching the covered page", () => {
+    const sh = part("Sheet(");
+    expect(sh).toContain('e.key === "Tab"');
+    expect(sh).toContain("tabWrap(");
+  });
   test("nothing takes the keyboard on its own (rule 9): only a menu the person opened and a sheet the person opened", () => {
     const focusCalls = [...src.matchAll(/\.focus\(\)/g)].length;
-    // Segmented and Picture choice move it within themselves on an arrow; Menu on open and on close; Sheet on open.
+    // Segmented and Picture choice move it within themselves on an arrow; Menu on open and on close; Sheet on open and when Tab wraps round inside it.
     expect(focusCalls).toBeLessThanOrEqual(6);
     expect(part("Menu<")).toContain("if (!open || !list.current || !btn.current) return;");
     expect(src).not.toMatch(/autoFocus/);

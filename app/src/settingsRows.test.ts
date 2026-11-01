@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { REGISTRY, defOf, type Def } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
-import { floorWords, fold, folderName, homeSizeHint, numberFrom, PLACE_KEYS, rowModel, searchSettings, shownNow, valueWords } from "./settingsRows.ts";
+import { floorWords, fold, folderName, homeSizeHint, PLACE_KEYS, rowModel, searchSettings, shownNow, valueWords } from "./settingsRows.ts";
 
 const d = (key: string) => defOf(key)!;
 const text: Def = { key: "test.press", section: "checks", kind: "text", default: "", maxLength: 60, scope: "project", applies: ["runner"], store: "settings", live: false };
@@ -84,10 +84,7 @@ describe("one row of each kind", () => {
     expect(rowModel(d("keys.hotkeys"), {}, {}, "").canReset).toBe(false);
     expect(valueWords(d("talk.voice"), null)).toBe("your Mac's own voice and microphone");
   });
-  test("helpers: a typed number, a folder's name, letters without accents", () => {
-    expect(numberFrom("$ 12.50")).toBe(12.5);
-    expect(numberFrom(" 120 ")).toBe(120);
-    for (const bad of ["", "abc", "1,000", "12..5", "1e3"]) expect(numberFrom(bad), bad).toBeNull();
+  test("helpers: a folder's name, letters without accents", () => {
     expect(folderName("/Users/me/Sites/shop/")).toBe("shop");
     expect(fold("Café Ÿes")).toBe("cafe yes");
   });

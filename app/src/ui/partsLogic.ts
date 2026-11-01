@@ -9,9 +9,12 @@ export type Range = { min?: number; max?: number; step?: number };
 const decimals = (n: number): number => { const s = String(n); const i = s.indexOf("."); return i < 0 ? 0 : s.length - i - 1; };
 const tidy = (n: number, step: number | undefined): number => Number(n.toFixed(Math.min(6, decimals(step ?? 1))));
 
-/** A typed number, in the person's own words: "3", " 12.5 ", "1,5". Null when it is not one number. */
+/** A typed number, in the person's own words: "3", " 12.5 ", "1,5", "1,000". A comma between groups of three digits is a
+ *  thousands comma ("1,000" is a thousand); any other single comma is a decimal point ("1,5" is one and a half). Null when
+ *  it is not one number. */
 export function numberFromText(text: string): number | null {
-  const t = text.trim().replace(/^−/, "-").replace(",", ".");
+  let t = text.trim().replace(/^−/, "-");
+  t = /^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(t) ? t.replace(/,/g, "") : t.replace(",", ".");
   if (!/^-?\d+(\.\d+)?$|^-?\.\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isFinite(n) ? n : null;
@@ -60,6 +63,16 @@ export function typeahead(labels: readonly string[], from: number, ch: string): 
     if (labels[i].trim().toLowerCase().startsWith(c)) return i;
   }
   return null;
+}
+
+/** Where Tab goes at the ends of a dialog, so the keyboard never leaves it for the page behind: the index to focus, or null
+ *  when the browser's own move stays inside. `active` is the focused control's place among the dialog's controls (-1 when
+ *  it is the heading or nothing in the list). From the last control Tab wraps to the first; Shift+Tab from the first (or
+ *  from the heading) wraps to the last. */
+export function tabWrap(active: number, count: number, shift: boolean): number | null {
+  if (count === 0) return null;
+  if (shift) return active <= 0 ? count - 1 : null;
+  return active === count - 1 ? 0 : null;
 }
 
 /** A menu opens under its button, or above it when there is not room under it and there is more room above. */

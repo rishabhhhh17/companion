@@ -173,12 +173,12 @@ function Dock() {
     };
     const edgeOf = (v: unknown): Edge | null => (typeof v === "string" && (EDGES as readonly string[]).includes(v) ? (v as Edge) : null);
     const offPress = listen("dock-press", (e) => {
-      const p = (e.payload ?? {}) as { edge?: unknown; press?: unknown; screenAt?: unknown };
+      const p = (e.payload ?? {}) as { edge?: unknown; press?: unknown; screenAt?: unknown; firm?: unknown };
       const c = ffCtl.current; if (!c) return;
       const edge = edgeOf(p.edge);
       if (p.edge === null) c.setSurface(null);
       else if (edge) c.setSurface(edge, across(edge, p.screenAt), 0.2);
-      c.press(typeof p.press === "number" ? p.press : 0);
+      c.press(typeof p.press === "number" ? p.press : 0, p.firm === true);
     });
     const offPeek = listen("peek", (e) => {
       const p = (e.payload ?? {}) as { pose?: unknown; edge?: unknown; screenAt?: unknown };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { addMemory, findProblem } from "./commands.ts";
-import { ALL_ANSWERED, back, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, settingsFor, skipTo, STEPS, yoursSettings, type PointNow } from "./onboarding.ts";
+import { ALL_ANSWERED, back, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, keyShownFirst, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, settingsFor, skipTo, STEPS, yoursSettings, type PointNow } from "./onboarding.ts";
 import { characterName, COMPANIONS } from "./companion.ts";
 import { OFF, planCard, type PlanStatus } from "./plan.ts";
 import { readFileSync } from "node:fs";
@@ -230,6 +230,22 @@ describe("make it yours", () => {
     expect(yoursSettings({ name: "", lively: "still", edge: null }, "Flowflow")).toEqual([["character.lively", "still"]]);
     expect(yoursSettings({ name: "", lively: null, edge: null, follow: "drop" }, "Flowflow")).toEqual([["character.follow", "drop"]]);
   });
+  test("the fold starts from what is in force: an unchanged name, lively or edge writes nothing, and a change is written (rereading the first run)", () => {
+    const now = { name: "Blub", lively: "lively" as const, edge: "left" as const };
+    expect(yoursSettings({ name: "Blub", lively: "lively", edge: "left" }, "Flowflow", now)).toEqual([]);
+    expect(yoursSettings({ name: "Blub", lively: "still", edge: "left" }, "Flowflow", now)).toEqual([["character.lively", "still"]]);
+    expect(yoursSettings({ name: "Blub", lively: "lively", edge: "top" }, "Flowflow", now)).toEqual([["character.edge", "top"]]);
+    // Typing the character's own name resets a name that was chosen; clearing the box does too; neither writes when none was chosen.
+    expect(yoursSettings({ name: "Flowflow", lively: "lively", edge: "left" }, "Flowflow", now)).toEqual([["character.name", ""]]);
+    expect(yoursSettings({ name: "  ", lively: "lively", edge: "left" }, "Flowflow", now)).toEqual([["character.name", ""]]);
+    expect(yoursSettings({ name: "Flowflow", lively: "still", edge: "right" }, "Flowflow", { name: "", lively: "still", edge: "right" })).toEqual([]);
+  });
+  test("the page seeds the fold from the settings in force, not from empty choices", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("const yoursNow = (): Pick<Yours, \"name\" | \"lively\" | \"edge\">");
+    expect(ui).toContain("useState<Yours>(() => ({ ...DEFAULT_YOURS, ...yoursNow() }))");
+    expect(ui).toContain("yoursSettings(yours, own, yoursNow())");
+  });
   test("M46: how lively is three choices, Still pressed first; it writes character.lively, never the reactions, and the follow step is gone", () => {
     const page = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     expect(page).toContain('const LIVELY: Liveliness[] = ["still", "gentle", "lively"];');
@@ -336,16 +352,16 @@ describe("the key box", () => {
 });
 
 // Found in the M11 audit (A81): the first run said Screen Recording comes only with Show me and Accessibility only with
-// Prompt help and the error explainer, and INSTALL.md gave other, incomplete reasons. Both now name every feature that asks.
-describe("the first run and INSTALL name every feature that asks for each permission", () => {
+// Prompt help and the error explainer, and INSTALL.md gave other, incomplete reasons. INSTALL.md names every feature that
+// asks; what the first run itself says (S.fr.powersLine and S.fr.asks) is checked in launchCut.test.ts.
+describe("INSTALL names every feature that asks for each permission", () => {
   const install = readFileSync(new URL("../../docs/alpha/INSTALL.md", import.meta.url), "utf8");
   const section = install.slice(install.indexOf("## What it asks for, and when"), install.indexOf("## The keys"));
   test("Accessibility: Prompt help, the error explainer and Do it for me", () => {
-    for (const t of [S.obPerm1, section]) for (const f of ["Prompt help", "error", "Do it for me"]) expect(t, f).toContain(f);
+    for (const f of ["Prompt help", "error", "Do it for me"]) expect(section, f).toContain(f);
   });
   test("Screen Recording: Show me, a lesson's step and Point at the problem", () => {
-    for (const t of [S.obPerm2, section]) for (const f of ["Show me", "lesson", "Point at the problem"]) expect(t, f).toContain(f);
-    expect(S.obPerm2).not.toMatch(/only the first time you use Show me,/);
+    for (const f of ["Show me", "lesson", "Point at the problem"]) expect(section, f).toContain(f);
   });
 });
 
@@ -376,7 +392,7 @@ describe("the first run explains the groups (F20 item 6)", () => {
   test("the choices made on the way are kept however the first run ends; the questions only with Go to my project", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     const keep = ui.slice(ui.indexOf("const keepChoices = () => {"), ui.indexOf("const finish = () => {"));
-    expect(keep).toContain("yoursSettings(yours, own)"); expect(keep).toContain("groupSettingsFor(groupsOff)");
+    expect(keep).toContain("yoursSettings(yours, own, yoursNow())"); expect(keep).toContain("groupSettingsFor(groupsOff)");
     expect(keep).not.toContain("settingsFor(answers)"); expect(keep).not.toContain("commandsFor(");
     const fin = ui.slice(ui.indexOf("const finish = () => {"), ui.indexOf("const saveKey"));
     expect(fin).toContain("keepChoices();"); expect(fin).toContain("settingsFor(answers, answered)");
@@ -405,8 +421,20 @@ describe("the last screen's keys", () => {
   test("only the four keys of F28 that can be pressed now, in the Mac's own caps (KeyLabel reads the words to VoiceOver)", () => {
     expect([...FIRST_KEYS]).toEqual(["problem", "talk", "read", "stop"]);
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain("keyRows(keys).filter((r) => FIRST_KEYS.includes(r.job) && !r.none && keys.using[r.job as keyof typeof keys.using])");
+    expect(ui).toContain("keyRows(keys).filter((r) => FIRST_KEYS.includes(r.job) && !r.none && keys.using[r.job as keyof typeof keys.using] && keyShownFirst(r.job, groupsOff))");
     expect(ui).toContain("<KeyLabel chord={keys.using[r.job as keyof typeof keys.using]} />");
+  });
+});
+
+describe("the last screen's keys follow the groups switched off on the same screen", () => {
+  test("Hold to talk and Prompt help leave the list once their groups are off here, and come back when they are on", () => {
+    const on = () => undefined as unknown, none: string[] = [];
+    expect(FIRST_KEYS.filter((j) => keyShownFirst(j, none, on))).toEqual(["problem", "talk", "read", "stop"]);
+    expect(keyShownFirst("talk", ["voice"], on)).toBe(false);
+    expect(keyShownFirst("read", ["prompt"], on)).toBe(false);
+    expect(keyShownFirst("problem", ["voice", "prompt"], on)).toBe(true);
+    expect(keyShownFirst("stop", ["flow", "guide", "voice", "files", "prompt"], on)).toBe(true);   // Stop is core: always there
+    expect(keyShownFirst("talk", ["prompt"], on)).toBe(true);
   });
 });
 
@@ -462,5 +490,16 @@ describe("two tone headline (M41)", () => {
     const { twoTone } = await import("./onboarding.tsx");
     expect(twoTone("Your AI built it. Let's finish it.")).toEqual(["Your AI built it.", "Let's finish it."]);
     expect(twoTone("One sentence only")).toEqual(["One sentence only", ""]);
+  });
+});
+
+describe("the first run's wording and cards match Home's", () => {
+  test("the key steps do not point back at a fix that may not have been watched", () => {
+    expect(S.obKeySteps.join(" ")).not.toMatch(/you just saw/);
+  });
+  test("the first check's question shows the command the way Home's approval card does (no Running: prefix)", () => {
+    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
+    expect(ui).toContain("whatOf(a.action, project)");
+    expect(ui).not.toContain("{a.action}");
   });
 });

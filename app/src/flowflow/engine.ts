@@ -132,7 +132,11 @@ export class FlowflowEngine {
     this.surface.cling = Number.isFinite(cling) ? Math.max(0, Math.min(1, cling)) : 0;
   }
   /** How hard it is pushed into its surface now, 0 to 1 (a drag into the screen's edge). */
-  press(amount: number): void { this.pressTo = Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : 0; }
+  /** firm: it goes there at once and stays, no spring-back wobble (gone in at an edge, M51). */
+  press(amount: number, firm = false): void {
+    this.pressTo = Number.isFinite(amount) ? Math.max(0, Math.min(1, amount)) : 0;
+    if (firm) { this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; }
+  }
 
   /** The pointer left, or the window lost focus: the eyes and the body drift back. */
   pointerLeft(): void { this.lastLook = -Infinity; this.lastMove = -Infinity; this.body.setTarget(0, 0); }

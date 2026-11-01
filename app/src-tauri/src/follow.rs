@@ -49,8 +49,9 @@ pub fn say_line(text: &str) -> Option<String> {
 /// Nothing set (Null) is the usual one, the water ring.
 pub fn wanted(v: &serde_json::Value) -> bool { v.is_null() || v.as_str() == Some("drop") }
 
-/// M46 (F28): How lively is Lively (character.lively). Nothing set, or a word it does not know, is the usual Still.
-pub fn is_lively(v: &serde_json::Value) -> bool { v.as_str() == Some("lively") }
+/// M46 (F28), M51: How lively is Lively (character.lively). Nothing set is the usual, Lively (the founder, 1 Nov 2026: "I do
+/// not see the water ring following me"). A word it does not know is Still, the quiet side.
+pub fn is_lively(v: &serde_json::Value) -> bool { v.is_null() || v.as_str() == Some("lively") }
 
 /// M46 (F28): whether the water ring is on the pointer now. Never while Companion is hidden, never while a ring points at a
 /// place (that ring is the ring: Show me how or Point at the problem; spec section 0 item 4), and only with A water ring
@@ -143,10 +144,11 @@ mod tests {
     fn the_ring_shows_at_rest_only_in_lively_and_while_listening_in_every_choice() {
         let null = serde_json::Value::Null;
         let (still, gentle, lively, drop) = (json!("still"), json!("gentle"), json!("lively"), json!("drop"));
-        // At rest: Still and Gentle keep it off, Lively shows it. Nothing set is Still.
+        // At rest: Still and Gentle keep it off, Lively shows it. Nothing set is Lively, the usual (M51: the founder could not
+        // see the ring following his pointer).
         assert!(!shown(&still, &drop, false, false, false, false));
         assert!(!shown(&gentle, &drop, false, false, false, false));
-        assert!(!shown(&null, &drop, false, false, false, false));
+        assert!(shown(&null, &drop, false, false, false, false), "nothing set is the usual, Lively");
         assert!(!shown(&json!("calm"), &drop, false, false, false, false), "an unknown word is Still");
         assert!(shown(&lively, &drop, false, false, false, false));
         assert!(shown(&lively, &null, false, false, false, false), "nothing set for what follows is the water ring");
@@ -197,7 +199,8 @@ mod tests {
         assert!(flies_home(&json!("lively"), &null, false), "Little reactions is on unless turned off");
         assert!(!flies_home(&json!("lively"), &json!(false), false));
         assert!(!flies_home(&json!("lively"), &json!(true), true), "Reduce motion or Less motion");
-        for l in [json!("still"), json!("gentle"), null.clone()] { assert!(!flies_home(&l, &json!(true), false), "{l}"); }
+        for l in [json!("still"), json!("gentle")] { assert!(!flies_home(&l, &json!(true), false), "{l}"); }
+        assert!(flies_home(&null, &json!(true), false), "nothing set is the usual, Lively");
         assert!(flies(&json!(true)));
         for v in [json!(false), null, json!("on")] { assert!(!flies(&v), "{v}"); }
     }

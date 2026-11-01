@@ -189,7 +189,7 @@ export const NOT_GIVEN: ReadonlyMap<string, string> = new Map<string, string>([
   ].map((t): [string, string] => [t, NOT_GIVEN_WHY]),
 ]);
 
-const protectedWhy = (part: string): string => part.startsWith(".git") ? "Squibby does not let tasks change the project's .git folder or git settings" : `${PRODUCT_S} and Claude's own settings are not for a task to change`;
+const protectedWhy = (part: string): string => part.startsWith(".git") ? `${PRODUCT} does not let tasks change the project's .git folder or git settings` : `${PRODUCT_S} and Claude's own settings are not for a task to change`;
 
 /** What the model is told when something is refused. The model repeats it to the person, so it is in everyday words, says
  *  who decided (never "blocked by a hook" or a rule's name), and asks for a plain answer that says what the person can do. */
@@ -519,11 +519,13 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
   if ((name === "node" || name === "nodejs") && !args.some((a) => !a.startsWith("-") && !a.startsWith("<") && !a.startsWith(">")) && !args.some((a) => /^(-v|--version|-h|--help|-c|--check|--test.*)$/.test(a))) return ask("irreversible", INLINE, false);
   if (["npm", "pnpm", "yarn", "bun"].includes(name)) return evaluatePackageManager(name, args);
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
-    // Outside the project, so Undo cannot take these back (technical_research section 6).
-    if (["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(args[0] ?? "") && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", "This changes software installed on your Mac, not just your project.", false);
-    // cargo install and uninstall write the tool into ~/.cargo/bin, for the whole Mac and outside every snapshot. A toolchain
-    // word (cargo +nightly install) comes first and is skipped.
-    if (name === "cargo" && ["install", "uninstall"].includes(args.find((a) => !a.startsWith("+")) ?? "")) return ask("install", "This installs a tool for your whole Mac, not just this project.", false);
+    // Outside the project, so Undo cannot take these back (technical_research section 6). These tools take flags before the
+    // subcommand (brew --verbose install, apt -y install, cargo -q install), so the subcommand is looked for among all the
+    // words before a "--", never only the first. A word that merely matches (cargo test install) asks once too many, which is safe.
+    const before = args.indexOf("--") >= 0 ? args.slice(0, args.indexOf("--")) : args;
+    if (before.some((a) => ["install", "upgrade", "uninstall", "remove", "tap", "untap", "update"].includes(a)) && !(name === "pip" || name === "pip3" || name === "cargo")) return ask("install", "This changes software installed on your Mac, not just your project.", false);
+    // cargo install and uninstall write the tool into ~/.cargo/bin, for the whole Mac and outside every snapshot.
+    if (name === "cargo" && before.some((a) => a === "install" || a === "uninstall")) return ask("install", "This installs a tool for your whole Mac, not just this project.", false);
     if ((name === "pip" || name === "pip3") && args[0] === "install" && !args.includes("--target") && !process.env.VIRTUAL_ENV) return ask("install", "This installs Python packages for your whole Mac, not just this project.", false);
     return allow();
   }

@@ -8,6 +8,8 @@
 //    arrives (main.ts dispatch); it holds no reference to any task and nothing here can end one.
 //  - Safety, Undo, Bring the fix back, Stop, approvals, the checks and receipts are never gated (NEVER_GATED).
 //  - A fix counts once, when it is proven (agent.ts tells proven() on a done task whose checks passed, M45's "proven").
+//    The limit is checked as a fix starts, so a fix admitted but not yet proven holds a place until it is proven or its task
+//    ends (ended()): two fixes started together on 2 of 3 used cannot both be admitted.
 //    Failed, stopped and unproven tasks do not count; a follow up, a Try again and the steps of one plan count once with
 //    the fix they carry on; practice copies never count. Undo does not give a fix back and Bring back never counts again:
 //    the count changes only when a fix is proven, so fix, Undo, new fix, Bring back can never keep more than the limit.
@@ -94,7 +96,7 @@ export function isPracticeFolder(project: string): boolean {
 /** Where the counted fixes are kept (db.ts FreeFixes). Opened only on first use, so with payments off nothing is touched. */
 export type FixStore = { count(month: string): number; record(ticket: string, task: number | null, month: string, at: string): boolean; any(): boolean };
 /** What agent.ts needs: which admitted fix a task belongs to (read as the task starts), and the word that it was proven. */
-export type FixCounter = { ticketOf(agent: string): string | undefined; proven(ticket: string | undefined, task: number | null): void };
+export type FixCounter = { ticketOf(agent: string): string | undefined; proven(ticket: string | undefined, task: number | null): void; ended?(ticket: string | undefined): void };
 
 /** One admitted fix. counted: under the Free rules, so it counts once when proven; practice: never counts. plan: admitted
  *  as a Drive plan (drive.plan), so approving that plan is free. */
@@ -109,6 +111,8 @@ export class PlanGate implements FixCounter {
   private paymentsOn = false;   // fail open: nothing is gated until the shell says payments are on
   private byAgent = new Map<string, Ticket>();
   private issued = new Map<string, Ticket>();
+  /** Counted tickets admitted and neither proven nor ended yet: each holds a place against the limit. */
+  private inFlight = new Set<string>();
   private store: FixStore | null = null;
   private now: () => Date;
   readonly limit: number;
@@ -157,14 +161,14 @@ export class PlanGate implements FixCounter {
       }
       // Counted fixes.
       case "agent.start": {
-        if (cmd.mode === "research") { this.byAgent.delete(cmd.agent); return cmd; }   // Research writes no code: never a fix
-        if (cmd.mode === "ship") { if (metered) return this.refuse(cmd, "ship"); this.byAgent.delete(cmd.agent); return cmd; }
-        if (!metered) { this.byAgent.delete(cmd.agent); return cmd; }
+        if (cmd.mode === "research") { this.drop(cmd.agent); return cmd; }   // Research writes no code: never a fix
+        if (cmd.mode === "ship") { if (metered) return this.refuse(cmd, "ship"); this.drop(cmd.agent); return cmd; }
+        if (!metered) { this.drop(cmd.agent); return cmd; }
         if (isPracticeCopy(cmd.practice, cmd.project)) { this.give(cmd.agent, "practice", false); return cmd; }
         return this.startFix(cmd, false);
       }
       case "drive.plan": {
-        if (!metered) { this.byAgent.delete(cmd.agent); return cmd; }
+        if (!metered) { this.drop(cmd.agent); return cmd; }
         return this.startFix(cmd, true);
       }
       case "drive.approve": {
@@ -175,7 +179,7 @@ export class PlanGate implements FixCounter {
       }
       case "rescue.diagnose": {
         // Check my project stays free. Its plan is not admitted yet: drive.approve is.
-        this.byAgent.delete(cmd.agent);
+        this.drop(cmd.agent);
         return cmd;
       }
       case "agent.send": {
@@ -200,26 +204,46 @@ export class PlanGate implements FixCounter {
   proven(ticket: string | undefined, task: number | null): void {
     const t = ticket ? this.issued.get(ticket) : undefined;
     if (!t || t.kind !== "counted") return;
+    this.inFlight.delete(t.id);   // from here the count holds it
     try {
       const now = this.now();
       if (this.fixes().record(t.id, task, monthOf(now), now.toISOString()) && this.paymentsOn) this.sayUsage();
     } catch { /* a count that cannot be written fails open */ }
   }
 
+  /** A task of this ticket ended (done or not, proven or not). A fix that was never proven gives its place back; one that was
+   *  proven already did. Nothing is counted here. */
+  ended(ticket: string | undefined): void { if (ticket) this.inFlight.delete(ticket); }
+
   private fixes(): FixStore { return (this.store ??= this.o.fixes()); }
-  private atLimit(): boolean {
-    try { return this.fixes().count(monthOf(this.now())) >= this.limit; } catch { return false; }   // a count that cannot be read fails open
+  /** Whether the month's proven fixes plus the ones started and not yet proven reach the limit. `agent` is the one asking:
+   *  the fix it holds is replaced by the new one, so it holds no place of its own. */
+  private atLimit(agent?: string): boolean {
+    try {
+      const own = agent ? this.byAgent.get(agent) : undefined;
+      const held = this.inFlight.size - (own && this.inFlight.has(own.id) ? 1 : 0);
+      return this.fixes().count(monthOf(this.now())) + held >= this.limit;
+    } catch { return false; }   // a count that cannot be read fails open
+  }
+  /** The agent holds no admitted fix any more (a start that is not counted); a place it held is given back. */
+  private drop(agent: string): void {
+    const t = this.byAgent.get(agent);
+    if (t) this.inFlight.delete(t.id);
+    this.byAgent.delete(agent);
   }
   private give(agent: string, kind: Ticket["kind"], plan: boolean): Ticket {
     const t: Ticket = { id: `fx_${randomBytes(6).toString("hex")}`, kind, plan };
+    const old = this.byAgent.get(agent);
+    if (old) this.inFlight.delete(old.id);   // replaced: its task, if it never ran, holds no place
     this.byAgent.set(agent, t);
     this.issued.set(t.id, t);
+    if (kind === "counted") this.inFlight.add(t.id);
     // Only the tickets agents hold, and the latest few a running task may still name, are kept.
     if (this.issued.size > 256) { const held = new Set([...this.byAgent.values()].map((x) => x.id)); for (const id of this.issued.keys()) { if (this.issued.size <= 128) break; if (!held.has(id)) this.issued.delete(id); } }
     return t;
   }
   private startFix(cmd: Command & { agent: string }, plan: boolean): Command | null {
-    if (this.atLimit()) return this.refuse(cmd, "fixes");
+    if (this.atLimit(cmd.agent)) return this.refuse(cmd, "fixes");
     this.give(cmd.agent, "counted", plan);
     return cmd;
   }

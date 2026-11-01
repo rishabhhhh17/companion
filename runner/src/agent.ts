@@ -569,7 +569,9 @@ export class AgentRunner {
   private scriptsAsker(s: Session | undefined, agent: string, checkpoint: string): (byTask: boolean, unboxed?: boolean) => Promise<boolean> {
     const ask = this.checkAsker(s, agent, checkpoint, (why) => why === "unboxed"
       ? "The safety box for checks is not working on this Mac. Run the project's install, build, tests and server without it to check the work? Without the box they can reach your files and the internet. Without a yes, the work is not checked."
-      : `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac in a safety box that keeps them to this project. Without a yes, the work is not checked.`);
+      : `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac in a safety box that keeps them to this project. Without a yes, the work is not checked.`,
+      // The code line on the card says what would run, not the word the check asked with ("task", "since", "unboxed").
+      { action: (why) => why === "unboxed" ? "install, build, tests and server, without the safety box" : "install, build, tests and server" });
     return (byTask, unboxed) => ask(unboxed ? "unboxed" : byTask ? "task" : "since");
   }
   private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string, o: { risk?: (command: string) => string; action?: (command: string) => string } = {}): (command: string) => Promise<boolean> {
@@ -902,6 +904,7 @@ export class AgentRunner {
       this.state(cmd.agent, "error");
       return { status: "error", usd: 0 };
     } finally {
+      this.o.fixes?.ended?.(opts.fixTicket);   // a fix not proven by now gives its place against Free's limit back (plan.ts)
       this.sessions.delete(cmd.agent);
       this.projectBusy.delete(key);
       this.touched.delete(cmd.agent);

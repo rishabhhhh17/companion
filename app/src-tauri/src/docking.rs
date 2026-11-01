@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
+use std::time::Instant;
 use crate::island;
 
 pub type Rect = [f64; 4]; // x, y, width, height
@@ -298,9 +300,40 @@ pub fn signature(list: &[Screen]) -> String {
 
 /// How often (ms) a drag tells the character's page how hard it presses into an edge: about once a frame, never more.
 pub const PRESS_EVERY_MS: u64 = 16;
-/// The short spring onto its edge when it is let go near one. None with Reduce motion or Less motion, and none when it
-/// stays where it was let go (it is already there).
-pub const LAND_SECS: f64 = 0.22;
+/// The short move onto its edge when it is let go and goes in. A plain ease out that stops dead on the edge: no overshoot, no
+/// bounce (M51, the founder: "it should not give me a bouncy feeling"). None with Reduce motion or Less motion, and none when
+/// it stays where it was let go (it is already there).
+pub const LAND_SECS: f64 = 0.16;
+/// M51: what makes a let go near an edge go in. Pushed into the edge itself (the pointer within a sixth of the character's
+/// half size of it, `press_of` at least `HARD_PRESS`); thrown at it (at least `FLICK_SPEED` points a second toward it over
+/// the last `FLICK_WINDOW_MS`, let go within `FLICK_REACH` of it); or kept near it (within `FREE_REACH`) for `REST_MS`.
+/// Anything gentler is playing, and it stays where it is let go.
+pub const HARD_PRESS: f64 = 0.85;
+pub const FLICK_SPEED: f64 = 900.0;
+pub const FLICK_WINDOW_MS: u64 = 120;
+pub const FLICK_REACH: f64 = 200.0;
+/// Two samples closer in time than this say nothing about speed (macOS can report several moves in one frame).
+const FLICK_MIN_DT_MS: u64 = 16;
+pub const REST_MS: u64 = 2_000;
+
+/// Milliseconds on a clock that only goes forward, for the drag's own timing (`Drag::follow` and `release`).
+fn mono_ms() -> u64 {
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_millis() as u64
+}
+
+/// When letting go near an edge makes it stick (Settings, character.dockWhen).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DockWhen {
+    /// Pushed in hard, thrown, or kept there for two seconds. Playing near an edge leaves it where it is.
+    Pushed,
+    /// The way it was: any let go within a short reach of an edge sticks.
+    Near,
+}
+impl DockWhen {
+    /// The word the setting holds; nothing set, or a word it does not know, is the usual Pushed.
+    pub fn from_value(v: &Value) -> DockWhen { if v.as_str() == Some("near") { DockWhen::Near } else { DockWhen::Pushed } }
+}
 /// A drag counts for this long after its last move (ms), as before M47.
 pub const DRAG_QUIET_MS: u64 = 1_500;
 /// A drag whose let go never reached the shell (the page went away mid drag) stops counting after this long (ms), so
@@ -317,7 +350,15 @@ pub struct Let { pub screen: Screen, pub how: Landing, pub pointer: (f64, f64), 
 
 /// One drag of the character, from the moment the page says it began to the let go. Top left points.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Drag { offset: (f64, f64), size: (f64, f64), screens: Vec<Screen>, pointer: (f64, f64), frame: Rect, last_press: Option<u64>, done: bool }
+pub struct Drag {
+    offset: (f64, f64), size: (f64, f64), screens: Vec<Screen>, pointer: (f64, f64), frame: Rect, last_press: Option<u64>, done: bool,
+    /// M51: the last moves of the pointer with their times (a few hundred ms), for how fast it was going.
+    trail: Vec<(f64, f64, u64)>,
+    /// M51: since when the pointer has been within `FREE_REACH` of an edge without leaving it, and whether that has been
+    /// `REST_MS` (at the last move).
+    near_since: Option<u64>, rested: bool,
+    when: DockWhen,
+}
 
 impl Drag {
     /// The pointer took hold of the window at `window`; `screens` are the displays as they are now (read once, not on
@@ -325,19 +366,46 @@ impl Drag {
     pub fn begin(pointer: (f64, f64), window: Rect, screens: Vec<Screen>) -> Drag {
         let ok = |v: f64| if v.is_finite() { v } else { 0.0 };
         let offset = (ok(pointer.0 - window[0]), ok(pointer.1 - window[1]));
-        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false }
+        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed }
     }
+    /// Letting go near an edge sticks only when pushed, thrown or kept there (`Pushed`, the usual), or always (`Near`).
+    pub fn set_dock_when(&mut self, when: DockWhen) { self.when = when; }
     /// Where the window goes for the pointer at `p`: the same offset, kept inside the work area of the display under the
     /// pointer (or the nearest one). Pushed into an edge the window stops there and the pointer goes on: that is the press.
     /// None once it was let go.
-    pub fn follow(&mut self, p: (f64, f64)) -> Option<Rect> {
+    pub fn follow(&mut self, p: (f64, f64)) -> Option<Rect> { self.follow_at(p, mono_ms()) }
+    /// `follow` at a given time (ms), which also notes how fast the pointer goes and how long it has stayed near an edge.
+    pub fn follow_at(&mut self, p: (f64, f64), t: u64) -> Option<Rect> {
         if self.done { return None; }
         if !(p.0.is_finite() && p.1.is_finite()) { return Some(self.frame); }
         let want = [p.0 - self.offset.0, p.1 - self.offset.1, self.size.0, self.size.1];
         let f = match screen_near(&self.screens, p) { Some(s) => keep_in(want, s.work), None => want };
         self.pointer = p;
         self.frame = f;
+        self.trail.retain(|s| t.saturating_sub(s.2) <= 400);
+        self.trail.push((p.0, p.1, t));
+        if self.trail.len() > 48 { self.trail.remove(0); }
+        let near = screen_near(&self.screens, p).is_some_and(|s| free_on(s, self.size, p.0, p.1).is_none());
+        self.near_since = if near { self.near_since.or(Some(t)) } else { None };
+        self.rested = self.near_since.is_some_and(|t0| t.saturating_sub(t0) >= REST_MS);
         Some(f)
+    }
+    /// Has the pointer stayed near an edge for `REST_MS` by `t`?
+    fn rests(&self, t: u64) -> bool { self.near_since.is_some_and(|t0| t.saturating_sub(t0) >= REST_MS) }
+    /// Pushed into the edge itself, or thrown at it (M51).
+    fn pushes_hard(&self, s: &Screen, t: u64) -> bool {
+        let (x, y) = self.pointer;
+        let edge = edge_near(s.work, x, y);
+        if press_of(s, self.size, edge, self.pointer) >= HARD_PRESS { return true; }
+        let w = s.work;
+        let dist = match edge { Edge::Left => x - w[0], Edge::Right => w[0] + w[2] - x, Edge::Top => y - w[1], Edge::Bottom => w[1] + w[3] - y };
+        if !(dist <= FLICK_REACH) { return false; }
+        let recent: Vec<&(f64, f64, u64)> = self.trail.iter().filter(|s| t.saturating_sub(s.2) <= FLICK_WINDOW_MS).collect();
+        let (Some(a), Some(b)) = (recent.first(), recent.last()) else { return false };
+        let dt = b.2.saturating_sub(a.2);
+        if dt < FLICK_MIN_DT_MS { return false; }
+        let toward = match edge { Edge::Left => a.0 - b.0, Edge::Right => b.0 - a.0, Edge::Top => a.1 - b.1, Edge::Bottom => b.1 - a.1 };
+        toward / (dt as f64 / 1000.0) >= FLICK_SPEED
     }
     /// Where the window is now.
     #[cfg(test)]
@@ -357,19 +425,24 @@ impl Drag {
         let (x, y) = self.pointer;
         if free_on(s, self.size, x, y).is_some() { return None; }
         let edge = edge_near(s.work, x, y);
-        Some((edge, press_of(s, self.size, edge, self.pointer), screen_at(edge, s, self.frame)))
+        // Kept there long enough to rest: the water flattens fully, so it shows it will stay (M51).
+        let press = press_of(s, self.size, edge, self.pointer);
+        Some((edge, if self.rested { press.max(0.9) } else { press }, screen_at(edge, s, self.frame)))
     }
     /// The let go: away from every edge it stays exactly where the window is (`free_on` decides, `free_at` keeps the very
     /// frame); near one it snaps to it (`snap_on`). Once per drag: asked again, or after, it is None.
-    pub fn release(&mut self, home: island::HomeSize) -> Option<Let> {
+    pub fn release(&mut self, home: island::HomeSize) -> Option<Let> { self.release_at(home, mono_ms()) }
+    /// `release` at a given time (ms). Away from every edge it stays where it is, as before. Near one (M51) it goes in only
+    /// when it was pushed hard into the edge, thrown at it, or kept near it for `REST_MS`; a gentler let go is playing and it
+    /// stays exactly where it was let go. With `DockWhen::Near` any let go within reach of an edge goes in, as it used to.
+    pub fn release_at(&mut self, home: island::HomeSize, t: u64) -> Option<Let> {
         if self.done { return None; }
         self.done = true;
         let s = screen_near(&self.screens, self.pointer)?.clone();
         let (x, y) = self.pointer;
-        let how = match free_on(&s, self.size, x, y) {
-            Some(_) => Landing::Free(free_at(s.work, self.size, self.frame)),
-            None => { let (e, pct) = snap_on(&s, self.size, x, y, home); Landing::Edge(e, pct) }
-        };
+        let near = free_on(&s, self.size, x, y).is_none();
+        let goes_in = match self.when { DockWhen::Near => near, DockWhen::Pushed => (near && self.rests(t)) || self.pushes_hard(&s, t) };
+        let how = if goes_in { let (e, pct) = snap_on(&s, self.size, x, y, home); Landing::Edge(e, pct) } else { Landing::Free(free_at(s.work, self.size, self.frame)) };
         Some(Let { screen: s, how, pointer: self.pointer, frame: self.frame })
     }
 }
@@ -985,20 +1058,89 @@ mod tests {
         for i in 0..4 { assert!((back[i] - at[i]).abs() < 1e-6, "{back:?} vs {at:?}"); }
         assert_eq!(land_secs(&l.how, false), None, "nothing to move");
     }
+    // M51 (the founder, 1 Nov 2026: "if I push it hard it should just go in, with no bounce; if I am just playing with it,
+    // let it be; if I stay there for two seconds, let it rest"). Times are given, so these never depend on the clock.
+    fn near_the_right_edge(path: &[(f64, f64, u64)], release_at: u64) -> Let {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        for (x, y, t) in path { d.follow_at((*x, *y), *t); }
+        d.release_at(island::HomeSize::STANDARD, release_at).unwrap()
+    }
     #[test]
-    fn let_go_near_an_edge_it_snaps_to_it() {
+    fn pushed_into_the_edge_itself_it_goes_in_at_once() {
         let s = wide();
-        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![s.clone()]);
-        d.follow((1420.0, 400.0));
-        let l = d.release(island::HomeSize::STANDARD).unwrap();
-        assert_eq!(l.how, Landing::Edge(snap_on(&s, DOCK_SIZE, 1420.0, 400.0, island::HomeSize::STANDARD).0, snap_on(&s, DOCK_SIZE, 1420.0, 400.0, island::HomeSize::STANDARD).1));
+        let l = near_the_right_edge(&[(1000.0, 400.0, 0), (1300.0, 400.0, 400), (1437.0, 400.0, 900)], 950);
+        let (e, pct) = snap_on(&s, DOCK_SIZE, 1437.0, 400.0, island::HomeSize::STANDARD);
+        assert_eq!(l.how, Landing::Edge(e, pct));
         assert!(matches!(l.how, Landing::Edge(Edge::Right, _)));
-        assert_eq!(land_secs(&l.how, false), Some(LAND_SECS), "a short spring onto the edge");
+        assert_eq!(land_secs(&l.how, false), Some(LAND_SECS));
+        assert!(LAND_SECS <= 0.2, "short, and the move itself never overshoots (main.rs set_frame_moving)");
         assert_eq!(land_secs(&l.how, true), None, "at once with Reduce motion or Less motion");
-        // On the second display, the one under the pointer.
-        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![s, second()]);
-        d.follow((3350.0, 500.0));
-        assert_eq!(d.release(island::HomeSize::STANDARD).unwrap().screen.id, "b");
+    }
+    #[test]
+    fn thrown_hard_at_an_edge_it_goes_in_even_from_a_little_way_off() {
+        // 300 points in 100 ms toward the right edge, let go 140 points from it.
+        let l = near_the_right_edge(&[(1000.0, 400.0, 0), (1300.0, 400.0, 100)], 110);
+        assert!(matches!(l.how, Landing::Edge(Edge::Right, _)), "{:?}", l.how);
+    }
+    #[test]
+    fn thrown_hard_away_from_an_edge_or_slowly_toward_it_it_stays() {
+        let away = near_the_right_edge(&[(1400.0, 400.0, 0), (1100.0, 400.0, 100)], 110);
+        assert!(matches!(away.how, Landing::Free(_)), "fast, but away from the edge: {:?}", away.how);
+        let slow = near_the_right_edge(&[(1100.0, 400.0, 0), (1200.0, 400.0, 400)], 410);
+        assert!(matches!(slow.how, Landing::Free(_)), "250 points a second is playing, not pushing: {:?}", slow.how);
+        let old = near_the_right_edge(&[(1000.0, 400.0, 0), (1300.0, 400.0, 100)], 1_000);
+        assert!(matches!(old.how, Landing::Free(_)), "a throw that ended a second ago is not a throw: {:?}", old.how);
+    }
+    #[test]
+    fn playing_near_an_edge_it_is_let_be_where_it_is_let_go() {
+        // 20 points from the edge, moving gently, let go after a second: it stays, it is not pulled in.
+        let l = near_the_right_edge(&[(1300.0, 400.0, 0), (1380.0, 400.0, 500), (1420.0, 400.0, 1_000)], 1_100);
+        let Landing::Free(free) = l.how else { panic!("free, not snapped: {:?}", l.how) };
+        let back = place_free(&wide(), DOCK_SIZE, free, island::HomeSize::STANDARD);
+        assert!((back[0] - l.frame[0]).abs() < 1e-6 && (back[1] - l.frame[1]).abs() < 1e-6, "{back:?} vs {:?}", l.frame);
+        assert_eq!(land_secs(&l.how, false), None);
+    }
+    #[test]
+    fn about_two_seconds_near_the_edge_it_rests_there() {
+        let path = [(1300.0, 400.0, 0), (1415.0, 400.0, 400), (1412.0, 402.0, 1_500)];
+        assert!(matches!(near_the_right_edge(&path, 2_300).how, Landing::Free(_)), "1.9 s at the edge is not yet");
+        assert!(matches!(near_the_right_edge(&path, 2_450).how, Landing::Edge(Edge::Right, _)), "2 s at the edge: it rests");
+        // Leaving the edge starts the count again.
+        let back = [(1415.0, 400.0, 0), (1000.0, 400.0, 1_000), (1415.0, 400.0, 1_200)];
+        assert!(matches!(near_the_right_edge(&back, 3_000).how, Landing::Free(_)), "only 1.8 s since it came back");
+        assert!(matches!(near_the_right_edge(&back, 3_300).how, Landing::Edge(Edge::Right, _)));
+    }
+    #[test]
+    fn the_water_flattens_to_show_it_will_rest_there() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        d.follow_at((1415.0, 400.0), 0);
+        let before = d.press().unwrap().1;
+        d.follow_at((1414.0, 400.0), 2_100);
+        let after = d.press().unwrap().1;
+        assert!(before < 0.7 && after >= 0.9, "{before} then {after}");
+    }
+    #[test]
+    fn a_person_can_choose_the_old_way_where_letting_go_near_an_edge_always_sticks() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        d.set_dock_when(DockWhen::Near);
+        d.follow_at((1400.0, 400.0), 0);
+        assert!(matches!(d.release_at(island::HomeSize::STANDARD, 50).unwrap().how, Landing::Edge(Edge::Right, _)));
+    }
+    #[test]
+    fn a_drag_with_no_clock_never_reads_as_a_throw() {
+        // follow and release read the real clock; two calls a few microseconds apart are one sample, never a speed.
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        d.follow((1400.0, 400.0));
+        assert!(matches!(d.release(island::HomeSize::STANDARD).unwrap().how, Landing::Free(_)));
+        assert_eq!(d.release(island::HomeSize::STANDARD), None);
+    }
+    #[test]
+    fn let_go_on_the_second_display_it_is_that_display() {
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide(), second()]);
+        d.follow_at((3356.0, 500.0), 0);
+        let l = d.release_at(island::HomeSize::STANDARD, 10).unwrap();
+        assert_eq!(l.screen.id, "b");
+        assert!(matches!(l.how, Landing::Edge(Edge::Right, _)));
     }
     #[test]
     fn a_drag_lands_and_is_saved_once() {

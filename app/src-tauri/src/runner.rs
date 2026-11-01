@@ -164,7 +164,9 @@ pub fn locations_for(dev_json: Option<&str>, env: &dyn Fn(&str) -> Option<String
             _ => return Err(concat!(crate::product!(), " cannot find Bun. Run app/scripts/dev-setup.sh").into()),
         },
     };
-    Ok(Locations { bun, runner, data, env: allowed_env(&dev), claude: None, developer })
+    // The engine's settings come from the developer file only in a development build: a file any program on the Mac could
+    // write must not choose the route or the Keychain item of a process that holds the person's key (rule 3).
+    Ok(Locations { bun, runner, data, env: if developer { allowed_env(&dev) } else { BTreeMap::new() }, claude: None, developer })
 }
 
 /// What the engine is told about Anthropic's Claude at each start.
@@ -223,6 +225,14 @@ pub fn detail_line(kind: &str, failed: Option<&str>, detail: &str) -> Value {
 /// Status messages a page that loads late still needs (who is connected, is the engine up, this month's free fix count).
 /// plan.limit is a moment, not a status: a page that loads later never shows an old limit card.
 const STICKY: &[&str] = &["runner.hello", "auth.status", "app.runner_down", "app.notice", "plan.usage"];
+
+/// The one launch notice. Every app.notice shares a single sticky slot (remember keeps only the latest), so a page that loads
+/// after launch would see only the last one published. The hotkey notice and the note left by a "delete everything" that
+/// could not remove all of it are joined here, the hotkey line first, and published once. None when both are empty.
+pub fn join_launch_notices(hotkeys: Option<String>, wipe: Option<String>) -> Option<String> {
+    let parts: Vec<String> = [hotkeys, wipe].into_iter().flatten().map(|m| m.trim().to_string()).filter(|m| !m.is_empty()).collect();
+    if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
+}
 
 /// Remember the latest sticky event of each type. Returns true if it was kept.
 pub fn remember(map: &mut BTreeMap<String, Value>, v: &Value) -> bool {
@@ -861,6 +871,7 @@ mod tests {
         let l = locations_for(Some(dev), &env, "/d".into(), Some(eng.clone()), false).unwrap();
         assert_eq!((l.bun.clone(), l.runner.clone()), (eng.join("bin/bun"), eng.join("runner/src/main.ts")));
         assert!(!l.developer);
+        assert!(l.env.is_empty(), "a release takes no engine settings from dev.json: {:?}", l.env);
         let l = locations_for(Some(r#"{"bun":"/dev/bun"}"#), &env, "/d".into(), Some(eng.clone()), false).unwrap();
         assert_eq!(l.bun, eng.join("bin/bun"), "half a developer setup changes nothing either");
         // A release with no engine of its own never falls back to one named elsewhere.
@@ -907,6 +918,21 @@ mod tests {
         let none = |_: &str| None;
         let e = locations(None, &none, "/d".into()).unwrap_err();
         assert!(e.contains("dev-setup.sh"));
+    }
+    #[test]
+    fn two_launch_notices_become_one_so_the_second_never_replaces_the_first() {
+        let hot = Some("Stop everything is taken by another app. It is still in the menu bar icon.".to_string());
+        let wipe = Some("Some files could not be removed.\n".to_string());
+        assert_eq!(join_launch_notices(hot.clone(), None), hot);
+        assert_eq!(join_launch_notices(None, wipe.clone()), Some("Some files could not be removed.".to_string()));
+        let both = join_launch_notices(hot.clone(), wipe).unwrap();
+        assert!(both.starts_with(hot.as_deref().unwrap()) && both.ends_with("could not be removed."), "{both}");
+        assert_eq!(join_launch_notices(None, None), None);
+        assert_eq!(join_launch_notices(Some("  ".into()), Some("".into())), None);
+        // Published as two events they would collapse into the later one; as one event nothing is lost.
+        let mut m = BTreeMap::new();
+        assert!(remember(&mut m, &json!({"type": "app.notice", "message": both})));
+        assert!(m["app.notice"]["message"].as_str().unwrap().contains("menu bar icon"));
     }
     #[test]
     fn a_page_that_loads_late_gets_the_status_it_missed() {

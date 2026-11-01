@@ -1,7 +1,7 @@
 // The first run, as plain decisions: which step comes next, what each answer changes, and what a key must look like.
 // Nothing here touches the screen, so every rule can be tested.
 import type { Command } from "../../protocol/index.ts";
-import { SWITCHED, switchKey, type SwitchedId } from "./groups.ts";
+import { SWITCHED, switchKey, TOOLS, toolOn, type SwitchedId } from "./groups.ts";
 import { setting } from "./settingsStore.ts";
 import type { Liveliness } from "./lookfeel.ts";
 import { numberWords } from "./settingsRows.ts";
@@ -32,16 +32,26 @@ export type Yours = { name: string; lively: Liveliness | null; edge: Edge | null
 export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null, follow: null };
 export const NAME_MAX = 24;
 /** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), how lively
- *  (character.lively, M46), and the edge. Only what was chosen. */
-export function yoursSettings(y: Yours, ownName: string): [string, unknown][] {
+ *  (character.lively, M46), and the edge. Only what differs from `now`, the choices in force when the screen opened, so
+ *  reading it again writes nothing until a choice is touched. Without `now` nothing is in force yet. */
+export function yoursSettings(y: Yours, ownName: string, now: Pick<Yours, "name" | "lively" | "edge"> = { name: "", lively: null, edge: null }): [string, unknown][] {
   const out: [string, unknown][] = [];
-  const name = y.name.trim().slice(0, NAME_MAX);
-  if (name && name !== ownName) out.push(["character.name", name]);
-  if (y.lively) out.push(["character.lively", y.lively]);
-  if (y.edge) out.push(["character.edge", y.edge]);
+  const typed = y.name.trim().slice(0, NAME_MAX), name = typed === ownName ? "" : typed;
+  if (name !== now.name.trim()) out.push(["character.name", name]);
+  if (y.lively && y.lively !== now.lively) out.push(["character.lively", y.lively]);
+  if (y.edge && y.edge !== now.edge) out.push(["character.edge", y.edge]);
   // Follow my pointer (M20): its eyes, a drop of water, or off; the person's choice.
   if (y.follow) out.push(["character.follow", y.follow]);
   return out;
+}
+
+/** Whether a key of the last screen's list is still worth showing: the groups switched off on that same screen are
+ *  released as soon as the choices are saved, so their keys are not listed. A key no tool names stays. */
+export function keyShownFirst(job: string, groupsOff: readonly string[], read: (key: string) => unknown = setting): boolean {
+  const offKeys = SWITCHED.filter((g) => groupsOff.includes(g.id)).map((g) => switchKey(g.id));
+  const reader = (k: string) => (offKeys.includes(k) ? false : read(k));
+  const tools = TOOLS.filter((t) => t.hotkeys?.includes(job));
+  return tools.length === 0 || tools.some((t) => toolOn(t.id, reader));
 }
 
 export type Answers = { explain: boolean; short: boolean; plain: boolean; autoSend: boolean };

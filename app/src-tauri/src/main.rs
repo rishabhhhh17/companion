@@ -147,6 +147,8 @@ static CARD_H: AtomicU64 = AtomicU64::new(150);
 /// Settings is open in Home (the page says so with its height): Home uses the Large width and a fixed height (island.rs
 /// `with_settings`, the overhaul spec 3.1).
 static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
+/// M51: the next move of the character's window is a plain ease with no overshoot (set by a let go that goes in at an edge).
+static LAND_EASE: AtomicBool = AtomicBool::new(false);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
 static HIDDEN_BY_US: AtomicBool = AtomicBool::new(false);  // hidden because a full screen app is in front
 static FS_SMOOTH: Mutex<Option<visibility::Debounce>> = Mutex::new(None);
@@ -290,7 +292,9 @@ fn set_frame_moving(p: &NSPanel, f: NSRect, secs: Option<f64>, alpha: Option<f64
     let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());
     let (w, w2) = (p.retain(), p.retain());
     // The character's own moves (peeking, peek.rs) overshoot a little and settle, like a spring.
-    let spring = secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);
+    // Peeking overshoots; going in at its edge after a let go never does (LAND_EASE, M51), and that is used up by this one move.
+    let ease = LAND_EASE.swap(false, Ordering::SeqCst);
+    let spring = !ease && secs.is_some() && std::ptr::eq(moves, &DOCK_MOVES);
     let changes = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
         unsafe { ctx.as_ref() }.setDuration(secs.unwrap_or(0.0));
         if spring { spring_timing(unsafe { ctx.as_ref() }); }
@@ -364,11 +368,13 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     *HOME_EDGE.lock().unwrap_or_else(|e| e.into_inner()) = edge;
     if let Some(app) = APP.get() { if roam_phase() != roam::Phase::Home { roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, f, f, None, edge)); } }
-    // M47: let go near an edge, a short spring onto it (at once with Reduce motion or Less motion); let go in the middle
+    // M47, M51: let go and gone in at an edge, a short plain ease onto it, no overshoot (at once with Reduce motion or Less
+    // motion); let go in the middle
     // it is already where it belongs, and every other reason puts it there at once.
     let landing = match free { Some(at) => docking::Landing::Free(at), None => docking::Landing::Edge(edge, pct) };
     let secs = if reason == "drag" { docking::land_secs(&landing, reduce_motion()) } else { None };
     with_panels(|d, c| {
+        if reason == "drag" { LAND_EASE.store(true, Ordering::SeqCst); }
         set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES);
         if c.isVisible() { place_card(d, c); }
     });
@@ -405,7 +411,9 @@ fn drag_dock(app: AppHandle, window: tauri::WebviewWindow) {
         // pulls the window away from the pointer.
         ROAM_GEN.fetch_add(1, Ordering::SeqCst);
         let Some(win) = with_panels(|d, _| { let f = d.frame(); set_frame_moving(d, f, None, None, &DOCK_MOVES); from_appkit(f, ph) }) else { return };
-        *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some(docking::Drag::begin((m.x, ph - m.y), win, list));
+        let mut drag = docking::Drag::begin((m.x, ph - m.y), win, list);
+        drag.set_dock_when(docking::DockWhen::from_value(&setting_now("character.dockWhen")));
+        *DRAG.lock().unwrap_or_else(|e| e.into_inner()) = Some(drag);
     });
 }
 
@@ -455,17 +463,20 @@ fn place_told(app: &AppHandle) { place_shown_changed(); settings_told(app, &PLAC
 /// (apply_dock: home, trips, peeking, Home), and the pages are told where it is. A second let go saves nothing.
 #[tauri::command]
 fn drop_dock(app: AppHandle) {
-    // Let go: the water springs back from the edge (the page's spring does the wobble).
-    let _ = app.emit_to("dock", "dock-press", json!({ "press": 0.0 }));
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let landed = DRAG.lock().unwrap_or_else(|e| e.into_inner()).take().and_then(|mut d| d.release(home_size()));
         if let (Some(l), Some(mtm)) = (&landed, MainThreadMarker::new()) {
             with_prefs(|p| p.land(&l.screen.id, l.how));
             save_prefs();
+            // Let go and left where it is: the water springs back (the page's spring does the wobble, it is playing). Gone in at
+            // an edge: it settles flat against it with no wobble (M51).
+            let _ = a.emit_to("dock", "dock-press", match l.how { docking::Landing::Edge(..) => json!({ "press": 0.5, "firm": true }), _ => json!({ "press": 0.0 }) });
             apply_dock(mtm, "drag", true);
             log("dock_dropped", json!({ "screen": l.screen.id, "free": matches!(l.how, docking::Landing::Free(_)), "last_pointer": [l.pointer.0, l.pointer.1], "frame": l.frame, "work": l.screen.work }));
         }
+        // A let go that decided nothing (no display): the water still lets go.
+        if landed.is_none() { let _ = a.emit_to("dock", "dock-press", json!({ "press": 0.0 })); }
         // Only now, with the character at its new home, may anything else move it again.
         DRAG_LIVE.store(false, Ordering::SeqCst);
         DRAG_AT.store(0, Ordering::SeqCst);
@@ -4930,17 +4941,17 @@ fn main() {
                 let off: Vec<&str> = keymap::ACTIONS.iter().filter(|a| launch.started[a.index()].using() != launch.started[a.index()].picked()).map(|a| a.id()).collect();
                 log("hotkey_unavailable", json!({ "which": off, "damaged": launch.damaged }));
             }
-            if let Some(message) = keymap::launch_notice(&launch.started, launch.damaged) {
-                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-hotkeys", "type": "app.notice", "message": message }));
+            // One launch notice, not two: a page that loads later replays only the latest app.notice. The hotkey line comes
+            // first. If a "delete everything" could not remove some of it, the helper left a note; it is said once, here too.
+            let hotkey_notice = keymap::launch_notice(&launch.started, launch.damaged);
+            let wipe_note = std::fs::read_to_string(data_dir().join("wipe-note.txt")).ok();
+            if wipe_note.is_some() { let _ = std::fs::remove_file(data_dir().join("wipe-note.txt")); }
+            if let Some(message) = runner::join_launch_notices(hotkey_notice, wipe_note) {
+                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-launch-notice", "type": "app.notice", "message": message }));
             }
             start_runner(app.handle());
             // Pro's key check (payments on and a key saved only; with payments off this starts nothing).
             start_plan_timer(app.handle());
-            // If a "delete everything" could not remove some of it, the helper left a note; say it once.
-            if let Ok(note) = std::fs::read_to_string(data_dir().join("wipe-note.txt")) {
-                let _ = std::fs::remove_file(data_dir().join("wipe-note.txt"));
-                runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-wipe-note", "type": "app.notice", "message": note }));
-            }
             // The menu bar icon: Settings…, hide or show, stop everything, quit. Only Settings… opens anything: Home, on
             // Settings, at the page last viewed (the overhaul spec, 3.1), because the person clicked it.
             let settings = MenuItemBuilder::with_id("settings", "Settings…").build(app)?;

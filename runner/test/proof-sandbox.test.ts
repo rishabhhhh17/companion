@@ -72,6 +72,22 @@ describe("the box's rules are written so no folder name can change them", () => 
   });
 });
 
+describe("the box refuses reads of deploy logins and shell start up files, also while an install has the internet", () => {
+  const PRIVATE = ["Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify", ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".pgpass", ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile"];
+  for (const net of ["local", "open"] as const) {
+    test(`net ${net}: each one is named in the read refusal`, () => {
+      const w = world();
+      const p = boxProfile({ project: w.project, net }, { home: w.home, tmp: join(w.root, "t") });
+      const denyRead = p.text.split("\n").find((l) => l.startsWith("(deny file-read*"))!;
+      for (const x of PRIVATE) {
+        const key = Object.entries(p.params).find(([, v]) => v === join(realpathSync(w.home), x))?.[0];
+        expect(key, x).toBeDefined();
+        expect(denyRead, x).toContain(`(subpath (param "${key}"))`);
+      }
+    });
+  }
+});
+
 describe.skipIf(!HAS_BOX)("in the box, on this Mac", () => {
   test("the box works here, also for a folder with a hostile name", async () => {
     const w = world();

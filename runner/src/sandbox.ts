@@ -18,6 +18,11 @@ export const REGISTRY_DOMAINS = [
 const SENSITIVE = [
   ".ssh", ".aws", ".gnupg", ".kube", ".docker", ".npmrc", ".netrc", ".pypirc", ".git-credentials", ".azure",
   ".config/gcloud", ".config/gh", ".config/op", ".terraform.d/credentials.tfrc.json",
+  // The deploy tools Squibby drives keep their logins here, and so do Stripe, Cargo and Postgres.
+  "Library/Application Support/com.vercel.cli", ".local/share/com.vercel.cli", "Library/Preferences/netlify", ".config/netlify",
+  ".config/.wrangler", ".wrangler", ".config/configstore", ".supabase", ".config/stripe", ".cargo/credentials.toml", ".cargo/credentials", ".pgpass",
+  // The shell's start up files, which often export API keys. Checks and Claude's commands run /bin/sh -c, which does not read them.
+  ".zshrc", ".zprofile", ".zshenv", ".bash_profile", ".bashrc", ".profile",
   ".claude", ".claude.json", ".zsh_history", ".bash_history", ".python_history", ".node_repl_history",
   "Library/Keychains", "Library/Application Support/Companion", "Library/Application Support/Companion-test-claude", "Library/Application Support/dev.companion.app",
   "Library/Application Support/Google/Chrome", "Library/Application Support/Firefox", "Library/Application Support/Arc", "Library/Application Support/BraveSoftware",

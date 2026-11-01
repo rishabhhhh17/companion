@@ -250,6 +250,8 @@ button, select, input, textarea { font: inherit; }
 .sb-dot { flex: none; width: var(--dot); height: var(--dot); margin-left: auto; border-radius: var(--r-round); background: var(--amber); }
 .sb-sep { height: var(--hair); margin: var(--space-2) var(--space-field-x); background: var(--line); list-style: none; }
 @media (forced-colors: active) { .sb-item[aria-current="page"] { outline: var(--ring) solid Highlight; } }
+/* Folded under Home's big text (style.css): the list is one scrolling strip, so the sidebar is two controls tall, not eleven. */
+@container home (width < 44rem) { .sb-list { display: flex; gap: var(--space-1); overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--space-1); } .sb-item { width: auto; flex: none; white-space: nowrap; } .sb-sep { display: none; } }
 
 /* ---------- Sheet: slides over the content column from the right ---------- */
 .ui-sheet-layer { position: fixed; inset: 0; z-index: 30; }

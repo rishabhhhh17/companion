@@ -16,12 +16,12 @@ Mac first. Downloaded from our website, not an app store. The scope and order of
 
 ## Status
 
-**14 Oct 2026.** Everything in the friends preview list is built and tested by machine except the character (waiting for the founder's designs). **Nothing has been tried by a person on a real Mac yet**, and there is no notarized build, so it is not ready to hand to a stranger. See `docs/status/2026-10-14-launch-readiness.md` for what is built, what is proven and what blocks launch.
+**1 Nov 2026.** The branch is at M48, the launch cut. The founder ran a 90 minute hands on session on their own Mac on 26 Oct (`docs/status/2026-10-26-mac-session-1.md`), and much of what was added since (the launch cut, a new first run, Pro, a Settings overhaul) passes the automatic tests but has not yet been walked by a person on a real Mac. There is **no notarized build yet**, so it is not ready to hand to a stranger. See `docs/status/2026-10-14-launch-readiness.md` for what was built and what blocks launch as of 14 Oct (older than this paragraph) and `docs/status/2026-10-30-mac-session-3-plan.md` for the next hands on check.
 
 ## What we promise
 
 - **Bring your own Claude.** You use your own Anthropic API key or cloud account. Using your Claude plan is planned, once Anthropic confirms it in writing. We never pay for, resell or sit between you and your Claude usage. Powered by Claude.
-- **It never watches you.** Your screen, other apps' text and your microphone are used only when you press a hotkey, with a visible light, and Squibby never saves them. (M0 also checks that the Claude engine underneath keeps screenshots off disk.)
+- **It never watches you.** Your screen, other apps' text and your microphone are used only when you press a hotkey, with a visible light. Squibby never writes your screen captures to disk. The Claude engine keeps a temporary copy of images it is sent, so we point that at a RAM drive and erase it after each answer. We have not yet proven this on a real Mac.
 - **"Done" means proven.** Builds and tests pass, a real browser opens your app, and only then does it say done.
 - **Everything is undoable** except what it clearly tells you is not (like going live), and those always need your tap.
 - **It's a productivity tool,** not an AI friend.

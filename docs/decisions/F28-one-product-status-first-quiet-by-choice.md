@@ -32,5 +32,9 @@ The executive review found the product trying to be many products at once (F16 s
 - **Existing installs (review, 31 Oct 2026).** Settings keeps only values that differ from the usual one, so a person who used a side tool while it was on by usual had nothing written down. Once, on a Companion used before, a tool there is evidence the person relied on (it is in the tried list, they picked a key for it, or they set up watch routines) keeps its old value, on; the others start off as decided, and Settings says once which ones. New installs start exactly as decided. Nothing in the decision changes.
 - **Google connections.** Connecting a new Google account is part of watch routines and starts off. An account already connected keeps working and always shows in Settings, so it can be disconnected (rule 6).
 
+## Update, 1 Nov 2026 (the founder's own use)
+- **Lively is the usual now, not Still.** The founder: "I don't see the water ring following me." With Still as the usual the ring showed only while listening, so a person who had never opened Settings never saw it. Still and Gentle stay as the quiet choices, and the rest of F28 (side tools off, status first) is unchanged. A word the setting does not know still reads as Still.
+- **Going into the edge** (`character.dockWhen`). Let go near an edge, it used to snap in with a spring. Now it goes in only when pushed hard into the edge, thrown at it, or kept near it about two seconds, and it goes in with a plain ease and no bounce. Playing near an edge leaves it where it is let go. The old way stays as a choice ("Any let go"). Numbers are in `docking.rs` (`HARD_PRESS`, `FLICK_SPEED`, `REST_MS`); [verify] the feel on a real Mac.
+
 ## Revisit only if
 Real users on real Macs show that a switched off group is what they came for, or that Still reads as broken.

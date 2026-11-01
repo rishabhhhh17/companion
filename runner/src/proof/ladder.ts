@@ -181,7 +181,7 @@ const RUN_UNBOXED_UNASKED = "The safety box for checks is not working on this Ma
 // code, so it is a gap and never sends the agent to fix anything.
 const BOX_STOPPED = {
   write: (what: string) => `The safety box for checks stopped ${what} from writing to a temporary folder outside the project (/tmp), so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
-  browser: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} start${what === "the tests" ? "" : "s"} a browser with its own sandbox, which cannot run inside the safety box for checks, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
+  browser: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} start${what === "the tests" ? "" : "s"} a browser with its own built-in protection, which cannot run inside the safety box for checks, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
   net: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} need${what === "the tests" ? "" : "s"} the internet, which the safety box for checks does not give ${what === "the tests" ? "them" : "it"}, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
   git: (what: string) => `${what[0].toUpperCase()}${what.slice(1)} tried to change Git's folder for this project, which checks never do, so ${what === "the tests" ? "they" : "it"} could not run here. That says nothing about your code.`,
 } as const;

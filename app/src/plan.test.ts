@@ -3,7 +3,7 @@
 // card has at most one main button and a way out; no renewal date, no local price and no dollar amount outside strings.ts;
 // and with payments off the pages behave exactly as before: Early access, no tag, no gate, no limit card, no change to
 // Delete everything.
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   askTurnOffPro, atLimit, dayWords, deleteGoesPro, deleteKeeps, FREE_FIXES, getProSheet, lastFreeLine, limitCard, limitShown, OFF, planCard, planProblem,
@@ -15,6 +15,11 @@ import { initial, reduce } from "./model.ts";
 import { PRODUCT, S } from "./strings.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
+
+// The fixtures say the month resets on 2026-11-01. On and after that day the pages (rightly) count a new month, so these
+// cases fail on the real clock from 1 Nov 2026 on. They run on the day they were written for.
+beforeAll(() => setSystemTime(new Date(2026, 9, 31, 12, 0, 0)));
+afterAll(() => setSystemTime());
 /** What the shell sends with payments on (license.rs status_json), changed where a case needs it. */
 const on = (o: Partial<PlanStatus> = {}): PlanStatus => statusFrom({
   paymentsOn: true, plan: "free", state: "free", key: null, trial: null, trialUsed: false, checkout: { yearly: true, monthly: true }, portal: true, ...o,

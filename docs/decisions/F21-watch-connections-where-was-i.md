@@ -1,6 +1,6 @@
 # F21: Watch routines, builder stack connections (read only) and Where was I (22 Oct 2026)
 
-- **Status:** Founder decision, 22 Oct 2026 ("start building on it"). Unparks three things F18 kept out of the launch. Everything else F18 parked stays parked (agents with memory, email and calendar connections, ads and CRM, dictation into any app, clicking for you).
+- **Status:** Amended by F28 (30 Oct 2026, default switch only): the watch switch (`watch.on`) now starts off. The rest of this record stands. Founder decision, 22 Oct 2026 ("start building on it"). Unparks three things F18 kept out of the launch. Everything else F18 parked stays parked (agents with memory, email and calendar connections, ads and CRM, dictation into any app, clicking for you).
 - **Why:** the product needs a reason to be opened when nothing is broken, and a reason to pay. Chat is free everywhere; a helper that watches the things you built and tells you the moment one breaks, with proof, is not.
 
 ## Decision

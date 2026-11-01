@@ -157,6 +157,8 @@ describe("a task that changed the project's scripts asks before the check runs t
     const ask = of(r.events, "approval.request")[0];
     expect(ask).toMatchObject({ risk: "install" });
     expect(ask.title).toMatch(/changed the project's scripts or packages/);
+    // The card's code line says what runs, never the bare word the check asked with ("task", "since", "unboxed").
+    expect(ask.action).toBe("Running: install, build, tests and server");
     expect(r.ran()).toBe(false);
     expect(of(r.events, "receipt")[0].proof).not.toBe("passed");
   });
