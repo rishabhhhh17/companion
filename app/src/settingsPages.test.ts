@@ -38,7 +38,7 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     expect(mainKeys("fixing")).toEqual(["rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
     // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
-    expect(mainKeys("look")).toEqual(["look.layout", "look.theme", "look.water", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
+    expect(mainKeys("look")).toEqual(["look.layout", "look.theme", "look.colour", "look.water", "look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
     expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);

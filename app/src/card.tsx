@@ -35,8 +35,10 @@ import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
-import { layoutOf, sideOn, sidePlaces, sideRecent } from "./homeLayout.ts";
+import { layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { HomeSide } from "./homeSide.tsx";
+import { roomElement, useRoomStill } from "./element.ts";
+import { RoomLight } from "./roomLight.tsx";
 import { historyStamp, taskName } from "./itemLook.ts";
 import { ItemTile, Stamp } from "./itemMarks.tsx";
 
@@ -52,7 +54,7 @@ import { fileNames, undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
 import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
-import { buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
+import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -1537,14 +1539,23 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
+  const roomIsStill = useRoomStill(homeOpen);
+  // The fade above the ask box shows only while there is more work below to scroll to (homeLayout.ts, ui/wide.css).
+  useMoreBelow(root);
+  // The room (the brand language): the element of the group at work lights Home (element.ts); talking and a file dragged
+  // over Home take the room for as long as they last.
+  const room = roomElement({ tab: home.tab, active: activeGroup(m, dragging) });
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
+      data-element={room} data-still={roomIsStill ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
+      {/* The room's light (the brand language): out of focus, behind the work, in the element of the group at work. */}
+      <RoomLight />
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={needNow?.tab ?? null} recent={sideRecent(project ? m.history : [])} now={clock}
@@ -1634,7 +1645,7 @@ function Card() {
           </div>
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
-          {dragging && <div className="line" role="status">{S.attachDrop}</div>}
+          {dragging && <div className="line drop-line" role="status">{S.attachDrop}</div>}
           {attached.length > 0 && (
             <div className="chips" role="list" aria-label={S.attachTitle}>
               {attached.map((a, i) => (

@@ -70,6 +70,7 @@
   --gel-lip: rgba(255, 255, 255, .45);
   --gel-gloss: rgba(255, 255, 255, .14);
   --gel-glow: color-mix(in srgb, var(--water) 12%, transparent);
+  --gel-top: color-mix(in srgb, var(--gel-hi) 40%, var(--gel-mid));   /* the main button's top edge, where the light falls in */
   /* The accent (M51 polish): what is picked in Settings, a switch that is on and the picked option of a segmented choice,
      in the water chosen, mixed into the page's words so it reaches 3 to 1 on every surface with every water, in every theme
      (lookChoices.test.ts). The knob and a picked option's words read on it. */
@@ -204,6 +205,74 @@
   /* ---------- The water (lookfeel.ts sets these on the page for the water chosen; these are Ocean) ---------- */
   --water-hi: #C9F1FF; --water-deep: #1676C8; --sea: #04182A; --sea-deep: #020C15;
   --pond: #000000;                     /* the sky over Flowflow's water, in Home's pond and Settings' preview */
+  --w-sea: #136EB5;                    /* the water under Home's waterline, before the room lights it (each water sets its own, below) */
+
+  /* ---------- The elements (the brand language, 1 Nov 2026): Home is a dark room lit from inside by the group at work ----------
+     Each group of tools brings its own coloured light: Flow is water, Guide is a sunbeam, Voice is a bloom, Files is moss.
+     Components only ask for these slot names; [data-element] (below) swaps them, the way one class swaps an accent. These
+     are Flow's, the usual room. light is the only one that may be words (at least 9.8 to 1 on graphite); ink reads on base
+     and on the gradient's top (7 to 1 or more); white reads only on deep. glow is blurred light, never words or a fill.
+     Flow is the water chosen in Settings: each water has its own block (below), so Berry makes the whole room pink, not
+     only Flowflow (element.test.ts measures every one). These are Ocean's. */
+  --el-base: #52A9FE; --el-light: #AFD5FE; --el-deep: #025DA1; --el-glow: #89C3FE; --el-tint: #1B2734;
+  --el-grad-1: #92DDFF; --el-grad-2: #41A3FE; --el-grad-3: #3266E4;
+  --el-sky: #2FA4FF; --el-foot: #0A4DA8; --el-lit: #0A5CC2; --el-card: #52A9FE;   /* the room's own light only: the bright sky at its top and the colour its foot settles into */
+  --el-shadow: rgba(2, 40, 90, .45);   /* shadows in a coloured room take its deep tint, never grey */
+  --el-wash: rgba(82, 169, 254, .15);  /* hover and pressed washes */
+  --el-ink: #0B0C0E;                   /* words on base, light or the gradient: never white */
+  /* What the element may colour as words and as the selected row's fill. Graphite and Deep: the light and the tint. Paper
+     sets its own (below): a light room is not built yet, so Paper keeps its neutral words. */
+  --el-text: var(--el-light);
+  --el-row: var(--el-tint);
+  /* The room's colours as the wide Home's list reads them once (wide.css .side), so a row carrying a gem's own element is
+     still lit by the room it sits in. */
+  --side-row: var(--el-row);
+  --side-text: var(--el-text);
+  --side-glow: var(--el-glow);
+  /* The room's light (look.css .room): how strong it is in this theme, and its base under the light, one step under the
+     page. The grain over it and Flow's caustic shimmer are drawn in the page itself (card.tsx), never fetched. */
+  --room-show: 1;
+  --room-play: running;                /* the light's drift; look.light Still pauses it */
+  --room-base: #0F1012;
+  /* How much colour (look.colour). Vivid, the usual, is a place, not a page: a strong saturated sky over the words, the
+     element washing all the way down the room so there is no dark gap, light rays through it even at rest, deep water
+     lit by the room under Flowflow, soft motes of light drifting in it, and a visible tint of the element in every card.
+     Calm (below) is a quiet page: a faint sky, no rays at rest, no motes, plain cards and a flat main button. Words never
+     sit on the bright parts: the sky is brightest above the words, and the cards stay dark enough for the contrast tests. */
+  --room-sky-a: 78%;
+  --room-wash-a: 42%;
+  --room-mid-a: 28%;
+  --room-glow-a: 72%;
+  --room-floor-a: 50%;
+  --rays-a: 8%;                        /* the light rays at rest */
+  --rays-work-a: 14%;                  /* and while Flow works */
+  --motes-a: .55;                      /* the soft motes of light in the water */
+  --card-tint-a: 10%;
+  --card-lit-a: 50%;
+  --card-halo-a: 18%;
+  --gel-gloss-a: .3;
+  --gel-glow-a: 55%;
+  --sea-see-a: .62;                    /* how much of the lit water under the waterline shows */
+  /* Badges are one system in every room (look.css .stamp): a soft pill of their own colour with a small dot before the
+     words, never an outline and never a sticker. Needs you is the strongest of them: its fill is a step fuller. */
+  --stamp-fill-a: 15%;
+  --fg-2-room: #C4C5CA;                /* the grey under the room's touch of light in --fg-2 (a lit room, below) */
+  --stamp-needs-a: 24%;
+  /* A lit material's light: the sheen on a raised card's top edge, its hairline, and a gem's specular dot. */
+  --sheen-top: rgba(255, 255, 255, .1);
+  --sheen-line: rgba(255, 255, 255, .06);
+  --sheen-rim: rgba(255, 255, 255, .5);
+  --sheen-soft: rgba(255, 255, 255, .25);
+  --sheen-spec: rgba(255, 255, 255, .78);
+  --sheen-shine: rgba(255, 255, 255, .35);
+  --sheen-shade: rgba(0, 0, 0, .18);
+  --sheen-drop: rgba(0, 0, 0, .35);
+  /* A neutral key (secondary button): graphite a step up, a white line on top and a dark one under it. */
+  --keycap: #26282D;
+  --keycap-hover: #2D3036;
+  --keycap-lip: rgba(255, 255, 255, .09);
+  --keycap-under: rgba(0, 0, 0, .4);
+  --r-glass: calc(var(--r-card) + var(--r-control));   /* a card in the room: 20, half with Crisp */
 
   /* ---------- Fixed colours: the same in Night and Paper, on purpose. Each belongs to something no theme may change: the
      hardware notch, the first run (always Night, it comes before any choice), the character and its drop ring on the
@@ -366,6 +435,23 @@
   --main-shadow-press: none;
   --shadow-raised: 0 8px 14px rgba(0, 0, 0, .12), 0 2px 4px rgba(0, 0, 0, .08);
   --scrim: rgba(0, 0, 0, .25);
+  /* No room light on Paper yet: its words and rows stay neutral, and the gems and the gel keep their colours. */
+  --el-text: var(--fg);
+  --el-row: var(--surface-3);
+  --room-show: 0;
+  --room-base: #FFFFFF;
+  /* Paper stays clean: white cards with no tint, only a faint light on the group's own card, and Flowflow's water a light
+     wash of the water rather than a deep sea. */
+  --sea-see-a: .3;
+  --stamp-fill-a: 4%;                  /* a badge's pill on white: a faint tint, so its words keep 4.5 to 1 */
+  --stamp-needs-a: 8%;
+  --card-tint-a: 0%;
+  --card-lit-a: 8%;
+  --card-halo-a: 0%;
+  --keycap: #F4F4F4;
+  --keycap-hover: #ECECEC;
+  --keycap-lip: #FFFFFF;
+  --keycap-under: rgba(0, 0, 0, .14);
 }
 
 /* ---------- Colour, Deep (look.theme = deep, M51): a dark sea blue, the same steps as Graphite with a cool cast ----------
@@ -396,13 +482,136 @@
   --bubble: rgba(27, 47, 68, .9);
   --shadow-raised: 0 8px 14px rgba(0, 6, 14, .5), 0 2px 4px rgba(0, 6, 14, .3);
   --scrim: rgba(2, 8, 16, .55);
+  --room-base: #08121C;
+  --keycap: #1B2F44;
+  --keycap-hover: #22394F;
 }
+
+/* ---------- The elements, one block each (the brand language). A page sets data-element on Home for the group at work
+   (element.ts roomElement), and a gem sets it on itself, so a gem always shows its own element in any room. Every value
+   is measured in element.test.ts: light on graphite 9.8 to 1 or more, ink on base 7 to 1 or more, white on deep 4.5 to 1
+   or more. A later creature gets its block from the OKLCH recipe and needs no other change. ---------- */
+[data-element="flow"] {
+  --el-base: #52A9FE; --el-light: #AFD5FE; --el-deep: #025DA1; --el-glow: #89C3FE; --el-tint: #1B2734;
+  --el-grad-1: #92DDFF; --el-grad-2: #41A3FE; --el-grad-3: #3266E4;
+  --el-sky: #2FA4FF; --el-foot: #0A4DA8; --el-lit: #0A5CC2; --el-card: #52A9FE;
+  --el-shadow: rgba(2, 40, 90, .45); --el-wash: rgba(82, 169, 254, .15);
+}
+[data-element="guide"] {
+  --el-base: #F7A307; --el-light: #FCD176; --el-deep: #9A4901; --el-glow: #FDBD4A; --el-tint: #2D1F36;
+  --el-grad-1: #FBDD67; --el-grad-2: #F7A307; --el-grad-3: #DD6301;
+  --el-sky: #F0722A; --el-foot: #7A2FB0; --el-lit: #D2475F; --el-card: #C2409A;   /* a sunset: dim yellow reads olive and dim orange or red reads brown, so the sun's gold stays in the bright parts (the beams, the sky, the gem, the gel) and the wide dim parts fall from coral to rose to violet */
+  --el-shadow: rgba(60, 20, 70, .45); --el-wash: rgba(247, 163, 7, .15);
+}
+[data-element="voice"] {
+  --el-base: #F969B1; --el-light: #FEBAD7; --el-deep: #9B2065; --el-glow: #FE99C7; --el-tint: #2F1F2A;
+  --el-grad-1: #FFB4F7; --el-grad-2: #F65EAB; --el-grad-3: #C82360;
+  --el-sky: #FF6FC4; --el-foot: #9B1F6A; --el-lit: #A3206E; --el-card: #F969B1;
+  --el-shadow: rgba(90, 10, 55, .4); --el-wash: rgba(249, 105, 177, .15);
+}
+[data-element="files"] {
+  --el-base: #09C466; --el-light: #92E8AA; --el-deep: #046D36; --el-glow: #6FDC93; --el-tint: #132A21;
+  --el-grad-1: #A6EDB9; --el-grad-2: #01BD61; --el-grad-3: #018662;   /* the brand language gave #B0E477, 75 degrees from its deep end: kept inside the family */
+  --el-sky: #00935A; --el-foot: #066E58; --el-lit: #067A55; --el-card: #09C466;
+  --el-shadow: rgba(0, 60, 30, .4); --el-wash: rgba(9, 196, 102, .15);
+}
+/* Flow is the water chosen in Settings (look.water): each water lights the whole of Flow's room, its gem and its main button,
+   with the same slots as Ocean's, made by the same OKLCH recipe and measured the same way (element.test.ts). Lime's dim
+   parts lean green, never olive. The other groups keep their own colours whatever the water. */
+:root[data-water="lagoon"], :root[data-water="lagoon"] [data-element="flow"] {
+  --el-base: #0ABFA1; --el-light: #8DE5CF; --el-deep: #036B59; --el-glow: #3FDABA; --el-tint: #0B2C28;
+  --el-grad-1: #86E9BC; --el-grad-2: #08B89B; --el-grad-3: #088378;
+  --el-sky: #0DB898; --el-foot: #04605B; --el-lit: #08706B; --el-card: #01BEAD;
+  --el-shadow: rgba(1, 53, 44, .45); --el-wash: rgba(10, 191, 161, .15);
+  --w-sea: #017C70;
+}
+:root[data-water="lime"], :root[data-water="lime"] [data-element="flow"] {
+  --el-base: #8ED618; --el-light: #BBDE9A; --el-deep: #436800; --el-glow: #B8EA80; --el-tint: #132C1D;
+  --el-grad-1: #CBDC7B; --el-grad-2: #8AD00A; --el-grad-3: #348704;
+  --el-sky: #6EB501; --el-foot: #026341; --el-lit: #04744C; --el-card: #0CC375;
+  --el-shadow: rgba(33, 52, 0, .45); --el-wash: rgba(142, 214, 24, .15);
+  --w-sea: #028048;
+}
+:root[data-water="berry"], :root[data-water="berry"] [data-element="flow"] {
+  --el-base: #F868B9; --el-light: #FFB9DB; --el-deep: #9A216C; --el-glow: #FD99CD; --el-tint: #331E2B;
+  --el-grad-1: #FFB6EE; --el-grad-2: #F65BB5; --el-grad-3: #CB0375;
+  --el-sky: #F757B9; --el-foot: #930165; --el-lit: #AB0278; --el-card: #F26AC6;
+  --el-shadow: rgba(77, 16, 54, .45); --el-wash: rgba(248, 104, 185, .15);
+  --w-sea: #AA3488;
+}
+:root[data-water="midnight"], :root[data-water="midnight"] [data-element="flow"] {
+  --el-base: #9791FF; --el-light: #CBCBFF; --el-deep: #5446B2; --el-glow: #B1B1FF; --el-tint: #222438;
+  --el-grad-1: #C4CCFF; --el-grad-2: #9189FE; --el-grad-3: #7D3DF2;
+  --el-sky: #8D8AFF; --el-foot: #5031B9; --el-lit: #5D3DD5; --el-card: #9398FE;
+  --el-shadow: rgba(42, 35, 89, .45); --el-wash: rgba(151, 145, 255, .15);
+  --w-sea: #5A59CA;
+}
+/* In a dark room the element also gives the words it may colour, the selected row, the one glossy pill, what is picked in
+   Settings, the working badge and a held key. Paper keeps its own neutral ones (above): this block is the dark themes'. */
+:root:not([data-theme="paper"]) [data-element] {
+  --el-text: var(--el-light);
+  --el-row: var(--el-tint);
+  --pick: color-mix(in srgb, var(--el-base) 55%, var(--fg));
+  --pick-wash: color-mix(in srgb, var(--el-base) 16%, var(--surface-3));
+  --stamp-working: var(--el-light);
+  --key-down: color-mix(in srgb, var(--el-base) 14%, var(--key-fill));
+  /* Second words in a lit room: a step lighter than the page's grey and touched with the room's light, so a line straight
+     on the room's colour reads at 4.5 to 1 and still sits a step under the first words. */
+  --fg-2: color-mix(in srgb, var(--el-light) 30%, var(--fg-2-room));
+}
+/* The one glossy pill in a room: light at the top, the element's body in the middle, a lighter step at its foot, a rim in
+   its deep colour, an inner shine and shade, and a drop shadow in its own deep tint. Ink words, never white. Flat (look.gloss)
+   keeps the colour and its rim and takes the light away. */
+[data-element] {
+  /* A raised surface in the room: graphite with 4 percent of the room's hue, and as glass at 88 percent. */
+  --raise: color-mix(in srgb, var(--el-card) var(--card-tint-a), var(--surface-1));
+  --raise-glass: color-mix(in srgb, var(--raise) 88%, transparent);
+  /* Flowflow's water in the room: a deep sea in the room's own light with a little of the chosen water in it, seen through
+     at --sea-see. In Flow's room both are the water's, so it is the water itself; under Guide's sun it is a violet sea at
+     sunset (never a pool of sun), in Voice's bloom a plum sea, while a file is over Home a teal one. Never a band of another
+     colour pasted across the room, and never grey: a water and a room of opposite colours are not mixed half and half. */
+  --sea-room: color-mix(in srgb, var(--el-foot) 80%, var(--w-sea));
+  --sea-see: var(--sea-see-a);
+  --sky-c: var(--el-sky);              /* the colour of the room's sky (look.css .room-sky); Calm's sun is rose, below */
+  --el-lift: color-mix(in srgb, var(--el-base) 82%, #FFFFFF);   /* the lighter step at a gel's foot */
+  --gel-body: color-mix(in srgb, var(--el-base) 70%, var(--el-grad-3));   /* the gel's fuller colour under its middle */
+  --gel-hi: var(--el-grad-1);
+  --gel-mid: var(--el-base);
+  --gel-top: color-mix(in srgb, var(--gel-hi) 40%, var(--gel-mid));
+  --gel-lo: var(--el-lift);
+  --gel-edge: var(--el-deep);
+  --gel-lip: rgba(255, 255, 255, .5);
+  --gel-gloss: rgba(255, 255, 255, var(--gel-gloss-a));
+  --gel-glow: color-mix(in srgb, var(--el-glow) var(--gel-glow-a), transparent);
+  --gel-ink: var(--el-ink);
+  --gel-shine: var(--sheen-shine);
+  --gel-shade: var(--sheen-shade);
+}
+:root[data-gloss="flat"] [data-element] {
+  --gel-hi: var(--el-base);
+  --gel-body: var(--el-base);
+  --gel-lo: var(--el-base);
+  --gel-lip: transparent;
+  --gel-gloss: transparent;
+  --gel-glow: transparent;
+  --gel-shine: transparent;
+  --gel-shade: transparent;
+}
+/* The room's colours are registered, so moving from one group's room to another fades its light in about half a second
+   instead of jumping (look.css .room). */
+@property --el-glow { syntax: "<color>"; inherits: true; initial-value: #89C3FE; }
+@property --el-deep { syntax: "<color>"; inherits: true; initial-value: #025DA1; }
+@property --el-light { syntax: "<color>"; inherits: true; initial-value: #AFD5FE; }
+@property --el-base { syntax: "<color>"; inherits: true; initial-value: #52A9FE; }
+@property --el-sky { syntax: "<color>"; inherits: true; initial-value: #2FA4FF; }
+@property --el-foot { syntax: "<color>"; inherits: true; initial-value: #0A4DA8; }
 
 /* More contrast, from the Mac's own setting. */
 @media (prefers-contrast: more) {
   :root { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
   :root[data-theme="paper"] { --line: rgba(0, 0, 0, .24); --line-strong: rgba(0, 0, 0, .4); --fg-2: #4A4A4F; --edge-control: rgba(0, 0, 0, .6); }
   :root[data-theme="deep"] { --line: rgba(190, 220, 255, .26); --line-strong: rgba(190, 220, 255, .42); --fg-2: #C9D5E2; --edge-control: rgba(190, 220, 255, .62); }
+  :root { --fg-2-room: #D6D7DB; }
 }
 
 /* ---------- The look choices (M51 step 3; the founder, 1 Nov 2026: "as much customization as possible") ----------
@@ -447,6 +656,37 @@
 }
 
 /* Corners: crisp halves every rounded corner except the notch's own, a switch and the round status dot. */
+/* Colour (look.colour): Calm turns the room's light, the cards' tint and the gel's shine down a step. */
+:root[data-colour="calm"] {
+  --room-sky-a: 26%;
+  --room-wash-a: 10%;
+  --room-mid-a: 4%;
+  --room-glow-a: 30%;
+  --room-floor-a: 20%;
+  --rays-a: 0%;
+  --rays-work-a: 9%;
+  --motes-a: 0;
+  --card-tint-a: 0%;
+  --card-lit-a: 18%;
+  --card-halo-a: 0%;
+  --gel-gloss-a: .1;
+  --gel-glow-a: 15%;
+  --sea-see-a: .34;
+  --stamp-fill-a: 11%;
+  --stamp-needs-a: 18%;
+}
+/* A faint orange sky reads brown, so Calm's sun lights its sky in its rose (Vivid's is bright enough to stay orange). */
+:root[data-colour="calm"] [data-element="guide"] { --sky-c: var(--el-card); }
+:root[data-theme="paper"][data-colour="calm"] { --card-tint-a: 0%; --card-lit-a: 5%; --card-halo-a: 0%; --sea-see-a: .2; --stamp-fill-a: 3%; --stamp-needs-a: 6%; }
+/* The light behind Home (look.light): Still holds it as one picture; Off takes it away, so Home is plain graphite. */
+:root[data-light="still"] {
+  --room-play: paused;
+}
+:root[data-light="off"] {
+  --room-show: 0;
+  --sea-see-a: .34;                    /* Flowflow's water stays, lighter, on the plain graphite */
+}
+
 :root[data-corners="crisp"] {
   --r-key: 3px;
   --r-thumb: 3px;

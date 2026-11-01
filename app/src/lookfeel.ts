@@ -35,6 +35,12 @@ export const LOOK_CHOICES = {
   "look.stamps": { attr: "data-stamps", values: ["on", "off"] },
   "look.gloss": { attr: "data-gloss", values: ["on", "flat"] },
   "look.corners": { attr: "data-corners", values: ["soft", "crisp"] },
+  /** The light behind Home (the brand language, 1 Nov 2026): it drifts slowly while Home is in use, holds still, or is off
+   *  (plain graphite). Reduce motion and Less motion always hold it still. */
+  "look.light": { attr: "data-light", values: ["moving", "still", "off"] },
+  /** How much colour (the founder, 1 Nov 2026: "very colourful and out there"): Vivid, the usual, or Calm, a step quieter.
+   *  It turns the room's light, the cards' tint and the gel's shine up or down together (ui/tokens.css). */
+  "look.colour": { attr: "data-colour", values: ["vivid", "calm"] },
 } as const;
 export type LookChoice = keyof typeof LOOK_CHOICES;
 /** A saved value as the attribute's value: Stamps is a switch (false is off); anything not one of the values is the usual. */
@@ -43,13 +49,13 @@ export function choiceOf(key: LookChoice, v: unknown): string {
   if (key === "look.stamps") return v === false ? "off" : "on";
   return typeof v === "string" && (values as readonly string[]).includes(v) ? v : values[0];
 }
-/** Every look attribute for the saved values: the theme and the five choices. */
+/** Every look attribute for the saved values: the theme and the seven choices. */
 export function lookAttrs(values: Partial<Record<"look.theme" | LookChoice, unknown>>): Record<string, string> {
   const out: Record<string, string> = { "data-theme": themeOf(values["look.theme"]) };
   for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) out[LOOK_CHOICES[k].attr] = choiceOf(k, values[k]);
   return out;
 }
-/** Sets the five choices on a page's root (Home and Settings; the island and the character keep the notch's look). */
+/** Sets the seven choices on a page's root (Home and Settings; the island and the character keep the notch's look). */
 export function applyLookChoices(root: { setAttribute: (k: string, v: string) => void }, values: Partial<Record<LookChoice, unknown>>): void {
   const attrs = lookAttrs(values);
   for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) root.setAttribute(LOOK_CHOICES[k].attr, attrs[LOOK_CHOICES[k].attr]);
@@ -80,8 +86,10 @@ export type Size = (typeof SIZES)[number];
 export const SIZE_SCALE: Record<Size, number> = { small: 0.82, usual: 1, large: 1.12 };
 export function sizeOf(v: unknown): Size { return typeof v === "string" && (SIZES as readonly string[]).includes(v) ? (v as Size) : "usual"; }
 
-/** Sets the look on a page's root: the water's colours as custom properties, and the theme as data-theme. */
+/** Sets the look on a page's root: the water's colours as custom properties, the water as data-water (Flow's room takes
+ *  the water's colours from it, ui/tokens.css), and the theme as data-theme. */
 export function applyLook(root: { style: { setProperty: (k: string, v: string) => void }; setAttribute: (k: string, v: string) => void }, water: unknown, theme: unknown): void {
   for (const [k, v] of Object.entries(waterVars(waterOf(water)))) root.style.setProperty(k, v);
+  root.setAttribute("data-water", waterOf(water));
   root.setAttribute("data-theme", themeOf(theme));
 }

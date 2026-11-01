@@ -17,18 +17,22 @@ import { SidebarItem } from "./ui/parts.tsx";
 import { historyStamp, sideStamp, taskName } from "./itemLook.ts";
 import { ItemTile, Stamp } from "./itemMarks.tsx";
 import { verdictMark } from "./ui/partsLogic.ts";
+import type { ElementId } from "./element.ts";
 
 type Props = {
   places: SidePlace[]; tab: Tab; waits: Tab | null; recent: HistoryItem[]; now: number;
   onPick: (t: Tab) => void; onSettings: () => void; onOpen: (item: HistoryItem) => void;
 };
 
+/** A place that is a group's own room shows that group's gem in place of a drawing (the brand language). */
+const PLACE_GEM: Partial<Record<SidePlace, ElementId>> = { now: "flow", learn: "guide" };
+
 export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen }: Props) {
   return (
     <nav className="side" aria-label={S.look.placesLabel}>
       <ul className="side-list">
         {places.map((t) => (
-          <li key={t}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} onClick={() => onPick(t)} /></li>
+          <li key={t} data-gem={PLACE_GEM[t] ? "" : undefined} data-element={PLACE_GEM[t]}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} onClick={() => onPick(t)} /></li>
         ))}
       </ul>
       {recent.length > 0 && (
@@ -43,10 +47,10 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
               const stamp = sideStamp(historyStamp(i, now));
               return (
                 <li key={i.id}>
-                  <button type="button" className="sb-item side-work" data-tone={tone} title={name} aria-label={`${S.ui.openReceipt(name)}. ${v.headline}`} onClick={() => onOpen(i)}>
+                  <button type="button" className="sb-item side-work" data-tone={tone} title={stamp ? `${name}. ${S.look.stamp[stamp]}` : name} aria-label={`${S.ui.openReceipt(name)}. ${v.headline}`} onClick={() => onOpen(i)}>
                     <ItemTile label={name} />
                     <span className="side-name" aria-hidden="true">{name}</span>
-                    {stamp && <Stamp kind={stamp} />}
+                    {stamp && <Stamp kind={stamp} dot />}
                     <span className={`side-mark${stamp ? " unstamped" : ""}`} aria-hidden="true"><Icon name={mark} size={12} /></span>
                   </button>
                 </li>

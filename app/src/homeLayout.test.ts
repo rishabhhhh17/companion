@@ -5,7 +5,7 @@
 // docking.rs; these are the pages.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { layoutOf, sideFits, sideOn, sidePlaces, sideRecent, SIDE_RECENT_MAX, LAYOUT_DEFAULT } from "./homeLayout.ts";
+import { layoutOf, moreBelow, sideFits, sideOn, sidePlaces, sideRecent, SIDE_RECENT_MAX, LAYOUT_DEFAULT } from "./homeLayout.ts";
 import { S } from "./strings.ts";
 import { PAGES } from "./settingsPages.ts";
 import { TEXT_SIZES } from "./textsize.ts";
@@ -125,5 +125,25 @@ describe("the wide look", () => {
     const sideAt = (root: number) => Number(/--w-side: calc\((\d+)rem \/ 14\)/.exec(read("./ui/tokens.css"))![1]) * root / 14;
     expect(688 - 2 - sideAt(16)).toBeGreaterThanOrEqual(440);
     expect(688 - 2 - sideAt(14)).toBeGreaterThanOrEqual(480);
+  });
+});
+
+// The fade over the work above the ask box (ui/wide.css) shows only while there is more work below to scroll to, so at
+// rest, and at the end of the list, the last card reads in full (the review, 1 Nov 2026).
+describe("the fade above the ask box shows only when there is more below", () => {
+  test("more below: content past the bottom of the window, more than a rounding pixel", () => {
+    expect(moreBelow({ scrollHeight: 479, clientHeight: 479, scrollTop: 0 })).toBe(false);
+    expect(moreBelow({ scrollHeight: 480, clientHeight: 479, scrollTop: 0 })).toBe(false);
+    expect(moreBelow({ scrollHeight: 525, clientHeight: 479, scrollTop: 0 })).toBe(true);
+    expect(moreBelow({ scrollHeight: 525, clientHeight: 479, scrollTop: 30 })).toBe(true);
+    expect(moreBelow({ scrollHeight: 525, clientHeight: 479, scrollTop: 46 })).toBe(false);
+    expect(moreBelow({ scrollHeight: 525, clientHeight: 479, scrollTop: 45.5 })).toBe(false);
+  });
+  test("Home keeps data-more up to date, and the stylesheet shows the fade on it alone", () => {
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("useMoreBelow(root);");
+    const wide = readFileSync(new URL("./ui/wide.css", import.meta.url), "utf8");
+    expect(wide).toMatch(/\.home\[data-side\] \.work > \.askwrap::before \{[^}]*opacity: 0;/);
+    expect(wide).toMatch(/\.home\[data-side\]\[data-more\] \.work > \.askwrap::before \{ opacity: 1; \}/);
   });
 });

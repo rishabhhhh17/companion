@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Home is a colourful place now: 1 Nov 2026
+
+- **Home is a lit room, not a dark page.** A bright sky of colour at the top, rays of light falling through deep water, soft points of light drifting in it, and the colour carried all the way down. Words stay easy to read on all of it: every screen was measured.
+- **The water you pick colours the whole room.** Choose Berry and Now, History, Memory and Settings turn pink, main button and all. Before, only Flowflow changed.
+- **Each group has its own light.** Learn, and Now while a practice runs, is a sunset of gold, coral, rose and violet, with no more brown. Holding the talk keys turns Home pink. Dragging a file over Home turns it green and outlines the window as the place to drop it.
+- **Flowflow is bigger and sits in its own water,** which takes the light of the room it is in, so it never looks like a pasted stripe. On Learn it sits in a small pool on the practice card instead of being cut by the card's edge.
+- **Labels are one tidy set:** soft pills with a dot. Needs you is a step stronger, no more white sticker. In the list on the left each label is just its dot, so task names have room.
+- **Calmer details:** the coloured dots at the top of the list that looked like window buttons are gone, the main button is lit rather than candy shiny, the ask box has no thick white frame, and the Water pictures in Settings show the Flowflow you see in Home.
+- **Two choices on the Look page:** Colour (Vivid, the usual, or Calm, a truly quiet Home with no rays and plain cards, picked by picture) and Light behind Home (Moving, Still or Off). The light only drifts while you use Home and never moves with Reduce motion.
+
 ## Calmer and tighter, next to HeyClicky: 1 Nov 2026
 
 - **The list on the left fits about ten tasks, not three.** Each task is one line, its name cut short with "…" (the whole name shows when you point at it, and in History), with a small label at the end only when it is working, needs you or is new. A finished, proven task shows a green tick there instead.

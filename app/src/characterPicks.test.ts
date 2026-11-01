@@ -12,7 +12,7 @@ describe("character picks (M35)", () => {
       expect(S.waterPicks[w].split(" ").length, w).toBeLessThanOrEqual(6);
     }
   });
-  test("the cards are a radio group with arrow keys, and show the live water in each colour", () => {
+  test("the cards are a radio group with arrow keys, and show Flowflow's drop in each colour", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const picks = src.slice(src.indexOf("function WaterSwatches("), src.indexOf("function CompanionHero("));
     // The Picture choice part (ui/parts.tsx): a radio group whose arrows move the choice (ui/partsLogic.ts moveIndex).
@@ -23,9 +23,9 @@ describe("character picks (M35)", () => {
     expect(pc).toContain('role="radio"');
     expect(pc).toContain("moveIndex(e.key, at, options.length)");
     expect(readFileSync(new URL("./ui/partsLogic.ts", import.meta.url), "utf8")).toContain("ArrowRight");
-    expect(picks).toContain("<FlowMini");
-    expect(picks).toContain("water={w}");
-    expect(picks).toContain("still");
+    // 1 Nov 2026: Flowflow as the drop seen in Home, drawn still in each water (waterDrop.tsx), never the old picture art.
+    expect(picks).toContain("<WaterDrop water={w}");
+    expect(picks).not.toContain('pose="look"');
   });
   test("a productivity tool, never a friend (rule 16)", () => {
     expect(JSON.stringify([S.short, S.pages, S.waterPicks])).not.toMatch(/\bfriend/i);

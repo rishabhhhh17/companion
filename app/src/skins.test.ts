@@ -77,11 +77,20 @@ describe("the chrome does not read a skin", () => {
       "--notch-ok", "--notch-bad", "--fr-ok", "--fr-bad", "--fr-amber", "--fr-note", "--fr-drop-deep", "--fl-ok", "--fl-bad",
       // M51 (the founder, 1 Nov 2026): the marker, the one highlighter on the line Flowflow found, and its ink.
       "--marker", "--marker-ink",
+      // 1 Nov 2026 (the elemental colour): the sea under Home's waterline, before the room lights it, is the water's too.
+      "--w-sea",
       // M51 step 3 (the founder asked for HeyClicky's kind of fun): the five soft tints of the items' tiles and their inks. They
       // mark which item is which, never a state; Plain icons in Settings turns them grey.
       "--tint-sky", "--tint-sky-ink", "--tint-mint", "--tint-mint-ink", "--tint-rose", "--tint-rose-ink", "--tint-sun", "--tint-sun-ink", "--tint-lilac", "--tint-lilac-ink",
       // M51 polish: Settings' picture of the Deep theme, in Deep's own blues (a picture of a theme, never the chrome).
-      "--sw-deep-bg", "--sw-deep-card", "--sw-deep-line", "--sw-deep-ink"];
+      "--sw-deep-bg", "--sw-deep-card", "--sw-deep-line", "--sw-deep-ink",
+      // The brand language (1 Nov 2026): each group's element is the light of its room, its gem and its one gel pill, never the
+      // chrome (the list, the words, the dividers and the secondary keys stay grey). Flow's is the usual room, on :root.
+      // element.test.ts measures every element's contrast.
+      "--el-base", "--el-light", "--el-deep", "--el-glow", "--el-tint", "--el-grad-1", "--el-grad-2", "--el-grad-3",
+      // The founder asked for "very colourful" (1 Nov 2026): the room's sky, its floor, and the light and tint in a group's
+      // cards are the element's light too, never the chrome.
+      "--el-sky", "--el-foot", "--el-lit", "--el-card"];
     for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

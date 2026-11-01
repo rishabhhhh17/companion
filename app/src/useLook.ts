@@ -14,10 +14,10 @@ export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): 
   const theme = opts.keepNight ? "night" : chosen;
   useEffect(() => { applyLook(document.documentElement, water, theme); }, [water, theme]);
   const density = useSetting("look.density"), icons = useSetting("look.icons"), stamps = useSetting("look.stamps");
-  const gloss = useSetting("look.gloss"), corners = useSetting("look.corners");
+  const gloss = useSetting("look.gloss"), corners = useSetting("look.corners"), light = useSetting("look.light"), colour = useSetting("look.colour");
   const choices = !!opts.choices && !opts.keepNight;
   useEffect(() => {
-    if (choices) applyLookChoices(document.documentElement, { "look.density": density, "look.icons": icons, "look.stamps": stamps, "look.gloss": gloss, "look.corners": corners });
-  }, [choices, density, icons, stamps, gloss, corners]);
+    if (choices) applyLookChoices(document.documentElement, { "look.density": density, "look.icons": icons, "look.stamps": stamps, "look.gloss": gloss, "look.corners": corners, "look.light": light, "look.colour": colour });
+  }, [choices, density, icons, stamps, gloss, corners, light, colour]);
   return flowColours(waterOf(water));
 }

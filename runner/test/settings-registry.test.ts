@@ -88,6 +88,10 @@ describe("the shipped list of settings", () => {
       // M51 step 3 (the founder: "as much customization as possible"): the graphite look is the usual theme (a saved "night"
       // still reads, as Graphite), with roomy spacing, coloured item icons, stamps on, the glossy button and soft corners.
       "look.density": "comfortable", "look.icons": "colour", "look.stamps": true, "look.gloss": "on", "look.corners": "soft",
+      // The brand language (1 Nov 2026): Home is lit from behind in the colour of the group at work, and the light drifts.
+      "look.light": "moving",
+      // The founder (1 Nov 2026): "very colourful and out there". Vivid is the usual, Calm a step quieter.
+      "look.colour": "vivid",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -111,7 +115,7 @@ describe("the shipped list of settings", () => {
     // M51 step 3: the theme keeps "night" as an option so a value saved before still checks out (it reads as Graphite), and
     // the five look choices reach the pages only, live, kept in settings.json.
     expect(defOf("look.theme")).toMatchObject({ section: "look", kind: "choice", default: "graphite", options: ["graphite", "paper", "deep", "night"], applies: ["pages"], store: "settings", live: true });
-    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["colour", "plain"]], ["look.gloss", ["on", "flat"]], ["look.corners", ["soft", "crisp"]]] as const) {
+    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["colour", "plain"]], ["look.gloss", ["on", "flat"]], ["look.corners", ["soft", "crisp"]], ["look.light", ["moving", "still", "off"]], ["look.colour", ["vivid", "calm"]]] as const) {
       expect(defOf(k), k).toMatchObject({ section: "look", kind: "choice", default: options[0], options: [...options], scope: "app", applies: ["pages"], store: "settings", live: true });
     }
     expect(defOf("look.stamps")).toMatchObject({ section: "look", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });

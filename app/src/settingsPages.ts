@@ -50,8 +50,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   look: {
     icon: "image",
     groups: [
-      { id: "look.home", items: ["look.layout", "look.theme", "look.water"] },
-      { id: "look.details", items: ["look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"] },
+      { id: "look.home", items: ["look.layout", "look.theme", "look.colour", "look.water"] },
+      { id: "look.details", items: ["look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"] },
     ],
     more: [],
   },

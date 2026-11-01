@@ -3,6 +3,7 @@
 // ask box along the bottom of the work. Tall: the panel from before, one column with the places in its top row. The shell
 // sizes Home from the same setting (island.rs HomeSize::of) and keeps the character clear of it. Plain code, tested in
 // homeLayout.test.ts.
+import { useEffect, type RefObject } from "react";
 import type { HistoryItem } from "./model.ts";
 import { taskName } from "./itemLook.ts";
 import type { Tab } from "./home.ts";
@@ -36,4 +37,25 @@ export const SIDE_RECENT_MAX = 10;
 /** The recent work in the list: tasks with a name (a bare "Before: " has none), the newest first, at most ten. */
 export function sideRecent(items: readonly HistoryItem[]): HistoryItem[] {
   return items.filter((i) => taskName(i.label)).sort((a, b) => (b.startedAt > a.startedAt ? 1 : b.startedAt < a.startedAt ? -1 : 0)).slice(0, SIDE_RECENT_MAX);
+}
+
+/** Whether Home has more work below the window to scroll to (more than a rounding pixel). The fade over the work above the
+ *  ask box shows only then (ui/wide.css data-more), so at rest, and at the end of the list, the last card reads in full. */
+export function moreBelow(o: { scrollHeight: number; clientHeight: number; scrollTop: number }): boolean {
+  return o.scrollHeight - o.clientHeight - o.scrollTop > 1;
+}
+/** Live: keeps data-more on Home while there is more below, on scroll and whenever Home or its work changes size. */
+export function useMoreBelow(root: RefObject<HTMLElement | null>): void {
+  useEffect(() => {
+    const el = root.current;
+    if (!el) return;
+    const check = () => el.toggleAttribute("data-more", moreBelow(el));
+    check();
+    el.addEventListener("scroll", check, { passive: true });
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(check);
+    ro?.observe(el);
+    const inner = el.querySelector(".inner");
+    if (inner) ro?.observe(inner);
+    return () => { el.removeEventListener("scroll", check); ro?.disconnect(); };
+  }, [root]);
 }

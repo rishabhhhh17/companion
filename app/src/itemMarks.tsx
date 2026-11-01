@@ -14,7 +14,9 @@ export function ItemTile({ label, big, kind }: { label: string; big?: boolean; k
 }
 
 /** An item's badge, in sentence case. `spoken`: it is the only place its words show (Learn and History, where it stands for
- *  the plain state, which is hidden while badges are on); elsewhere the row already says it, so VoiceOver skips it. */
-export function Stamp({ kind, spoken }: { kind: StampKind; spoken?: boolean }) {
-  return <span className="stamp" data-stamp={kind} aria-hidden={spoken ? undefined : "true"}>{S.look.stamp[kind]}</span>;
+ *  the plain state, which is hidden while badges are on); elsewhere the row already says it, so VoiceOver skips it. `dot`:
+ *  the badge's dot alone, with no words (the side list, where the row's tooltip and its spoken name carry them). */
+export function Stamp({ kind, spoken, dot }: { kind: StampKind; spoken?: boolean; dot?: boolean }) {
+  // Working is Flow at work, so its badge keeps the water's light in any room (a sunbeam badge would read as Needs you).
+  return <span className="stamp" data-stamp={kind} data-dot={dot ? "" : undefined} data-element={kind === "working" ? "flow" : undefined} aria-hidden={spoken ? undefined : "true"}>{dot ? null : S.look.stamp[kind]}</span>;
 }

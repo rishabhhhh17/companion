@@ -9,6 +9,7 @@ import { HomeCharacter } from "./homeCharacter.tsx";
 import { Icon } from "./icons.tsx";
 import { stripEdges } from "./ui/strip.ts";
 import { FlowMini } from "./flowflowMini.tsx";
+import { WaterDrop } from "./waterDrop.tsx";
 import { Waterline } from "./waterline.tsx";
 import { showFirstRunAgain } from "./firstRunAgain.ts";
 import { LIVELINESS, livelinessOf, waterOf, WATERS, type Liveliness } from "./lookfeel.ts";
@@ -1043,7 +1044,8 @@ function DangerZone() {
 }
 const names = (keys: string[]) => keys.map((k) => wordsOf(k).label).join(", ");
 
-/** The water's colour (look.water): a Picture choice, one card per water with Flowflow in that water, its name under it. */
+/** The water's colour (look.water): a Picture choice, one card per water with Flowflow, the drop seen in Home, drawn still in
+ *  that water (waterDrop.tsx), its name under it. */
 /** On a plan that does not cover Pro (payments on only), every water but the usual one has a small Pro tag, and choosing one
  *  shows the card behind it under the choices instead of changing the colour (the payments spec, section 3). A colour
  *  chosen before stays. With payments off there is no tag and every water is a plain choice, as before. */
@@ -1056,19 +1058,20 @@ function WaterSwatches({ value, onChange, labelId }: { value: string; onChange: 
   return (<>
     <PictureChoice labelledBy={labelId} value={waterOf(value)} onChange={pick}
       options={WATERS.map((w) => ({ id: w, label: S.set["look.water"].options?.[w] ?? w, picture: <>
-        <FlowMini state="idle" className="pic-flow" water={w} pose="look" />{tagged && proOnly("look.water", w) && <ProTag corner />}
+        <WaterDrop water={w} className="pic-drop" />{tagged && proOnly("look.water", w) && <ProTag corner />}
       </> }))} />
     {tagged && !card && <p className="set-note">{S.plan.partOfPro.looks}</p>}
     {card && <LimitPanel view={{ reason: "looks" }} status={status} usage={c.usage} say={(l) => c.say(l)} onClose={() => setCard(false)} />}
   </>);
 }
 
-/** Home's layout, theme, main button and corners, chosen by looking (M51 polish; ui/controlRule.ts VISUAL_CHOICES): a small
+/** Home's layout, theme, colour, main button and corners, chosen by looking (M51 polish; ui/controlRule.ts VISUAL_CHOICES): a small
  *  drawing of each option, in the colours it gives and with the water chosen in it, its name under it. Drawings only, from
  *  tokens (ui/look.css .sw-*): the theme pictures keep each theme's own colours whatever theme is on. */
 const LOOK_PICTURE: Readonly<Record<string, (o: string) => ReactNode>> = {
   "look.layout": (o) => <span className="sw-win" data-sw={o}><span className="sw-side" /><span className="sw-main"><i /><i /><b /></span></span>,
   "look.theme": (o) => <span className="sw-win" data-sw={o}><span className="sw-side" /><span className="sw-main"><i /><i /><b /></span></span>,
+  "look.colour": (o) => <span className="sw-win sw-room" data-sw={o}><span className="sw-side" /><span className="sw-main"><i /><i /><b /></span></span>,
   "look.gloss": (o) => <span className="sw-pill" data-sw={o} />,
   "look.corners": (o) => <span className="sw-corner" data-sw={o}><i /><i /></span>,
 };

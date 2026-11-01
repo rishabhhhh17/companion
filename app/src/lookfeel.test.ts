@@ -33,12 +33,14 @@ describe("the water's colour", () => {
     expect(readFileSync(new URL("./flowflow/renderer.ts", import.meta.url), "utf8")).toContain('const AQUA = new Color("#6fe3ff"), OCEAN = new Color("#1d72d8");');
     expect(flowColours("berry")).toEqual({ light: WATER_TINTS.berry.mid, deep: WATER_TINTS.berry.deep });
   });
-  test("the page gets the water as custom properties and the theme as data-theme", () => {
+  test("the page gets the water as custom properties and as data-water, and the theme as data-theme", () => {
     const set: Record<string, string> = {}, attrs: Record<string, string> = {};
     applyLook({ style: { setProperty: (k, v) => { set[k] = v; } }, setAttribute: (k, v) => { attrs[k] = v; } }, "lagoon", "deep");
     expect(set).toEqual(waterVars("lagoon"));
     expect(set["--water"]).toBe(WATER_TINTS.lagoon.mid);
     expect(attrs["data-theme"]).toBe("deep");
+    // The water as an attribute too: Flow's room takes its colours from it (ui/tokens.css, element.test.ts).
+    expect(attrs["data-water"]).toBe("lagoon");
     // A theme saved before M51 as "night" reads as Graphite, the look that replaced it.
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { attrs[k] = v; } }, "lagoon", "night");
     expect(attrs["data-theme"]).toBe("graphite");

@@ -67,6 +67,8 @@
     { "key": "look.stamps", "section": "look", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "look.gloss", "section": "look", "kind": "choice", "default": "on", "options": ["on", "flat"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "look.corners", "section": "look", "kind": "choice", "default": "soft", "options": ["soft", "crisp"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "look.light", "section": "look", "kind": "choice", "default": "moving", "options": ["moving", "still", "off"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "look.colour", "section": "look", "kind": "choice", "default": "vivid", "options": ["vivid", "calm"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "character.follow", "section": "look", "kind": "choice", "default": "drop", "options": ["eyes", "drop", "off"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "look.size", "section": "look", "kind": "choice", "default": "usual", "options": ["small", "usual", "large"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "sound.on", "section": "look", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
