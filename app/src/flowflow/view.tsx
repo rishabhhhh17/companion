@@ -55,6 +55,16 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   useEffect(() => { ctl.current?.setReduced(!!reduced); }, [reduced]);
   useEffect(() => { if (colours) ctl.current?.setColours(colours.light, colours.deep); }, [colours?.light, colours?.deep, ctl.current]);
   useEffect(() => { if (tuning) ctl.current?.setTuning(tuning); }, [tuning]);
+  // The page's sky (--pond), read now and again whenever the theme, its tone or its contrast changes (the audit, item 30).
+  useEffect(() => {
+    const c = canvas.current, made = ctl.current; if (!c || !made) return;
+    const readSky = () => made.setEnvBase(getComputedStyle(c).getPropertyValue("--pond"));
+    readSky();
+    if (typeof MutationObserver === "undefined") return;
+    const o = new MutationObserver(readSky);
+    o.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-tone", "data-contrast", "data-colour", "class"] });
+    return () => o.disconnect();
+  }, [ctl.current]);
   useEffect(() => { if (surface) ctl.current?.setSurface(surface.side, surface.at ?? 1, surface.cling ?? 0); }, [surface?.side, surface?.at, surface?.cling, ctl.current]);
 
   if (failed) return null;

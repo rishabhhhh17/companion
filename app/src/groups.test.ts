@@ -391,7 +391,8 @@ describe("the pages are wired to the catalog", () => {
   const card = read("./card.tsx"), dock = read("./dock.tsx"), island = read("./island.tsx"), page = read("./settingsPage.tsx"), ob = read("./onboarding.tsx");
   test("every button of the ask box asks for its tool before it is drawn", () => {
     for (const b of ASK_BUTTONS) expect(card, b.id).toContain(`buttonShown("${b.id}")`);
-    for (const id of ["whichTask", "findProblem", "autoSend"]) expect(card, id).toContain(`buttonShown("${id}")`);
+    // The voice switch moved to Settings, Keys and voice (the audit, item 40), so the ask box no longer draws it.
+    for (const id of ["whichTask", "findProblem"]) expect(card, id).toContain(`buttonShown("${id}")`);
     expect(page).toContain('buttonShown("voiceTry")');
     // The follow up box under a receipt is Flow's too; Undo on the receipt stays (it only takes back).
     expect(card).toContain('canFollowUp(m, project) && groups.on("followUp")');

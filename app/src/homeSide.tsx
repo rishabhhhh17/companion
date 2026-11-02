@@ -38,24 +38,31 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
           <li key={t} data-gem={PLACE_GEM[t] ? "" : undefined} data-element={PLACE_GEM[t]}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} onClick={() => onPick(t)} /></li>
         ))}
       </ul>
-      {(recent.length > 0 || !!review) && (
+      {/* Changes waiting for a review sit under their own heading, above the recent work (the audit, item 11). */}
+      {review && (
+        <section className="side-waiting" aria-labelledby="side-waiting-title">
+          <h2 id="side-waiting-title" className="side-title">{S.look.sideWaiting}</h2>
+          <ul className="side-list">
+            <li key="review">
+              <button type="button" className="sb-item side-work side-review" title={`${S.review.sideItem}. ${S.look.stamp[reviewStamp(review)]}`} aria-label={S.review.sideLabel(S.look.stamp[reviewStamp(review)])} onClick={() => onReview?.()}>
+                <span className="tile" data-tint="sky" aria-hidden="true"><Icon name="eye" size={12} /></span>
+                <span className="side-name" aria-hidden="true">{S.review.sideItem}</span>
+                <Stamp kind={reviewStamp(review)} dot />
+              </button>
+            </li>
+          </ul>
+        </section>
+      )}
+      {recent.length > 0 && (
         <section className="side-recent" aria-labelledby="side-recent-title">
           <h2 id="side-recent-title" className="side-title">{S.look.sideRecent}</h2>
           <ul className="side-list">
-            {review && (
-              <li key="review">
-                <button type="button" className="sb-item side-work side-review" title={`${S.review.sideItem}. ${S.look.stamp[reviewStamp(review)]}`} aria-label={S.review.sideLabel(S.look.stamp[reviewStamp(review)])} onClick={() => onReview?.()}>
-                  <span className="tile" data-tint="sky" aria-hidden="true"><Icon name="find" size={12} /></span>
-                  <span className="side-name" aria-hidden="true">{S.review.sideItem}</span>
-                  <Stamp kind={reviewStamp(review)} dot />
-                </button>
-              </li>
-            )}
             {recent.map((i) => {
               const name = taskName(i.label);
               // A task still running has not reached a verdict: the dot and its own words, never one it has not earned.
               const v = i.status === "running" ? { headline: S.historyRunning, icon: "wait" as const, tone: "plain" as const } : verdictOf(historyFacts(i));
-              const { mark, tone } = verdictMark(v);
+              const { tone } = verdictMark(v);
+              const mark = i.status === "running" ? "spin" : verdictMark(v).mark;
               const stamp = sideStamp(historyStamp(i, now));
               return (
                 <li key={i.id}>

@@ -27,7 +27,7 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
@@ -1176,8 +1176,13 @@ function PageView({ page }: { page: PageId }) {
   const c = useCtx();
   const p = PAGES[page];
   const n = moreKeys(page).filter((k) => !defOf(k)?.hidden).length;
+  // What the changed dot means, said once on a page that shows one (the review, 2 Nov 2026: it was a dot with no words).
+  const keys = mainKeys(page);
+  for (const k of keys) useSetting(k);
+  const changedHere = changedNow().some((k) => keys.includes(k));
   return (<>
     <PageHead title={S.pages[page].title} line={S.pages[page].sub} />
+    {changedHere && <p className="set-note set-legend">{S.setFrame.changedLegend}</p>}
     {page === "about" && <AboutHead />}
     {p.groups.map((g) => <GroupView key={g.id} id={g.id} items={g.items} />)}
     {n > 0 && <div className="set-buttons set-foot"><Button kind="quiet" onClick={() => c.go(`more:${page}`)}>{S.setFrame.moreLink(S.pages[page].title, n)}</Button></div>}

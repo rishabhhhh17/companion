@@ -186,3 +186,7 @@ export function threadOf(p: { stage: string; result?: unknown }): Thread {
     default: return { find: "todo", fix: "todo", prove: "todo" };
   }
 }
+
+/** The kind of work a practice is, for its tile (the audit, item 53: every practice had the same wrench): a check before
+ *  going live, a setting to learn, or a fix. */
+export const practiceKind = (e: Pick<PracticeEntry, "fix" | "prove">): "live" | "explain" | "fix" => (e.prove === "gate" ? "live" : e.fix === "lesson" ? "explain" : "fix");

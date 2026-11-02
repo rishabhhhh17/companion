@@ -114,7 +114,8 @@ describe("four default keys (F28)", () => {
   test("Fix it, Hold to talk, Prompt help and Stop everything, plus use a suggestion; the other five have none", () => {
     for (const [job, chord] of Object.entries(fixture.keys.bound)) expect(KEY_USUAL[job as keyof typeof KEY_USUAL], job).toBe(chord);
     for (const job of fixture.keys.unbound) expect(KEY_USUAL[job as keyof typeof KEY_USUAL], job).toBeNull();
-    expect(S.keyJobs.problem).toBe("Fix it");
+    // The key checks the project (the audit, item 9): it is named Check my project, as the button it presses is.
+    expect(S.keyJobs.problem).toBe("Check my project");
     // Each still keeps its own suggested keys, offered first when the person adds one.
     for (const j of JOBS) expect(KEY_DEFAULTS[j], j).toBeTruthy();
   });

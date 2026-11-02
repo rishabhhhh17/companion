@@ -72,6 +72,6 @@ describe("Come to what it is about", () => {
     expect(S.comeToHelp).toMatch(/never on top of it/);
     expect(S.comeToHelp).toMatch(/goes back/);
     expect(S.dragHint).toMatch(/any edge or corner/);
-    expect(S.hideFromSharingHelp).toMatch(/character, rings and card/);
+    expect(S.hideFromSharingHelp).toMatch(/character, rings and Home/);
   });
 });

@@ -90,17 +90,41 @@ export function searchables(settings: readonly Def[] = REGISTRY.settings): { hit
   return out;
 }
 
-/** The results for what was typed: best first, at most 30, and nothing for an empty box. */
+/** How a whole query matched one thing: only one typo away for some word ("typo"), or every word found as typed or as the
+ *  start of a word ("exact"). */
+function closeness(query: string, words: { label: string[]; rest: string[] }): "exact" | "typo" {
+  return wordsIn(query).every((w) => Math.max(wordScore(w, words.label), wordScore(w, words.rest)) >= 2) ? "exact" : "typo";
+}
+/** With something found as typed, at most this many things that are only a typo away come after it (the audit, item 20:
+ *  night and white each listed some twenty unrelated settings). */
+export const MAX_TYPO_HITS = 3;
+
+/** The results for what was typed: best first, at most 30, and nothing for an empty box. When nothing matches every word
+ *  of a query of several words, each thing is scored by its best word instead, so "theme thingamajig" still finds Theme. */
 export function searchSettingsFor(query: string, settings: readonly Def[] = REGISTRY.settings): Result[] {
-  if (!wordsIn(query).length) return [];
-  const out: Result[] = [];
-  for (const { hit, order } of searchables(settings)) {
-    const score = scoreOf(query, "key" in hit ? settingWords(hit.key) : fixedWords(hit.fixed));
-    if (!score) continue;
-    const place = placeOf("key" in hit ? hit.key : hit.fixed) ?? { page: "more" as PageId, group: "", more: true };
-    out.push({ hit, page: place.page, group: place.group, score, order });
+  const q = wordsIn(query);
+  if (!q.length) return [];
+  const all = searchables(settings).map(({ hit, order }) => ({ hit, order, words: "key" in hit ? settingWords(hit.key) : fixedWords(hit.fixed) }));
+  const scored = (score: (w: { label: string[]; rest: string[] }) => number, q2: string) => {
+    const out: (Result & { close: "exact" | "typo" })[] = [];
+    for (const { hit, order, words } of all) {
+      const sc = score(words);
+      if (!sc) continue;
+      const place = placeOf("key" in hit ? hit.key : hit.fixed) ?? { page: "more" as PageId, group: "", more: true };
+      out.push({ hit, page: place.page, group: place.group, score: sc, order, close: closeness(q2, words) });
+    }
+    return out;
+  };
+  let out = scored((w) => scoreOf(query, w), query);
+  if (!out.length && q.length > 1) {
+    const best = (w: { label: string[]; rest: string[] }) => Math.max(...q.map((x) => scoreOf(x, w)));
+    out = scored(best, query).map((r) => ({ ...r, close: q.some((x) => closeness(x, all.find((a) => a.order === r.order)!.words) === "exact") ? "exact" : "typo" }));
   }
-  return out.sort((a, b) => b.score - a.score || a.order - b.order).slice(0, MAX_RESULTS);
+  if (out.some((r) => r.close === "exact")) {
+    let typo = 0;
+    out = out.sort((a, b) => b.score - a.score || a.order - b.order).filter((r) => r.close === "exact" || typo++ < MAX_TYPO_HITS);
+  }
+  return out.sort((a, b) => b.score - a.score || a.order - b.order).slice(0, MAX_RESULTS).map(({ close: _c, ...r }) => r);
 }
 
 /** Results grouped under their page and group ("General, Notch and Home"), in the order the best of each came. */

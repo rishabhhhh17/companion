@@ -21,7 +21,7 @@ export const COUNTED: readonly Step[] = ["hello", "claude", "project"];
 export function countOf(step: Step): { n: number; of: number } | null { const i = COUNTED.indexOf(step); return i < 0 ? null : { n: i + 1, of: COUNTED.length }; }
 /** How high the water stands at each step, in percent of Home's height. The hello sits Flowflow in the surface; after it
  *  the water drops low, out of the way of the words, and rises with every step, Flowflow riding on it. */
-export const LEVEL: Record<Step, number> = { hello: 34, claude: 16, project: 20, check: 24 };
+export const LEVEL: Record<Step, number> = { hello: 34, claude: 10, project: 20, check: 24 };   // Your Claude's is the lowest: it holds the most (the audit, item 38)
 
 /** Make it yours: the name (empty keeps the character's own), how lively, and which edge it lives on. Null: not chosen here,
  *  so the setting is left as it is (the person may have moved the character already). */
@@ -138,6 +138,18 @@ export const KEY_PAGE = "https://console.anthropic.com/settings/keys";
 export type KeyTested = { result: "works" | "refused" | "no_connection" | "unknown"; at: number };
 /** What setup says about the key it just saved: "checking" until Anthropic's answer for this save arrives (an answer from
  *  before the save is someone else's), then that answer. Null before anything was saved. */
+/** Your Claude's one main button (the audit, item 38: Continue stayed off until a separate Save and test). With a key typed,
+ *  Continue saves it and has it tested, then carries on once it works (goesOnAfterTest). While the test runs it waits. */
+export type ClaudeMain = { act: "continue" | "saveThenGo" | "none"; disabled: boolean };
+export function claudeMain(connected: boolean, typed: string, check: KeyTested["result"] | "checking" | null): ClaudeMain {
+  if (check === "checking") return { act: "none", disabled: true };
+  if (typed.trim()) return { act: "saveThenGo", disabled: false };
+  if (connected && check !== "refused") return { act: "continue", disabled: false };
+  return { act: "none", disabled: true };
+}
+/** After Continue saved a key: on to the next screen once the key is connected and Anthropic said it works. */
+export const goesOnAfterTest = (wanted: boolean, connected: boolean, check: KeyTested["result"] | "checking" | null): boolean => wanted && connected && check === "works";
+
 export function keyCheck(savedAt: number | null, tested: KeyTested | null): KeyTested["result"] | "checking" | null {
   if (savedAt === null) return null;
   return tested && tested.at >= savedAt ? tested.result : "checking";
@@ -164,7 +176,7 @@ export function honestLines(o: { limitUsd: number; plan: { line: string; facts: 
 // ---------- the first check ----------
 
 /** The check as the first run sees it: the point state the engine's answer fills (model.ts point). */
-export type PointNow = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string } | null;
+export type PointNow = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: { message?: string } & Record<string, unknown> } | null;
 /** Where the first check is: not asked yet, running, waiting on an install question, answered, or ended with no answer
  *  (Stop, or refused). An answer from before this press is never this check's: the press sets the point to checking. */
 export type CheckStage = "idle" | "checking" | "asking" | "done" | "stopped";
@@ -203,7 +215,8 @@ export function firstCheckVerdict(point: Exclude<PointNow, null>, name: string):
     case "clear": return v("noChange", S.fr.checkClear(name), S.fr.checkClearLine, "good", "tick");
     case "gaps": return v("partial", S.fr.checkGaps(name), S.fr.checkGapsLine, "mixed", "wait");
     case "nothing": return v("noChange", S.fr.checkNothing(name), S.fr.checkNothingLine, "plain", "wait");
-    case "found": return v("failed", S.home.failing(name), point.label ? S.fr.checkFoundAt(point.label) : S.fr.checkFoundLine, "bad", "cross");
+    // What broke in the check's own words (the audit, item 8), else the check that did not pass, by name.
+    case "found": return v("failed", S.home.failing(name), point.problem?.message?.trim() || point.message?.trim() || (point.label ? S.fr.checkFoundAt(point.label) : S.fr.checkFoundLine), "bad", "cross");
     default: return null;
   }
 }

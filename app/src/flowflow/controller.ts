@@ -14,6 +14,7 @@ export type RendererLike = {
   setSize(cssW: number, cssH: number, dpr: number): void;
   toWorld(px: number, py: number): { x: number; y: number };
   setColours(light: string, deep: string): void;
+  setEnvBase?(css: string): void;
   setMode?(m: Liveliness): void;
   dispose(): void;
 };
@@ -131,6 +132,8 @@ export class FlowflowController {
 
   /** The water's colours (lookfeel.ts flowColours). */
   setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); this.nudge(); }
+  /** The page's sky behind the drop (renderer.ts setEnvBase). */
+  setEnvBase(css: string): void { if (this.disposed) return; this.renderer.setEnvBase?.(css); this.nudge(); }
 
   /** The app's state. A real change is news; the same state again is not. */
   setState(s: CharacterState): void {

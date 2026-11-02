@@ -786,9 +786,11 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
   const decls = (sel: string, media: RegExp | null) => Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === sel && (media ? media.test(r.media ?? "") : !r.media))?.decl ?? {}).filter(([k]) => k.startsWith("--")));
   const night = decls(":root", null), paper = { ...night, ...decls(':root[data-theme="paper"]', null) }, deep = { ...night, ...decls(':root[data-theme="deep"]', null) };
   const more = /prefers-contrast: more/;
-  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper], ["Deep", deep],
+  // 2 Nov 2026: Black (the usual) is measured too, and Paper's tokens are White's (the stored value stays "paper").
+  const black = { ...night, ...decls(':root[data-theme="black"]', null) };
+  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper], ["Deep", deep], ["Black", black],
     ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }],
-    ["Deep, more contrast", { ...deep, ...decls(':root[data-theme="deep"]', more) }]];
+    ["Deep, more contrast", { ...deep, ...decls(':root[data-theme="deep"]', more) }], ["Black, more contrast", { ...black, ...decls(':root[data-theme="black"]', more) }]];
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.
@@ -909,7 +911,7 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
       expect(one('.sb-item[aria-current="page"]')!.decl["font-weight"]).toBe("var(--w-strong)");
       // The option the arrow keys are on in an open menu: a ring as well as its fill, 3 to 1 on the fill and on the list
       // (the fill alone is about 1.1 to 1; review, 31 Oct).
-      const ring = c(col(one(".ui-menu-list:focus .ui-menu-item[data-active]")!.decl.outline)!);
+      const ring = c(col(one(".ui-menu-list:focus-visible .ui-menu-item[data-active]")!.decl.outline)!);
       for (const s2 of ["--surface-2", "--surface-3"]) expect(ratio(ring, c(`var(${s2})`)), `the active option's ring on ${s2}`).toBeGreaterThanOrEqual(3);
       // A button kept pressed (the key a job uses, in Change keys) of any kind: filled, and edged in --fg, 3 to 1 on the card
       // and the sheet; its words stay readable on the fill.
@@ -1034,7 +1036,7 @@ describe("the notch panel keeps Night's tokens on its black in every theme (revi
   test("the island page asks for the notch's look, which pins Night whatever look.theme says", () => {
     expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
     const hook = read("./useLook.ts");
-    expect(hook).toContain('const theme = opts.keepNight ? "night" : chosen;');
+    expect(hook).toContain('const theme = opts.keepNight ? "night" : opts.forceTheme ?? chosen;');
     expect(hook).toContain("applyLook(document.documentElement, water, theme);");
   });
   test("every part the panel uses reads on the notch black and on its card (#111113)", () => {

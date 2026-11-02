@@ -350,7 +350,7 @@ describe("the fun island", () => {
     expect(islandName(islandLine(m))).toContain(S.islandLooking);
     // Drawn as a still light: a ring with a dot in the middle, no animation.
     const page = read("./island.tsx"), css = read("./style.css");
-    expect(page).toContain('w.mark === "look" ? <svg');
+    expect(page).toContain('mark === "look" ? <svg');
     const look = /\.island-wing \.mark\[data-mark="look"\][^{]*\{([^}]*)\}/.exec(css);
     expect(look, "a look mark rule").not.toBeNull();
     expect(look![1]).not.toMatch(/animation/);
@@ -537,8 +537,8 @@ describe("the bare notch (M46)", () => {
     expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-motion="glow"\] \{ animation: glow 1\.8s ease-in-out 3; \}/);
     expect(css).not.toMatch(/(pose-glow|glow) 1\.8s ease-in-out infinite/);
     // Each new question pulses again: the mark is keyed on how many wait.
-    expect(page).toContain("key={`${w.mark}:${count}`}");
-    expect(page).toContain("<Mark w={w} count={m.approvals.length} />");
+    expect(page).toContain("key={`${mark}:${count}`}");
+    expect(page).toContain("<Mark w={w} count={m.approvals.length} reduced={reduced} />");
   });
   test("the wing ignores clicks for a moment after it grows by itself, as a self opened card does", () => {
     expect(page).toContain("ARM_MS");

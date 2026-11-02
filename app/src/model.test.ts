@@ -525,9 +525,9 @@ describe("Ship: the report on the card", () => {
     expect(m.ship?.gates.map((g) => [g.id, g.status])).toEqual([["checked", "passed"], ["secrets", "blocked"], ["database_access", "could_not_check"]]);
   });
   test("one plain sentence says whether it may ship", () => {
-    expect(shipWords(run([gates()]))).toBe("Not ready to ship: 1 thing is blocking it and 1 needs you");
-    expect(shipWords(run([gates({ canShip: true, blockedBy: [], needsYou: [], gates: [{ id: "checked", label: "x", status: "passed", detail: "" }] })]))).toBe("Ready to ship: every check passed");
-    expect(shipWords(run([gates({ blockedBy: ["a", "b"], needsYou: [] })]))).toBe("Not ready to ship: 2 things are blocking it");
+    expect(shipWords(run([gates()]))).toBe("Not ready to go live: 1 thing is blocking it and 1 needs you");
+    expect(shipWords(run([gates({ canShip: true, blockedBy: [], needsYou: [], gates: [{ id: "checked", label: "x", status: "passed", detail: "" }] })]))).toBe("Ready to go live: every check passed");
+    expect(shipWords(run([gates({ blockedBy: ["a", "b"], needsYou: [] })]))).toBe("Not ready to go live: 2 things are blocking it");
     expect(shipWords(run([]))).toBeNull();
   });
   test("only a gate that says it may be confirmed offers a confirm button", () => {

@@ -59,7 +59,7 @@ describe("one Stop, in the card (review, 1 Nov)", () => {
   });
 });
 
-describe("Flowflow peeks over the practice card, never over the tab row (review, 1 Nov)", () => {
+describe("Flowflow sits whole above the practice card, never over the tab row (review, 1 Nov; whole since 2 Nov)", () => {
   const look = LOOK_CSS();
   test("the peek is in the flow above the card, so however tall its line grows it pushes the card down, never up over the bar", () => {
     const panel = read("./practicePanel.tsx");
@@ -67,9 +67,12 @@ describe("Flowflow peeks over the practice card, never over the tab row (review,
     const peek = rule(look, ".pr-peek") ?? "";
     expect(peek).not.toMatch(/position: absolute|translate:|top:/);
     expect(peek).toMatch(/display: flex;/);
-    expect(peek).toMatch(/align-items: flex-end;/);
-    // Its foot tucks under the card (drawn over it), which is what makes it peek over the card's edge.
-    expect(peek).toMatch(/margin: [^;]* calc\(var\(--peek\) \* -\.25\);/);
+    // Whole and full size beside its line, never tucked under the card (the review, 2 Nov 2026: the tuck left a tiny head
+    // peeking over the card's corner). The card keeps a gap under it.
+    expect(peek).toMatch(/align-items: center;/);
+    expect(peek).not.toMatch(/-\.25/);
+    expect(peek).toMatch(/--peek: calc\(76rem \/ 14\);/);
+    expect(look).not.toContain(".home .view .panel.practice::before");
     expect(rule(look, ".home .view .panel.practice")).toMatch(/position: relative; z-index: 1;/);
     expect(rule(look, ".home .view .panel.practice") ?? "").not.toMatch(/margin-top/);
     expect(rule(look, ".pr-char")).toMatch(/width: var\(--peek\);/);

@@ -38,6 +38,6 @@ describe("a check's result in plain words", () => {
     expect(card).toContain("<CheckDetail parts={checkParts(s)} />");
     expect(card).toContain("<CheckDetail parts={checkParts(e)} />");
     expect(card).not.toContain('s.status !== "passed" && s.detail ? <span className="muted"> {s.detail}</span>');
-    expect(comp).toContain("<details className=\"raw\">\n          <summary>{S.checkDetails}</summary>");
+    expect(comp).toContain("<details className=\"raw\">\n          <summary><Icon name=\"chevron\" size={12} />{S.checkDetails}</summary>");
   });
 });

@@ -59,3 +59,11 @@ export function useMoreBelow(root: RefObject<HTMLElement | null>): void {
     return () => { el.removeEventListener("scroll", check); ro?.disconnect(); };
   }, [root]);
 }
+
+/** Whether the sea goes on down from Flowflow's waterline to the ask box (the wide Home at rest, M51 polish): only while
+ *  nothing comes between the status and the ask box, since a card under the status (a review, a recap, a toast, a notice,
+ *  an error, About this project) would cut the sea across in a hard seam (the audit, item 5). With the light behind Home
+ *  off (the usual since 2 Nov 2026) the sea is drawn at no strength (ui/tokens.css --sea-fill-a), so Home is a plain page. */
+export function seaFills(o: { side: boolean; tab: Tab; mode: string; cardsUnder: boolean }): boolean {
+  return o.side && o.tab === "now" && o.mode === "rest" && !o.cardsUnder;
+}

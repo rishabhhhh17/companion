@@ -36,6 +36,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
   test("the main levels are the ones the spec names", () => {
     expect(mainKeys("account")).toEqual(["spend.dailyLimit"]);
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
+    // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
+    expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");
     expect(mainKeys("fixing")).toEqual(["rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
     // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
     expect(mainKeys("look")).toEqual(["look.layout", "look.theme", "look.colour", "look.water", "look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
@@ -111,7 +113,8 @@ describe("At rest: one control for two keys (the spec, 3.4)", () => {
   // only so a saved value still checks out, and is not offered (it reads as Graphite).
   test("the old Night theme is kept but not offered; Graphite, Paper and Deep are (M51)", () => {
     expect(HIDDEN_OPTIONS["look.theme"]).toEqual(["night"]);
-    expect(REGISTRY.settings.find((d) => d.key === "look.theme")?.options).toEqual(["graphite", "paper", "deep", "night"]);
+    // 2 Nov 2026: Black (the usual) and White (stored as paper, its old value) come first.
+    expect(REGISTRY.settings.find((d) => d.key === "look.theme")?.options).toEqual(["black", "paper", "graphite", "deep", "night"]);
   });
 });
 

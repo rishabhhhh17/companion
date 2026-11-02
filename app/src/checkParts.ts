@@ -11,6 +11,10 @@ export const WRITTEN_FOR_A_PERSON = (r: string) => /^[A-Z][^\n]{10,320}[.!?)]$/.
 
 export type CheckParts = { summary: string; place: string; raw: string };
 
+/** A web answer's code in words (the audit, item 34: "(500)" means nothing to most people). */
+const HTTP_WORDS = (code: number): string => code === 404 ? S.http.notFound : code === 401 || code === 403 ? S.http.signIn : code >= 500 ? S.http.server : S.http.refused;
+export const httpInWords = (t: string): string => t.replace(/\s*\((?:HTTP )?([45]\d\d)\)/g, (_, c: string) => `: ${HTTP_WORDS(Number(c))}`);
+
 /** The plain summary, the place and the raw output of one step or piece of evidence. A step that did not fail is its own
  *  plain sentence (the engine writes those for a person); a failed one leads with the engine's summary, or its first
  *  sentence when that reads plainly, or "It did not pass.", and the rest is the raw output. */
@@ -21,5 +25,5 @@ export function checkParts(s: { status: string; detail: string; summary?: string
   const first = /^[^\n]*?[.!?](?=\s|$)/.exec(detail)?.[0] ?? "";
   const summary = s.summary || (first && WRITTEN_FOR_A_PERSON(first) ? first : S.checkDidNotPass);
   const rest = detail.startsWith(summary) ? detail.slice(summary.length).trim() : detail;
-  return { summary, place, raw: rest };
+  return { summary: httpInWords(summary), place, raw: rest };
 }

@@ -28,7 +28,7 @@ export function RecentList({ items, now, onOpen }: { items: HistoryItem[]; now: 
       <h2 className="sr">{S.home.recentTitle}</h2>
       {list.map((i) => (
         <RecentRow key={i.id} verdict={i.status === "running" ? runningVerdict() : verdictOf(historyFacts(i))} name={i.label.replace(/^Before:\s*/, "")}
-          meta={agoWords(i.endedAt ?? i.startedAt, now)} cost={costWords(i.usd)} onOpen={() => onOpen(i)} />
+          meta={agoWords(i.endedAt ?? i.startedAt, now)} cost={costWords(i.usd)} onOpen={() => onOpen(i)} running={i.status === "running"} />
       ))}
     </Group>
   );

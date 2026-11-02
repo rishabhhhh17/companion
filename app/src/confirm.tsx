@@ -13,8 +13,12 @@ const choices = (el: HTMLElement) => Array.from(el.querySelectorAll<HTMLElement>
 
 /** The step just opened from the person's own press: the keyboard goes to its safe choice (else its first choice), only
  *  when Home has the keyboard and nothing in it does (`takeIfLost`). */
+const safeChoice = (box: HTMLElement) => box.querySelector<HTMLElement>("[data-cancel]") ?? choices(box)[0];
+/** So the button a step is opened from must step aside while the step is open (the review's Fix it, Undo): if it stayed on
+ *  screen with the keyboard, the step could not take it, and Escape would close Home instead of the question (the audit,
+ *  item 7; focus.test.ts). */
 export function openStep(box: HTMLElement | null, p?: Page): boolean {
-  return !!box && takeIfLost(() => box.querySelector<HTMLElement>("[data-cancel]") ?? choices(box)[0], p);
+  return !!box && takeIfLost(() => safeChoice(box), p);
 }
 
 /** label: the question, for VoiceOver. back: the id of the button that opened it. onCancel: what its Cancel does. */
@@ -22,6 +26,8 @@ export function ConfirmStep({ label, back, onCancel, className, children }: { la
   const box = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     openStep(box.current);
+    // Into view, but only as far as needed, so a step opened under the ask box is never off screen.
+    box.current?.scrollIntoView?.({ block: "nearest" });
     return () => focusBack(back);
   }, []);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -34,5 +40,5 @@ export function ConfirmStep({ label, back, onCancel, className, children }: { la
     const list = choices(box.current);
     list[stepTo(list.indexOf(t), list.length, k)]?.focus();
   };
-  return <div ref={box} className={className} role="group" aria-label={label} onKeyDown={onKeyDown}>{children}</div>;
+  return <div ref={box} className={`confirm-step${className ? ` ${className}` : ""}`} role="group" aria-label={label} onKeyDown={onKeyDown}>{children}</div>;
 }

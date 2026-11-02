@@ -10,6 +10,7 @@
 .line, .error, .notice, h2 { user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
 .muted { color: var(--fg-2); font-size: var(--t-small); }
 .ic { display: block; flex: none; }
+.ic * { vector-effect: non-scaling-stroke; }
 
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The character. Its page paints nothing (the window is see through too, main.rs), so it floats on the desktop. A simple
@@ -37,7 +38,7 @@ html.dock-page, body.dock-page { background: transparent; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--amber) 60%, transparent)); } }
 @keyframes droop { 50% { transform: scaleY(.86) translateY(3px); } }
 /* What it says under the character: a small pill that stays readable on any wallpaper. */
-.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--fg); background: color-mix(in srgb, var(--bg) 86%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--glass-ink); background: var(--glass-quiet); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 var(--hair) var(--glass-edge); }
 /* Flowflow (src/flow/): a canvas the size of the picture plus room to wobble in, over the same spot as the plain picture. It
    takes no clicks, so the button under it keeps the drag and the click. The plain picture hides once the first frame is drawn. */
 .character .flow { position: absolute; left: -22px; top: -16px; width: 156px; aspect-ratio: 156 / 111; display: block; pointer-events: none; }
@@ -57,7 +58,7 @@ html.home-page, body.home-page { background: transparent; }
    line with big text so Close never runs past the panel's edge. A hairline under it. */
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-height: calc(28rem / 14); margin: 0 0 var(--space-1); }
 .home .bar { position: relative; z-index: 2; padding-bottom: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid var(--line); }
-.places { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: var(--space-1); flex: 1 0 100%; order: 2; min-width: 0; margin: 0 calc(var(--space-2) * -1); }
+.places { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: var(--space-1); flex: 1 0 100%; order: 2; min-width: 0; margin: 0; }   /* on the column edge with the folder and the headline (the audit, item 23) */
 .home .bar { position: relative; }
 /* The back arrow in a place (the places themselves are quiet Buttons with words, the overhaul spec 4.1). */
 .back { position: relative; flex: none; display: grid; place-items: center; width: calc(28rem / 14); height: calc(28rem / 14); padding: 0; border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); cursor: default; }
@@ -70,19 +71,23 @@ html.home-page, body.home-page { background: transparent; }
 .view-title { font-size: var(--t-display); font-weight: var(--w-bold); letter-spacing: var(--track-display); line-height: 1.2; text-wrap: balance; margin: 0 0 0 var(--space-1); }
 /* Now (F28, spec 4.1): Flowflow lives on one waterline across all of Home (the founder, 31 Oct), the status and its one
    main button in the sky beside it, never a box. --line-up: the drop's own waterline above its column's foot. */
-.hero { --char: calc(104rem / 14); --line-up: calc(var(--char) * 111 / 156 * .28 - 6px); position: relative; isolation: isolate; overflow: clip; display: grid; grid-template-columns: minmax(0, 1fr) var(--char); column-gap: var(--space-2); align-items: end; margin: 0 calc(var(--space-6) * -1) var(--space-2); padding: var(--space-4) var(--space-6) var(--space-5); }
+.hero { --char: calc(104rem / 14); --line-up: calc(var(--char) * 111 / 156 * .28 - 6px); position: relative; isolation: isolate; overflow: clip; display: grid; grid-template-columns: minmax(0, 1fr) var(--char); column-gap: var(--space-2); align-items: end; margin: 0 calc(var(--space-6) * -1) var(--space-2); padding: var(--space-4) var(--space-6) var(--space-5); transition: --char var(--dur-3) var(--ease-out); }
 .hero[hidden] { display: none; }
 .hero-words { position: relative; z-index: 1; grid-column: 1; grid-row: 1; min-width: 0; display: grid; justify-items: start; gap: var(--space-1); align-self: end; margin-bottom: calc(var(--line-up) + var(--space-3)); }
 .hero-main { margin-top: var(--space-3); }
-.home[data-tone="working"] .hero { --char: calc(76rem / 14); }
 .status-head { min-width: 0; }
 .home-pond { position: static; display: block; grid-column: 2; grid-row: 1; }
-.home-pond .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--line-up) + var(--space-5)); background: linear-gradient(180deg, var(--sea) 0, transparent 100%); z-index: 0; }
+.home-pond .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--line-up) + var(--space-5)); background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea) var(--wave-foot), transparent 100%); z-index: 0; }
+/* The wave is drawn 11 points above and below the water's top edge (waterline.tsx, 22 tall): its own sea path fills under the
+   wave, so the box's fill starts where the drawing ends, never above a trough as a flat edge (the review, 2 Nov 2026). */
+.ch-water, .fr-tank { --wave-foot: 11px; }
 .home-pond .ch-char { position: relative; z-index: 1; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
 .home-pond .home-char { width: var(--char); margin: -8px -10px -4px; }
 /* Settings' preview (.companion-hero): the same water in a card, its line still with Still (M46). */
 .companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; }
-.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: var(--sea); z-index: 0; }
+.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot)); z-index: 0; }
+.companion-hero .waterline .sea { fill: var(--sea-tint, var(--sea)); }
+.companion-hero .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; }
 .home-pond .ch-water .waterline, .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
 .home-pond .ch-water .waterline svg, .companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
 .home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }
@@ -92,12 +97,11 @@ html.home-page, body.home-page { background: transparent; }
 .home-pose { position: absolute; left: 14%; top: 14%; width: 72%; height: 72%; object-fit: contain; object-position: center bottom; pointer-events: none; user-select: none; -webkit-user-select: none; }
 .home-pose.flow-ready { visibility: hidden; }
 .home-drops { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; }
-/* The lights stay small marks: a soft glow around the water when it waits for you or is done. */
-.home-char[data-state="needsYou"] { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--amber) 55%, transparent)); }
-.home-char[data-state="done"] { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--ok) 55%, transparent)); }
+/* The lights stay small marks: a soft glow around the water when it waits for you or is done, drawn in its pond
+   (ui/look.css .home-pond::after), never as a filter inside the masked box, which cut it flat (the audit, item 28). */
 /* Titles are plain words in --fg: never gradient text (the overhaul spec, 2.2). */
 .headline { color: var(--fg); font-size: var(--t-display); font-weight: var(--w-bold); letter-spacing: var(--track-display); line-height: var(--lh-display); text-wrap: balance; margin: var(--space-2) 0 var(--space-1); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
-.subline { font-size: var(--t-small); line-height: var(--lh-small); color: var(--fg-2); margin: var(--space-1) 0 0; }
+.subline { font-size: var(--t-small); line-height: var(--lh-small); color: var(--fg-2); margin: var(--space-1) 0 0; font-variant-numeric: tabular-nums; }
 /* The ask box: a field with the mic and the send key inside it. Its edge is a control's edge (3 to 1, a11y.test.ts); on
    focus its edge turns the water colour with a soft glow, never white (the founder, 1 Nov 2026: typing turned the whole
    box white). The field inside draws no outline of its own: the box is the one thing that shows focus. */
@@ -154,6 +158,8 @@ main.card.dropping { outline: 2px dashed var(--edge-control); outline-offset: -4
 .ask textarea { flex: 1; min-width: 0; font: inherit; font-size: var(--t-label); line-height: 1.45; padding: calc(12rem / 14) calc(12rem / 14); background: var(--inset); color: var(--fg); border: 1px solid var(--edge-control); border-radius: var(--r-card); resize: none; max-height: calc(160rem / 14); overflow: auto; box-sizing: border-box; user-select: text; -webkit-user-select: text; }
 .ask input, .row input[type="text"] { flex: 1; min-width: 0; font-size: var(--t-body); padding: calc(8rem / 14) calc(10rem / 14); background: var(--inset); color: var(--fg); border: 1px solid var(--edge-control); border-radius: var(--r-control); }
 .row input[type="search"] { flex: 1; min-width: 0; font-size: var(--t-body); padding: calc(8rem / 14) calc(10rem / 14); background: var(--inset); color: var(--fg); border: 1px solid var(--edge-control); border-radius: var(--r-control); }
+/* Their hints in the theme's own second ink, never the browser's grey (the audit, item 18: 3.4 to 4.2 to 1 on the themes). */
+.ask input::placeholder, .row input[type="text"]::placeholder, .row input[type="search"]::placeholder { color: var(--fg-2); }
 /* A job on the card: no box, only room and a hairline between two jobs. The headline is the h2. */
 .panel { border: 0; padding: 0; margin: 0 0 var(--space-6); }
 .panel + .panel { border-top: 1px solid var(--line); padding-top: var(--space-4); }
@@ -205,7 +211,7 @@ h2 { font-size: var(--t-answer); font-weight: var(--w-bold); line-height: 1.3; l
 .putback-note { font-size: var(--t-small); font-weight: 500; color: var(--fg-2); animation: putback 2s var(--ease-out) both; }
 @keyframes putback { 0% { opacity: 0; transform: translateY(4px); } 12%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-out) both; }
-@keyframes card-settle { from { opacity: .6; transform: scaleY(1.04) translateY(-4px); } }
+@keyframes card-settle { from { opacity: .6; transform: translateY(-4px); } }
 /* The other things you can ask for, kept out of the way until wanted: a small chevron that turns when it opens (M27). */
 details.more { margin: var(--space-2) 0 var(--space-3); }
 details.more > summary { display: inline-flex; align-items: center; gap: 8px; cursor: default; color: var(--fg-2); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; }
@@ -304,7 +310,7 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
    pill's) width and --row the height of the row the wings sit in, both given by the app. Sizes come from the same scale
    as Home, at the island's own 14 px root (it never takes the text size). */
 html.island-page, body.island-page { background: transparent; overflow: clip; height: 100%; }
-.island { height: 100vh; --wing: 40px; --r: var(--r-card); }
+.island { height: 100vh; --wing: 40px; --wing-mark: 20px; --r: var(--r-card); }
 .island-hit { all: unset; box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; height: var(--row, 100%); min-height: 100%; display: block; color: var(--notch-ink); cursor: default; font: 600 var(--t-caption) var(--font); }
 .island-hit:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -3px; }
 .island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: var(--notch); overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
@@ -398,7 +404,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .drop-caption { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 20px); max-width: 64px; text-align: center; font-size: var(--t-caption); font-weight: 600; color: var(--glass-ink); background: var(--glass); box-shadow: inset 0 0 0 .5px var(--glass-edge-2); border-radius: var(--r-card); padding: 3px 9px; pointer-events: none; }
 .drop-caption:empty { display: none; }
 @keyframes ring-in { from { opacity: 0; scale: .9; } }
-.drop-over-character { position: absolute; inset: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); background: var(--bg); border-radius: var(--r-card); box-shadow: var(--shadow-drop-card); text-align: center; padding: var(--space-2); box-sizing: border-box; }
+.drop-over-character { position: absolute; inset: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-1); background: var(--glass-quiet); color: var(--glass-ink); border-radius: var(--r-card); box-shadow: 0 0 0 var(--hair) var(--glass-edge), var(--shadow-drop-card); text-align: center; padding: var(--space-2); box-sizing: border-box; }
 .drop-over-character .line { font-size: var(--t-caption); margin: 0; }
 .drop-outcome { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
 .drop-progress { width: 100%; }
@@ -463,7 +469,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .home:has(.fr), .home:has(.onboarding.look) { background: var(--fr-sky); }
 .fr { --fg: var(--fr-fg); --fg-2: var(--fr-fg-2); --bad: var(--fr-bad); --danger: var(--fr-bad); --ok: var(--fr-ok); --amber: var(--fr-amber); color: var(--fr-fg); background: var(--fr-sky); position: relative; display: flex; flex-direction: column; min-height: calc(560rem / 14); margin: calc(var(--space-3) * -1) calc(var(--space-6) * -1) calc(var(--space-5) * -1); padding: var(--space-5) var(--space-6) var(--space-6); overflow: clip; isolation: isolate; }
 .fr > * { position: relative; z-index: 1; }
-.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 20%); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); opacity: .8; transition: height 900ms var(--ease-spring); }
+/* Its line always clears the row of the main button (the review, 2 Nov 2026: on Your Claude, Continue sat on the wave, half in
+   the water), so Flowflow rides on it above that row, never behind Continue. */
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: max(var(--level, 20%), calc(var(--h-lg) + var(--space-6) + var(--space-4))); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); opacity: .8; transition: height 900ms var(--ease-spring); }
 /* The first run fills Home to its foot, so its sea never stops in a hard line (31 Oct). */
 .home .inner:has(> .onboarding.fr) { flex: 1 0 auto; display: flex; flex-direction: column; } .inner > .onboarding.fr { flex: 1 0 auto; }
 .fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
@@ -504,8 +512,10 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-folder span { color: var(--fg-2); font-size: var(--t-caption); overflow-wrap: anywhere; }
 .fr-tips { display: grid; gap: var(--space-2); }
 .fr-tip { display: flex; align-items: center; gap: var(--space-3); color: var(--fg); font-size: var(--t-body); }
-/* M49: Flowflow lives on the water after the hello, at the right of the waterline, riding it up as the steps go on. */
-.fr-tank .fr-float { position: absolute; right: var(--space-5); top: 0; width: calc(96rem / 14); translate: 0 -66%; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
+/* M49: Flowflow lives on the water after the hello, at the right of the waterline, riding it up as the steps go on. It is
+   the size it is on the tall Home (the review, 2 Nov 2026: at 96 points it was a small head beside Continue), and still
+   held at 150 points at Huge text. */
+.fr-tank .fr-float { position: absolute; right: var(--space-5); top: 0; width: min(calc(136rem / 14), 150px); translate: 0 -66%; pointer-events: none; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
 .fr-tank .fr-float .home-char { width: 100%; margin: 0; }
 /* A narrow window leaves the Your Claude step no room under the key row for the character, so it stays out of that step. */
 @media (max-width: 480px) { .fr[data-step="claude"] .fr-float { display: none; } }
@@ -523,7 +533,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-ask p { margin: 0 0 var(--space-2); color: var(--fg); font-size: var(--t-small); }
 .fr-cmd { display: block; margin-bottom: var(--space-3); color: var(--fg-2); font-size: var(--t-caption); overflow-wrap: anywhere; }
 .fr-again { align-self: flex-start; margin-top: var(--space-2); }
-.fr-folds { display: grid; gap: var(--space-2); margin-top: var(--space-4); }
+.fr-folds { display: grid; gap: var(--space-2); margin-top: var(--space-4); position: relative; z-index: 1; }   /* above the water (the audit, item 52) */
 @media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }
 /* The same with Squibby's own Less motion (character.motion): its animations are off, so Flowflow is simply there. */
 :root[data-less-motion] .fr-hello .fr-rise { opacity: 1; }
@@ -620,8 +630,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .changes { margin: var(--space-2) 0; border-radius: var(--r-control); background: var(--surface-1); border: 1px solid var(--line); }
 .changes-head { padding: var(--space-2) var(--space-3); font-size: var(--t-small); font-weight: 600; color: var(--fg-2); border-bottom: 1px solid var(--line); }
 .changes ul { list-style: none; margin: 0; padding: var(--space-1) 0; }
-.changes li { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-2); padding: 3px var(--space-3); min-width: 0; }
-.changes li b { font-weight: 600; overflow-wrap: anywhere; }
+.changes li { display: grid; grid-template-columns: 1em minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--space-2); padding: 3px var(--space-3); min-width: 0; }
+.changes-file { min-width: 0; overflow-wrap: anywhere; }
+.changes-file .changes-dir { margin-left: var(--space-2); }
 .changes-dir { color: var(--fg-2); font: 400 var(--t-small) var(--font-code); overflow-wrap: anywhere; min-width: 0; }
 .changes-mark { flex: none; width: 1em; text-align: center; font-weight: 600; color: var(--fg-2); }
 .changes li[data-kind="added"] .changes-mark { color: var(--ok); }
@@ -631,7 +642,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .review-touches, .review-why { margin: var(--space-3) 0 var(--space-2); }
 .review-label { display: block; margin-bottom: var(--space-1); font-size: var(--t-small); font-weight: 600; color: var(--fg-2); }
 .review-touches ul { display: flex; flex-wrap: wrap; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
-.review-tag { display: inline-flex; align-items: center; min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); font-size: var(--t-caption); font-weight: 600; color: var(--fg); }
+.review-tag { display: inline-flex; align-items: center; min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: 0; border-radius: var(--r-stamp); background: color-mix(in srgb, var(--fg) 8%, transparent); font-size: var(--t-caption); font-weight: var(--w-strong); color: var(--fg); }
 .review-reasons { display: grid; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
 .review-reasons li { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--r-control); background: var(--surface-1); border: 1px solid var(--line); font-size: var(--t-small); line-height: 1.45; overflow-wrap: anywhere; }
 .review-at { font: 400 var(--t-caption) / 1.4 var(--font-code); color: var(--fg-2); overflow-wrap: anywhere; }

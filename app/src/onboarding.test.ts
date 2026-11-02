@@ -67,7 +67,10 @@ describe("every step can be skipped and has a way back", () => {
     expect(stepOf(ui, "claude")).toContain("onClick={skip}>{S.fr.skipKey}</Button>");
     expect(stepOf(ui, "project")).toContain("onClick={skip}>{S.fr.skipProject}</Button>");
     expect(stepOf(ui, "project")).toContain("onClick={finish}>{S.fr.skipCheck}</Button>");
-    expect(stepOf(ui, "check")).toContain("onClick={() => { stopCheck(); finish(); }}>{S.fr.skipCheck}</Button>");
+    // While the check runs, its one way out is Stop the check; then Go to my project (the audit, item 52: Skip the check
+    // beside it was a near twin).
+    expect(stepOf(ui, "check")).toContain("onClick={stopCheck}>{S.fr.checkStop}</Button>");
+    expect(stepOf(ui, "check")).toContain("main(S.fr.goProject, finish,");
     expect(ui).toContain('{back(step) && <button className="fr-back" type="button" aria-label={S.obBack}');
     // Back while the check runs stops it first, so nothing keeps running behind the first run.
     expect(ui).toContain("if (stage === \"checking\" || stage === \"asking\") stopCheck(); go(back(step));");
@@ -180,7 +183,9 @@ describe("the first check of the real project", () => {
       expect(v.headline).toContain("shop");
       expect(v.say).toBe(S.verdict.say(v.headline, v.line));
     }
-    expect(firstCheckVerdict(found, "shop")).toMatchObject({ kind: "failed", tone: "bad", icon: "cross", headline: S.home.failing("shop"), line: S.fr.checkFoundAt("Building and checking the code") });
+    // What broke, in the check's own words (the audit, item 8); the check's name only when nothing else was said.
+    expect(firstCheckVerdict(found, "shop")).toMatchObject({ kind: "failed", tone: "bad", icon: "cross", headline: S.home.failing("shop"), line: "tsc failed" });
+    expect(firstCheckVerdict({ stage: "found", label: "Building and checking the code" }, "shop")?.line).toBe(S.fr.checkFoundAt("Building and checking the code"));
     expect(firstCheckVerdict({ stage: "clear" }, "shop")).toMatchObject({ tone: "good", icon: "tick" });
     expect(firstCheckVerdict({ stage: "gaps" }, "shop")).toMatchObject({ tone: "mixed" });
     expect(firstCheckVerdict({ stage: "checking" }, "shop")).toBeNull();
@@ -202,20 +207,21 @@ describe("Your Claude: the honest lines, the key field and Test, and never a log
     expect(honestLines({ limitUsd: 10, plan: planCard(free, null) }).plan).toBe(S.fr.keyPlan(S.plan.freeNew(3)));
     for (const l of Object.values(off)) { expect(l).not.toContain("\u2014"); expect(l).toMatch(/\.$/); }
   });
-  test("the page shows them over the key field, from the Plan card's store and the daily limit in force", () => {
+  test("the page shows them in the key's fold, from the Plan card's store and the daily limit in force", () => {
     const claude = stepOf(read("./onboarding.tsx"), "claude");
     for (const k of ["honest.privacy", "honest.cost", "honest.plan"]) expect(claude).toContain(`<li>{${k}}</li>`);
-    expect(claude.indexOf("honest.plan")).toBeLessThan(claude.indexOf('<Field type="password"'));
+    // The audit, item 38: one fold holds them with the key's steps, so the step fits Home's 480 points.
+    expect(claude.indexOf("honest.plan")).toBeGreaterThan(claude.indexOf('fold("how", S.fr.keyHow,'));
     const ui = read("./onboarding.tsx");
     expect(ui).toContain("const plan = planCard(usePlan(), usage);");
     expect(ui).toContain('const limit = Number(useSetting("spend.dailyLimit"));');
   });
-  test("the one field is the Anthropic key, with Save and test; there is no Claude login form anywhere in the first run (rule 2)", () => {
+  test("the one field is the Anthropic key, saved and tested by Continue; there is no Claude login form anywhere in the first run (rule 2)", () => {
     const ui = read("./onboarding.tsx");
     expect((ui.match(/type="password"/g) ?? []).length).toBe(1);
     expect(ui).toContain('<Field type="password" wide value={key} label={S.obKeyLabel}');
-    expect(ui).toContain("onClick={saveKey}>{S.fr.keyTest}</Button>");
-    expect(S.fr.keyTest).toContain("test");
+    // The audit, item 38: Continue saves and tests a typed key (onboarding.ts claudeMain), no separate Save and test.
+    expect(ui).toContain('if (claudeNext.act === "saveThenGo") { setGoOnTest(true); saveKey(); }');
     for (const banned of ["auth login", "auth_login", "claude.ai", 'type="email"', "plan_login", "S.obPlanLater", "oauth"]) expect(ui.toLowerCase(), banned).not.toContain(banned.toLowerCase());
     for (const t of Object.values(S.fr)) if (typeof t === "string") expect(t, t).not.toMatch(/sign in with|log ?in with|your claude password/i);
   });
@@ -329,7 +335,8 @@ describe("the key is checked with Anthropic when it is saved", () => {
   test("a refused key cannot be continued past, and every answer is in plain words", () => {
     const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
     const claude = stepOf(ui, "claude");
-    expect(claude).toContain('main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || check === "refused")');
+    // A refused key with nothing new typed keeps Continue off (onboarding.ts claudeMain, auditSecondHalf.test.ts).
+    expect(claude).toContain("claudeNext.disabled)}");
     // The one main button of each step is the Button part's primary, large (the flat silver).
     expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <Button kind="primary" size="lg" className="fr-key" disabled={disabled} onClick={onClick}>{label}</Button>;');
     for (const k of ["checking", "works", "refused", "no_connection", "unknown"] as const) { expect(S.obKeyCheck[k].length).toBeGreaterThan(10); expect(S.obKeyCheck[k]).not.toMatch(/40[13]|status|HTTP|models/); }
@@ -467,7 +474,7 @@ describe("keyboard, VoiceOver and motion", () => {
     // added with its words already in it); the lines the eye reads are not live, so nothing is said twice.
     expect(chk).toContain('<p className="sr" role="status" aria-live="polite">{announce}</p>');
     expect(chk.match(/role="status"/g)?.length).toBe(1);
-    expect(chk).toContain('<p className="fr-line">{S.fr.checkPromise}</p>');
+    expect(chk).toContain('<p className="fr-line fr-live"><span className="live" aria-hidden="true" />{point?.label || S.fr.checkPromise}</p>');
     expect(chk).toContain('{stage === "stopped" && <p className="fr-line">{endLine}</p>}');
     // Every button is the Button part (named by its words), but Back, which is named for VoiceOver.
     expect((ui.match(/<button /g) ?? []).length).toBe(1);

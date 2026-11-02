@@ -13,7 +13,7 @@ describe("the buttons under the ask box", () => {
   test("Start with an empty box puts the cursor in the box and says what to do", () => {
     expect(S.typeFirst).toBe("Type what you want done first.");
     const submit = fnBody(card, "const submit = () => {");
-    expect(submit).toContain("if (!prompt) { needWords(S.typeFirst); return; }");
+    expect(submit).toContain('if (route === "needWords") { needWords(S.typeFirst); return; }');
     expect(card).toContain("const needWords = (line: string) => { setAskHint(line); box.current?.focus(); };");
   });
   test("Show me with an empty box is a gentle line, never the amber error panel", () => {
@@ -41,7 +41,7 @@ describe("the buttons under the ask box", () => {
     // F28, the overhaul spec 4.1: the keys' labels inside the field on the right, with what they do in the tooltip. Not a
     // button at all: no press, no microphone drawing, nothing sent.
     const keysAt = card.split("\n").find((l) => l.includes('className="ask-keys"'))!;
-    expect(keysAt).toContain('{groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} /></span>}');
+    expect(keysAt).toContain('{groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} label={S.look.talk} /></span>}');
     for (const no of ["<button", "<Button", "onClick", 'Icon name="mic"', "send(", "invoke("]) expect(keysAt).not.toContain(no);
     expect(card).not.toContain("S.look.howToTalk");
   });

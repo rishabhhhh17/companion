@@ -181,10 +181,10 @@ export function tabKey(t: Tab, key: string): Tab | null {
 
 /** May a click in another app close Home? Never with Close Home when I click another app turned off (`on`,
  *  home.closeOnClickAway). Not while it shows something the person is in the middle of: a question, a lesson, a pointer on
- *  the screen, Prompt help or the error explainer, the microphone, a "are you sure", or the first run (which sends people
- *  to other apps to get a key or sign in). */
-export function closesOnClickAway(m: Model, onboarding: boolean, on = true): boolean {
-  if (!on || onboarding || need(m)) return false;
+ *  the screen, Prompt help or the error explainer, the microphone, a "are you sure", the first run (which sends people
+ *  to other apps to get a key or sign in), or words being typed in the ask box (`typing`). */
+export function closesOnClickAway(m: Model, onboarding: boolean, on = true, typing = false): boolean {
+  if (!on || onboarding || typing || need(m)) return false;
   if (m.walk || m.practice || m.showme || m.teach || m.ph || m.eh || m.sl || m.voice) return false;
   if (m.point?.stage === "checking" || m.diagram?.stage === "asking") return false;
   if (m.undo?.stage === "confirm" || m.bisect?.undoStage === "confirm") return false;
@@ -214,6 +214,9 @@ const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approval
  *  done (it draws itself). red: something went wrong. */
 export type WingMark = "dots" | "arc" | "look" | "bars" | "amber" | "tick" | "red";
 export type Wings = { state: CharacterState; mark: WingMark };
+/** The mark drawn with Reduce motion on (the audit, item 54): what moves (the turning arc, the bars) is a still dot instead,
+ *  so it never freezes as an open arc; the still marks stay as they are. */
+export const wingMarkShown = (mark: WingMark, reduced: boolean): WingMark => (reduced && (mark === "arc" || mark === "bars") ? "dots" : mark);
 const MARK: Partial<Record<CharacterState, WingMark>> = { thinking: "dots", working: "arc", checking: "arc", listening: "bars", needsYou: "amber", done: "tick", error: "red" };
 
 /** The wings beside the notch, or null for the bare notch. Listening and looking at the screen come first: they are the

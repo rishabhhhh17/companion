@@ -31,6 +31,14 @@ describe("writing rules", () => {
     const jargon = /(\bundefined\b|\bnull\b|\bNaN\b|\[object |\bJSON\b|\bstderr\b|\bstdout\b|\bsegfault\b|\bEACCES\b|\bENOENT\b|\bpanic\b)/;
     for (const [where, t] of cardTexts()) expect(jargon.test(t), `${where}: ${t}`).toBe(false);
   });
+  test("no Settings help sentence runs past 25 words (the audit, item 53: aim for 20)", () => {
+    for (const [key, v] of Object.entries(S.set as Record<string, { help?: string }>)) {
+      for (const sentence of (v?.help ?? "").split(/(?<=[.!?])\s+/)) {
+        const n = sentence.split(/\s+/).filter(Boolean).length;
+        expect(n, `${key}: ${sentence}`).toBeLessThanOrEqual(25);
+      }
+    }
+  });
   test("every lesson line is short enough to read at a glance", () => {
     for (const [where, t] of lessonTexts()) expect(t.length, where).toBeLessThanOrEqual(200);
   });

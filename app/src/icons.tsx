@@ -1,15 +1,17 @@
 // Small drawings, all inline SVG so there is nothing to load and no emoji. They are marks, not words: each one sits inside a
 // button that has its own name (an aria-label or hidden words), so every drawing is hidden from VoiceOver. They take the
 // colour of the words around them (currentColor), so they follow the light and dark themes with no colour of their own.
+// One stroke weight at every size (the audit, item 42): 1.5 points that never scale with the drawing (style.css .ic *),
+// and the sizes a button or a list uses are tokens in rem (ui/parts.css), so the drawings grow with the text size.
 import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
 type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron" | "warn" | "halt";
 
-const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
+const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "updown" | HomeIcon, ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -40,6 +42,13 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   // The parts (ui/parts.tsx): partly proven, a check that did not run, and a menu's up and down chevron.
   half: <><circle cx="12" cy="12" r="7.5" /><path d="M12 4.5a7.5 7.5 0 010 15z" fill="currentColor" stroke="none" /></>,
   dash: <path d="M7 12h10" />,
+  // Nothing changed: an empty ring, the same size as the waiting dot, so it reads as a state and never as a minus.
+  ring: <circle cx="12" cy="12" r="3.5" />,
+  // A task at work (an open ring that turns; ui/look.css .ic-spin), something new (a small four point light), needs you (!).
+  spin: <path className="ic-spin" d="M12 4.5a7.5 7.5 0 107.5 7.5" />,
+  sparkle: <path d="M12 4c.6 4.2 1.8 5.4 6 6-4.2.6-5.4 1.8-6 6-.6-4.2-1.8-5.4-6-6 4.2-.6 5.4-1.8 6-6z" />,
+  alert: <path d="M12 5.5v8M12 18h.01" />,
+  eye: <><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.8" /></>,
   updown: <><path d="M8 9.5l4-4 4 4" /><path d="M8 14.5l4 4 4-4" /></>,
   // The strip at the bottom of Home
   shield: <><path d="M12 3.5l7 2.8v5.2c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6.3z" /><path d="M9 12l2.2 2.2L15.5 10" /></>,

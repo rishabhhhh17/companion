@@ -11,7 +11,7 @@
 
 /* The list on the left: as tall as Home, its own scroll if it ever needs one, and a hairline between it and the work. M51
    polish (next to HeyClicky): compact one line rows, 28 tall, so the places and about ten tasks fit in Home's 480. */
-.home[data-side] .side { position: sticky; top: 0; height: calc(100vh - var(--hair)); box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-2) var(--space-2); border-right: var(--hair) solid var(--sheen-line); background: color-mix(in srgb, var(--raise) 64%, transparent); box-shadow: inset calc(var(--hair) * -1) 0 0 var(--line); }
+.home[data-side] .side { position: sticky; top: 0; height: calc(100vh - var(--hair)); box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-2) var(--space-2); border-right: var(--hair) solid var(--sheen-line); background: color-mix(in srgb, var(--raise) 64%, transparent); }
 /* The room (ui/look.css): the list is glass tinted by the room, its words neutral. A list row is a soft 12 point shape; the
    open place takes the room's tint, its icon the room's light words, and a small glowing bar of light at its leading edge.
    Now and Learn are groups' rooms, so their row shows the group's gem in place of a drawing. The room's colours are read
@@ -19,18 +19,19 @@
    pink, green or sunset list is a pink, green or sunset row, never a blue one. */
 .home[data-side] .side { --side-row: var(--el-row); --side-text: var(--el-text); --side-glow: var(--el-glow); }
 .home[data-side] .side .sb-item { border-radius: var(--r-card); }
-.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color 160ms var(--ease-out); }
+.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color 280ms var(--ease-out); }
 .home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--side-text); }
-.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 0; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in 160ms var(--ease-out) both; }
+.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in 160ms var(--ease-out) both; }
 @keyframes side-bar-in { from { transform: scaleY(0); } }
-.home[data-side] .side li[data-gem] .sb-item > .ic { display: none; }
-.home[data-side] .side li[data-gem] .sb-item::before { content: ""; flex: none; width: 14px; min-height: 14px; margin: 1px; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }
+.home[data-side] .side li[data-gem] .sb-item > .ic { display: var(--gem-icon-display); }
+.home[data-side] .side li[data-gem] .sb-item::before { content: ""; display: var(--gem-display); flex: none; width: 14px; min-height: 14px; margin: 2px; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }
 .home[data-side] .side li[data-gem] .sb-item[aria-current="page"]::before { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 0 10px color-mix(in srgb, var(--el-glow) 70%, transparent); }
 /* A badge in the list is its dot alone, so the names have room; the row's tooltip and its spoken name carry the words, and
    History and Learn show them in full. Working breathes, Needs you is ringed, New is a plain grey dot. */
 .home[data-side] .side-work .stamp[data-dot] { justify-content: center; width: var(--icon-md); min-height: var(--icon-md); padding: 0; background: transparent; }
-.home[data-side] .side-work .stamp[data-dot]::before { width: 7px; }
-.home[data-side] .side-work .stamp[data-dot][data-stamp="needsYou"]::before { width: 8px; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 28%, transparent); }
+.home[data-side] .side-work .stamp[data-dot]::before { display: none; }
+.home[data-side] .side-work .stamp[data-dot] .ic { flex: none; }
+.home[data-side] .side-work .stamp[data-dot][data-stamp="needsYou"] { border-radius: var(--r-round); box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 28%, transparent); }
 /* A list item fills the list's width, one line high at Standard; a place's own words wrap rather than run off (Large). */
 .home[data-side] .side .sb-item { width: 100%; min-height: var(--h-side-row); padding-inline: var(--space-2); white-space: normal; }
 .side-list { display: grid; gap: var(--hair); margin: 0; padding: 0; list-style: none; }
@@ -61,15 +62,21 @@
 /* The ask box along the bottom of the work, as a chat app's composer: drawn after the rest, and kept in view while the work
    scrolls under it. In the reading order it stays right under the status, where it always was. */
 .home[data-side] .work > .askwrap { order: 1; position: sticky; bottom: 0; z-index: 3; margin-top: auto; padding: var(--space-2) 0 var(--space-4); }
+/* With no sea filling the work (the light behind Home off, the usual since 2 Nov 2026), the ask box comes right under the
+   work instead of waiting at the foot of the window behind a blank band (the review, 2 Nov 2026: about 170 points of nothing
+   between the water and the box). It still sticks to the foot once the work is taller than Home. The light's switch sets
+   both (ui/tokens.css --ask-push, --sea-fill-show). */
+.home[data-side] .work > .askwrap { margin-top: var(--ask-push); }
+.home[data-side] .sea-fill { display: var(--sea-fill-show); }
 /* Under the ask box, a solid band in exactly the colour of the room's floor there (the floor is flat along the bottom,
    ui/look.css .room-floor), so at rest it cannot be seen, and work that scrolls under it fades into the floor instead of
    showing through as a ghost or meeting a tonal step. It needs no blur, so it does not depend on backdrop-filter. */
 .home[data-side] .work > .askwrap { --band: color-mix(in srgb, var(--el-foot) calc(var(--room-floor-a) * var(--room-show)), var(--room-base)); }
-/* The fade is eased and three fades tall, so whatever scrolls into it (a card's rounded top, a heading) is mostly dimmed
+/* The fade is eased and two fades tall (three hid a review's buttons and a proof's chips behind it: the review, 2 Nov 2026), so whatever scrolls into it (a card's rounded top, a heading) is mostly dimmed
    out of sight before the band and never meets it as a hard line or a stray arc. It shows only while there is more work
    below to scroll to (data-more, homeLayout.ts useMoreBelow): at rest, and at the end of the list, the last card reads in
    full right down to the ask box. */
-.home[data-side] .work > .askwrap::before { content: ""; position: absolute; z-index: -1; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); bottom: 100%; height: calc(var(--fade) * 3); background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--band) 40%, transparent) 35%, color-mix(in srgb, var(--band) 80%, transparent) 62%, var(--band) 85%); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
+.home[data-side] .work > .askwrap::before { content: ""; position: absolute; z-index: -1; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); bottom: 100%; height: calc(var(--fade) * 2); background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--band) 40%, transparent) 35%, color-mix(in srgb, var(--band) 80%, transparent) 62%, var(--band) 85%); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
 .home[data-side][data-more] .work > .askwrap::before { opacity: 1; }
 .home[data-side][data-more] .work > .askwrap::after { -webkit-mask-image: none; mask-image: none; }
 /* At rest the band's own top edge is soft (a mask, the band's colour unchanged), so where the room above it is a touch
@@ -77,14 +84,17 @@
    under it (data-more) the band is solid to its top, and the fade above it does the softening. */
 .home[data-side] .work > .askwrap::after { content: ""; position: absolute; z-index: -1; inset: 0 calc(var(--space-6) * -1); -webkit-mask-image: linear-gradient(180deg, transparent 0, var(--mask-solid) var(--space-4)); mask-image: linear-gradient(180deg, transparent 0, var(--mask-solid) var(--space-4)); background: var(--band); pointer-events: none; }
 /* Flowflow owns the scene in the wide Home: about half as big again as in the tall one, sitting in its water at the right of
-   the status, so the room reads as its place rather than a page with a mascot in the corner. While it works it stays big
-   enough to see it wobble, and the job's card has the room. */
+   the status, so the room reads as its place rather than a page with a mascot in the corner. It keeps that size while it
+   works (the review, 2 Nov 2026: shrunk for the job's card, it sank to a small half head under the wave); the part above
+   the usual size takes no height, so the job's card keeps its room. */
 .home[data-side] .hero[data-mode] { --char: calc(168rem / 14); }
-.home[data-side][data-tone="working"] .hero[data-mode] { --char: calc(112rem / 14); }
 /* The words may run on under the empty left part of Flowflow's box (the drop sits in its middle), so the status's line
    keeps to one line beside the bigger Flowflow; when it does wrap, it never leaves one word alone on a line. */
 .home[data-side] .hero-words { grid-column: 1 / -1; padding-right: calc(var(--char) * .72); }
 .home[data-side] .hero .subline { text-wrap: pretty; }
+/* The headline sits above Flowflow's bubble, so it may run across the pond's column and keep to one line (the review, 2 Nov
+   2026: "Practice: find" broke after its second word beside an empty corner). Only the lines under it keep clear. */
+.home[data-side] .hero[data-mode] .hero-words > h1 { margin-right: calc(var(--char) * -.72); }
 /* It grows up beside the words, never down: the part above the usual size takes no height, so the status, the cards under
    it and the ask box keep their places. */
 .home[data-side] .home-pond .home-char { margin-top: calc((var(--char) - 104rem / 14) * -111 / 156 - 8px); }
@@ -92,11 +102,41 @@
    work, instead of a dead band between the waterline and the box (M51 polish). The water under the line is solid sea, and
    the sea below it fades into the page at the ask box. */
 .home[data-side] .hero:has(+ .sea-fill) { margin-bottom: 0; }
-.home[data-side] .hero:has(+ .sea-fill) .ch-water { background: linear-gradient(180deg, var(--sea-room), color-mix(in srgb, var(--sea-room) 80%, transparent)); }
-.home[data-side] .sea-fill { flex: 1 0 0; margin: 0 calc(var(--space-6) * -1); opacity: var(--sea-see); background: linear-gradient(180deg, color-mix(in srgb, var(--sea-room) 80%, transparent) 0, color-mix(in srgb, var(--sea-room) 45%, transparent) 55%, transparent 100%); }
+.home[data-side] .hero:has(+ .sea-fill) .ch-water { background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), var(--sea-tint) calc(var(--wave-foot) + 12px), color-mix(in srgb, var(--sea-tint) var(--sea-tail-a), transparent)); }
+.home[data-side] .sea-fill { flex: 1 0 0; margin: 0 calc(var(--space-6) * -1); opacity: var(--sea-fill-a); background: linear-gradient(180deg, color-mix(in srgb, var(--sea-tint) 80%, transparent) 0, color-mix(in srgb, var(--sea-tint) 45%, transparent) 55%, transparent 100%); }
 .home[data-side] .work > .askwrap .ask { margin-bottom: 0; }
 .home[data-side] .work > .askwrap details.more { margin-bottom: 0; }
 
 /* The first run in the wide Home (no list yet): it fills Home's one height instead of asking for its own 560, so Continue is
    in view without scrolling. A longer step scrolls, as it does in the tall Home. */
 .home[data-layout="wide"] .fr { min-height: 0; }
+
+/* ---- the ranked UI audit, 2 Nov 2026 (auditFirstHalf.test.ts) ---- */
+/* Item 22: the list's labels share one edge (a place's drawing sits in a tile as wide as a task's), and hover is lighter
+   than the open place, with press its own tint, never a flat grey heavier than the selection. */
+.home[data-side] .side .sb-item > .ic { margin-inline: calc((var(--tile) - var(--icon-md)) / 2); }   /* a 16 point drawing centred in an 18 point tile's width */
+.home[data-side] .side .sb-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--side-row) 55%, transparent); }
+.home[data-side] .side .sb-item:not([aria-current="page"]):active { background: var(--side-row); }
+/* Item 23: a place's title starts on the work's own edge (there is no back arrow beside it here). */
+.home[data-side] .view-title { margin-left: 0; }
+/* Item 13: in Home's 480 points, a card that needs a tap must not have its buttons under the hero and the ask box. While
+   one shows (homeHero.ts heroCompact), the hero is one line: no pond, no main button (the card has its own). The ask box's
+   band pads the scroll, so a card scrolled into view stops above it. */
+.home[data-side] { scroll-padding-bottom: calc(var(--h-lg) * 2 + var(--space-6)); }
+.home[data-side] .hero[data-compact] { --char: 0px; grid-template-columns: minmax(0, 1fr); min-height: 0; margin-bottom: var(--space-4); }
+.home[data-side] .hero[data-compact] .home-pond { display: none; }
+.home[data-side] .hero[data-compact] { padding-bottom: var(--space-2); }
+.home[data-side] .hero[data-compact] .hero-words { padding-right: 0; margin-bottom: 0; }
+.home[data-side] .hero[data-compact] .headline, .home[data-side] .hero[data-compact] .status-head { font-size: var(--t-answer); }
+.home[data-side] .hero[data-compact] .subline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; }
+/* Under a result just in, the folded hero keeps a smaller Flowflow in its water beside the status (the review, 2 Nov 2026:
+   the proven moment had no Flowflow in the wide Home), at the tall Home's size, with just the height it needs, so Undo and
+   the proof stay in view. */
+.home[data-side] .hero[data-compact][data-mode="result"] { --char: calc(136rem / 14); grid-template-columns: minmax(0, 1fr) var(--char); min-height: calc(var(--char) * 111 / 156 + var(--space-6)); padding-bottom: var(--space-5); margin-bottom: var(--space-2); }
+.home[data-side] .hero[data-compact][data-mode="result"] .home-pond { display: block; }
+.home[data-side] .hero[data-compact][data-mode="result"] .hero-words { padding-right: calc(var(--char) * .72); margin-bottom: calc(var(--line-up) + var(--space-3)); }
+/* More ways in the wide Home (the audit, item 40): a popover above the line that opens it, over the work, so opening it
+   never pushes the ask box up or covers Flowflow by moving the page. */
+.home[data-side] details.more { position: relative; }
+.home[data-side] details.more > .more-pop { position: absolute; bottom: 100%; left: 0; right: 0; z-index: 8; box-sizing: border-box; padding: var(--space-3); background: var(--surface-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-card); box-shadow: var(--shadow-raised); max-height: 60vh; overflow: auto; overscroll-behavior: contain; transform-origin: bottom center; animation: ui-menu-in var(--dur-1) var(--ease-out) both; }
+.home[data-side] details.more > .more-pop .more-ways { margin-top: 0; }

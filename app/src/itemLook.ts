@@ -42,7 +42,7 @@ export const KIND_TINT: Readonly<Record<Kind, Tint | "plain">> = { explain: "lil
 /** The drawing for a task's words. */
 export const glyphOf = (label: string): IconName => KIND_GLYPH[kindOf(label)];
 
-export const STAMPS = ["working", "new", "proven", "needsYou"] as const;
+export const STAMPS = ["working", "new", "proven", "needsYou", "notFixed"] as const;
 export type Stamp = (typeof STAMPS)[number];
 
 /** How long a task that just finished is stamped New. */
@@ -57,6 +57,8 @@ export function historyStamp(i: Pick<HistoryItem, "status" | "proof" | "changed"
   const v = verdictOf(historyFacts(i));
   if (v.kind === "needsYou") return "needsYou";
   if (v.kind === "proven") return "proven";
+  // A check failed: History stamps it as it stamps Proven (the audit, item 31); the side list keeps its own cross for it.
+  if (v.kind === "failed") return "notFixed";
   if (!NEW_KINDS.includes(v.kind)) return null;
   const end = Date.parse(i.endedAt ?? i.startedAt);
   return Number.isFinite(end) && now >= end && now - end <= NEW_MINUTES * 60_000 ? "new" : null;

@@ -3,7 +3,7 @@ import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
 import { changeSetting, setting as getSetting, useSetting } from "./settingsStore.ts";
-import { STEPS, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyShownFirst, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
+import { STEPS, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, claudeMain, goesOnAfterTest, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyShownFirst, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
 import { livelinessOf, type Liveliness } from "./lookfeel.ts";
 import { whatOf } from "./approvals.ts";
 import { keyRows, talkSharedNote } from "./settings.ts";
@@ -17,6 +17,7 @@ import { FIRST_PRACTICE, needsMacCheck, nodeMissing, practiceOf } from "./practi
 import { FirstLook } from "./firstLook.tsx";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
+import { FailingLine } from "./failingLine.tsx";
 import { usePlan } from "./usePlan.ts";
 import { planCard, type Usage } from "./plan.ts";
 import { Button, Card, Disclosure, Field, KeyLabel, Menu, Row, Segmented, Switch, VerdictLine } from "./ui/parts.tsx";
@@ -38,6 +39,9 @@ type Props = {
   pickFolder: () => void; startPractice: (id: string) => void; onDone: () => void;
   point: PointNow; approvals: readonly ApprovalCard[]; usage: Usage | null;
   firstCheck: () => void; answer: (approval: string, allow: boolean) => void;
+  /** Fix it on the found problem (the audit, item 8): Home's own route for a known problem (card.tsx fixKnown), run after
+   *  the first run has finished, so the fix starts on Home where its card and Stop are. */
+  fixFound?: () => void;
   cloneLink: (url: string) => Promise<void>; copying: boolean; cloneNote: string | null;
   /** Why the first check could not run, when the engine or the shell said (Home's error or notice line, which the first run
    *  covers): cleared when the check is pressed, so only this press's reason shows. */
@@ -54,7 +58,7 @@ const yoursNow = (): Pick<Yours, "name" | "lively" | "edge"> => {
 const folderName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 type Fold = "how" | "yours" | "powers" | "keys" | "questions";
 
-export function Onboarding({ doctor, connected, keyTested, project, send, pickFolder, startPractice, onDone, point, approvals, usage, firstCheck, answer, cloneLink, copying, cloneNote, why }: Props) {
+export function Onboarding({ doctor, connected, keyTested, project, send, pickFolder, startPractice, onDone, point, approvals, usage, firstCheck, answer, cloneLink, copying, cloneNote, why, fixFound }: Props) {
   const [step, setStep] = useState<Step>("hello");
   // The recorded fix, watched again from the hello (firstLook.tsx). It is a picture of a run: nothing is asked or changed.
   const [watching, setWatching] = useState(false);
@@ -125,6 +129,11 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
     void invoke("save_api_key", { key: k }).then(() => { setKeyNote(""); setSavedAt(Date.now()); }).catch((e) => setKeyNote(failNote(e, "key")));
   };
   const check = keyCheck(savedAt, keyTested);
+  // Continue saved a key (the audit, item 38): carry on by itself once Anthropic says it works.
+  const [goOnTest, setGoOnTest] = useState(false);
+  const claudeNext = claudeMain(ok, key, check);
+  useEffect(() => { if (step === "claude" && goesOnAfterTest(goOnTest, ok, check)) { setGoOnTest(false); go(next(step)); } }, [goOnTest, ok, check, step]);
+  useEffect(() => { if (check === "refused" || check === "no_connection" || check === "unknown") setGoOnTest(false); }, [check]);
   // The first check: on the person's press only (Check <name>), never by itself. The engine saves a safety copy before
   // anything runs and asks before installing anything (runner/test/first-check.test.ts).
   const startCheck = () => { setAsked(true); setStoppedByMe(false); firstCheck(); go("check"); };
@@ -203,13 +212,6 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
       {step === "claude" && (<>
         <h2 className="fr-title">{S.fr.claudeTitle}</h2>
         <p className="fr-line">{S.fr.claudeLine}</p>
-        {/* The honest lines, each true now: where the key goes, what it costs (the limit in force), and the plan from the
-            Plan card's own state. No Claude login form here, ever (rule 2): only Anthropic's own key page, on a press. */}
-        <ul className="fr-honest">
-          <li>{honest.privacy}</li>
-          <li>{honest.cost}</li>
-          <li>{honest.plan}</li>
-        </ul>
         {claude?.state === "installing" && (() => {
           const mb = Math.round((claude.received ?? 0) / 1e6), pct = claude.total ? Math.min(100, Math.round(((claude.received ?? 0) / claude.total) * 100)) : null;
           return <div className="fr-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined} aria-valuetext={S.fr.claudeGetting(mb, pct)}>
@@ -220,16 +222,29 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {claude?.state === "missing" && <><p className="fr-small">{S.fr.claudeMissing}</p><Button kind="quiet" className="fr-link" onClick={() => void invoke("claude_install_now").catch(() => {})}>{S.fr.claudeInstall}</Button></>}
         {ok && check !== "refused" ? <p className="fr-ok" role="status">{check ? S.obKeyCheck[check] : S.obConnected}</p> : (<>
           <div className="fr-keyrow">
-            <Field type="password" wide value={key} label={S.obKeyLabel} placeholder="sk-ant-..." error={keyNote || (check === "refused" ? S.obKeyCheck.refused : undefined)} onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) saveKey(); }} />
-            <Button kind="secondary" className="fr-save" onClick={saveKey}>{S.fr.keyTest}</Button>
+            <Field type="password" wide value={key} label={S.obKeyLabel} placeholder="sk-ant-..." error={keyNote || (check === "refused" ? S.obKeyCheck.refused : undefined)} onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && key.trim()) { setGoOnTest(true); saveKey(); } }} />
           </div>
-          {fold("how", S.fr.keyHow, <ol className="fr-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>)}
-          <Button kind="quiet" className="fr-link" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.obGetKey}</Button>
-          {/* M28: no dead end without a key. Home then says "Add your Claude key" with a button that goes straight there. */}
-          <Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipKey}</Button>
+          {check === "checking" && <p className="fr-small" role="status">{S.obKeyCheck.checking}</p>}
+          {/* One fold for everything about the key (the audit, item 38): the honest lines, each true now (where the key goes,
+              what it costs, the plan from the Plan card's own state), the steps, and Anthropic's own key page on a press. No
+              Claude login form here, ever (rule 2). */}
+          {fold("how", S.fr.keyHow, (<>
+            <ul className="fr-honest">
+              <li>{honest.privacy}</li>
+              <li>{honest.cost}</li>
+              <li>{honest.plan}</li>
+            </ul>
+            <ol className="fr-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>
+            <Button kind="secondary" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.fr.keyPage}</Button>
+          </>))}
         </>)}
+        {/* Why Continue waits, in words beside it (the review, 2 Nov 2026: a dim Continue gave no reason). */}
+        {claudeNext.disabled && !(ok && check !== "refused") && <p className="fr-small fr-need" id="fr-need">{S.fr.keyNeeded}</p>}
         <div className="fr-grow" />
-        {main(S.obContinue, () => go(next(step)), !canContinue(step, ctx) || check === "refused")}
+        {/* M28: no dead end without a key. Home then says "Add your Claude key" with a button that goes straight there. On the
+            row of the main button, as Skip setup is on the hello. */}
+        {!(ok && check !== "refused") && <Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipKey}</Button>}
+        {main(S.obContinue, () => { if (claudeNext.act === "saveThenGo") { setGoOnTest(true); saveKey(); } else if (claudeNext.act === "continue" && canContinue(step, ctx)) go(next(step)); }, claudeNext.disabled)}
       </>)}
 
       {step === "project" && (<>
@@ -265,8 +280,10 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {/* One live line, always there on this screen, so VoiceOver hears each change: the check running, the question, the
             verdict's own words (headline and line), or why it ended. The lines below are what the eye reads. */}
         <p className="sr" role="status" aria-live="polite">{announce}</p>
-        {(stage === "checking" || stage === "asking") && <p className="fr-line">{S.fr.checkPromise}</p>}
+        {(stage === "checking" || stage === "asking") && <p className="fr-line fr-live"><span className="live" aria-hidden="true" />{point?.label || S.fr.checkPromise}</p>}
         {result?.line && <p className="fr-line">{result.line}</p>}
+        {/* What broke, where, and the line itself (the same proof row as Home's), when the problem is a line. */}
+        {stage === "done" && point?.stage === "found" && <FailingLine problem={point.problem as never} />}
         {stage === "stopped" && <p className="fr-line">{endLine}</p>}
         {/* The install question, on this screen while the first run covers Home: "Don't allow" first, neither one silver. */}
         {asks.map((a) => (
@@ -311,9 +328,13 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           </>))}
         </div>)}
         <div className="fr-grow" />
-        {(stage === "checking" || stage === "asking") && <Button kind="quiet" className="fr-link fr-skip" onClick={() => { stopCheck(); finish(); }}>{S.fr.skipCheck}</Button>}
+        {/* While it runs there is one way out, Stop the check above (the audit, item 52: Skip the check was its near twin). */}
         {stage === "idle" && main(S.fr.checkGo(folderName(project)), startCheck, !project)}
-        {stage !== "idle" && main(S.fr.goProject, finish, stage === "checking" || stage === "asking")}
+        {/* A problem found: Fix it is the one main button, and Go to my project the quiet way out (the audit, item 8). */}
+        {stage === "done" && point?.stage === "found" && fixFound && <Button kind="quiet" className="fr-link" onClick={finish}>{S.fr.goProject}</Button>}
+        {stage === "done" && point?.stage === "found" && fixFound
+          ? main(S.fr.fixIt, () => { finish(); fixFound(); })
+          : stage !== "idle" && main(S.fr.goProject, finish, stage === "checking" || stage === "asking")}
       </>)}
       </div>
     </section>

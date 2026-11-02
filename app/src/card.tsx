@@ -14,7 +14,7 @@ import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
-import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, costWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, costWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -22,11 +22,11 @@ import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
 import { useModel } from "./useModel.ts";
-import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keycaps, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
+import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { agoWords, barPlaces, barStopCan, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, stopCan, undoCan, type MainAct } from "./homeHero.ts";
+import { askRoute, blockerOf, heroCompact, homeFixRoute, jobNowWords, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, type MainAct } from "./homeHero.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { livelinessOf } from "./lookfeel.ts";
@@ -36,7 +36,8 @@ import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ProofChips } from "./proofChipsView.tsx";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
-import { layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
+import { FlowMini } from "./flowflowMini.tsx";
+import { layoutOf, seaFills, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
 import { reviewShown } from "./review.ts";
@@ -46,9 +47,6 @@ import { historyStamp, taskName } from "./itemLook.ts";
 import { ItemTile, Stamp } from "./itemMarks.tsx";
 
 /** M40: an action's keys, as Key labels at the end of its row (only to see; the row's own name is what is read out). */
-function Caps({ id }: { id: string | null | undefined }) {
-  return keycaps(id).length ? <span className="caps"><KeyLabel chord={id} hidden /></span> : null;
-}
 import { FirstLook } from "./firstLook.tsx";
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
@@ -61,7 +59,7 @@ import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, o
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
-import { offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
+import { memoryDate, offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
 import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
@@ -70,7 +68,7 @@ import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
 import { FailingLine, lineOf } from "./failingLine.tsx";
-import { Button, KeyLabel, Menu, ProofChip, Switch, VerdictLine } from "./ui/parts.tsx";
+import { Button, Group, KeyLabel, Menu, ProofChip, Row, Switch, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
@@ -106,7 +104,7 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
     <div className="followup">
       {retry && (
         <div className="row">
-          <button className="btn" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
           <span className="muted">{S.tryAgainHelp}</span>
         </div>
       )}
@@ -171,7 +169,7 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   };
   // The button keeps its name, so VoiceOver hears Copied or the failure on a polite line that is there before either.
   return <>
-    <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : S.copy}</button>
+    <button className="btn" type="button" aria-label={label} onClick={copy}>{state === "copied" ? S.copied : label}</button>
     <span className={state === "failed" ? "line" : "sr"} role="status">{state === "copied" ? S.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
 }
@@ -189,6 +187,12 @@ function ResearchNote({ text, source }: { text: string; source: string }) {
 }
 
 // A web address shown on Home, with its Open button.
+/** The bar's place buttons: the Places landmark in the tall Home, a plain group beside the wide Home's side list, which is the
+ *  Places landmark there (the audit, item 51: two landmarks had the same name). */
+function PlacesBox({ side, children }: { side: boolean; children: ReactNode }) {
+  return side ? <div className="places">{children}</div> : <nav className="places" aria-label={S.look.placesLabel}>{children}</nav>;
+}
+
 function LinkLine({ label, url, strong }: { label: string; url: string; strong?: boolean }) {
   const [note, setNote] = useState("");
   return (
@@ -247,7 +251,7 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
 // the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
 // focus: the task a recent fix on Now opened (F28): its row is scrolled to and flashes once, as a Settings search hit does.
-function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number }) {
+function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
@@ -258,13 +262,20 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
     // M51 polish: no card around the list (the page is the list), its heading for VoiceOver only (the page is titled History).
     <section className="panel bare hist" aria-label={S.recentTitle}>
       <h2 className="sr">{S.recentTitle}</h2>
-      {items.length === 0 && <div className="line muted">{S.homeHistoryNone}</div>}
+      {/* Nothing yet: Flowflow and one way to start, never a lone grey sentence (the audit, item 51). */}
+      {items.length === 0 && (
+        <div className="hist-empty">
+          <div className="pr-peek" aria-hidden="true"><FlowMini state="idle" className="pr-char" /></div>
+          <p className="line muted">{S.homeHistoryNone}</p>
+          {onAsk && <div className="row"><button className="btn" type="button" onClick={onAsk}>{S.historyFirstFix}</button></div>}
+        </div>
+      )}
       {items.length > 0 && (
         <div className="row" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
             onChange={(e) => setQ({ ...q, words: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Escape" && !composing(e) && q.words) { e.preventDefault(); e.stopPropagation(); setQ({ ...q, words: "" }); } }} />
-          <Menu label={S.historyStatusLabel} value={q.status} options={HISTORY_STATUSES.map((s) => ({ id: s, label: S.historyStatus[s] }))} onChange={(status: HistoryStatus) => setQ({ ...q, status })} />
+          <Menu label={S.historyStatusLabel} size="md" value={q.status} options={HISTORY_STATUSES.map((s) => ({ id: s, label: S.historyStatus[s] }))} onChange={(status: HistoryStatus) => setQ({ ...q, status })} />
           {filtering && <button className="btn" type="button" onClick={() => setQ(NO_FILTER)}>{S.historyClear}</button>}
         </div>
       )}
@@ -282,7 +293,7 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
           </div>
           {stamp && <Stamp kind={stamp} spoken />}
           <div className="hist-extra">
-          {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
+          {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
           {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
             {u.stage === "confirm" && (
               <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
@@ -326,7 +337,7 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
               {/* A note is a flat card: the fact in plain words, then its source and what to do with it, so every line can be forgotten. */}
               <p className="note-text">{l.text}</p>
               <div className="note-src">
-                <span>{S.memoryFrom} {l.source}{l.date ? `, ${l.date}` : ""}</span>
+                <span>{S.memoryFrom} {l.source}{l.date ? `, ${memoryDate(l.date)}` : ""}</span>
                 <span className="note-acts">
                   <button id={editId(l.id)} className="note-btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
                   <button className="note-btn" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
@@ -349,7 +360,6 @@ function MemoryList({ title, scope, lines, project }: { title: string; scope: "p
 }
 
 function Card() {
-  useLook({ choices: true });   // the water's colour, Home's theme (M19) and the other look choices (M51) chosen in Settings
   const [m, dispatch] = useModel();
   // Pro (the payments spec, T17): the plan on this Mac, from the shell. With payments off it is { paymentsOn: false } and
   // nothing on Home changes: no tag, no limit card, no line under Fix it.
@@ -409,6 +419,8 @@ function Card() {
   // Which page of Settings is open, or what a deep link names (a page, a group, a setting): the last page viewed at first.
   const [setPlace, setSetPlace] = useState<string>(() => lastPage());
   const box = useRef<HTMLTextAreaElement>(null);
+  // Words in the ask box (or in a follow up's) are being typed: Home never closes on a click elsewhere then (home.ts).
+  const typingNow = (): boolean => !!box.current?.value.trim() || (document.activeElement instanceof HTMLInputElement && !!document.activeElement.value.trim());
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
   // is sent. Never kept off the record, and never when it looks like it holds a key or a password.
   const offNow = useRef(false);
@@ -455,6 +467,7 @@ function Card() {
   // can do what the refusal says. A new folder forgets it.
   const sent = useRef<Sent<Attached> | null>(null);
   const putBackSent = () => {
+    dispatch({ type: "ui.taskSendFailed" });
     const s = sent.current; sent.current = null;
     if (!s) return;
     const r = putBack(s, { text: box.current?.value ?? "", attached: attachedNow.current });
@@ -552,6 +565,10 @@ function Card() {
   useEffect(() => { offNow.current = off; if (off === offWas.current) return; offWas.current = off; keepDraft(box.current?.value ?? ""); }, [off]);
   // The first run: shown until finished, remembered only on this Mac.
   const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });
+  // The water's colour, Home's theme (M19) and the other look choices (M51) chosen in Settings. The first run is always
+  // Graphite (the audit, item 4): it comes before any choice, and White or Black would break its own dark tokens.
+  // The first run takes the theme too (the review, 2 Nov 2026): a new person gets Black, the usual, and Home after it is the same place.
+  useLook({ choices: true });
   useEffect(() => {
     if (!onboarded || !box.current) return;
     let kept = "";
@@ -1106,10 +1123,9 @@ function Card() {
   // Why spoken words waited in the box although auto send is on (they mean wait or stop, or ask about the screen). Gone
   // once the box is changed.
   const [voiceHint, setVoiceHint] = useState<HeardKind | null>(null);
-  // Hold to talk sends by itself only when turned on (talk.autoSend); changed here, on Now and in the first run, always
+  // Hold to talk sends by itself only when turned on (talk.autoSend); changed in Settings, Keys and voice, and in the first run, always
   // through the shell (settingsStore.ts).
   const autoSend = useSetting("talk.autoSend") === true;
-  const setAutoSend = (on: boolean) => { void changeSetting("talk.autoSend", on); };
   // Text size follows the setting in force, from the shell's first answer on.
   const size = useSetting("display.textSize");
   useEffect(() => { applyTextSize(textSizeFrom(size)); }, [size]);
@@ -1220,6 +1236,20 @@ function Card() {
     void sendOrExplain(findProblem(projectRef.current), () => dispatch({ type: "ui.pointClosed" }));
   };
   const findFromHome = () => latest.current.find(null);
+  // Fix it on a problem that is known (the point card's, Home's main button, the first run's last screen): one route, so
+  // the three never start different fixes for one problem. In a practice copy whose problem was found, the practice's own
+  // fix; else look deeper first (Rescue), as usual; one small checked fix when Settings says so and the problem is one line
+  // (point.fixWith). The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.
+  const fixKnown = () => {
+    const pt = nowModel.current.point?.stage === "found" ? nowModel.current.point : null;
+    if (pt) { putAside(pt.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }
+    if (!projectRef.current) return;
+    const here = projectRef.current;
+    const route = pointFixRoute(setting("point.fixWith"), pt?.problem, nowModel.current.practice, here);
+    if (route === "practice") practiceFix(nowModel.current.practice!);
+    else if (route === "smallFix" && pt) { pressed(); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(here, { label: pt.label, detail: pt.message, problem: pt.problem })); }
+    else void send(diagnose(here));
+  };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   // With "Ask Did that work? after each step" set to only when unsure (showme.askWorked), a clean click on a solid ring
   // moves on by itself: the step is written down as clicked, not checked, and the next look checks it first.
@@ -1371,7 +1401,7 @@ function Card() {
   }, []);
   const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
-    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true)) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
     return () => { off.then((f) => f()); };
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
@@ -1393,7 +1423,11 @@ function Card() {
   // engine never makes the folder. A refusal puts the words back, never over anything typed since.
   const [newFolder, setNewFolder] = useState(false);
   const [madeFolder, setMadeFolder] = useState<string | null>(null);
-  const inNewFolder = !project || newFolder;
+  // Only with Make it in a new folder ticked (the audit, item 2): with no project open, Return never makes one by itself.
+  // The words stay, and one line asks which: the person's own project, or a new one from these words (noProjectFor).
+  const inNewFolder = newFolder;
+  const [noProjectFor, setNoProjectFor] = useState<NewFolderKind | null>(null);
+  useEffect(() => { if (project) setNoProjectFor(null); }, [project]);
   const startNew = (kind: NewFolderKind) => {
     const words = box.current?.value ?? "";
     const c = newFolderTask(kind, words, off);
@@ -1419,9 +1453,10 @@ function Card() {
   };
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
-    if (prompt && inNewFolder) { startNew("build"); return; }
-    if (!prompt) { needWords(S.typeFirst); return; }
-    if (!project) return;
+    const route = askRoute({ prompt, project, newFolder });
+    if (route === "newFolder") { startNew("build"); return; }
+    if (route === "needWords") { needWords(S.typeFirst); return; }
+    if (route === "chooseProject") { setNoProjectFor("build"); return; }
     // A task is Flow's. With Flow off the words stay in the box and the box says why, instead of bouncing silently (the ask
     // box is core, so it stays; Enter and hold to talk both come through here).
     if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
@@ -1432,6 +1467,8 @@ function Card() {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
     sent.current = { prompt, attached: attachedNow.current, off };
+    // Something shows at once (the audit, item 27): the words and Starting, until the engine answers.
+    dispatch({ type: "ui.taskSent", words: prompt });
     void send(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
   };
@@ -1497,6 +1534,7 @@ function Card() {
   const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); };
   const research = () => {
     if (inNewFolder) { startNew("research"); return; }
+    if (!project && (box.current?.value.trim() ?? "")) { setNoProjectFor("research"); return; }
     const c = askResearch(project, box.current?.value ?? "", off);
     if (!c || !project) return;
     sentFromBox("research");
@@ -1507,6 +1545,7 @@ function Card() {
   const plan = () => {
     const goal = box.current?.value.trim() ?? "";
     if (goal && inNewFolder) { startNew("build"); return; }
+    if (goal && !project) { setNoProjectFor("build"); return; }
     if (!goal || !project) return;
     // At the free fix limit a plan starts nothing: the limit card shows, and the goal stays in the box and the result stays.
     if (atFreeLimit(planNow(), m.proUsage ?? null)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: m.proUsage?.resetsOn }); return; }
@@ -1530,9 +1569,31 @@ function Card() {
     const id = setInterval(() => setClock(Date.now()), working ? 1000 : 30_000);
     return () => clearInterval(id);
   }, [homeOpen, working]);
-  const mode = homeMode(m, needNow);
+  // The layout (look.layout, M51): wide, the usual, has the places and the recent work in a list on the left (homeSide.tsx)
+  // while it fits (homeLayout.ts sideOn); then the top row has no places of its own. Tall is the one column from before.
+  const layout = layoutOf(useSetting("look.layout"));
+  const side = sideOn({ layout, text: textSizeFrom(useSetting("display.textSize")), onboarded, tab: home.tab });
+  // What stops any work (the audit, item 12) and changes waiting for a review (item 11): each leads Now when it is there.
+  const [claudeSt, setClaudeSt] = useClaudeStatus();
+  const blocker = onboarded ? blockerOf({ connected: m.connected, runnerUp: m.runnerUp, claude: claudeSt?.state ?? null }) : null;
+  const rlead = reviewOn ? reviewLead(m.review, project) : null;
+  const mode = homeMode(m, needNow, { blocker, review: rlead });
   const status = homeStatus(m, project, clock);
+  // In the wide Home the hero folds to one line while a card that needs a tap shows (item 13). Under a result just in it
+  // keeps the project's status, as the tall Home does, and Flowflow stays in its water (the review, 2 Nov 2026: the folded
+  // hero said "Fixed and proven" over a card that said it again, and the best moment had no Flowflow).
+  const compact = side && heroCompact(m, reviewOn);
   const statusFirst = mode === "rest" || mode === "result";
+  const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: S.home.blocked[blocker].line, detail: undefined }
+    : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined } : hero;
+  // The one way out of a block, or into the review, as the main button.
+  const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
+  const reviewMain = mode === "review" && rlead?.main === "review";
+  const doBlockMain = () => {
+    if (blocker === "key") { setSetPlace("account.claude"); pickTab("settings"); }
+    else if (blocker === "engine") void invoke("restart_engine").catch(() => {});
+    else if (blocker === "claude") getClaude(setClaudeSt);
+  };
   // The limit card takes the result's place and has its own main button, so Home's main button steps aside while it shows.
   const proLimit = pro.paymentsOn ? m.proLimit ?? null : null;
   const usage = m.proUsage ?? null;
@@ -1543,13 +1604,44 @@ function Card() {
   // going live shows the card behind its Pro tag. The engine refuses both the same way (runner/src/plan.ts).
   const doMain = (a: MainAct) => {
     if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }
-    if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome();
+    if (a === "shipCheck") { shipIt(); return; }
+    if (a === "folder") { pickFolder(); return; }
+    // Fix it fixes what was found, by the point card's own route (the audit, item 1); only Check my project checks.
+    const route = homeFixRoute(nowModel.current, status, project, setting("point.fixWith"));
+    if (route === "check") findFromHome(); else fixKnown();
   };
   const lastFree = main === "fix" ? lastFreeLine(pro, usage) : null;
-  // The layout (look.layout, M51): wide, the usual, has the places and the recent work in a list on the left (homeSide.tsx)
-  // while it fits (homeLayout.ts sideOn); then the top row has no places of its own. Tall is the one column from before.
-  const layout = layoutOf(useSetting("look.layout"));
-  const side = sideOn({ layout, text: textSizeFrom(useSetting("display.textSize")), onboarded, tab: home.tab });
+  // More ways (the audit, item 40): each way's one line, with its keys when it has some, as its tooltip and description.
+  const [moreDesc, setMoreDesc] = useState("");
+  const tip = (k: keyof typeof S.look.moreHelp, job?: "problem" | "explain" | "showme") => {
+    const chord = job ? keys.using[job] : null;
+    const said = chord ? chordLabel(chord) : "";
+    return said ? `${S.look.moreHelp[k]} (${said})` : S.look.moreHelp[k];
+  };
+  // Something waits on another place (a practice open in this folder): its next step is the main button on Now, so it is
+  // always above the fold (the founder, 2 Nov 2026). The same actions as the practice card's own buttons.
+  const needMain = needMainFor(m, needNow, project);
+  // The one main button on Now (one per screen): the way out of a block, Review the changes, the status's own, or the next
+  // step of what waits elsewhere. None while the hero is folded for a card that needs a tap (the audit, item 13).
+  // A result that offers Try again owns the next step (the audit, item 34), so the hero has no main button of its own then.
+  const heroMain: { label: string; go: () => void; status: boolean } | null = compact ? null
+    : retryOwnsMain(m, project) ? null
+    : blockMain ? { label: S.home.blocked[blockMain].main, go: () => doBlockMain(), status: false }
+    : reviewMain ? { label: S.home.reviewMain, go: () => openReview(), status: false }
+    : main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;
+  // A place that waits shows a small amber dot, except while Now already carries its next step as the main button (the
+  // review, 2 Nov 2026: a practice's Check my project on Now and an amber dot on Learn said the same thing twice, in a
+  // second colour).
+  const waitsOn: Tab | null = needNow && !(home.tab === "now" && needMain) ? needNow.tab : null;
+  const doNeedMain = () => {
+    const pr = nowModel.current.practice;
+    if (needMain === "practiceStart") practiceFind();
+    else if (needMain === "practiceFix" && pr) practiceFix(pr);
+    else pickTab("learn");
+  };
+  // The glow round Flowflow in its pond, in the colour of its state (never a filter inside its masked box).
+  const lookNow = lookState(m);
+  const glow = lookNow === "needsYou" || lookNow === "done" ? lookNow : undefined;
   const places = side ? [] : barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
   // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
   const lively = livelinessOf(useSetting("character.lively"));
@@ -1580,12 +1672,127 @@ function Card() {
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
   const roomIsStill = useRoomStill(homeOpen);
+  // About this project shows as a card only when it says something to act on (homeHero.ts aboutWorthACard).
+  const aboutCard = aboutWorthACard(m.about, project);
   // The fade above the ask box shows only while there is more work below to scroll to (homeLayout.ts, ui/wide.css).
   useMoreBelow(root);
   // The room (the brand language): the element of the group at work lights Home (element.ts); talking and a file dragged
   // over Home take the room for as long as they last.
   const room = roomElement({ tab: home.tab, active: activeGroup(m, dragging) });
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
+  // A card that waits on the person comes into view when it arrives (the audit, items 11 and 13): an approval, a stuck fix,
+  // the agents question, or new changes to review. Only as far as needed, and only while Now is open.
+  const waitKey = [m.approvals[0]?.id ?? "", m.stuck ? "stuck" : "", m.agentsAsk ? "agents" : "", reviewOn ? m.review!.batch : "", m.point?.stage === "found" ? "found" : ""].join("|");
+  useEffect(() => {
+    if (!homeOpen || home.tab !== "now" || waitKey === "||||") return;
+    const id = setTimeout(() => root.current?.querySelector<HTMLElement>(".ask-card, #home-review, .panel.amber")?.scrollIntoView?.({ block: "nearest" }), 0);
+    return () => clearTimeout(id);
+  }, [waitKey, homeOpen, home.tab]);
+  // What was checked (M45): while a job works it is the live list; under a result it is the result's evidence, after it.
+  // While the working card shows and nothing has failed, it already says the check under way, so the checks card waits for
+  // the result (the review, 2 Nov 2026: "Running the tests" was said in two cards at once).
+  const proofTwice = jobShown && !m.task?.proof?.steps.some((s) => s.status === "failed");
+  const proofPanel = show("proof") && !proofTwice && m.task?.proof && m.task.proof.steps.length > 0 && (
+        // A failed proof is drawn as failed, never as needing you (amber); its mark sits in a fixed slot, so the title stays on
+        // the column of the check rows below it (the audit, item 34).
+        <section className="panel proof-panel" data-failed={notDoneReason(m) && !receiptUndone(m.receipt) ? "" : undefined} aria-labelledby={`${checksId}-title`}>
+          {/* M45: what was checked, never a verdict of its own (the receipt's result row says that); after an Undo, said as
+              what was checked before it. VoiceOver names the panel by this same heading. */}
+          <h2 id={`${checksId}-title`}><span className="tone-slot" aria-hidden="true">{notDoneReason(m) && !receiptUndone(m.receipt) && <Icon name="cross" size={16} />}</span>{isFixing(m) ? S.fixing : m.task.proof.steps.some((s) => s.status === "running") ? S.checkingTitle : receiptUndone(m.receipt) ? S.checksBeforeUndo : S.checksTitle}</h2>
+          {m.task.proof.steps.map((s) => (
+            <div className={`proof ${s.status === "passed" ? "ok" : s.status === "failed" ? "bad" : "wait"}`} key={s.rung}>
+              <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
+              <span>
+                {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
+                <CheckDetail parts={checkParts(s)} />
+              </span>
+            </div>
+          ))}
+          {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
+          {notDoneLine(m) && !isFixing(m) && !receiptUndone(m.receipt) && <div className="line">{S.notDoneHelp} {notDoneLine(m)}</div>}
+        </section>
+      );
+  // The cards that wait on the person (the agents question, approvals, a stuck fix, a paused plan, a plan to approve). In the
+  // tall Home they come right under the hero, before the ask box, where "Your answer goes just below" points (the audit,
+  // item 26); in the wide one the ask box is pinned to the bottom, so they lead the work under the hero.
+  const urgentCards = show("urgent") && (
+<div ref={urgent}>
+      {m.agentsAsk && (
+        <section className="panel amber" aria-label={S.agentsTitle}>
+          <h2>{S.agentsTitle}</h2>
+          <div className="line">{S.agentsAsk} {m.agentsAsk.join(" and ")}. {S.agentsAskEnd}</div>
+          <div className="row">
+            <button className="btn primary" type="button" onClick={() => { void send(answerAgents(project, "yes")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsYes}</button>
+            <button className="btn" type="button" data-safe onClick={() => { void send(answerAgents(project, "no")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsNo}</button>
+          </div>
+        </section>
+      )}
+      {m.approvals.map((a) => { const w = approvalWords(a, project); return (
+        <section className="panel amber ask-card" key={a.id} aria-label={S.needsYouTitle}>
+          {/* The audit, item 26: the plain question first, then exactly what will run (no tool name), then the kind of risk,
+              then whether Undo covers it (approvals.ts). */}
+          <h2>{w.why}</h2>
+          {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
+          {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
+          <div className="line muted">{w.question}</div>
+          {w.undo && <div className={`line ask-undo${w.canUndo ? "" : " no"}`}>{w.undo}</div>}
+          {/* M45: Allow and Don't allow carry equal weight; Don't allow comes first, as in the first run, and keeps the safe
+              mark and the keyboard. */}
+          <div className="row">
+            <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
+            <button className="btn" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
+          </div>
+        </section>
+      ); })}
+
+      {m.stuck && (
+        <section className="panel amber" aria-label={S.stuckTitle}>
+          <h2>{S.stuckTitle}</h2>
+          {m.stuck.agent && m.away[m.stuck.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.stuck.agent]))}</div>}
+          <div className="line">{stuckWords(m)}</div>
+          {/* The choices right after what happened (the audit, item 13), then why and the check, as the evidence. */}
+          <div className="row">
+            {m.stuck.options.map((o, i) => (
+              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+            ))}
+            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
+          </div>
+          <div className="line muted">{stuckHelpWords(m)}</div>
+          {/* M45: the check, one plain sentence, the place, and the raw output only behind Details. */}
+          <div className="line"><b>{m.stuck.failure.label}</b><CheckDetail parts={m.stuck.failure.parts} /></div>
+        </section>
+      )}
+
+      {m.paused && (
+        <section className="panel amber" aria-label={S.pausedTitle}>
+          <h2>{S.pausedTitle}</h2>
+          {m.paused.agent && m.away[m.paused.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.paused.agent]))}</div>}
+          <div className="line">{pausedWords(m)}</div>
+          <div className="line muted">{S.pausedHelp}</div>
+          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
+        </section>
+      )}
+
+      {m.plan && (
+        <section className="panel amber" aria-label={S.planTitle}>
+          <h2>{S.planTitle}</h2>
+          <div className="line muted">{S.planHelp}</div>
+          {draft.map((t, i) => (
+            <div className="row" key={i}>
+              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
+              <button className="btn" type="button" aria-label={`${S.removeStep} ${S.stepOf.toLowerCase()} ${i + 1}`} onClick={() => { setDraft(draft.filter((_, j) => j !== i)); setTimeout(() => urgent.current?.querySelector<HTMLElement>("input")?.focus(), 0); }}>{S.removeStep}</button>
+            </div>
+          ))}
+          {planCutWords(m) && <div className="line">{planCutWords(m)}</div>}
+          <div className="line muted">{m.plan.estimateUsd > 0 ? `${S.planCost}: ${formatUsd(m.plan.estimateUsd)}` : S.planCostNone}</div>
+          <div className="row">
+            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
+            <button className="btn" type="button" onClick={() => { putAside(m.plan!.agent, true); dispatch({ type: "ui.planCancelled", release: true }); }}>{S.planCancel}</button>
+          </div>
+        </section>
+      )}
+
+      </div>  );
   return (
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
       data-element={room} data-still={roomIsStill ? "" : undefined}
@@ -1598,11 +1805,11 @@ function Card() {
       <RoomLight />
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
-      {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={needNow?.tab ?? null} recent={sideRecent(project ? m.history : [])} now={clock}
+      {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
         onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
-        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
+        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
       {/* The work: one column (in the wide Home, beside the list, with the ask box along its bottom; otherwise no box at all). */}
       <div className="work">
       {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
@@ -1611,12 +1818,15 @@ function Card() {
           person has a small dot. A hairline under it. */}
       {onboarded && (
         <header className="bar">
-          {home.tab === "now" && <Menu id={linkId} value="" size="sm" label={S.folderLabel} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noFolder} options={folderOptions} onChange={pickFromFolderMenu} />}
+          {home.tab === "now" && <Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} />}
           {home.tab !== "now" && <>
-            {!side && <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>}
+            {/* The tall Home's row of places names the open one and leads back to Now, so the back arrow is only for Settings,
+                where that row steps aside (the review, 2 Nov 2026: a back arrow beside the row was a second way to the same place). */}
+            {!side && home.tab === "settings" && <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>}
             <h1 id="home-title" className="view-title">{viewTitle}</h1>
           </>}
-          <nav className="places" aria-label={S.look.placesLabel}>
+          {/* In the wide Home the side list is the one Places landmark, so the bar's buttons are a plain group then (item 51). */}
+          <PlacesBox side={side}>
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
                 working card). */}
             {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
@@ -1624,7 +1834,7 @@ function Card() {
             {/* The tall Home (M51 polish): Now is a place in the row too, so the open place always shows which it is. */}
             {home.tab !== "settings" && !side && <Button kind="quiet" size="sm" pressed={home.tab === "now"} onClick={() => pickTab("now")}>{S.look.now}</Button>}
             {home.tab !== "settings" && places.map((t) => {
-              const waits = needNow?.tab === t && t !== home.tab;
+              const waits = waitsOn === t && t !== home.tab;
               return (
                 <Button key={t} id={tabId(t)} kind="quiet" size="sm" pressed={t === home.tab} onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}>
                   {S.home.places[t]}
@@ -1633,42 +1843,49 @@ function Card() {
               );
             })}
             <Button kind="icon" className="close" label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></Button>
-          </nav>
+          </PlacesBox>
         </header>
       )}
       {onboarded && (<>
       {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
           founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
           that status picks. While a job works, a question waits or an answer is in: that job's own words. */}
-      <section className="hero" hidden={home.tab !== "now"} data-mode={mode} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
-        <div className="home-pond" data-lively={lively} aria-hidden="true">
+      <section className="hero" hidden={home.tab !== "now"} data-mode={mode} data-compact={compact ? "" : undefined} aria-labelledby={home.tab === "now" ? "home-title" : undefined}>
+        {/* Flowflow's glow (needs you, done) is a soft circle in its pond, outside the masked box, so no edge of it shows
+            (the audit, item 28). */}
+        <div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">
           <div className="ch-water"><Waterline under /></div>
-          {(() => { const say = hero.tone === "working" ? S.look.say.working : hero.tone === "notDone" ? S.look.say.notDone : hero.tone === "needsYou" ? S.look.say.needsYou : hero.tone === "done" && !!m.receipt && !m.research && !m.rescue ? S.look.say.done : ""; return say ? <span className="say" key={say}>{say}</span> : null; })()}
-          <div className="ch-char"><HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} /></div>
+          {(() => { const say = blocker ? "" : sayFor(m, hero); return say ? <span className="say" key={say}>{say}</span> : null; })()}
+          <div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} /></div>
         </div>
         <div className="hero-words">
           {statusFirst
-            ? <div id={home.tab === "now" ? "home-title" : undefined} className="status-head" role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" sub={status.sub || undefined} /></div>
+            ? <div className="status-head"><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}</div>
             : <>
-              {practiceNow && <span className="hero-tag">{S.look.practiceTag}</span>}
-              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>
-              <p className="subline">{hero.line}</p>
-              {hero.detail && <p className="subline muted">{hero.detail}</p>}
+              {/* The tag only when the headline does not already say it is a practice (the review, 2 Nov 2026: "Practice" over
+                  "Practice: find it, fix it, prove it"). */}
+              {practiceNow && !heroShown.headline.startsWith(S.look.practiceTag) && <span className="hero-tag">{S.look.practiceTag}</span>}
+              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>
+              <p className="subline">{heroShown.line}</p>
+              {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
-          {main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}{shipTagged && <ProTag />}</Button></div>}
+          {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
+              while the hero is folded for a card that needs a tap (item 13): that card's own buttons are the ones. */}
+          {heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}{heroMain.status && <>{shipTagged && <ProTag />}</>}</Button></div>}
           {lastFree && <p className="subline muted pro-last">{lastFree}</p>}
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
           {stopCan(m) && !jobShown && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
         </div>
       </section>
       {/* The wide Home at rest (M51 polish): the sea goes on down to the ask box, so there is no dead band under the status. */}
-      {side && home.tab === "now" && mode === "rest" && <div className="sea-fill" aria-hidden="true" />}
+      {seaFills({ side, tab: home.tab, mode, cardsUnder: reviewOn || !!m.recap || !!m.toast || !!m.notice || !!m.error || aboutCard }) && <div className="sea-fill" aria-hidden="true" />}
           {/* The one ask field, under the status (27 Oct 2026, F28). Only hidden on the other places, never taken away: a draft,
               and the words from hold to talk, stay in it. Return starts; the hold to talk keys sit inside it on the right. */}
+      {!side && urgentCards && <div className="view view-lead">{urgentCards}</div>}
           <div className="askwrap" hidden={!show("ask")}>
           {askMode === "showme" && <div className="line" role="status"><b>{S.showMe}:</b> {S.showMeHint} <Button size="sm" onClick={() => setAskMode("task")}>{S.planCancel}</Button></div>}
           <div className="ask">
-            <span className="ask-mark" aria-hidden="true"><Icon name="find" size={16} /></span>
+            <span className="ask-mark" aria-hidden="true"><Icon name="sparkle" size={16} /></span>
             <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={S.home.ask} aria-label={S.home.ask} aria-describedby="ask-keys"
               onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
@@ -1679,10 +1896,17 @@ function Card() {
                 if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
               }} />
             {/* A click may never open the microphone (rule 5): the keys to hold are only shown, with what they do in the tooltip. */}
-            {groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} /></span>}
+            {groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} label={S.look.talk} /></span>}
             {/* While a job works the arrow stays, greyed, so the box keeps its shape (M51 polish); Stop is on the job's card. */}
             {buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}><Icon name="send" size={16} /></Button>}
           </div>
+          {/* Return with no project open (item 2): the words wait, and the person says which. The key notice stays as it was. */}
+          {noProjectFor && !project && (
+            <div className="line ask-choose" role="status">{S.home.noProjectAsk}{" "}
+              <Button size="sm" kind="secondary" onClick={() => { setNoProjectFor(null); pickFolder(); }}>{S.home.chooseMine}</Button>{" "}
+              <Button size="sm" kind="secondary" onClick={() => { const k = noProjectFor; setNoProjectFor(null); startNew(k); }}>{S.home.startNewFrom}</Button>
+            </div>
+          )}
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
           {dragging && <div className="line drop-line" role="status">{S.attachDrop}</div>}
@@ -1709,28 +1933,37 @@ function Card() {
           {home.tab === "now" && !working && (
             <details className="more">
               <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
-              <div className="more-ways">
-                {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}<Caps id={keys.using.problem} /></Button>}
-                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}{shipTags && <ProTag />}</Button>}
-                {toolOn("errorHelp") && <Button size="sm" onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}<Caps id={keys.using.explain} /></Button>}
-                {buttonShown("showMe") && <Button size="sm" onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}<Caps id={keys.using.showme} /></Button>}
-                {buttonShown("plan") && <Button size="sm" onClick={plan}>{S.planIt}</Button>}
-                {buttonShown("rescue") && <Button size="sm" onClick={rescue}>{S.rescueIt}</Button>}
-                {buttonShown("research") && <Button size="sm" onClick={research}>{S.researchIt}</Button>}
-                {buttonShown("online") && <Button size="sm" onClick={shipOnline}>{S.onlineButton}{shipTags && <ProTag />}</Button>}
-                {buttonShown("drawIt") && <Button size="sm" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}>{S.drawIt}</Button>}
+              {/* The audit, item 40: every way has its drawing and one line, shown under the ways for the one under the pointer
+                  or the keyboard (and as its tooltip, with its keys, so no keycaps crowd the buttons). In the wide Home this
+                  opens as a popover over the ask box (ui/wide.css), so the page never jumps. The voice switch lives in
+                  Settings, Keys and voice. */}
+              <div className="more-pop">
+              <div className="more-ways" onMouseOver={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onFocus={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onMouseLeave={() => setMoreDesc("")}>
+                {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" title={tip("find", "problem")} onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}</Button>}
+                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" title={tip("safe")} onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}{shipTags && <ProTag />}</Button>}
+                {toolOn("errorHelp") && <Button size="sm" title={tip("explain", "explain")} onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}</Button>}
+                {buttonShown("showMe") && <Button size="sm" title={tip("showMe", "showme")} onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}</Button>}
+                {buttonShown("plan") && <Button size="sm" title={tip("plan")} onClick={plan}><Icon name="grid" size={14} />{S.planIt}</Button>}
+                {buttonShown("rescue") && <Button size="sm" title={tip("rescue")} onClick={rescue}><Icon name="wrench" size={14} />{S.rescueIt}</Button>}
+                {buttonShown("research") && <Button size="sm" title={tip("research")} onClick={research}><Icon name="doc" size={14} />{S.researchIt}</Button>}
+                {buttonShown("online") && <Button size="sm" title={tip("online")} onClick={shipOnline}><Icon name="send" size={14} />{S.onlineButton}{shipTags && <ProTag />}</Button>}
+                {canBisect(m) && project && buttonShown("whichTask") && <Button size="sm" title={tip("bisect")} onClick={findBreaker}><Icon name="split" size={14} />{S.bisectButton}</Button>}
+                {buttonShown("drawIt") && <Button size="sm" title={tip("drawIt")} disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}><Icon name="image" size={14} />{S.drawIt}</Button>}
               </div>
-              {buttonShown("autoSend") && <label className="more-opt"><Switch checked={autoSend} onChange={setAutoSend} label={S.voiceAutoSend} /><span aria-hidden="true">{S.voiceAutoSend}</span></label>}
+              <p className="more-desc muted" aria-hidden="true">{moreDesc || "\u00a0"}</p>
               <label className="more-opt"><Switch checked={off} onChange={setOff} label={S.offRecord} /><span aria-hidden="true">{S.offRecord}</span></label>
               {project && <label className="more-opt"><Switch checked={newFolder} onChange={setNewFolder} label={S.newFolder.tick} /><span aria-hidden="true">{S.newFolder.tick}</span></label>}
               {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
+              </div>
             </details>
           )}
           </div>
           {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
-          <ClaudeNotice />
+          <ClaudeNotice st={claudeSt} setSt={setClaudeSt} />
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
+      {/* In the tall Home, changes to review come before the recent list (item 11); in the wide one they lead the work below. */}
+      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && !!m.review?.result && rlead.headline === S.review.rating[m.review.result.rating]} /></div>}
       {home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
@@ -1747,7 +1980,9 @@ function Card() {
       {/* M28: when the engine has stopped, the fix is one press away, never "quit and open again". */}
       {m.error && <div className="error">{m.error}{!m.runnerUp && <button className="btn fix-it" type="button" onClick={() => void invoke("restart_engine").catch(() => {})}>{S.restartEngine}</button>}</div>}
       </>}
-      <div className="view" role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title">
+      {/* A place's own panel is a region named by that place; Now is the page itself, never a second region named after its
+          headline (the audit, items 37 and 51). */}
+      <div className="view" role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}>
       {show("whatsNew") && changes && (
         <section className="panel" role="status" aria-label={S.whatsNewTitle(changes.show[0].version)}>
           {changes.show.map((r) => (
@@ -1810,13 +2045,14 @@ function Card() {
             <div className="line" key={l.id}>
               <b>{l.title}</b> <span className="muted">{l.app}</span>
               {l.fromProject && <div className="line muted">{S.lessonFromProject}</div>}
-              {l.status !== "tried" && <div className="line muted">{S.lessonDraft}</div>}
               <div className="row">
-                <button className="btn" type="button" onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
+                <button className="btn" type="button" aria-label={`${l.saved ? S.lessonContinue : S.lessonStart}: ${l.title}`} onClick={() => beginLesson(l.id, false)}>{l.saved ? S.lessonContinue : S.lessonStart}</button>
                 {l.saved && <button className="btn" type="button" onClick={() => beginLesson(l.id, true)}>{S.lessonStartOver}</button>}
               </div>
             </div>
           ))}
+          {/* Said once under the list, not under each new lesson (the audit, item 53). */}
+          {lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).some((l) => l.status !== "tried") && <div className="line muted">{S.lessonDraft}</div>}
           <div className="line muted">{S.lessonLooking}</div>
           <div className="row"><button className="btn" type="button" onClick={() => pickTab("now")}>{S.pointClose}</button></div>
         </section>
@@ -1875,7 +2111,7 @@ function Card() {
           {m.diagram.stage !== "asking" && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); dispatch({ type: "ui.diagramClosed" }); }}>{S.pointClose}</button></div>}
         </section>
       )}
-      {show("about") && m.about && m.about.project === project && (
+      {show("about") && aboutCard && m.about && (
         <section className="panel" aria-label={S.aboutTitle}>
           <h2>{S.aboutTitle}</h2>
           <div className="answer">{m.about.about}</div>
@@ -1895,80 +2131,7 @@ function Card() {
         </section>
       )}
       {home.tab === "now" && <DropList drop={drop} />}
-      {show("urgent") && <div ref={urgent}>
-      {m.agentsAsk && (
-        <section className="panel amber" aria-label={S.agentsTitle}>
-          <h2>{S.agentsTitle}</h2>
-          <div className="line">{S.agentsAsk} {m.agentsAsk.join(" and ")}. {S.agentsAskEnd}</div>
-          <div className="row">
-            <button className="btn primary" type="button" onClick={() => { void send(answerAgents(project, "yes")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsYes}</button>
-            <button className="btn" type="button" data-safe onClick={() => { void send(answerAgents(project, "no")); dispatch({ type: "ui.agentsAnswered" }); }}>{S.agentsNo}</button>
-          </div>
-        </section>
-      )}
-      {m.approvals.map((a) => { const w = approvalWords(a, project); return (
-        <section className="panel amber ask-card" key={a.id} aria-label={S.needsYouTitle}>
-          <h2>{w.question}</h2>
-          {m.away[a.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[a.agent]))}</div>}
-          {/* M28: exactly what will happen, why it asks, and whether Undo covers it (approvals.ts). */}
-          {w.what && <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>}
-          <div className="line muted">{w.why}</div>
-          {w.undo && <div className={`line ask-undo${w.canUndo ? "" : " no"}`}>{w.undo}</div>}
-          {/* M45: Allow and Don't allow carry equal weight; Don't allow keeps the safe mark and the keyboard. */}
-          <div className="row">
-            <button className="btn" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
-            <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
-          </div>
-        </section>
-      ); })}
-
-      {m.stuck && (
-        <section className="panel amber" aria-label={S.stuckTitle}>
-          <h2>{S.stuckTitle}</h2>
-          {m.stuck.agent && m.away[m.stuck.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.stuck.agent]))}</div>}
-          <div className="line">{stuckWords(m)}</div>
-          <div className="line muted">{stuckHelpWords(m)}</div>
-          {/* M45: the check, one plain sentence, the place, and the raw output only behind Details. */}
-          <div className="line"><b>{m.stuck.failure.label}</b><CheckDetail parts={m.stuck.failure.parts} /></div>
-          <div className="row">
-            {m.stuck.options.map((o, i) => (
-              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
-            ))}
-            {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
-          </div>
-        </section>
-      )}
-
-      {m.paused && (
-        <section className="panel amber" aria-label={S.pausedTitle}>
-          <h2>{S.pausedTitle}</h2>
-          {m.paused.agent && m.away[m.paused.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.paused.agent]))}</div>}
-          <div className="line">{pausedWords(m)}</div>
-          <div className="line muted">{S.pausedHelp}</div>
-          <div className="row"><button className="btn primary" type="button" onClick={() => { void send(resumeDrive()); dispatch({ type: "ui.resumed" }); }}>{S.resume}</button></div>
-        </section>
-      )}
-
-      {m.plan && (
-        <section className="panel amber" aria-label={S.planTitle}>
-          <h2>{S.planTitle}</h2>
-          <div className="line muted">{S.planHelp}</div>
-          {draft.map((t, i) => (
-            <div className="row" key={i}>
-              <input type="text" value={t} aria-label={`${S.stepOf} ${i + 1}`} onChange={(e) => setDraft(draft.map((x, j) => (j === i ? e.target.value : x)))} />
-              <button className="btn" type="button" aria-label={`${S.removeStep} ${S.stepOf.toLowerCase()} ${i + 1}`} onClick={() => { setDraft(draft.filter((_, j) => j !== i)); setTimeout(() => urgent.current?.querySelector<HTMLElement>("input")?.focus(), 0); }}>{S.removeStep}</button>
-            </div>
-          ))}
-          {planCutWords(m) && <div className="line">{planCutWords(m)}</div>}
-          <div className="line muted">{m.plan.estimateUsd > 0 ? `${S.planCost}: ${formatUsd(m.plan.estimateUsd)}` : S.planCostNone}</div>
-          <div className="row">
-            <button className="btn primary" type="button" disabled={draft.every((s) => !s.trim())} onClick={() => { void send(approvePlan(draft.map((s) => s.trim()).filter(Boolean))); dispatch({ type: "ui.planCancelled" }); }}>{S.planStart}</button>
-            <button className="btn" type="button" onClick={() => { putAside(m.plan!.agent, true); dispatch({ type: "ui.planCancelled", release: true }); }}>{S.planCancel}</button>
-          </div>
-        </section>
-      )}
-
-      </div>}
+      {side && urgentCards}
       {show("promptHelp") && m.ph && (
         <section className="panel amber" aria-label={S.phTitle}>
           <h2>{S.phTitle}</h2>
@@ -2007,7 +2170,7 @@ function Card() {
         </section>
       )}
 
-      {show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} />}
+      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && !!m.review?.result && rlead.headline === S.review.rating[m.review.result.rating]} />}
 
       {show("drive") && m.drive && (
         <section className="panel">
@@ -2079,16 +2242,17 @@ function Card() {
         const lines = activityNow(m);
         const odd = lines.filter((l) => l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval");
         return (
-          <section className="panel job" aria-label={m.task.label || S.home.stepsLabel}>
+          <section className="panel job" aria-label={m.task.label || S.home.jobLabel}>
             <div className="job-top">
-              {m.task.checkpoint ? <p className="job-safe"><Icon name="tick" size={14} />{S.home.safetySaved}</p> : <span />}
+              {m.task.checkpoint && <p className="job-safe"><Icon name="tick" size={14} />{S.home.safetySaved}</p>}
               {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
             </div>
             <ol className="job-strip" aria-label={S.home.stepsLabel}>
-              {S.home.steps.map((label, i) => <li key={label} data-state={i < js.step ? "done" : i === js.step ? "now" : undefined} aria-current={i === js.step ? "step" : undefined}><span className="job-bar" aria-hidden="true" /><span className="job-label">{label}</span></li>)}
+              {S.home.steps.map((label, i) => <li key={label} data-state={i < js.step ? "done" : i === js.step ? "now" : undefined} aria-current={i === js.step ? "step" : undefined}><span className="job-bar" aria-hidden="true" /><span className="job-label">{i < js.step && <Icon name="tick" size={12} />}{label}{i < js.step && <span className="sr">{S.home.stepDone}</span>}</span></li>)}
             </ol>
-            <p className="job-now">{js.retry ?? lines.at(-1)?.words ?? characterWords(m)}</p>
-            <p className="job-meta"><span>{S.home.timeSoFar(clockWords(clock - (jobStart.current?.at ?? clock)))}</span>{m.task.costUsd > 0 && <ProofChip kind="cost" label={formatUsd(m.task.costUsd)} />}</p>
+            <p className="job-now">{jobNowWords(m, js.retry, lines)}</p>
+            {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. */}
+            <p className="job-meta"><span>{S.home.timeSoFar(clockWords(clock - (jobStart.current?.at ?? clock)))}</span></p>
             {odd.map((l, i) => <div key={i} className="line blocked">{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : `${S.waiting}: `}{l.words}</div>)}
           </section>
         );
@@ -2108,35 +2272,29 @@ function Card() {
         </section>
       )}
 
-      {show("proof") && m.task?.proof && m.task.proof.steps.length > 0 && (
-        <section className={`panel ${notDoneReason(m) && !receiptUndone(m.receipt) ? "amber" : ""}`} aria-labelledby={`${checksId}-title`}>
-          {/* M45: what was checked, never a verdict of its own (the receipt's result row says that); after an Undo, said as
-              what was checked before it. VoiceOver names the panel by this same heading. */}
-          <h2 id={`${checksId}-title`}>{isFixing(m) ? S.fixing : m.task.proof.steps.some((s) => s.status === "running") ? S.checkingTitle : receiptUndone(m.receipt) ? S.checksBeforeUndo : S.checksTitle}</h2>
-          {m.task.proof.steps.map((s) => (
-            <div className={`proof ${s.status === "passed" ? "ok" : s.status === "failed" ? "bad" : "wait"}`} key={s.rung}>
-              <Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />
-              <span>
-                {s.label}: {({ running: S.stepRunning, passed: S.stepPassed, failed: S.stepFailed, skipped: S.stepSkipped } as const)[s.status]}
-                <CheckDetail parts={checkParts(s)} />
-              </span>
-            </div>
-          ))}
-          {triesNote(m) && <div className="line"><b>{triesNote(m)}</b></div>}
-          {notDoneReason(m) && !isFixing(m) && !receiptUndone(m.receipt) && <div className="line">{S.notDoneHelp} {notDoneReason(m)}</div>}
-          {canBisect(m) && project && buttonShown("whichTask") && <div className="row"><button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button></div>}
-        </section>
-      )}
+      {!m.receipt && proofPanel}
 
       {show("receipt") && m.receipt && (
         <section className="panel receipt" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           {/* M45 and the overhaul spec 4.2: the result first, as the verdict says it, at verdict size. A tick only for a
               proven fix (VerdictLine draws only what verdict.ts said). */}
           {(() => { const v = receiptVerdict(m)!; return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (
-            <div className="result-verdict" data-verdict={v.kind}><VerdictLine verdict={v} size="card" sub={v.line ?? undefined} /></div>
+            <div className="result-verdict" data-verdict={v.kind}><VerdictLine verdict={v} size="card" sub={v.line || putBackShown ? <>{v.line}{putBackShown && <span className="putback-note" role="status">{v.line ? " " : ""}{S.look.putBack}</span>}</> : undefined} /></div>
           ); })()}
+          {/* The proof right under the verdict it backs (the review, 2 Nov 2026: at the card's foot, Tests pass was behind the
+              wide Home's fade). */}
+          <ProofChips m={m} />
+          {/* Undo right under the verdict (the audit, item 13: after a fix it was below the files, off Home's 480 points).
+              Inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The
+              receipt's own question follows on a press. "Put back as it was" shows for two seconds once it is done. */}
+          {undoCan(m, project) && (
+            <div className="row result-actions">
+              <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.home.undoFix}</Button>
+            </div>
+          )}
           <h2>{receiptHeading(m.receipt)}</h2>
-          {receiptSaid(m) && (() => { const w = receiptSaid(m)!; return (
+          {/* After an Undo the answer no longer describes the project, so it goes (the audit, item 36). */}
+          {receiptSaid(m) && !undone && (() => { const w = receiptSaid(m)!; return (
             <div className="answer" role={w.help ? "status" : undefined}>
               {/* M39: the result in its own words, as a paragraph; what kind of answer it is, small above it. */}
               <div className="answer-lead">{w.lead}</div>
@@ -2144,9 +2302,8 @@ function Card() {
               {w.help && <div className="muted">{w.help}</div>}
             </div>
           ); })()}
-          {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} />}
-          {m.receipt.notUndoable.length > 0 && <div className="line"><b>{S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
-          <ProofChips m={m} />
+          {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} undone={undone} />}
+          {m.receipt.notUndoable.length > 0 && <div className="line"><b>{undone ? S.stillThere : S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
             <figure className="receipt-shot">
               <img src={`data:image/jpeg;base64,${m.receipt.visual.image}`} alt={m.receipt.visual.caption} />
@@ -2161,14 +2318,6 @@ function Card() {
             <li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
-          {/* Undo inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The
-              receipt's own question follows on a press. "Put back as it was" shows for two seconds once it is done. */}
-          {(undoCan(m, project) || putBackShown) && (
-            <div className="row result-actions">
-              {undoCan(m, project) && <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.home.undoFix}</Button>}
-              {putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}
-            </div>
-          )}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
           {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
@@ -2222,6 +2371,8 @@ function Card() {
           )}
         </section>
       )}
+      {/* After a result, what was checked comes under it, as its evidence (the audit, item 13): the verdict and Undo first. */}
+      {m.receipt && proofPanel}
 
       {show("teach") && m.teach && (
         <section className={`panel ${m.teach.stage === "refused" || m.teach.stage === "left" || (m.teach.stage === "checked" && m.teach.result?.verdict === "failed") ? "amber" : ""}`} role="status" aria-label={S.teachTitle}>
@@ -2269,42 +2420,33 @@ function Card() {
 
       {show("point") && m.point && (
         <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={S.pointTitle}>
-          <h2>{S.pointTitle}</h2>
+          {/* Found: the hero above already says what broke (the audit, item 53), so the title is for VoiceOver only then. */}
+          <h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{S.pointTitle}</h2>
           {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
           {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
           {m.point.stage === "gaps" && <div className="line">{S.pointGaps}</div>}
           {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
           {m.point.note && <div className="line muted" role="note">{m.point.note}</div>}
-          {m.point.stage === "found" && <>
-            <div className="line"><b>{m.point.label}</b></div>
-            <div className="line">{m.point.problem && m.point.problem.kind === "line" && !lineOf(m.point.problem) ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
-            {/* M51: where it is and the line itself, as a proof row in the system mono. */}
-            <FailingLine problem={m.point.problem} />
-          </>}
+          {/* The hero says which check found it (the audit, item 53); with a practice open the card says it itself. */}
+          {m.point.stage === "found" && m.practice && <div className="line"><b>{m.point.label}</b></div>}
+          {/* The presses right after its first line (the audit, item 13), then what broke and where, as the evidence. */}
           {m.point.stage !== "checking" && (
             <div className="row">
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {/* While a fix already runs (a practice's, or one asked for from Learn), Fix it is not offered again (M51 polish). */}
-              {m.point.stage === "found" && !working && <button className="btn primary" type="button" onClick={() => {
-                const pt = m.point!;
-                // The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.
-                putAside(pt.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" });
-                if (!project) return;
-                // In a practice copy whose problem was found: the practice's own fix, the same as Fix it with me on Learn. Else
-                // look deeper first (Rescue), as usual; one small checked fix (the practices' own request) when Settings says so
-                // and the problem is one line (point.fixWith).
-                const route = pointFixRoute(setting("point.fixWith"), pt.problem, nowModel.current.practice, project);
-                if (route === "practice") practiceFix(nowModel.current.practice!);
-                else if (route === "smallFix") { pressed(); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(project, { label: pt.label, detail: pt.message, problem: pt.problem })); }
-                else void send(diagnose(project));
-              }}>{S.pointFix}</button>}
+              {m.point.stage === "found" && !working && <button className="btn primary" type="button" onClick={fixKnown}>{S.pointFix}</button>}
               {m.point.stage === "found" && !working && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
               {["clear", "gaps", "nothing"].includes(m.point.stage) && everydayOn && <button className="btn" type="button" onClick={() => { pressed(); putAside(m.point?.agent); dispatch({ type: "ui.pointClosed" }); lookEveryday(); }}>{S.everydayLookInstead}</button>}
               <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
             </div>
           )}
+          {m.point.stage === "found" && <>
+            <div className="line">{m.point.problem && m.point.problem.kind === "line" && !lineOf(m.point.problem) ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
+            {/* M51: where it is and the line itself, as a proof row in the system mono. */}
+            <FailingLine problem={m.point.problem} />
+          </>}
         </section>
       )}
 
@@ -2427,10 +2569,10 @@ function Card() {
         </section>
       )}
 
-      {show("recap") && m.recap && (
+      {show("recap") && m.recap && recapWorthACard(m.recap) && (
         <section className="panel" role="status" aria-label={S.recapTitle}>
           <h2>{S.recapTitle}</h2>
-          {m.recap.lines.map((l, i) => <div className="answer" key={i}>{l}</div>)}
+          {recapShownLines(m.recap.lines).map((l, i) => <div className="answer" key={i}>{l}</div>)}
           <div className="line muted">{S.recapSource}</div>
           <div className="row">{m.recap.next && m.recap.next.action !== "none" && <button className="btn primary" type="button" onClick={whereNext}>{S.recapNext[m.recap.next.action]}</button>}<CopyButton text={recapCopy(m.recap)} label={S.copyAnswer} /><button className="btn" type="button" onClick={() => dispatch({ type: "ui.recapClosed" })}>{S.recapClose}</button></div>
         </section>
@@ -2449,9 +2591,12 @@ function Card() {
 
 
       {show("memory") && !project && <div className="line muted">{S.homeMemoryNoProject}</div>}
-      {show("memory") && project && !m.memory && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
+      {show("memory") && project && !m.memory && !m.memoryNote && m.runnerUp && <div className="line muted" role="status">{S.homeMemoryLoading}</div>}
+      {show("memory") && project && !m.memory && m.memoryNote && (
+        <div className="line" role="alert">{m.memoryNote} <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.memoryRetry" }); void send(listMemory(project)); }}>{S.tryAgain}</button></div>
+      )}
       {show("memory") && m.memory && (
-        <section className="panel" aria-label={S.memoryTitle}>
+        <section className="panel memory" aria-label={S.memoryTitle}>
           <h2>{S.memoryTitle}</h2>
           <div className="line muted">{S.memoryNever}</div>
           {m.memory.paused && <div className="line"><b>{S.memoryPaused}</b></div>}
@@ -2460,17 +2605,18 @@ function Card() {
           <MemoryList title={S.memoryProject} scope="project" lines={m.memory.projectLines} project={project} />
           <MemoryList title={S.memoryProfile} scope="profile" lines={m.memory.profileLines} project={project} />
           <SharedFilesRow project={project} refresh={m.notice} send={send} />
-          <div className="row">
-            <button className="btn" type="button" onClick={() => void changeSetting("memory.paused", !m.memory!.paused)}>{m.memory.paused ? S.memoryResume : S.memoryPause}</button>
-            <button className="btn" type="button" role="switch" aria-checked={fun} onClick={() => void changeSetting("fun.reactions", !fun)}>{S.reactionsSetting}: {fun ? S.on : S.off}</button>
-            <button className="btn" type="button" onClick={() => void send(exportMemory(project))}>{S.memoryExport}</button>
-            <button className="btn" type="button" onClick={() => void send(answerAgents(project, "remove"))}>{S.agentsRemove}</button>
-            <button className="btn" type="button" onClick={() => { dispatch({ type: "ui.memoryClosed" }); pickTab("now"); }}>{S.memoryClose}</button>
-          </div>
+          {/* What the page can change, as rows in one group like Settings (the audit, item 50: a cloud of six pills, and a
+              Close that sat on a place). Each section keeps its own one Erase all. */}
+          <Group title={S.memorySettingsTitle}>
+            <Row label={S.memoryLearning} description={S.memoryLearningHelp} control={<Switch checked={!m.memory.paused} label={S.memoryLearning} onChange={(on) => void changeSetting("memory.paused", !on)} />} />
+            <Row label={S.reactionsSetting} control={<Switch checked={fun} label={S.reactionsSetting} onChange={(on) => void changeSetting("fun.reactions", on)} />} />
+            <Row label={S.memoryExport} description={S.memoryExportHelp} control={<Button size="sm" label={S.memoryExport} onClick={() => void send(exportMemory(project))}>{S.memoryShow}</Button>} />
+            <Row label={S.agentsRemove} description={S.agentsRemoveHelp} control={<Button size="sm" label={S.agentsRemove} onClick={() => void send(answerAgents(project, "remove"))}>{S.memoryRemove}</Button>} />
+          </Group>
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>
@@ -2480,7 +2626,7 @@ function Card() {
       )}
       {/* The folder's notes on Now (its name and its menu are in the top bar), and the link field once Open from a link is
           chosen there. */}
-      {home.tab === "now" && show("ask") && mode !== "rest" && mode !== "working" && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
+      {home.tab === "now" && show("ask") && mode !== "rest" && mode !== "working" && !side && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {show("folder") && <div className="foot">
       {awayFolder(m) && <div className="line muted" role="status">{S.awayWorking(awayFolder(m)!)}</div>}
       {copying && <div className="line muted" role="status">{S.copying}</div>}
@@ -2493,7 +2639,6 @@ function Card() {
       )}
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
-      {!project && <div className="notice">{S.folderNone}</div>}
       </div>}
       </div>
       </>)}
@@ -2511,21 +2656,29 @@ applyTextSize(textSize());
 followLessMotion();
 createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
 
-/** Anthropic's Claude missing or damaged after the first run (M22): one plain line and Get Claude, with the download's
- *  progress. Shows nothing while Claude is ready. */
-function ClaudeNotice() {
-  const [st, setSt] = useState<{ state: string; received?: number; total?: number | null; message?: string } | null>(null);
+/** Anthropic's Claude on this Mac (M22): its state from the shell, kept in step with the download. Read once by Home, so
+ *  the hero can say Claude is missing (the audit, item 12) and the notice under the ask box can show the progress. */
+type ClaudeSt = { state: string; received?: number; total?: number | null; message?: string };
+function useClaudeStatus(): [ClaudeSt | null, (s: ClaudeSt) => void] {
+  const [st, setSt] = useState<ClaudeSt | null>(null);
   useEffect(() => {
-    void invoke("claude_status").then((v) => setSt(v as { state: string })).catch(() => {});
-    const off = listen("claude-install", (e) => setSt(e.payload as { state: string }));
+    void invoke("claude_status").then((v) => setSt(v as ClaudeSt)).catch(() => {});
+    const off = listen("claude-install", (e) => setSt(e.payload as ClaudeSt));
     return () => { off.then((f) => f()); };
   }, []);
+  return [st, setSt];
+}
+const getClaude = (setSt: (s: ClaudeSt) => void) => { setSt({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); };
+
+/** Anthropic's Claude missing or damaged after the first run (M22): one plain line and Get Claude (a secondary button: the
+ *  hero's main button is the one main way out), with the download's progress. Shows nothing while Claude is ready. */
+function ClaudeNotice({ st, setSt }: { st: ClaudeSt | null; setSt: (s: ClaudeSt) => void }) {
   if (!st || st.state === "ready") return null;
   const mb = Math.round((st.received ?? 0) / 1e6), pct = st.total ? Math.min(100, Math.round(((st.received ?? 0) / st.total) * 100)) : null;
   return (
     <section className="panel notice claude-notice" role="status">
       <div className="line">{st.state === "installing" ? S.fr.claudeGetting(mb, pct) : st.state === "failed" ? st.message : S.fr.claudeMissing}</div>
-      {st.state !== "installing" && <div className="row"><button className="btn primary" type="button" onClick={() => { setSt({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{st.state === "failed" ? S.fr.claudeAgain : S.fr.claudeInstall}</button></div>}
+      {st.state !== "installing" && <div className="row"><button className="btn" type="button" onClick={() => getClaude(setSt)}>{st.state === "failed" ? S.fr.claudeAgain : S.fr.claudeInstall}</button></div>}
     </section>
   );
 }

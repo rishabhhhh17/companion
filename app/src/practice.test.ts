@@ -396,7 +396,7 @@ describe("the record and the list on Learn", () => {
     const rows = listRows(rec([{ id: "route", path: `/Users/sam/${COPY_BASE} missing page`, there: true }]), null);
     expect(rows.map((r) => r.entry.id)).toEqual(CATALOG.map((e) => e.id));
     expect(rows.find((r) => r.entry.id === "route")!.state).toBe("inProgress");
-    expect(rows[0]).toMatchObject({ title: "A Join button that fails", time: "About 2 minutes", cost: "About 20 cents on your key", needsNode: false });
+    expect(rows[0]).toMatchObject({ title: "A Join button that fails", time: "About 2 minutes", cost: "About 20 cents", needsNode: false });
     expect(rows[1].cost).toBe("Free, no Claude");
     const noNode = [{ id: "node", label: "Node", ok: false, detail: "Node is not installed.", fix: "Install it from nodejs.org.", missing: true as const }];
     expect(listRows(NO, noNode).every((r) => r.needsNode)).toBe(true);
@@ -634,7 +634,9 @@ describe("on a practice copy, Point at the problem's Fix it is the practice's ow
     expect(pointFixRoute("smallFix", { kind: "message", message: "x", from: "deploy" }, null, "/p")).toBe("rescue");
   });
   test("the card asks pointFixRoute, and either panel's fix of the practice is the one practiceFix", () => {
-    expect(card).toContain('pointFixRoute(setting("point.fixWith"), pt.problem, nowModel.current.practice, project)');
+    // One route for a known problem (the audit, item 1): the point card's Fix it and Home's main Fix it both call fixKnown.
+    expect(card).toContain('pointFixRoute(setting("point.fixWith"), pt?.problem, nowModel.current.practice, here)');
+    expect(card).toContain("onClick={fixKnown}>{S.pointFix}</button>");
     expect(card.match(/fixFound\([^\n]*\{ practice: /g)?.length).toBe(1);
     // the practice's fix closes the Point panel and its ring, as the Point panel's own Fix it does
     const at = card.indexOf("const practiceFix = ");
@@ -739,12 +741,15 @@ describe("the setting practice's lesson uses no Claude and never looks at the sc
 // a problem in your project", but on a person's own project Fix it looks deeper first (Rescue, on the careful model, with a
 // plan to approve) unless Settings says One small checked fix.
 describe("the practice says what its fix is, and what Fix it does on your own project", () => {
-  test("it names the setting and both of its choices, and promises no sameness", () => {
+  // The ranked UI audit (2 Nov 2026, item 9): Fix it has one name everywhere, so the practice no longer carries a paragraph
+  // explaining two fixes. What Fix it does on a person's own project is said once, in the setting's own help.
+  test("one name, no paragraph; the setting names both of its choices and promises no sameness", () => {
     const f = S.set["point.fixWith"];
-    expect(S.practiceFixHelp).toContain(f.label);
-    expect(S.practiceFixHelp).toContain(f.options.smallFix);
-    expect(S.practiceFixHelp).toMatch(/looks deeper first/);
-    expect(S.practiceFixHelp).not.toMatch(/the same request/);
+    expect((S as Record<string, unknown>).practiceFixHelp).toBeUndefined();
+    expect(S.practiceFix).toBe(S.pointFix);
+    expect(f.help).toMatch(/Look deeper first/);
+    expect(f.help).toContain(f.options.smallFix);
+    expect(f.help).not.toMatch(/the same request/);
     expect(defaultOf("point.fixWith")).toBe("rescue");
   });
 });

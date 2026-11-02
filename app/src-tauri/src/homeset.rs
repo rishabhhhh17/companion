@@ -5,7 +5,7 @@
 //!
 //! The character's place (character.edge, character.position, character.sameEverywhere) is in dock.json with "Come to
 //! what it is about", read and changed by settings.rs (`dock_value`, `dock_with`), not here.
-use crate::island::{HomeSize, HoverTimes, Where, FOLLOW_MS};
+use crate::island::{HomeSize, HoverTimes, PointOpens, Where, FOLLOW_MS};
 use crate::roam::LINGER_MS;
 use crate::settings::{value_of, File, Registry};
 use serde_json::Value;
@@ -13,7 +13,7 @@ use serde_json::Value;
 /// Every setting read here, so a test can prove each one is in the registry, kept in settings.json, for the shell.
 #[cfg_attr(not(test), allow(dead_code))]   // checked by the tests
 pub const KEYS: &[&str] = &[
-    "island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
+    "island.show", "island.peekOnHover", "island.pointOpens", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay",
     "home.closeOnClickAway", "home.size", "look.layout", "character.linger", "character.motion", "character.overFullScreen",
     "character.peek", "character.stick", "character.peekIdle", "home.escStops",
 ];
@@ -25,6 +25,8 @@ pub struct HomeSet {
     pub island_show: bool,
     /// island.peekOnHover, island.openDelay, island.closeDelay: the status when the pointer rests on the island.
     pub hover: HoverTimes,
+    /// island.pointOpens: resting the pointer on the notch opens Home itself (the usual) or the status line.
+    pub point_opens: PointOpens,
     /// island.display: which display the island and Home use.
     pub display: Where,
     /// island.followDelay: how long the pointer stays on another display before the island moves there (Follow me only).
@@ -55,7 +57,7 @@ impl HomeSet {
     /// character hidden past the edge when they wanted it there); since M37d (30 Oct 2026, the founder: "it needs to stick…
     /// it just needs to dwell there… when I pull it, it needs to come out") it is on, stuck half in view at the edge.
     pub const USUAL: HomeSet = HomeSet {
-        island_show: true, hover: HoverTimes::USUAL, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
+        island_show: true, hover: HoverTimes::USUAL, point_opens: PointOpens::Home, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
         size: HomeSize::USUAL, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, stick: true, peek_idle: false, esc_stops: true,
     };
 }
@@ -72,6 +74,7 @@ pub fn read(r: &Registry, f: &File) -> HomeSet {
     HomeSet {
         island_show: on("island.show", u.island_show),
         hover: HoverTimes { in_ms: ms(&v("island.openDelay"), u.hover.in_ms), out_ms: ms(&v("island.closeDelay"), u.hover.out_ms), peek: on("island.peekOnHover", u.hover.peek) },
+        point_opens: PointOpens::of(&word("island.pointOpens")),
         display: Where::of(&word("island.display")),
         follow_ms: ms(&v("island.followDelay"), u.follow_ms),
         click_away: on("home.closeOnClickAway", u.click_away),
@@ -100,6 +103,16 @@ mod tests {
         // M51 (1 Nov 2026, the founder): Home is wide by default; the tall panel is a choice (look.layout).
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::WIDE, false, false));
         assert_eq!((u.peek, u.stick, u.peek_idle), (true, true, false), "M37d: stuck half in view at its edge, out when the pointer comes");
+        // 2 Nov 2026 (the founder): pointing at the notch opens Home itself.
+        assert_eq!(u.point_opens, PointOpens::Home);
+    }
+    #[test]
+    fn what_pointing_at_the_notch_opens_is_read_from_settings_json() {
+        let r = registry();
+        let with = |v: Value| { let mut f = File::default(); set(r, &mut f, "island.pointOpens", &v, None).unwrap(); read(r, &f) };
+        assert_eq!(with(json!("status")).point_opens, PointOpens::Status);
+        assert_eq!(with(json!("home")).point_opens, PointOpens::Home);
+        assert!(KEYS.contains(&"island.pointOpens"));
     }
     #[test]
     fn each_one_is_read_from_settings_json_at_both_ends_of_its_range() {

@@ -1,9 +1,9 @@
 // The elements (the brand language, 1 Nov 2026): every group's colours, measured from ui/tokens.css itself, so a later
 // creature's block, or a change to one value, fails here before it reaches a screen. Light on graphite at least 9.8 to 1 (it
 // is the only element colour that may be words), ink on the base, the gradient's top and the gel's foot at least 7 to 1,
-// white on the deep colour at least 4.5 to 1, and each gradient inside its own family of hues. Flow is the water chosen in
-// Settings, so each water's own block for Flow is measured the same way. Then which room Home is and when its light may
-// move.
+// white on the deep colour at least 4.5 to 1, and each gradient inside its own family of hues. Since 2 Nov 2026 the water
+// chosen in Settings is the one accent (Flowflow, its pond, the main button, focus and the marks), measured for every water.
+// Then which room Home is and when its light may move.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { ELEMENTS, ROOM_IDLE_MS, roomElement, roomStill } from "./element.ts";
@@ -19,15 +19,16 @@ const block = (sel: string): Record<string, string> => {
   return Object.fromEntries(body.split(";").map((d) => d.trim()).filter((d) => d.startsWith("--")).map((d) => { const c = d.indexOf(":"); return [d.slice(0, c).trim(), d.slice(c + 1).trim()]; }));
 };
 const ROOT = block(":root"), DEEP = { ...ROOT, ...block(':root[data-theme="deep"]') };
-const GATED = block(':root:not([data-theme="paper"]) [data-element]'), GEL = block("[data-element]");
+// The dark themes' room tokens, keyed on data-tone (lookfeel.ts THEME_TONE), so Black needs no rule of its own here.
+const GATED = block(':root[data-tone="dark"] [data-element]'), GEL = block("[data-element]");
 const el = (e: string) => ({ ...ROOT, ...GEL, ...GATED, ...block(`[data-element="${e}"]`) });
-/** Each water but Ocean (which is :root's and Flow's own values) has a block that lights Flow's room, and only Flow's. */
+/** Each water but Ocean (which is :root's) has a block that gives Flowflow's pond its sea and its foot, and nothing else. */
 const OTHER_WATERS = WATERS.filter((w) => w !== "ocean");
-const WATER_SEL = (w: string) => `:root[data-water="${w}"], :root[data-water="${w}"] [data-element="flow"]`;
-/** An element's tokens with a water chosen: the water's block lights Flow; the other rooms keep their own, and take only its sea. */
+const WATER_SEL = (w: string) => `:root[data-water="${w}"]`;
+/** An element's tokens with a water chosen: every room keeps its own colours, and takes only the water's sea and foot. */
 const lit = (e: string, w: string) => {
   const wb = w === "ocean" ? {} : block(WATER_SEL(w));
-  return e === "flow" ? { ...el(e), ...wb } : { ...el(e), "--w-sea": wb["--w-sea"] ?? ROOT["--w-sea"] };
+  return { ...el(e), "--w-sea": wb["--w-sea"] ?? ROOT["--w-sea"], "--w-foot": wb["--w-foot"] ?? ROOT["--w-foot"] };
 };
 
 function colour(v0: string, t: Record<string, string>): RGB {
@@ -79,7 +80,11 @@ describe("every element reads, in every dark theme", () => {
       const t = el(e);
       const pick = colour("var(--pick)", t), wash = colour("var(--pick-wash)", t);
       for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(pick, colour(`var(${s})`, t)), `${e} accent on ${s}`).toBeGreaterThanOrEqual(3);
-      expect(ratio(colour("var(--pick-ink)", t), pick), `${e} knob on the accent`).toBeGreaterThanOrEqual(3);
+      expect(ratio(colour("var(--pick-ink)", t), pick), `${e} tick on the accent`).toBeGreaterThanOrEqual(3);
+      // A switch that is on (the audit, item 24): the element's deep accent with a white knob, each 3 to 1.
+      const track = colour("var(--switch-on)", t);
+      for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(track, colour(`var(${s})`, t)), `${e} switch on ${s}`).toBeGreaterThanOrEqual(3);
+      expect(ratio(colour("var(--knob-on)", t), track), `${e} knob on the switch`).toBeGreaterThanOrEqual(3);
       expect(ratio(colour("var(--fg)", t), wash), `${e} words on the wash`).toBeGreaterThanOrEqual(4.5);
       expect(ratio(pick, wash), `${e} edge on the wash`).toBeGreaterThanOrEqual(3);
     });
@@ -90,24 +95,32 @@ describe("every element reads, in every dark theme", () => {
       expect(d, `${e}: ${a.toFixed(0)} to ${b.toFixed(0)}`).toBeLessThanOrEqual(35);
     });
   }
+  // The one accent is the water chosen (2 Nov 2026, the review of the founder's midnight water: violet water beside blue
+  // buttons, a teal line and an amber dot). This replaces the rule of earlier that day (the water coloured Flowflow and its
+  // pond only, so its block held the sea and the foot alone): each water's block now also holds the accent's whole palette.
+  const FLOW_SLOTS = Object.keys(ROOT).filter((k) => k.startsWith("--flow-")).sort();
   for (const w of OTHER_WATERS) {
-    test(`Flow in ${w} water: the same slots, its light is words (9.8 to 1), ink reads on its body and gel (7 to 1), white on its deep (4.5 to 1), one family of hues`, () => {
+    test(`${w} water: its block gives the pond a sea and a foot (deep enough for white words) and the whole accent`, () => {
       const wb = block(WATER_SEL(w));
-      expect(Object.keys(wb).sort(), w).toEqual([...Object.keys(block('[data-element="flow"]')), "--w-sea"].sort());
-      const t = lit("flow", w);
-      for (const theme of [ROOT, DEEP]) {
-        for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(colour("var(--el-light)", t), colour(theme[s], theme)), `${w} light on ${s}`).toBeGreaterThanOrEqual(9.8);
-        expect(ratio(colour("var(--el-light)", t), colour(theme["--surface-3"], theme)), `${w} light on --surface-3`).toBeGreaterThanOrEqual(7);
-      }
-      for (const f of ["--el-base", "--el-grad-1", "--el-lift", "--gel-top"]) expect(ratio(colour("var(--el-ink)", t), colour(`var(${f})`, t)), `${w} ink on ${f}`).toBeGreaterThanOrEqual(7);
+      expect(Object.keys(wb).sort(), w).toEqual(["--w-foot", "--w-sea", ...FLOW_SLOTS].sort());
+      for (const k of ["--w-sea", "--w-foot"]) expect(ratio(WHITE, colour(wb[k], wb)), `${w} ${k}`).toBeGreaterThanOrEqual(3);
+    });
+  }
+  for (const w of WATERS) {
+    test(`${w} water as the accent: its light reads as words, ink reads on its gel, white on its deep, and focus shows on every surface`, () => {
+      const t = { ...el("flow"), ...(w === "ocean" ? {} : block(WATER_SEL(w))) };
+      for (const theme of [ROOT, DEEP]) for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(colour("var(--el-light)", t), colour(theme[s], theme)), `${w} light on ${s}`).toBeGreaterThanOrEqual(9.8);
+      for (const f of ["--el-base", "--el-grad-1", "--el-lift"]) expect(ratio(colour("var(--el-ink)", t), colour(`var(${f})`, t)), `${w} ink on ${f}`).toBeGreaterThanOrEqual(7);
       expect(ratio(WHITE, colour("var(--el-deep)", t)), `${w} white on deep`).toBeGreaterThanOrEqual(4.5);
       expect(ratio(colour("var(--fg)", t), colour("var(--el-tint)", t)), `${w} words on its tint`).toBeGreaterThanOrEqual(7);
-      expect(ratio(colour("var(--el-light)", t), colour("var(--el-tint)", t)), `${w} light on its tint`).toBeGreaterThanOrEqual(7);
-      const pick = colour("var(--pick)", t), wash = colour("var(--pick-wash)", t);
-      for (const s of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(pick, colour(`var(${s})`, t)), `${w} accent on ${s}`).toBeGreaterThanOrEqual(3);
-      expect(ratio(colour("var(--fg)", t), wash), `${w} words on the wash`).toBeGreaterThanOrEqual(4.5);
-      const a = hue(colour("var(--el-grad-1)", t)), b = hue(colour("var(--el-grad-3)", t));
-      expect(Math.min(Math.abs(a - b), 360 - Math.abs(a - b)), `${w}: ${a.toFixed(0)} to ${b.toFixed(0)}`).toBeLessThanOrEqual(35);
+      const BLACK = { ...ROOT, ...block(':root[data-theme="black"]') }, PAPER = { ...ROOT, ...block(':root[data-theme="paper"]') };
+      for (const theme of [ROOT, DEEP, BLACK]) for (const s of ["--bg", "--surface-1", "--surface-2", "--surface-3"]) {
+        expect(ratio(colour("var(--focus)", t), colour(theme[s], theme)), `${w} focus on ${s}`).toBeGreaterThanOrEqual(3);
+        expect(ratio(colour("var(--pick)", t), colour(theme[s], theme)), `${w} accent on ${s}`).toBeGreaterThanOrEqual(3);
+      }
+      // On White the focus ring is the accent's deep colour.
+      expect(PAPER["--focus"]).toBe("var(--flow-deep)");
+      for (const s of ["--bg", "--surface-2", "--surface-3"]) expect(ratio(colour("var(--el-deep)", t), colour(PAPER[s], PAPER)), `${w} focus on White ${s}`).toBeGreaterThanOrEqual(3);
     });
   }
   test("second words in a lit room are a step lighter than the page's grey and still read on every surface (4.5 to 1)", () => {
@@ -158,7 +171,7 @@ describe("the founder's fixes (1 Nov 2026), with the review's (a sunset, one bad
     // No sticker: Needs you is no longer a bright solid pill with dark words.
     expect(TOKENS_CSS()).not.toContain("--needs-fill");
     const PAPER = { ...ROOT, ...block(':root[data-theme="paper"]') }, CALM = block(':root[data-colour="calm"]');
-    const PAPER_CALM = { ...PAPER, ...CALM, ...block(':root[data-theme="paper"][data-colour="calm"]') };
+    const PAPER_CALM = { ...PAPER, ...CALM, ...block(':root[data-tone="light"][data-colour="calm"]') };
     for (const [name, th] of [["graphite", ROOT], ["deep", DEEP], ["paper", PAPER], ["graphite calm", { ...ROOT, ...CALM }], ["paper calm", PAPER_CALM]] as const) {
       const card = colour("var(--surface-1)", th);
       const room = name.startsWith("paper") ? th : { ...th, ...GATED, "--stamp-working": "var(--el-light)" };
@@ -195,18 +208,21 @@ describe("the founder's fixes (1 Nov 2026), with the review's (a sunset, one bad
     expect(paper["--room-show"]).toBe("0");
     expect(paper["--card-tint-a"]).toBe("0%");
     expect(paper["--card-halo-a"]).toBe("0%");
-    expect(paper["--el-text"]).toBe("var(--fg)");
+    // White's words in the accent are the primary's deep blue (its light blues are 1.5 to 2.5 to 1 on white).
+    expect(paper["--el-text"]).toBe("var(--el-deep)");
   });
 });
 
-describe("the water chosen in Settings lights Flow's room, and only Flow's (the review, 1 Nov 2026)", () => {
-  test("each water but Ocean has one block, for the page and for Flow's room only; no other room reads it", () => {
+describe("the water chosen in Settings is the one accent (2 Nov 2026), set once on the page's root", () => {
+  test("each water but Ocean has one block on the page's root; the rooms read the accent by name, never the water itself", () => {
     const css0 = TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, "");
     for (const w of OTHER_WATERS) expect(css0, w).toContain(`\n${WATER_SEL(w)} {`);
     expect(css0).not.toContain('[data-water="ocean"]');
-    for (const sel of css0.matchAll(/\n([^{}\n]*\[data-water=[^{}]*)\{/g)) expect(sel[1].trim(), "a water block names Flow's room only").toMatch(/^:root\[data-water="\w+"\], :root\[data-water="\w+"\] \[data-element="flow"\]$/);
+    for (const sel of css0.matchAll(/\n([^{}\n]*\[data-water=[^{}]*)\{/g)) expect(sel[1].trim(), "a water block is the root's alone").toMatch(/^:root\[data-water="\w+"\]$/);
     for (const e of ELEMENTS) expect(JSON.stringify(block(`[data-element="${e}"]`)), e).not.toContain("--water");
     expect(JSON.stringify(GATED)).not.toContain("--water");
+    // Flowflow's pond in Flow's room is the water's own sea and foot.
+    expect(css0).toContain(".companion-hero, .home[data-element=\"flow\"], :root[data-colour=\"calm\"] .home[data-element] { --sea-room: color-mix(in srgb, var(--w-foot) 80%, var(--w-sea)); }");
   });
   test("the room's stylesheet reads the water itself in one place: Flowflow's own halo", () => {
     const look = readFileSync(new URL("./ui/look.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -216,8 +232,12 @@ describe("the water chosen in Settings lights Flow's room, and only Flow's (the 
     expect(uses).toHaveLength(1);
     expect(uses[0]).toMatch(/^\.home \.home-pond \.ch-char::before \{/);
   });
-  test("focus stays neutral in every room: no element token sets the focus ring", () => {
+  test("focus is the accent's, set once on the root: no room sets the focus ring", () => {
+    expect(ROOT["--focus"]).toBe("var(--flow-focus)");
     for (const e of ELEMENTS) expect(Object.keys(el(e)).filter((k) => k === "--focus" && el(e)[k] !== ROOT["--focus"])).toEqual([]);
+    // Flow's room and Calm's Home read the accent by name, so they follow the water chosen.
+    expect(block('[data-element="flow"]')["--el-base"]).toBe("var(--flow-base)");
+    expect(block(':root[data-colour="calm"] .home[data-element]')["--el-base"]).toBe("var(--flow-base)");
   });
 });
 

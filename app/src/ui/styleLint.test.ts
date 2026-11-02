@@ -93,11 +93,10 @@ describe("no colour literal anywhere outside tokens.css (Hallmark rule 48)", () 
     expect(fixed.length).toBeGreaterThan(60);
     for (const r of tokens.filter((x) => x.sel !== ":root" || x.at)) for (const [k] of r.decl) expect(FIXED.test(k), `${r.sel} redefines ${k}`).toBe(false);
   });
-  test("the first run keeps Night's own words, colour for colour", () => {
+  test("the first run takes the theme's own page, words and marks, so it is the same place as Home in every theme", () => {
     const root = Object.fromEntries(tokens.find((r) => r.sel === ":root" && !r.at)!.decl);
-    for (const [fr, night] of [["--fr-fg", "--fg"], ["--fr-fg-2", "--fg-2"], ["--fr-bad", "--bad"], ["--fr-ok", "--ok"], ["--fr-amber", "--amber"]]) expect(root[fr].toUpperCase(), fr).toBe(root[night].toUpperCase());
-    // M51 polish: the first run's sky is Graphite's page, so the first run and Home are one place (it was the notch's black).
-    expect(root["--fr-sky"]).toBe(root["--bg"]);
+    // It was Night's own values, colour for colour, until the review of 2 Nov 2026 found it #111 in every theme.
+    for (const [fr, theme] of [["--fr-sky", "--bg"], ["--fr-fg", "--fg"], ["--fr-fg-2", "--fg-2"], ["--fr-bad", "--bad"], ["--fr-ok", "--ok"], ["--fr-amber", "--amber"], ["--fr-card", "--surface-1"], ["--fr-edge", "--line"]]) expect(root[fr], fr).toBe(`var(${theme})`);
     expect(root["--notch"]).toBe("#000000");
   });
 });

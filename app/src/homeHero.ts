@@ -3,10 +3,12 @@
 // how the project is, the one main button that status picks, the working card's four steps, which quiet buttons the top
 // bar has, and when Undo and Stop show. Plain code, tested in homeHero.test.ts; card.tsx only draws what this decides. Fun
 // comes from the motion, the size and the character, never from the words (rule 16).
-import { activityNow, cardWorking, characterWords, costWords, formatUsd, historyFacts, isFixing, receiptVerdict, type HistoryItem, type Model } from "./model.ts";
+import { activityNow, canRetry, receiptUndone, cardWorking, type About, characterWords, costWords, formatUsd, historyFacts, isFixing, receiptVerdict, type HistoryItem, type Model } from "./model.ts";
 import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
+import { pointFixRoute, practiceOf } from "./practice.ts";
+import { canFix, type ReviewCard } from "./review.ts";
 
 /** The quiet buttons with words in the top bar, in order: Learn (only until the first practice is done, or while it has
  *  something for the person or is open), then History, Memory and Settings. Now is Home itself. */
@@ -22,7 +24,7 @@ export const placeAfter = (open: Tab, pressed: Tab): Tab => (pressed === open ? 
 /** What the top of Home says: the job in big words and one short line under it. `tone` names the state for the page.
  *  detail: after a result, the verdict's own sentence (M45), drawn muted under the line. */
 export type HeroTone = "idle" | "working" | "needsYou" | "done" | "notDone" | "partly" | "plain";
-export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone };
+export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string };
 
 /** The verdict's tone as the page's (M45, mapped here once, never in a surface): only a proven fix is "done" (green). */
 const HERO_TONE: Record<Tone, HeroTone> = { good: "done", bad: "notDone", mixed: "partly", plain: "plain", ask: "needsYou" };
@@ -37,14 +39,30 @@ const folderLine = (project: string): string => {
 export function heroWords(m: Model, project: string, n: Need | null = need(m)): Hero {
   // A question waits for the person: it is the job now, and it is drawn just below.
   if (n?.question) return { headline: n.why, line: S.look.below, tone: "needsYou" };
+  // Return was just pressed and the engine has not answered yet (the audit, item 27): the words, and that it is starting.
+  if (m.sending && !cardWorking(m)) return { headline: title(m.sending.words), line: S.look.starting, tone: "working" };
   if (cardWorking(m)) {
     // The job's name as an order, first letter capital ("Fix the signup button", the overhaul spec 4.2).
     const label = title(m.task?.label || characterWords(m));
     const now = activityNow(m, 1)[0]?.words;
     return { headline: label, line: m.task ? (m.task.costUsd > 0 ? S.look.working(formatUsd(m.task.costUsd)) : S.look.workingFree) : now ?? characterWords(m), tone: "working" };
   }
-  // Something else waits for a look (a problem found, Prompt help, the error explainer, a pointer): its own words.
-  if (n) return { headline: n.why, line: characterWords(m), tone: "needsYou" };
+  // A practice open in this folder (its card is on Learn): the one next step in words, and Flowflow says the practice's own
+  // word for the moment, so the bubble never says one thing while the line says another (the founder, 2 Nov 2026).
+  if (n && m.practice && n.key.startsWith("practice:")) {
+    const st = m.practice.stage as keyof typeof S.home.practiceLine;
+    return { headline: n.why, line: S.home.practiceLine[st] ?? characterWords(m), tone: "needsYou", say: S.practiceSay[st] ?? "" };
+  }
+  // A problem found, with its card on Now: the hero says the finding itself and which check found it, so the card under it
+  // need not repeat What's wrong (the audit, item 53; the card's title is for VoiceOver only then).
+  if (n?.key.startsWith("point:") && m.point?.stage === "found") {
+    const finding = (m.point.problem?.message || m.point.message || "").trim();
+    if (finding) return { headline: finding, line: m.point.label || characterWords(m), tone: "needsYou" };
+  }
+  // Something else waits for a look (a problem found, Prompt help, the error explainer, a pointer): its own words. A problem
+  // found says what broke, never a bare state word like Ready (the audit, item 13: it is the one line of the folded hero).
+  // Never a bare Ready under it (the audit, item 53): on Now its card is just below, and the line says so.
+  if (n) return { headline: n.why, line: m.point?.stage === "found" ? (m.point.problem?.message || m.point.label || characterWords(m)) : n.tab === "now" ? S.look.answerBelow : characterWords(m), tone: "needsYou" };
   // An answer from Look it up or Rescue: its name, and that it is just below.
   if (m.research) return { headline: m.research.title, line: S.look.answerBelow, tone: "done" };
   if (m.rescue) return { headline: S.rescueTitle, line: S.look.answerBelow, tone: "done" };
@@ -55,6 +73,33 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
     return { headline: v.headline, line: S.look.doneLine(what, costWords(m.receipt.usdEstimate)), ...(v.line ? { detail: v.line } : {}), tone: HERO_TONE[v.tone] };
   }
   return { headline: S.look.idleHeadline, line: folderLine(project), tone: "idle" };
+}
+
+/** Flowflow's one short line in its bubble on Now: the hero's own when it has one (a practice), else by the hero's tone. A
+ *  finished task's line only while its result is on Now (not an answer from Look it up or Rescue). */
+export function sayFor(m: Pick<Model, "receipt" | "research" | "rescue">, h: Hero): string {
+  if (h.say !== undefined) return h.say;
+  if (h.tone === "working") return S.look.say.working;
+  if (h.tone === "notDone") return S.look.say.notDone;
+  if (h.tone === "needsYou") return S.look.say.needsYou;
+  if (h.tone === "done" && !!m.receipt && !m.research && !m.rescue) return S.look.say.done;
+  return "";
+}
+
+/** The main button when something waits on another place (the founder, 2 Nov 2026: a practice open, and "no clear next
+ *  step" above the fold): its next step, right on Now. Check my project runs its checks, Fix it fixes what was found (a practice
+ *  fixed by a task), anything else in the practice opens it on Learn. Only this folder's practice; nothing for a question
+ *  (its card is on Now, just below) or when nothing waits. */
+export type NeedMain = "practiceStart" | "practiceFix" | "openLearn";
+export function needMainFor(m: Model, n: Need | null, project: string): NeedMain | null {
+  if (!n || n.question || n.tab === "now" || !project) return null;
+  if (m.practice && n.key.startsWith("practice:")) {
+    if (m.practice.project !== project) return null;
+    if (m.practice.stage === "start") return "practiceStart";
+    if (m.practice.stage === "found" && practiceOf(m.practice.kind)?.fix === "task") return "practiceFix";
+    return "openLearn";
+  }
+  return n.tab === "learn" ? "openLearn" : null;
 }
 
 /** Undo shows only when the result offers it (the last task changed files, and no Undo put them back since, unless they
@@ -152,11 +197,17 @@ export function notchStatusLine(s: HomeStatus, project: string): string {
 
 /** What Now is about: at rest, a job at work, a question, something else that needs a look, an answer, or a result. Same
  *  order as heroWords. */
-export type HomeMode = "rest" | "working" | "question" | "needs" | "answer" | "result";
-export function homeMode(m: Model, n: Need | null = need(m)): HomeMode {
+export type HomeMode = "rest" | "working" | "question" | "needs" | "answer" | "result" | "blocked" | "review";
+/** o.blocker: what stops any work (blockerOf); o.review: changes waiting for a review (reviewLead). Both are worked out in
+ *  card.tsx, which knows Claude's own state and whether the review card shows. */
+export function homeMode(m: Model, n: Need | null = need(m), o: { blocker?: Blocker | null; review?: ReviewLead | null } = {}): HomeMode {
   if (n?.question) return "question";
-  if (cardWorking(m)) return "working";
+  if (cardWorking(m) || (m.sending && !o.blocker)) return "working";
+  // Nothing can run (no key, the engine stopped, Claude missing): that is the job now, whatever the last check said.
+  if (o.blocker) return "blocked";
   if (n) return "needs";
+  // Changes another AI tool made wait for a review: they lead, so Home never says the project works over code nobody checked.
+  if (o.review) return "review";
   if (m.research || m.rescue) return "answer";
   if (m.receipt && m.task) return "result";
   return "rest";
@@ -168,6 +219,10 @@ export const MAIN_TOOL: Record<MainAct, string | null> = { fix: "findProblem", c
  *  works, a question waits, or another card needs a look, that card has the screen and no main button competes with it.
  *  `shown` is groups.ts buttonShown: with the action's tool switched off (F20) there is no main button, as there is no
  *  chip, so Home never offers what the engine would refuse. */
+/** A result that offers Try again owns the next step: Try again is the one primary, so Home's main button steps aside
+ *  (the audit, item 34: a failed fix showed four similar ways forward). */
+export const retryOwnsMain = (m: Model, project: string): boolean => !!m.receipt && !receiptUndone(m.receipt) && canRetry(m, project);
+
 export const mainFor = (mode: HomeMode, s: HomeStatus, shown: (button: string) => boolean = () => true): MainAct | null => {
   if (mode !== "rest" && mode !== "result") return null;
   const tool = MAIN_TOOL[s.main];
@@ -197,3 +252,74 @@ export function clockWords(ms: number): string {
   return h ? `${h}:${two(m)}:${two(r)}` : `${m}:${two(r)}`;
 }
 
+
+// ---- cards that would say nothing (the founder, 2 Nov 2026: "About this project: A project: A plain web page." and "Where
+// you left off: Nothing is unfinished." took the screen and pushed the next step out of view) ----
+
+/** About this project earns a card only when it has something to act on or know: packages to install, settings that are
+ *  not set, or notes. A bare one line description is not a card. */
+export function aboutWorthACard(a: About | null, project: string): boolean {
+  return !!a && !!project && a.project === project && (a.needsInstall || a.missingCount > 0 || a.notes.length > 0);
+}
+/** The lines of Where you left off that say something: "Nothing is unfinished." and "You have not run a task in this
+ *  project yet." say nothing on their own. */
+const EMPTY_RECAP = new Set(["Nothing is unfinished.", "You have not run a task in this project yet."]);
+export const recapShownLines = (lines: readonly string[]): string[] => lines.filter((l) => !EMPTY_RECAP.has(l.trim()));
+/** Where you left off earns a card only when a line says something, or there is a next step to press. */
+export const recapWorthACard = (r: { lines: readonly string[]; next?: unknown } | null): boolean => !!r && (recapShownLines(r.lines).length > 0 || !!r.next);
+
+
+// ---- the ranked UI audit, 2 Nov 2026 (auditFirstHalf.test.ts) ----
+
+/** What Home's main Fix it starts (item 1): the same route as the point card's Fix it when a failure is known (the practice's
+ *  own fix, one small checked fix when Settings says so and the problem is one line, else a deeper look first), and only a
+ *  check when nothing failed yet (its label then is Check my project). Never the read only check under the name Fix it. */
+export function homeFixRoute(m: Pick<Model, "point" | "practice" | "receipt">, s: Pick<HomeStatus, "main">, project: string, fixWith: unknown): "practice" | "smallFix" | "rescue" | "check" {
+  if (s.main !== "fix" || !project) return "check";
+  const pt = !m.receipt && m.point?.stage === "found" ? m.point : null;
+  return pointFixRoute(fixWith, pt?.problem ?? null, m.practice, project);
+}
+
+/** Where Return sends the words (item 2): a new folder only when Make it in a new folder is ticked; with no project open
+ *  the words wait while the person picks their project or starts a new one from them; never a silent new project. */
+export type AskRoute = "newFolder" | "chooseProject" | "needWords" | "here";
+export function askRoute(o: { prompt: string; project: string; newFolder: boolean }): AskRoute {
+  if (!o.prompt.trim()) return "needWords";
+  if (o.newFolder) return "newFolder";
+  return o.project ? "here" : "chooseProject";
+}
+
+/** What stops any work right now (item 12): no Claude key or plan, the engine stopped, or Anthropic's Claude missing or
+ *  being fetched. Unknown (the engine has not said yet) blocks nothing. claude: claude_status's state, null until known. */
+export type Blocker = "key" | "engine" | "claude" | "claudeGetting";
+export function blockerOf(o: { connected: Model["connected"] | string; runnerUp: boolean; claude: string | null }): Blocker | null {
+  if (!o.runnerUp) return "engine";
+  if (o.claude === "installing") return "claudeGetting";
+  if (o.claude && o.claude !== "ready") return "claude";
+  if (o.connected === "none") return "key";
+  return null;
+}
+
+/** Changes from another AI tool that lead Home (item 11): waiting to be reviewed, being reviewed, or reviewed with something
+ *  found that is not fixed yet. main: Review the changes, only while nothing has started; once reviewed, the card's own
+ *  Fix it is the one main button, so the hero has none. */
+export type ReviewLead = { headline: string; line: string; main: "review" | null };
+export function reviewLead(r: ReviewCard | null | undefined, project: string): ReviewLead | null {
+  if (!r || !project || r.project.replace(/\/+$/, "") !== project.replace(/\/+$/, "") || r.fix === "sent") return null;
+  if (r.stage === "ready") return { headline: S.review.lead(r.count), line: S.review.heroLine(r.count), main: r.asked ? null : "review" };
+  if (r.stage === "reviewing") return { headline: S.review.lead(r.count), line: r.proof ? S.review.reviewingChecks : S.review.reviewing, main: null };
+  if (r.result && r.result.rating !== "safe" && canFix(r)) return { headline: S.review.rating[r.result.rating], line: S.review.lead(r.count), main: null };
+  return null;
+}
+
+/** In the wide Home, the hero folds to one line (no pond, no main button) while a card that needs a tap shows (item 13): an
+ *  approval, a stuck fix, the question about other agents, a found problem, the review, or a result that just came in. */
+export function heroCompact(m: Model, reviewOn: boolean): boolean {
+  return m.approvals.length > 0 || !!m.stuck || !!m.agentsAsk || m.point?.stage === "found" || reviewOn || (!!m.receipt && !!m.task && resultIsFresh(m));
+}
+const resultIsFresh = (m: Model): boolean => (m.character === "done" || m.character === "error") && m.agents[m.task!.agent] === m.character;
+
+/** The live line under the working card's steps (item 25): which try it is, else the check under way, else the last step. */
+export function jobNowWords(m: Pick<Model, "task"> & Partial<Model>, retry: string | null, lines: readonly { words: string }[]): string {
+  return retry ?? m.task?.proof?.steps.find((s) => s.status === "running")?.label ?? lines.at(-1)?.words ?? characterWords(m as Model);
+}

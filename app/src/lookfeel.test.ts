@@ -50,9 +50,10 @@ describe("the water's colour", () => {
 describe("Home's theme", () => {
   // M51 (the founder, 1 Nov 2026): Graphite replaced Night as the usual dark look, and Deep is offered. "night" stays an
   // option in the registry, so a value saved before still checks out, and it reads as Graphite.
-  test("graphite is the usual; paper and deep are the others; a saved night reads as graphite", () => {
-    expect(themeOf("paper")).toBe("paper"); expect(themeOf("deep")).toBe("deep"); expect(themeOf(3)).toBe("graphite"); expect(themeOf("night")).toBe("graphite");
-    expect(def("look.theme")).toMatchObject({ default: "graphite", options: ["graphite", "paper", "deep", "night"] });
+  // 2 Nov 2026 (the founder: "so we gonna have white and black"): Black is the usual, White keeps the stored value "paper".
+  test("black is the usual; white (paper), graphite and deep are the others; a saved night reads as graphite", () => {
+    expect(themeOf("paper")).toBe("paper"); expect(themeOf("deep")).toBe("deep"); expect(themeOf("black")).toBe("black"); expect(themeOf(3)).toBe("black"); expect(themeOf("night")).toBe("graphite");
+    expect(def("look.theme")).toMatchObject({ default: "black", options: ["black", "paper", "graphite", "deep", "night"] });
   });
   test("paper keeps every word readable (its tokens in ui/tokens.css)", () => {
     const css = readFileSync(new URL("./ui/tokens.css", import.meta.url), "utf8");

@@ -124,8 +124,9 @@ describe("the top says the job in big words", () => {
     expect(all).not.toMatch(/!|great|awesome|yay|love|happy|friend|streak|proud|nice/i);
   });
   test("the headline is Home's heading, large, with one short line under it", () => {
-    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{hero.headline}</h1>');
-    expect(card).toContain('<p className="subline">{hero.line}</p>');
+    // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
+    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>');
+    expect(card).toContain('<p className="subline">{heroShown.line}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -148,7 +149,7 @@ describe("Undo and Stop show only when they can act", () => {
   });
   test("the page draws Undo in the result card and Stop in the working card only then, and names the key that stops everything", () => {
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
-    expect(result).toContain("{undoCan(m, project) && <Button id={undoId}");
+    expect(result).toContain('{undoCan(m, project) && (\n            <div className="row result-actions">\n              <Button id={undoId}');
     expect(result).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
     expect(job).toContain("{stopCan(m) && <Button");
@@ -167,11 +168,13 @@ describe("one ask field, and the main button does what the existing paths do", (
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
   test("Fix it and Check my project run the same check as the Fix it key, in the project; Check before going live runs the ship check", () => {
-    expect(card).toContain('    if (a === "shipCheck") shipIt(); else if (a === "folder") pickFolder(); else findFromHome();\n  };');
+    // Fix it fixes a known problem by the point card's own route; only Check my project runs the check (the audit, item 1).
+    expect(card).toContain('    if (a === "shipCheck") { shipIt(); return; }\n    if (a === "folder") { pickFolder(); return; }');
+    expect(card).toContain('if (route === "check") findFromHome(); else fixKnown();');
     // Pro (the payments spec, section 3): only at the free fix limit, or on Ship with a plan that does not cover it (never
     // with payments off, plan.test.ts), does the main button show the limit card instead.
     const doMain = card.slice(card.indexOf("const doMain = (a: MainAct) => {"), card.indexOf("\n  };", card.indexOf("const doMain = (a: MainAct) => {")));
-    expect(doMain.match(/return; \}/g)?.length).toBe(1);
+    expect(doMain.match(/return; \}/g)?.length).toBe(3);
     expect(doMain).toContain('if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }');
     // Ship's own check is in shipIt (shipGate), so every way into Ship asks the same way (plan.test.ts).
     expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return;");
@@ -226,7 +229,8 @@ describe("it springs open from the notch, and not at all with less motion", () =
     expect(ch).not.toContain("skins.ts");
     // The founder, 31 Oct: Flowflow lives on its water at the top of Now again, seen (never hidden), and it rests (one still
     // frame, no loop) while Home is closed or another place is open.
-    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} /></div>');
+    // Its error pose while something blocks every job (the audit, item 12).
+    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} /></div>');
     expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
     expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");
@@ -282,7 +286,7 @@ describe("M45: Home's big words tell the truth", () => {
     expect(bringBackCan(m, "")).toBe(false);
   });
   test("the page draws the verdict's line under the hero's line", () => {
-    expect(card).toContain("{hero.detail && <p className=\"subline muted\">{hero.detail}</p>}");
+    expect(card).toContain("{heroShown.detail && !compact && <p className=\"subline muted\">{heroShown.detail}</p>}");
   });
 });
 
@@ -351,8 +355,9 @@ describe("the status headline (F28, 4.1)", () => {
     expect(notchStatusLine(homeStatus(initial(), "", NOW), "")).toBe(S.home.notchNothing);
   });
   test("the page draws the status as a Verdict line at display size, as Home's heading, at rest and under a result", () => {
-    expect(card).toContain('<VerdictLine verdict={status.verdict} size="headline" sub={status.sub || undefined} />');
-    expect(card).toContain('className="status-head" role="heading" aria-level={1}');
+    // The heading is the verdict alone; its quiet line follows it, outside the heading (the audit, item 51).
+    expect(card).toContain('role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}');
+    // Under a result just in the status leads in both layouts; the result card says the verdict once (the review, 2 Nov 2026).
     expect(card).toContain('const statusFirst = mode === "rest" || mode === "result";');
   });
 });
@@ -411,7 +416,10 @@ describe("one main button per state", () => {
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
     const now = card.slice(card.indexOf('<section className="hero"'), card.indexOf('{show("notes") && <>'));
     expect(now.match(/kind="primary"/g)?.length).toBe(1);
-    expect(now).toContain('{main && <div className="hero-main"><Button kind="primary" size="lg" onClick={() => doMain(main)}>{S.home.main[main]}{shipTagged && <ProTag />}</Button></div>}');
+    // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
+    // 2 Nov 2026 (the ranked UI audit): or the way out of a block, or Review the changes; still one button (heroMain).
+    expect(now).toContain('{heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}{heroMain.status && <>{shipTagged && <ProTag />}</>}</Button></div>}');
+    expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
     expect(now).not.toMatch(/btn primary/);
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
@@ -422,8 +430,10 @@ describe("one main button per state", () => {
     const between = (src: string, from: string, to: string) => { const a = src.indexOf(from); expect(a, from).toBeGreaterThan(-1); return src.slice(a, src.indexOf(to, a)); };
     // The notes on every place (the update notice's Install sits beside the hero's main button on Now).
     expect(between(card, '{show("notes") && <>', "</>}")).not.toMatch(silver);
-    // The receipt's follow up box (a failed result keeps the hero's Fix it, and canRetry is true then too).
-    expect(between(card, "function FollowUpBox(", "\n}\n")).not.toMatch(silver);
+    // The receipt's follow up box: Try again is its one primary, and only because the hero then has no main button of its own
+    // (the audit, item 34, homeHero.ts retryOwnsMain); its Send stays secondary.
+    expect(between(card, "function FollowUpBox(", "\n}\n").match(new RegExp(silver, "g"))?.length).toBe(1);
+    expect(card).toMatch(/retryOwnsMain\(m, project\) \? null/);
     // The watches on Now.
     expect(readFileSync(new URL("./watchPanel.tsx", import.meta.url), "utf8")).not.toMatch(silver);
     // Learn: each lesson's and each practice's Start or Continue (the spec, 2.2: "Learn's Start buttons" are never silver).
@@ -462,7 +472,7 @@ describe("the working card's four steps read only the runner's real states (4.2)
   });
   test("the card says the safety copy only when there is one, and Stop is a secondary button in it", () => {
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
-    expect(job).toContain("{m.task.checkpoint ? <p className=\"job-safe\">");
+    expect(job).toContain("{m.task.checkpoint && <p className=\"job-safe\">");
     expect(job).toContain('<ol className="job-strip" aria-label={S.home.stepsLabel}>');
     expect(job).toContain('aria-current={i === js.step ? "step" : undefined}');
     expect(S.home.steps).toEqual(["Finding", "Fixing", "Checking", "Proven"]);
@@ -481,17 +491,17 @@ describe("the recent fixes (4.1)", () => {
 
 describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follows how lively the person chose (M46)", () => {
   test("the pond sits beside the words, and the water's drift stops with Still", () => {
-    expect(card).toContain('<div className="home-pond" data-lively={lively} aria-hidden="true">');
+    expect(card).toContain('<div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">');
     expect(card).toContain('const lively = livelinessOf(useSetting("character.lively"));');
     // One water for Home's pond and Settings' preview (review, 31 Oct): the same flat sea, and both hold still with Still.
     expect(css).toContain('.home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }');
     // Home: one line across the whole width (the founder, 31 Oct, as in M41), the sea fading out under it, never a box.
     expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("overflow: clip;");
     expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("margin: 0 calc(var(--space-6) * -1) var(--space-2);");
-    expect(/\.home-pond \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, var(--sea) 0, transparent 100%);");
+    expect(/\.home-pond \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea) var(--wave-foot), transparent 100%);");
     expect(/\.home-pond \{([^}]*)\}/.exec(css)?.[1]).not.toMatch(/box-shadow|border-radius|background/);
     // The preview keeps a flat sea in its own card.
-    expect(/\.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--sea);");
+    expect(/\.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot));");
     // Home and the preview now draw the sea differently on purpose (a long fading line in Home, a card in Settings).
     expect(read("./settingsPage.tsx")).toContain('<div className="companion-hero" id={fixedAnchor("preview")} data-lively={lively}>');
     // The sky over the preview water is a token, so Paper never draws a black box on its light page; Home has no sky box.

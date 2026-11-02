@@ -409,6 +409,26 @@ pub fn mode(s: State) -> Mode {
     }
 }
 
+/// What resting the pointer on the island opens (island.pointOpens, 2 Nov 2026; the founder pointed at the notch, got a
+/// black strip with one line, and said "it needs to be open"): Home itself, the usual, or the status line under the notch
+/// (the peek from before). A word the file holds wrongly is the usual.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointOpens { Home, Status }
+impl PointOpens { pub fn of(word: &str) -> PointOpens { if word == "status" { PointOpens::Status } else { PointOpens::Home } } }
+
+/// What the pointer resting on the island does once the open wait has passed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointDo { OpenHome, Status, Nothing }
+/// Home already open: nothing. A question already open under the wings by itself (not quiet) stays there, since the person
+/// may be about to answer it in the panel. Otherwise what the setting says.
+pub fn on_point(s: State, opens: PointOpens) -> PointDo {
+    if s.home_open { return PointDo::Nothing; }
+    if s.ask && !s.quiet { return PointDo::Status; }
+    match opens { PointOpens::Home => PointDo::OpenHome, PointOpens::Status => PointDo::Status }
+}
+/// Whether the island is told the pointer is on it (the peek): only when the status line is what pointing does now.
+pub fn peek_hover(shown: bool, act: PointDo) -> bool { shown && act == PointDo::Status }
+
 /// How long the pointer must rest on the island before the line opens (crossing the notch on the way along the menu bar,
 /// even slowly, does not open it), and how long off it before the line closes (a slip off the edge does not close it),
 /// unless Settings says otherwise (island.openDelay, island.closeDelay).
@@ -1004,6 +1024,54 @@ mod tests {
         h.set_times(HoverTimes::USUAL);
         h.exit(70_000); h.enter(70_001);
         assert!(h.at(70_001 + HOVER_IN_MS));
+    }
+    #[test]
+    fn pointing_at_the_notch_opens_home_itself_unless_the_setting_says_the_status_line() {
+        // 2 Nov 2026, the founder pointed at the notch, got only a black strip with one line, and said "it needs to be
+        // open": resting the pointer opens Home (after island.openDelay, the Hover above), the usual; Status line is the
+        // old peek.
+        assert_eq!(PointOpens::of("home"), PointOpens::Home);
+        assert_eq!(PointOpens::of("status"), PointOpens::Status);
+        for odd in ["", "Home", "peek", "nonsense"] { assert_eq!(PointOpens::of(odd), PointOpens::Home, "{odd:?} is the usual"); }
+        let rest = State::default();
+        assert_eq!(on_point(rest, PointOpens::Home), PointDo::OpenHome);
+        assert_eq!(on_point(rest, PointOpens::Status), PointDo::Status);
+        // Wings out (something is happening): pointing still opens Home, where the whole job is.
+        assert_eq!(on_point(State { alert: true, ..rest }, PointOpens::Home), PointDo::OpenHome);
+        // A call or a presentation (quiet): the person pointed, so it opens, as the status always did.
+        assert_eq!(on_point(State { quiet: true, ..rest }, PointOpens::Home), PointDo::OpenHome);
+        // Home already open: nothing more to open.
+        for o in [PointOpens::Home, PointOpens::Status] { assert_eq!(on_point(State { home_open: true, ..rest }, o), PointDo::Nothing, "{o:?}"); }
+        // A question already open under the wings stays where it is: the person may be about to answer it there.
+        assert_eq!(on_point(State { ask: true, alert: true, ..rest }, PointOpens::Home), PointDo::Status);
+        // Unless it is quiet, when the question never opened by itself: then pointing opens Home.
+        assert_eq!(on_point(State { ask: true, alert: true, quiet: true, ..rest }, PointOpens::Home), PointDo::OpenHome);
+    }
+    #[test]
+    fn when_pointing_opens_home_the_status_peek_never_shows_from_the_pointer() {
+        // The island's own size stays the bare notch (or the wings) while Home opens below it: hover is only said to the
+        // island when the status line is what pointing does.
+        let rest = State::default();
+        assert_eq!(peek_hover(true, PointDo::OpenHome), false);
+        assert_eq!(peek_hover(true, PointDo::Status), true);
+        assert_eq!(peek_hover(false, PointDo::Status), false);
+        assert_eq!(peek_hover(true, PointDo::Nothing), false);
+        assert_eq!(mode(State { hover: peek_hover(true, on_point(rest, PointOpens::Home)), ..rest }), Mode::Rest);
+        assert_eq!(mode(State { hover: peek_hover(true, on_point(rest, PointOpens::Status)), ..rest }), Mode::Peek);
+    }
+    #[test]
+    fn a_click_on_the_notch_always_opens_home_at_once_and_pointing_opens_it_without_the_keyboard() {
+        // Wiring in main.rs (it needs a real Mac): a click opens, never closes (a Home that pointing just opened would
+        // otherwise close under the click that meant to open it), with no wait; pointing opens through the same door,
+        // never taking the keyboard (rule 9) until the person clicks into Home.
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let at = main.find(name).unwrap_or_else(|| panic!("{name}")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        let click = body("fn island_click(");
+        assert!(click.contains("open_card(&app, \"island\", false)") && !click.contains("toggle_home"), "{click}");
+        let settle = body("fn island_hover_settle(");
+        assert!(settle.contains("island::on_point(") && settle.contains("home_set().point_opens"), "{settle}");
+        assert!(settle.contains("open_card(app, \"point\", false)"), "{settle}");
+        assert!(settle.contains("island::peek_hover(shown, act)"), "{settle}");
     }
     #[test]
     fn the_wait_before_the_island_moves_to_another_display_follows_the_setting() {

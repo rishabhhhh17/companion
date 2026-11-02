@@ -189,9 +189,11 @@ describe("the rows for Home, the island and the character", () => {
     expect(floor).toContain("Prompt help, the error explainer and Second Look you start always open Now");
     expect(floor).toContain("or on the character when the notch is off");
     expect(floor).toContain("is said out loud when Say answers out loud is on");
-    // Close Home when I click another app names the island only as something that may not be there.
+    // Close Home when I click another app: since 2 Nov 2026 a click on the notch always opens Home (it may have just opened by
+    // pointing), so only the character closes it again, and Home never closes while you type.
     expect(S.set["home.closeOnClickAway"].help).not.toContain("click the island or the character");
-    expect(S.set["home.closeOnClickAway"].help).toContain("click the character, or the notch when it is shown, again");
+    expect(S.set["home.closeOnClickAway"].help).toContain("click the character again");
+    expect(S.set["home.closeOnClickAway"].help).toContain("never closes by itself while you type");
   });
   test("search finds them by the words people use", () => {
     for (const [q, key] of [["notch", "island.show"], ["hover", "island.peekOnHover"], ["monitor", "island.display"], ["click away", "home.closeOnClickAway"], ["bigger", "home.size"], ["corner", "character.edge"], ["reduce motion", "character.motion"], ["full screen", "character.overFullScreen"]]) {

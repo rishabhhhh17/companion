@@ -64,11 +64,14 @@ describe("making something in a new folder", () => {
     expect(Array.from(String(long.request)).length).toBe(MAX_REQUEST_CHARS);
     expect(parseShellCommand(JSON.stringify(long)).ok).toBe(true);
   });
-  test("Home sends it with no project open, or ticked, from Start, Plan it and Look it up, and only to the shell", async () => {
+  test("Home sends it only when ticked, from Start, Plan it and Look it up, and only to the shell; with no project it asks", async () => {
     const card = await Bun.file(new URL("./card.tsx", import.meta.url)).text();
-    expect(card).toContain("const inNewFolder = !project || newFolder;");
+    // The ranked UI audit (2 Nov 2026, item 2): no project open no longer makes a new folder by itself; the words wait and
+    // the person picks their project or a new one (homeHero.ts askRoute, auditFirstHalf.test.ts).
+    expect(card).toContain("const inNewFolder = newFolder;");
     const body = (name: string) => { const s = card.slice(card.indexOf(`const ${name} = () => {`)); return s.slice(0, s.indexOf("\n  };\n")); };
-    expect(body("submit")).toContain('if (prompt && inNewFolder) { startNew("build"); return; }');
+    expect(body("submit")).toContain('if (route === "newFolder") { startNew("build"); return; }');
+    expect(body("submit")).toContain('if (route === "chooseProject") { setNoProjectFor("build"); return; }');
     expect(body("plan")).toContain('if (goal && inNewFolder) { startNew("build"); return; }');
     expect(body("research")).toContain('if (inNewFolder) { startNew("research"); return; }');
     const start = card.slice(card.indexOf("const startNew = "), card.indexOf("const submit = () => {"));

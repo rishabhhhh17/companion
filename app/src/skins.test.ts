@@ -90,7 +90,17 @@ describe("the chrome does not read a skin", () => {
       "--el-base", "--el-light", "--el-deep", "--el-glow", "--el-tint", "--el-grad-1", "--el-grad-2", "--el-grad-3",
       // The founder asked for "very colourful" (1 Nov 2026): the room's sky, its floor, and the light and tint in a group's
       // cards are the element's light too, never the chrome.
-      "--el-sky", "--el-foot", "--el-lit", "--el-card"];
+      "--el-sky", "--el-foot", "--el-lit", "--el-card",
+      // 2 Nov 2026 (the founder: one accent, water blue, used sparingly): focus is the accent; the water's foot under
+      // Flowflow's pond; the blue pill in each theme picture.
+      "--focus", "--w-foot", "--sw-blue",
+      // The ranked UI audit (2 Nov 2026): the lighter red of the danger button on a lit card (item 15), and the deep accent
+      // of a switch that is on (item 24) are marks, never the chrome.
+      "--bad-room", "--switch-on",
+      // 2 Nov 2026, the review of the founder's midnight water: the accent is the water chosen, so its palette is named once
+      // (Ocean's on :root, each other water's in its own block) and the rooms read it by name. Marks and light, never chrome.
+      "--flow-base", "--flow-light", "--flow-deep", "--flow-glow", "--flow-tint", "--flow-grad-1", "--flow-grad-2", "--flow-grad-3",
+      "--flow-sky", "--flow-foot", "--flow-lit", "--flow-card", "--flow-focus"];
     for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

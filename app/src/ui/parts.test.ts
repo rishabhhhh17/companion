@@ -56,7 +56,7 @@ describe("the parts", () => {
   });
   test("a key label shows the Mac's caps and reads the words", () => {
     expect(part("KeyLabel(")).toContain("keycaps(chord)");
-    expect(part("KeyLabel(")).toContain("aria-label={chordLabel(chord!)}");
+    expect(part("KeyLabel(")).toContain("aria-label={label ? `${label}: ${chordLabel(chord!)}` : chordLabel(chord!)}");
   });
   test("a toast stays ten seconds and waits while the pointer is on it", () => {
     expect(TOAST_MS).toBe(10_000);

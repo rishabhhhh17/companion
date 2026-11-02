@@ -47,6 +47,9 @@ const THEME_TOKENS: [string, Record<string, string>][] = [
   ["Graphite, more contrast", { ...root, ...block(":root", MORE) }],
   ["Paper, more contrast", { ...root, ...block(':root[data-theme="paper"]'), ...block(':root[data-theme="paper"]', MORE) }],
   ["Deep, more contrast", { ...root, ...block(':root[data-theme="deep"]'), ...block(':root[data-theme="deep"]', MORE) }],
+  // 2 Nov 2026: Black, the usual theme, measured the same way.
+  ["Black", { ...root, ...block(':root[data-theme="black"]') }],
+  ["Black, more contrast", { ...root, ...block(':root[data-theme="black"]'), ...block(':root[data-theme="black"]', MORE) }],
 ];
 
 // ---------- colour ----------
@@ -70,16 +73,19 @@ const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q
 
 describe("the choices are real settings, with their words and one place in Settings", () => {
   test("each is in the registry with a safe usual value, live, for the pages", () => {
-    expect(def("look.theme")).toMatchObject({ kind: "choice", default: "graphite", options: ["graphite", "paper", "deep", "night"], applies: ["pages"], section: "look", live: true, store: "settings" });
+    // 2 Nov 2026 (the founder: "so we gonna have white and black"): Black is the usual, White (stored as paper) is offered.
+    expect(def("look.theme")).toMatchObject({ kind: "choice", default: "black", options: ["black", "paper", "graphite", "deep", "night"], applies: ["pages"], section: "look", live: true, store: "settings" });
     expect(def("look.density")).toMatchObject({ kind: "choice", default: "comfortable", options: ["comfortable", "compact"], applies: ["pages"], live: true });
-    expect(def("look.icons")).toMatchObject({ kind: "choice", default: "colour", options: ["colour", "plain"], applies: ["pages"], live: true });
+    // 2 Nov 2026 (the founder: "too many colors, so it looks like an aquarium"): plain icons, no light and Calm are the usual.
+    expect(def("look.icons")).toMatchObject({ kind: "choice", default: "plain", options: ["plain", "colour"], applies: ["pages"], live: true });
     expect(def("look.stamps")).toMatchObject({ kind: "switch", default: true, applies: ["pages"], live: true });
-    expect(def("look.gloss")).toMatchObject({ kind: "choice", default: "on", options: ["on", "flat"], applies: ["pages"], live: true });
+    // Flat is the usual since 2 Nov 2026 (the review: the glossy pill read as a toy); Glossy stays a choice.
+    expect(def("look.gloss")).toMatchObject({ kind: "choice", default: "flat", options: ["flat", "on"], applies: ["pages"], live: true });
     expect(def("look.corners")).toMatchObject({ kind: "choice", default: "soft", options: ["soft", "crisp"], applies: ["pages"], live: true });
-    // The brand language (1 Nov 2026): the light behind Home, moving by default, with Still and Off.
-    expect(def("look.light")).toMatchObject({ kind: "choice", default: "moving", options: ["moving", "still", "off"], applies: ["pages"], live: true });
-    // The founder (1 Nov 2026): "very colourful and out there". Vivid is the usual; Calm turns the colour down a step.
-    expect(def("look.colour")).toMatchObject({ kind: "choice", default: "vivid", options: ["vivid", "calm"], applies: ["pages"], live: true });
+    // The light behind Home, off by default, with Still and Moving kept as choices.
+    expect(def("look.light")).toMatchObject({ kind: "choice", default: "off", options: ["off", "still", "moving"], applies: ["pages"], live: true });
+    // Calm is the usual; Vivid stays a choice.
+    expect(def("look.colour")).toMatchObject({ kind: "choice", default: "calm", options: ["calm", "vivid"], applies: ["pages"], live: true });
   });
   test("each has a label, help, search words and short option words, in plain words with no dashes or capitals", () => {
     for (const k of KEYS) {
@@ -99,7 +105,7 @@ describe("the choices are real settings, with their words and one place in Setti
         expect(words.length, `${k} ${o}: ${words}`).toBeLessThanOrEqual(12);
       }
     }
-    expect(S.set["look.theme"].options).toMatchObject({ graphite: "Graphite", paper: "Paper", deep: "Deep" });
+    expect(S.set["look.theme"].options).toMatchObject({ black: "Black", paper: "White", graphite: "Graphite", deep: "Deep" });
     for (const q of ["dense", "compact", "crisp", "rounded", "glossy", "stamps", "icons", "graphite", "dark blue"]) {
       expect(KEYS.some((k) => [S.set[k].label, ...(S.set[k].also as readonly string[])].some((a) => a.toLowerCase().includes(q))), q).toBe(true);
     }
@@ -127,15 +133,16 @@ describe("the choices are real settings, with their words and one place in Setti
     expect(read("./settingsPage.tsx")).toContain("const value = shownValue(d.key, d.kind === \"custom\" ? snapshotNow()?.values[d.key] : setting(d.key));");
     expect(themeOf("night")).toBe("graphite");
     for (const t of THEMES) expect(themeOf(t)).toBe(t);
-    for (const junk of [undefined, null, "", "Night", 3]) expect(themeOf(junk), String(junk)).toBe("graphite");
+    for (const junk of [undefined, null, "", "Night", 3]) expect(themeOf(junk), String(junk)).toBe("black");
   });
 });
 
 describe("each choice is a data attribute on the root, never a branch in the code", () => {
   test("the usual values give the usual attributes, and odd values read as the usual", () => {
-    expect(lookAttrs({})).toEqual({ "data-theme": "graphite", "data-density": "comfortable", "data-icons": "colour", "data-stamps": "on", "data-gloss": "on", "data-corners": "soft", "data-light": "moving", "data-colour": "vivid" });
-    expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "plain", "look.stamps": false, "look.gloss": "flat", "look.corners": "crisp", "look.light": "off", "look.colour": "calm" }))
-      .toEqual({ "data-theme": "deep", "data-density": "compact", "data-icons": "plain", "data-stamps": "off", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm" });
+    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm" });
+    expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid" }))
+      .toEqual({ "data-theme": "deep", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid" });
+    expect(lookAttrs({ "look.theme": "paper" })["data-tone"]).toBe("light");
     for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) for (const junk of [undefined, "", "Compact", 7]) expect(choiceOf(k, junk), `${k} ${String(junk)}`).toBe(LOOK_CHOICES[k].values[0]);
     // Every choice's first value is the registry's usual one; Stamps is a switch, on.
     for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) {
@@ -147,11 +154,15 @@ describe("each choice is a data attribute on the root, never a branch in the cod
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
     applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.corners": "crisp" });
-    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "colour", "data-stamps": "on", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid" });
+    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm" });
     const theme: Record<string, string> = {};
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } }, "ocean", "night");
     expect(theme["data-theme"]).toBe("graphite");
+    expect(theme["data-tone"]).toBe("dark");
+    // The first run takes the chosen theme, so a new person sees Black, the usual, and Home after it is the same place
+    // (the review, 2 Nov 2026; it was always Graphite before).
     expect(read("./card.tsx")).toContain("useLook({ choices: true });");
+    expect(read("./card.tsx")).not.toContain('forceTheme: onboarded ? undefined : "graphite"');
     const hook = read("./useLook.ts");
     expect(hook).toContain("const choices = !!opts.choices && !opts.keepNight;");
     expect(hook).toMatch(/useSetting\("look\.density"\)[\s\S]*useSetting\("look\.corners"\)/);
@@ -187,6 +198,8 @@ describe("each value changes the tokens it should, and the usual values give exa
     "--r-tile": "6px", "--r-stamp": "4px", "--r-bubble": "10px", "--tile-lg": "24px", "--stamp-display": "inline-flex", "--unstamped-display": "none", "--stamp-tilt": "0deg",
     "--tint-sky": "#172A40", "--tint-sky-ink": "#9CCBFF", "--tint-mint": "#13291F", "--tint-mint-ink": "#86DDB4", "--tint-rose": "#301823", "--tint-rose-ink": "#FFA6C9",
     "--tint-sun": "#2C2513", "--tint-sun-ink": "#F0CF78", "--tint-lilac": "#231E3B", "--tint-lilac-ink": "#BFB1FF",
+    // The wide list's gems with Colour icons (2 Nov 2026): Plain, the usual, shows the place's line drawing instead.
+    "--gem-display": "block", "--gem-icon-display": "none",
   };
   const SWITCHES: [string, string][] = [["density", "compact"], ["icons", "plain"], ["stamps", "off"], ["gloss", "flat"], ["corners", "crisp"]];
   const sw = (a: string, v: string) => block(`:root[data-${a}="${v}"]`);
@@ -220,7 +233,10 @@ describe("each value changes the tokens it should, and the usual values give exa
   test("Plain icons make every tile grey, its drawing in the second ink; Stamps off swaps every stamp for its plain words", () => {
     const p = sw("icons", "plain");
     for (const t of TINTS) { expect(p[`--tint-${t}`], t).toBe("var(--surface-3)"); expect(p[`--tint-${t}-ink`], t).toBe("var(--fg-2)"); }
-    expect(Object.keys(p)).toHaveLength(TINTS.length * 2);
+    // And the wide list's Now and Learn show their line drawing, not a coloured gem (the review, 2 Nov 2026).
+    expect(p["--gem-display"]).toBe("none");
+    expect(p["--gem-icon-display"]).toBe("block");
+    expect(Object.keys(p)).toHaveLength(TINTS.length * 2 + 2);
     expect(sw("stamps", "off")).toEqual({ "--stamp-display": "none", "--unstamped-display": "inline-flex" });
   });
   test("Deep is a full theme: its own surfaces, words and lines, with a cool cast, and More contrast for it", () => {
@@ -320,7 +336,7 @@ describe("stamps: working, new, proven, needs you", () => {
   const NOW = Date.parse("2026-11-01T12:00:00Z");
   const h = (o: Partial<HistoryItem>): HistoryItem => ({ id: 1, label: "Fix it", status: "done", usd: 0.1, startedAt: "2026-11-01T09:00:00Z", endedAt: "2026-11-01T09:05:00Z", checkpoint: "cp_1", changed: 1, proof: null, ...o });
   test("each from what the task really is, never one it has not earned", () => {
-    expect(STAMPS).toEqual(["working", "new", "proven", "needsYou"]);
+    expect(STAMPS).toEqual(["working", "new", "proven", "needsYou", "notFixed"]);
     expect(historyStamp(h({ status: "running", endedAt: null }), NOW)).toBe("working");
     expect(historyStamp(h({ status: "needs_you" }), NOW)).toBe("needsYou");
     expect(historyStamp(h({ proof: "passed" }), NOW)).toBe("proven");
@@ -330,8 +346,10 @@ describe("stamps: working, new, proven, needs you", () => {
     expect(historyStamp(h({ endedAt: "2026-11-01T11:55:00Z" }), NOW)).toBe("new");
     expect(historyStamp(h({ endedAt: "2026-11-01T11:49:00Z" }), NOW)).toBeNull();
     expect(historyStamp(h({ changed: 0, endedAt: "2026-11-01T11:58:00Z" }), NOW)).toBe("new");
-    // A failure, a stop, an undo or a limit is never new or proven: its own mark says it.
-    for (const o of [{ status: "not_done", proof: "failed" }, { status: "interrupted" }, { undone: true }, { status: "daily_limit" }, { status: "error" }] as Partial<HistoryItem>[]) {
+    // A failed check is stamped Not fixed yet, as Proven is (the audit, item 31).
+    expect(historyStamp(h({ status: "not_done", proof: "failed", endedAt: "2026-11-01T11:59:00Z" }), NOW)).toBe("notFixed");
+    // A stop, an undo or a limit is never new or proven: its own mark says it.
+    for (const o of [{ status: "interrupted" }, { undone: true }, { status: "daily_limit" }, { status: "error" }] as Partial<HistoryItem>[]) {
       expect(historyStamp(h({ ...o, endedAt: "2026-11-01T11:59:00Z" }), NOW), JSON.stringify(o)).toBeNull();
     }
     expect(historyStamp(h({ endedAt: "not a date" }), NOW)).toBeNull();
@@ -340,7 +358,7 @@ describe("stamps: working, new, proven, needs you", () => {
     expect(practiceStamp("notStarted")).toBeNull();
   });
   test("their words are sentence case, never capitals; the look is a small upright outlined badge, in its meaning's colour", () => {
-    expect(S.look.stamp).toEqual({ working: "Working", new: "New", proven: "Proven", needsYou: "Needs you" });
+    expect(S.look.stamp).toEqual({ working: "Working", new: "New", proven: "Proven", needsYou: "Needs you", notFixed: "Not fixed yet" });
     const css = blocks(LOOK_CSS());
     const s = css.find((b) => b.sel === ".stamp")!.decl;
     expect(s).toMatchObject({ display: "var(--stamp-display)", "border-radius": "var(--r-stamp)", rotate: "var(--stamp-tilt)" });
@@ -387,16 +405,18 @@ describe("the details are drawn in the lists", () => {
     expect(card).toContain('<section className="panel bare hist" aria-label={S.recentTitle}>');
   });
   test("Learn: each practice with its tile; a done one is stamped Proven, its plain words kept for when stamps are off", () => {
-    // Every practice is a stuck moment to fix, so its drawing is the wrench, whatever its title says ("add" is not "make").
-    expect(practice).toContain('<ItemTile label={r.title} big kind="fix" />');
-    expect(practice).toContain("{practiceStamp(r.state) && <Stamp kind={practiceStamp(r.state)!} spoken />}");
-    expect(practice).toMatch(/className=\{`pr-state\$\{practiceStamp\(r\.state\) \? " unstamped" : ""\}`\}/);
+    // Its drawing is the kind of practice it is (practice.ts practiceKind: a fix, going live, a setting to learn), never one
+    // read from its title ("add" is not "make"); the audit, item 53: every practice had the same wrench.
+    expect(practice).toContain('<ItemTile label={r.title} big kind={practiceKind(r.entry)} />');
+    expect(practice).toContain("{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}");
+    expect(practice).toMatch(/className=\{`pr-state\$\{practiceStamp\(state\) \? " unstamped" : ""\}`\}/);
   });
   test("a stamp read by VoiceOver only where it is the only words (Learn); elsewhere the row already says it", () => {
     const marks = read("./itemMarks.tsx");
     expect(marks).toContain('aria-hidden={spoken ? undefined : "true"}');
-    // Its words are the badge's own; the side list's dot alone (dot) has none, its row's tooltip and name carry them.
-    expect(marks).toContain("{dot ? null : S.look.stamp[kind]}");
+    // Its words are the badge's own; the side list's dot (dot) has a small drawing and no words, its row's tooltip and name
+    // carry them (the audit, item 31).
+    expect(marks).toContain("{dot ? <Icon name={DOT_GLYPH[kind]} size={10} /> : S.look.stamp[kind]}");
   });
   test("Flowflow's short lines are a bubble with a tail, and there is one glossy pill per view", () => {
     const look = LOOK_CSS();
@@ -422,13 +442,20 @@ describe("the accent: what is picked in Settings, in the water chosen", () => {
         expect(ratio(colour("var(--pick-ink)", t), accent), `${w}: the knob and the tick on the accent`).toBeGreaterThanOrEqual(3);
         expect(ratio(colour("var(--fg)", t), wash), `${w}: a picked option's words on its wash`).toBeGreaterThanOrEqual(4.5);
         expect(ratio(accent, wash), `${w}: a picked option's edge on its wash`).toBeGreaterThanOrEqual(3);
+        // A switch that is on (the audit, item 24): the accent's deep blue with a white knob, as on the Mac. The track
+        // stands out on every surface and the knob on the track (3 to 1 each).
+        const track = colour("var(--switch-on)", t);
+        for (const under of ["--bg", "--surface-1", "--surface-2"]) expect(ratio(track, colour(`var(${under})`, t)), `${w}: a switch that is on, on ${under}`).toBeGreaterThanOrEqual(3);
+        expect(ratio(colour("var(--knob-on)", t), track), `${w}: the on knob on its track`).toBeGreaterThanOrEqual(3);
       }
     });
   }
   test("the switch, the segmented choice and the picture choice use it; nothing else in the look is gated on it", () => {
     const parts = blocks(read("./ui/parts.css"));
-    expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]')?.decl.background).toBe("var(--pick)");
-    expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]::after')?.decl.background).toBe("var(--pick-ink)");
+    // The audit, item 24: the on knob was --pick-ink (the page's black), a dark hole on the track; it is white now, on the
+    // accent's own deep blue (measured above).
+    expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]')?.decl.background).toBe("var(--switch-on)");
+    expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]::after')?.decl.background).toBe("var(--knob-on)");
     expect(parts.find((b) => b.sel === ".ui-seg-thumb")?.decl).toMatchObject({ background: "var(--pick-wash)", border: "var(--hair) solid var(--pick)" });
     expect(parts.find((b) => b.sel === '.ui-pic[aria-checked="true"]')?.decl["border-color"]).toBe("var(--pick)");
   });

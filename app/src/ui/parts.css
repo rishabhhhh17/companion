@@ -44,7 +44,9 @@ button, select, input, textarea { font: inherit; }
 .btn.icon:not(.primary) { border-color: transparent; color: var(--fg-2); }
 .btn.icon:not(.primary):hover:not(:disabled) { color: var(--fg); }
 .btn.icon:not(.primary):disabled { background: transparent; color: var(--ink-disabled); }
-.btn .ic { flex: none; }
+.btn .ic { flex: none; width: var(--icon-md); height: var(--icon-md); }
+/* A list's marks have one size (the audit, item 42). */
+.side-mark .ic, .ui-chip-mark .ic, .ui-menu-tick .ic, .job-label .ic { width: var(--icon-sm); height: var(--icon-sm); }
 @media (forced-colors: active) { .btn { border-color: ButtonText; } .btn.primary { border: var(--hair) solid CanvasText; } }
 
 /* ---------- Group and Row ---------- */
@@ -119,8 +121,8 @@ button, select, input, textarea { font: inherit; }
 .ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
 .ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transform-origin: left center; transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 /* On is the accent, the water chosen (M51 polish: white on dark read as a plain preferences list), its knob the page's own. */
-.ui-switch[aria-checked="true"] { background: var(--pick); box-shadow: none; }
-.ui-switch[aria-checked="true"]::after { background: var(--pick-ink); transform: translateX(var(--knob-travel)); }
+.ui-switch[aria-checked="true"] { background: var(--switch-on); box-shadow: none; }
+.ui-switch[aria-checked="true"]::after { background: var(--knob-on); box-shadow: var(--knob-on-ring); transform: translateX(var(--knob-travel)); }
 .ui-switch:hover:not(:disabled):not([aria-checked="true"]) { box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control-hover); }
 .ui-switch:active:not(:disabled)::after { transform: scaleX(var(--knob-stretch)); }
 .ui-switch[aria-checked="true"]:active:not(:disabled)::after { transform: translateX(calc(var(--knob-travel) - var(--knob-press) + var(--knob))) scaleX(var(--knob-stretch)); }
@@ -154,7 +156,7 @@ button, select, input, textarea { font: inherit; }
 .ui-menu-item { display: flex; align-items: center; gap: var(--space-1); min-height: var(--h-menu-item); padding: 0 var(--space-3) 0 var(--space-1); border-radius: var(--r-thumb); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
 .ui-menu-item[data-active] { background: var(--surface-3); }
 /* The option the arrow keys are on: a ring as well as the fill (the fill alone is near 1.1 to 1, WCAG 2.4.7). */
-.ui-menu-list:focus .ui-menu-item[data-active] { outline: var(--ring) solid var(--focus); outline-offset: calc(var(--ring) * -1); }
+.ui-menu-list:focus-visible .ui-menu-item[data-active] { outline: var(--ring) solid var(--focus); outline-offset: calc(var(--ring) * -1); }
 .ui-menu-tick { display: grid; place-items: center; flex: none; width: var(--icon-md); color: var(--fg); }
 @keyframes ui-menu-in { from { opacity: 0; transform: scale(var(--menu-from)); } }
 @media (forced-colors: active) { .ui-menu-item[data-active] { outline: var(--hair) solid Highlight; } }

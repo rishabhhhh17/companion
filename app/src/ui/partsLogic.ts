@@ -81,10 +81,12 @@ export function menuOpensUp(button: { top: number; bottom: number }, listHeight:
   return below < listHeight && above > below;
 }
 
-export type MarkName = "tick" | "half" | "cross" | "stop" | "undo" | "wait";
+export type MarkName = "tick" | "half" | "cross" | "stop" | "undo" | "wait" | "dash" | "ring" | "spin";
 /** The mark a verdict shows, and its colour's role. It only draws what verdict.ts said: partly proven ("mixed", whose icon
- *  is the waiting dot) is drawn as a half circle, as the spec's table shows. */
-export function verdictMark(v: Pick<Verdict, "icon" | "tone">): { mark: MarkName; tone: Tone } {
-  const mark: MarkName = v.icon === "wait" && v.tone === "mixed" ? "half" : v.icon;
+ *  is the waiting dot) is drawn as a half circle, as the spec's table shows; nothing changed is an empty ring, so it never
+ *  shares the dot with a change not yet proven (the audit, item 31), and never reads as a remove control as a dash did at
+ *  the end of a row (the review, 2 Nov 2026). */
+export function verdictMark(v: Pick<Verdict, "icon" | "tone"> & Partial<Pick<Verdict, "kind">>): { mark: MarkName; tone: Tone } {
+  const mark: MarkName = v.kind === "noChange" ? "ring" : v.icon === "wait" && v.tone === "mixed" ? "half" : v.icon;
   return { mark, tone: v.tone };
 }

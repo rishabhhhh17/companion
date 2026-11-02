@@ -10,12 +10,12 @@ export type ApprovalWords = { question: string; what: string | null; why: string
 /** The kinds of question the card knows. Anything else reads as one that cannot be undone. */
 const KNOWN: readonly string[] = ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule"];
 
-/** "Running: npm install zod" reads "npm install zod"; "Write: /a/b.ts" reads "/a/b.ts"; anything else as it is. With the
+/** "Running: npm install zod" (or "Bash: npm install zod") reads "npm install zod"; "Write: /a/b.ts" reads "/a/b.ts"; anything else as it is. With the
  *  project, a path inside it is shown from the project folder down (M45). */
 export function whatOf(action: string | undefined, project = ""): string | null {
   const a = (action ?? "").trim();
   if (!a) return null;
-  const m = /^(Running|Write|Edit|MultiEdit|Read|NotebookEdit):\s*(.+)$/s.exec(a);
+  const m = /^(Running|Bash|Write|Edit|MultiEdit|Read|NotebookEdit):\s*(.+)$/s.exec(a);
   return plainPath((m ? m[2] : a).trim(), project) || null;
 }
 

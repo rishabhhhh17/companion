@@ -86,6 +86,16 @@ describe("an \"are you sure\" step opening (ConfirmStep)", () => {
     expect(openStep(stepBox(null, [off, skipped, first]), page())).toBe(true);
     expect([off.focused, skipped.focused, first.focused]).toEqual([0, 0, 1]);
   });
+  // The ranked UI audit (2 Nov 2026, item 7): the review's Fix it stayed on screen with the keyboard when its question
+  // opened, so the question never had it and Escape closed Home. A step never takes the keyboard from a button that still
+  // has it, so the button it opens from steps aside while it is open (reviewCard.tsx), and then the step takes it.
+  test("an opener that stays on screen keeps the keyboard; once it steps aside, the step takes it", () => {
+    const yes = fake(), cancel = fake(), opener = fake();
+    expect(openStep(stepBox(cancel, [yes, cancel]), page({ active: opener, ids: { "home-review-fix": opener } }))).toBe(false);
+    expect(cancel.focused).toBe(0);
+    expect(openStep(stepBox(cancel, [yes, cancel]), page({ active: { tagName: "BODY" } }))).toBe(true);
+    expect(cancel.focused).toBe(1);
+  });
   test("nothing there: nothing moves", () => {
     expect(openStep(null, page())).toBe(false);
     expect(openStep(stepBox(null, []), page())).toBe(false);

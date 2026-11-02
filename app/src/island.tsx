@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { startSettings, useSetting } from "./settingsStore.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
-import { DONE_WINGS_MS, ISLAND_MODES, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
+import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, CHEER_SPRING, ISLAND_SPRING, TUCK_MS, springStep, type Spring } from "./islandSpring.ts";
 import { reactionsOn } from "./reactions.ts";
@@ -16,11 +16,12 @@ import "./style.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
 // notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
-// is only that, black, with no words. Resting the pointer on it opens the panel under it (islandPanel.tsx). While something
+// is only that, black, with no words. Resting the pointer on it opens Home itself (2 Nov 2026, island.pointOpens, decided in
+// the shell: island.rs on_point), or with Status line chosen the panel under it (islandPanel.tsx). While something
 // happens it grows short wings: a tiny Flowflow on the left, one live mark on the right. A sentence shows only under the
 // pointer, and only when there is something real to say (home.ts). The black shape moves on a small spring
 // (islandSpring.ts) toward the size the app gives; the window itself changes at once, and shrinks only after the shape has
-// tucked back. A click opens Home below it. The island never takes the keyboard (it is a borderless panel).
+// tucked back. A click always opens Home below it, at once, and never closes it (main.rs island_click). The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
 import { armed, islandJobs, resultPeekKey, RESULT_PEEK_MS } from "./islandPanel.ts";
@@ -66,17 +67,18 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
 }
 
 /** The live mark on the right wing (home.ts WingMark). Drawn only, never read: the island's name says it in words. */
-function Mark({ w, count }: { w: Wings; count: number }) {
+function Mark({ w, count, reduced }: { w: Wings; count: number; reduced?: boolean }) {
+  const mark = wingMarkShown(w.mark, !!reduced);
   // Thinking: one dot that breathes. Working and checking: a thin round arc (13 points across) that turns. Looking at the
   // screen (M46, rule 5): a ring with a dot in the middle that holds still, a light rather than a spinner.
-  const inner = w.mark === "dots" ? <i />
-    : w.mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6.5" /></svg>
-    : w.mark === "look" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle className="look-ring" cx="8" cy="8" r="6.25" /><circle className="look-dot" cx="8" cy="8" r="2.5" /></svg>
-    : w.mark === "bars" ? <><i /><i /><i /><i /></>
-    : w.mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
+  const inner = mark === "dots" ? <i />
+    : mark === "arc" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle cx="8" cy="8" r="6.5" /></svg>
+    : mark === "look" ? <svg viewBox="0 0 16 16" width="16" height="16"><circle className="look-ring" cx="8" cy="8" r="6.25" /><circle className="look-dot" cx="8" cy="8" r="2.5" /></svg>
+    : mark === "bars" ? <><i /><i /><i /><i /></>
+    : mark === "tick" ? <svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg>
     : null;
   // M46: keyed on how many questions wait, so each new one pulses the amber three more times, then it holds.
-  return <><span className="mark" key={`${w.mark}:${count}`} data-state={w.state} data-mark={w.mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
+  return <><span className="mark" key={`${mark}:${count}`} data-state={w.state} data-mark={mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
 }
 
 function Island() {
@@ -204,7 +206,7 @@ function Island() {
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
             <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
-            <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
+            <span className="island-wing right"><Mark w={w} count={m.approvals.length} reduced={reduced} /></span>
           </span>}
         </button>
         <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} />

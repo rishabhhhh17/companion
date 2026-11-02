@@ -6,6 +6,12 @@ import type { Problem } from "./model.ts";
 type LineProblem = Extract<Problem, { kind: "line" }>;
 /** The problem when it is a line in the project with its text, else null. */
 export const lineOf = (p: Problem | null | undefined): LineProblem | null => (p && p.kind === "line" && p.file ? p : null);
+/** The line is in one of the project's tests (the audit, item 41): the test is not what a learner changes, so its line goes
+ *  behind Details and the plain message leads. */
+export const fromTest = (p: Problem | null | undefined): boolean => {
+  const f = lineOf(p)?.file ?? "";
+  return /(^|\/)(tests?|__tests__|spec)\//i.test(f) || /\.(test|spec)\.[a-z]+$/i.test(f);
+};
 
 export function FailingLine({ problem }: { problem: Problem | null | undefined }) {
   const p = lineOf(problem);

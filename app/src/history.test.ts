@@ -115,7 +115,7 @@ describe("Undo in What I did", () => {
     // Only after a yes, and through the same command as the receipt's Undo (the engine refuses it while a task works).
     expect(panel).toContain("S.undoSure"); expect(panel).toContain("send(undo(project, h.checkpoint!))");
     // The receipt's own Undo lives in the result card (F28, the overhaul spec 4.2): same id, same question, same checkpoint.
-    expect(card).toContain("{undoCan(m, project) && <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: \"ui.undoAsked\", checkpoint: m.receipt.checkpoint }); }}>");
+    expect(card).toContain("<Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: \"ui.undoAsked\", checkpoint: m.receipt.checkpoint }); }}>");
     expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
   });
   test("its words are in the strings file and say why only the newest task has it", () => {

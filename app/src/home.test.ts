@@ -142,15 +142,16 @@ describe(`what ${PRODUCT} says about itself shows on every tab`, () => {
   });
   test("the card draws the notes between the top of Home and the open place, not inside one place", () => {
     const at = card.indexOf('{show("notes") && <>');
-    expect(at).toBeGreaterThan(card.indexOf('<nav className="places"'));
-    expect(at).toBeLessThan(card.indexOf('role="region"'));
+    expect(at).toBeGreaterThan(card.indexOf("<PlacesBox side={side}>"));
+    expect(at).toBeLessThan(card.indexOf('<div className="view" role='));
     const block = card.slice(at, card.indexOf("</>}", at));
     expect(block).toContain("{m.error}");
     expect(block).toContain("{m.notice}");
     expect(block).not.toContain("folderNone");
   });
   test("Memory does not say it is looking while the engine is down", () => {
-    expect(card).toMatch(/show\("memory"\) && project && !m\.memory && m\.runnerUp && /);
+    // Nor while a failed look up is said with its Try again (the audit, item 50).
+    expect(card).toMatch(/show\("memory"\) && project && !m\.memory && !m\.memoryNote && m\.runnerUp && /);
   });
 });
 
@@ -240,7 +241,8 @@ describe("the tabs from the keyboard", () => {
     expect(card).not.toContain('role="tablist"');
     expect(card).toMatch(/<Button key=\{t\} id=\{tabId\(t\)\} kind="quiet" size="sm" pressed=\{t === home\.tab\}/);
     expect(card).toContain('className="back" type="button" aria-label={S.look.back}');
-    expect(card).toContain('role="region" id={tabPanelId(home.tab)} aria-labelledby="home-title"');
+    // A place's panel is a region named by the place; Now is the page itself (the audit, item 51).
+    expect(card).toContain('role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}');
     // A place shown by itself is said out loud on the one live line, since the keyboard focus does not move there.
     expect(card).toContain("liveLine(line.current, heard.current, m, tabNow.current)");
   });
@@ -259,6 +261,11 @@ describe("a click elsewhere closes Home, unless something there needs the person
     expect(closesOnClickAway(run([ev({ type: "app.voice", stage: "listening", message: "Listening" })]), false)).toBe(false);
     expect(closesOnClickAway(run([ev({ type: "ui.undoAsked", checkpoint: "cp_1" })]), false)).toBe(false);
     expect(closesOnClickAway(initial(), true), "the first run sends people to other apps (a key, a sign in)").toBe(false);
+  });
+  test("never while the person is typing in the ask box (2 Nov 2026: pointing opens Home, so a stray click must not lose words)", () => {
+    expect(closesOnClickAway(initial(), false, true, true)).toBe(false);
+    expect(closesOnClickAway(initial(), false, true, false)).toBe(true);
+    expect(card).toMatch(/home-click-away[^\n]*closesOnClickAway\([^\n]*typingNow\(\)/);
   });
   test("the card asks before it closes, and closes the way Esc does", () => {
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(/);
@@ -356,7 +363,7 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(s.needKey).toBe(lesson().key);
     expect(markedLine(at, a)).toBe(S.homeWaiting(tabName("learn"), S.lessonsTitle));
     // The tab is marked (card.tsx draws the dot for the need's tab when it is not the open one) and VoiceOver hears it.
-    expect(card).toContain("const waits = needNow?.tab === t && t !== home.tab;");
+    expect(card).toContain("const waits = waitsOn === t && t !== home.tab;");
     expect(newsOf(run(walkStep()), "memory").map((n) => n.text)).toContain(S.homeWaiting(tabName("learn"), S.lessonsTitle));
     // Said once: the same need again says nothing and moves nothing.
     expect(markedLine(s, a)).toBeNull();
@@ -515,7 +522,7 @@ describe("Close Home when I click another app (home.closeOnClickAway)", () => {
   });
   test("off, a click elsewhere never closes Home; Esc, Close and the island or the character still do", () => {
     for (const m of [initial(), run(task()), run([...task(), approval()])]) expect(closesOnClickAway(m, false, false)).toBe(false);
-    expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(nowModel\.current, onboardingNow\.current, setting\("home\.closeOnClickAway"\) === true\)/);
+    expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(nowModel\.current, onboardingNow\.current, setting\("home\.closeOnClickAway"\) === true, typingNow\(\)\)/);
     // The shell does not even watch for clicks while it is off (main.rs open_card, homeset.rs wiring test).
     expect(read("../src-tauri/src/main.rs")).toContain("if !was_open && home_set().click_away { watch_click_away(&a); }");
   });

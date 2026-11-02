@@ -7,21 +7,24 @@
 .say { position: relative; display: inline-block; max-width: min(160px, 60%); box-sizing: border-box; padding: 4px var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-bubble); background: var(--bubble); -webkit-backdrop-filter: blur(20px) saturate(1.4); backdrop-filter: blur(20px) saturate(1.4); color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); width: max-content; box-shadow: var(--shadow-raised); animation: say-in var(--dur-3) var(--ease-out) both; }
 .say::after { content: ""; position: absolute; right: -4px; bottom: 7px; width: 7px; min-height: 7px; box-sizing: border-box; background: var(--bubble); border-right: var(--hair) solid var(--line-strong); border-top: var(--hair) solid var(--line-strong); rotate: 45deg; }
 @keyframes say-in { from { opacity: 0; translate: 0 4px; } }
-.hero .say { position: absolute; z-index: 2; right: calc(var(--space-6) - 4px); bottom: calc(var(--line-up) + var(--char) * .7 + 4px); }
-.hero .say::after { right: clamp(10px, calc(var(--char) * .42), calc(100% - 16px)); bottom: -4px; rotate: 135deg; }
+/* Over the drop, on one line, its right edge on the work's own edge (the review, 2 Nov 2026: it wrapped to two cramped lines
+   and ran past the gutter the close button and the cards keep), its tail under the drop's middle, a little above the drop's
+   head whatever its pose (it sat on the head while working). Never higher than the top of the status, so a big Flowflow or
+   the Practice tag can never push it out of the top of Home (the audit, item 6). While it shows, the status's words keep
+   clear of it. The drop's middle is about 58 percent of its column in from the column's right edge. */
+.hero .say { position: absolute; z-index: 2; right: var(--space-6); left: auto; min-width: calc(var(--char) * .58 + var(--space-3)); max-width: min(240px, 60%); text-align: center; bottom: min(calc(var(--line-up) + var(--space-5) + var(--char) * .42 + 6px), calc(100% - var(--lh-small) - var(--space-2) - 10px)); }
+.hero .say::after { left: auto; right: calc(var(--char) * .58 - 4px); bottom: -4px; rotate: 135deg; }
+.home .hero:has(.say) .hero-words { padding-right: calc(var(--char) * .95); }
 
-/* ---------- The practice card: Flowflow peeks over its top edge ----------
-   The peek is in the flow just above the card (practicePanel.tsx), never laid over the page: a longer line or bigger text
-   makes it taller and pushes the card down, so it can never reach the tab row (M51 review). Its foot tucks a quarter under
-   the card, which is drawn over it. */
+/* ---------- The practice card: Flowflow sits just above it, whole ----------
+   In the flow just above the card (practicePanel.tsx), never laid over the page: a longer line or bigger text makes it taller
+   and pushes the card down, so it can never reach the tab row (M51 review). The review of 2 Nov 2026 found it a tiny head
+   peeking over the card's corner, half hidden by the card (the founder's own complaint, "a tiny Flowflow"), so it now sits
+   whole and full size beside its line, with a little room above the card, never tucked under it. */
 .home .view .panel.practice { position: relative; z-index: 1; }
-.pr-peek { --peek: 48px; position: relative; z-index: 0; display: flex; justify-content: flex-end; align-items: flex-end; gap: var(--space-2); margin: var(--space-1) var(--space-4) calc(var(--peek) * -.25); pointer-events: none; animation: say-in var(--dur-3) var(--ease-out) both; }
-.pr-peek .say { margin-bottom: calc(var(--peek) * .25 + var(--space-2)); max-width: 220px; }
-.pr-char { display: block; flex: none; width: var(--peek); height: var(--peek); object-fit: contain; object-position: center top; }
-/* Flowflow is never cut by the card: where its foot meets the card's top edge it sits in a small pool of its own water, a
-   lens of the water with a line of light along its top, drawn over the card's edge (water stays water). */
-.home .view .panel.practice::before { content: ""; position: absolute; z-index: 2; top: calc(var(--space-1) * -1); right: calc(var(--space-4) - var(--space-1)); width: calc(48px + var(--space-1) * 2); height: var(--space-2); border-radius: var(--r-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--water) 55%, var(--sea-room)) 0, color-mix(in srgb, var(--sea-room) 85%, transparent) 60%, transparent 100%); pointer-events: none; }
-.home .pr-peek .pr-char { -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 70%, var(--mask-fade) 84%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 70%, var(--mask-fade) 84%); }
+.pr-peek { --peek: calc(76rem / 14); position: relative; z-index: 0; display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); margin: 0 var(--space-4) var(--space-2); pointer-events: none; animation: say-in var(--dur-3) var(--ease-out) both; }
+.pr-peek .say { max-width: 220px; }
+.pr-char { display: block; flex: none; width: var(--peek); height: var(--peek); object-fit: contain; object-position: center; }
 
 /* ---------- The thread: find, fix, prove. A hairline, three nodes; a node fills with the water when the next stage is reached ---------- */
 .thread { list-style: none; margin: var(--space-3) 0 var(--space-4); padding: 0; }
@@ -81,7 +84,7 @@
 .pr-state[data-state="done"] { color: var(--ok); }
 
 /* ---------- Notes: a flat card, never a sticky note. The fact first, then its source and what you can do with it ---------- */
-.note { margin: 0 0 var(--space-2); padding: 12px 14px; border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.note { margin: 0 0 var(--space-2); padding: var(--space-3) var(--space-4); border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
 .note-text { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-body) var(--font); letter-spacing: var(--track-body); user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
 .note-src { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-top: 10px; padding-top: 6px; border-top: var(--hair) solid var(--line); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .note-acts { display: inline-flex; gap: 2px; margin-right: -6px; }
@@ -94,6 +97,9 @@ button.gel.primary::before, .hero-main button.primary::before { content: ""; pos
 button.gel.primary:hover:not(:disabled), .hero-main button.primary:hover:not(:disabled) { filter: brightness(1.05); }
 button.gel.primary:active:not(:disabled), .hero-main button.primary:active:not(:disabled) { filter: brightness(.95); box-shadow: inset 0 var(--hair) 1px var(--gel-lip); }
 button.gel.primary:disabled::before, .hero-main button.primary:disabled::before { display: none; }
+/* The gel keeps its own colour under the pointer and when pressed: parts.css's main button fills (.btn.primary:hover and
+   :active) would turn it white, grey or a dark slab (the audit, item 3). Only its light changes. */
+.home .hero-main .btn.primary:not(:disabled):is(:hover, :active), .home .btn.gel.primary:not(:disabled):is(:hover, :active), .home .fr .fr-key.primary:not(:disabled):is(:hover, :active) { background: linear-gradient(180deg, var(--gel-top) 0, var(--gel-mid) 48%, var(--gel-body) 100%); color: var(--gel-ink); }
 
 /* ---------- An item's tile (M51 step 3, after HeyClicky): a soft coloured square with a simple drawing, one per item in the
    side list, History and Learn (itemMarks.tsx). Five fixed tints (ui/tokens.css), picked by data-tint; Plain icons turns
@@ -122,7 +128,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* Learn: the tile beside the practice's name, the badge after it. */
 .pr-head { display: flex; align-items: flex-start; gap: var(--space-2) var(--space-3); }
 .pr-head-text { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); min-width: 0; }
-.pr-head .tile { margin-top: 1px; }
+.pr-head .tile { margin-top: -1px; }
 .pr-head-text .pr-state { margin-left: 0; }
 
 /* History (M51 polish): one grid per task, the same in both layouts. The tile, then the name over one quiet line (how it
@@ -133,7 +139,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .hist-row:first-child { border-top: 0; }
 .hist-row > .tile { margin-top: 2px; }
 .hist-main { display: grid; gap: var(--space-desc); min-width: 0; }
-.hist-name { color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; }
+.hist-name { color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); overflow-wrap: anywhere; text-wrap: pretty; }
 .hist-meta { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
 .hist-row > .stamp { margin-top: 2px; }
 .hist-row > .hist-extra { grid-column: 2 / -1; }
@@ -145,6 +151,11 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .sw-win[data-sw="graphite"] { --sw-bg: var(--sw-graphite-bg); --sw-card: var(--sw-graphite-card); --sw-line: var(--sw-graphite-line); --sw-ink: var(--sw-graphite-ink); }
 .sw-win[data-sw="paper"] { --sw-bg: var(--sw-paper-bg); --sw-card: var(--sw-paper-card); --sw-line: var(--sw-paper-line); --sw-ink: var(--sw-paper-ink); }
 .sw-win[data-sw="deep"] { --sw-bg: var(--sw-deep-bg); --sw-card: var(--sw-deep-card); --sw-line: var(--sw-deep-line); --sw-ink: var(--sw-deep-ink); }
+.sw-win[data-sw="black"] { --sw-bg: var(--sw-black-bg); --sw-card: var(--sw-black-card); --sw-line: var(--sw-black-line); --sw-ink: var(--sw-black-ink); }
+/* Four pictures (the four themes) sit on one row in both layouts, so Black and White are seen side by side. */
+.ui-pics:has(> :nth-child(4):last-child) { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Each theme picture shows Home as it is by default: its plain page, its card, and the one blue pill. */
+.sw-win:is([data-sw="graphite"], [data-sw="paper"], [data-sw="deep"], [data-sw="black"]) .sw-main b { background: var(--sw-blue); }
 .sw-side { flex: 0 0 30%; border-radius: var(--r-key); background: var(--sw-card); }
 .sw-main { display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--space-1); min-width: 0; padding: var(--space-1) 0; }
 .sw-main i { display: block; width: 76%; min-height: 3px; border-radius: var(--r-key); background: var(--sw-ink); opacity: .7; }
@@ -153,12 +164,13 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* Tall: one column, the places along its top. */
 .sw-win[data-sw="tall"] { flex-direction: column; width: 46%; aspect-ratio: 4 / 5; }
 .sw-win[data-sw="tall"] .sw-side { flex: 0 0 16%; }
-/* The dark windows are lit like Home: the room's sky at the top of each picture, so the pictures belong to the same place. */
-.home .sw-win:not([data-sw="paper"], .sw-room) { background: radial-gradient(110% 80% at 78% -20%, color-mix(in srgb, var(--el-sky) 55%, transparent), transparent 75%), var(--sw-bg); }
+/* The layout pictures are lit like Home: the room's sky at the top, only while the light behind Home is on and the theme is
+   dark (--sw-sky-a is 0 on Black and White and with the light off, the usual). The theme pictures keep their own plain page. */
+.home .sw-win:is([data-sw="wide"], [data-sw="tall"]) { background: radial-gradient(110% 80% at 78% -20%, color-mix(in srgb, var(--el-sky) var(--sw-sky-a), transparent), transparent 75%), var(--sw-bg); }
 /* Colour: the window as Home is in each. Vivid: a full saturated sky, rays through it, the colour all the way down and a deep
-   lit floor. Calm: a faint glow at the top of a plain graphite window and a flat pill. Different at a glance. */
+   lit floor. Calm, the usual: a plain window with the one blue pill. Different at a glance. */
 .sw-room[data-sw="vivid"] { background: repeating-conic-gradient(from 168deg at 70% -40%, transparent 0deg, color-mix(in srgb, var(--el-light) 22%, transparent) 2deg, transparent 4.5deg, transparent 8deg), radial-gradient(120% 95% at 75% -15%, var(--el-sky), transparent 80%), linear-gradient(180deg, color-mix(in srgb, var(--el-sky) 30%, transparent), color-mix(in srgb, var(--el-foot) 85%, transparent)), var(--room-base); }
-.sw-room[data-sw="calm"] { background: radial-gradient(90% 60% at 75% -20%, color-mix(in srgb, var(--el-sky) 26%, transparent), transparent 75%), var(--room-base); }
+.sw-room[data-sw="calm"] { background: var(--bg); }
 .sw-room .sw-side { background: color-mix(in srgb, var(--sw-card) 70%, transparent); }
 .sw-room .sw-main b { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base) 60%); }
 .sw-room[data-sw="calm"] .sw-main b { background: var(--el-base); }
@@ -239,7 +251,10 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
    fades the light in about half a second. look.colour sets how strong each layer is. */
 .room { position: sticky; top: 0; z-index: 0; flex: none; height: calc(100vh - var(--hair)); margin-bottom: calc(var(--hair) - 100vh); overflow: clip; pointer-events: none; background: var(--room-base); opacity: var(--room-show); }
 .home > .inner { position: relative; z-index: 1; }
-.room > * { position: absolute; display: block; animation-play-state: var(--room-play); transition: --el-glow 520ms var(--ease-out), --el-deep 520ms var(--ease-out), --el-light 520ms var(--ease-out), --el-sky 520ms var(--ease-out), --el-foot 520ms var(--ease-out); }
+.room > * { position: absolute; display: block; animation-play-state: var(--room-play); }
+/* A room change (the audit, item 49): every colour of the room moves at one speed, on Home itself, so the light, the cards,
+   the rows and the gel all arrive together (they inherit the moving values; nothing below runs a second transition). */
+.home[data-element] { transition: --el-glow 280ms var(--ease-out), --el-deep 280ms var(--ease-out), --el-light 280ms var(--ease-out), --el-base 280ms var(--ease-out), --el-sky 280ms var(--ease-out), --el-foot 280ms var(--ease-out), --el-card 280ms var(--ease-out), --el-tint 280ms var(--ease-out), --el-grad-1 280ms var(--ease-out), --el-grad-2 280ms var(--ease-out), --el-grad-3 280ms var(--ease-out); }
 /* The sky is brightest where no words sit: the top right corner, above Flowflow. Over the words (the status, a page's
    title and its list) it stays a deep saturated colour, so white words read at 4.5 to 1 and the second line at 4.5 to 1
    too (measured on the screens, not only on the tokens). */
@@ -251,7 +266,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 @keyframes room-breathe { from { transform: translate(0, 0) scale(1); } to { transform: translate(-6%, -5%) scale(1.08); } }
 .room-floor { inset: 0; background: linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--el-foot) var(--room-floor-a), transparent) 64%, color-mix(in srgb, var(--el-foot) var(--room-floor-a), transparent) 100%); }
 /* Grain over the light, about 5 percent, so the light never bands and the glass never looks like plastic. */
-.room-grain { inset: 0; width: 100%; height: 100%; opacity: .05; }
+.room-grain { inset: 0; width: 100%; height: 100%; opacity: var(--grain-a); }
 /* Rays of light through the water, in every room: Flow's fall from the upper right and sway slowly, brighter while Flow
    works (--rays-work-a); Guide's are the sunbeam, in its gold, from the upper left. Calm has none at rest (--rays-a 0). One gradient,
    moved by transform only. */
@@ -290,13 +305,13 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 @keyframes rim-breathe { to { opacity: .9; } }
 .home .view .panel.amber { box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) color-mix(in srgb, var(--amber) 40%, transparent), 0 18px 36px -18px var(--el-shadow); }
 /* The steps of a job and of a practice fill with the element; the step under way glows. */
-.home .job-strip li[data-state="done"] .job-bar, .home .job-strip li[data-state="now"] .job-bar { background: var(--el-base); }
+.home .job-strip li[data-state="done"] .job-bar, .home .job-strip li[data-state="now"] .job-bar { background: var(--mark-line); }
 .home .job-strip li[data-state="now"] .job-bar { box-shadow: 0 0 8px color-mix(in srgb, var(--el-glow) 70%, transparent); }
-.home .thread-step[data-state="done"]::before, .home .thread-step[data-state="now"]::before { background: var(--el-base); }
-.home .thread-step[data-state="now"] .thread-node, .home .thread-step[data-state="done"] .thread-node { border-color: var(--el-base); }
+.home .thread-step[data-state="done"]::before, .home .thread-step[data-state="now"]::before { background: var(--mark-line); }
+.home .thread-step[data-state="now"] .thread-node, .home .thread-step[data-state="done"] .thread-node { border-color: var(--mark-line); }
 .home .thread-step[data-state="now"] .thread-node { box-shadow: 0 0 0 3px var(--el-wash); }
 .home .thread-tick { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base)); color: var(--el-ink); }
-.home .thread .live { background: var(--el-base); box-shadow: 0 0 6px var(--el-glow); }
+.home .thread .live { background: var(--mark-line); box-shadow: 0 0 6px var(--el-glow); }
 /* A proven fix glows once in the room's light (it was the water's). */
 .home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-2) var(--ease-out) both, proven-glow-room var(--dur-4) var(--ease-out) 300ms 1; }
 @keyframes proven-glow-room { 40% { box-shadow: inset 0 0 0 var(--hair) var(--el-light), 0 0 28px color-mix(in srgb, var(--el-glow) 40%, transparent); } }
@@ -304,16 +319,28 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* Flowflow's water in Home: the chosen water's sea, lit by the room it is in (tokens.css --sea-room), deep and full just under
    its surface and fading into the room's light below, so the pond is part of the room and never a painted band. The
    surface, the water under it and the sea that goes on to the ask box are one colour seen through at --sea-see, so where
-   they overlap there is no seam. Flowflow's own halo is the water's colour. */
-.home .home-pond > .ch-water { opacity: var(--sea-see); background: linear-gradient(180deg, var(--sea-room) 0, color-mix(in srgb, var(--sea-room) 70%, transparent) 55%, transparent 100%); }
-.home .home-pond .waterline .sea { fill: var(--sea-room); }
-.home .home-pond .waterline .line { stroke: var(--el-grad-1); stroke-opacity: 1; stroke-width: 2.4; }
+   they overlap there is no seam. Flowflow's own halo is the water's colour. The fade starts where the solid water ends and
+   runs to the foot with no stop in between (the review, 2 Nov 2026: a middle stop at 55 percent fell above the solid
+   part's end in the short pond, so the water stepped down in a hard line 12 points under the surface). */
+.home .home-pond > .ch-water { background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), var(--sea-tint) calc(var(--wave-foot) + 12px), transparent 100%); }
+.home .home-pond .waterline .sea { fill: var(--sea-tint); }
+.home .home-pond .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; stroke-width: 2; }
 .home .home-pond .ch-char { isolation: isolate; }
 /* The character's box reaches higher than its picture (padding, taken back by a negative margin), so the fade under the
    waterline (style.css) never clips the tip of the drop when Flowflow is big; the fade stops are moved down to match. Its
    halo stays inside the box, so no edge of it shows. */
 .home .home-pond .ch-char { --ch-up: 32px; padding-top: var(--ch-up); margin-top: calc(var(--ch-up) * -1); -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) calc(var(--ch-up) + (100% - var(--ch-up)) * .62), var(--mask-fade) calc(var(--ch-up) + (100% - var(--ch-up)) * .74)); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) calc(var(--ch-up) + (100% - var(--ch-up)) * .62), var(--mask-fade) calc(var(--ch-up) + (100% - var(--ch-up)) * .74)); }
-.home .home-pond .ch-char::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--ch-up) * .5) 2% 16%; border-radius: var(--r-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--water) 46%, transparent), transparent); }
+.home .home-pond .ch-char::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--ch-up) * .5) 2% 34%; border-radius: var(--r-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--water) var(--char-glow-a), transparent), transparent); }
+/* The glow of a state (needs you amber, done green): a soft circle behind the drop, in the pond and outside the masked box,
+   so it is never cut flat (the audit, item 28). It fades in and out. */
+.home .home-pond::after { content: ""; position: absolute; z-index: 0; right: calc(var(--space-6) - var(--char) * .05); bottom: calc(var(--space-5) - var(--char) * .2); width: calc(var(--char) * 1.1); aspect-ratio: 1; border-radius: var(--r-round); background: radial-gradient(closest-side, var(--glow-c, transparent), transparent); opacity: 0; transition: opacity var(--dur-3) var(--ease-out); pointer-events: none; }
+.home .home-pond[data-glow="needsYou"]::after { --glow-c: color-mix(in srgb, var(--amber) 34%, transparent); opacity: 1; }
+.home .home-pond[data-glow="done"]::after { --glow-c: color-mix(in srgb, var(--ok) 34%, transparent); opacity: 1; }
+/* The tall Home gives Flowflow room too (the founder, 2 Nov 2026: "a tiny Flowflow" in a corner): bigger than before, growing
+   up beside the words, the words running on under the empty left part of its box. */
+.home:not([data-side]) .hero[data-mode] { --char: calc(136rem / 14); }
+.home:not([data-side]) .hero-words { grid-column: 1 / -1; padding-right: calc(var(--char) * .72); }
+.home:not([data-side]) .home-pond .home-char { margin-top: calc((var(--char) - 104rem / 14) * -111 / 156 - 8px); }
 
 /* The one main button, lit from inside: the element's colour, a soft light falling from its top edge, a fuller colour at
    its foot, a single line of light along its top and a glow in the element under it. No glossy cap and no candy stripes:
@@ -329,10 +356,10 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 
 /* Buttons are pills (the brand language: round, lit, slightly swollen): a secondary button is a neutral key, graphite a
    step up with a white line on top and a dark one under it; the colour stays on the one gel pill. */
-.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border-color: transparent; border-radius: var(--r-pill); background: var(--keycap); box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
+.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border-color: transparent; border-radius: var(--r-pill); background: var(--keycap); box-shadow: inset 0 0 0 var(--hair) var(--keycap-ring), inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):hover:not(:disabled) { background: var(--keycap-hover); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):disabled { background: var(--fill-disabled); box-shadow: none; }
-.home .bar .ui-menu-btn { border-radius: var(--r-pill); background: var(--keycap); border-color: transparent; box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under); }
+.home .bar .ui-menu-btn, .home .hist .ui-menu-btn { border-radius: var(--r-pill); background: var(--keycap); border-color: transparent; box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under); }
 .home .ui-chip { background: color-mix(in srgb, var(--raise) 70%, transparent); }
 
 /* The ask box is the one glass surface: graphite at 85 percent, its hairline edge, a soft drop and a shadow in the room's
@@ -340,7 +367,12 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
    well over 3 to 1 on the box) and a faint ring round it, never a thick bright frame, and never the element's colour
    (focus stays neutral in every room). */
 .home .askwrap .ask { border-radius: var(--r-card); background: color-mix(in srgb, var(--surface-1) 85%, transparent); box-shadow: inset 0 var(--hair) 3px var(--sheen-top), 0 var(--hair) 4px var(--sheen-drop), 0 14px 30px -14px var(--el-shadow); }
-.home .askwrap .ask:focus-within { border-color: color-mix(in srgb, var(--focus) 55%, transparent); box-shadow: inset 0 var(--hair) 3px var(--sheen-top), 0 0 0 3px color-mix(in srgb, var(--focus) 12%, transparent), 0 14px 30px -14px var(--el-shadow); }
+/* Focus shows plainly (the audit, item 19): the focus colour on the edge and a ring outside it, never a step of 1.4 to 1. */
+.home .askwrap .ask:focus-within { border-color: var(--focus); box-shadow: inset 0 var(--hair) 3px var(--sheen-top), 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent), 0 14px 30px -14px var(--el-shadow); }
+/* The send arrow lights once there are words to send, and is plainly off while a job works. */
+.home .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled) { background: var(--el-base); color: var(--el-ink); border-radius: var(--r-pill); }
+.home .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled):hover { background: var(--el-light); color: var(--el-ink); }
+.home .ask .send:disabled { color: var(--ink-disabled); cursor: not-allowed; }
 
 /* Badges are one system in every room: a soft pill of the card colour with a little of its own colour in it (solid, so
    its words read on any light behind it), a small dot of that colour before the words, and no outline. Working is the
@@ -357,26 +389,30 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* The first run is the same room: the light behind it, the rising water in the room's own colours, and its one main
    button the gel pill. Its cards keep their solid backs, so the light never runs through words. */
 .home .fr { background: transparent; }
-.home .fr > .fr-tank { opacity: .78; background: linear-gradient(180deg, var(--sea-room), color-mix(in srgb, var(--el-deep) 40%, var(--room-base))); }
+.home .fr > .fr-tank { opacity: 1; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), color-mix(in srgb, var(--sea-tint) 45%, transparent) 100%); }
 /* The headline's second line is the water's light, a deliberate second colour, not grey words that look switched off. */
 .home .fr .fr-title-2 { color: var(--el-text); }
-.home .fr-tank .waterline .sea { fill: var(--sea-room); }
-.home .fr-tank .waterline .line { stroke: var(--el-grad-1); stroke-opacity: 1; stroke-width: 2.4; }
+.home .fr-tank .waterline .sea { fill: var(--sea-tint); }
+.home .fr-tank .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; stroke-width: 2; }
 .home .fr-dots i[data-on] { background: var(--el-base); box-shadow: 0 0 6px color-mix(in srgb, var(--el-glow) 60%, transparent); }
 .home .fr .fr-key.primary { position: relative; overflow: clip; border: var(--hair) solid color-mix(in srgb, var(--gel-edge) 60%, transparent); background: linear-gradient(180deg, var(--gel-top) 0, var(--gel-mid) 48%, var(--gel-body) 100%); color: var(--gel-ink); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), inset 0 12px 14px -12px var(--gel-gloss), 0 10px 24px -12px var(--gel-glow), 0 1px 2px var(--el-shadow); }
 .home .fr .fr-key.primary:hover:not(:disabled) { filter: brightness(1.05); }
-.home .fr .fr-key.primary:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; }
+.home .fr .fr-key.primary:disabled { border: var(--hair) solid var(--line-strong); background: var(--bg); color: var(--ink-disabled); box-shadow: none; }
+/* Skip is a quiet way out in the page's second words, not a thin underlined link on the water (the review, 2 Nov 2026). */
+.home .fr .fr-skip { color: var(--fg-2); text-decoration: none; }
+.home .fr .fr-skip:hover { color: var(--fg); text-decoration: underline; }
+.fr-need { margin-top: var(--space-3); }
 
 /* Settings is Home's list and its page: its list is the same graphite glass, its open page lit like the open place. Its
    cards of rows are plain raised glass with the soft 20 point corner. */
 .home[data-view="settings"] .settings-side .sb-item { border-radius: var(--r-card); }
 .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] { position: relative; background: var(--el-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); }
 .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] .ic { color: var(--el-text); }
-.home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 0; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--el-text); box-shadow: 0 0 8px var(--el-glow); }
+.home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--el-text); box-shadow: 0 0 8px var(--el-glow); }
 .home .ui-group-card { border: 0; border-radius: var(--r-glass); background: var(--raise-glass); box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) var(--sheen-line), 0 18px 36px -18px var(--el-shadow); }
 .home .ui-group[data-tone="danger"] .ui-group-card { box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) var(--bad-edge); }
 @container home (width >= 44rem) {
-  .home[data-layout="wide"][data-view="settings"] .settings-side { border-right-color: var(--sheen-line); background: color-mix(in srgb, var(--raise) 64%, transparent); box-shadow: inset calc(var(--hair) * -1) 0 0 var(--line); }
+  .home[data-layout="wide"][data-view="settings"] .settings-side { border-right-color: var(--sheen-line); background: color-mix(in srgb, var(--raise) 64%, transparent); }
 }
 
 /* An item's tile is lit like a small key: a line of light on top and a soft shade under it. */
@@ -387,15 +423,96 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .home.dropping::after { content: ""; position: fixed; z-index: 6; inset: var(--space-2); border: var(--hair-2) dashed color-mix(in srgb, var(--el-light) 75%, transparent); border-radius: var(--r-glass); background: color-mix(in srgb, var(--el-base) 7%, transparent); box-shadow: inset 0 0 40px color-mix(in srgb, var(--el-glow) 18%, transparent); pointer-events: none; animation: say-in var(--dur-2) var(--ease-out) both; }
 .home .askwrap .drop-line { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); color: var(--el-text); font-weight: var(--w-strong); }
 .home .askwrap .drop-line::before { content: ""; flex: none; width: 8px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--el-base); box-shadow: 0 0 8px var(--el-glow); }
-/* The changed mark beside a setting is the room's light, so it reads as a mark, not a stray dot. */
-.home .ui-row-dot::before { background: var(--el-text); box-shadow: 0 0 6px color-mix(in srgb, var(--el-glow) 60%, transparent); }
+/* The changed dot is the page's second grey, not the accent (the review, 2 Nov 2026: a small glowing blue dot read as a
+   notification). The page says what it means once (settingsPage.tsx, S.setFrame.changedLegend). */
+.home .ui-row-dot::before { background: var(--fg-2); }
 /* The places along the top of the tall Home read in full words over the lit sky; the open one stays the solid pill. */
 .home .places .btn.quiet:not([aria-pressed="true"]) { color: var(--fg); }
+/* The tall places answer the pointer (the audit, item 23), lighter than the place that is open. */
+.home .places .btn.quiet:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--r-pill); }
+.home .places .btn.quiet:not([aria-pressed="true"]):active { background: color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--r-pill); }
+/* The open place keeps its pill under the pointer too (a quiet button's hover cleared it, so the place just pressed lost its mark). */
+.home .places .btn.quiet[aria-pressed="true"]:is(:hover, :active) { background: var(--surface-2); }
 /* A follow up's one line field: a long example in it ends in an ellipsis, never cut off mid word. */
 .home .followup input { text-overflow: ellipsis; }
 /* Small words straight on the room's light keep a dark backing or the page's full words, so they read on the brightest
    sky: the Practice tag, and the first run's step count. */
 .home .hero-tag { background: color-mix(in srgb, var(--surface-1) 82%, transparent); }
-.home .fr-count { padding: 0 var(--space-2); border-radius: var(--r-pill); background: color-mix(in srgb, var(--surface-1) 82%, transparent); color: var(--fg); }
+.home .fr-count { padding: 3px var(--space-3); border-radius: var(--r-pill); background: color-mix(in srgb, var(--surface-1) 82%, transparent); color: var(--fg); }
 /* The first run is the lit room too, so its second words take the room's lighter grey (tokens.css --fg-2). */
 .home .fr { --fg-2: color-mix(in srgb, var(--el-light) 30%, var(--fg-2-room)); }
+
+/* ---- the ranked UI audit, 2 Nov 2026 (auditFirstHalf.test.ts) ---- */
+/* Item 12: a note or an error on Home sits on its own backing, never straight on the lit sea. */
+.home .error, .home .notice { background: color-mix(in srgb, var(--surface-1) 82%, transparent); border-radius: var(--r-card); padding: var(--space-2) var(--space-3); }
+.home .panel.notice { padding: var(--space-3); }
+/* Item 15: red on a dark room's card is the lighter red, so it reads there (4.8 to 5.3 to 1); White keeps its own red. */
+.home .btn.danger { color: var(--bad-room); border-color: color-mix(in srgb, var(--bad-room) 45%, transparent); }
+/* Item 11: a review at work has the live dot, as a job's thread does. */
+.review-busy { display: flex; align-items: center; gap: var(--space-2); }
+.review-busy::before { content: ""; flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); box-shadow: 0 0 6px var(--el-glow); animation: live-dot 1.6s ease-in-out infinite; }
+/* Item 21: the folder menu in the top bar opens to the right (in the tall Home it ran past the window's left edge), and a
+   long folder name is cut with an ellipsis before Close (its whole path is the tooltip). */
+.home .bar .ui-menu { flex: 0 1 auto; min-width: 0; max-width: calc(100% - var(--h-sm) - var(--space-3)); }
+.home .bar .ui-menu-btn { max-width: 100%; min-width: 0; }
+.home .bar .ui-menu-list { left: 0; right: auto; }
+.home .bar .ui-menu-value { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; overflow-wrap: anywhere; text-align: left; }
+/* Item 22, in Settings' list: hover is lighter than the place that is open, and press is the open place's own tint. */
+.home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--el-row) 55%, transparent); }
+.home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):active { background: var(--el-row); }
+/* Item 7: a question opened inside a card scrolls clear of the ask box's band. */
+.home .confirm-step { scroll-margin-bottom: calc(var(--h-lg) * 2 + var(--space-6)); }
+
+/* The audit, second half (2 Nov 2026). Item 33: a box inside a glass card is a faint wash of the words' own colour, never a
+   flat grey that reads as a hole in the card. */
+.home .review-reasons li, .home .changes, .home .note, .home .ui-seg, .home .hist input[type="search"] { background: color-mix(in srgb, var(--fg) 4%, transparent); }
+/* Item 47: History's search and its filter are one height, and the filter is the same keycap menu as the folder picker. */
+.home .hist input[type="search"] { box-sizing: border-box; height: var(--h-md); padding-block: 0; }
+/* Item 48: Settings has one headline, the section's own title; the bar's Settings is a quiet card size title. */
+.home[data-view="settings"] .view-title { font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); letter-spacing: var(--track-title); }
+/* Item 34: the checks' title has a fixed 16 point slot for its mark, as each check row has, so a failed result never moves
+   the title; a failed proof's mark is red (amber is for needing you). A check's own words sit on their own line, in the
+   page's face, and Details opens with the same chevron as every other fold. */
+.proof-panel > h2 { display: flex; align-items: center; gap: var(--space-2); }
+.tone-slot { display: grid; place-items: center; flex: none; width: 16px; }
+.proof-panel[data-failed] .tone-slot { color: var(--bad); }
+.proof .check-detail { display: block; font-family: var(--font); }
+details.raw > summary { list-style: none; display: inline-flex; align-items: center; gap: var(--space-1); color: var(--fg-2); font-family: var(--font); cursor: default; }
+details.raw > summary::-webkit-details-marker { display: none; }
+details.raw > summary .ic { transition: transform var(--dur-1) var(--ease-out); }
+details.raw[open] > summary .ic { transform: rotate(90deg); }
+/* Item 31: a failed task is stamped Not fixed yet in History, in the failure's red. In the side list each badge's dot is a
+   small drawing in its colour (a turning ring, a light, a tick, !), so no state is told by colour alone. */
+.stamp[data-stamp="notFixed"] { color: var(--bad); }
+.home .stamp[data-stamp="notFixed"] { color: var(--bad); }
+.ic-spin { transform-origin: 12px 12px; animation: ic-spin 1.2s linear infinite; }
+@keyframes ic-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ic-spin { animation: none; } }
+/* Item 51: the status's quiet line sits under its heading, no longer inside it, on the words' column (after the 20 point
+   mark when there is one). History with nothing yet shows Flowflow over its one way to start. */
+.status-sub { margin-top: 0; }
+.status-head:has(.ui-verdict:not([data-bare])) .status-sub { padding-left: calc(20px + var(--space-2)); }
+.hist-empty .pr-peek { justify-content: flex-start; margin: var(--space-2) 0 0; }
+/* Item 52: the first check's live line, the same breathing dot as a thread's step. */
+.fr-live { display: flex; align-items: center; gap: var(--space-2); }
+.fr-live .live { flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); animation: live-dot 1.6s ease-in-out infinite; }
+/* A step that is done is in full ink with a small tick, so it is never told from one still to come by colour alone. */
+.job-strip li[data-state="done"] { color: var(--fg); }
+.job-label { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
+.job-label .ic { flex: none; color: var(--ok); }
+.job-top > button { margin-left: auto; }
+.more-desc { margin: 0 0 var(--space-2); font-size: var(--t-small); line-height: var(--lh-small); min-height: var(--lh-small); }
+/* Item 54: the notch's two wing marks sit in one same size box each, so both are the same inset from the shape's edge and
+   on one centre line. The peek's lines start on the row's left edge, and its Stop is a pill like the notch's other presses. */
+.island-wing > .island-flow, .island-wing > .mark { flex: none; width: var(--wing-mark); height: var(--wing-mark); display: grid; place-items: center; }
+.island-wing > .island-flow { object-fit: contain; }
+.island-panel .ip-status, .island-panel .ip-note, .island-panel .ip-new { text-align: left; }
+.island-panel .ip-live > button { border-radius: var(--r-pill); }
+/* Item 53: the first practice, not yet started, leads Learn as a card of its own. */
+.home .pr-item.pr-feature { margin: var(--space-2) 0 var(--space-3); padding: var(--space-4); border: 0; border-radius: var(--r-card); background: color-mix(in srgb, var(--fg) 4%, transparent); box-shadow: inset 0 0 0 var(--hair) var(--sheen-line); }
+.home .pr-item.pr-feature + .pr-item { border-top: 0; }
+.proof details.raw > summary .ic { color: var(--fg-2); }
+
+/* Settings' picture choices in the wide Home's 480 points: a shorter stage, so the theme pictures and their names are in
+   view under Layout without scrolling (the review, 2 Nov 2026: they were cut at the foot with no names). */
+.home[data-layout="wide"] .ui-pic-stage { min-height: calc(var(--h-pic) * .7); }

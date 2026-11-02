@@ -186,3 +186,9 @@ export function reviewStamp(r: ReviewCard): Stamp {
   if (r.result && r.result.rating !== "safe") return "needsYou";
   return "new";
 }
+
+/** A reason's sentence already names its file, so its place in mono under it would say it twice (the audit, item 53). */
+export function placeSaid(r: { say: string; file?: string | null; line?: number | null }): boolean {
+  const name = (r.file ?? "").split("/").filter(Boolean).at(-1) ?? "";
+  return !!name && r.say.includes(name);
+}

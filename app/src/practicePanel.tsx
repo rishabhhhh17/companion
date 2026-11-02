@@ -7,13 +7,13 @@ import { ItemTile, Stamp } from "./itemMarks.tsx";
 import { useId, useState, type ReactNode } from "react";
 import { ChangesCard } from "./changesCard.tsx";
 import { ConfirmStep } from "./confirm.tsx";
-import { FailingLine, lineOf } from "./failingLine.tsx";
+import { FailingLine, fromTest, lineOf } from "./failingLine.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
 import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type ProofLine, type UndoState } from "./model.ts";
-import { costWords, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
+import { costWords, FIRST_PRACTICE, practiceKind, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
 import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
@@ -85,7 +85,7 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
     <div role="group" aria-label={S.practiceChanged}>
       {r.changed.length > 0 && <>
         <ChangesCard changed={r.changed} />
-        <div className="line muted slip">{r.usdEstimate > 0 ? `${S.cost}: ${formatUsd(r.usdEstimate)}` : S.noCost}</div>
+        <div className="line muted slip">{r.usdEstimate > 0 ? S.fixCost(formatUsd(r.usdEstimate)) : S.noCost}</div>
       </>}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
@@ -159,17 +159,18 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       {p.stage === "start" && <>
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>
         {!gate && <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>}
-        {task && <div className="line muted">{S.practiceRulesNote}</div>}
+        {/* The house rule note, folded (the audit, item 41: three paragraphs stood before the buttons). */}
+        {task && <details className="raw pr-rules"><summary><Icon name="chevron" size={12} />{S.practiceRulesTitle}</summary><p className="line muted">{S.practiceRulesNote}</p></details>}
         {!canFind && <div className="line" role="status">{S.groups.practiceNeedsFlow}</div>}
         <div className="row">{findButton}<button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button></div>
       </>}
       {p.stage === "found" && <>
         {/* The words say what is wrong; the proof row under them shows where, and the line itself, in the system mono. */}
         <div className="line"><b>{S.practiceFound}</b> {lineOf(p.problem) ? (p.where?.message ?? lineOf(p.problem)!.message) : placeLine(p.where)}</div>
-        <FailingLine problem={p.problem} />
+        {/* A test's own line is not what the learner changes, so it waits behind Details (the audit, item 41). */}
+        {fromTest(p.problem) ? <details className="raw"><summary><Icon name="chevron" size={12} />{S.checkDetails}</summary><FailingLine problem={p.problem} /></details> : <FailingLine problem={p.problem} />}
         {p.undone && <div className="line">{S.practiceUndone}</div>}
         <div className="line muted">{w.foundMore}</div>
-        {task && canFix && <div className="line muted">{S.practiceFixHelp}</div>}
         {task && !canFix && <div className="line" role="status">{S.groups.practiceNeedsFlow}</div>}
         <div className="row">
           {p.problem && <button className="btn" type="button" onClick={() => act.where(p.problem!)}>{S.pointWhere}</button>}
@@ -242,17 +243,21 @@ function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boo
   const [ask, setAsk] = useState<"startOver" | "remove" | null>(null);
   const overId = useId(), removeId = useId();
   const id = r.entry.id, blocked = busy || r.needsNode;
+  // The practice open on Now is under way even before its copy is recorded, so the list never says Not started beside the
+  // practice card's Find it: Now (the review, 2 Nov 2026).
+  const state: typeof r.state = open && r.state === "notStarted" ? "inProgress" : r.state;
   return (
-    <div className="line pr-item" role="group" aria-label={r.title}>
+    // The first practice, not yet started, leads the list as a card of its own (the audit, item 53).
+    <div className={`line pr-item${r.entry.id === FIRST_PRACTICE && state === "notStarted" ? " pr-feature" : ""}`} role="group" aria-label={r.title}>
       {/* M51 step 3: the practice's tile, its name, and a done one's Proven stamp in place of its plain state (shown again
           while stamps are off in Settings). */}
-      <div className="pr-head"><ItemTile label={r.title} big kind="fix" />
-        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(r.state) ? " unstamped" : ""}`} data-state={r.state}>{S.practiceState[r.state]}</span>{practiceStamp(r.state) && <Stamp kind={practiceStamp(r.state)!} spoken />}</span></div>
+      <div className="pr-head"><ItemTile label={r.title} big kind={practiceKind(r.entry)} />
+        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(state) ? " unstamped" : ""}`} data-state={state}>{S.practiceState[state]}</span>{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}</span></div>
       <div className="line">{r.teaches}</div>
       <div className="line muted">{r.time} · {r.cost}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
       {!ask && <div className="row">
-        {(r.state === "notStarted" || (r.state === "done" && !r.there)) && <button className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
-        {r.state === "inProgress" && !open && <button className="btn" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
+        {(state === "notStarted" || (state === "done" && !r.there)) && <button className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
+        {state === "inProgress" && !open && <button className="btn" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
         {r.there && <button id={overId} className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStartOver}: ${r.title}`} onClick={() => setAsk("startOver")}>{S.practiceStartOver}</button>}
         {r.there && <button id={removeId} className="btn" type="button" disabled={busy} aria-label={`${S.practiceRemove}: ${r.title}`} onClick={() => setAsk("remove")}>{S.practiceRemove}</button>}
       </div>}

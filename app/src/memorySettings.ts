@@ -39,3 +39,11 @@ export function recapDue(last: number, now: number, choice: unknown = setting("w
     default: return now - last >= 30 * MIN;
   }
 }
+
+/** A note's date in words ("2 Nov 2026"), never raw ISO (the audit, item 50). Anything that is not a date stays as it came. */
+export function memoryDate(raw: string): string {
+  if (!raw) return "";
+  const t = Date.parse(raw);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(raw) || !Number.isFinite(t)) return raw;
+  try { return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(t)); } catch { return raw; }
+}

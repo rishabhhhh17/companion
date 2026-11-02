@@ -54,7 +54,7 @@ export class FlowflowRenderer {
         uHalf: { value: [1.6, FRAME_HEIGHT / 2] }, uCenter: { value: [0, 0] }, uScale: { value: BODY_SCALE }, uPx: { value: 0.01 },
         uPose: { value: new Vector4() }, uMove: { value: [1, 0, 0] }, uEyes: { value: new Vector4() }, uOpen: { value: 1 },
         uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uSurf: { value: new Vector4() }, uPress: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
-        uSway: { value: 0 }, uSwayTime: { value: 0 }, uAmber: { value: 0 },
+        uSway: { value: 0 }, uSwayTime: { value: 0 }, uAmber: { value: 0 }, uEnvBase: { value: new Color(0, 0, 0) },
       },
     });
     // One quad over the whole canvas: the drop and its eyes are worked out per pixel (shaders.ts).
@@ -72,6 +72,12 @@ export class FlowflowRenderer {
   setColours(light: string, deep: string): void {
     this.bodyMat.uniforms.uColA.value = asWritten(new Color(light)); this.bodyMat.uniforms.uColB.value = asWritten(new Color(deep));
     this.dropMat.uniforms.uColA.value = asWritten(new Color(light));
+  }
+  /** The page's sky behind the drop (--pond), so the rim reflects it (the audit, item 30). A colour three.js cannot read
+   *  keeps the last one. */
+  setEnvBase(css: string): void {
+    const v = css.trim(); if (!v) return;
+    try { this.bodyMat.uniforms.uEnvBase.value = asWritten(new Color(v)); } catch { /* not a colour three.js reads */ }
   }
   /** M46: the liveliness chosen (Gentle caps the pixel ratio). The caller measures again after a change. */
   setMode(m: Liveliness): void { this.gentle = m === "gentle"; }

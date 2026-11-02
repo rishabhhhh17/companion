@@ -734,8 +734,13 @@ fn island_hover_changed(inside: bool) {
 fn island_hover_settle() {
     let t = now() as u64;
     let (shown, wait) = { let mut h = ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()); (h.at(t), h.wait_ms(t)) };
-    let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.hover != shown; s.hover = shown; c };
+    // 2 Nov 2026 (island.pointOpens): resting on the notch opens Home itself, the usual; Status line keeps the peek. A
+    // question already open under the wings stays there (island.rs on_point).
+    let act = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); island::on_point(*s, home_set().point_opens) };
+    let peek = island::peek_hover(shown, act);
+    let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.hover != peek; s.hover = peek; c };
     if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "hover"); } }
+    if shown && act == island::PointDo::OpenHome { if let Some(app) = APP.get() { open_card(app, "point", false); } return; }
     // Not settled yet (the pointer has only just come or gone): look again when it may have.
     if let (Some(ms), Some(app)) = (wait, APP.get()) {
         let a = app.clone();
@@ -1942,9 +1947,11 @@ fn first_run_open(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), St
 #[tauri::command]
 fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 
-/// Clicking the island in the notch does the same (F18).
+/// Clicking the island in the notch opens Home at once (F18), and never closes it (2 Nov 2026: pointing may have opened it
+/// a moment before, and the click that meant to open it must not close it). Home closes by Esc, Close or a click elsewhere.
+/// Never with the keyboard (rule 9): Home takes it only when the person clicks into it.
 #[tauri::command]
-fn island_click(app: AppHandle) { toggle_home(app, "island"); }
+fn island_click(app: AppHandle) { open_card(&app, "island", false); }
 
 /// Home rolls back up into the notch as it closes (style.css .home.closing, the reverse of its opening), then its panel goes.
 /// At once with Reduce motion or Less motion. Must match style.css home-roll-up (motion.test.ts checks).

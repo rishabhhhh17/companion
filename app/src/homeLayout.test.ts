@@ -75,7 +75,7 @@ describe("Home draws the wide layout", () => {
   });
   test("the places are in the list, not twice: the top row has none while the list shows, and Now's recent fixes are not drawn twice", () => {
     expect(card).toContain("const places = side ? [] : barPlaces(");
-    expect(card).toContain('{!side && <button className="back"');
+    expect(card).toContain('{!side && home.tab === "settings" && <button className="back"');
     expect(card).toContain('{home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList ');
   });
   test("each place keeps its old id (focus.ts goes back to it), says which is open, and shows a waiting dot with words", () => {

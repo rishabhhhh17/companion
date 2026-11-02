@@ -163,7 +163,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, l
 
 /** Four or more choices: a button showing the choice, which opens a list with a tick by the one chosen. Never a plain
  *  select. `placeholder`: the words when nothing is chosen (an action menu keeps value ""). */
-export function Menu<T extends string>({ value, options, onChange, label, labelledBy, describedBy, id, disabled, placeholder = "", size = "sm" }: Named & { value: T | ""; options: readonly Option<T>[]; onChange: (v: T) => void; placeholder?: string; size?: ButtonSize }) {
+export function Menu<T extends string>({ value, options, onChange, label, labelledBy, describedBy, id, disabled, placeholder = "", size = "sm", title }: Named & { value: T | ""; options: readonly Option<T>[]; onChange: (v: T) => void; placeholder?: string; size?: ButtonSize; /** The whole value as a tooltip, when its words may be cut (Home's folder menu). */ title?: string }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [up, setUp] = useState(false);
@@ -200,7 +200,7 @@ export function Menu<T extends string>({ value, options, onChange, label, labell
   };
   return (
     <span className="ui-menu" ref={wrap}>
-      <button ref={btn} id={id} type="button" className={btnClass("secondary", size, "ui-menu-btn")} disabled={disabled}
+      <button ref={btn} id={id} type="button" className={btnClass("secondary", size, "ui-menu-btn")} disabled={disabled} title={title}
         aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined}
         aria-label={labelledBy ? undefined : label ? `${label}: ${shown}` : undefined} aria-labelledby={labelledBy ? `${labelledBy} ${valueId}` : undefined} aria-describedby={describedBy}
         onClick={() => (open ? close() : show(at >= 0 ? at : 0))} onKeyDown={onButtonKey}>
@@ -317,12 +317,12 @@ export function Card({ title, id, className = "", labelId, children }: { title?:
 /** A key chord as the Mac's own caps (⌃ ⌥ ⌘ F), one cap each. VoiceOver reads the words ("Control, Option, Command and
  *  F"), or nothing when `hidden` (inside a control whose own name already says it). Nothing for a chord the app does not
  *  write. */
-export function KeyLabel({ chord, hidden, down }: { chord: string | null | undefined; hidden?: boolean; down?: boolean }) {
+export function KeyLabel({ chord, hidden, down, label }: { chord: string | null | undefined; hidden?: boolean; down?: boolean; /** What the keys do, said before them ("Hold to talk: Option and Space"). */ label?: string }) {
   const caps = keycaps(chord);
   if (!caps.length) return null;
   // `down`: the talk keys are held (the app's own voice state, never a key being read): the caps press.
   const cs = caps.map((c, i) => <kbd key={i} className="ui-key" data-down={down ? "" : undefined}>{c}</kbd>);
-  return hidden ? <span className="ui-keys" aria-hidden="true">{cs}</span> : <span className="ui-keys" role="img" aria-label={chordLabel(chord!)}>{cs}</span>;
+  return hidden ? <span className="ui-keys" aria-hidden="true">{cs}</span> : <span className="ui-keys" role="img" aria-label={label ? `${label}: ${chordLabel(chord!)}` : chordLabel(chord!)}>{cs}</span>;
 }
 
 export type VerdictSize = "card" | "headline" | "small";
@@ -355,8 +355,10 @@ export function ProofChip({ kind, label = "" }: { kind: ChipKind; label?: string
 
 /** A recent fix on Home or in What I did: its result's mark, its name, when, and what it cost. The whole row opens its
  *  receipt. */
-export function RecentRow({ verdict, name, meta, cost, onOpen }: { verdict: Verdict; name: string; meta: string; cost: string; onOpen: () => void }) {
-  const { mark, tone } = verdictMark(verdict);
+export function RecentRow({ verdict, name, meta, cost, onOpen, running }: { verdict: Verdict; name: string; meta: string; cost: string; onOpen: () => void; running?: boolean }) {
+  // A task still at work has the working mark, as in the side list and History, never the dot of a finished one (item 31).
+  const { tone } = verdictMark(verdict);
+  const mark = running ? "spin" : verdictMark(verdict).mark;
   return (
     <button type="button" className="ui-recent" data-tone={tone} aria-label={`${S.ui.openReceipt(name)}. ${verdict.headline}. ${meta}. ${cost}`} onClick={onOpen}>
       <span className="ui-recent-mark" aria-hidden="true"><Icon name={mark} size={16} /></span>

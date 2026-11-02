@@ -222,6 +222,9 @@ export type Model = {
   drive: DriveProgress | null;
   history: HistoryItem[];
   runnerUp: boolean;
+  /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
+   *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
+  sending?: { words: string } | null;
   connected: "unknown" | "api_key" | "plan" | "none";
   /** What Anthropic said about the key the person just saved (keytest.ts), and when it arrived, so setup shows only the
    *  answer for the key it saved. Null until a saved key was checked. */
@@ -423,6 +426,21 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
 // The everyday look (everyday.ts) is taken first, from the Show me look waiting then, and settled after everything else:
 // a look whose Show me went away or failed waits no more.
 export function reduce(m: Model, e: Ev): Model {
+  // Return pressed (item 27): shown at once, before the engine answers.
+  if (e.type === "ui.taskSent") return { ...m, sending: { words: String(e.words ?? "").slice(0, 500) } };
+  if (m.sending) {
+    const out = reduceOne(m, e);
+    // The engine answered: the task began (its undo point, or its first state), it was refused or failed, the folder
+    // changed, or everything stopped. Then the real state shows.
+    const ended = e.type === "ui.taskSendFailed" || e.type === "checkpoint.created" || e.type === "ui.projectChanged" || e.type === "app.stop_everything"
+      || e.type === "protocol.error" || out.task !== m.task || out.receipt !== m.receipt || (!!out.error && out.error !== m.error) || (!!out.notice && out.notice !== m.notice)
+      || (e.type === "agent.state" && (e.state === "idle" || e.state === "error" || e.state === "needsYou"));
+    return ended ? { ...out, sending: null } : out;
+  }
+  return reduceOne(m, e);
+}
+
+function reduceOne(m: Model, e: Ev): Model {
   // The limit card goes once new work starts, another folder is chosen, or everything stops.
   if (m.proLimit && ((e.type === "agent.state" && (e.state === "thinking" || e.state === "working")) || e.type === "ui.projectChanged" || e.type === "app.stop_everything")) m = { ...m, proLimit: null };
   // M52: the review card follows its own events and presses (review.ts). A refused Fix it is said on its card, not as
@@ -780,6 +798,8 @@ function reduceRest(m: Model, e: Ev): Model {
       if (m.approvals.some((a) => a.id === e.approval)) return m;
       return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt, action: e.action, undoable: e.undoable }] };
     case "proof.step": {
+      // The first run's check (and Point at the problem) says which step it is on while it runs (the audit, item 52).
+      if (m.point?.stage === "checking" && e.status === "running") m = { ...m, point: { ...m.point, label: String(e.label ?? e.rung) } };
       if (!m.task || m.away[e.agent] !== undefined) return m;
       const p = m.task.proof;
       // A step arriving after a finished try means the work was sent back and is being checked again.
@@ -941,7 +961,10 @@ function reduceRest(m: Model, e: Ev): Model {
     case "memory.agents_written": return { ...m, notice: `${PRODUCT} updated ${(e.files ?? []).join(" and ")} with the facts about this project.` };
     case "ui.memoryClosed": return { ...m, memory: null, memoryNote: null, exported: null };
     // An error while the practice fix runs (busy, daily limit, a failure) must not leave it waiting forever.
-    case "protocol.error": if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
+    // The memory could not be read (the audit, item 50): the Memory page says why and offers Try again, never loading for ever.
+    case "ui.memoryRetry": return { ...m, memoryNote: null };
+    case "protocol.error": if (String(e.failed ?? "") === "memory.list" && !m.memory) return { ...m, memoryNote: plainError(String(e.reason)), error: null };
+      if (m.undo?.stage === "working") return { ...m, undo: { ...m.undo, stage: "failed", note: plainError(String(e.reason)) }, error: null };
       // Put my fix back could not be done: the person's turn stays as it was, with the reason.
       if (m.teach?.stage === "restoring") return { ...m, teach: { ...m.teach, stage: "ready", note: plainError(String(e.reason)) }, error: null };
       // The practice's fix ends on an error only before its task began, or when the engine failed that request itself; once
@@ -1115,6 +1138,13 @@ export function notDoneReason(m: Model): string | null {
   return f ? `${f.label}: ${checkParts({ ...f, status: "failed" }).summary}` : S.verdict.failedLine;
 }
 
+/** The "I did not say it was finished" line under the checks, only when no failed check row already says why (the audit,
+ *  item 34: the same failure was said three times). */
+export function notDoneLine(m: Model): string | null {
+  const why = notDoneReason(m);
+  return why && !m.task!.proof!.steps.some((s) => s.status === "failed") ? why : null;
+}
+
 // How the character's pictures move (character.live off). Reduced motion freezes everything. M46: the live drawing has no
 // data-motion at all (dock.tsx); it moves itself (flowflow/).
 export function motionFor(state: CharacterState, reduced: boolean): "none" | "breathe" | "swirl" | "busy" | "scan" | "glow" | "droop" {
@@ -1151,10 +1181,10 @@ export function stateLabel(s: CharacterState): string {
 export function shipWords(m: Model): string | null {
   const s = m.ship;
   if (!s) return null;
-  if (s.canShip) return "Ready to ship: every check passed";
+  if (s.canShip) return "Ready to go live: every check passed";
   const b = s.blockedBy.length, n = s.needsYou.length;
   const parts = [b ? `${b} ${b === 1 ? "thing is" : "things are"} blocking it` : "", n ? `${n} ${n === 1 ? "needs" : "need"} you` : ""].filter(Boolean);
-  return `Not ready to ship: ${parts.join(" and ")}`;
+  return `Not ready to go live: ${parts.join(" and ")}`;
 }
 // The gates that could not run and may be confirmed by the person.
 export const confirmable = (m: Model): string[] => (m.ship?.gates ?? []).filter((g) => g.status === "could_not_check" && g.overridable).map((g) => g.id);
@@ -1322,6 +1352,8 @@ export function visualState(m: Model): CharacterState {
   if (m.voice?.stage === "transcribing") return "thinking";
   if (m.showme && ["pointing", "pointing_roughly", "your_turn_miss"].includes(m.showme.stage)) return "needsYou";
   if (m.showme && ["your_turn_done", "done_for_you"].includes(m.showme.stage)) return "done";
+  // Return was just pressed: thinking, until the engine says what it is doing.
+  if (m.sending && (m.character === "idle" || m.character === "done" || m.character === "error")) return "thinking";
   return m.character;
 }
 

@@ -16,6 +16,6 @@ describe("what a fix changed, as one card (M39)", () => {
     const src = readFileSync(new URL("./changesCard.tsx", import.meta.url), "utf8");
     expect(src).toContain('const MARK: Record<string, string> = { added: "+", modified: "●", deleted: "−" };');
     expect(src).toContain('<span className="sr">');
-    expect(readFileSync(new URL("./card.tsx", import.meta.url), "utf8")).toContain("<ChangesCard changed={m.receipt.changed} />");
+    expect(readFileSync(new URL("./card.tsx", import.meta.url), "utf8")).toContain("<ChangesCard changed={m.receipt.changed} undone={undone} />");
   });
 });

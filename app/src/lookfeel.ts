@@ -20,38 +20,53 @@ export function waterOf(v: unknown): Water { return typeof v === "string" && (WA
 /** How far to turn the hue of Flowflow's pictures (drawn in ocean blue) to reach this water. */
 export function hueTurn(w: Water): number { return WATER_TINTS[w].hue - WATER_TINTS.ocean.hue; }
 
-/** Home's theme (look.theme, M51): Graphite, the usual, Paper (light) or Deep (dark sea blue). A "night" saved before M51
- *  reads as Graphite, the dark look that replaced it, so no saved value breaks; anything else odd is Graphite too. */
-export const THEMES = ["graphite", "paper", "deep"] as const;
+/** Home's theme (look.theme, M51; 2 Nov 2026): Black, the usual (the founder: "make dark theme where you make everything
+ *  black ... so we gonna have white and black"), Graphite, Deep (dark sea blue) or White. White is stored as "paper", the
+ *  value it had before, so a saved choice never breaks. A "night" saved before M51 reads as Graphite, the dark look that
+ *  replaced it; anything else odd is the usual, Black. */
+export const THEMES = ["black", "paper", "graphite", "deep"] as const;
 export type Theme = (typeof THEMES)[number];
-export function themeOf(v: unknown): Theme { return typeof v === "string" && (THEMES as readonly string[]).includes(v) ? (v as Theme) : "graphite"; }
+export const USUAL_THEME: Theme = "black";
+export function themeOf(v: unknown): Theme {
+  if (v === "night") return "graphite";
+  return typeof v === "string" && (THEMES as readonly string[]).includes(v) ? (v as Theme) : USUAL_THEME;
+}
+/** Whether each theme is a dark page or a light one (data-tone on the root), so a rule that only cares about that never
+ *  names a theme, and a new theme needs one line here (the audit, item 10). */
+export const THEME_TONE: Record<Theme, "dark" | "light"> = { graphite: "dark", deep: "dark", black: "dark", paper: "light" };
 
 /** The other look choices (M51 step 3, the founder: "as much customization as possible"). Each becomes a data attribute on
- *  the page's root, and ui/tokens.css switches tokens on it; no other code branches on them. The first of each is the usual
- *  one, which has no rule, so the usual look is exactly :root's. */
+ *  the page's root, and ui/tokens.css switches tokens on it; no other code branches on them. `usual` is the one a person
+ *  gets until they choose, and the first of the values, as in protocol/settings.json. Unlike before 2 Nov 2026 the usual
+ *  look is not :root's alone: the stylesheet has a rule for the values that are not :root's (Calm, Off, Plain).
+ *  The colour rule (the founder, 2 Nov 2026, after showing friends: "too many colors, so it looks like an aquarium"): calm
+ *  and grown up. A neutral page carries Home, with one accent, the water's blue, used sparingly. So the usual is Calm, no
+ *  light behind Home, and plain list icons; Vivid, the light and colourful icons stay as choices. */
 export const LOOK_CHOICES = {
-  "look.density": { attr: "data-density", values: ["comfortable", "compact"] },
-  "look.icons": { attr: "data-icons", values: ["colour", "plain"] },
-  "look.stamps": { attr: "data-stamps", values: ["on", "off"] },
-  "look.gloss": { attr: "data-gloss", values: ["on", "flat"] },
-  "look.corners": { attr: "data-corners", values: ["soft", "crisp"] },
-  /** The light behind Home (the brand language, 1 Nov 2026): it drifts slowly while Home is in use, holds still, or is off
-   *  (plain graphite). Reduce motion and Less motion always hold it still. */
-  "look.light": { attr: "data-light", values: ["moving", "still", "off"] },
-  /** How much colour (the founder, 1 Nov 2026: "very colourful and out there"): Vivid, the usual, or Calm, a step quieter.
-   *  It turns the room's light, the cards' tint and the gel's shine up or down together (ui/tokens.css). */
-  "look.colour": { attr: "data-colour", values: ["vivid", "calm"] },
+  "look.density": { attr: "data-density", values: ["comfortable", "compact"], usual: "comfortable" },
+  "look.icons": { attr: "data-icons", values: ["plain", "colour"], usual: "plain" },
+  "look.stamps": { attr: "data-stamps", values: ["on", "off"], usual: "on" },
+  /** The main button: Flat, the usual since 2 Nov 2026 (the review: a glossy sky blue pill read as a toy), or Glossy. */
+  "look.gloss": { attr: "data-gloss", values: ["flat", "on"], usual: "flat" },
+  "look.corners": { attr: "data-corners", values: ["soft", "crisp"], usual: "soft" },
+  /** The light behind Home (the brand language, 1 Nov 2026): it drifts slowly while Home is in use, holds still, or is off.
+   *  Off is the usual since 2 Nov 2026. Reduce motion and Less motion always hold it still. */
+  "look.light": { attr: "data-light", values: ["off", "still", "moving"], usual: "off" },
+  /** How much colour: Vivid, or Calm, a step quieter and the usual since 2 Nov 2026. It turns the room's light, the cards'
+   *  tint and the gel's shine up or down together (ui/tokens.css). */
+  "look.colour": { attr: "data-colour", values: ["calm", "vivid"], usual: "calm" },
 } as const;
 export type LookChoice = keyof typeof LOOK_CHOICES;
 /** A saved value as the attribute's value: Stamps is a switch (false is off); anything not one of the values is the usual. */
 export function choiceOf(key: LookChoice, v: unknown): string {
   const { values } = LOOK_CHOICES[key];
   if (key === "look.stamps") return v === false ? "off" : "on";
-  return typeof v === "string" && (values as readonly string[]).includes(v) ? v : values[0];
+  return typeof v === "string" && (values as readonly string[]).includes(v) ? v : LOOK_CHOICES[key].usual;
 }
-/** Every look attribute for the saved values: the theme and the seven choices. */
+/** Every look attribute for the saved values: the theme, whether it is dark or light, and the seven choices. */
 export function lookAttrs(values: Partial<Record<"look.theme" | LookChoice, unknown>>): Record<string, string> {
-  const out: Record<string, string> = { "data-theme": themeOf(values["look.theme"]) };
+  const theme = themeOf(values["look.theme"]);
+  const out: Record<string, string> = { "data-theme": theme, "data-tone": THEME_TONE[theme] };
   for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) out[LOOK_CHOICES[k].attr] = choiceOf(k, values[k]);
   return out;
 }
@@ -92,4 +107,5 @@ export function applyLook(root: { style: { setProperty: (k: string, v: string) =
   for (const [k, v] of Object.entries(waterVars(waterOf(water)))) root.style.setProperty(k, v);
   root.setAttribute("data-water", waterOf(water));
   root.setAttribute("data-theme", themeOf(theme));
+  root.setAttribute("data-tone", THEME_TONE[themeOf(theme)]);
 }

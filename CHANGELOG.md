@@ -2,6 +2,28 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Black and White, and one calm colour: 2 Nov 2026
+
+- **Two new themes, Black and White.** Black is a true black page with near black cards, and it is now the usual. White is a clean white page (it takes the place of Paper, and a saved Paper choice keeps working). Graphite and Deep are still there.
+- **A calm look by default.** Home now uses one accent colour: the water you pick. It colours Flowflow and its water, the main button, the wave line and focus. Other colours only show when they mean something: green for proven, red for failed, amber for needs you. The list icons are plain line drawings, with no coloured gems.
+- **The colourful room is still a choice.** Colour (Calm or Vivid), the light behind Home and the glossy button live on the Look page in Settings.
+- **The first run takes your theme,** so it is the same place as Home right after it, and Flowflow is the size it is on Home, never a small head beside Continue.
+- **The water has no hard edge.** It fades smoothly under the wave instead of stepping down in a line.
+- **The wide Home uses its middle.** With the light off, the ask box comes right under the work instead of waiting at the bottom behind an empty band. The fade at the bottom is shorter, so buttons are never greyed by it.
+- **A proven fix has Flowflow in the wide Home too,** with "Checked. It passes.", and the proof (Tests pass) sits right under "Fixed and proven", above Undo.
+- **Smaller fixes:** a review shows Why right after its buttons; "Running the tests" is said once while working, not in two cards; a practice no longer says Practice twice; a task where nothing changed shows an empty ring, not a dash that looked like remove; Settings says once what the small dot before a setting means, and the dot is grey, not blue; Black and White have no blue glow under cards; the theme pictures in the wide Settings show their names without scrolling.
+
+## Polish from the screen by screen review, second half: 2 Nov 2026
+
+- **A failed fix has one clear next step.** Try again is the one main button, the failure is said once, its red mark no longer moves the title, and a web error code is said in words ("the server ran into a problem").
+- **After Undo, the result says what Undo did:** "Put back: 2 files", and anything Undo could not take back is listed as still there.
+- **Every state has its own small drawing,** not only a colour: a turning ring while working, a light for new, a tick for proven, ! for needs you, a dash when nothing changed, and History stamps "Not fixed yet" the way it stamps "Proven".
+- **The working card says which steps are done** with a tick, for VoiceOver too.
+- **More ways to ask opens over the ask box** in the wide Home, each way with its drawing and a one line explanation. The voice auto send switch lives in Settings, Keys and voice.
+- **The first run's Your Claude step fits the window,** and Continue saves and tests your key in one press. While the first check runs it shows the step it is on.
+- **Memory is now "What I remember",** with About this project and About you, dates in words, its options as rows, and a Try again when it cannot be read.
+- **Smaller things:** Flowflow eases between sizes when a task starts and ends; a room change moves every colour at one speed; Flowflow glows amber when it needs you instead of turning olive, with no dark outline on light themes; icons grow with the text size; Settings help sentences are shorter; costs are always "About 7 cents".
+
 ## Squibby reviews what your AI changes: 2 Nov 2026
 
 - **Squibby looks over the changes your other AI tools make.** When Claude Code, Codex, Cursor or any other tool changes files in your project, and the files stop changing for a short while, a "Review changes" item shows in the list on the left and a card on Now lists the files.

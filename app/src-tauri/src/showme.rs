@@ -874,10 +874,11 @@ mod tests {
         let hush = body("fn card_closed_hush(");
         assert!(hush.contains("speech_off(app)") && hush.contains("showme_end_answer(app)") && hush.contains("emit(\"hush\""), "closing the card silences it and ends an answer still playing");
         assert!(body("fn close_card(").contains("card_closed_hush(&app)"), "Esc in the card");
-        // A click on the character, or on the island in the notch (F18 item 1), closes Home through toggle_home.
+        // A click on the character (F18 item 1) closes Home through toggle_home. A click on the island in the notch always
+        // opens it since 2 Nov 2026 (island.rs: pointing may have opened it already), so it never closes there.
         let line = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find('\n').unwrap()].to_string() };
-        assert!(line("fn toggle_card(").contains("toggle_home(app, \"character\")") && line("fn island_click(").contains("toggle_home(app, \"island\")"));
-        assert!(body("fn toggle_home(").contains("card_closed_hush("), "and a click on the character or the island");
+        assert!(line("fn toggle_card(").contains("toggle_home(app, \"character\")"));
+        assert!(body("fn toggle_home(").contains("card_closed_hush("), "and a click on the character");
         // Hold to talk is the two key chord in use (F18 item 3), and since M36 the Type key too: found by hold_mode(s).
         let hold = &main[main.find("if let Some(mode) = hold_mode(s) {").unwrap()..];
         let hold = &hold[..hold.find("voice_send(app").unwrap()];

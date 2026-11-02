@@ -46,7 +46,7 @@ describe("the card follows the engine's batches", () => {
   // Review round 1: a stop the person had not read yet was silently replaced by the next batch, which the engine measures
   // from where the stop ended, so the warning was lost.
   test("a stop or worth a look not yet closed stays; newer changes wait behind it and take its place once it is closed", () => {
-    for (const rating of ["stop", "worth_a_look"]) {
+    for (const rating of ["stop", "worth_a_look"] as const) {
       const newer = batch({ batch: "rv_cccccccccc", count: 1, files: [{ file: "src/b.ts", kind: "modified" }], secretFiles: [], auto: true });
       let r = run([batch(), ok({ rating }), newer])!;
       expect(r.batch, rating).toBe("rv_4f2a9c01de");

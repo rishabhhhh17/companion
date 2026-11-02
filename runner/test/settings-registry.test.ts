@@ -43,7 +43,7 @@ describe("the shipped list of settings", () => {
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
       "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
-      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true, "talk.dictate": false, "island.peekOnHover": true, "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
@@ -81,7 +81,7 @@ describe("the shipped list of settings", () => {
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
       "character.name": "",
       // M19: make it yours.
-      "look.water": "ocean", "look.theme": "graphite", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
+      "look.water": "ocean", "look.theme": "black", "character.follow": "drop", "look.size": "usual", "sound.on": false, "sound.volume": "soft",
       "panel.showHello": false, "panel.showWork": true, "panel.showButtons": true, "panel.size": "usual",
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
       // M46 (F28): Flowflow holds still unless it has news, rests in Low Power Mode, and the Show me how ring lands at once.
@@ -90,11 +90,11 @@ describe("the shipped list of settings", () => {
       "look.layout": "wide",
       // M51 step 3 (the founder: "as much customization as possible"): the graphite look is the usual theme (a saved "night"
       // still reads, as Graphite), with roomy spacing, coloured item icons, stamps on, the glossy button and soft corners.
-      "look.density": "comfortable", "look.icons": "colour", "look.stamps": true, "look.gloss": "on", "look.corners": "soft",
-      // The brand language (1 Nov 2026): Home is lit from behind in the colour of the group at work, and the light drifts.
-      "look.light": "moving",
-      // The founder (1 Nov 2026): "very colourful and out there". Vivid is the usual, Calm a step quieter.
-      "look.colour": "vivid",
+      // 2 Nov 2026 (the founder, after showing friends: "too many colors, so it looks like an aquarium"): Black is the usual
+      // theme, the list icons are plain, there is no light behind Home, and Calm is the usual colour. One blue accent.
+      "look.density": "comfortable", "look.icons": "plain", "look.stamps": true, "look.gloss": "flat", "look.corners": "soft",
+      "look.light": "off",
+      "look.colour": "calm",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -116,6 +116,8 @@ describe("the shipped list of settings", () => {
     sec("character.position", 50, 0, 100, 5, "percent");
     sec("character.linger", 1.5, 0.5, 10, 0.5, "seconds");
     expect(defOf("island.display")!.options).toEqual(["follow", "builtIn", "main"]);
+    // 2 Nov 2026 (the founder: pointing at the notch "needs to be open"): pointing opens Home itself, the usual, or the status line.
+    expect(defOf("island.pointOpens")).toMatchObject({ section: "home", kind: "choice", default: "home", options: ["home", "status"], scope: "app", applies: ["shell"], store: "settings", live: true });
     expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);
     // M51: the layout, wide (the usual) or the tall panel. The shell sizes Home and keeps the character clear of it from it
@@ -123,8 +125,11 @@ describe("the shipped list of settings", () => {
     expect(defOf("look.layout")).toMatchObject({ section: "look", kind: "choice", default: "wide", options: ["wide", "tall"], scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
     // M51 step 3: the theme keeps "night" as an option so a value saved before still checks out (it reads as Graphite), and
     // the five look choices reach the pages only, live, kept in settings.json.
-    expect(defOf("look.theme")).toMatchObject({ section: "look", kind: "choice", default: "graphite", options: ["graphite", "paper", "deep", "night"], applies: ["pages"], store: "settings", live: true });
-    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["colour", "plain"]], ["look.gloss", ["on", "flat"]], ["look.corners", ["soft", "crisp"]], ["look.light", ["moving", "still", "off"]], ["look.colour", ["vivid", "calm"]]] as const) {
+    // 2 Nov 2026 (the founder: "so we gonna have white and black", then "too many colors, so it looks like an aquarium"):
+    // Black is the usual theme and White keeps the stored value "paper"; plain icons, no light behind Home and Calm are the
+    // usual look, each the first of its options.
+    expect(defOf("look.theme")).toMatchObject({ section: "look", kind: "choice", default: "black", options: ["black", "paper", "graphite", "deep", "night"], applies: ["pages"], store: "settings", live: true });
+    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["plain", "colour"]], ["look.gloss", ["flat", "on"]], ["look.corners", ["soft", "crisp"]], ["look.light", ["off", "still", "moving"]], ["look.colour", ["calm", "vivid"]]] as const) {
       expect(defOf(k), k).toMatchObject({ section: "look", kind: "choice", default: options[0], options: [...options], scope: "app", applies: ["pages"], store: "settings", live: true });
     }
     expect(defOf("look.stamps")).toMatchObject({ section: "look", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
@@ -138,7 +143,7 @@ describe("the shipped list of settings", () => {
     // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
     for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
     // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.
-    for (const k of ["island.show", "island.peekOnHover", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen", "character.peek", "character.stick", "character.dockWhen", "character.peekIdle", "home.escStops"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
+    for (const k of ["island.show", "island.peekOnHover", "island.pointOpens", "island.openDelay", "island.closeDelay", "island.display", "island.followDelay", "home.size", "character.linger", "character.overFullScreen", "character.peek", "character.stick", "character.dockWhen", "character.peekIdle", "home.escStops"]) expect(defOf(k)!.applies, k).toEqual(["shell"]);
     expect(defOf("home.closeOnClickAway")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("character.motion")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("home.goToNeeds")!.applies).toEqual(["pages"]);

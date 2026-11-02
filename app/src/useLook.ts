@@ -5,13 +5,15 @@
 // would vanish on the black panel.
 // `choices`: Home and Settings also take the other look choices (M51 step 3: density, icons, stamps, gloss, corners) as data
 // attributes on the root (lookfeel.ts applyLookChoices). The character's window and the island keep their own look.
+// `forceTheme`: a theme to show whatever is chosen. Nothing uses it since 2 Nov 2026: the first run takes the chosen theme
+// (a new person gets Black, the usual), its tokens are the theme's own (ui/tokens.css --fr-*).
 import { useEffect } from "react";
 import { useSetting } from "./settingsStore.ts";
-import { applyLook, applyLookChoices, flowColours, waterOf } from "./lookfeel.ts";
+import { applyLook, applyLookChoices, flowColours, waterOf, type Theme } from "./lookfeel.ts";
 
-export function useLook(opts: { keepNight?: boolean; choices?: boolean } = {}): { light: string; deep: string } {
+export function useLook(opts: { keepNight?: boolean; choices?: boolean; forceTheme?: Theme } = {}): { light: string; deep: string } {
   const water = useSetting("look.water"), chosen = useSetting("look.theme");
-  const theme = opts.keepNight ? "night" : chosen;
+  const theme = opts.keepNight ? "night" : opts.forceTheme ?? chosen;
   useEffect(() => { applyLook(document.documentElement, water, theme); }, [water, theme]);
   const density = useSetting("look.density"), icons = useSetting("look.icons"), stamps = useSetting("look.stamps");
   const gloss = useSetting("look.gloss"), corners = useSetting("look.corners"), light = useSetting("look.light"), colour = useSetting("look.colour");

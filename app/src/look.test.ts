@@ -30,7 +30,8 @@ describe("the character floats on the desktop", () => {
   });
   test("what it says is a small card (pills are for controls) that stays readable on any wallpaper", () => {
     const pill = /\.dock-label \{([^}]*)\}/.exec(css)![1];
-    expect(pill).toMatch(/background: color-mix\(in srgb, var\(--bg\) \d+%, transparent\)/);
+    // Fixed glass in every theme (the audit, item 54: in the theme's own colours it vanished on a matching wallpaper).
+    expect(pill).toContain("background: var(--glass-quiet)");
     expect(pill).toContain("backdrop-filter: blur(");
     expect(pill).toContain("border-radius: var(--r-card)");
   });
@@ -68,9 +69,13 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
     expect(hero).toBeGreaterThan(-1);
     expect(hero).toBeLessThan(ask);
     expect(ask).toBeLessThan(recent);
-    for (const panel of ['{show("urgent") && <div ref={urgent}>', '{show("receipt") && m.receipt', '{show("proof") && m.task?.proof', '{show("research") && m.research']) {
+    for (const panel of ['{side && urgentCards}', '{show("receipt") && m.receipt', '{!m.receipt && proofPanel}', '{show("research") && m.research']) {
       expect(card.indexOf(panel), panel).toBeGreaterThan(recent);
     }
+    // The ranked UI audit (2 Nov 2026, item 26): in the tall Home the cards that wait on the person come right under the
+    // hero, before the ask box, where "Your answer goes just below" points.
+    expect(card.indexOf("{!side && urgentCards")).toBeGreaterThan(hero);
+    expect(card.indexOf("{!side && urgentCards")).toBeLessThan(ask);
     // M42's two columns, its side list, its quick actions and the Do list are gone, in the page and in the styles.
     for (const gone of ['className="home-side"', 'className="chips quick"', "side-item", "S.sideDo", "chip-btn"]) expect(card, gone).not.toContain(gone);
     expect(css.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/\.home-side|\.side-item|\.side-head|\.chip-btn|\.chips\.quick|:has\(> \.home-side\)/);
@@ -124,8 +129,8 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
   });
   test("the result card: the verdict first at verdict size, what changed, the checks as chips, then what it cost", () => {
     // M45 and the overhaul spec 4.2: the mark is the verdict's own (a tick only for a proven fix, VerdictLine).
-    expect(card).toContain('<VerdictLine verdict={v} size="card" sub={v.line ?? undefined} />');
-    expect(card).toContain("<ChangesCard changed={m.receipt.changed} />");   // M39: how many files heads the changes card
+    expect(card).toContain('<VerdictLine verdict={v} size="card" sub={v.line || putBackShown ?');
+    expect(card).toContain("<ChangesCard changed={m.receipt.changed} undone={undone} />");   // M39: how many files heads the changes card
     expect(card).toContain("<ProofChips m={m} />");
     expect(card).toContain("<li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>");   // M28: what the fix cost on your own Claude (M45: No cost at zero)
     // Each check of the proof is a row with its own tick.
@@ -140,7 +145,7 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
     expect(card).not.toContain('<div className="strip"');
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(rules).not.toMatch(/(^|[^\w-])\.(strip|pill)\b/m);   // the island's own .island.pill (the notch's shape) is not one
-    expect(result).toContain("{undoCan(m, project) && <Button id={undoId}");
+    expect(result).toContain('{undoCan(m, project) && (\n            <div className="row result-actions">\n              <Button id={undoId}');
     expect(job).toContain("{stopCan(m) && <Button kind=\"secondary\" size=\"sm\"");
   });
   test("Undo is the same flow as before: the receipt's own question, on the same button id, with the same condition", () => {
@@ -159,7 +164,7 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
     expect(card).toContain("{stopCan(m) && !jobShown && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
   });
   test("after an undo, Put back as it was shows for two seconds in the card", () => {
-    expect(result).toContain('{putBackShown && <span className="putback-note" role="status">{S.look.putBack}</span>}');
+    expect(result).toContain('{putBackShown && <span className="putback-note" role="status">{v.line ? " " : ""}{S.look.putBack}</span>}');
     expect(card).toContain('if (m.undo?.stage !== "done") return;');
     expect(card).not.toContain("spin(e.currentTarget)");
   });
