@@ -153,6 +153,9 @@ describe("tried: a real use only", () => {
     expect(usedBy(RECEIPT)).toEqual(["drive"]);
     expect(usedBy(RECEIPT, { followUp: true })).toEqual(["followUp"]);
     expect(usedBy({ type: "rescue.report", agent: "a" })).toEqual(["rescue"]);
+    // M52: a review that ran counts; one that did not run (off, nothing changed, stopped) does not.
+    expect(usedBy({ type: "review.result", project: "/p", batch: "rv_1", ok: true })).toEqual(["review"]);
+    expect(usedBy({ type: "review.result", project: "/p", ok: false, reason: "Nothing has changed since the last review." })).toEqual([]);
     expect(usedBy({ type: "proof.result", verdict: "passed" })).toEqual(["proof"]);
     expect(usedBy({ type: "proof.result", verdict: "failed" })).toEqual(["proof"]);
     expect(usedBy({ type: "checkpoint.restored" })).toEqual(["undo"]);
@@ -280,7 +283,7 @@ describe("Home's invitations", () => {
     const i = invitation(none, false)!;
     expect(i.tool).toBe("drive");
     expect(i.line).toBe(S.groups.tools.drive.invite);
-    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI"]);
+    expect(untriedIn("flow", none).map((t) => t.id)).toEqual(["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI", "review"]);
   });
   test("a tool leaves the list once tried, and the invitation moves on", () => {
     const r = (k: string) => (k === "groups.tried" ? ["drive", "followUp"] : undefined);

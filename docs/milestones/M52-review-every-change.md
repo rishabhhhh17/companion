@@ -53,3 +53,34 @@ Watcher debounce and ignore lists, the batch from snapshots, a review never star
 
 ## Order
 After M51 (the look). Before M50's front door is switched on, because both need the plans and limits of F29.
+
+## Status (2 Nov 2026, branch m48/launch, not merged)
+
+### Built, with tests
+- **Watcher** (`runner/src/review/batcher.ts`): the open folder only, through its file events; the quiet time (`review.quietSeconds`); ignore lists; at most 1000 paths a batch. Off with `review.mode` off or Flow off.
+- **The batch** (`runner/src/review/service.ts`): measured against Squibby's own shadow snapshots (T06), never the person's git (a test hashes their `.git` before and after).
+- **Squibby's own work** is kept apart from the other tool's changes:
+  - When it starts while the other tool is still writing, that batch waits until the work has ended and the folder is quiet, and holds the other tool's later writes to those files.
+  - Work that never edits code (memory, install, checks, ship, research) does not hide what the other tool writes at the same time.
+- **The rating rules** (`rate.ts`): what a change touches; safe, worth a look or stop; a key in code; a removed file still used, named at the line that still uses it; failing checks.
+- **Secrets never sent:**
+  - Settings and key files are only named.
+  - Every line the rules call a key in code is hidden before the model sees the change.
+  - `redact` knows every name the rules treat as a secret (a test checks the two agree).
+- **Words** from the cheap lane; the stronger model only for a stop, sign in or payments (T10). Every call asks the day's room first and is booked whenever it answers, even after a timeout. A call that takes too long is ended.
+- **Proof:** the project's own build and tests plus the browser check (`agent.ts` `checkForReview`, no installs). A press of Review them runs the scripts in the safety box; a review that runs by itself runs only what the person already allowed.
+- **Pages:** the review card on Now (`app/src/review.ts`, `reviewCard.tsx`), the Review changes item, the notch line, and the two Settings rows. A stop or worth a look stays until it is closed; newer changes wait behind it.
+- **Actions:** Fix it (asks first, an ordinary task with its safety copy and Undo), Send back to my AI (copied, redacted), Looks fine.
+- **Stop everything** ends a running review and its checks. A review that was about to start (a press waiting for its snapshot, a batch being measured) does not start after it.
+
+### Not built yet
+- **Security checks** beyond a key in code: a login page with no protection, a database opened to everyone, with the fix offered.
+- **House rules** checked against the change.
+- **A file the other tool creates during a task of Squibby's** cannot be told apart from the task's own. It is not in a review. The task's receipt lists it, with Undo.
+
+### Still [verify] on a real Mac
+- File events while Claude Code, Codex and Cursor write, including how long a tool goes quiet between saves.
+- A tool that rewrites many files at once (the 1000 path cap, and the time a snapshot takes).
+- Battery with the watcher on all day.
+- The browser check in a review on a real project: the server starts, the page opens, and the server ends with the review (and with Stop everything).
+- The safety box running a review's checks on this Mac, and a review's checks never running outside it.

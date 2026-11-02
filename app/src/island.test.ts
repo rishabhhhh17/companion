@@ -511,6 +511,19 @@ describe("the bare notch (M46)", () => {
     expect(S.panel.newCount(3)).toBe("3 new");
     expect(S.panel.newCount(12)).toBe("9+ new");
   });
+  test("M52: changes ready to review are said on the hover panel only, as quietly as new results, and go out with the shell's word", () => {
+    // The shell decides (island.rs ReviewReady): it lights on a batch while Home is closed and goes out when Home opens, the
+    // review is asked for or closed, or the changes went away. The page only shows what it is told, on load and after.
+    expect(page).toContain('listen("review-ready"');
+    expect(page).toMatch(/setReview\(\(v as \{ review\?: unknown \} \| null\)\?\.review === true\)/);
+    expect(main).toContain('app.emit_to("island", "review-ready", json!({ "on": on }))');
+    const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
+    expect(panel).toContain("{!brief && review && <p className=\"ip-new\">{S.panel.reviewReady}</p>}");
+    // Never in a panel that opened by itself, never the wings, never a sound: it does not ask for the island to open.
+    expect(page).not.toMatch(/review[^\n]*island_alert|island_alert[^\n]*review/);
+    expect(S.panel.reviewReady).toBe("Changes ready to review");
+    expect(S.panel.reviewReady).not.toMatch(/[A-Z]{2,}|—/);
+  });
   test("brief and hover panels are one width, the island's PANEL_W, and plain words under a question use the system font", () => {
     expect(css).not.toMatch(/\.island-panel\[data-brief\] \{[^}]*width:/);
     expect(css).not.toMatch(/\.ip-text span \{[^}]*ui-monospace/);

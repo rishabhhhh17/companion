@@ -9,7 +9,7 @@
     { "key": "prompt.on", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
     { "key": "groups.islandName", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "groups.showUntried", "section": "groups", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
-    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 23, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI", "showMe", "lessons", "yourTurn", "practice", "talk", "dictate", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
+    { "key": "groups.tried", "section": "groups", "kind": "list", "default": [], "maxItems": 24, "allowedItems": ["drive", "followUp", "rescue", "findProblem", "proof", "undo", "explain", "drawIt", "whichTask", "watch", "connections", "whereWasI", "review", "showMe", "lessons", "yourTurn", "practice", "talk", "dictate", "speak", "promptHelp", "errorHelp", "secondLook", "convert"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
     { "key": "groups.cutNotice", "section": "groups", "kind": "list", "default": [], "maxItems": 5, "allowedItems": ["convert", "watch", "secondLook", "dictate", "drawIt"], "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true, "hidden": true },
 
     { "key": "keys.hotkeys", "section": "keys", "kind": "custom", "default": null, "scope": "app", "applies": ["shell"], "store": "keys", "live": true },
@@ -142,6 +142,8 @@
     { "key": "watch.quiet", "section": "watch", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "watch.quietFrom", "section": "watch", "kind": "number", "default": 22, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "watch.quietTo", "section": "watch", "kind": "number", "default": 7, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.mode", "section": "watch", "kind": "choice", "default": "ask", "options": ["ask", "automatic", "off"], "scope": "app", "applies": ["runner", "pages"], "store": "settings", "live": true },
+    { "key": "review.quietSeconds", "section": "watch", "kind": "number", "default": 20, "min": 5, "max": 120, "step": 5, "unit": "seconds", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
 
     { "key": "memory.paused", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
     { "key": "memory.learnFromFiles", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },

@@ -20,12 +20,13 @@ import { Icon } from "./icons.tsx";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
  *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
- *  (the bare notch shows nothing at rest). */
-type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?: number };
+ *  (the bare notch shows nothing at rest). `review` (M52): changes another AI tool made wait to be reviewed, said on the
+ *  same line, as quietly. */
+type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?: number; review?: boolean };
 
 void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
-export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0 }, ref) {
+export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0, review = false }, ref) {
   // What the panel shows and its size (M19, Look and feel): the work and its results, usual or compact.
   const showWork = useSetting("panel.showWork") !== false;
   const compact = useSetting("panel.size") === "compact";
@@ -115,6 +116,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
       {!brief && unseen > 0 && <p className="ip-new">{S.panel.newCount(unseen)}</p>}
+      {!brief && review && <p className="ip-new">{S.panel.reviewReady}</p>}
       {/* Opened by itself, only a question or a result that matters (island.tsx); never the line or the key. */}
       {brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}
     </div>

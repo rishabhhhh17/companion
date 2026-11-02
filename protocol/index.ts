@@ -183,7 +183,30 @@ export type NewFolderKind = (typeof NEW_FOLDER_KINDS)[number];
 export const MAX_REQUEST_CHARS = 4000;
 export type ProjectNew = { v: 1; id: string; ts?: string; type: "project.new"; kind: NewFolderKind; request: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type ShellCommand = ProjectNew;
-export type Command = PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
+// M52, the review of every change (F30, runner/src/review/): the engine watches the open project folder (only that one, and
+// only while review.mode is not off and Flow is on) and, once nothing has changed for review.quietSeconds, says a batch is
+// ready (review.batch). A batch is everything that changed since the last review or the engine's own last task, measured
+// against its own shadow snapshots (T06); it never runs a git command that writes and never reads the person's git history.
+// review.now: review the batch named (or, with none, whatever changed since the last review, even before the quiet time
+// ends). proof: also run the project's own build and tests (the proof ladder, T07); with review.mode automatic every
+// batch is reviewed with proof by itself. review.dismiss: "Looks fine", the card closes and the next batch starts after it.
+// review.fix: Fix it, an ordinary task in drive mode built from the review (secrets never in it), with its safety copy and
+// Undo; it is gated like any fix. All three name the project, so the shell holds them to the folder the person chose.
+export const REVIEW_RATINGS = ["safe", "worth_a_look", "stop"] as const;
+export type ReviewRating = (typeof REVIEW_RATINGS)[number];
+export const REVIEW_TOUCHES = ["sign_in", "payments", "data", "settings", "secrets", "dependencies", "look_only"] as const;
+export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
+export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern"] as const;
+export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
+export const REVIEW_CHECKS = ["passed", "failed", "unknown", "not_run"] as const;
+export type ReviewChecks = (typeof REVIEW_CHECKS)[number];
+export const REVIEW_LANES = ["cheap", "strong", "none"] as const;
+export type ReviewFile = { file: string; kind: "added" | "modified" | "deleted" };
+export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number };
+export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
+export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string };
+export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -368,7 +391,25 @@ export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watc
 export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
 export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
-export type Event = PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+// M52. A batch of changes is ready to review: up to 50 files (count is all of them; capped when more changed than one batch
+// may look at one by one), the settings and key files among them by name only (secretFiles: nothing in them is read), and
+// auto when review.mode is automatic, so its review follows by itself. A batch with count 0 means the changes it named are
+// gone again (put back as they were): nothing is left to review, and the page closes its card.
+export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean };
+export type ReviewStarted = Envelope & { type: "review.started"; project: string; batch: string; proof: boolean };
+// The review. ok false: nothing was reviewed, reason says why in plain words (batch, when one was named). ok true: what changed
+// (summary, notes: plain words, secrets hidden), what it touches, the rating and its reasons (the most serious first, each
+// with its file and line when it has one), the files, what the project's own checks said (checks, and checksNote: one plain
+// line), the ready "send back to my AI" message (sendBack, no secrets), which model wrote the words (none: the rules' own
+// words, with no model, or at the day's limit, and note says why) and what it cost.
+export type ReviewResultEvent = Envelope & {
+  type: "review.result"; project: string; batch?: string; ok: boolean; reason?: string;
+  rating?: ReviewRating; touches?: ReviewTouch[]; summary?: string; notes?: string[]; reasons?: ReviewReason[]; files?: ReviewFile[]; count?: number; capped?: boolean;
+  secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
+  /** One plain line about the words when no model wrote them: the day's limit reached, or no Claude connected. */
+  note?: string;
+};
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -435,7 +476,33 @@ const lookItemOk = (i: unknown): boolean => {
     && (src === undefined || (typeof src === "object" && src !== null && typeof src.url === "string" && /^https?:\/\/[^\s]+$/i.test(src.url) && typeof src.title === "string"));
 };
 
+// M52: a changed file, and a reason of a review.
+const FILE_KINDS = ["added", "modified", "deleted"];
+const isReviewFile = (f: unknown): boolean => { const o = f as Record<string, unknown> | null; return !!o && typeof o === "object" && !Array.isArray(o) && typeof o.file === "string" && o.file.length > 0 && FILE_KINDS.includes(o.kind as string); };
+const isReviewReason = (r: unknown): boolean => {
+  const o = r as Record<string, unknown> | null;
+  return !!o && typeof o === "object" && !Array.isArray(o) && (REVIEW_REASONS as readonly string[]).includes(o.kind as string) && typeof o.say === "string" && o.say.length > 0
+    && (o.file === undefined || (typeof o.file === "string" && o.file.length > 0)) && (o.line === undefined || (Number.isInteger(o.line) && (o.line as number) >= 1));
+};
+const filesListOk = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every(isReviewFile) ? null : `"${k}" must be a list of files, each with file and kind`);
+const textList = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every((x) => typeof x === "string") ? null : `"${k}" must be a list of text`);
+const reviewOk: Check = (m) => {
+  if (m.ok !== true) return typeof m.reason === "string" && m.reason.length > 0 ? null : 'a review that did not run says why in "reason"';
+  if (typeof m.batch !== "string" || !m.batch) return 'a review names its "batch"';
+  if (!(REVIEW_RATINGS as readonly string[]).includes(m.rating as string)) return `"rating" must be one of ${REVIEW_RATINGS.join(", ")}`;
+  if (!Array.isArray(m.touches) || !m.touches.every((t) => (REVIEW_TOUCHES as readonly string[]).includes(t as string))) return '"touches" must be a list of known touches';
+  if (typeof m.summary !== "string" || !m.summary) return 'a review needs its "summary"';
+  if (!Array.isArray(m.reasons) || !m.reasons.every(isReviewReason)) return '"reasons" must be a list, each with a known kind and its words';
+  if (!(REVIEW_CHECKS as readonly string[]).includes(m.checks as string)) return `"checks" must be one of ${REVIEW_CHECKS.join(", ")}`;
+  if (typeof m.sendBack !== "string" || !m.sendBack) return 'a review needs its "sendBack" message';
+  if (!(REVIEW_LANES as readonly string[]).includes(m.lane as string)) return `"lane" must be one of ${REVIEW_LANES.join(", ")}`;
+  return filesListOk("files")(m) ?? textList("notes")(m) ?? textList("secretFiles")(m) ?? whole("count")(m) ?? bool("capped")(m);
+};
+
 const COMMANDS: Record<string, Check[]> = {
+  "review.now": [str("project"), opt("batch", str("batch")), opt("proof", bool("proof"))],
+  "review.dismiss": [str("project"), str("batch")],
+  "review.fix": [str("project"), str("batch"), str("agent"), str("model"), num("budgetUsd")],
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk, practiceOk],
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
@@ -511,6 +578,10 @@ const COMMANDS: Record<string, Check[]> = {
 };
 
 const EVENTS: Record<string, Check[]> = {
+  // M52, the review of every change (runner/src/review/service.ts).
+  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto")],
+  "review.started": [str("project"), str("batch"), bool("proof")],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),

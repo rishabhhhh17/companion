@@ -35,6 +35,8 @@ import { PRODUCT, PRODUCT_S } from "./names.ts";
 import { failure } from "./plainfail.ts";
 import { FreeFixes } from "./db.ts";
 import { PlanGate } from "./plan.ts";
+import { MODELS } from "./models.ts";
+import { OWN_WORK, ReviewService } from "./review/service.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -72,6 +74,33 @@ const watches = new WatchEngine({
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
 });
 watchList.engine = watches;
+// M52 (F30): the review of every change another AI tool makes in the open project. The words come from the fast lane, the
+// stronger model (MODELS.review) only for a stop or a change to sign in or payments; both are booked like Explain. Fix it is
+// an ordinary task, admitted by the plan gate and wrapped as the engine's own work like every other.
+const strongLane = settings.engine === "sdk" && !settings.assistStub ? createLanes(settings, {}, { quickModel: () => MODELS.review }).fast : null;
+/** The engine's own work in a project: the review counts nothing it writes, and starts again from what it left. Called
+ *  before the work starts (rule: measure the other tool's changes first). */
+function ownWork(project: string | undefined, start: () => Promise<unknown>, kind: string): Promise<unknown> {
+  if (!project) return start();
+  let settle!: () => void;
+  review.around(project, new Promise<void>((r) => { settle = r; }), kind);
+  const work = start();
+  void work.then(settle, settle);
+  return work;
+}
+const review = new ReviewService({
+  emit: (e) => say(e), setting: (k) => runnerSettings.get(k), store: (p) => runner.checkpointsFor(p),
+  cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
+  spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
+  check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p),
+  fix: (start) => {
+    const admitted = plan.admit(start);
+    if (!admitted) return;
+    metrics.observeCommand(admitted);
+    const p = ownWork(start.project, () => runner.handle(admitted), "agent.start").catch((e: Error) => say({ type: "protocol.error", ...failure(e, "review.fix") })).finally(() => inflight.delete(p));
+    inflight.add(p);
+  },
+});
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings, spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) } }) : null;
@@ -120,6 +149,8 @@ function dispatch(cmd: Command) {
     const before = offNow((k) => runnerSettings.get(k));
     say({ type: "settings.applied", ...runnerSettings.apply(plan.admit(cmd) as typeof cmd) });
     stopGroups(newlyOff(before, offNow((k) => runnerSettings.get(k))));
+    // The review watches the project this line names, and only while review.mode is not off and Flow is on.
+    review.setProject(cmd.project);
     return;
   }
   // A tool whose group is switched off does nothing (F20): the shell refuses it first, and this is the second check.
@@ -146,13 +177,23 @@ function dispatch(cmd: Command) {
   // Watch routines: the schedule and the checks live in watch.ts; the group switch was checked above.
   if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   metrics.observeCommand(cmd);
-  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); }
-  const work = cmd.type.startsWith("walk.") ? walks.handle(cmd as never) : cmd.type.startsWith("assist.")
-    ? (assist ? assist.handle(cmd) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", cmd.type) })))
-    : runner.handle(cmd);
+  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); review.stopAll(); }
+  if (cmd.type === "review.now" || cmd.type === "review.dismiss" || cmd.type === "review.fix") { const p = review.handle(cmd).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
+  const c = cmd;
+  const work = c.type.startsWith("walk.") ? walks.handle(c as never) : c.type.startsWith("assist.")
+    ? (assist ? assist.handle(c) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", c.type) })))
+    : OWN_WORK.has(c.type) ? ownWork(ownProject(c), () => runner.handle(c), c.type) : runner.handle(c);
   if (cmd.type === "agent.interruptAll" && assist) assist.cancelAll();
   const p = work.catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p));
   inflight.add(p);
+}
+
+/** The project a command of the engine's own work is in: its own, or for an approved plan the plan's. */
+function ownProject(cmd: Command): string | undefined {
+  const named = (cmd as { project?: unknown }).project;
+  if (typeof named === "string" && named) return named;
+  const agent = (cmd as { agent?: unknown }).agent;
+  return typeof agent === "string" ? runner.projectOf(agent) : undefined;
 }
 
 function takeKey(line: string): boolean {
@@ -189,7 +230,7 @@ async function main() {
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
-  watches.stop(); watches.stopAll();
+  watches.stop(); watches.stopAll(); review.stop();
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
   void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
   void releaseShotDrive();

@@ -75,6 +75,9 @@
     { "id": "whereWasI", "group": "flow", "tried": "page", "permissions": [], "settings": ["where.after"],
       "commands": [],
       "runner": ["where.was.i"] },
+    { "id": "review", "group": "flow", "tried": "page", "permissions": [], "settings": ["review.mode", "review.quietSeconds"],
+      "commands": [],
+      "runner": ["review.now", "review.dismiss", "review.fix"], "stays": ["review.dismiss"] },
 
     { "id": "showMe", "group": "guide", "hotkeys": ["showme"], "tried": "page", "permissions": ["screenRecording"], "settings": ["showme.allScreens", "point.everyday"],
       "commands": ["showme_start", "showme_aim", "do_it_for_me"],

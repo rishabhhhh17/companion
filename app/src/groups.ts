@@ -20,7 +20,7 @@ export type Tool = {
 };
 export type ToolId =
   | "askBox" | "engine" | "stop" | "projects" | "account" | "settings" | "memory" | "ship" | "research"
-  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "drawIt" | "whichTask" | "watch" | "connections" | "whereWasI"
+  | "drive" | "followUp" | "rescue" | "findProblem" | "proof" | "undo" | "explain" | "drawIt" | "whichTask" | "watch" | "connections" | "whereWasI" | "review"
   | "showMe" | "lessons" | "yourTurn" | "practice"
   | "talk" | "speak" | "promptHelp" | "errorHelp" | "secondLook" | "convert";
 
@@ -146,6 +146,8 @@ export function usedBy(ev: unknown, ctx: { followUp?: boolean; walk?: boolean; r
     case "watch.state": tool = typeof ev.lastCheckedAt === "string" && ev.checking !== true ? "watch" : null; break;
     case "watch.evidence": tool = "connections"; break;
     case "where.ready": tool = "whereWasI"; break;
+    // M52: a review of another tool's change that really ran (not one refused, stopped or with nothing to look at).
+    case "review.result": tool = ev.ok === true ? "review" : null; break;
     case "teach.result": tool = ev.verdict === "passed" || ev.verdict === "passed_with_gaps" || ev.verdict === "failed" ? "yourTurn" : null; break;
     case "assist.point": tool = ctx.walk ? null : "showMe"; break;
     case "assist.prompt.done": tool = "promptHelp"; break;

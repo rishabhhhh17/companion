@@ -423,6 +423,16 @@ export class AgentRunner {
    *  and takes no checkpoint, so a check every few minutes leaves nothing in the list of things to undo. It never holds the
    *  project: the person's own work on it comes first and ends the check (projectInUse), which is then tried again soon. */
   async checkWithoutModel(project: string, signal: AbortSignal): Promise<CheckResult | { skip: string } | null> {
+    return this.checkLive(project, signal, null);
+  }
+  /** The project's own checks for a review of another AI tool's changes (M52, F30): as a watch's, but with the browser
+   *  check too (T07, F14). asked: the person pressed Review them, which is their yes to running the project's scripts in
+   *  the safety box, never outside it. A review that runs by itself (review.mode automatic) runs only what they already
+   *  allowed, and says so in a review's words. */
+  async checkForReview(project: string, signal: AbortSignal, o: { asked: boolean }): Promise<CheckResult | { skip: string } | null> {
+    return this.checkLive(project, signal, o);
+  }
+  private async checkLive(project: string, signal: AbortSignal, review: { asked: boolean } | null): Promise<CheckResult | { skip: string } | null> {
     const key = resolve(project);
     if (this.finding.has(project) || this.workBlocks(project) || this.watchRuns.has(key)) return { skip: `${PRODUCT} is working on this project right now.` };
     const run = { abort: new AbortController(), yielded: false };
@@ -433,15 +443,28 @@ export class AgentRunner {
       const store = liveFiles(project);
       const approvals = this.approvals(project);
       const print = runPrint(await readRunFiles(store, "live"));
-      if (approvals.empty() || !approvals.has(print)) return { outcome: "unknown", reason: `${PRODUCT} has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking.` };
+      const allowed = !approvals.empty() && approvals.has(print);
+      if (!allowed && !review?.asked) {
+        return { outcome: "unknown", reason: review
+          ? `${PRODUCT} has not been allowed to run this project's scripts yet, so they were not run by themselves. Press Review them to run them.`
+          : `${PRODUCT} has not been allowed to run this project's scripts yet. Run Point at the problem or a task here once, and this watch will start checking.` };
+      }
+      // Review them pressed: a yes for the safety box only. Outside it nothing that changed runs (rule 13).
+      const askScripts = review?.asked ? async (_byTask: boolean, unboxed?: boolean) => unboxed !== true : undefined;
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: true, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals }); }
+      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}) }); }
       catch { return { outcome: "unknown", reason: CHECKER_STOPPED }; }
       if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
       if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redactOutput(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
       if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: `There is nothing in this project that ${PRODUCT} can check yet.` };
       if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
+      if (review) {
+        const browser = res.steps.find((x) => x.rung === "browser");
+        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser." };
+        const why = browser?.detail ? clip(redactOutput(browser.detail).replace(/\s+/g, " ").trim(), 140) : "";
+        return { outcome: "ok", reason: why ? `The project's own checks passed. The browser check did not run: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : "The project's own checks passed. The browser check did not run." };
+      }
       return { outcome: "ok", reason: "All of the project's own checks passed." };
     } catch (e) {
       return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project. Try again.` };
@@ -848,6 +871,15 @@ export class AgentRunner {
     s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
     return s;
   }
+
+  /** The shadow store every task of this project uses (T06), for the review of changes (review/service.ts), so its
+   *  snapshots and a task's are always taken one at a time. */
+  checkpointsFor(project: string): CheckpointStore { return this.store(project); }
+  /** The project an agent's plan or last task is in, for a command that names only the agent (drive.approve). */
+  projectOf(agent: string): string | undefined { return this.plans.get(agent)?.project ?? this.lastTask.get(agent)?.project; }
+  /** Whether any work of the engine is on this folder now, a watch's own check included. Read only: unlike projectInUse it
+   *  never ends a watch's check. The review of changes waits while it is true. */
+  busyIn(project: string): boolean { return this.workBlocks(project) || this.watchRuns.has(resolve(project)); }
 
   /** Is anything working on this project folder right now (a task, a check, an install, a copy, a ship step)? */
   private projectInUse(project: string): boolean {

@@ -1,5 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
+import { reviewReduce, type ReviewCard } from "./review.ts";
 import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
 import { gateFinding, isExpected, practiceOf } from "./practice.ts";
 import { activityWords } from "./activity.ts";
@@ -241,6 +242,8 @@ export type Model = {
   // cover what was pressed (plan.limit, or Home's own look at the count), until the person closes it or new work starts.
   proUsage?: Usage | null;
   proLimit?: LimitView | null;
+  // M52 (F30): the review of the changes another AI tool made in the open project (review.ts), until it is closed.
+  review?: ReviewCard | null;
 };
 
 // The record without one agent's entry.
@@ -422,6 +425,12 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
 export function reduce(m: Model, e: Ev): Model {
   // The limit card goes once new work starts, another folder is chosen, or everything stops.
   if (m.proLimit && ((e.type === "agent.state" && (e.state === "thinking" || e.state === "working")) || e.type === "ui.projectChanged" || e.type === "app.stop_everything")) m = { ...m, proLimit: null };
+  // M52: the review card follows its own events and presses (review.ts). A refused Fix it is said on its card, not as
+  // Home's error.
+  const hadReview = m.review ?? null;
+  const rv = reviewReduce(hadReview, e);
+  if (rv !== hadReview) m = { ...m, review: rv };
+  if (e.type === "protocol.error" && e.failed === "review.fix" && hadReview) return m;
   const ed = everydayReduce(m.everyday, e, m.showme?.req);
   const n = reduceRest(ed === m.everyday ? m : { ...m, everyday: ed }, e);
   const settled = everydaySettle(n.everyday, m.showme, n.showme);

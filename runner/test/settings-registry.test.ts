@@ -73,6 +73,9 @@ describe("the shipped list of settings", () => {
       // F21: Watch routines are on (they only matter once a watch exists), a new watch is checked every 30 minutes, once a day at
       // 9, alerts are held back 22:00 to 07:00 only when the person turns quiet hours on, and Rescue may read a failed GitHub run.
       "watch.on": false, "watch.schedule": "30m", "watch.dailyHour": 9, "watch.quiet": false, "watch.quietFrom": 22, "watch.quietTo": 7, "rescue.readCiRun": true,
+      // M52 (F30): every change another AI tool makes is reviewed when asked (a quiet dot says there are new changes), once
+      // nothing has changed for 20 seconds. Automatic reviews each batch by itself; off does not watch the folder at all.
+      "review.mode": "ask", "review.quietSeconds": 20,
       // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
       "make.folder": "home",
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
@@ -95,6 +98,12 @@ describe("the shipped list of settings", () => {
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
+  });
+  test("M52: how often changes are reviewed, and how long the folder must be quiet first", () => {
+    expect(defOf("review.mode")).toMatchObject({ section: "watch", kind: "choice", default: "ask", options: ["ask", "automatic", "off"], scope: "app", applies: ["runner", "pages"], store: "settings", live: true });
+    expect(defOf("review.quietSeconds")).toMatchObject({ section: "watch", kind: "number", default: 20, min: 5, max: 120, step: 5, unit: "seconds", scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("review.quietSeconds")!, 3).ok).toBe(false);
+    expect(validate(defOf("review.mode")!, "always").ok).toBe(false);
   });
   test("the worked example: most turns in one task, read when a task starts, for the engine only", () => {
     expect(defOf("work.maxTurns")).toMatchObject({ kind: "number", min: 20, max: 200, step: 10, unit: "count", scope: "app", applies: ["runner"], store: "settings", live: false });

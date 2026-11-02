@@ -12,6 +12,7 @@ import { answerPlayer, flightFor, lineMs, planSteps, sequenceOver, stepsLine, st
 import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, newReply, repliesIn, repliesOn, speakWhen, speechOn, spokenNote, voiceShowMe, wordsToSay, type AskKind, type VoiceQuestion } from "./speech.ts";
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
+import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
 import { browserView, confirmable, shipWords, phWords, blockedNote, characterWords, costWords, savedWords, pausedWords, driveWords, formatUsd, historyWords, isFixing, triesNote, notDoneReason, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
@@ -37,6 +38,8 @@ import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
 import { layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { HomeSide } from "./homeSide.tsx";
+import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
+import { reviewShown } from "./review.ts";
 import { roomElement, useRoomStill } from "./element.ts";
 import { RoomLight } from "./roomLight.tsx";
 import { historyStamp, taskName } from "./itemLook.ts";
@@ -912,6 +915,43 @@ function Card() {
       void send(watchFix(project, w.watch)).catch((e) => { dispatch({ type: "ui.watchAsked" }); explainRefusal(e); });
     },
   };
+  // M52 (F30): the review of another AI tool's changes, on Now for the open folder only, with reviews and Flow on. Each
+  // button is a press that names the card's own batch; nothing starts by itself. Fix it asks first (reviewCard.tsx), then
+  // starts an ordinary task with its safety copy and Undo, counted as a fix: at the free limit it starts nothing.
+  const reviewMode = useSetting("review.mode");
+  const reviewOn = reviewShown(m.review, project, reviewMode, groups.on("review"));
+  const reviewHandlers = {
+    onReview: (proof: boolean) => {
+      const r = nowModel.current.review;
+      if (!r || !project) return;
+      dispatch({ type: "ui.reviewAsked", batch: r.batch });
+      void send(reviewNow(project, r.batch, proof)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
+    },
+    onDismiss: () => {
+      const r = nowModel.current.review;
+      if (!r || !project) return;
+      dispatch({ type: "ui.reviewDismissed", batch: r.batch });
+      void send(reviewDismiss(project, r.batch)).catch(explainRefusal);
+    },
+    onAskFix: () => {
+      const r = nowModel.current.review;
+      if (!r) return;
+      if (r.fix === "confirm") { dispatch({ type: "ui.reviewFixCancelled" }); return; }
+      if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
+      dispatch({ type: "ui.reviewFixAsked", batch: r.batch });
+    },
+    onFix: () => {
+      const r = nowModel.current.review;
+      if (!r || !project) return;
+      if (atFreeLimit(planNow(), nowModel.current.proUsage ?? null)) { dispatch({ type: "ui.reviewFixCancelled" }); dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: nowModel.current.proUsage?.resetsOn }); return; }
+      dispatch({ type: "ui.reviewFixSent", batch: r.batch });
+      dispatch({ type: "ui.undoClosed" });
+      void send(reviewFix(project, r.batch)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
+    },
+    onCancelFix: () => dispatch({ type: "ui.reviewFixCancelled" }),
+  };
+  // The list on the left's review item: Now, with the card in view and the keyboard on it.
+  const openReview = () => { pickTab("now"); setTimeout(() => { const el = document.getElementById(REVIEW_ID); el?.scrollIntoView({ block: "start" }); el?.focus({ preventScroll: true }); }, 0); };
   // Where was I's one next step: a button, so nothing starts until it is pressed.
   const whereNext = () => {
     const n = m.recap?.next;
@@ -1559,7 +1599,7 @@ function Card() {
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={needNow?.tab ?? null} recent={sideRecent(project ? m.history : [])} now={clock}
-        onPick={pickTab} onSettings={gear} onOpen={openRecent} />}
+        onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
       {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
         point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
@@ -1966,6 +2006,8 @@ function Card() {
           {["refused", "error", "nothing_to_read", "needs_accessibility", "copied", "restored", "pasted"].includes(m.ph.stage) && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.phDismiss}</button></div>}
         </section>
       )}
+
+      {show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} />}
 
       {show("drive") && m.drive && (
         <section className="panel">

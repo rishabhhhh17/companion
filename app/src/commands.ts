@@ -93,6 +93,11 @@ export const watchRemove = (project: string, watch: string): Command => ({ v: 1,
 export const watchPause = (project: string, watch: string, paused: boolean): Command => ({ v: 1, id: id(), type: "watch.pause", project, watch, paused });
 export const watchCheck = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.check", project, watch });
 // Fix it on a failed watch: asks for the evidence (read only); the page starts the task when it comes (fixWatch), never the engine.
+// M52 (F30): the review of another AI tool's changes. Each names the project and the batch the card shows (the shell holds
+// them to the chosen folder). Fix it starts an ordinary task in drive mode, with its safety copy and Undo, counted as a fix.
+export const reviewNow = (project: string, batch?: string, proof?: boolean): Command => ({ v: 1, id: id(), type: "review.now", project, ...(batch ? { batch } : {}), ...(proof ? { proof: true } : {}) });
+export const reviewDismiss = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.dismiss", project, batch });
+export const reviewFix = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.fix", project, batch, agent: AGENT, model: workModel(), budgetUsd: budgetFor("budget.task") });
 export const watchFix = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.fix", project, watch });
 export const whereWasI = (project: string, since?: string): Command => ({ v: 1, id: id(), type: "where.was.i", project, ...(since ? { since } : {}) });
 export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });

@@ -41,6 +41,9 @@ const ALLOWED: &[&str] = &[
     "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
     // The zero cost warm up when Home opens or the ask box gets the keyboard (runner/src/warm.ts). Names nothing.
     "engine.warm",
+    // M52 (F30): the review of a change another AI tool made: review it now (optionally with its checks), close its card,
+    // or Fix it (an ordinary task with its safety copy). All name the project, so all are project bound.
+    "review.now", "review.dismiss", "review.fix",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -79,6 +82,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "spending.show", "spending.set", "teach.try", "teach.check",
     "bisect.start", "bisect.undo",
     "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
+    "review.now", "review.dismiss", "review.fix",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -448,6 +452,7 @@ impl Runner {
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)
         if let Some((ev, extra)) = approval_line(&v, &mut lock(&APPROVALS_SEEN)) { crate::log(ev, extra); }   // asked and answered, never the words
         crate::peek_heard(app, &v);           // the character peeks, stays in view, or comes in for a light (peek.rs; type, state and ids only)
+        crate::review_heard(app, &v);         // M52: changes ready to review, a quiet dot on the notch (island.rs ReviewReady; ids and counts only)
         let _ = app.emit("runner-event", v);
     }
 
@@ -745,6 +750,49 @@ mod tests {
             if t == "error.explain" || t == "secondlook.check" { assert!(check_command(&v).is_err(), "{line}"); }
         }
         assert_eq!(seen, 2);
+    }
+    #[test]
+    fn a_review_of_changes_may_be_asked_for_by_a_page_but_only_for_the_chosen_project() {
+        // protocol/fixtures is read by the runner's suite too (runner/test/protocol.test.ts): the same review commands pass
+        // both sides' checks, and here they may only name the folder the person chose.
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let mut seen = Vec::new();
+        for line in fixtures.lines().filter(|l| !l.trim().is_empty()) {
+            let v: Value = serde_json::from_str(line).expect("a fixture is JSON");
+            let t = v["type"].as_str().unwrap_or("").to_string();
+            if !t.starts_with("review.") { continue; }
+            assert!(check_command(&v).is_ok(), "{line}");
+            let project = v["project"].as_str().expect("a review command names its project");
+            assert!(check_project(&v, project).is_ok(), "{line}");
+            assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+            assert!(check_project(&v, "").is_err(), "{line} before a folder is chosen");
+            assert!(check_project(&json!({ "v": 1, "id": "x", "type": t, "project": NO_PROJECT }), "").is_err(), "{t} must not take the stand in");
+            seen.push(t);
+        }
+        seen.sort(); seen.dedup();
+        assert_eq!(seen, ["review.dismiss", "review.fix", "review.now"]);
+    }
+    #[test]
+    fn the_review_events_in_the_shared_fixtures_are_whole_lines_the_shell_can_route() {
+        // What the engine says about a review (runner/src/review/service.ts): every one names its project, so the shell can
+        // tell which folder it is about, and none carries anything the page may not see (no detail for the log).
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let mut kinds = Vec::new();
+        for line in events.lines().filter(|l| !l.trim().is_empty()) {
+            let v: Value = serde_json::from_str(line).expect("an event fixture is JSON");
+            let t = v["type"].as_str().unwrap_or("");
+            if !t.starts_with("review.") { continue; }
+            assert_eq!(v["v"].as_i64(), Some(PROTOCOL_VERSION), "{line}");
+            assert!(v["project"].as_str().map_or(false, |p| !p.is_empty()), "{line}");
+            assert!(v.get("detail").is_none(), "{line}");
+            if t == "review.result" && v["ok"] == json!(true) {
+                assert!(["safe", "worth_a_look", "stop"].contains(&v["rating"].as_str().unwrap_or("")), "{line}");
+                assert!(v["sendBack"].as_str().map_or(false, |s| !s.is_empty()), "{line}");
+            }
+            kinds.push(t.to_string());
+        }
+        kinds.sort(); kinds.dedup();
+        assert_eq!(kinds, ["review.batch", "review.result", "review.started"]);
     }
     #[test]
     fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {

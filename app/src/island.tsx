@@ -93,15 +93,18 @@ function Island() {
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);
   const [unseen, setUnseen] = useState(0);
+  // M52: changes another AI tool made, ready to review (the shell's island.rs ReviewReady decides when it is on).
+  const [review, setReview] = useState(false);
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); setReview((v as { review?: unknown } | null)?.review === true); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
     // M34: results finished while Home was closed, counted until Home opens. M46: said on the hover panel only.
     const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(99, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
-    return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); };
+    const offReview = listen("review-ready", (e) => setReview((e.payload as { on?: unknown } | null)?.on === true));
+    return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); offReview.then((f) => f()); };
   }, []);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
   const drop = useDrop();
@@ -204,7 +207,7 @@ function Island() {
             <span className="island-wing right"><Mark w={w} count={m.approvals.length} /></span>
           </span>}
         </button>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} />
       </span>
     </main>
   );

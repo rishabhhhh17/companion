@@ -645,6 +645,8 @@ export const S = {
     unseen: (n: number) => (n === 1 ? "1 new result" : `${n} new results`),
     // M46: the count of new results, on the hover panel's top line only (the bare notch shows nothing at rest).
     newCount: (n: number) => `${n > 9 ? "9+" : n} new`,
+    // M52 (F30): another AI tool changed the open project and the changes wait to be reviewed. Said on the same top line.
+    reviewReady: "Changes ready to review",
     label: `${PRODUCT}: what is happening`,
     needsYou: "Needs your OK. Look at it first.",
     // M23: a question answered right in the notch (islandPanel.ts answerHere), this once only.
@@ -1266,6 +1268,45 @@ export const S = {
   // The one next step Where was I suggests. A button; nothing starts until it is pressed.
   recapNext: { fixWatch: "Fix it", findProblem: "Point at the problem", open: "Show me what is waiting" } as Record<string, string>,
   recapClose: "Got it",
+  // M52 (F30): the review of the changes another AI tool made in the open project (review.ts, reviewCard.tsx). Plain words;
+  // the rating is said in words and with its own drawing, never by colour alone.
+  review: {
+    title: "Changes to review",
+    sideItem: "Review changes",
+    sideLabel: (state: string) => `Review changes. ${state}`,
+    lead: (n: number) => (n === 1 ? "Your AI tool changed 1 file in this project." : `Your AI tool changed ${n} files in this project.`),
+    capped: (shown: number, n: number) => `Showing the first ${shown} of ${n} files.`,
+    secretFiles: (names: string) => `A settings or key file changed (${names}). ${PRODUCT} did not read it, and nothing in it is sent anywhere.`,
+    askFirst: "Nothing is looked at until you ask. Review them also runs your project's own checks in a safety box, the browser check included.",
+    later: (n: number) => `More changes came in since this review (${n === 1 ? "1 file" : `${n} files`}). They show here once you close this one.`,
+    autoLine: "This is reviewed by itself, with your project's own checks.",
+    reviewNow: "Review them",
+    quickLook: "Quick look, no checks",
+    reviewing: "Looking at the changes.",
+    reviewingChecks: "Looking at the changes and running your project's checks.",
+    asked: "Starting the review.",
+    rating: { safe: "Safe", worth_a_look: "Worth a look", stop: "Stop" },
+    ratingLine: { safe: "Nothing risky was found.", worth_a_look: "Look at this before you go on.", stop: "Something needs fixing before you go on." },
+    whatChanged: "What changed",
+    touchesLabel: "What it touches",
+    touches: { sign_in: "Sign in", payments: "Payments", data: "Your data", settings: "Settings", secrets: "Keys and secrets", dependencies: "Packages", look_only: "The look only" },
+    whyLabel: "Why",
+    at: (file: string, line?: number) => (line ? `${file}, line ${line}` : file),
+    checksLabel: "Your project's checks",
+    checks: { passed: "Checks passed", failed: "Checks failed", unknown: "Checks could not tell", not_run: "Checks not run" },
+    cost: (usd: string) => `This review cost about ${usd}.`,
+    noCost: "This review cost nothing.",
+    fix: "Fix it",
+    fixSure: "Fix what the review found? A safety copy of your project is kept first, so Undo puts every file back.",
+    fixYes: "Yes, fix it",
+    fixNo: "Not now",
+    fixSent: "Starting the fix.",
+    sendBack: "Send back to my AI",
+    sendBackHelp: "Copies a message about what the review found, for you to paste into the AI tool that made the change.",
+    copied: "Copied. Paste it into your AI tool.",
+    looksFine: "Looks fine",
+    notSent: "That did not reach the review. Try again in a moment.",
+  },
   // Watch routines (F21). Plain words; nothing here scores, praises or counts a streak (rule 16).
   watch: {
     title: "Watches",
@@ -1598,6 +1639,7 @@ export const S = {
       errorHelp: { name: "Explain an error", invite: "Try the error explainer: select an error and press its key." },
       secondLook: { name: "Second Look", invite: "Try Second Look: select an answer from any AI and press its key." },
       convert: { name: "Convert a file", invite: "Try dropping a picture or a document on the character." },
+      review: { name: "Review changes", invite: "Try Review changes after another AI tool edits your project." },
     },
   },
   sections: {
@@ -1613,7 +1655,7 @@ export const S = {
     "prompt.on": { label: "Prompt help", help: `Prompt help, the error explainer and Second Look: the keys that read text you select in another app, only when you press them. Off, their keys are let go for other apps to use, and ${PRODUCT} never asks for Accessibility because of them. Talking has its own switch.`, also: ["Prompt", "group", "prompt help", "rewrite", "better prompt", "error", "explain an error", "second look", "accessibility", "select", "selected text"] },
     "groups.islandName": { label: "Show the working group on the notch", help: "While a tool is at work, the notch's line starts with the name of its group.", also: ["island", "notch", "group name"] },
     "groups.showUntried": { label: "Invite me to tools not tried yet", help: "Home shows one line about a tool that is not tried yet, and the line goes away once it is tried. Off, Home never shows it.", also: ["invite", "suggest", "try", "new", "tip", "not tried"] },
-    "groups.tried": { label: "Tools tried", help: "The tools used once, so Home stops inviting you to them. Only tool names, kept on this Mac. Reset empties the list.", also: ["tried", "used"], options: { drive: "Tasks", followUp: "Follow ups", rescue: "Rescue", findProblem: "Point at the problem", proof: "Checks", undo: "Undo", explain: "Explain", drawIt: "Draw it", whichTask: "Which task broke it", watch: "Watch routines", connections: "Fix it from a watch", whereWasI: "Where was I", showMe: "Show me how", lessons: "Lessons", yourTurn: "Your turn", practice: "Practice", talk: "Hold to talk", dictate: "Type by voice", speak: "Spoken answers", promptHelp: "Prompt help", errorHelp: "Explain an error", secondLook: "Second Look", convert: "Convert a file" } },
+    "groups.tried": { label: "Tools tried", help: "The tools used once, so Home stops inviting you to them. Only tool names, kept on this Mac. Reset empties the list.", also: ["tried", "used"], options: { drive: "Tasks", followUp: "Follow ups", rescue: "Rescue", findProblem: "Point at the problem", proof: "Checks", undo: "Undo", explain: "Explain", drawIt: "Draw it", whichTask: "Which task broke it", watch: "Watch routines", connections: "Fix it from a watch", whereWasI: "Where was I", review: "Review changes", showMe: "Show me how", lessons: "Lessons", yourTurn: "Your turn", practice: "Practice", talk: "Hold to talk", dictate: "Type by voice", speak: "Spoken answers", promptHelp: "Prompt help", errorHelp: "Explain an error", secondLook: "Second Look", convert: "Convert a file" } },
     "groups.cutNotice": { label: "Tools that now start off", help: "Said once after the update that started the extra tools off: the ones on this Mac you had not used. Only tool names, kept on this Mac. OK empties the list.", also: ["start off", "update"], options: { convert: "Convert a file", watch: "Watch routines", secondLook: "Second Look", dictate: "Type by voice", drawIt: "Draw it" } },
     "keys.hotkeys": { label: "Keys for each job", help: `Pick other keys for any job from a short list of keys that are free on this Mac. ${PRODUCT} never records what you type.`, also: ["shortcut", "hotkey", "keys", "stop", "panic", "hotkey", "shortcut", "keyboard", "chord", "stop everything"], usual: "the usual keys" },
     "talk.voice": { label: "Voice, speed and microphone", help: `Your voice and ${PRODUCT_S} are handled on this Mac. Nothing you say or hear is sent anywhere.`, also: ["mic", "microphone", "talk", "speak", "voice", "dictate", "microphone", "mic", "speed", "language", "voice", "headphones"], usual: "your Mac's own voice and microphone" },
@@ -1767,6 +1809,8 @@ export const S = {
     "watch.quiet": { label: "Quiet hours for watch alerts", help: "Between the hours below, a watch that fails does not tell you. It is still checked, and if it is still failing when the quiet hours end, you are told then.", also: ["watch", "alert", "night", "sleep", "do not disturb", "quiet"] },
     "watch.quietFrom": { label: "Quiet hours start at hour", help: "From 0 to 23 on this Mac's clock. Used only with quiet hours on.", also: ["watch", "quiet", "night", "start"] },
     "watch.quietTo": { label: "Quiet hours end at hour", help: "From 0 to 23 on this Mac's clock. Used only with quiet hours on. The same hour as the start means no quiet hours.", also: ["watch", "quiet", "morning", "end"] },
+    "review.mode": { label: "Review changes your AI makes", help: `When another AI tool, such as Claude Code, Codex or Cursor, changes files in your project, ${PRODUCT} looks at the change once the files stop changing: what changed, what it touches and whether it is safe. Ask first: a dot says there are new changes, and nothing is looked at until you ask. Automatic: each change is reviewed by itself, with your project's own checks, and counts in your daily limit. Off: the folder is not watched at all.`, also: ["review", "changes", "code review", "claude code", "codex", "cursor", "watch folder", "ai changes"], options: { ask: "Ask first", automatic: "Automatic", off: "Off" } },
+    "review.quietSeconds": { label: "Wait before a review", help: `How long your project's files must stay unchanged before ${PRODUCT} treats them as one finished change. Longer suits a tool that pauses while it works.`, also: ["review", "wait", "quiet", "seconds", "debounce"] },
     "numbers.on": { label: `Count how I use ${PRODUCT}`, help: `${PRODUCT} counts how often things happen (never words, names, files or anything from your screen), keeps the counts only on this Mac, and sends nothing.`, also: ["metrics", "stats", "analytics", "beta", "numbers"] },
   },
   // The fixed part of a setting that can never change, shown under its row, by the id its definition names (floor).

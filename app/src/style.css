@@ -614,8 +614,8 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
    resting, working or done by the Segmented control under it. */
 .companion-hero { position: relative; display: grid; place-items: center; min-height: 120px; margin: 0; border-radius: var(--r-card) var(--r-card) 0 0; }
 .companion-hero .ch-char { position: relative; z-index: 1; margin-top: var(--space-5); -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
-.receipt .answer-lead { font-size: var(--t-small); font-weight: 600; color: var(--fg-2); }
-.receipt .answer-words { margin: 2px 0 0; font-size: var(--t-body); line-height: 1.45; }
+.receipt .answer-lead, .review .answer-lead { font-size: var(--t-small); font-weight: 600; color: var(--fg-2); }
+.receipt .answer-words, .review .answer-words { margin: 2px 0 0; font-size: var(--t-body); line-height: 1.45; }
 /* M39 (Linear's agent results): what a fix changed, as one quiet card. */
 .changes { margin: var(--space-2) 0; border-radius: var(--r-control); background: var(--surface-1); border: 1px solid var(--line); }
 .changes-head { padding: var(--space-2) var(--space-3); font-size: var(--t-small); font-weight: 600; color: var(--fg-2); border-bottom: 1px solid var(--line); }
@@ -626,6 +626,20 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .changes-mark { flex: none; width: 1em; text-align: center; font-weight: 600; color: var(--fg-2); }
 .changes li[data-kind="added"] .changes-mark { color: var(--ok); }
 .changes li[data-kind="deleted"] .changes-mark { color: var(--bad); }
+/* M52: the review card (reviewCard.tsx). The rating is the receipt's verdict line (its mark coloured by tone, its words in
+   the ink); what it touches are small outlined labels; why, each reason with its file and line in mono. */
+.review-touches, .review-why { margin: var(--space-3) 0 var(--space-2); }
+.review-label { display: block; margin-bottom: var(--space-1); font-size: var(--t-small); font-weight: 600; color: var(--fg-2); }
+.review-touches ul { display: flex; flex-wrap: wrap; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.review-tag { display: inline-flex; align-items: center; min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-thumb); font-size: var(--t-caption); font-weight: 600; color: var(--fg); }
+.review-reasons { display: grid; gap: var(--space-1); list-style: none; margin: 0; padding: 0; }
+.review-reasons li { display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--r-control); background: var(--surface-1); border: 1px solid var(--line); font-size: var(--t-small); line-height: 1.45; overflow-wrap: anywhere; }
+.review-at { font: 400 var(--t-caption) / 1.4 var(--font-code); color: var(--fg-2); overflow-wrap: anywhere; }
+.review-checks { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); }
+.review-checks-note { font-size: var(--t-small); color: var(--fg-2); overflow-wrap: anywhere; }
+.review-secret { display: flex; align-items: baseline; gap: var(--space-2); }
+.review-secret .ic { flex: none; align-self: center; color: var(--fg-2); }
+.review-copied { color: var(--fg); }
 /* M28: an approval card says exactly what will happen, in a quiet code box, and whether Undo covers it. */
 .ask-card h2 { font: 600 var(--t-body) var(--font); }
 .ask-what { margin: var(--space-2) 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-control); background: var(--inset); overflow-wrap: anywhere; }

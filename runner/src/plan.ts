@@ -29,7 +29,7 @@ export const FREE_FIXES_PER_MONTH = 3;
 // checks know and these do not.
 
 /** Gated as a counted fix (the Free limit). How each is gated is in PlanGate.admit. */
-export const FIX_GATED = ["agent.start", "drive.plan", "drive.approve", "watch.fix", "rescue.diagnose", "agent.send"] as const;
+export const FIX_GATED = ["agent.start", "drive.plan", "drive.approve", "watch.fix", "rescue.diagnose", "agent.send", "review.fix"] as const;
 /** Gated as Pro only. settings.apply only for a water colour that is not the usual one; every other setting is never gated. */
 export const PRO_ONLY = ["ship.check", "ship.preview", "ship.live", "recap.ask", "settings.apply"] as const;
 /** Never gated, on any plan, at any count. */
@@ -52,6 +52,8 @@ export const NEVER_GATED = [
   "tasks.list", "where.was.i", "spending.show", "spending.set", "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
   "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "bisect.start", "project.inspect", "project.install",
   "project.clone", "auth.check", "google.accounts", "engine.warm", "runner.ping", "loop.choose", "explain.set",
+  // M52: reviewing a change and closing its card (a review spends only against the daily limit, like Explain).
+  "review.now", "review.dismiss",
 ] as const;
 
 type Listed = (typeof FIX_GATED)[number] | (typeof PRO_ONLY)[number] | (typeof NEVER_GATED)[number];
@@ -186,6 +188,11 @@ export class PlanGate implements FixCounter {
         // A follow up or Try again on a fix the gate admitted counts once with it. Any other task is gated like a start.
         if (!metered || this.byAgent.has(cmd.agent)) return cmd;
         return this.startFix(cmd, false);
+      }
+      case "review.fix": {
+        // Fix it from a review (M52): the task it starts is an agent.start, admitted (and counted) then, in main.ts. At the
+        // limit the card says so before anything is started.
+        return metered && this.atLimit() ? this.refuse(cmd, "fixes") : cmd;
       }
       case "watch.fix": {
         // Only the evidence is read here; the task it leads to is an agent.start, admitted (and counted) then. At the limit

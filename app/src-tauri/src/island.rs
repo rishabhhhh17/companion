@@ -339,6 +339,56 @@ pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub pa
 /// hover panel says "9+" past nine, M46); any result while Home is open is seen at once.
 pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (n + 1).min(99) } }
 
+/// M52 (F30): changes another AI tool made in the open project, ready to review (the engine's review.batch, and a result
+/// that arrived while Home was closed). Said quietly on the notch's hover panel, the way the count of new results is: no
+/// wings, no peek, no sound (rule 16). It goes out when Home is opened, when the page asks for the review, closes it (Looks
+/// fine) or fixes it, when the changes went away again (count 0), or when the engine starts again (it knows no batch then).
+/// Only the batch's name is kept, never a file name or a word of the review.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReviewReady { batch: Option<String> }
+/// A batch's name as the engine makes them ("rv_" and a few hex characters); anything else is not one.
+fn review_batch(v: &serde_json::Value) -> Option<&str> {
+    v.get("batch").and_then(serde_json::Value::as_str)
+        .filter(|b| b.len() > 3 && b.len() <= 40 && b.starts_with("rv_") && b[3..].chars().all(|c| c.is_ascii_alphanumeric()))
+}
+fn same_folder(a: &str, b: &str) -> bool { let (a, b) = (a.trim_end_matches('/'), b.trim_end_matches('/')); !a.is_empty() && a == b }
+impl ReviewReady {
+    pub const fn new() -> Self { ReviewReady { batch: None } }
+    pub fn on(&self) -> bool { self.batch.is_some() }
+    /// Puts it out. True when it was on.
+    pub fn clear(&mut self) -> bool { self.batch.take().is_some() }
+    fn light(&mut self, id: &str) -> bool { let was = self.batch.replace(id.to_string()); was.as_deref() != Some(id) }
+    /// An event from the engine. `project`: the folder open now (an event about another one is not news here). `seen`: Home
+    /// is open and in front, so what it says is seen at once. True when the dot changed.
+    pub fn heard(&mut self, v: &serde_json::Value, project: &str, seen: bool) -> bool {
+        let t = v.get("type").and_then(serde_json::Value::as_str).unwrap_or("");
+        if t == "runner.hello" || t == "app.runner_down" { return self.clear(); }
+        if t != "review.batch" && t != "review.result" { return false; }
+        if !v.get("project").and_then(serde_json::Value::as_str).map_or(false, |p| same_folder(p, project)) { return false; }
+        let Some(id) = review_batch(v) else { return false };
+        if t == "review.result" {
+            // A review that could not be done is nothing new to look at; a finished one is, unless Home shows it now.
+            if v.get("ok") != Some(&serde_json::Value::Bool(true)) { return false; }
+            return if seen { self.clear() } else { self.light(id) };
+        }
+        if v.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0) == 0 {
+            // The changes went away again. A batch that already moved on says nothing about the newer one.
+            return self.batch.as_deref() == Some(id) && self.clear();
+        }
+        if seen { self.clear() } else { self.light(id) }
+    }
+    /// A command a page sent, after the shell's checks: Review now, Looks fine or Fix it. One that names a batch that already
+    /// moved on leaves the newer one lit. True when the dot changed.
+    pub fn asked(&mut self, v: &serde_json::Value) -> bool {
+        let t = v.get("type").and_then(serde_json::Value::as_str).unwrap_or("");
+        if !matches!(t, "review.now" | "review.dismiss" | "review.fix") { return false; }
+        match v.get("batch").and_then(serde_json::Value::as_str) {
+            Some(b) if self.batch.as_deref() != Some(b) => false,
+            _ => self.clear(),
+        }
+    }
+}
+
 /// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
 /// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
 pub fn animates_open(source: &str) -> bool { source != "hotkey" }
@@ -1162,5 +1212,134 @@ mod tests {
         assert_eq!(unseen_next(9, false), 10, "ten reads \"9+ new\" on the hover panel, never \"9 new\"");
         assert_eq!(unseen_next(99, false), 99);
         assert_eq!(unseen_next(4, true), 0);
+    }
+
+    // ---------- M52 (F30): changes ready to review ----------
+
+    /// The shared fixtures (protocol/fixtures, read by the runner's suite too), with their project put as the one open here.
+    fn review_lines(file: &str) -> Vec<serde_json::Value> {
+        file.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str::<serde_json::Value>(l).expect("a fixture is JSON"))
+            .filter(|v| v["type"].as_str().map_or(false, |t| t.starts_with("review."))).collect()
+    }
+    fn events() -> Vec<serde_json::Value> { review_lines(include_str!("../../../protocol/fixtures/events.jsonl")) }
+    fn commands() -> Vec<serde_json::Value> { review_lines(include_str!("../../../protocol/fixtures/commands.jsonl")) }
+    fn by_id<'a>(list: &'a [serde_json::Value], id: &str) -> &'a serde_json::Value { list.iter().find(|v| v["id"] == id).expect(id) }
+    const P: &str = "p_9f2c";
+
+    #[test]
+    fn a_batch_of_changes_lights_the_dot_until_the_changes_go_away_again() {
+        let ev = events();
+        let mut r = ReviewReady::new();
+        assert!(!r.on());
+        assert!(r.heard(by_id(&ev, "erv1"), P, false), "a batch with changes, Home closed");
+        assert!(r.on());
+        assert!(!r.heard(by_id(&ev, "erv1"), P, false), "the same batch again changes nothing");
+        // The review starting and its results (by itself in automatic mode) keep it: there is something to look at.
+        for id in ["erv3", "erv4", "erv5", "erv6"] { r.heard(by_id(&ev, id), P, false); assert!(r.on(), "{id}"); }
+        // count 0 with no files: the changes went away again, so the card closes and the dot goes out.
+        assert!(r.heard(by_id(&ev, "erv2"), P, false));
+        assert!(!r.on());
+    }
+
+    #[test]
+    fn a_batch_that_grows_is_one_dot_and_an_old_batch_closing_leaves_the_new_one() {
+        let mut r = ReviewReady::new();
+        let batch = |id: &str, count: u64| serde_json::json!({ "v": 1, "id": "e", "type": "review.batch", "project": P, "batch": id, "files": [], "count": count, "capped": false, "secretFiles": [], "auto": false });
+        assert!(r.heard(&batch("rv_aaaaaaaaaa", 2), P, false));
+        assert!(r.heard(&batch("rv_bbbbbbbbbb", 3), P, false), "said again under a new id");
+        assert!(!r.heard(&batch("rv_aaaaaaaaaa", 0), P, false), "the old id moved on: closing it says nothing about the new one");
+        assert!(r.on());
+        assert!(r.heard(&batch("rv_bbbbbbbbbb", 0), P, false));
+        assert!(!r.on());
+    }
+
+    #[test]
+    fn a_batch_said_while_home_is_in_front_is_seen_at_once() {
+        let ev = events();
+        let mut r = ReviewReady::new();
+        assert!(!r.heard(by_id(&ev, "erv1"), P, true));
+        assert!(!r.on());
+        // A result that arrives after Home was closed (automatic mode, or Review now and then away) is still to be seen.
+        assert!(r.heard(by_id(&ev, "erv4"), P, false));
+        assert!(r.on());
+        assert!(r.heard(by_id(&ev, "erv5"), P, true), "and seen at once while Home is in front");
+        assert!(!r.on());
+        assert!(!r.heard(by_id(&ev, "erv6"), P, false), "a review that could not be done is nothing new to look at");
+    }
+
+    #[test]
+    fn only_the_open_project_and_a_proper_batch_name_light_it() {
+        let ev = events();
+        let mut r = ReviewReady::new();
+        assert!(!r.heard(by_id(&ev, "erv1"), "/somewhere/else", false));
+        assert!(!r.heard(by_id(&ev, "erv1"), "", false), "no folder chosen");
+        let mut odd = by_id(&ev, "erv1").clone();
+        for b in [serde_json::json!(""), serde_json::json!("cp_0001"), serde_json::json!("rv_../../x"), serde_json::json!(7), serde_json::json!("rv_".to_string() + &"a".repeat(80))] {
+            odd["batch"] = b.clone();
+            assert!(!r.heard(&odd, P, false), "{b}");
+        }
+        assert!(!r.on());
+        // A project written with a trailing slash is still the same folder.
+        assert!(r.heard(by_id(&ev, "erv1"), "p_9f2c/", false));
+    }
+
+    #[test]
+    fn opening_the_review_closing_it_or_fixing_it_puts_the_dot_out() {
+        let (ev, cmds) = (events(), commands());
+        for id in ["rv1", "rv2", "rv3", "rv4"] {
+            let mut r = ReviewReady::new();
+            r.heard(by_id(&ev, "erv1"), P, false);
+            assert!(r.asked(by_id(&cmds, id)), "{id}");
+            assert!(!r.on(), "{id}");
+            assert!(!r.asked(by_id(&cmds, id)), "{id} again changes nothing");
+        }
+        // Looks fine for a batch that already moved on leaves the newer one lit.
+        let mut r = ReviewReady::new();
+        r.heard(by_id(&ev, "erv1"), P, false);
+        let mut old = by_id(&cmds, "rv3").clone();
+        old["batch"] = serde_json::json!("rv_0000000000");
+        assert!(!r.asked(&old));
+        assert!(r.on());
+        assert!(!r.asked(&serde_json::json!({ "v": 1, "id": "x", "type": "agent.start", "project": P })), "other commands are not about it");
+    }
+
+    #[test]
+    fn an_engine_that_started_again_knows_no_batch_so_the_dot_goes_out() {
+        let ev = events();
+        for t in ["runner.hello", "app.runner_down"] {
+            let mut r = ReviewReady::new();
+            r.heard(by_id(&ev, "erv1"), P, false);
+            assert!(r.heard(&serde_json::json!({ "v": 1, "id": "h", "type": t }), P, false), "{t}");
+            assert!(!r.on(), "{t}");
+        }
+        let mut r = ReviewReady::new();
+        r.heard(by_id(&ev, "erv1"), P, false);
+        assert!(r.clear());
+        assert!(!r.clear(), "clearing twice is no change");
+    }
+
+    #[test]
+    fn the_review_dot_is_quiet_no_peek_no_wings_and_it_is_cleared_where_home_opens() {
+        // Rule 16: the dot is said on the hover panel only, like the count of new results. No review event makes the
+        // character peek or the wings open, and the shell plays no sound for one.
+        for v in events() { assert!(crate::peek::news_of(&v).is_empty(), "{v}"); }
+        let main = include_str!("main.rs");
+        let body = |name: &str| { let at = main.find(name).unwrap_or_else(|| panic!("{name}")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        let heard = body("pub(crate) fn review_heard(");
+        assert!(heard.contains("run_on_main_thread") && heard.contains("HOME_OPEN.load(Ordering::SeqCst) && card_visible()"), "{heard}");
+        assert!(heard.contains("review_watched()"), "{heard}");
+        assert!(!heard.contains("sound") && !heard.contains("island_alert") && !heard.contains("speak"), "{heard}");
+        assert!(include_str!("runner.rs").contains("crate::review_heard(app, &v);"), "every engine event passes by it");
+        let watched = body("fn review_watched(");
+        assert!(watched.contains("\"review.mode\"") && watched.contains("\"off\"") && watched.contains("group_off(\"flow.on\")"), "{watched}");
+        // Cleared when Home opens (with the count of new results), when the page asks for the review or closes it, when
+        // another folder is opened, and when reviews or Flow are turned off.
+        let open = body("fn open_card_then(");
+        assert!(open.contains("review_ready().clear()"), "Home opened");
+        assert!(body("fn send_command(").contains("review_ready().asked(&cmd)"), "Review now, Looks fine, Fix it");
+        assert!(body("fn project_now(").contains("review_ready().clear()"), "another folder");
+        let applied = body("fn setting_applied(");
+        assert!(applied.contains("\"review.mode\"") && applied.contains("\"flow.on\"") && applied.contains("!review_watched()"), "{applied}");
+        assert!(body("fn island_state(").contains("v[\"review\"] = json!(review_ready().on())"), "a page that loads late");
     }
 }

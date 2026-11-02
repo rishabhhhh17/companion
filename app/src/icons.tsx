@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
-type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron";
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron" | "warn" | "halt";
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
@@ -45,6 +45,10 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   shield: <><path d="M12 3.5l7 2.8v5.2c0 4.4-3 7.7-7 9-4-1.3-7-4.6-7-9V6.3z" /><path d="M9 12l2.2 2.2L15.5 10" /></>,
   undo: <><path d="M9 14L4 9l5-5" /><path d="M4 9h10a6 6 0 010 12h-3" /></>,
   stop: <rect x="6.5" y="6.5" width="11" height="11" rx="2" />,
+  // M52: the review's ratings, each its own drawing (never colour alone): safe is the shield above, worth a look a
+  // triangle with a mark, stop an eight sided sign with a bar.
+  warn: <><path d="M12 4.5l8.5 15h-17z" /><path d="M12 10v4M12 16.8h.01" /></>,
+  halt: <><path d="M8.7 3.8h6.6l4.9 4.9v6.6l-4.9 4.9H8.7l-4.9-4.9V8.7z" /><path d="M8.5 12h7" /></>,
   // The ring
   more: <><circle cx="6" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" /><circle cx="18" cy="12" r="1.4" fill="currentColor" stroke="none" /></>,
   close: <path d="M7 7l10 10M17 7L7 17" />,

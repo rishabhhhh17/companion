@@ -22,8 +22,14 @@ const PATTERNS: RegExp[] = [
 // The name may carry more words around the telling one (DB_PASSWORD, STRIPE_WEBHOOK_SECRET, SUPABASE_SERVICE_ROLE_KEY, auth_token).
 // Up to 80 characters each side: unbounded, a long run of dots or dashes sent the matcher over the rest of the text from every
 // start, and the time grew with the square of the length (audit round 3). A longer name still has its value hidden, because
-// the match can start at any dash, dot or underscore inside it.
-const NAMED = /(?<![A-Za-z0-9])([A-Za-z0-9_.-]{0,80}(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|service[_-]?role|credential|[_-]key)[A-Za-z0-9_.-]{0,80})(["']?\s*[:=]\s*)["']?[^\s"']{4,}/gi;
+// the match can start at any dash, dot or underscore inside it. Every name the review calls a key in code (review/rate.ts
+// NAMED_LITERAL) is here too, authKey among them, so a line the review flags never reaches a model in clear (M52).
+const NAMED = /(?<![A-Za-z0-9])([A-Za-z0-9_.$-]{0,80}(?:password|passwd|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|service[_-]?role|auth[_-]?key|credential|[_-]key)[A-Za-z0-9_.$-]{0,80})(["']?\s*[:=]\s*)["'`]?[^\s"'`]{4,}/gi;
+/** Whether the text holds a value shaped like a key or token (the patterns above, not the "password: x" names). The review
+ *  of a change (review/rate.ts) uses it to find a key written into code without guessing from a variable's name. */
+export function hasKeyShape(text: string): boolean {
+  return PATTERNS.some((p) => { p.lastIndex = 0; const hit = p.test(text); p.lastIndex = 0; return hit; });
+}
 export function redact(text: string): string {
   let out = text;
   for (const p of PATTERNS) out = out.replace(p, "[secret]");

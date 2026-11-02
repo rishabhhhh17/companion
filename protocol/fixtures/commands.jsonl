@@ -87,3 +87,7 @@
 {"v":1,"id":"c5f","type":"checkpoint.restore","project":"p_9f2c","checkpoint":"cp_0042","force":true}
 {"v":1,"id":"sl1","type":"secondlook.check","req":"sl_1760600000000","app":"com.openai.chat","text":"Your budget: 120 × 4 = 460 units a month.","project":"p_9f2c"}
 {"v":1,"id":"sl2","type":"secondlook.check","req":"sl_1760600000001","app":"com.google.Chrome","text":"Smith v. Jones (2019) settled this."}
+{"v":1,"id":"rv1","type":"review.now","project":"p_9f2c","batch":"rv_4f2a9c01de"}
+{"v":1,"id":"rv2","type":"review.now","project":"p_9f2c","proof":true}
+{"v":1,"id":"rv3","type":"review.dismiss","project":"p_9f2c","batch":"rv_4f2a9c01de"}
+{"v":1,"id":"rv4","type":"review.fix","project":"p_9f2c","batch":"rv_4f2a9c01de","agent":"builder-1","model":"claude-sonnet-5-5","budgetUsd":3}

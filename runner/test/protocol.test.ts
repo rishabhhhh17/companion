@@ -280,3 +280,30 @@ describe("M45: why a task ended, undone rows and house rule asks", () => {
     expect(all.some((x) => x.type === "tasks.list" && x.tasks[0].undone === true)).toBe(true);
   });
 });
+
+// M52, the review of every change: the shapes are checked, never guessed (the shared fixtures above hold one of each).
+describe("the review of a change", () => {
+  const fx = (t: string) => JSON.parse(lines(t.startsWith("review.") && ["review.now", "review.dismiss", "review.fix"].includes(t) ? "commands.jsonl" : "events.jsonl").find((l) => JSON.parse(l).type === t)!);
+  const result = () => JSON.parse(lines("events.jsonl").find((l) => JSON.parse(l).id === "erv4")!);
+  test("a command missing what it needs is refused", () => {
+    expect(parseCommand(JSON.stringify({ ...fx("review.fix"), budgetUsd: undefined })).ok).toBe(false);
+    expect(parseCommand(JSON.stringify({ ...fx("review.fix"), batch: "" })).ok).toBe(false);
+    expect(parseCommand(JSON.stringify({ ...fx("review.now"), proof: "yes" })).ok).toBe(false);
+    expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), project: undefined })).ok).toBe(false);
+  });
+  test("a batch names each file with its kind, and a whole count", () => {
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), files: [{ file: "a.ts" }] })).ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), count: 1.5 })).ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), secretFiles: [3] })).ok).toBe(false);
+  });
+  test("a review that ran has its batch, a known rating, known touches and reasons, the checks, send back and its lane", () => {
+    expect(parseEvent(JSON.stringify(result())).ok).toBe(true);
+    for (const [k, v] of [["batch", undefined], ["rating", "fine"], ["touches", ["love"]], ["reasons", [{ kind: "vibes", say: "x" }]], ["reasons", [{ kind: "secret_in_code", say: "x", line: 0 }]], ["checks", "maybe"], ["sendBack", ""], ["lane", "best"], ["summary", ""], ["count", -1]] as const) {
+      expect(parseEvent(JSON.stringify({ ...result(), [k]: v })).ok, `${k}`).toBe(false);
+    }
+  });
+  test("a review that did not run says why", () => {
+    expect(parseEvent(JSON.stringify({ v: 1, id: "x", type: "review.result", project: "p", ok: false, usdEstimate: 0 })).ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ v: 1, id: "x", type: "review.result", project: "p", ok: false, reason: "Reviews of changes are off. Turn them on in Settings.", usdEstimate: 0 })).ok).toBe(true);
+  });
+});

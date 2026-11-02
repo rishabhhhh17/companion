@@ -158,6 +158,15 @@ export class CheckpointStore {
       return [...new Set([...a.envFiles, ...b.envFiles])].some((rel) => { const [x, y] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)]; return !(x === y || (x && y && x.equals(y))); });
     });
   }
+  /** The .env files whose private copies differ between two saved versions (made, changed or removed), by name only. Their
+   *  contents are compared here and never returned. Writes nothing. For the review of a change (review/service.ts). */
+  envChanged(fromId: string, toId: string): Promise<string[]> {
+    return this.serial(async () => {
+      const a = this.readMeta(fromId), b = this.readMeta(toId);
+      if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
+      return [...new Set([...a.envFiles, ...b.envFiles])].filter((rel) => { const [x, y] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)]; return !(x === y || (x && y && x.equals(y))); }).sort();
+    });
+  }
   /** Could the one task that went from `fromId` to `toId` be undone on its own, given the project as saved in `nowId`? Writes nothing. */
   undoOnePlan(fromId: string, toId: string, nowId: string): Promise<UndoOnePlan> { return this.serial(() => this.planOneNow(fromId, toId, nowId)); }
   /** Undo only that task: save the project first (so this is undoable too), check again against that, then put back only the

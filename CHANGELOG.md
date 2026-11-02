@@ -2,6 +2,18 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby reviews what your AI changes: 2 Nov 2026
+
+- **Squibby looks over the changes your other AI tools make.** When Claude Code, Codex, Cursor or any other tool changes files in your project, and the files stop changing for a short while, a "Review changes" item shows in the list on the left and a card on Now lists the files.
+- **Nothing is looked at until you ask** (or pick Automatic in Settings). Review them also runs your project's own checks in a safety box, the browser check included; Quick look skips them. A review that runs by itself only runs what you have already allowed.
+- **It never looks at half written code.** If Squibby starts its own work while your other tool is still writing, that tool's changes wait until both are done and the files are still again, and nothing it writes in the meantime is lost. A memory note, an install or a check by Squibby never hides what your other tool changes at the same time.
+- **The card says it plainly:** what changed, what it touches (sign in, payments, your data, settings, keys, packages or the look only), and a rating of Safe, Worth a look or Stop, each with its own mark so it never relies on colour. Each reason names the file and line, and the checks say passed, failed or not run.
+- **Three things you can do:** Fix it (it asks first, and keeps a safety copy so Undo puts every file back), Send back to my AI (copies a ready message to paste into the tool that made the change, with any key hidden), and Looks fine.
+- **Settings and key files are never read.** The card only says one changed. A line with a key or password in it is hidden before anything is sent to Claude, so the key never leaves your Mac.
+- **A warning stays until you close it.** If more changes come in while a Stop or Worth a look is on the card, they wait behind it and show once you press Looks fine.
+- **Stop everything stops reviews too,** including one that was just about to start. A slow review that gives up waiting for Claude also ends that request, and what it cost still counts toward your daily limit.
+- **Two settings under Watch routines:** how often (Ask first, Automatic or Off) and how long the files must stay still first (20 seconds unless you change it).
+
 ## Home is a colourful place now: 1 Nov 2026
 
 - **Home is a lit room, not a dark page.** A bright sky of colour at the top, rays of light falling through deep water, soft points of light drifting in it, and the colour carried all the way down. Words stay easy to read on all of it: every screen was measured.

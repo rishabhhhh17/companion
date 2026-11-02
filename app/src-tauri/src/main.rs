@@ -497,6 +497,32 @@ thread_local! {
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
 /// M34: results finished while Home was closed, shown as a count on the notch (island::unseen_next).
 static UNSEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+/// M52 (F30): changes another AI tool made, ready to review, said quietly on the notch (island::ReviewReady).
+static REVIEW_READY: Mutex<island::ReviewReady> = Mutex::new(island::ReviewReady::new());
+fn review_ready() -> std::sync::MutexGuard<'static, island::ReviewReady> { REVIEW_READY.lock().unwrap_or_else(|e| e.into_inner()) }
+/// Tells the island page when the dot changed (`changed`, from island::ReviewReady). The page shows it on the hover panel.
+fn review_dot_told(app: &AppHandle, changed: bool) {
+    if !changed { return; }
+    let on = review_ready().on();
+    let _ = app.emit_to("island", "review-ready", json!({ "on": on }));
+}
+/// The engine watches the open project for changes only while review.mode is not off and Flow is on (runner/src/review).
+fn review_watched() -> bool { setting_now("review.mode") != json!("off") && !group_off("flow.on") }
+/// An event from the engine (Runner::publish): a batch of changes ready to review, a result, or the engine starting again.
+/// On the main thread, where Home's window lives, so whether Home is in front is read truly. Never a sound, never the wings.
+pub(crate) fn review_heard(app: &AppHandle, v: &Value) {
+    let t = v.get("type").and_then(Value::as_str).unwrap_or("");
+    if !(t == "review.batch" || t == "review.result" || t == "runner.hello" || t == "app.runner_down") { return; }
+    // Only what the dot needs: the type, the project, the batch's name, its count and whether the review was done.
+    let v = json!({ "type": t, "project": v.get("project"), "batch": v.get("batch"), "count": v.get("count"), "ok": v.get("ok") });
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let seen = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
+        let watched = review_watched();
+        let changed = { let mut r = review_ready(); if watched { r.heard(&v, &current_project(), seen) } else { r.clear() } };
+        review_dot_told(&a, changed);
+    });
+}
 static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
@@ -692,6 +718,7 @@ fn island_state() -> Value {
     if !v.is_object() { v = json!({ "mode": "rest", "kind": "pill" }); }
     v["update"] = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|u| json!({ "version": u })).unwrap_or(Value::Null);
     v["unseen"] = json!(UNSEEN.load(Ordering::SeqCst));
+    v["review"] = json!(review_ready().on());
     v
 }
 
@@ -1494,6 +1521,8 @@ fn setting_applied(app: &AppHandle, key: &str) {
     if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }
     // A group was switched (F20): its keys are let go or taken again, and a group just switched off stops its tools.
     if groups::is_switch(key) { groups_applied(app); }
+    // M52: reviews or Flow turned off: the engine stops watching and forgets its batches, so the dot goes out.
+    if (key == "review.mode" || key == "flow.on") && !review_watched() { let cleared = review_ready().clear(); review_dot_told(app, cleared); }
     home_setting_applied(app, key);
 }
 
@@ -1814,6 +1843,9 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         if !was_open && home_set().click_away { watch_click_away(&a); }
         let instant = !island::animates_open(&src);
         if UNSEEN.swap(0, Ordering::SeqCst) > 0 { let _ = a.emit_to("island", "unseen", json!({ "n": 0 })); }
+        // M52: the review card is in Home, so changes ready to review are seen now.
+        let cleared = review_ready().clear();
+        review_dot_told(&a, cleared);
         let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) });
     });
 }
@@ -1856,7 +1888,11 @@ fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     runner::check_project(&cmd, &current_project())?;
     // A tool whose group is switched off does nothing (groups.rs): one plain line, and the engine is not even asked.
     if let Some(line) = groups::refuse_runner(&group_off, &cmd) { return Err(line.into()); }
-    app.state::<runner::Runner>().send(&cmd)
+    app.state::<runner::Runner>().send(&cmd)?;
+    // M52: Review now, Looks fine or Fix it: the person has the review in front of them, so the dot goes out.
+    let changed = review_ready().asked(&cmd);
+    review_dot_told(&app, changed);
+    Ok(())
 }
 
 /// M33: a short line beside the pointer (a fix just proven), said by the drop that follows it, for follow::SAY_MS. Never
@@ -1985,6 +2021,9 @@ fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
 fn project_now(app: &AppHandle, folder: &str) {
     log("project_changed", json!({ "none": folder.is_empty() }));
     let _ = app.emit("project-changed", folder);
+    // M52: the engine watches the new folder from a fresh starting point, so no batch of the old one is waiting.
+    let cleared = review_ready().clear();
+    review_dot_told(app, cleared);
     send_settings(app);
     settings_told(app, &[]);
 }
