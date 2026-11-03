@@ -37,6 +37,12 @@ export class Face {
   glance(nx: number, ny: number, seconds = 1.2): void { this.gx = clamp1(nx); this.gy = clamp1(ny); this.glanceLeft = seconds; }
   /** Close both eyes now (an app event such as a poke may ask for it). */
   blinkNow(): void { if (this.blinkT < 0) this.blinkT = 0; }
+  /** M55: the eyes straight ahead at once, at rest, and no glance left (a still frame with less motion shows only the state). */
+  center(): void {
+    this.l.x.x = this.l.y.x = this.r.x.x = this.r.y.x = 0;
+    this.l.x.v = this.l.y.v = this.r.x.v = this.r.y.v = 0;
+    this.glanceLeft = 0;
+  }
   /** True while a blink is under way: a frame loop parks only with the eyes open (M46). */
   get blinking(): boolean { return this.blinkT >= 0; }
 

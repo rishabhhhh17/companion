@@ -43,6 +43,7 @@ import { addCallApp, callAppRows, toggleCallApp } from "./callapps.ts";
 import { askTurnOffPro, deleteGoesPro, deleteKeeps, proDeleteProblem, proInventoryFrom, proOnly, proTag, type Usage } from "./plan.ts";
 import { LimitPanel, PlanCardView, ProTag } from "./planCard.tsx";
 import { usePlan } from "./usePlan.ts";
+import { resetUsed, risen, useUsedOften, wayLabel } from "./usedOften.ts";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 
@@ -729,6 +730,7 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "made": return <MadeRow />;
     case "logs": return <LogsRow />;
     case "acknowledgements": return <AckRow />;
+    case "usedOften": return <UsedOftenRow />;
     // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
     case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
     default: return null;
@@ -926,6 +928,17 @@ function LogsRow() {
 function AckRow() {
   return <Row id={fixedAnchor("acknowledgements")} label={S.setRows.acknowledgements} description={rowLineOf(S.acknowledgementsHelp)}
     control={<Button kind="quiet" size="sm" onClick={() => void invoke("open_acknowledgements").catch(() => {})}>{S.setFrame.view}</Button>} />;
+}
+
+/** M55, adapts to you: what More ways to ask learned from the person's own presses (usedOften.ts), said in words, and
+ *  Reset, which forgets all of it at once. Nothing else is kept, and none of it leaves this Mac. */
+function UsedOftenRow() {
+  const counts = useUsedOften();
+  const first = risen(counts);
+  const [said, setSaid] = useState("");
+  const line = said || (first.length ? S.setRows.usedOftenNow(first.map(wayLabel).join(", ")) : S.setRows.usedOftenNone);
+  return <Row id={fixedAnchor("usedOften")} label={S.setRows.usedOften} description={<span role="status">{line}</span>}
+    control={<Button size="sm" disabled={Object.keys(counts).length === 0} onClick={() => { resetUsed(); setSaid(S.setRows.usedOftenDone); }}>{S.setRows.usedOftenReset}</Button>} />;
 }
 
 /** The counts kept on this Mac (numbers.on): shown, copied or erased on a press. Nothing is sent. */

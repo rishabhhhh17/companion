@@ -110,6 +110,14 @@ pub const PILL_W: f64 = 72.0;
 pub const EDGE_H: f64 = 5.0;
 /// Each wing, either side of the notch or the pill: room for a tiny Flowflow or one mark, and no more of the menu bar.
 pub const WING: f64 = 40.0;
+/// M55, live progress: while a job works, the right wing says its step in a word with a thin line of the four steps under
+/// it, and the page asks for wings as wide as the longest word needs (island_alert `wing`). Both wings take that width, so
+/// the shape stays centred on the notch, and never more than this of the menu bar each side. Off (island.showStep), or
+/// with nothing at work, the usual WING.
+pub const WING_MAX: f64 = 96.0;
+/// The width each wing is drawn at, from what the page asked: never narrower than WING, never wider than WING_MAX, and
+/// nonsense (or nothing asked) is the usual WING.
+pub fn wing_w(asked: f64) -> f64 { if asked.is_finite() && asked > WING { asked.min(WING_MAX) } else { WING } }
 /// The hover panel (27 Oct 2026, the founder: "like HeyClicky's notch hover", "Flowflow is not the main guy"): resting the
 /// pointer on the island opens a small black panel hanging from it, the notch grown down, with the ask bar, the two things
 /// Squibby is for, and each job at work as a little card with its plan and then its result (island.tsx). This wide, so it
@@ -165,21 +173,26 @@ fn rest_frame(d: &Display) -> Rect {
 }
 
 /// What the island page is told along with its size: the window's frame, the width of the notch (or the pill) in its
-/// middle, which the wings sit either side of, and the height of the top row they sit in.
+/// middle, which the wings sit either side of, the height of the top row they sit in, and how wide each wing is (WING,
+/// or wider while a job's step is shown, M55).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Look { pub frame: Rect, pub core: f64, pub row: f64 }
+pub struct Look { pub frame: Rect, pub core: f64, pub row: f64, pub wing: f64 }
 
 /// Where the island is drawn and what it holds. `panel`: how tall the hover panel is below the row (island.tsx measures it).
 /// Every size is centred on the notch (or the display) and hangs from the same top, so the page's shape, centred in the
 /// window, stays in place on the screen when the window changes.
-pub fn look(d: &Display, mode: Mode, panel: f64) -> Look {
+pub fn look(d: &Display, mode: Mode, panel: f64) -> Look { look_winged(d, mode, panel, 0.0) }
+/// The same, with the wings the page asked for (`wing`, island_alert; wing_w keeps it between WING and WING_MAX). Only the
+/// wings and the panel under them change with it; the bare notch and the panel under it never do.
+pub fn look_winged(d: &Display, mode: Mode, panel: f64, wing: f64) -> Look {
+    let wing = match mode { Mode::Alert | Mode::WingsPeek => wing_w(wing), Mode::Rest | Mode::Peek => WING };
     let r = rest_frame(d);
     let (fx, fw, cx) = (d.frame[0], d.frame[2], center_x(d));
     let core = r[2];
     // The wings' row: the notch's height, the pill's, or (where only the thin line shows) the pill it grows into.
     let (top, row) = match kind(d) { Kind::Edge => (d.frame[1], pill_h(DEFAULT_MENU_BAR)), _ => (r[1], r[3]) };
     let at = |w: f64, top: f64, h: f64| { let w = w.min(fw); [around(cx, w, fx, fw), top, w, h] };
-    let winged = core + 2.0 * WING;
+    let winged = core + 2.0 * wing;
     let frame = match mode {
         // F28: the bare notch at rest. On a notch the window, and so the click and hover area, is exactly the notch.
         Mode::Rest => r,
@@ -188,7 +201,7 @@ pub fn look(d: &Display, mode: Mode, panel: f64) -> Look {
         Mode::WingsPeek => at(winged.max(PANEL_W), top, row + panel_h(panel)),
     };
     let row = match mode { Mode::Rest | Mode::Peek => r[3], Mode::Alert | Mode::WingsPeek => row };
-    Look { frame, core, row }
+    Look { frame, core, row, wing }
 }
 
 /// How much wider the wings get for a moment when a fix is proven (the done tick): the page springs its shape out and back.
@@ -333,7 +346,7 @@ impl Follow {
 /// the hover panel's contents are (`panel`, whole points, as the page measured them). `quiet` (M46): a call or a
 /// presentation is on with Quiet during calls on, or Companion is hidden; the island then never opens by itself.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool, pub quiet: bool }
+pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool, pub quiet: bool, pub wing: u16 }
 
 /// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 99 (the
 /// hover panel says "9+" past nine, M46); any result while Home is open is seen at once.
@@ -813,7 +826,7 @@ mod tests {
     }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
-        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false });
+        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false, wing: 0 });
         assert_eq!(s(false, false, false), Mode::Rest);
         assert_eq!(s(false, true, false), Mode::Alert);
         assert_eq!(s(true, false, false), Mode::Peek);
@@ -1231,7 +1244,7 @@ mod tests {
 
     #[test]
     fn a_question_opens_the_panel_unless_home_is_open() {
-        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask, quiet: false });
+        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask, quiet: false, wing: 0 });
         assert_eq!(s(false, false, true), Mode::WingsPeek);
         assert_eq!(s(true, false, true), Mode::WingsPeek);
         assert_eq!(s(false, true, true), Mode::Rest);
@@ -1240,13 +1253,13 @@ mod tests {
 
     #[test]
     fn on_a_call_the_island_never_opens_by_itself_but_its_marks_show_and_the_pointer_still_opens_it() {
-        let q = |hover, alert, ask| mode(State { hover, alert, home_open: false, panel: 0, ask, quiet: true });
+        let q = |hover, alert, ask| mode(State { hover, alert, home_open: false, panel: 0, ask, quiet: true, wing: 0 });
         assert_eq!(q(false, true, true), Mode::Alert, "a question waiting: the wings and their mark, no panel");
         assert_eq!(q(true, true, true), Mode::WingsPeek, "the person rested the pointer on it: it opens");
         assert_eq!(q(true, false, false), Mode::Peek, "the same on the bare notch");
         assert_eq!(q(false, true, false), Mode::Alert, "listening (or needs you) while quiet: the wings with the light");
         assert_eq!(q(false, false, false), Mode::Rest);
-        assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true }), Mode::Rest, "Home open");
+        assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true, wing: 0 }), Mode::Rest, "Home open");
         assert_eq!(State::default().quiet, false);
     }
 
@@ -1254,7 +1267,7 @@ mod tests {
     fn the_shell_keeps_the_island_quiet_on_a_call_and_when_hidden_and_looks_again_when_that_changes() {
         let main = include_str!("main.rs");
         let body = |name: &str| { let b = &main[main.find(name).unwrap_or_else(|| panic!("{name}"))..]; b[..b.find("\n}\n").unwrap()].to_string() };
-        assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false }"));
+        assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0 }"));
         let place = body("fn place_island(");
         assert!(place.contains("s.quiet = quiet() || companion_hidden();"), "{place}");
         assert!(place.contains("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet"), "no cheer on a call");
@@ -1409,5 +1422,80 @@ mod tests {
         let applied = body("fn setting_applied(");
         assert!(applied.contains("\"review.mode\"") && applied.contains("\"flow.on\"") && applied.contains("!review_watched()"), "{applied}");
         assert!(body("fn island_state(").contains("v[\"review\"] = json!(review_ready().on())"), "a page that loads late");
+    }
+
+    // ---------- M55 section 2: live progress on the notch ----------
+    // While a job works, the right wing says its step in a word (Finding, Fixing, Checking, Proven) with a thin line of the
+    // four steps under it (island.tsx, islandPanel.ts notchStep). The page measures the longest of the four words and asks
+    // for wings that wide (island_alert `wing`), so they grow once when work starts and never at each step. Both wings take
+    // the same width, so the shape stays centred on the notch, and never more than WING_MAX of the menu bar each side.
+
+    #[test]
+    fn while_a_job_works_the_wings_widen_to_fit_its_step_and_no_further() {
+        assert!(WING_MAX > WING && (80.0..=100.0).contains(&WING_MAX), "room for one short word and the mark, no more");
+        assert_eq!(wing_w(0.0), WING, "no step shown: the usual wings");
+        assert_eq!(wing_w(30.0), WING, "never narrower than the usual wings");
+        assert_eq!(wing_w(86.0), 86.0);
+        assert_eq!(wing_w(400.0), WING_MAX, "never more of the menu bar than WING_MAX");
+        for bad in [f64::NAN, f64::INFINITY, -5.0] { assert_eq!(wing_w(bad), WING, "nonsense is the usual wings"); }
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            let usual = look(&d, Mode::Alert, PANEL_MIN);
+            assert_eq!(look_winged(&d, Mode::Alert, PANEL_MIN, 0.0), usual, "{}: without a step, exactly as before", d.id);
+            assert_eq!(usual.wing, WING, "{}", d.id);
+            let w = look_winged(&d, Mode::Alert, PANEL_MIN, 86.0);
+            assert_eq!(w.wing, 86.0, "{}: the page is told the wing it drew for", d.id);
+            assert_eq!(w.frame[2], usual.core + 2.0 * 86.0, "{}: the same width each side", d.id);
+            assert!((cx(w.frame) - cx(usual.frame)).abs() < 0.01, "{}: still centred on the notch", d.id);
+            assert_eq!((w.frame[1], w.frame[3], w.core, w.row), (usual.frame[1], usual.frame[3], usual.core, usual.row), "{}: the same row, only wider", d.id);
+            assert!(inside(w.frame, d.frame), "{}", d.id);
+            // The bare notch and the panel under it are not changed by it; the panel under the wings is as wide as both.
+            for m in [Mode::Rest, Mode::Peek] { assert_eq!(look_winged(&d, m, 120.0, 86.0), look(&d, m, 120.0), "{} {m:?}", d.id); }
+            assert_eq!(look_winged(&d, Mode::WingsPeek, 120.0, 96.0).frame[2], (usual.core + 2.0 * 96.0).max(PANEL_W).min(d.frame[2]), "{}", d.id);
+        }
+    }
+    #[test]
+    fn the_character_keeps_clear_of_the_widest_wings_too() {
+        for d in [mbp14(), mbp16()] {
+            let widest = look_winged(&d, Mode::Alert, PANEL_MIN, WING_MAX).frame;
+            assert!(widest[2] + 2.0 * crate::docking::CLEAR_MARGIN <= crate::docking::NOTCH_CLEAR.0, "{}: {widest:?}", d.id);
+            assert!(widest[2] <= island_frame(&d, Mode::Peek)[2], "{}: inside what the character already keeps clear of", d.id);
+        }
+    }
+    #[test]
+    fn the_step_never_changes_when_the_island_opens_by_itself() {
+        // The size of the wings is the page's to ask; what opens is still only a question waiting, or the pointer.
+        let base = State { alert: true, ..State::default() };
+        for wing in [0u16, 60, 96] {
+            assert_eq!(mode(State { wing, ..base }), Mode::Alert);
+            assert_eq!(mode(State { wing, hover: true, ..base }), Mode::WingsPeek);
+            assert_eq!(mode(State { wing, home_open: true, ..base }), Mode::Rest);
+        }
+        let main = include_str!("main.rs");
+        let at = main.find("fn island_alert(").unwrap();
+        let f = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(f.contains("wing: Option<f64>") && f.contains("island::wing_w(wing.unwrap_or(0.0))"), "{f}");
+        assert!(main.contains("island::look_winged(&d, mode, f64::from(state.panel), f64::from(state.wing))"), "placed with the wings the page asked for");
+        assert!(main.contains("\"wing\": look.wing"), "and the page is told the wing it is drawn with");
+    }
+    #[test]
+    fn the_shared_file_events_reach_the_pages_as_whole_lines_with_no_detail() {
+        // M55: agent.file (runner/src/livefile.ts) is news for the pages only. The shell passes it on as it is: a path from the
+        // project down and how it changed, nothing for the log, and nothing kept to replay (it is not a state).
+        let lines: Vec<serde_json::Value> = include_str!("../../../protocol/fixtures/events.jsonl").lines().filter(|l| !l.trim().is_empty())
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).expect("a fixture is JSON")).filter(|v| v["type"] == "agent.file").collect();
+        assert_eq!(lines.len(), 3);
+        let mut kinds = Vec::new();
+        for v in &lines {
+            assert_eq!(v["v"].as_i64(), Some(1));
+            assert!(v["agent"].as_str().map_or(false, |a| !a.is_empty()), "{v}");
+            let f = v["file"].as_str().unwrap_or("");
+            assert!(!f.is_empty() && !f.starts_with('/') && !f.split('/').any(|p| p == ".." || p.is_empty()), "{v}");
+            assert!(v.get("detail").is_none(), "{v}");
+            let mut sticky = std::collections::BTreeMap::new();
+            assert!(!crate::runner::remember(&mut sticky, v), "never replayed to a page that loads later");
+            kinds.push(v["kind"].as_str().unwrap_or("").to_string());
+        }
+        kinds.sort();
+        assert_eq!(kinds, ["added", "deleted", "modified"]);
     }
 }

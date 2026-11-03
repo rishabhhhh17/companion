@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useRef, useState, type CSSProperties } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import { startSettings, useSetting } from "./settingsStore.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -24,16 +24,16 @@ import "./style.css";
 // tucked back. A click always opens Home below it, at once, and never closes it (main.rs island_click). The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
 import { IslandPanel } from "./islandPanel.tsx";
-import { armed, islandJobs, resultPeekKey, RESULT_PEEK_MS } from "./islandPanel.ts";
+import { armed, islandJobs, notchStep, resultPeekKey, RESULT_PEEK_MS, type NotchStep } from "./islandPanel.ts";
 import { FlowMini } from "./flowflowMini.tsx";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
-type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; hover: boolean };
+type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; wing: number; hover: boolean };
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) && x >= 0 ? x : 0);
 const shapeFrom = (v: unknown): Shape | null => {
-  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown; hover?: unknown } | null;
+  const o = v as { mode?: unknown; kind?: unknown; w?: unknown; h?: unknown; core?: unknown; row?: unknown; wing?: unknown; hover?: unknown } | null;
   if (!o || !ISLAND_MODES.includes(o.mode as IslandMode) || !KINDS.includes(o.kind as Kind)) return null;
-  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row), hover: o.hover !== false };
+  return { mode: o.mode as IslandMode, kind: o.kind as Kind, w: num(o.w), h: num(o.h), core: num(o.core), row: num(o.row), wing: num(o.wing), hover: o.hover !== false };
 };
 
 /** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
@@ -81,6 +81,22 @@ function Mark({ w, count, reduced }: { w: Wings; count: number; reduced?: boolea
   return <><span className="mark" key={`${mark}:${count}`} data-state={w.state} data-mark={mark}>{inner}</span>{w.mark === "amber" && count > 1 && <b className="island-count">{count}</b>}</>;
 }
 
+/** The usual wing (island.rs WING): the step shows only once the app has drawn the wings wider for it. */
+const WING_USUAL = 40;
+/** The room in a wing beside the word: the mark (20), the gap before it (6), and the space at each end (10 and 6). */
+const STEP_ROOM = 42;
+
+/** M55: the step in a word, with a thin line of the four steps under it (done, now, ahead). Drawn only: the island's name
+ *  says what is happening in words. It changes only when a step changes, by colour, and never loops. */
+function StepWord({ step }: { step: NotchStep }) {
+  return (
+    <span className="island-step">
+      <span className="island-step-word">{step.word}</span>
+      <span className="island-step-line">{step.marks.map((k, i) => <i key={i} data-mark={k} />)}</span>
+    </span>
+  );
+}
+
 function Island() {
   useLook({ keepNight: true });   // the water's colour for the work cards (M19); the notch keeps Night in every theme
   const [m, dispatch] = useModel();
@@ -91,7 +107,7 @@ function Island() {
     const off = listen("project-changed", (e) => dispatch({ type: "ui.projectChanged", project: String(e.payload ?? "") }));
     return () => { off.then((f) => f()); };
   }, []);
-  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0, hover: true });
+  const [shape, setShape] = useState<Shape>({ mode: "rest", kind: "pill", w: 0, h: 0, core: 0, row: 0, wing: 0, hover: true });
   // A new version a check found (the shell's "update-ready"): said under the pointer when nothing else is going on.
   const [update, setUpdate] = useState<string | null>(null);
   const [unseen, setUnseen] = useState(0);
@@ -127,6 +143,26 @@ function Island() {
     return () => clearTimeout(id);
   }, [ticking]);
   const wings = wingsAt(raw, doneSince, now);
+  // M55, live progress: while a job works, the right wing says its step in a word with a thin line of the four steps under
+  // it (islandPanel.ts notchStep: the work card's own steps). Off with Show the step on the notch (island.showStep).
+  const showStep = useSetting("island.showStep") !== false;
+  const tries = Number(useSetting("work.tries")) || 3;   // read every render: a hook is never skipped
+  const step = showStep ? notchStep(m, wings, tries) : null;
+  // The wings are as wide as the longest of the four words needs (measured below, hidden), so they grow once when work starts
+  // and never at each step. 0 when no step shows: the app's usual wings.
+  const measure = useRef<HTMLSpanElement>(null);
+  const [stepW, setStepW] = useState(0);
+  useLayoutEffect(() => {
+    const el = measure.current;
+    if (!el) return;
+    const put = () => setStepW(Math.ceil(el.offsetWidth));
+    put();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(put);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const wing = step && stepW > 0 ? stepW + STEP_ROOM : 0;
   // The app sizes the window: wings out or not, and whether a peek has a line to show.
   const out = wings !== null;
   // The panel that hangs from it: always laid out (hidden until the pointer rests on the island), so its height is known and
@@ -166,10 +202,12 @@ function Island() {
   }, [peekKey]);
   const questionsOpen = useSetting("island.openForQuestions") !== false;   // read every render: a hook is never skipped
   const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);
-  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask }).catch(() => {}); }, [out, panelH, cheering, ask]);
+  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing }).catch(() => {}); }, [out, panelH, cheering, ask, wing]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
+  const lastStep = useRef<NotchStep | null>(null);
+  if (wings) lastStep.current = step;
   const lastOut = useRef<IslandMode>("rest");
   if (shape.mode !== "rest") lastOut.current = shape.mode;
   const [restSettled, setRestSettled] = useState(true);
@@ -198,17 +236,22 @@ function Island() {
   const tap = () => { const grownAt = grownRef.current; if (!armed(grownAt, Date.now())) return; void invoke("island_click"); };
   const box = useSpringBox(shapeW, shape.h, reduced, soft);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
-  const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px` } as CSSProperties;
+  // The wing the app drew the window for (island.rs Look.wing); the usual 40 points until it says.
+  // The step is as wide as the longest of the four words, so its line keeps one length from Finding to Proven.
+  const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px`, ...(shape.wing > 0 ? { "--wing": `${shape.wing}px` } : {}), ...(stepW > 0 ? { "--step-w": `${stepW}px` } : {}) } as CSSProperties;
+  const st = wings ? step : lastStep.current;
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} style={vars}>
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} style={vars}>
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
             <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
-            <span className="island-wing right"><Mark w={w} count={m.approvals.length} reduced={reduced} /></span>
+            <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}<Mark w={w} count={m.approvals.length} reduced={reduced} /></span>
           </span>}
         </button>
+        {/* The four step words, laid out but never shown, so the wings are asked for once, as wide as the longest needs. */}
+        <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} />
       </span>
     </main>

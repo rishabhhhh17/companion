@@ -126,7 +126,8 @@ describe("the top says the job in big words", () => {
   test("the headline is Home's heading, large, with one short line under it", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
     expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>');
-    expect(card).toContain('<p className="subline">{heroShown.line}</p>');
+    // M55: while a job costs something, the line counts its cost up to the new number (smoothMotion.ts CountUp).
+    expect(card).toContain('<p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : heroShown.line}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -174,7 +175,8 @@ describe("one ask field, and the main button does what the existing paths do", (
     // Pro (the payments spec, section 3): only at the free fix limit, or on Ship with a plan that does not cover it (never
     // with payments off, plan.test.ts), does the main button show the limit card instead.
     const doMain = card.slice(card.indexOf("const doMain = (a: MainAct) => {"), card.indexOf("\n  };", card.indexOf("const doMain = (a: MainAct) => {")));
-    expect(doMain.match(/return; \}/g)?.length).toBe(3);
+    // M55, adapts to you: and Carry on (a task left half way) and Explain an error (a terminal in front), two more.
+    expect(doMain.match(/return; \}/g)?.length).toBe(5);
     expect(doMain).toContain('if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }');
     // Ship's own check is in shipIt (shipGate), so every way into Ship asks the same way (plan.test.ts).
     expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return;");
@@ -183,10 +185,11 @@ describe("one ask field, and the main button does what the existing paths do", (
     expect(card).toContain("latest.current.find(e.payload)");
   });
   test("every other way to ask stays, behind one quiet line: Find the problem, Is it safe, Explain, Show me and the rest", () => {
-    expect(more).toContain("onClick={findFromHome}");
+    // M55, adapts to you: each way notes a real press (wayPress) before it does what it always did.
+    expect(more).toContain('onClick={wayPress("find", findFromHome)}');
     expect(more).toContain('buttonShown("findProblem")');
     expect(more).toContain('toolOn("errorHelp")');
-    expect(more).toContain("onClick={explainFromBox}");
+    expect(more).toContain('onClick={wayPress("explain", explainFromBox)}');
     expect(more).toContain('buttonShown("showMe")');
     expect(more).toContain('sentFromBox("showme"); showMe(q, q, []);');
     expect(more).toContain("pressed(); needWords(S.showMeHint);");
@@ -198,11 +201,14 @@ describe("it springs open from the notch, and not at all with less motion", () =
   test("a short spring from the top centre, played again at each opening", () => {
     const spring = /@keyframes home-spring \{([^\n]*)\}/.exec(css)?.[1] ?? "";
     expect(spring).toContain("transform");
-    // M25: it opens many times a day, so 240 ms on the strong ease out, no bounce, and every part in by 280 ms.
-    expect(css).toMatch(/\.home\.springing \{ animation: home-spring 240ms var\(--ease-out\) both; \}/);
-    expect(tokens).toContain("--ease-out: cubic-bezier(.2, .8, .2, 1);");
-    // It unrolls: a slightly squashed scale and a clip that opens from the top.
-    expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("clip-path: inset(0 0 100% 0)");
+    // M25: it opens many times a day, so 240 ms on the strong ease out, no bounce. M55: one motion, on the tokens.
+    expect(css).toMatch(/\.home\.springing \{ animation: home-spring var\(--dur-open\) var\(--ease-enter\) both; \}/);
+    expect(tokens).toContain("--dur-open: 240ms;");
+    expect(tokens).toContain("--ease-enter: cubic-bezier(.23, 1, .32, 1);");
+    // It drops: a little above, slightly squashed, and grows down into place. Only transform and opacity, so nothing
+    // lays out or paints again while it opens (the clip it had before was painted on every frame).
+    expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("translateY(");
+    expect(spring).not.toContain("clip-path");
     expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
     expect(card).toContain('el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); }');
     // M26: opened by a keyboard shortcut it is simply there (the shell says so, island.rs animates_open).
@@ -230,7 +236,8 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // The founder, 31 Oct: Flowflow lives on its water at the top of Now again, seen (never hidden), and it rests (one still
     // frame, no loop) while Home is closed or another place is open.
     // Its error pose while something blocks every job (the audit, item 12).
-    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} /></div>');
+    // M55 (the character reacts): it also gets the ask box, and the review card while changes wait (characterReacts.test.ts).
+    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}');
     expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
     expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");
@@ -394,7 +401,8 @@ describe("one main button per state", () => {
     // Choose a project needs no tool, so it stays whatever is off.
     expect(mainFor("rest", homeStatus(initial(), "", NOW), () => false)).toBe("folder");
     // Home asks the same switch the chips ask (groups.ts buttonShown), and the main buttons' tools are the ask buttons'.
-    expect(card).toContain("const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b));");
+    // M55, adapts to you: the same, with the kind of app in front and a task left half way (adaptsToYou.test.ts).
+    expect(card).toContain("const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b), { front: frontFollowed(frontKind, followFront), halfWay: halfWay(m, project) });");
     const groups = read("./groups.ts");
     for (const b of ["findProblem", "shipCheck"]) expect(groups, b).toContain(`"${b}"`);
   });
@@ -410,7 +418,8 @@ describe("one main button per state", () => {
     expect(bar.indexOf("bar-stop")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
   });
   test("the labels are the spec's, and a project not chosen yet has its own", () => {
-    expect(S.home.main).toEqual({ fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project" });
+    // M55, adapts to you: Carry on (a task left half way) and Explain an error (a terminal in front), by the same names.
+    expect(S.home.main).toEqual({ fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project", carryOn: "Carry on", explain: "Explain an error" });
     expect(mainFor("rest", homeStatus(initial(), "", NOW))).toBe("folder");
   });
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
@@ -454,9 +463,10 @@ describe("the working card's four steps read only the runner's real states (4.2)
     expect(jobStep(run([...task(), tool("Read", "t1"), tool("Grep", "t2")])).step).toBe(0);
     expect(jobStep(run([...task(), tool("Read", "t1"), tool("Edit", "t2")])).step).toBe(1);
     expect(jobStep(run([...task(), tool("Edit", "t2"), ev({ type: "proof.step", agent: "a", rung: "tests", label: "Running the tests", status: "running", detail: "" })])).step).toBe(2);
-    expect(jobStep(done()).step).toBe(3);
-    expect(jobStep(done({ proof: "partial" })).step, "never Proven for a partly checked fix").not.toBe(3);
-    expect(jobStep(done({ ended: "failed", endedWhy: "check_failed", proof: "failed" })).step).not.toBe(3);
+    // M55 (live progress): a proven result has all four steps done (4); Proven alone is "now" (3) only once the checks passed.
+    expect(jobStep(done()).step).toBe(4);
+    expect(jobStep(done({ proof: "partial" })).step, "never Proven for a partly checked fix").toBeLessThan(3);
+    expect(jobStep(done({ ended: "failed", endedWhy: "check_failed", proof: "failed" })).step).toBeLessThan(3);
   });
   test("a retry steps back to Fixing and says which try", () => {
     const m = { ...run(task()), character: "working" as const };

@@ -73,6 +73,8 @@ const OTHER_ENTRIES: { id: string; tool: ToolId }[] = [
   { id: "practiceFind", tool: "findProblem" }, { id: "practiceFix", tool: "drive" }, { id: "practiceWhy", tool: "drawIt" },
   // Draw why on Point at the problem's result (the hero Fix it card) is Draw it for me too.
   { id: "pointWhy", tool: "drawIt" },
+  // M55, adapts to you: Home's main Carry on is a follow up (Try again's own command), and Explain an error is the explainer.
+  { id: "carryOn", tool: "followUp" }, { id: "explainError", tool: "errorHelp" },
 ];
 const ENTRY = new Map<string, ToolId>([...ASK_BUTTONS, ...OTHER_ENTRIES].map((b) => [b.id, b.tool]));
 export const buttonShown = (id: string, read: Read = setting): boolean => { const t = ENTRY.get(id); return !t || toolOn(t, read); };

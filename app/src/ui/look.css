@@ -73,7 +73,7 @@
 .slip { font-variant-numeric: tabular-nums; }
 
 /* A proven fix: the card glows once in the water, 400 ms, then nothing. The reward is the evidence. */
-.home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-2) var(--ease-out) both, proven-glow var(--dur-4) var(--ease-out) 300ms 1; }
+.home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-enter) var(--ease-enter) both, proven-glow var(--dur-4) var(--ease-out) 300ms 1; }
 @keyframes proven-glow { 40% { box-shadow: 0 0 0 var(--hair) var(--water), 0 0 20px var(--gel-glow); } }
 
 /* The practice list: a hairline between rows, the state in plain words. */
@@ -88,7 +88,7 @@
 .note-text { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-body) var(--font); letter-spacing: var(--track-body); user-select: text; -webkit-user-select: text; cursor: text; overflow-wrap: anywhere; }
 .note-src { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); margin-top: 10px; padding-top: 6px; border-top: var(--hair) solid var(--line); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .note-acts { display: inline-flex; gap: 2px; margin-right: -6px; }
-.note-btn { min-height: 24px; margin: 0; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-2); font: inherit; cursor: default; }
+.note-btn { min-height: 24px; margin: 0; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-2); font: inherit; cursor: default; transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover); }
 .note-btn:hover { background: var(--surface-3); color: var(--fg); }
 
 /* ---------- The one glossy thing: the water gel pill (the final "do it" or "prove it" of a flow), once per view ---------- */
@@ -278,6 +278,10 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* A finished job floods the light with the element for one beat, then settles: 300 ms up, 400 held, 900 down. */
 .home[data-tone="done"] .room-glow { animation: room-breathe 36s ease-in-out infinite alternate, room-flood 1600ms var(--ease-out) 1; }
 @keyframes room-flood { 19%, 44% { filter: brightness(1.7) saturate(1.15); } }
+/* M55: the light's own setting holds its drift (--room-play: Still, and Off, the usual, whose room is not drawn, so it makes
+   no frames while Home sits open). Here, after every rule that starts the drift (an animation shorthand sets the play state
+   back to running) and before How lively's Still, which stays the stronger. */
+:root .home .room > * { animation-play-state: var(--room-play); }
 .home[data-still] .room > * { animation-play-state: paused; }
 .home[data-still][data-tone="done"] .room-glow { animation-play-state: paused, running; }
 /* Pages of words (History, Memory, Learn) are quieter rooms: the glow behind the words is about half as strong, so a second
@@ -307,7 +311,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .home .thread-tick { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base)); color: var(--el-ink); }
 .home .thread .live { background: var(--mark-line); box-shadow: 0 0 6px var(--el-glow); }
 /* A proven fix glows once in the room's light (it was the water's). */
-.home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-2) var(--ease-out) both, proven-glow-room var(--dur-4) var(--ease-out) 300ms 1; }
+.home .view .panel.practice[data-stage="done"], .home .view .panel.receipt:has(.ui-verdict[data-tone="good"]) { animation: card-in var(--dur-enter) var(--ease-enter) both, proven-glow-room var(--dur-4) var(--ease-out) 300ms 1; }
 @keyframes proven-glow-room { 40% { box-shadow: inset 0 0 0 var(--hair) var(--el-light), 0 0 28px color-mix(in srgb, var(--el-glow) 40%, transparent); } }
 
 /* Flowflow's water in Home: the chosen water's sea, lit by the room it is in (tokens.css --sea-room), deep and full just under
@@ -510,3 +514,34 @@ details.raw[open] > summary .ic { transform: rotate(90deg); }
 /* Settings' picture choices in the wide Home's 480 points: a shorter stage, so the theme pictures and their names are in
    view under Layout without scrolling (the review, 2 Nov 2026: they were cut at the foot with no names). */
 .home[data-layout="wide"] .ui-pic-stage { min-height: calc(var(--h-pic) * .7); }
+
+/* M55 live progress */
+/* The work card ticks live (docs/milestones/M55-dynamic.md, section 2). A step's tick draws in once, the moment the engine
+   says the step finished. While it fixes, each file it really changed comes in as a row; while it checks, each check is a
+   row whose mark changes when it passes or fails. Rows come in once, on the entrance tokens; nothing here loops, so nothing
+   moves at rest, and Reduce motion and Less motion stop all of it (style.css, the page wide rules). */
+.job-strip li[data-state="done"] .job-label .ic { animation: job-tick var(--dur-enter) var(--ease-enter) both; }
+@keyframes job-tick { from { opacity: 0; transform: scale(.6); } }
+.job-live { list-style: none; display: grid; gap: 2px; margin: 0 0 var(--space-2); padding: 0; font-size: var(--t-small); line-height: var(--lh-small); }
+.job-live li { display: grid; grid-template-columns: 1em minmax(0, 1fr); align-items: baseline; column-gap: var(--space-2); min-width: 0; color: var(--fg-2); animation: job-row-in var(--dur-enter) var(--ease-enter) both; }
+@keyframes job-row-in { from { opacity: 0; transform: translateY(4px); } }
+.job-mark { display: inline-grid; place-items: center; width: 1em; height: var(--lh-small); align-self: center; font-weight: 600; color: var(--fg-2); transition: color var(--dur-2) var(--ease-out); }
+.job-mark .ic { width: var(--icon-sm); height: var(--icon-sm); animation: job-tick var(--dur-enter) var(--ease-enter) both; }
+.job-file { min-width: 0; overflow-wrap: anywhere; color: var(--fg); }
+.job-file b { font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font-code); }
+.job-dir { margin-left: var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); }
+.job-files li[data-kind="added"] .job-mark { color: var(--ok); }
+.job-files li[data-kind="deleted"] .job-mark { color: var(--bad); }
+.job-live li.job-more { grid-template-columns: minmax(0, 1fr); padding-left: calc(1em + var(--space-2)); }
+/* A check under way: a still dot in the accent (it never spins); passed: a tick; failed: a cross; skipped: a short line. */
+.job-checks li[data-status="running"] { color: var(--fg); font-weight: var(--w-strong); }
+.job-checks li[data-status="running"] .job-mark::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mark-line); }
+.job-checks li[data-status="passed"] .job-mark { color: var(--ok); }
+.job-checks li[data-status="failed"] { color: var(--fg); }
+.job-checks li[data-status="failed"] .job-mark { color: var(--bad); }
+.job-checks li[data-status="skipped"] .job-mark::before { content: ""; width: 7px; height: 2px; border-radius: 1px; background: var(--fg-2); }
+/* A copy drawn for a fold or a cross fade (smoothMotion.ts) holds still: its rows and ticks never come in a second time. */
+[data-ghost], [data-ghost] *, [data-ghost]::before, [data-ghost]::after, [data-ghost] *::before, [data-ghost] *::after { animation: none !important; }
+
+/* The notch's own step and line are in style.css, the one sheet the island page loads (M55). */
+/* end M55 live progress */

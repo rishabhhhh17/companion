@@ -6,6 +6,8 @@ import { characterWords, formatUsd, receiptVerdict, visualState, type CharacterS
 import type { Tone, Verdict } from "./verdict.ts";
 import { S } from "./strings.ts";
 import { approvalWords } from "./approvals.ts";
+import { jobStep } from "./homeHero.ts";
+import type { Wings } from "./home.ts";
 
 export type JobTone = "working" | "needsYou" | "done" | "failed" | "partly" | "plain";
 // here: a question that may be answered right in the notch (answerHere).
@@ -90,4 +92,18 @@ export function panelView(m: Model, jobs: JobCard[], o: { note: string; status: 
   if (done && v) return { kind: "result", job: done, verdict: v, canUndo: v.offer === "undo" && !m.undo };
   if (m.connected === "none") return { kind: "connect" };
   return { kind: "line", line: o.note || o.status };
+}
+
+/** M55, live progress on the notch: while the task works, the step it is on in a word (the work card's own four steps,
+ *  homeHero.ts jobStep, so the two never disagree) and the four steps as a thin line: done, the one now, and the ones
+ *  ahead. Only while the wings show work going on (thinking, or the turning mark), and only for the task's own agent:
+ *  never over a question waiting, the listening light, the look at the screen (rule 5), or a result. So it never says
+ *  Proven: that is only ever a result, which the notch shows as a result (rule 14). */
+export type StepMark = "done" | "now" | "ahead";
+export type NotchStep = { word: string; marks: StepMark[] };
+export function notchStep(m: Model, w: Wings | null, maxTries = 3): NotchStep | null {
+  if (!m.task || !w || (w.mark !== "dots" && w.mark !== "arc") || !BUSY.includes(m.character) || m.agents[m.task.agent] !== m.character) return null;
+  const { step } = jobStep(m, maxTries);
+  if (step > 3) return null;
+  return { word: S.home.steps[step], marks: S.home.steps.map((_, i): StepMark => (i < step ? "done" : i === step ? "now" : "ahead")) };
 }

@@ -1,20 +1,25 @@
 {
-  "about": "The one list of the apps the app knows by kind, from their ids only, never anything in them. The shell reads it (app/src-tauri/src/everyday.rs front_kind: the kind of app in front for the stuck key) and so does the engine (runner/src/tutor.ts appKind: the everyday tutor). On both sides the terminals Prompt help knows (runner/src/prompthelp.ts and app/src-tauri/src/phelp.rs TERMINALS) are coding tools too. everyday: the names the model may be told, and only these.",
+  "about": "The one list of the apps the app knows by kind, from their ids only, never anything in them. The shell reads it (app/src-tauri/src/everyday.rs front_kind: the kind of app in front for the stuck key) and so does the engine (runner/src/tutor.ts appKind: the everyday tutor). On both sides the terminals Prompt help knows (runner/src/prompthelp.ts and app/src-tauri/src/phelp.rs TERMINALS) are coding tools too. everyday: the names the model may be told, and only these. terminals and aiApps (M55, adapts to you) only say which of the code tools are terminals and which are AI coding apps, so the shell can tell Home the kind of app in front (everyday.rs home_kind: editor, aiApp, browser, terminal or other) and nothing more about it.",
   "oursPrefix": "dev.companion",
   "editors": [
     "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92", "com.apple.dt.Xcode", "dev.zed.Zed",
     "dev.zed.Zed-Preview", "com.panic.Nova", "com.sublimetext.4", "com.sublimetext.3", "com.github.atom", "org.vim.MacVim",
-    "com.exafunction.windsurf", "com.visualstudio.code.oss", "com.vscodium", "io.alacritty"
+    "com.exafunction.windsurf", "com.visualstudio.code.oss", "com.vscodium", "io.alacritty", "com.google.antigravity-ide"
   ],
   "editorPrefixes": ["com.jetbrains."],
   "codingTools": [
-    "com.anthropic.claudefordesktop", "com.openai.chat", "com.openai.codex", "com.google.gemini", "com.github.GitHubClient",
+    "com.anthropic.claudefordesktop", "com.openai.chat", "com.openai.codex", "com.google.gemini", "com.google.GeminiMacOS", "com.github.GitHubClient",
     "com.docker.docker", "com.postmanlabs.mac", "com.tinyapp.TablePlus", "com.sequel-ace.sequel-ace",
     "com.google.android.studio", "com.apple.iphonesimulator", "com.apple.dt.Instruments", "com.apple.FileMerge", "com.barebones.bbedit",
     "com.macromates.TextMate", "com.coteditor.CotEditor", "org.gnu.Emacs", "com.torusknot.SourceTreeNotMAS", "com.fournova.Tower3",
     "com.fournova.Tower2", "com.DanPristupov.Fork", "com.axosoft.gitkraken", "org.tabby", "com.termius-dmg.mac", "dev.commandline.waveterm",
     "com.raphaelamorim.rio", "dev.kdrag0n.MacVirt"
   ],
+  "terminals": [
+    "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "net.kovidgoyal.kitty", "com.mitchellh.ghostty", "org.alacritty",
+    "io.alacritty", "co.zeit.hyper", "com.github.wez.wezterm", "org.tabby", "com.termius-dmg.mac", "dev.commandline.waveterm", "com.raphaelamorim.rio"
+  ],
+  "aiApps": ["com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat", "com.google.gemini", "com.google.GeminiMacOS"],
   "browsers": [
     "com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.google.Chrome.canary", "com.google.Chrome.beta",
     "com.google.Chrome.dev", "org.chromium.Chromium", "company.thebrowser.Browser", "company.thebrowser.dia", "org.mozilla.firefox",

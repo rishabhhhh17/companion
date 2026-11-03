@@ -7,7 +7,7 @@ import type { IconName } from "./icons.tsx";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
-export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview";
+export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften";
 export type Item = string | { fixed: Fixed };
 /** A Group on a page: its anchor (#account.plan) is its id; its words are S.setGroupTitles[id] and S.setGroupFoot[id]. */
 export type GroupDef = { id: string; items: readonly Item[] };
@@ -37,8 +37,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
-      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.openDelay", "island.closeDelay", "island.followDelay", "panel.showWork", "panel.size"] },
-      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.showStep", "island.openDelay", "island.closeDelay", "island.followDelay", "panel.showWork", "panel.size"] },
+      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", f("usedOften")] },
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
       { id: "more.general.files", parent: "files.on", items: ["drop.on", "drop.imageFormat", "drop.docFormat", "drop.audioFormat", "drop.videoFormat", "drop.resizeTo", "drop.quality", "drop.sampleRate", "drop.saveTo", "attach.docLimit"] },
@@ -77,7 +77,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "flowflow.place", items: ["character.edge", "character.dockWhen", "character.peek", "character.follow"] },
       { id: "flowflow.sound", items: ["sound.on"] },
     ],
-    more: [{ id: "more.flowflow.motion", items: ["character.position", "character.sameEverywhere", "character.comeTo", "character.linger", "character.motion", "character.restLowPower", "character.overFullScreen", "character.peekIdle", "character.live", "fun.reactions", "sound.volume"] }],
+    more: [{ id: "more.flowflow.motion", items: ["character.position", "character.sameEverywhere", "character.comeTo", "character.linger", "character.motion", "character.restLowPower", "character.overFullScreen", "character.peekIdle", "character.live", "character.reacts", "fun.reactions", "sound.volume"] }],
   },
   keys: {
     icon: "keyboard",

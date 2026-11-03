@@ -2,6 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Squibby feels alive: 3 Nov 2026
+
+- **Smooth motion.** Moving between Now, Learn, History, Memory and Settings is a short fade: the old place fades out, then the new one rises in, so text never sits on text. Cards grow in and fold away, and what stays slides to its new place instead of jumping. Buttons press in a little and come back, and a hover is a soft change, never a flash. Home drops from the notch in one smooth motion.
+- **The time and the cost count up** instead of jumping.
+- **The work card shows what is happening as it happens.** Each step ticks only when it is really done: Finding, Fixing, Checking, Proven. The files appear one by one as the work really changes them, with + for added, ● for changed and − for removed. Each check shows running, passed or failed as it goes.
+- **"Proven" is only said once it is true.** All checks passing is not the end: the card and the notch stay on Checking until the result really says proven.
+- **The notch shows the step too,** in one word with a thin line under it. It is quiet: no sound and nothing that loops. You can turn it off with "Show the step on the notch".
+- **Home's main button follows what you are doing.** With a terminal in front it offers Explain an error, and with an editor or an AI app it offers Check my project. Your project still comes first: Fix it when something fails, Check before going live once it is proven, and Carry on when a task stopped half way. Only the kind of app is used, never anything inside it. Turn it off with "Home follows the app in front".
+- **The ways you use most come first** in More ways to ask. This is learned only from your own presses in Squibby, it stays on this Mac, and Reset clears it.
+- **Flowflow reacts to what really happens.** It rises a little when it needs you, dips when something fails, leans toward changes waiting for a review, and looks at the ask box while you type. Only that you are typing is used, never what you type. In Still it stays put while you type. Turn it off with "Reacts to what happens".
+- **Still calm.** Nothing moves at rest. Reduce motion, Less motion and How lively are always respected: with less motion, everything is simply there.
+- **Fixed:** with the light behind Home off, its drifts kept running unseen. They now stop.
+
 ## Flowflow is a bubble of water now: 3 Nov 2026
 
 - **A new Flowflow.** It is a round bubble of water that floats, with two soft closed eyes and two small bubbles that follow it. It stays round in every state, so it never looks like it is sitting in a heap.

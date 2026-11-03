@@ -49,6 +49,9 @@ export const GENTLE_INTERVAL = 1 / 12;
 export const WORK_INTERVAL = 1 / 30;
 /** Still parks this long after the last news, once the state allows it. */
 export const NO_NEWS_MS = 3000;
+/** M55: a reaction (a lean, the eyes going to the ask box and back, a lift ending) is drawn at full rate this long in Gentle,
+ *  long enough for its springs to settle, then Gentle goes back to its cap. Still and Lively follow their own rules. */
+export const QUICK_MS = 1200;
 
 export class FlowflowController {
   readonly engine: FlowflowEngine; private renderer: RendererLike;
@@ -66,6 +69,8 @@ export class FlowflowController {
   private app: CharacterState | null = null;
   /** M46: resting (a call, Low Power Mode, tucked away): one still frame, no loop, except while listening. */
   private resting = false;
+  /** M55: Gentle draws every refresh until then (a reaction under way), and the engine's count of reactions last seen. */
+  private quickUntil = 0; private turnsSeen = 0;
 
   /** Returns null when WebGL cannot start (the caller keeps the picture poses). */
   static create(opts: ControllerOptions): FlowflowController | null {
@@ -131,6 +136,31 @@ export class FlowflowController {
     if (this.restingNow()) { this.stop(); this.still(); } else { this.lastNews = performance.now(); this.resumeOrPause(); }
   }
 
+  /** M55 (the character reacts): the person typing in the ask box, which lies `dx, dy` points from the middle of the
+   *  character (y down). Its eyes go to it in Gentle and Lively. In Still typing is not news: nothing happens at all, no
+   *  frame and no eye. Only that a key went in reaches here, never what was typed. */
+  attend(dx: number, dy: number): void {
+    if (this.disposed || this.reduced || this.engine.mode === "still") return;
+    const fresh = this.engine.attend(dx, dy);
+    if (!this.engine.attending) return;   // not taken: switched off, or not a place
+    // In Gentle each key keeps it awake (a parked error or needs you wakes to look); the first draws at once.
+    this.lastNews = performance.now();
+    if (fresh || (!this.raf && !this.timer)) this.resumeOrPause();
+  }
+  /** M55: changes wait for a review and their card lies `dx, dy` points from the middle of the character (y down), or
+   *  `null` once nothing waits. It leans toward the card while they wait. A new lean, or its end, is news. */
+  leanToward(to: { dx: number; dy: number } | null): void {
+    if (this.disposed || !this.engine.leanToward(to ? to.dx : null, to ? to.dy : 0)) return;
+    if (!this.reduced) this.lastNews = performance.now();
+    this.nudge();
+  }
+  /** M55 (character.reacts): its small moves for what happens (the lean, the lift, the dip, the eyes on the ask box). */
+  setReacts(on: boolean): void {
+    if (this.disposed || this.engine.reacts === on) return;
+    this.engine.reacts = on;
+    if (this.reduced || this.restingNow()) this.nudge(); else this.news();
+  }
+
   /** The water's colours (lookfeel.ts flowColours). */
   setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); this.nudge(); }
   /** The page's sky behind the drop (renderer.ts setEnvBase). */
@@ -180,7 +210,8 @@ export class FlowflowController {
     if (this.restingNow()) return PARK;
     if (this.parkable()) return PARK;
     if (st === "working") return WORK_INTERVAL;
-    if (st === "idle" || st === "sleeping") return e.mode === "gentle" ? GENTLE_INTERVAL : 0;
+    // M55: Gentle draws a reaction at full rate until it has settled (QUICK_MS), then goes back to its cap.
+    if (st === "idle" || st === "sleeping") return e.mode === "gentle" && performance.now() >= this.quickUntil ? GENTLE_INTERVAL : 0;
     return 0;   // a touch, listening, a flash: every refresh
   }
   /** M46: may it stop drawing? Only once nothing is moving and nothing is due: no news for NO_NEWS_MS, a state that holds
@@ -199,6 +230,8 @@ export class FlowflowController {
     const t0 = performance.now();
     this.renderer.render(this.engine.update(this.acc)); this.acc = 0;
     const t1 = performance.now();
+    // M55: something it reacts to changed in this frame (where it rests, what its eyes look at): full rate for a moment.
+    if (this.engine.turns !== this.turnsSeen) { this.turnsSeen = this.engine.turns; this.quickUntil = t1 + QUICK_MS; }
     if (this.lastDrawn > 0 && now - this.lastDrawn < RESUME_GAP_MS) { this.gaps[this.ftIdx] = now - this.lastDrawn; this.costs[this.ftIdx] = t1 - t0; this.ftIdx = (this.ftIdx + 1) % 120; }
     this.lastDrawn = now;
   }
@@ -218,14 +251,15 @@ export class FlowflowController {
     else this.raf = requestAnimationFrame(this.loop);
   };
 
-  private still(): void { if (!this.disposed) this.renderer.render(this.engine.still()); }
+  /** One still frame. With less motion only the state; otherwise (resting, a resize while parked) where it rests (M55). */
+  private still(): void { if (!this.disposed) this.renderer.render(this.engine.still(!this.reduced)); }
 
   private measure(): void {
     if (this.disposed) return;
     const r = this.opts.canvas.getBoundingClientRect();
     this.renderer.setSize(r.width, r.height, window.devicePixelRatio || 1);
     this.engine.setFrame(this.renderer.halfW, this.renderer.halfH);
-    if (this.reduced || !this.raf) this.renderer.render(this.engine.still());
+    if (this.reduced || !this.raf) this.renderer.render(this.engine.still(!this.reduced));
   }
   /** The pixel ratio changes when the window moves to another screen: ask to be told, and measure again. */
   private watchDpr(): void {

@@ -72,6 +72,8 @@ function Dock() {
   const vel = (vx: number, vy: number) => { flow.api.velocity(vx, vy); ffCtl.current?.push(vx, vy); };
   // M46 (F28): how lively it is (character.lively, Still unless chosen). The pointer is news only in Lively.
   const liveliness = livelinessOf(useSetting("character.lively"));
+  // M55 (the character reacts): on the edge it lifts when it needs you and dips when something fails (character.reacts).
+  const reacts = useSetting("character.reacts") !== false;
   const livelyNow = useRef(liveliness);
   livelyNow.current = liveliness;
   useEffect(() => {
@@ -238,7 +240,7 @@ function Dock() {
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={lost} onLostPointerCapture={lost}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
         {liveOn && !liveFailed
-          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} onFallback={() => setLiveFailed(true)} /></Suspense>
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
             <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
