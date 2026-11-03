@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { googleConnected, googleDeps, googleNote, setGoogleAccounts } from "../src/google/state.ts";
 import { evaluate } from "../src/safety.ts";
 import { parseCommand } from "../../protocol/index.ts";
+import { pumpLine } from "../src/pump.ts";
 import { GOOGLE_TOOL_NAMES, GOOGLE_TAP_TOOLS } from "../src/google/tools.ts";
 
 const ctx = { project: "/tmp/p" };
@@ -31,8 +32,17 @@ describe("the shell's Google accounts line", () => {
     expect(googleNote()).toBe("");
   });
   test("a damaged line is never repeated back with its tokens, and tasks get the tools only when connected", () => {
+    // Since M56 every line goes through pumpLine (pump.ts); the rule that hides a damaged accounts line lives there.
     const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
-    expect(main).toContain(`const shown = line.includes('"google.accounts"') ? "google.accounts" : label(line, 200);`);
+    expect(main).toContain("pumpLine(line, { takeKey, dispatch, say });");
+    const pump = readFileSync(new URL("../src/pump.ts", import.meta.url), "utf8");
+    expect(pump).toContain(`const shown = line.includes('"google.accounts"') ? "google.accounts" : label(line, 200);`);
+    // And by behaviour: a damaged accounts line is said by its type only, never with its token.
+    const said: Record<string, unknown>[] = [];
+    pumpLine('{"v":1,"id":"g9","type":"google.accounts","accounts":[{"token":"ya29.SECRET"', { takeKey: () => {}, dispatch: () => {}, say: (e) => said.push(e) });
+    pumpLine(JSON.stringify({ v: 1, id: "g8", type: "google.accounts", accounts: "ya29.SECRET" }), { takeKey: () => {}, dispatch: () => {}, say: (e) => said.push(e) });
+    expect(said.length).toBe(2);
+    for (const e of said) { expect(e.type).toBe("protocol.error"); expect(e.line).toBe("google.accounts"); expect(JSON.stringify(e)).not.toContain("ya29.SECRET"); }
     expect(main).toContain('if (cmd.type === "google.accounts") { setGoogleAccounts(cmd.accounts); return; }');
     const sdk = readFileSync(new URL("../src/sdkEngine.ts", import.meta.url), "utf8");
     expect(sdk).toContain("mcpServers: googleConnected() ? { [GOOGLE_SERVER]: googleServer(googleDeps()) } : {},");

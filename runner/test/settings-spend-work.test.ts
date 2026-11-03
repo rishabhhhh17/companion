@@ -148,7 +148,8 @@ describe("Claude for quick answers (model.quick) is read for each request", () =
   });
   test("the runner program reads it per request, from the settings the shell applied", () => {
     const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
-    expect(main).toMatch(/createLanes\(settings, \{\}, \{ quickModel: \(\) => quickModelOf\(runnerSettings\) \}\)/);
+    // The second argument now carries the must fix 16 reach check (M56); the quick model is still read per request.
+    expect(main).toMatch(/createLanes\(settings, \{[^}]*\}, \{ quickModel: \(\) => quickModelOf\(runnerSettings\) \}\)/);
   });
 });
 

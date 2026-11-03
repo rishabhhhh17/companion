@@ -14,6 +14,15 @@ afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, for
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-vr-${l}-`))); made.push(d); return d; };
 const PAGE = (extra = "", color = "#222") => `<!doctype html><body style="font:16px sans-serif;margin:20px;color:${color}"><h1>My shop</h1><p>Hand made mugs.</p>${extra}</body>`;
 const has = browserInstalled();
+// The app opens a page only from a server on this Mac (before.ts, ladder.ts), never as a file: since M56 the hidden browser
+// refuses file:// pages outright (reachableFrom). So the "after" page is served the same way, from 127.0.0.1.
+const servers: { stop: (force?: boolean) => void }[] = [];
+afterEach(() => { while (servers.length) servers.pop()!.stop(true); });
+const served = (dir: string, file = "index.html") => {
+  const s = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(Bun.file(join(dir, file)), { headers: { "content-type": "text/html" } }) });
+  servers.push(s);
+  return `http://127.0.0.1:${s.port}/`;
+};
 
 describe("copying the earlier version out", () => {
   test("the files and the private .env copy as they were, into an empty folder outside the project", async () => {
@@ -91,7 +100,7 @@ describe.skipIf(!has)("the before and after pictures", () => {
     const b = await captureBefore({ store, beforeId: before.id, project: p, workDir: work });
     expect("shot" in b).toBe(true);
     expect(readdirSync(work)).toEqual([]);
-    const after = await browserCheck(`file://${join(p, "index.html")}`, { shot: true, clickButtons: false });
+    const after = await browserCheck(served(p), { shot: true, clickButtons: false });
     const pic = await drawReceipt("shot" in b ? b.shot : null, after.shot!);
     expect(pic.how).toBe("page");
     expect(pic.regions).toHaveLength(1);
@@ -105,7 +114,7 @@ describe.skipIf(!has)("the before and after pictures", () => {
     const before = await store.snapshot("before");
     writeFileSync(join(p, "index.html"), PAGE("", "#e00000"));
     const b = await captureBefore({ store, beforeId: before.id, project: p, workDir: work });
-    const after = await browserCheck(`file://${join(p, "index.html")}`, { shot: true, clickButtons: false });
+    const after = await browserCheck(served(p), { shot: true, clickButtons: false });
     const pic = await drawReceipt("shot" in b ? b.shot : null, after.shot!);
     expect(pic.how).toBe("pixels");
     expect(pic.regions.length).toBeGreaterThan(0);
@@ -124,7 +133,7 @@ describe.skipIf(!has)("the before and after pictures", () => {
     const store = new CheckpointStore(shadow, p);
     const before = await store.snapshot("before");
     const b = await captureBefore({ store, beforeId: before.id, project: p, workDir: work });
-    const after = await browserCheck(`file://${join(p, "index.html")}`, { shot: true, clickButtons: false });
+    const after = await browserCheck(served(p), { shot: true, clickButtons: false });
     const pic = await drawReceipt("shot" in b ? b.shot : null, after.shot!);
     expect(pic.regions).toEqual([]); expect(pic.how).toBe("none");
   }, 60000);
@@ -145,7 +154,7 @@ describe.skipIf(!has)("the before and after pictures", () => {
     setTimeout(() => ac.abort(), 300);
     // The page never finishes and the browser's own limit is two minutes, twice this test's: coming back at all, stopped,
     // shows Stop closed it. The clock decides nothing, so a busy Mac cannot fail this.
-    const r = await browserCheck(`file://${join(p, "index.html")}`, { shot: true, clickButtons: false, timeoutMs: 120_000, signal: ac.signal });
+    const r = await browserCheck(served(p), { shot: true, clickButtons: false, timeoutMs: 120_000, signal: ac.signal });
     expect(r.skipped).toBe("Stopped.");
   }, 60000);
   test("Stop: nothing is started and the private folder is gone", async () => {

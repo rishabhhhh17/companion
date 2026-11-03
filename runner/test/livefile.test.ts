@@ -60,7 +60,7 @@ describe("only files in the project are named, from the project folder down", ()
     expect(inProject(P, "src/app.js")).toBe("src/app.js");
     expect(inProject(`${P}/`, "./index.html")).toBe("index.html");
   });
-  test("never a path outside it, the folder itself, or Git's and Companion's own files", () => {
+  test("never a path outside it, the folder itself, or Git's and Squibby's own files (.git, .companion)", () => {
     expect(inProject(P, "/Users/me/other/app.js")).toBeNull();
     expect(inProject(P, "../site2/app.js")).toBeNull();
     expect(inProject(P, "/Users/me/site")).toBeNull();
