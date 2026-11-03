@@ -52,7 +52,7 @@ describe("the panel under the notch shows the work, not a character", () => {
     const page = read("./island.tsx");
     expect(page).not.toContain("FlowflowView");
     expect(page).toContain("<IslandPanel");
-    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask \}\)/);
+    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask, wing \}\)/);
   });
 });
 

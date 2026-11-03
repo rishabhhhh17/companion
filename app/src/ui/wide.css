@@ -19,10 +19,10 @@
    pink, green or sunset list is a pink, green or sunset row, never a blue one. */
 .home[data-side] .side { --side-row: var(--el-row); --side-text: var(--el-text); --side-glow: var(--el-glow); }
 .home[data-side] .side .sb-item { border-radius: var(--r-card); }
-.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color 280ms var(--ease-out); }
+.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color 280ms var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--side-text); }
-.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in 160ms var(--ease-out) both; }
-@keyframes side-bar-in { from { transform: scaleY(0); } }
+.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in var(--dur-enter) var(--ease-enter) both; }
+@keyframes side-bar-in { from { transform: scaleY(.3); opacity: 0; } }
 .home[data-side] .side li[data-gem] .sb-item > .ic { display: var(--gem-icon-display); }
 .home[data-side] .side li[data-gem] .sb-item::before { content: ""; display: var(--gem-display); flex: none; width: 14px; min-height: 14px; margin: 2px; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }
 .home[data-side] .side li[data-gem] .sb-item[aria-current="page"]::before { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 0 10px color-mix(in srgb, var(--el-glow) 70%, transparent); }
@@ -131,10 +131,11 @@
 .home[data-side] .hero[data-compact] .subline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; }
 /* Under a result just in, the folded hero keeps a smaller Flowflow in its water beside the status (the review, 2 Nov 2026:
    the proven moment had no Flowflow in the wide Home), at the tall Home's size, with just the height it needs, so Undo and
-   the proof stay in view. */
-.home[data-side] .hero[data-compact][data-mode="result"] { --char: calc(136rem / 14); grid-template-columns: minmax(0, 1fr) var(--char); min-height: calc(var(--char) * 111 / 156 + var(--space-6)); padding-bottom: var(--space-5); margin-bottom: var(--space-2); }
-.home[data-side] .hero[data-compact][data-mode="result"] .home-pond { display: block; }
-.home[data-side] .hero[data-compact][data-mode="result"] .hero-words { padding-right: calc(var(--char) * .72); margin-bottom: calc(var(--line-up) + var(--space-3)); }
+   the proof stay in view. M55 (the character reacts): the same while a review leads, so it can be seen leaning toward the
+   changes that wait; the card's buttons stay above the ask box. */
+.home[data-side] .hero[data-compact][data-mode="result"], .home[data-side] .hero[data-compact][data-mode="review"] { --char: calc(136rem / 14); grid-template-columns: minmax(0, 1fr) var(--char); min-height: calc(var(--char) * 111 / 156 + var(--space-6)); padding-bottom: var(--space-5); margin-bottom: var(--space-2); }
+.home[data-side] .hero[data-compact][data-mode="result"] .home-pond, .home[data-side] .hero[data-compact][data-mode="review"] .home-pond { display: block; }
+.home[data-side] .hero[data-compact][data-mode="result"] .hero-words, .home[data-side] .hero[data-compact][data-mode="review"] .hero-words { padding-right: calc(var(--char) * .72); margin-bottom: calc(var(--line-up) + var(--space-3)); }
 /* More ways in the wide Home (the audit, item 40): a popover above the line that opens it, over the work, so opening it
    never pushes the ask box up or covers Flowflow by moving the page. */
 .home[data-side] details.more { position: relative; }

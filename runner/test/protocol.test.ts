@@ -307,3 +307,22 @@ describe("the review of a change", () => {
     expect(parseEvent(JSON.stringify({ v: 1, id: "x", type: "review.result", project: "p", ok: false, reason: "Reviews of changes are off. Turn them on in Settings.", usdEstimate: 0 })).ok).toBe(true);
   });
 });
+
+// M55 section 2, live progress: a file the agent's own tool really changed, named from the project folder down.
+describe("agent.file names one file from the project folder down", () => {
+  const ev = (file: unknown, kind: unknown = "modified") => parseEvent(JSON.stringify({ v: 1, id: "x", type: "agent.file", agent: "builder-1", file, kind }));
+  test("the shared fixtures parse, one for each way a file changes", () => {
+    const kinds = lines("events.jsonl").map((l) => JSON.parse(l)).filter((e) => e.type === "agent.file").map((e) => e.kind).sort();
+    expect(kinds).toEqual(["added", "deleted", "modified"]);
+  });
+  test("a path from the project down, in folders or not", () => {
+    for (const f of ["index.html", "src/app.js", "a b/c.d.ts", ".env"]) expect(ev(f).ok, f).toBe(true);
+  });
+  test("never a whole path, a way up and out, an empty part, a backslash, or no file", () => {
+    for (const f of ["/Users/me/site/a.js", "../other/a.js", "src/../../a.js", "src//a.js", "src/", "src\\a.js", "", 3, null, "a\u0000b", "x".repeat(1025)]) expect(ev(f).ok, String(f)).toBe(false);
+  });
+  test("only added, modified or deleted", () => {
+    expect(ev("a.js", "renamed").ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ v: 1, id: "x", type: "agent.file", agent: "builder-1", file: "a.js" })).ok).toBe(false);
+  });
+});

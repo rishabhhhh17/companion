@@ -43,7 +43,10 @@ export type Receipt = { proof?: string; checkpoint: string; changed: { file: str
   // receipt's checkpoint is then the first step's, so Undo puts back the whole fix.
   wholePlan?: { steps: number; last: string } };
 // checkpoint: the undo point it began with (a task that changes files; a read only look has none).
-export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
+// files (M55, live progress): each file the agent's own tools really changed so far, in the order they first changed, with
+// how each changed over the whole task (agent.file). The receipt stays the whole list, with what commands changed too.
+export type LiveFile = { file: string; kind: "added" | "modified" | "deleted" };
+export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState; files?: LiveFile[] };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
@@ -801,6 +804,14 @@ function reduceRest(m: Model, e: Ev): Model {
       const at = line.id ? t.lines.findIndex((l) => l.id === line.id) : -1;
       return { ...m, task: { ...t, lines: at >= 0 ? t.lines.map((l, i) => (i === at ? line : l)) : [...t.lines, line] } };
     }
+    // M55, live progress: a file the agent's own tool really changed (the engine looked at it before and after the tool). Only
+    // for this task's own agent, here; never one that is not a path from the project folder down.
+    case "agent.file": {
+      if (!m.task || m.task.agent !== e.agent || m.away[e.agent] !== undefined) return m;
+      const kind = e.kind as LiveFile["kind"], f = e.file;
+      if (!LIVE_KINDS.includes(kind) || !fromProject(f)) return m;
+      return { ...m, task: { ...m.task, files: withLiveFile(m.task.files ?? [], f, kind) } };
+    }
     case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
     case "cost.update": return m.task && m.away[e.agent] === undefined ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
@@ -1019,6 +1030,26 @@ export function browserView(m: Model): BrowserView | null {
     case "cancelled": return { line: S.browserStopped, button: S.browserGet, busy: false, closable: true };
     default: return b.needed && !b.installed ? { line: S.browserNeeded, button: S.browserGet, busy: false, closable: true } : null;
   }
+}
+
+const LIVE_KINDS: readonly LiveFile["kind"][] = ["added", "modified", "deleted"];
+/** At most this many files are kept for the work card (a task that rewrites a whole folder still lists only these). */
+export const LIVE_FILES_KEPT = 200;
+/** A path from the project folder down, as the engine sends it (protocol agent.file): never whole, never up and out. */
+const fromProject = (f: unknown): f is string => typeof f === "string" && f.length > 0 && f.length <= 1024 && !f.startsWith("/") && !f.includes("\\") && !f.split("/").some((p) => p === ".." || p === "");
+/** How a file changed over the whole task, from how it had changed and how it changed now: made then changed is still
+ *  made, made then removed is nothing (null), removed then made again is changed. */
+export function liveKind(was: LiveFile["kind"] | undefined, now: LiveFile["kind"]): LiveFile["kind"] | null {
+  if (was === "added") return now === "deleted" ? null : "added";
+  if (was === "deleted") return now === "added" ? "modified" : now;
+  return now;
+}
+/** The list with one more change: a file already listed keeps its place, a new one goes last. */
+export function withLiveFile(list: LiveFile[], file: string, kind: LiveFile["kind"]): LiveFile[] {
+  const at = list.findIndex((x) => x.file === file);
+  const k = liveKind(at >= 0 ? list[at].kind : undefined, kind);
+  if (at >= 0) return k ? list.map((x, i) => (i === at ? { file, kind: k } : x)) : list.filter((_, i) => i !== at);
+  return k && list.length < LIVE_FILES_KEPT ? [...list, { file, kind: k }] : list;
 }
 
 // What the agent is doing right now: the latest one or two steps, in plain words.

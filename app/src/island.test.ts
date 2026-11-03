@@ -33,7 +33,7 @@ describe("the island page", () => {
   });
   test("is told what the island sits on: the notch, a pill in the menu bar, or the thin line on the top edge", () => {
     const page = read("./island.tsx");
-    expect(main).toContain('let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "hover": hover });');
+    expect(main).toContain('let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "wing": look.wing, "hover": hover });');
     expect(main).toContain('app.emit_to("island", "island-mode", v)');
     expect(fnBody("island_state")).toContain('"kind"');
     for (const k of ["notch", "pill", "edge"]) expect(page, k).toContain(`"${k}"`);
@@ -373,7 +373,7 @@ describe("the fun island", () => {
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
     expect(page).toContain("const out = wings !== null;");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask })');
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -438,7 +438,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(CHEER_FOR_MS).toBeLessThan(1000);
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask })');
+    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing })');
     const main = read("../src-tauri/src/main.rs");
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });
@@ -462,8 +462,9 @@ describe("the island's motion agrees with the app's timing", () => {
   test("Home rolls back up in the time the shell waits before it hides it", () => {
     const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
     const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
-    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-2\) var\(--ease-out\) both; \}/);   // M25: never ease in on what a person watches
-    expect(Number(/--dur-2: (\d+)ms/.exec(TOKENS_CSS())?.[1])).toBe(ms);
+    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-close\) var\(--ease-exit\) both; \}/);   // M25: never ease in on what a person watches
+    expect(Number(/--dur-close: (\d+)ms/.exec(TOKENS_CSS())?.[1])).toBe(ms);
+    expect(TOKENS_CSS()).toContain("--ease-exit: var(--ease-out);");
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
     expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);
   });

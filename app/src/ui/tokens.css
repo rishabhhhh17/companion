@@ -208,7 +208,23 @@
   /* ---------- Motion ---------- */
   --dur-1: 120ms; --dur-2: 200ms; --dur-3: 280ms; --dur-4: 400ms; --dur-flash: 1200ms;
   --ease-out: cubic-bezier(.2, .8, .2, 1);
-  --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* M55, smooth motion: what each motion is for. Exits are quicker than entrances, a press is quicker than its let go,
+     and nothing here is longer than 300 ms. No ease in anywhere: it starts slow just as a person looks. The pages'
+     scripts read these too (smoothMotion.ts), so this is the only place a motion's time or curve is written. */
+  --dur-press: 100ms;                  /* a button going in under the pointer */
+  --dur-release: 160ms;                /* and coming back out */
+  --dur-hover: 150ms; --ease-hover: ease;   /* a hover is a soft change of fill, never a flash */
+  --dur-enter: 180ms;                  /* a place coming in, a card growing in */
+  --dur-exit: 120ms;                   /* a card folding away */
+  --dur-move: 200ms;                   /* what stays sliding to its new place */
+  --dur-count: 300ms;                  /* the cost counting up */
+  --dur-open: 240ms; --dur-close: 200ms;    /* Home dropping from the notch, and rolling back up (main.rs HOME_CLOSE_MS) */
+  --ease-enter: cubic-bezier(.23, 1, .32, 1);   /* a strong ease out: it answers at once, then settles */
+  --ease-exit: var(--ease-out);
+  --ease-move: cubic-bezier(.25, 1, .5, 1);
+  --slide-place: 6px;                  /* how far a place rises as it comes in */
+  --grow-from: .97;                    /* how small a card starts as it grows in, and ends as it folds away */
+  --press-row: .985;                   /* a whole row in a list presses in less than a button */
   /* The island's spring (islandSpring.ts), as a linear() curve: only for rare delight (the first run, a proven fix). */
   --ease-spring: linear(0, 0.031, 0.111, 0.220, 0.344, 0.470, 0.591, 0.701, 0.796, 0.876, 0.940, 0.989, 1.024, 1.047, 1.061, 1.067, 1.068, 1.064, 1.057, 1.050, 1.041, 1.032, 1.024, 1.017, 1.011, 1.006, 1.003, 1.000, 0.998, 0.996, 0.996, 0.995, 0.995, 0.996, 0.996, 0.997, 1);
   --press: .97;                        /* buttons only */
@@ -847,6 +863,7 @@
   --ask-push: 0;
   --sea-tail-a: 0%;
   --sea-see-a: .34;                    /* Flowflow's water stays, lighter, on the plain graphite */
+  --room-play: paused;                 /* M55: a light that is not drawn does not keep moving either */
 }
 
 :root[data-corners="crisp"] {

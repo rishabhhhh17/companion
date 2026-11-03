@@ -24,7 +24,8 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   const [failed, setFailed] = useState(false);
-  // M46 (F28): how lively, and rest. Small, so working draws at WORK_INTERVAL in every choice (controller.ts small).
+  // M46 (F28): how lively, and rest. Small, so working draws at WORK_INTERVAL in every choice (controller.ts small). M55: the
+  // notch stays quiet, so the small one makes none of the character's small moves (reacts={false}); its states still show.
   const mode = livelinessOf(useSetting("character.lively"));
   const resting = useRest();
   const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
@@ -32,7 +33,7 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>
-        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small onFallback={() => setFailed(true)} />
+        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small reacts={false} onFallback={() => setFailed(true)} />
       </Suspense>
     </span>
   );

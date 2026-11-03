@@ -20,6 +20,10 @@ pub struct Apps {
     pub editors: Vec<String>,
     pub editor_prefixes: Vec<String>,
     pub coding_tools: Vec<String>,
+    /// Which code tools are terminals, and which are AI coding apps (M55, adapts to you: Home's main action). Every one of
+    /// them is a code tool already; these lists only say which kind.
+    pub terminals: Vec<String>,
+    pub ai_apps: Vec<String>,
     pub browsers: Vec<String>,
     pub browser_prefixes: Vec<String>,
     /// The everyday apps known by name. The shell needs only that they are neither code tools nor browsers.
@@ -31,6 +35,12 @@ impl Apps {
     pub fn coding(&self, id: &str) -> bool {
         phelp::TERMINALS.contains(&id) || self.editors.iter().any(|e| e == id) || self.editor_prefixes.iter().any(|p| id.starts_with(p.as_str())) || self.coding_tools.iter().any(|t| t == id)
     }
+    /// A terminal: Prompt help's and Take the wheel's terminals, and the others on the one list.
+    pub fn terminal(&self, id: &str) -> bool {
+        phelp::TERMINALS.contains(&id) || crate::wheel::TERMINALS.contains(&id) || self.terminals.iter().any(|t| t == id)
+    }
+    /// An AI coding app a person builds with by chatting (Claude, Codex, ChatGPT, Gemini).
+    pub fn ai_app(&self, id: &str) -> bool { phelp::CHAT_APPS.contains(&id) || self.ai_apps.iter().any(|t| t == id) }
     /// A web browser, or a web app added to the Dock from one (a page in that browser).
     pub fn browser(&self, id: &str) -> bool {
         self.browsers.iter().any(|b| b == id) || self.browser_prefixes.iter().any(|p| id.starts_with(p.as_str()))
@@ -54,6 +64,31 @@ pub fn front_kind(bundle_id: &str) -> &'static str {
     if a.coding(bundle_id) { return "code"; }
     if a.browser(bundle_id) { return "browser"; }
     "other"
+}
+
+/// The kinds Home is told about (app/src/homeHero.ts FRONT_KINDS, the same words).
+pub const HOME_KINDS: &[&str] = &["editor", "aiApp", "browser", "terminal", "other"];
+
+/// What kind of app is in front, for Home's main action (M55, adapts to you): an editor (or another builder's tool), an AI
+/// coding app, a browser, a terminal, or anything else. From its id only, never its name, a window's title or anything in
+/// it (rules 5 and 7). None for Companion itself, so Home keeps what it had (it is a panel that never takes the front).
+pub fn home_kind(bundle_id: &str) -> Option<&'static str> {
+    let a = apps();
+    match front_kind(bundle_id) {
+        "own" => None,
+        "code" if a.terminal(bundle_id) => Some("terminal"),
+        "code" if a.ai_app(bundle_id) => Some("aiApp"),
+        "code" => Some("editor"),
+        "browser" => Some("browser"),
+        _ => Some("other"),
+    }
+}
+
+/// What Home is told about the app in front: its kind and nothing else. With Home follows the app in front off
+/// (home.followFrontApp false) it is always "other" and the app in front is not even read, so Home goes by the project.
+pub fn home_front(follow: &Value, front: impl FnOnce() -> String) -> Option<Value> {
+    let kind = if follow == &Value::Bool(false) { Some("other") } else { home_kind(&front()) };
+    kind.map(|k| json!({ "kind": k }))
 }
 
 /// The app id a look carries to the engine (showme::locate_command's `app`). An ordinary Show me question carries the id
@@ -168,6 +203,63 @@ mod tests {
         for id in phelp::TERMINALS.iter().chain(phelp::CHAT_APPS).chain(crate::wheel::EDITORS).chain(crate::wheel::TERMINALS) { assert_eq!(front_kind(id), "code", "{id}"); }
         for p in crate::wheel::EDITOR_PREFIXES { assert!(a.editor_prefixes.iter().any(|q| q == p), "{p}"); }
         assert_eq!(front_kind(&format!("{}.app", a.ours_prefix)), "own");
+    }
+
+    #[test]
+    fn home_hears_only_the_kind_of_app_in_front() {
+        // M55, adapts to you: an editor or another builder's tool, an AI coding app, a browser, a terminal, or other.
+        for id in ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.google.antigravity-ide", "com.apple.dt.Xcode", "dev.zed.Zed", "com.jetbrains.WebStorm", "com.exafunction.windsurf", "com.github.GitHubClient"] { assert_eq!(home_kind(id), Some("editor"), "{id}"); }
+        for id in ["com.anthropic.claudefordesktop", "com.openai.codex", "com.openai.chat", "com.google.gemini", "com.google.GeminiMacOS"] { assert_eq!(home_kind(id), Some("aiApp"), "{id}"); }
+        for id in ["com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty", "io.alacritty", "org.alacritty", "org.tabby", "dev.commandline.waveterm"] { assert_eq!(home_kind(id), Some("terminal"), "{id}"); }
+        for id in ["com.apple.Safari", "com.google.Chrome", "company.thebrowser.dia", "com.google.Chrome.app.abc"] { assert_eq!(home_kind(id), Some("browser"), "{id}"); }
+        for id in ["com.microsoft.Excel", "com.apple.mail", "notion.id", "com.example.unknown", ""] { assert_eq!(home_kind(id), Some("other"), "{id}"); }
+        // Companion itself: Home keeps what it had.
+        assert_eq!(home_kind("dev.companion.app"), None);
+        // Every kind is one of the words the page knows (homeHero.ts FRONT_KINDS), and the page knows exactly these.
+        let page = include_str!("../../../app/src/homeHero.ts");
+        let line = page.lines().find(|l| l.starts_with("export const FRONT_KINDS")).expect("FRONT_KINDS in homeHero.ts");
+        for k in HOME_KINDS { assert!(line.contains(&format!("\"{k}\"")), "{k}"); }
+        assert_eq!(line.matches('"').count(), HOME_KINDS.len() * 2);
+    }
+
+    #[test]
+    fn home_is_told_the_kind_alone_and_nothing_with_the_setting_off() {
+        let v = home_front(&json!(true), || "com.apple.Terminal".into()).unwrap();
+        assert_eq!(v, json!({ "kind": "terminal" }));
+        // Only the kind: never the id, the name, a title or anything in the app.
+        assert_eq!(v.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["kind"]);
+        assert!(!v.to_string().contains("com.apple"));
+        // The usual (no value yet) follows the app in front too.
+        assert_eq!(home_front(&Value::Null, || "com.apple.Safari".into()), Some(json!({ "kind": "browser" })));
+        // Off: always other, and the app in front is not even read.
+        assert_eq!(home_front(&json!(false), || panic!("read the app in front")), Some(json!({ "kind": "other" })));
+        // Companion in front: nothing is said, so Home keeps what it had.
+        assert_eq!(home_front(&json!(true), || "dev.companion.app".into()), None);
+        for id in ["com.microsoft.VSCode", "com.openai.codex", "com.google.Chrome", "com.apple.mail", ""] {
+            let k = home_front(&json!(true), || id.into()).unwrap();
+            assert!(HOME_KINDS.contains(&k["kind"].as_str().unwrap()), "{id}");
+        }
+    }
+
+    #[test]
+    fn terminals_and_ai_apps_are_code_tools_from_the_one_list() {
+        let a = apps();
+        for id in a.terminals.iter().chain(&a.ai_apps) { assert_eq!(front_kind(id), "code", "{id}"); }
+        // Prompt help's and Take the wheel's terminals, and Prompt help's chat apps, are on the one list too.
+        for id in phelp::TERMINALS.iter().chain(crate::wheel::TERMINALS) { assert!(a.terminals.iter().any(|t| t == id), "{id}"); }
+        for id in phelp::CHAT_APPS { assert!(a.ai_apps.iter().any(|t| t == id), "{id}"); }
+        // No app is both a terminal and an AI app.
+        for id in &a.terminals { assert!(!a.ai_apps.contains(id), "{id}"); }
+    }
+
+    #[test]
+    fn the_shell_tells_home_the_kind_only_when_it_changes_and_when_home_opens() {
+        let main = include_str!("main.rs");
+        assert!(main.contains(r#"everyday::home_front(&setting_now("home.followFrontApp"), front_id)"#), "the tick asks the one rule");
+        assert!(main.contains(r#"let _ = app.emit_to("card", "front-kind", v);"#), "only Home is told, and only the kind");
+        assert!(main.contains(r#"opened["front"] = k;"#), "Home is told the kind as it opens");
+        // The pages' state no longer carries the name of the app in front: only Home hears about it, as a kind.
+        assert!(main.contains(r#"let state = json!({ "clicks": CLICKS.load(Ordering::SeqCst), "card_key": ck });"#));
     }
 
     #[test]

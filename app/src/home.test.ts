@@ -143,7 +143,7 @@ describe(`what ${PRODUCT} says about itself shows on every tab`, () => {
   test("the card draws the notes between the top of Home and the open place, not inside one place", () => {
     const at = card.indexOf('{show("notes") && <>');
     expect(at).toBeGreaterThan(card.indexOf("<PlacesBox side={side}>"));
-    expect(at).toBeLessThan(card.indexOf('<div className="view" role='));
+    expect(at).toBeLessThan(card.indexOf('<div className="view" ref={view} role='));
     const block = card.slice(at, card.indexOf("</>}", at));
     expect(block).toContain("{m.error}");
     expect(block).toContain("{m.notice}");

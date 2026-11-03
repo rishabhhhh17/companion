@@ -12,6 +12,7 @@ import { PROTOCOL_VERSION } from "../../protocol/index.ts";
 import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
+import { changeOf, inProject, markOf, type FileMark } from "./livefile.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
 import { answerPrompt, differentTaskPrompt, endedWhyOf, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
@@ -297,6 +298,9 @@ export class AgentRunner {
   private planAllowed = new Map<string, Set<string>>();   // agent -> what was allowed "for the rest of this task" in its running Drive plan
   private choices = new Map<string, (c: string) => void>();
   private watchers = new Map<string, ProjectWatcher>();
+  // M55, live progress: each file an edit tool was let through for, as it was just before the tool ran (livefile.ts), by the
+  // tool's id, so the file is named (agent.file) only once that tool has finished and only if it really changed.
+  private editing = new Map<string, { agent: string; abs: string; rel: string; before: FileMark }>();
   private pauseReq = new Map<string, { reason: string; path?: string }>();
   private resumers = new Map<string, (c: string) => void>();
   private resumeEarly = new Set<string>();
@@ -640,6 +644,15 @@ export class AgentRunner {
 
   // The last state told for each agent (only what was sent; the pages keep their own).
   private agentStates = new Map<string, string>();
+  /** M55, live progress: a tool let through to edit a file has finished. The file is named (agent.file) only when it is not
+   *  what it was just before the tool ran: added, changed or removed (livefile.ts). Once per tool; nothing for one unknown. */
+  private fileDone(id: string) {
+    const e = this.editing.get(id);
+    if (!e) return;
+    this.editing.delete(id);
+    const kind = changeOf(e.before, markOf(e.abs));
+    if (kind) this.emit({ type: "agent.file", agent: e.agent, file: e.rel, kind } as never);
+  }
   private state(agent: string, state: string) { this.agentStates.set(agent, state); this.emit({ type: "agent.state", agent, state } as never); }
   // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
   private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}), ...(u.summary ? { summary: u.summary } : {}), ...(u.problem ? { problem: u.problem } : {}) } as never); }
@@ -1105,7 +1118,7 @@ export class AgentRunner {
         prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns, tools,
         ...(offRecord ? { offTheRecord: true } : {}),
         authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
-        toolDone: (id, shell) => { if (id) this.watchers.get(cmd.agent)?.end(id); this.noteShell(session, shell); },
+        toolDone: (id, shell) => { if (id) { this.watchers.get(cmd.agent)?.end(id); this.fileDone(id); } this.noteShell(session, shell); },
         // A round that ended before Claude Code said what it cost (Stop, a pause) still cost something: the engine's estimate.
         unbilled: (c) => { usd += money(c); book(); tellCost(); },
       });
@@ -1126,7 +1139,7 @@ export class AgentRunner {
             finalWords = ""; afterTool = true;   // what it said before a tool is not what it ended on
             const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
             try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
-            finally { if (a.wid) this.watchers.get(cmd.agent)?.end(a.wid); }
+            finally { if (a.wid) { this.watchers.get(cmd.agent)?.end(a.wid); this.fileDone(a.wid); } }
             if (a.allow && turn.tool.name === "Bash") this.noteShell(session, result?.shell);
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
@@ -1262,6 +1275,7 @@ export class AgentRunner {
     this.openTasks.delete(cmd.agent);
     // Our work ends here: the project as it is now is what this step left. Later differences are the person's own.
     started.ended = true;
+    for (const [id, e] of this.editing) if (e.agent === cmd.agent) this.editing.delete(id);
     await store.noteAgentEnd(lastAfter).catch(() => undefined);
     // The change itself, place by place: the first changed line for "Show me what changed", the diff for Explain, and the
     // same small change made twice for "your turn" (only when it is on, after a proven fix, outside a plan, and never off
@@ -2408,12 +2422,15 @@ export class AgentRunner {
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");
     // Launch check: a file git ignores is in no snapshot, so it is kept just before it is edited, and Undo puts it back.
+    const wid = sdkId ?? toolUseId;
     if (EDIT_TOOLS.has(tool.name)) {
       const path = String(tool.input.file_path ?? tool.input.notebook_path ?? "");
       if (path) { const kept = await this.store(cmd.project).keepIgnored(checkpoint, path); if (kept === "too_big") notUndoable.push(`${clip(redact(path), 200)}: over 2 MiB and ignored by git, so Undo cannot put it back`); }
+      // M55: the file as it is just before the tool runs, so the work card can name it once it really changed (fileDone).
+      const rel = path ? inProject(cmd.project, path) : null;
+      if (rel) this.editing.set(wid, { agent: cmd.agent, abs: resolve(cmd.project, path), rel, before: markOf(resolve(cmd.project, path)) });
     }
     // From here until the tool finishes, file changes are the agent's own.
-    const wid = sdkId ?? toolUseId;
     this.watchers.get(cmd.agent)?.begin(wid);
     return { allow: true, reason: "", wid };
   }

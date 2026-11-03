@@ -25,8 +25,11 @@ import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
 import { followLessMotion } from "./motion.ts";
+import { CountUp, useHomeMotion } from "./smoothMotion.ts";
+import { JobLive } from "./jobLive.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { askRoute, blockerOf, heroCompact, homeFixRoute, jobNowWords, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, type MainAct } from "./homeHero.ts";
+import { askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, jobNowWords, workingLine, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, type FrontKind, type MainAct } from "./homeHero.ts";
+import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { livelinessOf } from "./lookfeel.ts";
@@ -40,7 +43,7 @@ import { FlowMini } from "./flowflowMini.tsx";
 import { layoutOf, seaFills, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
-import { reviewShown } from "./review.ts";
+import { changesWait, reviewShown } from "./review.ts";
 import { roomElement, useRoomStill } from "./element.ts";
 import { RoomLight } from "./roomLight.tsx";
 import { historyStamp, taskName } from "./itemLook.ts";
@@ -427,6 +430,9 @@ function Card() {
   const needWords = (line: string) => { setAskHint(line); box.current?.focus(); };
   // What is open is measured, not the column it sits in (that column is as tall as the window, so it could never shrink).
   const inner = useRef<HTMLDivElement>(null);
+  // M55, smooth motion: Home's parts, and the cards of the place open (smoothMotion.ts useHomeMotion).
+  const work = useRef<HTMLDivElement>(null);
+  const view = useRef<HTMLDivElement>(null);
   // Which page of Settings is open, or what a deep link names (a page, a group, a setting): the last page viewed at first.
   const [setPlace, setSetPlace] = useState<string>(() => lastPage());
   const box = useRef<HTMLTextAreaElement>(null);
@@ -542,6 +548,16 @@ function Card() {
   const onArrival = useRef<(t: HomeArrival) => void>(() => {});
   // The same as state, for what must follow Home on and off screen (the Prompt help result's keys).
   const [homeOpen, setHomeOpen] = useState(false);
+  // M55, adapts to you: the kind of app in front (an editor, an AI coding app, a browser, a terminal or other), all the shell
+  // tells Home about it (everyday.rs home_front): as Home opens, and each time it changes. Never its id, name or contents.
+  const [frontKind, setFrontKind] = useState<FrontKind | null>(null);
+  useEffect(() => {
+    const off = listen("front-kind", (e) => { const k = frontKindOf(e.payload); if (k) setFrontKind(k); });
+    return () => { void off.then((f) => f()); };
+  }, []);
+  // M55, smooth motion: a new place fades and rises in, a card that goes folds away, what stays slides to its new place.
+  // Nothing with Reduce motion or Less motion, nothing while Home is away, nothing at rest.
+  useHomeMotion(root, work, view, home.tab, homeOpen);
   // More on the ring around the character opens Home: the whole list is on Now.
   useEffect(() => { if (homeOpen && dropMenu?.at === "dock") homeDispatch({ type: "pick", tab: "now" }); }, [homeOpen, dropMenu?.id]);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
@@ -1006,6 +1022,9 @@ function Card() {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
       homeShown.current = true; setHomeOpen(true);
+      // M55, adapts to you: the kind of app in front as Home opens (only the kind; Home ignores anything else).
+      const k = frontKindOf({ kind: (e.payload as { front?: unknown } | null)?.front });
+      if (k) setFrontKind(k);
       // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion), except
       // when a keyboard shortcut opened it (M26, island.rs animates_open): then it is simply there.
       const instant = !!(e.payload as { instant?: boolean } | null)?.instant;
@@ -1611,8 +1630,8 @@ function Card() {
   // hero said "Fixed and proven" over a card that said it again, and the best moment had no Flowflow).
   const compact = side && heroCompact(m, reviewOn);
   const statusFirst = mode === "rest" || mode === "result";
-  const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: S.home.blocked[blocker].line, detail: undefined }
-    : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined } : hero;
+  const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: S.home.blocked[blocker].line, detail: undefined, count: undefined }
+    : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined, count: undefined } : hero;
   // The one way out of a block, or into the review, as the main button.
   const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
   const reviewMain = mode === "review" && rlead?.main === "review";
@@ -1624,7 +1643,10 @@ function Card() {
   // The limit card takes the result's place and has its own main button, so Home's main button steps aside while it shows.
   const proLimit = pro.paymentsOn ? m.proLimit ?? null : null;
   const usage = m.proUsage ?? null;
-  const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b));
+  // M55, adapts to you: the main action follows the kind of app in front (Home follows the app in front) and a task left half
+  // way, after what the project needs (homeHero.ts mainChoices).
+  const followFront = useSetting("home.followFrontApp");
+  const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b), { front: frontFollowed(frontKind, followFront), halfWay: halfWay(m, project) });
   const shipTags = proTag("ship", pro);
   // At the free fix limit, Fix it starts nothing and shows the limit card (section 3). Check before going live is free on
   // every plan (must fix 20). The engine refuses the same way (runner/src/plan.ts).
@@ -1632,6 +1654,10 @@ function Card() {
     if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }
     if (a === "shipCheck") { shipIt(); return; }
     if (a === "folder") { pickFolder(); return; }
+    // A task left half way carries on as Try again does (the same follow up, told how the last try ended); a terminal in
+    // front offers the explainer, as the More ways button does (words in the box, or how to use its keys).
+    if (a === "carryOn") { followSent(false); void send(retryTask(project)).catch(followRefused); return; }
+    if (a === "explain") { explainFromBox(); return; }
     // Fix it fixes what was found, by the point card's own route (the audit, item 1); only Check my project checks.
     const route = homeFixRoute(nowModel.current, status, project, setting("point.fixWith"));
     if (route === "check") findFromHome(); else fixKnown();
@@ -1639,6 +1665,11 @@ function Card() {
   const lastFree = main === "fix" ? lastFreeLine(pro, usage) : null;
   // More ways (the audit, item 40): each way's one line, with its keys when it has some, as its tooltip and description.
   const [moreDesc, setMoreDesc] = useState("");
+  // M55, adapts to you: the ways pressed most come first (usedOften.ts), learned only from real presses here. The order is
+  // read as More ways opens and then held, so a way never moves under the pointer while the list is open.
+  const usedFirst = useSetting("home.usedOftenFirst") !== false;
+  const [wayCounts, setWayCounts] = useState<Counts>(() => readCounts());
+  const wayPress = (id: Way, go: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => { notePress(id, { trusted: e.nativeEvent.isTrusted, on: usedFirst }); go(); };
   const tip = (k: keyof typeof S.look.moreHelp, job?: "problem" | "explain" | "showme") => {
     const chord = job ? keys.using[job] : null;
     const said = chord ? chordLabel(chord) : "";
@@ -1837,7 +1868,7 @@ function Card() {
       {!onboarded && <PartBoundary part="firstRun"><Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
         point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} /></PartBoundary>}
       {/* The work: one column (in the wide Home, beside the list, with the ask box along its bottom; otherwise no box at all). */}
-      <div className="work">
+      <div className="work" ref={work}>
       {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
           link, the folders used before); in a place, a back arrow and its name. On the right, quiet buttons with words
           (Learn only until the first practice is done, History, Memory, Settings), then Close. A place that waits for the
@@ -1884,7 +1915,10 @@ function Card() {
         <div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">
           <div className="ch-water"><Waterline under /></div>
           {(() => { const say = blocker ? "" : sayFor(m, hero); return say ? <span className="say" key={say}>{say}</span> : null; })()}
-          <div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} /></div>
+          {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
+              while changes wait for it (only while that card is on Now). */}
+          <div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
+            leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} /></div>
         </div>
         <div className="hero-words">
           {statusFirst
@@ -1894,7 +1928,8 @@ function Card() {
                   "Practice: find it, fix it, prove it"). */}
               {practiceNow && !heroShown.headline.startsWith(S.look.practiceTag) && <span className="hero-tag">{S.look.practiceTag}</span>}
               <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>
-              <p className="subline">{heroShown.line}</p>
+              {/* M55: the cost counts up to its new number rather than jumping (smoothMotion.ts). */}
+              <p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : heroShown.line}</p>
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
@@ -1960,23 +1995,27 @@ function Card() {
               check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
           {home.tab === "now" && !working && (
             <details className="more">
-              <summary>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
+              <summary onClick={() => setWayCounts(readCounts())}>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
               {/* The audit, item 40: every way has its drawing and one line, shown under the ways for the one under the pointer
                   or the keyboard (and as its tooltip, with its keys, so no keycaps crowd the buttons). In the wide Home this
                   opens as a popover over the ask box (ui/wide.css), so the page never jumps. The voice switch lives in
                   Settings, Keys and voice. */}
               <div className="more-pop">
               <div className="more-ways" onMouseOver={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onFocus={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onMouseLeave={() => setMoreDesc("")}>
-                {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" title={tip("find", "problem")} onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}</Button>}
-                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" title={tip("safe")} onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}</Button>}
-                {toolOn("errorHelp") && <Button size="sm" title={tip("explain", "explain")} onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}</Button>}
-                {buttonShown("showMe") && <Button size="sm" title={tip("showMe", "showme")} onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}</Button>}
-                {buttonShown("plan") && <Button size="sm" title={tip("plan")} onClick={plan}><Icon name="grid" size={14} />{S.planIt}</Button>}
-                {buttonShown("rescue") && <Button size="sm" title={tip("rescue")} onClick={rescue}><Icon name="wrench" size={14} />{S.rescueIt}</Button>}
-                {buttonShown("research") && <Button size="sm" title={tip("research")} onClick={research}><Icon name="doc" size={14} />{S.researchIt}</Button>}
-                {buttonShown("online") && <Button size="sm" title={tip("online")} onClick={shipOnline}><Icon name="send" size={14} />{S.onlineButton}{shipTags && <ProTag />}</Button>}
-                {canBisect(m) && project && buttonShown("whichTask") && <Button size="sm" title={tip("bisect")} onClick={findBreaker}><Icon name="split" size={14} />{S.bisectButton}</Button>}
-                {buttonShown("drawIt") && <Button size="sm" title={tip("drawIt")} disabled={m.diagram?.stage === "asking"} onClick={() => drawIt(box.current?.value ?? "", m.where ?? undefined)}><Icon name="image" size={14} />{S.drawIt}</Button>}
+                {/* M55, adapts to you: the ways pressed most come first (usedFirst, wayCounts); each press is noted only when the
+                    person made it (wayPress). The main action is not here twice. */}
+                {orderWays([
+                  { id: "find" as const, el: buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" key="find" title={tip("find", "problem")} onClick={wayPress("find", findFromHome)}><Icon name="find" size={14} />{S.look.chipFind}</Button> },
+                  { id: "safe" as const, el: buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" key="safe" title={tip("safe")} onClick={wayPress("safe", () => shipIt())}><Icon name="shield" size={14} />{S.look.chipSafe}</Button> },
+                  { id: "explain" as const, el: toolOn("errorHelp") && main !== "explain" && <Button size="sm" key="explain" title={tip("explain", "explain")} onClick={wayPress("explain", explainFromBox)}><Icon name="explain" size={14} />{S.look.chipExplain}</Button> },
+                  { id: "showMe" as const, el: buttonShown("showMe") && <Button size="sm" key="showMe" title={tip("showMe", "showme")} onClick={wayPress("showMe", () => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } })}><Icon name="pointer" size={14} />{S.look.chipShowMe}</Button> },
+                  { id: "plan" as const, el: buttonShown("plan") && <Button size="sm" key="plan" title={tip("plan")} onClick={wayPress("plan", plan)}><Icon name="grid" size={14} />{S.planIt}</Button> },
+                  { id: "rescue" as const, el: buttonShown("rescue") && <Button size="sm" key="rescue" title={tip("rescue")} onClick={wayPress("rescue", rescue)}><Icon name="wrench" size={14} />{S.rescueIt}</Button> },
+                  { id: "research" as const, el: buttonShown("research") && <Button size="sm" key="research" title={tip("research")} onClick={wayPress("research", research)}><Icon name="doc" size={14} />{S.researchIt}</Button> },
+                  { id: "online" as const, el: buttonShown("online") && <Button size="sm" key="online" title={tip("online")} onClick={wayPress("online", shipOnline)}><Icon name="send" size={14} />{S.onlineButton}{shipTags && <ProTag />}</Button> },
+                  { id: "bisect" as const, el: canBisect(m) && project && buttonShown("whichTask") && <Button size="sm" key="bisect" title={tip("bisect")} onClick={wayPress("bisect", findBreaker)}><Icon name="split" size={14} />{S.bisectButton}</Button> },
+                  { id: "drawIt" as const, el: buttonShown("drawIt") && <Button size="sm" key="drawIt" title={tip("drawIt")} disabled={m.diagram?.stage === "asking"} onClick={wayPress("drawIt", () => drawIt(box.current?.value ?? "", m.where ?? undefined))}><Icon name="image" size={14} />{S.drawIt}</Button> },
+                ].filter((w) => !!w.el), wayCounts, usedFirst).map((w) => w.el)}
               </div>
               <p className="more-desc muted" aria-hidden="true">{moreDesc || "\u00a0"}</p>
               <label className="more-opt"><Switch checked={off} onChange={setOff} label={S.offRecord} /><span aria-hidden="true">{S.offRecord}</span></label>
@@ -2010,7 +2049,7 @@ function Card() {
       </>}
       {/* A place's own panel is a region named by that place; Now is the page itself, never a second region named after its
           headline (the audit, items 37 and 51). */}
-      <div className="view" role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}>
+      <div className="view" ref={view} role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}>
       {show("whatsNew") && changes && (
         <section className="panel" role="status" aria-label={S.whatsNewTitle(changes.show[0].version)}>
           {changes.show.map((r) => (
@@ -2266,7 +2305,10 @@ function Card() {
           payments off. */}
       {show("receipt") && proLimit && <LimitPanel view={proLimit} status={pro} usage={usage} say={(l) => dispatch({ type: "app.notice", message: l })} onClose={() => dispatch({ type: "ui.proLimitClosed" })} />}
       {show("task") && m.task && working && (() => {
-        const js = jobStep(m, Number(setting("work.tries")) || 3);
+        const maxTries = Number(setting("work.tries")) || 3;
+        const js = jobStep(m, maxTries);
+        // M55, live progress: the files changed so far while it fixes, each check as it runs while it checks (jobLive.tsx).
+        const live = jobLive(m, maxTries);
         const lines = activityNow(m);
         const odd = lines.filter((l) => l.outcome === "blocked" || l.outcome === "denied" || l.outcome === "needs_approval");
         return (
@@ -2278,9 +2320,13 @@ function Card() {
             <ol className="job-strip" aria-label={S.home.stepsLabel}>
               {S.home.steps.map((label, i) => <li key={label} data-state={i < js.step ? "done" : i === js.step ? "now" : undefined} aria-current={i === js.step ? "step" : undefined}><span className="job-bar" aria-hidden="true" /><span className="job-label">{i < js.step && <Icon name="tick" size={12} />}{label}{i < js.step && <span className="sr">{S.home.stepDone}</span>}</span></li>)}
             </ol>
-            <p className="job-now">{jobNowWords(m, js.retry, lines)}</p>
-            {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. */}
-            <p className="job-meta"><span>{S.home.timeSoFar(clockWords(clock - (jobStart.current?.at ?? clock)))}</span></p>
+            {/* The step under way in words, except while files or checks are listed: the list already says it (the review,
+                3 Nov 2026: "Changing signup.js" sat over the row "signup.js"). A new try is said here only, so it stays. */}
+            {(live.kind === "none" || js.retry) && <p className="job-now">{jobNowWords(m, js.retry, lines)}</p>}
+            <JobLive view={live} />
+            {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second at
+                a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
+            <p className="job-meta"><span><CountUp value={Math.max(0, Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>
             {odd.map((l, i) => <div key={i} className="line blocked">{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : `${S.waiting}: `}{l.words}</div>)}
           </section>
         );

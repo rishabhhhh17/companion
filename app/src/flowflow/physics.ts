@@ -71,6 +71,8 @@ export type BodyPose = {
 export const MAX_STRETCH = 0.12;
 /** The most it may squash (+) or rebound (-). Hits stack, and at 1 the shape would fold flat, so it stops here and loses that energy. */
 export const MAX_SQUASH = 0.14;
+/** The most it may lean either way (the shader's shear). */
+export const LEAN_MAX = 0.22;
 
 export class SoftBody {
   private px: Spring; private py: Spring;
@@ -83,6 +85,8 @@ export class SoftBody {
   private tuning: Tuning = { ...DEFAULT_TUNING };
   private dirX = 0; private dirY = 0;
   private cx = 0; private cy = 0;
+  /** M55: a tilt it holds at rest (leaning toward the review card), on top of the lean that comes from moving. */
+  private leanBias = 0;
   readonly pose: BodyPose = { x: 0, y: 0, dirX: 0, dirY: 0, stretch: 0, squash: 0, lean: 0, wobble2: 0, wobble3: 0, breath: 0, contactX: 0, contactY: 0, contact: 0, speed: 0 };
   /** The frame the body may live in (half width and half height, and the body's radius), set by the renderer. */
   bounds = { halfW: 1.6, halfH: 1.1, r: 0.85 };
@@ -112,6 +116,8 @@ export class SoftBody {
     this.tx = k.x; this.ty = k.y;
   }
   setBreath(amp: number, rate: number): void { this.breathAmp = amp; this.breathRate = rate; }
+  /** M55: the tilt to hold at rest (the shader's lean: above 0 the top leans right), kept within the lean's own limit. */
+  setLean(bias: number): void { this.leanBias = Number.isFinite(bias) ? Math.max(-LEAN_MAX, Math.min(LEAN_MAX, bias)) : 0; }
 
   /** A sudden event: land (squash then rebound), poke (a dent at a point), burst (every wobble mode shaken). */
   impulse(kind: "land" | "poke" | "burst", strength = 1, x = 0, y = 0): void {
@@ -143,7 +149,7 @@ export class SoftBody {
     const jerk = Math.min(4, Math.abs(slowing)) * 0.004 * h * 60;
     this.w2.v += jerk * (vx >= 0 ? 1 : -1); this.w3.v += jerk * 0.5;
     this.w2.step(h, 0); this.w3.step(h, 0);
-    this.leanS.step(h, Math.max(-0.22, Math.min(0.22, -vx * 0.1)));
+    this.leanS.step(h, Math.max(-LEAN_MAX, Math.min(LEAN_MAX, -vx * 0.1 + this.leanBias)));
     this.contactS.step(h, 0);
     this.breathPhase += 2 * Math.PI * this.breathRate * h * this.tuning.speed;
   }
@@ -164,13 +170,15 @@ export class SoftBody {
   get settled(): boolean {
     return Math.abs(this.px.x - this.tx) < 0.002 && Math.abs(this.py.x - this.ty) < 0.002 && Math.hypot(this.px.v, this.py.v) < 0.004
       && Math.abs(this.squashS.x) < 0.002 && Math.abs(this.squashS.v) < 0.01 && Math.abs(this.w2.x) < 0.01 && Math.abs(this.w3.x) < 0.01
-      && Math.abs(this.contactS.x) < 0.002 && Math.abs(this.leanS.x) < 0.002
+      && Math.abs(this.contactS.x) < 0.002 && Math.abs(this.leanS.x - this.leanBias) < 0.002
       && (this.breathAmp > 0 || Math.abs(this.pose.breath) < 1e-4);
   }
 
-  /** Put the body somewhere at rest (a new window, a state that must not glide in from elsewhere). */
+  /** Put the body somewhere at rest (a new window, a state that must not glide in from elsewhere), holding its tilt. M55:
+   *  the pose says so at once, so a still frame drawn now is at rest there, never the last moving frame. */
   reset(x = 0, y = 0): void {
     for (const s of [this.px, this.py, this.stretchS, this.squashS, this.leanS, this.w2, this.w3, this.contactS]) { s.x = 0; s.v = 0; }
-    this.px.x = x; this.py.x = y; this.tx = x; this.ty = y; this.acc = 0; this.lastSpeed = 0;
+    this.px.x = x; this.py.x = y; this.tx = x; this.ty = y; this.acc = 0; this.lastSpeed = 0; this.leanS.x = this.leanBias;
+    this.fill(); this.pose.breath = 0;
   }
 }

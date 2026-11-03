@@ -23,8 +23,10 @@ const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
 
 /** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). `liveliness`:
  *  a choice to show at once instead of the one in force (the Settings hero, while its press reaches the shell). `rest`:
- *  out of sight (Home closed, or another place open in it), so it rests as it does during a call: one still frame, no loop. */
-export function HomeCharacter({ m, as, liveliness, rest }: { m?: Model; as?: CharacterState; liveliness?: Liveliness; rest?: boolean }) {
+ *  out of sight (Home closed, or another place open in it), so it rests as it does during a call: one still frame, no loop.
+ *  M55 (the character reacts): `askId`, Home's ask box, which its eyes go to while the person types (Gentle and Lively);
+ *  `leanTo`, the card it leans toward while changes wait for a review (card.tsx), or null. */
+export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo }: { m?: Model; as?: CharacterState; liveliness?: Liveliness; rest?: boolean; askId?: string; leanTo?: string | null }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // A finished task that is not proven is drawn at rest, never with the done look (M45, model.ts lookState).
@@ -39,6 +41,8 @@ export function HomeCharacter({ m, as, liveliness, rest }: { m?: Model; as?: Cha
   // M46 (F28): how lively it is, and the shell's rest (a call, Low Power Mode).
   const mode = liveliness ?? livelinessOf(useSetting("character.lively"));
   const resting = useRest() || !!rest;
+  // M55: its small moves for what happens (character.reacts, on unless turned off).
+  const reacts = useSetting("character.reacts") !== false;
   const flow = useFlow({ pose, state, calm: reduced, off: live });
   const box = useRef<HTMLDivElement>(null);
   // A task that just finished: a ripple and droplets from the middle of the water, once.
@@ -55,7 +59,12 @@ export function HomeCharacter({ m, as, liveliness, rest }: { m?: Model; as?: Cha
     <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>
       {live
-        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} halo={false} liveliness={mode} resting={resting} onFallback={() => setLiveFailed(true)} /></Suspense>
+        ? <>
+          <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} halo={false} liveliness={mode} resting={resting} reacts={reacts} askId={askId} leanTo={leanTo} onFallback={() => setLiveFailed(true)} /></Suspense>
+          {/* M55: the still picture of the same pose, hidden under the live drawing. A live drawing cannot be copied, so this is
+              what the copy of a place that fades away shows (smoothMotion.ts ghostOf). */}
+          <img className="home-pose flow-ready" src={poseUrl(pose)} alt="" draggable={false} />
+        </>
         : <>
           {!flow.failed && <canvas ref={flow.canvasRef} className="home-flow" />}
           <img className={`home-pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

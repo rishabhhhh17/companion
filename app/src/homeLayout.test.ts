@@ -71,7 +71,7 @@ describe("Home draws the wide layout", () => {
     expect(card).toMatch(/<main className=\{`card home[^`]*`\}[^>]*data-layout=\{layout\}[^>]*data-side=\{side \? "" : undefined\}/);
     expect(card).toContain("{side && <HomeSide ");
     // The work is one column beside the list: the bar, the status, the ask box, the results.
-    expect(card).toContain('<div className="work">');
+    expect(card).toContain('<div className="work" ref={work}>');
   });
   test("the places are in the list, not twice: the top row has none while the list shows, and Now's recent fixes are not drawn twice", () => {
     expect(card).toContain("const places = side ? [] : barPlaces(");

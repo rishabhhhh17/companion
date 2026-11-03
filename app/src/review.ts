@@ -155,6 +155,12 @@ export function reviewShown(r: ReviewCard | null | undefined, folder: string, mo
   return !!r && !!folder && norm(folder) === norm(r.project) && mode !== "off" && flowOn;
 }
 
+/** M55 (the character reacts): changes wait for the person: the card offers Review them and it has not been pressed. Not
+ *  while the review runs or once it is in, and never for a card that is not shown (the caller checks reviewShown). */
+export function changesWait(r: ReviewCard | null | undefined): boolean {
+  return !!r && r.stage === "ready" && !r.asked;
+}
+
 /** Fix it is offered after a review that ran and found something, and only once. */
 export function canFix(r: ReviewCard | null | undefined): boolean {
   if (!r?.result || r.stage !== "reviewed" || r.fix === "sent") return false;

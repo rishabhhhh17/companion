@@ -128,7 +128,9 @@ export const S = {
     yesterday: "yesterday",
     daysAgo: (n: number) => `${n} days ago`,
     // The one main button, chosen by how the project is (homeHero.ts mainFor).
-    main: { fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project" } as Record<"fix" | "shipCheck" | "check" | "folder", string>,
+    // M55, adapts to you: a task left half way carries on, and a terminal in front offers the explainer (one name for each
+    // action: the same words as Paused's Carry on and More ways' Explain an error).
+    main: { fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project", carryOn: "Carry on", explain: "Explain an error" } as Record<"fix" | "shipCheck" | "check" | "folder" | "carryOn" | "explain", string>,
     // Changes from another AI tool wait for a review (homeHero.ts reviewLead): the main button opens them.
     reviewMain: "Review the changes",
     // Nothing can run (homeHero.ts blockerOf): what stops it, and the one way out as the main button.
@@ -165,6 +167,10 @@ export const S = {
     safetySaved: "Safety copy saved. Undo is ready.",
     tryingAgain: (n: number, of: number) => `Trying again (${n} of ${of})`,
     timeSoFar: (clock: string) => `${clock} so far`,
+    // M55, live progress: the files the work has changed so far, and the checks as they run, on the work card.
+    filesSoFar: "Changed so far",
+    moreFiles: (n: number) => `${n} more ${n === 1 ? "file" : "files"}`,
+    checksSoFar: "The checks so far",
     // The result card (4.2).
     undoFix: "Undo these changes",
     // After a plan: Undo goes back to before its first step (must fix 7).
@@ -549,6 +555,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview Flowflow", also: ["preview", "resting", "working", "done", "character"] },
+    usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
   // The Settings frame (the spec, 3.1 to 3.3 and 3.7).
   setFrame: {
@@ -606,6 +613,12 @@ export const S = {
     releaseNotes: "Release notes",
     replay: "Replay the first run",
     replayButton: "Replay",
+    // M55, adapts to you: what More ways to ask learned from your presses, and Reset (usedOften.ts).
+    usedOften: "Ways you use most",
+    usedOftenNone: "Nothing learned yet. The ways you press most will come first.",
+    usedOftenNow: (names: string) => `You press these most: ${names}.`,
+    usedOftenReset: "Reset",
+    usedOftenDone: "Forgotten. The usual order is back.",
     practice: "Practice projects",
     made: `What ${PRODUCT} made`,
     report: "Report a problem",
@@ -1767,9 +1780,12 @@ export const S = {
     "talk.dictate": { label: "Type by voice in any app", help: `Usually off, to keep things simple at first. Turn it on and pick its keys in Keys. Hold them, speak, and let go: your words are typed where the cursor is, in any app. ${PRODUCT} turns your voice into text on this Mac and never presses Return, so nothing is sent. It never types into a password box. It needs the microphone and Accessibility, asked the first time. Off, the keys type nothing.`, also: ["mic", "dictate", "voice", "dictation", "dictate", "type", "voice typing", "speech to text", "wispr", "any app"] },
     "talk.captions": { label: "Show your words", help: "When I say something out loud, the words also show at the bottom of your screen until I stop.", also: ["Show my words while I talk", "captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
     "home.escStops": { label: "Esc clears the screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["Esc stops what I show on screen", "escape", "esc", "stop", "cancel", "take back", "control"] },
+    "island.showStep": { label: "Show the step on the notch", help: "While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
     "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are. It puts a dot on that tab and a mark on the notch, or on the character when the notch is off. With Say answers out loud on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
+    "home.followFrontApp": { label: "Home follows the app in front", help: `Home's main button suits the app you are using. In an editor or an AI coding app it is Check my project. In a terminal it is Explain an error. Only the kind of app is used, never its name or anything in it. A problem to fix, changes to review or a task left half way always come first. Off, the main button goes by your project alone.`, also: ["app in front", "front app", "main button", "editor", "terminal", "browser", "cursor", "vs code", "adapt", "context"] },
+    "home.usedOftenFirst": { label: "Put the ways I use most first", help: `The ways you press most move to the top of More ways to ask. ${PRODUCT} learns this only from your own presses in ${PRODUCT}, and keeps it on this Mac. Off, they stay in the usual order and nothing is learned.`, also: ["order", "most used", "favourites", "favorites", "more ways to ask", "learn", "habit", "sort"] },
     "home.size": { label: "Home size", help: "Large makes Home bigger, which suits larger text: taller when Home is wide, wider and taller when it is tall. The character keeps clear of Home at either size.", also: ["bigger", "wider", "taller", "window"], options: { standard: "Standard", large: "Large" } },
     "character.edge": { label: "Screen edge", help: "Which edge of the screen the character lives on, on the display it is on now. You can also drag it to any edge or corner.", also: ["Edge for the character on this display", "place", "move", "corner", "side", "position"], options: { left: "Left", right: "Right", top: "Top", bottom: "Bottom" } },
     "character.position": { label: "Position along that edge", help: "0 is the top or left end of the edge, 100 the bottom or right end. The character always keeps clear of the notch and of Home.", also: ["place", "move", "height", "corner"] },
@@ -1808,6 +1824,7 @@ export const S = {
     "point.caption": { label: "Caption colour", help: "The bubble that says what to do beside the ring: the water's colour or white.", also: ["caption", "bubble", "colour", "color", "pointer"], options: { lime: "Water", white: "White" } },
     "character.name": { label: "Name", help: `What the character is called in ${PRODUCT}. Empty is its own name, ${names.character}.`, also: ["Its name", "name", "rename", "call", "character", "companion"], placeholder: names.character },
     "character.live": { label: `Draw ${PRODUCT} live`, help: `Off, ${PRODUCT_S} character is a picture that changes with what it is doing. On, it is drawn live on your screen as water that moves, stretches and settles. It uses a little more of your Mac while it moves. If your Mac cannot draw it, it goes back to the pictures.`, also: ["water", "animation", "3d", "live", "physics", "character", "droplet", "gpu"] },
+    "character.reacts": { label: "Reacts to what happens", help: `On, the character answers what really happens. It lifts a little when it needs you, dips a little when something fails, and leans toward changes waiting for a review. In Gentle and Lively its eyes also go to where you type in Home. Only that you are typing is used, never what you type. In Still it stays put while you type. Off, it shows each state without these moves. None while your Mac asks for less motion.`, also: ["react", "reactions", "lean", "lift", "dip", "look", "eyes", "ask box", "typing", "review", "motion", "animation"] },
     "fun.reactions": { label: "Reactions and celebrations", help: `A short cheer on the notch when work is proven. In Lively, also a splash and confetti when you click the right thing or work is proven. With Draw ${PRODUCT} live off, the character's picture also nods or winces when a check passes or fails. None while your Mac asks for less motion.`, also: ["confetti", "animation", "celebrate", "motion", "fun"] },
     "showme.askWorked": { label: "Ask Did that work? after each step", help: `In a step by step Show me answer, ${PRODUCT} asks whether each step worked before the next one. Only when unsure skips the question after a click right on a solid ring. It moves on, notes the step as clicked but not checked, and checks it on the next look. It still asks after a soft ring, a click beside the target, or Do it for me.`, also: ["did that work", "walkthrough", "step by step", "continue", "ask"], options: { everyStep: "Every step", whenUnsure: "Only when unsure" } },
     "showme.waitForPage": { label: "Wait for the page before the next step", help: `In a step by step answer or a lesson, after you click, ${PRODUCT} waits for the screen to stop changing. It waits at most 3 seconds before it looks for the next step. The light stays on, nothing is kept, and Stop everything ends the wait. Always on when Ask Did that work? is set to only when unsure.`, also: ["slow page", "loading", "wait", "walkthrough", "settle"] },

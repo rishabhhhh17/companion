@@ -3,7 +3,7 @@
 // how the project is, the one main button that status picks, the working card's four steps, which quiet buttons the top
 // bar has, and when Undo and Stop show. Plain code, tested in homeHero.test.ts; card.tsx only draws what this decides. Fun
 // comes from the motion, the size and the character, never from the words (rule 16).
-import { activityNow, canRetry, receiptUndone, cardWorking, type About, characterWords, costWords, formatUsd, historyFacts, isFixing, receiptVerdict, type HistoryItem, type Model } from "./model.ts";
+import { activityNow, canFollowUp, canRetry, receiptUndone, cardWorking, type About, characterWords, costWords, formatUsd, historyFacts, isFixing, receiptVerdict, type HistoryItem, type LiveFile, type Model, type ProofLine } from "./model.ts";
 import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
@@ -24,7 +24,10 @@ export const placeAfter = (open: Tab, pressed: Tab): Tab => (pressed === open ? 
 /** What the top of Home says: the job in big words and one short line under it. `tone` names the state for the page.
  *  detail: after a result, the verdict's own sentence (M45), drawn muted under the line. */
 export type HeroTone = "idle" | "working" | "needsYou" | "done" | "notDone" | "partly" | "plain";
-export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string };
+/** `count`: the line is workingLine(count), so the page can count the cost up to it (M55, smoothMotion.ts CountUp). */
+export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string; count?: number };
+/** The working line with what the job has cost so far ("About 12 cents so far"). */
+export const workingLine = (usd: number): string => S.look.working(formatUsd(usd));
 
 /** The verdict's tone as the page's (M45, mapped here once, never in a surface): only a proven fix is "done" (green). */
 const HERO_TONE: Record<Tone, HeroTone> = { good: "done", bad: "notDone", mixed: "partly", plain: "plain", ask: "needsYou" };
@@ -45,7 +48,8 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
     // The job's name as an order, first letter capital ("Fix the signup button", the overhaul spec 4.2).
     const label = title(m.task?.label || characterWords(m));
     const now = activityNow(m, 1)[0]?.words;
-    return { headline: label, line: m.task ? (m.task.costUsd > 0 ? S.look.working(formatUsd(m.task.costUsd)) : S.look.workingFree) : now ?? characterWords(m), tone: "working" };
+    if (m.task && m.task.costUsd > 0) return { headline: label, line: workingLine(m.task.costUsd), tone: "working", count: m.task.costUsd };
+    return { headline: label, line: m.task ? S.look.workingFree : now ?? characterWords(m), tone: "working" };
   }
   // A practice open in this folder (its card is on Learn): the one next step in words, and Flowflow says the practice's own
   // word for the moment, so the bubble never says one thing while the line says another (the founder, 2 Nov 2026).
@@ -162,8 +166,9 @@ export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "histor
 }
 
 export type StatusKind = "works" | "changed" | "failing" | "unchecked" | "noProject";
-/** The one main button: Fix it, Check before going live, Check my project, or (no project yet) Choose a project. */
-export type MainAct = "fix" | "shipCheck" | "check" | "folder";
+/** The one main button: Fix it, Check before going live, Check my project, or (no project yet) Choose a project. M55, adapts
+ *  to you: also Carry on (a task left half way) and Explain an error (a terminal in front); mainChoices says when. */
+export type MainAct = "fix" | "shipCheck" | "check" | "folder" | "carryOn" | "explain";
 /** `verdict`: what the headline draws (ui/parts.tsx VerdictLine). Its mark is the last check's own: a tick only when that
  *  check was proven, a cross only when one failed, the status dot otherwise. */
 export type HomeStatus = { kind: StatusKind; verdict: Verdict; sub: string; ago: string; main: MainAct };
@@ -218,8 +223,48 @@ export function homeMode(m: Model, n: Need | null = need(m), o: { blocker?: Bloc
   return "rest";
 }
 /** The ask buttons each main action sends (groups.ts ENTRY): Fix it and Check my project send findProblem, Check before
- *  going live sends shipCheck. Choose a project needs no tool. */
-export const MAIN_TOOL: Record<MainAct, string | null> = { fix: "findProblem", check: "findProblem", shipCheck: "shipCheck", folder: null };
+ *  going live sends shipCheck. Choose a project needs no tool. Carry on is a follow up (Try again's own command), Explain an
+ *  error is the error explainer. */
+export const MAIN_TOOL: Record<MainAct, string | null> = { fix: "findProblem", check: "findProblem", shipCheck: "shipCheck", folder: null, carryOn: "carryOn", explain: "explainError" };
+
+// ---- adapts to you (M55 section 3) ----
+
+/** The kind of app in front: all the shell tells Home (everyday.rs home_kind), never its id, its name, a window's title or
+ *  anything in it (rules 5 and 7). Only from the shell, only while Home follows the app in front (home.followFrontApp). */
+export type FrontKind = "editor" | "aiApp" | "browser" | "terminal" | "other";
+export const FRONT_KINDS: readonly FrontKind[] = ["editor", "aiApp", "browser", "terminal", "other"];
+/** The kind in what the shell sent ({ kind }), or null for anything else, which Home ignores. Nothing else in it is read. */
+export function frontKindOf(payload: unknown): FrontKind | null {
+  const k = payload !== null && typeof payload === "object" ? (payload as { kind?: unknown }).kind : undefined;
+  return typeof k === "string" && (FRONT_KINDS as readonly string[]).includes(k) ? (k as FrontKind) : null;
+}
+/** The kind Home goes by: none while Home follows the app in front is off (then the project alone picks). */
+export const frontFollowed = (kind: FrontKind | null, setting: unknown): FrontKind | null => (setting === false ? null : kind);
+
+/** A task left half way: the last task on Now stopped before it finished (Stop, or its spending limit or turns ran out),
+ *  was not undone, and its conversation can still carry on (canFollowUp: same project, the engine still knows it). Not the
+ *  daily limit, where carrying on would stop again at once, and not a task that asked something (that is answered). */
+export function halfWay(m: Model, project: string): boolean {
+  if (!m.receipt || m.receipt.asks || !canFollowUp(m, project)) return false;
+  const v = receiptVerdict(m);
+  return v?.kind === "stopped" || (v?.kind === "limit" && m.receipt.limit !== "daily");
+}
+
+/** What the main action adapts to: the kind of app in front (null: not known, or not followed) and a task left half way. */
+export type Adapt = { front?: FrontKind | null; halfWay?: boolean };
+/** The main actions for this moment, the one to show first, then the project's own if that one's tool is off. The project
+ *  comes first when it needs something or has a next step of its own: no project yet (Choose a project), a task left half
+ *  way (Carry on), a failure (Fix it), a proven fix (Check before going live), whatever app is in front (the review, 3 Nov
+ *  2026: with an editor in front, the usual case, going live was hidden). Otherwise, while it is not checked yet, the app
+ *  in front picks: an editor, an AI coding app or a browser, Check my project; a terminal, Explain an error. Changes waiting for a review lead Home
+ *  before any of this (homeMode "review", Review the changes), in every app. One name for each action (the audit, item 9). */
+export function mainChoices(s: Pick<HomeStatus, "main">, a: Adapt = {}): MainAct[] {
+  const own = s.main;
+  if (own === "folder") return ["folder"];
+  const first: MainAct | null = a.halfWay ? "carryOn" : own === "fix" || own === "shipCheck" ? null
+    : a.front === "editor" || a.front === "aiApp" ? "check" : a.front === "terminal" ? "explain" : null;
+  return first && first !== own ? [first, own] : [own];
+}
 /** The one main button for this moment, or none: only at rest and under a result is there one (one per screen). While a job
  *  works, a question waits, or another card needs a look, that card has the screen and no main button competes with it.
  *  `shown` is groups.ts buttonShown: with the action's tool switched off (F20) there is no main button, as there is no
@@ -228,26 +273,52 @@ export const MAIN_TOOL: Record<MainAct, string | null> = { fix: "findProblem", c
  *  (the audit, item 34: a failed fix showed four similar ways forward). */
 export const retryOwnsMain = (m: Model, project: string): boolean => !!m.receipt && !receiptUndone(m.receipt) && canRetry(m, project);
 
-export const mainFor = (mode: HomeMode, s: HomeStatus, shown: (button: string) => boolean = () => true): MainAct | null => {
+export const mainFor = (mode: HomeMode, s: HomeStatus, shown: (button: string) => boolean = () => true, adapt: Adapt = {}): MainAct | null => {
   if (mode !== "rest" && mode !== "result") return null;
-  const tool = MAIN_TOOL[s.main];
-  return tool === null || shown(tool) ? s.main : null;
+  return mainChoices(s, adapt).find((act) => { const tool = MAIN_TOOL[act]; return tool === null || shown(tool); }) ?? null;
 };
 
 // ---- the working card ----
 
 const EDITS = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
-/** 0 Finding, 1 Fixing, 2 Checking, 3 Proven. Read only from the runner's real states: a file written means Fixing, a check
- *  running means Checking, a failed check being fixed steps back to Fixing (and says which try), and only a proven
- *  verdict fills the last step. */
-export type JobStep = 0 | 1 | 2 | 3;
+/** An edit the engine did not let run (refused, said no to, or waiting for a yes): no fixing has begun. */
+const NOT_RUN = ["blocked", "denied", "needs_approval"];
+/** 0 Finding, 1 Fixing, 2 Checking, and 4 when all four are done. Each step is done the moment the runner says it
+ *  finished, never before (rule 14, M55 live progress): Finding once an edit was let through or a file really changed
+ *  (agent.file); Fixing once a check runs (the engine checks only work that changed files); Checking and Proven together,
+ *  only on a proven result. Proven is never the step under way (3 is never returned): until the receipt says proven, it is
+ *  Checking, even once every check passed. A failed check being fixed steps back to Fixing (and says which
+ *  try), and a partly checked fix (a check could not run) is never shown past Checking. */
+export type JobStep = 0 | 1 | 2 | 4;   // never 3: Proven is a result, not a step under way
 export function jobStep(m: Model, maxTries = 3): { step: JobStep; retry: string | null } {
-  if (m.receipt && receiptVerdict(m)?.proven) return { step: 3, retry: null };
+  if (m.receipt && receiptVerdict(m)?.proven) return { step: 4, retry: null };
   const p = m.task?.proof;
   if (isFixing(m)) return { step: 1, retry: S.home.tryingAgain(Math.min(maxTries, (p?.tries ?? 1) + 1), maxTries) };
-  if (m.character === "checking" || (p?.steps.length ?? 0) > 0) return { step: 2, retry: null };
-  if (m.task?.lines.some((l) => EDITS.includes(l.tool))) return { step: 1, retry: null };
+  // Every check passed is not proven yet (Stop or a spending limit can still end it): it stays on Checking until the
+  // result says proven, so "Proven" is never shown as the step under way (rule 14; the review, 3 Nov 2026).
+  if (p?.verdict === "passed" || m.character === "checking" || (p?.steps.length ?? 0) > 0) return { step: 2, retry: null };
+  if ((m.task?.files?.length ?? 0) > 0 || m.task?.lines.some((l) => EDITS.includes(l.tool) && !NOT_RUN.includes(l.outcome))) return { step: 1, retry: null };
   return { step: 0, retry: null };
+}
+
+/** The newest files the work card lists while it fixes; the rest are counted ("and 3 more"). */
+export const LIVE_FILES_MAX = 4;
+export function liveFiles(m: Pick<Model, "task">, max = LIVE_FILES_MAX): { shown: LiveFile[]; more: number } {
+  const all = m.task?.files ?? [];
+  return { shown: all.slice(-max), more: Math.max(0, all.length - max) };
+}
+/** One check as the work card lists it while the checks run. */
+export type LiveCheck = { rung: string; label: string; status: ProofLine["status"] };
+/** The live part of the work card, by the step it is on: the files changed so far while it fixes, each check as it runs,
+ *  passes or fails while it checks, nothing more while it is still finding (the step under way says that). */
+export type JobLive = { kind: "none" } | { kind: "files"; files: LiveFile[]; more: number } | { kind: "checks"; checks: LiveCheck[] };
+export function jobLive(m: Model, maxTries = 3): JobLive {
+  const { step } = jobStep(m, maxTries);
+  const checks = m.task?.proof?.steps ?? [];
+  if (step >= 2 && checks.length > 0) return { kind: "checks", checks: checks.map((c) => ({ rung: c.rung, label: c.label, status: c.status })) };
+  const f = liveFiles(m);
+  if (step === 1 && f.shown.length > 0) return { kind: "files", files: f.shown, more: f.more };
+  return { kind: "none" };
 }
 
 /** A running time as m:ss (h:mm:ss past an hour), in tabular figures on the card. */
@@ -256,6 +327,9 @@ export function clockWords(ms: number): string {
   const two = (n: number) => String(n).padStart(2, "0");
   return h ? `${h}:${two(m)}:${two(r)}` : `${m}:${two(r)}`;
 }
+/** The work card's time so far, from the seconds the job has run ("1:05 so far"). A count on its way between two times
+ *  lands on whole seconds (M55, smoothMotion.ts CountUp). */
+export const timeLine = (seconds: number): string => S.home.timeSoFar(clockWords(Math.round(seconds) * 1000));
 
 
 // ---- cards that would say nothing (the founder, 2 Nov 2026: "About this project: A project: A plain web page." and "Where

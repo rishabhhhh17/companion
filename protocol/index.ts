@@ -220,6 +220,10 @@ export type CheckpointCreated = Envelope & {
 };
 export type AgentState = Envelope & { type: "agent.state"; agent: string; state: AgentStateName };
 export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: string; summary: string; toolUseId: string; undoable: boolean; outcome?: "ran" | "blocked" | "needs_approval" | "denied" };
+/** M55, live progress: a file the agent's own tool really changed, the moment that tool finished (runner/src/livefile.ts).
+ *  `file` is from the project folder down, with "/" between folders. Only a change seen on disk is told (rule 14); the
+ *  receipt stays the whole list, with what commands changed too. */
+export type AgentFile = Envelope & { type: "agent.file"; agent: string; file: string; kind: "added" | "modified" | "deleted" };
 export type ApprovalRequest = Envelope & {
   type: "approval.request"; approval: string; agent: string; checkpoint: string; toolUseId: string;
   risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule"; title: string; expiresAt: string;
@@ -412,7 +416,7 @@ export type ReviewResultEvent = Envelope & {
   /** One plain line about the words when no model wrote them: the day's limit reached, or no Claude connected. */
   note?: string;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -481,6 +485,12 @@ const lookItemOk = (i: unknown): boolean => {
 
 // M52: a changed file, and a reason of a review.
 const FILE_KINDS = ["added", "modified", "deleted"];
+// A path from the project folder down: never whole (from /), never up and out (..), never Windows' backslashes, never empty.
+const fileInProject = (k: string): Check => (m) => {
+  const f = m[k];
+  return typeof f === "string" && f.length > 0 && f.length <= 1024 && !f.startsWith("/") && !f.includes("\\") && !f.includes("\u0000") && !f.split("/").some((p) => p === ".." || p === "")
+    ? null : `"${k}" must be a path from the project folder down`;
+};
 const isReviewFile = (f: unknown): boolean => { const o = f as Record<string, unknown> | null; return !!o && typeof o === "object" && !Array.isArray(o) && typeof o.file === "string" && o.file.length > 0 && FILE_KINDS.includes(o.kind as string); };
 const isReviewReason = (r: unknown): boolean => {
   const o = r as Record<string, unknown> | null;
@@ -655,6 +665,7 @@ const EVENTS: Record<string, Check[]> = {
   "checkpoint.created": [str("project"), str("agent"), str("checkpoint"), str("label"), num("files"), list("skipped"), practiceOk],
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
+  "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],

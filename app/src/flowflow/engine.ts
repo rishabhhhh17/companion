@@ -45,6 +45,20 @@ export const PUSH_MAX = 0.2;   // M29: it leans a little as its window moves, ne
 export const SWAY: Readonly<Record<Liveliness, { amount: number; rate: number }>> = { still: { amount: 1, rate: 1 }, gentle: { amount: 0.4, rate: 0.5 }, lively: { amount: 1, rate: 1 } };
 export const SWAY_FADE_S = 2.5;
 
+/** M55 (the character reacts, plan section 4): small moves that answer something real, each held only as long as it is true.
+ *  How long its eyes stay on the ask box after the last key (seconds). */
+export const ATTEND_HOLD = 1.5;
+/** It needs you: how far it rises, and holds while it waits (world units; the frame is 2.2 high). */
+export const LIFT = 0.07;
+/** Something failed: how far it sinks, and for how long before it comes back up (world units, seconds). */
+export const DIP = 0.07;
+export const DIP_S = 0.35;
+/** Changes wait for a review: how far it moves toward their card, and how much it tilts that way (the shader's lean). */
+export const LEAN_SHIFT = 0.05;
+export const LEAN_TILT = 0.09;
+/** How far the eyes turn to the ask box and to the card (then the mood's own gazeGain). */
+const ATTEND_EYES = 0.95, LEAN_EYES = 0.8;
+
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
   /** M37c: the surface it clings to, and how hard it is pressed into it. */
@@ -94,6 +108,23 @@ export class FlowflowEngine {
   mode: Liveliness = "still";
   private swayK = 0; private swayT = 0;
   private credit = 0;
+  /** M55 (character.reacts, on unless turned off): the eyes on the ask box, the lean, the lift and the dip. The states' own
+   *  looks (the bubbles circling while it works, the splash when done) stay either way. */
+  reacts = true;
+  /** The ask box: the way to it (the eyes' units, y up) and until when (its own clock) the eyes stay there. */
+  private attendX = 0; private attendY = 0; private attendUntil = -Infinity;
+  /** The review card: the way to it (a unit vector, y up), while changes wait. */
+  private leanX = 0; private leanY = 0; private leaning = false;
+  /** Until when (its own clock) it is dipping after a failure. */
+  private dipUntil = -Infinity;
+  /** Where the pointer last asked the eyes to look (Lively). */
+  private lookX = 0; private lookY = 0;
+  /** Where the body rests now (world units, from the frame's middle): (0, 0) unless it is reacting. */
+  private hx = 0; private hy = 0;
+  /** How many times what it reacts to has changed (where it rests, what the eyes look at): the controller draws each change
+   *  at full rate for a moment in Gentle (controller.ts QUICK_MS), then goes back to its cap. */
+  turns = 0;
+  private eyesOn: 0 | 1 | 2 | 3 = 0;
   /** How far the body may roam toward the pointer, as a fraction of the frame (the dock is tiny, the preview is large). */
   followRange = 0.35;
   private halfW = 1.6; private halfH = 1.1;
@@ -122,8 +153,8 @@ export class FlowflowEngine {
   pointer(nx: number, ny: number): void {
     if (this.mode !== "lively" || !Number.isFinite(nx) || !Number.isFinite(ny)) return;
     this.lastLook = this.time; this.lastMove = this.time;
-    this.face.setTarget(nx, ny);
-    this.body.setTarget(nx * this.halfW * this.followRange, ny * this.halfH * this.followRange);
+    this.lookX = nx; this.lookY = ny; this.face.setTarget(nx, ny);
+    this.body.setTarget(this.hx + nx * this.halfW * this.followRange, this.hy + ny * this.halfH * this.followRange);
   }
   /** The pointer anywhere on the screen (M20): the eyes look toward it and the body leans a little that way. */
   gaze(dx: number, dy: number): void {
@@ -131,14 +162,14 @@ export class FlowflowEngine {
     const g = gazeOf(dx, dy);
     if (g.nx === 0 && g.ny === 0 && !(dx === 0 && dy === 0)) return;
     this.lastLook = this.time; this.lastGaze = this.time;
-    this.face.setTarget(g.nx, g.ny);
-    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD) this.body.setTarget(g.nx * this.halfW * 0.12, g.ny * this.halfH * 0.12);
+    this.lookX = g.nx; this.lookY = g.ny; this.face.setTarget(g.nx, g.ny);
+    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD) this.body.setTarget(this.hx + g.nx * this.halfW * 0.12, this.hy + g.ny * this.halfH * 0.12);
   }
   /** Its window is moving (a peek, a trip to a window, a drag), `vx, vy` in points a second (y down): the water lags
    *  behind like jelly. A speed of nothing lets it catch up, and it squashes and wobbles as it settles. */
   push(vx: number, vy: number): void {
     if (!Number.isFinite(vx) || !Number.isFinite(vy)) return;
-    if (vx === 0 && vy === 0) { this.pushing = false; this.body.setTarget(0, 0); return; }
+    if (vx === 0 && vy === 0) { this.pushing = false; this.body.setTarget(this.hx, this.hy); return; }
     this.pushing = true;
     const lx = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, -vx * PUSH_PER)), ly = Math.max(-PUSH_MAX, Math.min(PUSH_MAX, vy * PUSH_PER));
     this.body.setTarget(lx, ly);
@@ -146,7 +177,7 @@ export class FlowflowEngine {
   /** It came in from the edge (`fromX`: -1 from the left, 1 from the right, 0 from above or below): a splash on the side
    *  facing the screen, a ripple and a few drops. */
   arrive(fromX: number, fromY = 0): void {
-    this.pushing = false; this.body.setTarget(0, 0);
+    this.pushing = false; this.body.setTarget(this.hx, this.hy);
     this.touch(-fromX * BODY_RADIUS * 0.7, -fromY * BODY_RADIUS * 0.6);
     this.body.impulse("burst", 0.5);
   }
@@ -168,7 +199,54 @@ export class FlowflowEngine {
   }
 
   /** The pointer left, or the window lost focus: the eyes and the body drift back. */
-  pointerLeft(): void { this.lastLook = -Infinity; this.lastMove = -Infinity; this.body.setTarget(0, 0); }
+  pointerLeft(): void { this.lastLook = -Infinity; this.lastMove = -Infinity; this.body.setTarget(this.hx, this.hy); }
+
+  /** M55: the person is typing in the ask box, which lies `dx, dy` points from the middle of the character (y down). The
+   *  eyes go there and stay while the keys keep coming. Only in Gentle and Lively: in Still typing is not news. Says whether
+   *  this is a new look (the keys had stopped), never what was typed: it is only told that a key went in. */
+  attend(dx: number, dy: number): boolean {
+    if (!this.reacts || this.mode === "still" || !Number.isFinite(dx) || !Number.isFinite(dy)) return false;
+    const d = Math.hypot(dx, dy); if (d < 1e-6) return false;
+    const fresh = this.time >= this.attendUntil;
+    this.attendX = (dx / d) * ATTEND_EYES; this.attendY = (-dy / d) * ATTEND_EYES; this.attendUntil = this.time + ATTEND_HOLD;
+    return fresh;
+  }
+  /** M55: its eyes are on the ask box now (a key went in less than ATTEND_HOLD ago, and it may look). */
+  get attending(): boolean { return this.reacts && this.mode !== "still" && this.time < this.attendUntil; }
+  /** M55: changes wait for a review, and their card lies `dx, dy` points from the middle of the character (y down); `null`
+   *  (or a place that is not one) when nothing waits. It leans toward the card, a little, and looks at it, until they are
+   *  reviewed. Says whether anything it shows changed (a new lean, a new way, the end of one). */
+  leanToward(dx: number | null, dy = 0): boolean {
+    const ok = dx !== null && Number.isFinite(dx) && Number.isFinite(dy) && Math.hypot(dx, dy) > 1e-6;
+    if (!ok) { const was = this.leaning; this.leaning = false; return was && this.reacts; }
+    const d = Math.hypot(dx, dy), x = dx / d, y = -dy / d;
+    if (this.leaning && Math.abs(x - this.leanX) < 0.05 && Math.abs(y - this.leanY) < 0.05) return false;
+    this.leanX = x; this.leanY = y; this.leaning = true;
+    return this.reacts;
+  }
+
+  /** M55: where the body rests now: lifted while it needs you, sunk for a moment after a failure, moved toward the review
+   *  card while changes wait. `transient`: the dip too (a still frame leaves it out: it is over in a moment). */
+  private aimHome(transient: boolean): boolean {
+    let x = 0, y = 0;
+    if (this.reacts) {
+      if (this.leaning) { x += this.leanX * LEAN_SHIFT; y += this.leanY * LEAN_SHIFT; }
+      if (this.behavior.base === "needsYou") y += LIFT;
+      if (transient && this.time < this.dipUntil) y -= DIP;
+    }
+    this.body.setLean(this.reacts && this.leaning ? this.leanX * LEAN_TILT : 0);
+    if (x === this.hx && y === this.hy) return false;
+    this.hx = x; this.hy = y; this.turns++;
+    return true;
+  }
+  /** M55: what the eyes look at, most recent intent first: the ask box while you type, the pointer (Lively), the review
+   *  card while changes wait (not while it listens: then it looks at you). 0 when nothing (the eyes ahead). */
+  private aimEyes(): 0 | 1 | 2 | 3 {
+    if (this.reacts && this.mode !== "still" && this.time < this.attendUntil) { this.face.setTarget(this.attendX, this.attendY); return 1; }
+    if (this.time - this.lastLook < LOOK_HOLD) { this.face.setTarget(this.lookX, this.lookY); return 2; }
+    if (this.reacts && this.leaning && this.behavior.base !== "curious") { this.face.setTarget(this.leanX * LEAN_EYES, this.leanY * LEAN_EYES); return 3; }
+    return 0;
+  }
 
   /** A touch at a point on the body (world units, from the body's centre). It squishes there and ripples out. */
   touch(x: number, y: number): void {
@@ -180,10 +258,14 @@ export class FlowflowEngine {
     this.emitDroplet(x, y, 0.5);
   }
 
-  /** A pose for one frame of reduced motion: the body at rest in the state's look, no sliding. */
-  still(): Snapshot {
-    this.behavior.snap(); this.body.reset(0, 0); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo;
-    this.face.wander = this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, false);
+  /** A pose for one still frame: the body at rest in the state's look, no sliding. M55 `react`: false with less motion,
+   *  where it shows only the state (upright, in the middle, the eyes ahead, no glance); true otherwise (resting, a resize
+   *  while parked), where it stays where it rests: lifted, leaning, looking at the card. */
+  still(react = false): Snapshot {
+    this.behavior.snap();
+    if (react) this.aimHome(false); else { this.hx = 0; this.hy = 0; this.body.setLean(0); this.face.center(); }
+    this.body.reset(this.hx, this.hy); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo;
+    this.face.wander = react && this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, react && this.aimEyes() !== 0);
     this.followers.place(this.followFrame());   // M60: at rest beside it, never mid orbit or popped
     const s = this.snapshot(); s.pulse = 0; return s;   // a still frame holds needs you's amber, with no pulse
   }
@@ -206,7 +288,10 @@ export class FlowflowEngine {
     this.behavior.update(d);
     const look = this.behavior.look;
     this.reactToEntered();
-    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && this.time - this.lastLook < LOOK_HOLD + 1) this.body.setTarget(0, 0);
+    // M55: where it rests (the lift, the dip, the lean). It goes there when that changes, and after the pointer, whenever
+    // nothing else is moving it (the pointer, its window).
+    const moved = this.aimHome(true);
+    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && (moved || this.time - this.lastLook < LOOK_HOLD + 1)) this.body.setTarget(this.hx, this.hy);
     // M46: the sway eases toward the choice's amount in a straight line, so Still's reaches exactly 0 and holds there.
     { const to = this.swayTarget(), stepK = d / SWAY_FADE_S; this.swayK = this.swayK < to ? Math.min(to, this.swayK + stepK) : Math.max(to, this.swayK - stepK); }
     this.swayT += d * SWAY[this.mode].rate;
@@ -215,7 +300,9 @@ export class FlowflowEngine {
     { const n = Math.min(8, Math.max(1, Math.ceil(d / (1 / 120)))), h = d / n; for (let i = 0; i < n; i++) this.pressSpring.step(h, this.pressTo); }
     this.surface.press = Math.max(-0.2, Math.min(1.15, this.pressSpring.x));
     this.face.wander = this.mode === "lively";
-    this.face.update(d, look, this.time - this.lastLook < LOOK_HOLD);
+    const on = this.aimEyes();
+    if (on !== this.eyesOn) { this.eyesOn = on; this.turns++; }
+    this.face.update(d, look, on !== 0);
     // Droplets leave in proportion to how fast the body moves and how readily this mood sheds them: no dice. M46: none
     // unless Lively (a touch or a done still sends its own few).
     this.credit += (this.mode === "lively" ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
@@ -240,7 +327,7 @@ export class FlowflowEngine {
     const p = this.body.pose;
     // M60: done sends no drops of its own now: its two bubbles rise and pop, and each pop sprays a few (update).
     if (s === "success") { this.followers.celebrate(); this.body.impulse("burst", 0.8); this.ripples.add(p.x, p.y, 1.2 * Math.max(0.3, g)); }
-    else if (s === "error") { this.body.impulse("land", 0.45); this.ripples.add(p.x, p.y - 0.2, 0.5 * Math.max(0.3, g)); }
+    else if (s === "error") { this.body.impulse("land", 0.45); this.ripples.add(p.x, p.y - 0.2, 0.5 * Math.max(0.3, g)); if (this.reacts) this.dipUntil = this.time + DIP_S; }   // M55: and a small dip
     else if (s === "curious") { this.face.glance(0, 0.5, 0.8); this.body.impulse("poke", 0.25, 0, 0.3); }
   }
 

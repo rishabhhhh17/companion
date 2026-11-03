@@ -7,7 +7,8 @@ const T = typeof window === "undefined" ? undefined : (window as unknown as { __
 
 export const invoke: Invoke = (cmd, args) => (T ? T.core.invoke(cmd, args) : Promise.resolve(undefined));
 export const listen: Listen = (event, cb) => (T ? T.event.listen(event, cb) : Promise.resolve(() => {}));
-export type AppState = { clicks: number; front: string; card_key: boolean };
+// The pages' state (main.rs tick). M55: it no longer names the app in front; only Home hears of it, as a kind (front-kind).
+export type AppState = { clicks: number; card_key: boolean };
 
 // Pro (the payments spec, T17): the shell's plan commands (license.rs, trial.rs). Every one but status works only from Home;
 // each refuses with a short reason word (plan.ts planProblem says it). The key goes to the shell once, from the field the

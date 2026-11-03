@@ -43,8 +43,13 @@ describe("the shipped list of settings", () => {
       "explain.after": "everyTask", "memory.learnFromFiles": true, "memory.learnFromWords": true, "memory.rememberGoals": true, "memory.tellClaude": true,
       "memory.recallLength": "normal", "task.offRecordByDefault": false, "memory.toastSeconds": "10", "where.after": "30min",
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
-      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true,
+      // M55, live progress: while a job works, the notch says its step in a word, with a thin line of the four steps under it.
+      "island.showStep": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
+      // M55, adapts to you: Home's main action follows the kind of app in front, and the ways you press most come first in
+      // More ways to ask. Both on, as the plan asks; the shell reads the first so that, off, it never reads the app in front.
+      "home.followFrontApp": true, "home.usedOftenFirst": true,
       "character.edge": "right", "character.position": 50, "character.sameEverywhere": false, "character.motion": "followMac", "character.linger": 1.5, "character.overFullScreen": false, "character.live": true,
       // Peeking (27 Oct 2026, the founder asked for it on): it rests past the edge, and takes a curious peek now and then.
       "character.peek": true, "character.stick": true, "character.peekIdle": false, "character.dockWhen": "pushed",
@@ -86,6 +91,9 @@ describe("the shipped list of settings", () => {
       "point.style": "water", "point.dropSize": "usual", "point.caption": "lime",
       // M46 (F28): Flowflow holds still unless it has news, rests in Low Power Mode, and the Show me how ring lands at once.
       "character.lively": "lively", "character.restLowPower": true, "point.fly": false,
+      // M55, the character reacts: it lifts when it needs you, dips when something fails, leans toward changes waiting and
+      // (Gentle and Lively) looks at the ask box while you type. On, as the plan asks; How lively and less motion still rule.
+      "character.reacts": true,
       // M51 (1 Nov 2026, the founder: the tall panel "looks so vertical"): Home is wide by default; tall stays a choice.
       "look.layout": "wide",
       // M51 step 3 (the founder: "as much customization as possible"): the graphite look is the usual theme (a saved "night"
@@ -140,6 +148,9 @@ describe("the shipped list of settings", () => {
     expect(defOf("character.restLowPower")).toMatchObject({ section: "home", kind: "switch", default: true, applies: ["shell", "pages"], store: "settings", live: true });
     expect(defOf("point.fly")).toMatchObject({ section: "pointing", kind: "switch", default: false, applies: ["shell", "pages"], store: "settings", live: true });
     expect(defOf("character.lively")!.from).toBeUndefined();
+    // M55: the character's small moves are the pages' own (the shell never moves it for them), and nothing is migrated.
+    expect(defOf("character.reacts")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("character.reacts")!.from).toBeUndefined();
     // The character's place stays in dock.json (wrapped, T16), with Come to what it is about.
     for (const k of ["character.edge", "character.position", "character.sameEverywhere", "character.comeTo"]) expect(defOf(k)!.store, k).toBe("dock");
     // The shell applies every one; the pages read the two that change how Home itself behaves, and the motion.
@@ -147,6 +158,10 @@ describe("the shipped list of settings", () => {
     expect(defOf("home.closeOnClickAway")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("character.motion")!.applies).toEqual(["shell", "pages"]);
     expect(defOf("home.goToNeeds")!.applies).toEqual(["pages"]);
+    // M55, adapts to you: the shell tells Home only the kind of app in front, and with the switch off reads nothing about it;
+    // the order of More ways is the page's own.
+    expect(defOf("home.followFrontApp")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
+    expect(defOf("home.usedOftenFirst")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
     // The two with a fixed part say so under their rows.
     expect(defOf("island.show")!.floor).toBe("islandOff");
     expect(defOf("home.goToNeeds")!.floor).toBe("needsMarked");

@@ -162,6 +162,8 @@ thread_local! {
     static PANELS: RefCell<Option<(Retained<NSPanel>, Retained<NSPanel>)>> = const { RefCell::new(None) };
     static LAST: RefCell<(bool, String, bool)> = RefCell::new((false, String::new(), false));
     static LAST_STATE: RefCell<String> = const { RefCell::new(String::new()) };
+    /// M55, adapts to you: the kind of app in front Home was told last (everyday.rs home_front), so it is told only a change.
+    static FRONT_KIND_SENT: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn now() -> u128 {
@@ -524,7 +526,7 @@ pub(crate) fn review_heard(app: &AppHandle, v: &Value) {
         review_dot_told(&a, changed);
     });
 }
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0 });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
@@ -607,7 +609,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     // marks still show, and the pointer still opens it (island.rs `mode`). Only the front app's id is read (rule 7).
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); s.quiet = quiet() || companion_hidden(); *s };
     let mode = island::mode(state);
-    let look = island::look(&d, mode, f64::from(state.panel));
+    let look = island::look_winged(&d, mode, f64::from(state.panel), f64::from(state.wing));
     let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet { island::cheered(&d, mode, look) } else { look };
     let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
@@ -635,7 +637,7 @@ fn set_island_frame(f: Rect, ph: f64) {
 /// `hover`: the pointer is what opened the panel (M26): otherwise it opened by itself for a question or for work going on,
 /// and the page shows only the cards.
 fn tell_island(mode: island::Mode, kind: island::Kind, look: &island::Look, hover: bool) {
-    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "hover": hover });
+    let v = json!({ "mode": mode.word(), "kind": kind.word(), "w": look.frame[2], "h": look.frame[3], "core": look.core, "row": look.row, "wing": look.wing, "hover": hover });
     {
         let mut g = ISLAND_SENT.lock().unwrap_or_else(|e| e.into_inner());
         if *g == v { return; }
@@ -699,15 +701,17 @@ fn home_closed() {
 }
 
 /// The page says whether the wings are out (something is happening; home.ts islandWings) and how tall its hover panel's
-/// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX).
+/// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX). M55: `wing`, how wide each
+/// wing must be to say a job's step in a word (measured; island.rs keeps it between WING and WING_MAX; none: the usual).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>) {
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>, wing: Option<f64>) {
     let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
+    let wing = island::wing_w(wing.unwrap_or(0.0)).round() as u16;
     let cheer = cheer.unwrap_or(false) && on;
     let ask = ask.unwrap_or(false) && on;
     let _ = app.run_on_main_thread(move || {
         let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; c };
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || s.wing != wing || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; s.wing = wing; c };
         if changed { if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); } }
     });
 }
@@ -1856,7 +1860,10 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         // M52: the review card is in Home, so changes ready to review are seen now.
         let cleared = review_ready().clear();
         review_dot_told(&a, cleared);
-        let _ = a.emit_to("card", "opened", match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) });
+        let mut opened = match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) };
+        // M55, adapts to you: the kind of app in front as Home opens (Home is a panel, so it is the app the person was using).
+        if let Some(k) = everyday::home_front(&setting_now("home.followFrontApp"), front_id).and_then(|v| v.get("kind").cloned()) { opened["front"] = k; }
+        let _ = a.emit_to("card", "opened", opened);
     });
 }
 
@@ -4565,8 +4572,15 @@ fn tick(app: &AppHandle) {
         }
         *l = (act, fr.clone(), ck);
     });
-    // Only tell the pages when something changed, so an idle app does almost no work.
-    let state = json!({ "clicks": CLICKS.load(Ordering::SeqCst), "front": fr, "card_key": ck });
+    // M55, adapts to you: Home's main action follows the kind of app in front (home.followFrontApp). Only the kind is told,
+    // only to Home, and only when it changes; never the app's id, name, a window's title or anything in it (rules 5 and 7).
+    if let Some(v) = everyday::home_front(&setting_now("home.followFrontApp"), front_id) {
+        let sig = v.to_string();
+        if FRONT_KIND_SENT.with(|l| l.replace(sig.clone())) != sig { let _ = app.emit_to("card", "front-kind", v); }
+    }
+    // Only tell the pages when something changed, so an idle app does almost no work. The app in front is only logged (in
+    // debug mode): no page needs its name, so none is told it.
+    let state = json!({ "clicks": CLICKS.load(Ordering::SeqCst), "card_key": ck });
     let sig = state.to_string();
     if LAST_STATE.with(|l| l.replace(sig.clone())) != sig {
         let _ = app.emit("state", state);
