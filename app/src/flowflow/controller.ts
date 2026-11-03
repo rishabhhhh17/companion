@@ -15,6 +15,7 @@ export type RendererLike = {
   toWorld(px: number, py: number): { x: number; y: number };
   setColours(light: string, deep: string): void;
   setEnvBase?(css: string): void;
+  setHalo?(on: boolean): void;
   setMode?(m: Liveliness): void;
   dispose(): void;
 };
@@ -134,6 +135,8 @@ export class FlowflowController {
   setColours(light: string, deep: string): void { if (this.disposed) return; this.renderer.setColours(light, deep); this.nudge(); }
   /** The page's sky behind the drop (renderer.ts setEnvBase). */
   setEnvBase(css: string): void { if (this.disposed) return; this.renderer.setEnvBase?.(css); this.nudge(); }
+  /** M60: the orb's soft halo on a dark page (renderer.ts setHalo). */
+  setHalo(on: boolean): void { if (this.disposed) return; this.renderer.setHalo?.(on); this.nudge(); }
 
   /** The app's state. A real change is news; the same state again is not. */
   setState(s: CharacterState): void {
@@ -182,13 +185,13 @@ export class FlowflowController {
   }
   /** M46: may it stop drawing? Only once nothing is moving and nothing is due: no news for NO_NEWS_MS, a state that holds
    *  still (rest, sleep, a dull error, needs you after its pulses), no flash, the body and the press at rest, no drop or
-   *  ripple alive, the eyes open, and in Still at rest no sway left. Gentle never parks at rest: it sways at its cap. */
+   *  ripple alive, the eyes open, the two bubbles (M60) at rest, and in Still at rest no sway left. Gentle never parks at rest: it sways at its cap. */
   private parkable(): boolean {
     const e = this.engine, st = e.behavior.state, rest = st === "idle" || st === "sleeping";
     if (e.mode === "lively" || (e.mode === "gentle" && rest)) return false;
     if (performance.now() - this.lastNews < NO_NEWS_MS) return false;
     if (!(rest || st === "error" || (st === "needsYou" && e.behavior.pulsesDone))) return false;
-    if (!e.body.settled || !e.pressSettled || e.droplets.alive !== 0 || e.ripples.alive !== 0 || e.face.blinking) return false;
+    if (!e.body.settled || !e.pressSettled || e.droplets.alive !== 0 || e.ripples.alive !== 0 || e.face.blinking || !e.followers.settled) return false;
     return !(e.mode === "still" && rest && e.sway !== 0);
   }
 

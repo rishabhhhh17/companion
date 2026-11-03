@@ -1,7 +1,8 @@
 // Dev only: the real renderer frozen at chosen moments (at rest, starting to move, moving fast, turning), to judge the
 // liquid look without having to catch it mid-motion. Not built into the app.
 import { FlowflowRenderer } from "../src/flowflow/renderer.ts";
-import { Droplets } from "../src/flowflow/particles.ts";
+import { Droplets, Followers } from "../src/flowflow/particles.ts";
+import { ORB_RADIUS, TRAIL } from "../src/flowflow/engine.ts";
 import { LOOKS } from "../src/flowflow/behavior.ts";
 import { DEFAULT_TUNING } from "../src/flowflow/physics.ts";
 
@@ -27,11 +28,13 @@ for (const [name, p, surf] of poses) {
   cap.textContent = name; fig.append(c, cap); row.append(fig);
   const r = FlowflowRenderer.create(c)!; r.setSize(220, 220, devicePixelRatio);
   const t0 = performance.now();
+  // M60: the two bubbles resting beside the orb.
+  const bubbles = new Followers(); bubbles.place({ mood: "rest", orb: ORB_RADIUS, cx: 0, cy: 0, tx: TRAIL.free[0], ty: TRAIL.free[1], ux: 0, uy: -1, bob: false, time: 0, minX: -1.1, maxX: 1.1, minY: -1.2, maxY: 1 });
   const frame = () => {
     r.render({
       pose: { x: 0, y: 0, ...p, wobble2: 0, wobble3: 0, breath: 0, contactX: 0, contactY: 0, contact: 0, speed: 0 },
       look: LOOKS.idle, eyes: { lx: 0, ly: 0, rx: 0, ry: 0, open: 1 }, state: "idle", tuning: { ...DEFAULT_TUNING }, time: (performance.now() - t0) / 1000,
-      float: 0, droplets: new Droplets(), ripples: { fill() {}, alive: 0 }, surface: surf ?? none,
+      float: 0, droplets: new Droplets(), ripples: { fill() {}, alive: 0 }, surface: surf ?? none, followers: bubbles,
     } as never);
     requestAnimationFrame(frame);
   };

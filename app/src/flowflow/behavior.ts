@@ -27,21 +27,25 @@ export type Look = {
   droplets: number;
   /** M46: 0 its own water, 1 an amber core (it needs you). */
   amber: number;
+  /** M60: the eyes are soft closed arcs: 1 the usual gentle arc, more a happier one, 0 a flat line, below 0 turned down. */
+  eyeArc: number;
+  /** M60: 0 closed arcs, 1 open soft round eyes (listening, needs you). */
+  eyeDot: number;
 };
-export const LOOK_KEYS = ["eyeOpen", "gazeGain", "breathAmp", "breathRate", "floatAmp", "cloud", "glow", "wobbleGain", "expand", "rippleGain", "droplets", "amber"] as const;
+export const LOOK_KEYS = ["eyeOpen", "gazeGain", "breathAmp", "breathRate", "floatAmp", "cloud", "glow", "wobbleGain", "expand", "rippleGain", "droplets", "amber", "eyeArc", "eyeDot"] as const;
 
 export const LOOKS: Readonly<Record<BehaviorState, Look>> = {
-  idle:        { eyeOpen: 1,    gazeGain: 0.6, breathAmp: 0.035, breathRate: 0.32, floatAmp: 0.035, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2, amber: 0 },
-  curious:     { eyeOpen: 1.12, gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.50, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1,   expand: 0.03, rippleGain: 0.8, droplets: 0.3, amber: 0 },
-  following:   { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 1.1, expand: 0,    rippleGain: 0.7, droplets: 0.6, amber: 0 },
-  working:     { eyeOpen: 0.82, gazeGain: 0.3, breathAmp: 0.015, breathRate: 0.90, floatAmp: 0,    cloud: 0.05, glow: 0.05, wobbleGain: 0.6, expand: 0,    rippleGain: 0.4, droplets: 0, amber: 0 },
-  success:     { eyeOpen: 1.05, gazeGain: 0.5, breathAmp: 0.035, breathRate: 0.50, floatAmp: 0.03, cloud: 0,    glow: 1,   wobbleGain: 1,   expand: 0.07, rippleGain: 1.2, droplets: 0.8, amber: 0 },
-  error:       { eyeOpen: 0.8,  gazeGain: 0.3, breathAmp: 0.01,  breathRate: 0.25, floatAmp: 0,    cloud: 0.8,  glow: 0,   wobbleGain: 0.7, expand: -0.02, rippleGain: 0.5, droplets: 0, amber: 0 },
-  sleeping:    { eyeOpen: 0,    gazeGain: 0,   breathAmp: 0.035, breathRate: 0.12, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 0.3, expand: 0,    rippleGain: 0.2, droplets: 0, amber: 0 },
-  interacting: { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.60, floatAmp: 0,    cloud: 0,    glow: 0.15, wobbleGain: 1.4, expand: 0,    rippleGain: 1.3, droplets: 0.5, amber: 0 },
+  idle:        { eyeOpen: 1,    gazeGain: 0.6, breathAmp: 0.035, breathRate: 0.32, floatAmp: 0.035, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2, amber: 0, eyeArc: 1,    eyeDot: 0 },
+  curious:     { eyeOpen: 1.12, gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.50, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1,   expand: 0.03, rippleGain: 0.8, droplets: 0.3, amber: 0, eyeArc: 0.4,  eyeDot: 1 },
+  following:   { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 1.1, expand: 0,    rippleGain: 0.7, droplets: 0.6, amber: 0, eyeArc: 1,    eyeDot: 0 },
+  working:     { eyeOpen: 0.82, gazeGain: 0.3, breathAmp: 0.015, breathRate: 0.90, floatAmp: 0,    cloud: 0.05, glow: 0.05, wobbleGain: 0.6, expand: 0,    rippleGain: 0.4, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
+  success:     { eyeOpen: 1.05, gazeGain: 0.5, breathAmp: 0.035, breathRate: 0.50, floatAmp: 0.03, cloud: 0,    glow: 1,   wobbleGain: 1,   expand: 0.07, rippleGain: 1.2, droplets: 0.8, amber: 0, eyeArc: 1.5,  eyeDot: 0 },
+  error:       { eyeOpen: 0.8,  gazeGain: 0.3, breathAmp: 0.01,  breathRate: 0.25, floatAmp: 0,    cloud: 0.8,  glow: 0,   wobbleGain: 0.7, expand: -0.02, rippleGain: 0.5, droplets: 0, amber: 0, eyeArc: -0.75, eyeDot: 0 },
+  sleeping:    { eyeOpen: 0,    gazeGain: 0,   breathAmp: 0.035, breathRate: 0.12, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 0.3, expand: 0,    rippleGain: 0.2, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
+  interacting: { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.60, floatAmp: 0,    cloud: 0,    glow: 0.15, wobbleGain: 1.4, expand: 0,    rippleGain: 1.3, droplets: 0.5, amber: 0, eyeArc: 1.2,  eyeDot: 0 },
   // M46: it needs you. An amber core, the eyes straight out toward you, never following anything; it pulses three times
   // (Behavior.pulse), then holds steady.
-  needsYou:    { eyeOpen: 1.05, gazeGain: 0,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0.1, wobbleGain: 0.8, expand: 0.02, rippleGain: 0.6, droplets: 0, amber: 1 },
+  needsYou:    { eyeOpen: 1.05, gazeGain: 0,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0.1, wobbleGain: 0.8, expand: 0.02, rippleGain: 0.6, droplets: 0, amber: 1, eyeArc: 0.4,  eyeDot: 1 },
 };
 
 /** How long a look takes to slide in (seconds): quick to cheer, slow to fall asleep. */

@@ -10,9 +10,10 @@ describe("it only reflects what really happened", () => {
     const e = new FlowflowEngine(); run(e, 6);
     expect(e.behavior.state).toBe("idle"); expect(e.ripples.alive).toBe(0); expect(e.behavior.look.glow).toBeLessThan(0.01); expect(e.behavior.look.cloud).toBeLessThan(0.01);
   });
-  test("done: it brightens, sends a ripple and a few drops out, then settles", () => {
+  test("done: it brightens, sends a ripple, its bubbles pop into a few drops (M60), then settles", () => {
     const e = new FlowflowEngine(); run(e, 1); e.applyApp("done"); run(e, 0.2);
-    expect(e.behavior.state).toBe("success"); expect(e.ripples.alive).toBeGreaterThan(0); expect(e.droplets.alive).toBeGreaterThan(0);
+    expect(e.behavior.state).toBe("success"); expect(e.ripples.alive).toBeGreaterThan(0); expect(e.droplets.alive).toBe(0);
+    run(e, 1.1); expect(e.droplets.alive).toBeGreaterThan(0);   // the drops come from the pops, not the moment done arrives
     run(e, 6); expect(e.behavior.state).toBe("idle"); expect(e.ripples.alive).toBe(0);
   });
   test("an error clouds the water and wobbles, but less than a success", () => {
@@ -194,5 +195,77 @@ describe("clinging and pressing (M37c)", () => {
     expect(e.surface.press).toBe(0);
     e.setSurface("below", 0.67, 0.6);
     expect(e.surface).toMatchObject({ side: "below", at: 0.67, cling: 0.6 });
+  });
+});
+
+// M60 (2 Nov 2026): the orb and its two follower bubbles. The orb is round; BODY_RADIUS is its reach.
+import { ORB_RADIUS, REST_Y, REST_Y_FLAT } from "./engine.ts";
+import { FOLLOWER_RADII } from "./particles.ts";
+describe("the orb and its followers (M60)", () => {
+  const make = (mode: "still" | "gentle" | "lively" = "still") => { const e = new FlowflowEngine(); e.mode = mode; e.setFrame(1.29, 1.1); return e; };
+  test("the body's reach is the orb's, with a little room to breathe and squash", () => {
+    expect(BODY_RADIUS).toBeGreaterThanOrEqual(ORB_RADIUS); expect(BODY_RADIUS).toBeLessThan(ORB_RADIUS * 1.15);
+    expect(ORB_RADIUS).toBeGreaterThan(0.55); expect(ORB_RADIUS).toBeLessThan(0.75);
+  });
+  test("a fresh character starts with its bubbles already resting beside it, and every snapshot carries them", () => {
+    const e = make(); const s = e.update(1 / 60);
+    expect(s.followers).toBe(e.followers); expect(e.followers.r[0]).toBeCloseTo(FOLLOWER_RADII[0], 3);
+    expect(e.followers.x[0]).toBeLessThan(0); expect(e.followers.y[0]).toBeLessThan(-ORB_RADIUS * 0.5);
+  });
+  test("the whole character, bubbles and all, fits its frame at rest", () => {
+    const e = make(); run(e, 3);
+    for (let i = 0; i < 2; i++) {
+      expect(Math.abs(e.followers.x[i]) + e.followers.r[i]).toBeLessThanOrEqual(1.29 + 1e-6);
+      expect(e.followers.y[i] + REST_Y - e.followers.r[i]).toBeGreaterThanOrEqual(-1.1 - 1e-6);
+    }
+    expect(REST_Y + ORB_RADIUS).toBeLessThan(1.1);
+  });
+  test("working: they orbit; done: they rise and pop; failed: they sink; listening: they gather close", () => {
+    const w = make(); w.applyApp("working"); let front = 0, back = 0;
+    for (let t = 0; t < 9; t += 1 / 60) { w.update(1 / 60); if (w.followers.z[0] > 0.3) front++; if (w.followers.z[0] < -0.3) back++; }
+    expect(front).toBeGreaterThan(0); expect(back).toBeGreaterThan(0);
+    const d = make(); run(d, 2); const y = d.followers.y[0]; d.applyApp("done"); let top = -9, popped = false;
+    for (let t = 0; t < 1.6; t += 1 / 60) { d.update(1 / 60); top = Math.max(top, d.followers.y[0]); if (d.followers.r[0] === 0) popped = true; }
+    expect(top).toBeGreaterThan(y + 0.5); expect(popped).toBe(true);
+    run(d, 4); expect(d.followers.y[0]).toBeCloseTo(y, 2); expect(d.followers.r[0]).toBeCloseTo(FOLLOWER_RADII[0], 2);
+    const f = make(); run(f, 2); const fy = f.followers.y[0]; f.applyApp("error"); run(f, 3); expect(f.followers.y[0]).toBeLessThan(fy - 0.05); expect(f.followers.settled).toBe(true);
+    const l = make(); run(l, 2); const ld = Math.hypot(l.followers.x[0], l.followers.y[0]); l.applyApp("listening"); run(l, 3);
+    expect(Math.hypot(l.followers.x[0], l.followers.y[0])).toBeLessThan(ld - 0.05);
+  });
+  test("a touch while it works does not stop the orbit", () => {
+    const e = make(); e.applyApp("working"); run(e, 1); const z0 = e.followers.z[0]; e.touch(0.2, 0.1); run(e, 0.5);
+    expect(e.behavior.state).toBe("interacting"); expect(e.followers.z[0]).not.toBeCloseTo(z0, 3);
+  });
+  test("they sit perfectly still at rest in Still and Gentle, and drift a little only in Lively", () => {
+    for (const mode of ["still", "gentle"] as const) { const e = make(mode); run(e, 4); const x = e.followers.x[1]; run(e, 5); expect(e.followers.x[1], mode).toBe(x); expect(e.followers.settled, mode).toBe(true); }
+    const l = make("lively"); run(l, 4); const x = l.followers.x[1], y = l.followers.y[1]; let m = 0;
+    for (let t = 0; t < 5; t += 1 / 60) { l.update(1 / 60); m = Math.max(m, Math.hypot(l.followers.x[1] - x, l.followers.y[1] - y)); }
+    expect(m).toBeGreaterThan(0.004);
+  });
+  test("docked on the left edge they trail to the right, into the screen; over Home's water they stay above it", () => {
+    const e = make(); e.setSurface("left", 0, 0.2); run(e, 3); expect(e.followers.x[0]).toBeGreaterThan(0); expect(e.followers.x[1]).toBeGreaterThan(0);
+    const h = new FlowflowEngine(); h.setFrame(1.55, 1.1); h.setSurface("below", 0.72, 0.6); run(h, 3);
+    expect(h.update(1 / 60).restY).toBe(REST_Y_FLAT);
+    const water = 1.1 - 0.72 * 2.2 - REST_Y_FLAT;   // the waterline in the body's own frame
+    for (let i = 0; i < 2; i++) expect(h.followers.y[i] - h.followers.r[i]).toBeGreaterThanOrEqual(water - 1e-6);
+  });
+  test("over Home's water the orb rests lower and peeks over it (its bubbles trail to the side, so it needs no room below)", () => {
+    const e = make(); expect(e.update(1 / 60).restY).toBe(REST_Y);
+    e.setSurface("below", 0.72, 0.6); const s = e.update(1 / 60);
+    expect(s.restY).toBeLessThan(REST_Y);
+    const water = 1.1 - 0.72 * 2.2, dip = water - (s.restY - ORB_RADIUS);   // how deep its bottom sits under the waterline
+    expect(dip / ORB_RADIUS).toBeGreaterThan(0.1); expect(dip / ORB_RADIUS).toBeLessThan(0.4);
+    expect(s.restY + ORB_RADIUS).toBeLessThan(1.1 - 0.2);   // and its top well inside the frame (Home masks the top of its box)
+    e.setSurface("right", 1, 0.2); expect(e.update(1 / 60).restY).toBe(REST_Y);
+  });
+  test("moving, they trail behind it", () => {
+    const e = make(); run(e, 2); const restY = e.followers.y[0];
+    e.body.setTarget(0.4, 0); let lifted = -9;   // it moves right: the trail swings round behind it, to the left
+    for (let t = 0; t < 0.5; t += 1 / 60) { e.update(1 / 60); lifted = Math.max(lifted, e.followers.y[0] - restY); expect(e.followers.x[0]).toBeLessThan(e.body.pose.x); }
+    expect(lifted).toBeGreaterThan(0.15);
+  });
+  test("a still frame (less motion) shows them at rest beside it, never mid orbit or popped", () => {
+    const e = make(); e.applyApp("working"); run(e, 3); e.still();
+    expect(e.followers.z[0]).toBe(0); expect(e.followers.r[1]).toBe(FOLLOWER_RADII[1]); expect(e.followers.x[0]).toBeLessThan(0);
   });
 });

@@ -28,9 +28,11 @@ export type FlowflowViewProps = {
   resting?: boolean;
   /** M46: a small Flowflow (the notch's wing): working draws at WORK_INTERVAL in every choice, Lively included. */
   small?: boolean;
+  /** M60: the orb's soft halo on a dark page; on unless turned off (Home draws its own glow behind it). */
+  halo?: boolean;
 };
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small }: FlowflowViewProps) {
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo }: FlowflowViewProps) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
@@ -55,6 +57,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   useEffect(() => { ctl.current?.setReduced(!!reduced); }, [reduced]);
   useEffect(() => { if (colours) ctl.current?.setColours(colours.light, colours.deep); }, [colours?.light, colours?.deep, ctl.current]);
   useEffect(() => { if (tuning) ctl.current?.setTuning(tuning); }, [tuning]);
+  useEffect(() => { ctl.current?.setHalo(halo !== false); }, [halo, ctl.current]);
   // The page's sky (--pond), read now and again whenever the theme, its tone or its contrast changes (the audit, item 30).
   useEffect(() => {
     const c = canvas.current, made = ctl.current; if (!c || !made) return;

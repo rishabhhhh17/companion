@@ -4,14 +4,28 @@ import type { CharacterState } from "../model.ts";
 import type { Liveliness } from "../lookfeel.ts";
 import { Behavior, type BehaviorState, type Look } from "./behavior.ts";
 import { Face, rng, type Eyes } from "./face.ts";
-import { Droplets, Ripples } from "./particles.ts";
+import { Droplets, Followers, Ripples, type FollowerFrame, type FollowerMood } from "./particles.ts";
 import { type BodyPose, SoftBody, Spring, type Tuning, clampTuning, frameDelta } from "./physics.ts";
 
 /** How long after the pointer last moved the eyes keep looking at it, and the body keeps following (seconds). */
 export const LOOK_HOLD = 3;
 export const FOLLOW_HOLD = 1.4;
-/** The body's widest reach from its centre (world units) at the renderer's body scale; the frame is 2.2 high. */
-export const BODY_RADIUS = 0.84;
+/** M60 (2 Nov 2026, the orb): the orb's radius (world units; the frame is 2.2 high). The renderer draws it at this size. */
+export const ORB_RADIUS = 0.656;
+/** The body's widest reach from its centre (world units): the orb, with a little room to breathe and squash. */
+export const BODY_RADIUS = 0.7;
+/** Where the orb's centre rests above the middle of the frame (world units), leaving room below for its two bubbles. */
+export const REST_Y = 0.1;
+/** Over a floor (Home's water, the screen's bottom edge) its bubbles trail to the side, so it rests lower: it peeks over
+ *  the water with its bottom a little under it, and its top stays clear of the top of Home's box (masked there). */
+export const REST_Y_FLAT = 0;
+/** M60: the way the bubbles trail from the orb at rest (a unit vector to the first; the second sits further round, toward
+ *  the bottom, or up off a floor): below and behind it, toward the screen's inside. */
+export const TRAIL: Readonly<Record<"free" | "left" | "flat", readonly [number, number]>> = {
+  free: [-0.848, -0.53],    // below and to the left
+  left: [0.848, -0.53],     // docked on the left edge: below and to the right, into the screen
+  flat: [-0.966, -0.259],   // over Home's water or the bottom edge: out to the side, rising up the orb's side, above it
+};
 
 /** The pointer anywhere on the screen (M20, Follow my pointer), as a look direction: `dx, dy` in points from the middle of
  *  the character's window (y down). Near, it looks a little; far, it looks fully that way; never past the edge of its eyes. */
@@ -42,6 +56,10 @@ export type Snapshot = {
   /** M46: needs you's pulse now, 0 to 1 (0 once its three pulses are done, and in any still frame). */
   pulse: number;
   droplets: Droplets; ripples: Ripples;
+  /** M60: the two bubbles that follow it (the body's own frame: add restY to place them in the picture). */
+  followers: Followers;
+  /** M60: how far above the frame's middle the orb's centre rests (REST_Y, or REST_Y_FLAT over a floor). */
+  restY: number;
 };
 
 /** M37c (the founder: "when it gets close to the water it sticks to the sides… the more I push it towards it, the flatter
@@ -54,11 +72,17 @@ export const SIDES: readonly Side[] = ["left", "right", "top", "bottom", "below"
 /** The press spring: soft and under damped, so letting go wobbles back like water (about 3 wobbles a second). */
 export const PRESS_SPRING = { hz: 3.2, zeta: 0.3 } as const;
 
+/** M60: how the bubbles move in each mood of the work: they orbit while it works, sink a little when it failed and gather
+ *  close while it listens. Everything else rests (done adds its own rise and pop). */
+const MOOD: Partial<Record<BehaviorState, FollowerMood>> = { working: "orbit", error: "sink", curious: "gather" };
+
 export class FlowflowEngine {
   readonly behavior = new Behavior();
   readonly body: SoftBody;
   readonly face: Face;
   readonly droplets = new Droplets();
+  readonly followers = new Followers();
+  private ff: FollowerFrame = { mood: "rest", orb: ORB_RADIUS, cx: 0, cy: 0, tx: TRAIL.free[0], ty: TRAIL.free[1], ux: 0, uy: -1, bob: false, time: 0, minX: -1.6, maxX: 1.6, minY: -1.1, maxY: 1.1 };
   readonly surface: Surface = { side: null, at: 1, cling: 0, press: 0 };
   private pressSpring = new Spring(0, 0); private pressTo = 0;
   readonly ripples = new Ripples();
@@ -80,12 +104,16 @@ export class FlowflowEngine {
     this.body.bounds = { halfW: this.halfW, halfH: this.halfH, r: BODY_RADIUS };
     this.pressSpring.set(PRESS_SPRING.hz, PRESS_SPRING.zeta);
     this.behavior.snap();
+    this.followers.place(this.followFrame());
   }
 
   setTuning(t: Partial<Tuning>): void { this.tuning = clampTuning({ ...this.tuning, ...t }); this.body.setTuning(this.tuning); }
   get tune(): Tuning { return this.tuning; }
   /** The frame the body must stay inside (half width and half height, world units). */
-  setFrame(halfW: number, halfH: number): void { this.halfW = halfW; this.halfH = halfH; this.body.bounds = { halfW, halfH, r: BODY_RADIUS * 1.08 }; }
+  setFrame(halfW: number, halfH: number): void {
+    this.halfW = halfW; this.halfH = halfH; this.body.bounds = { halfW, halfH, r: BODY_RADIUS * 1.08 };
+    if (this.followers.settled) this.followers.place(this.followFrame());   // a new frame: they rest inside it at once
+  }
 
   /** The app's state changed. Only a real change does anything: success is never made up. */
   applyApp(s: CharacterState): void { this.behavior.applyApp(s); }
@@ -130,6 +158,7 @@ export class FlowflowEngine {
     this.surface.side = ok ? side : null;
     this.surface.at = Number.isFinite(at) ? Math.max(-1, Math.min(2, at)) : 1;   // it may lie a little past the canvas
     this.surface.cling = Number.isFinite(cling) ? Math.max(0, Math.min(1, cling)) : 0;
+    if (this.followers.settled) this.followers.place(this.followFrame());   // they move to the open side at once
   }
   /** How hard it is pushed into its surface now, 0 to 1 (a drag into the screen's edge). */
   /** firm: it goes there at once and stays, no spring-back wobble (gone in at an edge, M51). */
@@ -155,6 +184,7 @@ export class FlowflowEngine {
   still(): Snapshot {
     this.behavior.snap(); this.body.reset(0, 0); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo;
     this.face.wander = this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, false);
+    this.followers.place(this.followFrame());   // M60: at rest beside it, never mid orbit or popped
     const s = this.snapshot(); s.pulse = 0; return s;   // a still frame holds needs you's amber, with no pulse
   }
 
@@ -191,6 +221,11 @@ export class FlowflowEngine {
     this.credit += (this.mode === "lively" ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
     if (this.credit >= 1) { this.credit -= 1; const p = this.body.pose; this.emitDroplet(-p.dirX * BODY_RADIUS * 0.6, -p.dirY * BODY_RADIUS * 0.6 + 0.2, 0.4); }
     this.droplets.update(d, this.body.pose.x, this.body.pose.y);
+    this.followers.update(d, this.followFrame());
+    for (let i = this.followers.takePop(); i >= 0; i = this.followers.takePop()) {   // a bubble popped: a little spray from where it was
+      const fl = this.followers;
+      for (let k = 0; k < 2; k++) this.droplets.emit(fl.x[i], fl.y[i], (k - 0.5) * 0.7, 0.9, 0.035 - i * 0.008);
+    }
     this.ripples.update(d);
     this.ripples.fill(this.rippleBuffer);
     return this.snapshot();
@@ -203,9 +238,40 @@ export class FlowflowEngine {
     if (!s) return;
     const g = this.tuning.ripple * this.behavior.look.rippleGain;
     const p = this.body.pose;
-    if (s === "success") { this.body.impulse("burst", 0.8); this.ripples.add(p.x, p.y, 1.2 * Math.max(0.3, g)); for (let i = 0; i < 3; i++) this.emitDroplet((i - 1) * 0.35, 0.4, 1); }
+    // M60: done sends no drops of its own now: its two bubbles rise and pop, and each pop sprays a few (update).
+    if (s === "success") { this.followers.celebrate(); this.body.impulse("burst", 0.8); this.ripples.add(p.x, p.y, 1.2 * Math.max(0.3, g)); }
     else if (s === "error") { this.body.impulse("land", 0.45); this.ripples.add(p.x, p.y - 0.2, 0.5 * Math.max(0.3, g)); }
     else if (s === "curious") { this.face.glance(0, 0.5, 0.8); this.body.impulse("poke", 0.25, 0, 0.3); }
+  }
+
+  /** M60: what the bubbles follow now: the mood of the work underneath any touch or flash, the way the trail leaves the
+   *  orb (away from any surface, and round behind it as it moves), and the box they stay in (the frame and the surface). */
+  /** M60: where the orb's centre rests above the frame's middle now. */
+  get restY(): number { return this.surface.side === "below" || this.surface.side === "bottom" ? REST_Y_FLAT : REST_Y; }
+
+  private followFrame(): FollowerFrame {
+    const f = this.ff, p = this.body.pose, base = this.behavior.base, sf = this.surface;
+    f.mood = MOOD[base] ?? "rest";
+    f.cx = p.x; f.cy = p.y; f.time = this.time; f.orb = ORB_RADIUS;
+    f.bob = this.mode === "lively";
+    const flat = sf.side === "below" || sf.side === "bottom";
+    const t = sf.side === "left" ? TRAIL.left : flat ? TRAIL.flat : TRAIL.free;
+    f.ux = 0; f.uy = flat ? 1 : -1;
+    let tx = t[0], ty = t[1];
+    const k = Math.max(0, Math.min(1, (p.speed - 0.05) / 0.5)) * 0.85;   // moving: the trail swings round behind it
+    if (k > 0) { tx = tx * (1 - k) - p.dirX * k; ty = ty * (1 - k) - p.dirY * k; const l = Math.hypot(tx, ty) || 1; tx /= l; ty /= l; }
+    f.tx = tx; f.ty = ty;
+    // The frame, in the body's own frame (its centre rests restY above the middle), with a hair of room at the edges.
+    const m = 0.02, ry = this.restY;
+    f.minX = -this.halfW + m; f.maxX = this.halfW - m; f.minY = -this.halfH - ry + m; f.maxY = this.halfH - ry - m;
+    if (sf.side) {   // and never past the surface it clings to (the screen's edge, or Home's water)
+      const x = (sf.at - 0.5) * 2 * this.halfW, y = this.halfH - sf.at * 2 * this.halfH - ry, g = 0.03;
+      if (sf.side === "right") f.maxX = Math.min(f.maxX, x - g);
+      else if (sf.side === "left") f.minX = Math.max(f.minX, x + g);
+      else if (sf.side === "top") f.maxY = Math.min(f.maxY, y - g);
+      else f.minY = Math.max(f.minY, y + g);
+    }
+    return f;
   }
 
   /** A drop leaves the surface near (x, y) from the body's centre, throwing outward and up. */
@@ -216,9 +282,9 @@ export class FlowflowEngine {
 
   private snap: Snapshot | null = null;
   private snapshot(): Snapshot {
-    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, sway: 0, swayTime: 0, pulse: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface });
+    const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, sway: 0, swayTime: 0, pulse: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface, followers: this.followers, restY: REST_Y });
     s.state = this.behavior.state; s.tuning = this.tuning; s.time = this.time;
-    s.sway = this.swayK; s.swayTime = this.swayT; s.pulse = this.behavior.pulse;
+    s.sway = this.swayK; s.swayTime = this.swayT; s.pulse = this.behavior.pulse; s.restY = this.restY;
     s.float = this.behavior.look.floatAmp * this.swayK * Math.sin(this.swayT * 0.9);
     return s;
   }

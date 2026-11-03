@@ -174,17 +174,11 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .sw-room .sw-side { background: color-mix(in srgb, var(--sw-card) 70%, transparent); }
 .sw-room .sw-main b { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base) 60%); }
 .sw-room[data-sw="calm"] .sw-main b { background: var(--el-base); }
-/* Flowflow's drop in a water's colours (waterDrop.tsx), on the Water choices. */
-.pic-drop { display: block; width: 64px; height: auto; overflow: visible; }
-.water-drop .wd-s-hi { stop-color: var(--wd-hi); }
-.water-drop .wd-s-light { stop-color: var(--wd-light); }
-.water-drop .wd-s-deep { stop-color: var(--wd-deep); }
-.water-drop .wd-s-clear { stop-color: var(--wd-deep); stop-opacity: 0; }
-.water-drop .wd-pool { opacity: .55; }
-.water-drop .wd-sheen { fill: var(--sheen-spec); opacity: .55; }
-.water-drop .wd-eye { fill: var(--el-ink); }
-.water-drop .wd-glint { fill: var(--sheen-spec); }
-.water-drop .wd-line { fill: none; stroke: var(--wd-hi); stroke-width: 2; stroke-linecap: round; opacity: .8; }
+/* Flowflow, the orb and its bubbles, in a water's colours (waterDrop.tsx, orbArt.ts), on the Water choices. */
+.pic-drop { display: block; width: 64px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
+/* M60: a pose picture has room round the orb for its bubbles, so on a How lively card it is drawn wider, to show the orb
+   at about the size of the one on a Water card. */
+.pic-flow.pic-lively { width: 84px; }
 /* The main button, glossy or flat. */
 .sw-pill { display: block; width: 70%; min-height: 18px; border: var(--hair) solid var(--el-deep); border-radius: var(--r-pill); background: var(--el-base); }
 .sw-pill[data-sw="on"] { background: linear-gradient(180deg, var(--el-grad-1) 0, var(--el-base) 58%, var(--el-lift) 100%); box-shadow: inset 0 var(--hair) 0 var(--sw-gel-lip), inset 0 -5px 3px -4px var(--sheen-shine), 0 4px 10px -3px var(--el-shadow); }

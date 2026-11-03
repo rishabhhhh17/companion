@@ -18,6 +18,8 @@ const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ def
 /** M37c: Home's waterline sits a little above 70% down its box; the drop meets it just under the line (measured on Home, M40): the water
  *  joins it there and it clings to the surface, as water meeting water does. */
 const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
+// M60: the orb draws no halo of its own here (halo={false}): Home's glow sits behind it, and the mask on the top of its box
+// would cut a halo into a box.
 
 /** `as`: a state to show instead of the model's (the recorded first run, firstLook.tsx, acts each step out). `liveliness`:
  *  a choice to show at once instead of the one in force (the Settings hero, while its press reaches the shell). `rest`:
@@ -53,7 +55,7 @@ export function HomeCharacter({ m, as, liveliness, rest }: { m?: Model; as?: Cha
     <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>
       {live
-        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} liveliness={mode} resting={resting} onFallback={() => setLiveFailed(true)} /></Suspense>
+        ? <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} halo={false} liveliness={mode} resting={resting} onFallback={() => setLiveFailed(true)} /></Suspense>
         : <>
           {!flow.failed && <canvas ref={flow.canvasRef} className="home-flow" />}
           <img className={`home-pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />

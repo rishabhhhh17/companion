@@ -1087,7 +1087,7 @@ function LookPictures({ d, value, onChange, labelId, disabled }: { d: Def; value
 const LIVELY_POSE: Record<Liveliness, Pose> = { still: "look", gentle: "glance", lively: "splash" };
 function LivelyPictures({ value, onChange, labelId, disabled }: { value: string; onChange: (v: string) => void; labelId: string; disabled: boolean }) {
   return <PictureChoice labelledBy={labelId} value={livelinessOf(value)} onChange={onChange} disabled={disabled}
-    options={LIVELINESS.map((l) => ({ id: l, label: S.lively[l], picture: <FlowMini state="idle" className="pic-flow" pose={LIVELY_POSE[l]} /> }))} />;
+    options={LIVELINESS.map((l) => ({ id: l, label: S.lively[l], picture: <FlowMini state="idle" className="pic-flow pic-lively" pose={LIVELY_POSE[l]} /> }))} />;
 }
 
 /** The Flowflow page opens with the live Flowflow on its water, in the look chosen (the spec, 3.4), shown resting, working
@@ -1444,7 +1444,7 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
           {spent?.problem && <p className="set-problem" role="alert">{spent.problem}</p>}
           {q ? <SearchResults q={q} />
             : page === "more" ? <MorePage open={openTopics} setOpen={(id, on) => setOpenTopics((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; })} />
-            : <PageView page={page} />}
+            : <PageView key={page} page={page} />}
           {!q && page === "account" && spent && <p className="set-note" role="status">{spendingLine(spent)}</p>}
           {!q && page === "account" && !project && <p className="set-note">{S.setSpendingNoProject}</p>}
         </div>

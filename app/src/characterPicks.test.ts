@@ -12,7 +12,7 @@ describe("character picks (M35)", () => {
       expect(S.waterPicks[w].split(" ").length, w).toBeLessThanOrEqual(6);
     }
   });
-  test("the cards are a radio group with arrow keys, and show Flowflow's drop in each colour", () => {
+  test("the cards are a radio group with arrow keys, and show Flowflow (the orb, M60) in each colour", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
     const picks = src.slice(src.indexOf("function WaterSwatches("), src.indexOf("function CompanionHero("));
     // The Picture choice part (ui/parts.tsx): a radio group whose arrows move the choice (ui/partsLogic.ts moveIndex).
@@ -26,6 +26,10 @@ describe("character picks (M35)", () => {
     // 1 Nov 2026: Flowflow as the drop seen in Home, drawn still in each water (waterDrop.tsx), never the old picture art.
     expect(picks).toContain("<WaterDrop water={w}");
     expect(picks).not.toContain('pose="look"');
+    // M60 (2 Nov 2026): the drawing is the orb with its bubbles, from the one geometry every picture of it uses (orbArt.ts).
+    const drop = readFileSync(new URL("./waterDrop.tsx", import.meta.url), "utf8");
+    expect(drop).toContain("waterSvg(water)");
+    expect(drop).not.toMatch(/<path|wd-body/);
   });
   test("a productivity tool, never a friend (rule 16)", () => {
     expect(JSON.stringify([S.short, S.pages, S.waterPicks])).not.toMatch(/\bfriend/i);

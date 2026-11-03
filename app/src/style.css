@@ -439,9 +439,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
    taller than the button (120%) so a stretch or a drop has room, and sits on its bottom edge. */
 .character .flowflow { position: absolute; left: 0; bottom: 0; width: 100%; height: 120%; pointer-events: none; }
 .home-char .home-flowflow { position: absolute; inset: 0; width: 100%; height: 100%; display: block; pointer-events: none; }
-/* The water's colour (M19) turns Flowflow's pictures too (they are drawn in ocean blue), and its size on the edge scales it
-   inside its window (look.size; lookfeel.ts SIZE_SCALE keeps large inside the 160 point window). */
-.pose, .home-pose, .ip-agent { filter: hue-rotate(var(--water-turn, 0deg)); }
+/* The water's colour (M19) turns every picture of Flowflow (drawn in Ocean; M60: the soft water over them too) and its size
+   scales it inside its window (look.size; lookfeel.ts SIZE_SCALE keeps large inside the 160 point window). */
+.pose, .home-pose, .ip-agent, .island-flow, .pr-char, .pic-flow, .character .flow, .home-flow { filter: hue-rotate(var(--water-turn, 0deg)); }
 .character { scale: var(--char-scale, 1); }
 /* M24: one Flowflow everywhere. The small live water (flowflowMini.tsx) takes the place of the picture in the notch, its
    panel and the first run, at the same size; its canvas fills a square box, and its colour already comes from Settings. */

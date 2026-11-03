@@ -204,6 +204,20 @@ describe("needs you, and an error", () => {
     expect(c.engine.body.settled).toBe(true);
     c.dispose();
   });
+  test("M60: it never parks while its bubbles are still moving (sinking after a failure, forming again after done)", () => {
+    const { c } = make();
+    settleToPark();
+    expect(pending()).toBe(0);
+    c.engine.followers.celebrate();   // bubbles on their way, with no news and nothing else going on
+    c.setColours("#6fe3ff", "#1d72d8");   // a nudge that is not news, so the loop looks again
+    step(1000);
+    expect(c.engine.followers.settled).toBe(false);
+    expect(pending()).toBeGreaterThan(0);
+    step(6_000);
+    expect(c.engine.followers.settled).toBe(true);
+    expect(pending()).toBe(0);
+    c.dispose();
+  });
 });
 
 describe("rest (a call, Low Power Mode, tucked away)", () => {

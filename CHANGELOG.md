@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Flowflow is a bubble of water now: 3 Nov 2026
+
+- **A new Flowflow.** It is a round bubble of water that floats, with two soft closed eyes and two small bubbles that follow it. It stays round in every state, so it never looks like it is sitting in a heap.
+- **Every picture of it changed too,** not only the live one: the desktop and Home with Draw live off, the notch and its list, the Water and How lively choices in Settings, the About card, the first run and the empty History. Each one shows the water colour you picked.
+- **Fixed:** with Draw live off, Flowflow on the desktop and in Home showed Ocean blue whatever water you picked. It now takes your colour.
+- **Fixed:** opening About or Character in Settings right after another page could leave the Settings window blank.
+
 ## Black and White, and one calm colour: 2 Nov 2026
 
 - **Two new themes, Black and White.** Black is a true black page with near black cards, and it is now the usual. White is a clean white page (it takes the place of Paper, and a saved Paper choice keeps working). Graphite and Deep are still there.

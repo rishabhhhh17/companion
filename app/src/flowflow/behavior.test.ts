@@ -100,3 +100,22 @@ describe("needs you (M46)", () => {
     b.applyApp("needsYou"); b.update(0.3); expect(b.pulsesDone).toBe(false); expect(b.pulse).toBeGreaterThan(0);
   });
 });
+
+// M60 (2 Nov 2026, the orb): two soft closed arc eyes. Each state shapes them: done lifts the arcs, working holds them
+// flat, failed turns them down, and listening and needs you open them into soft round eyes.
+describe("the eyes' shape (M60)", () => {
+  test("at rest the eyes are soft closed arcs; each state shapes them its own way", () => {
+    expect(LOOK_KEYS).toContain("eyeArc"); expect(LOOK_KEYS).toContain("eyeDot");
+    expect(LOOKS.idle.eyeArc).toBe(1); expect(LOOKS.idle.eyeDot).toBe(0);
+    expect(LOOKS.success.eyeArc).toBeGreaterThan(LOOKS.idle.eyeArc);
+    expect(LOOKS.working.eyeArc).toBe(0); expect(LOOKS.working.eyeDot).toBe(0);
+    expect(LOOKS.error.eyeArc).toBeLessThan(0); expect(LOOKS.error.eyeDot).toBe(0);
+    expect(LOOKS.curious.eyeDot).toBe(1); expect(LOOKS.needsYou.eyeDot).toBe(1);
+    for (const st of BEHAVIOR_STATES) { expect(Math.abs(LOOKS[st].eyeArc), st).toBeLessThanOrEqual(1.6); expect(LOOKS[st].eyeDot, st).toBeGreaterThanOrEqual(0); expect(LOOKS[st].eyeDot, st).toBeLessThanOrEqual(1); }
+  });
+  test("a change of shape slides in, never snaps", () => {
+    const b = new Behavior(); settle(b); b.applyApp("listening"); b.update(1 / 60);
+    expect(b.look.eyeDot).toBeGreaterThan(0); expect(b.look.eyeDot).toBeLessThan(0.3);
+    settle(b, 2); expect(b.look.eyeDot).toBeGreaterThan(0.95);
+  });
+});

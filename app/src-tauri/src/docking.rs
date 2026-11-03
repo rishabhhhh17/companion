@@ -382,7 +382,8 @@ impl Drag {
         let f = match screen_near(&self.screens, p) { Some(s) => keep_in(want, s.work), None => want };
         self.pointer = p;
         self.frame = f;
-        self.trail.retain(|s| t.saturating_sub(s.2) <= 400);
+        // Only samples from before now and from the last 400 ms (a sample timed after `t` came from another clock).
+        self.trail.retain(|s| s.2 <= t && t - s.2 <= 400);
         self.trail.push((p.0, p.1, t));
         if self.trail.len() > 48 { self.trail.remove(0); }
         let near = screen_near(&self.screens, p).is_some_and(|s| free_on(s, self.size, p.0, p.1).is_none());
@@ -400,7 +401,7 @@ impl Drag {
         let w = s.work;
         let dist = match edge { Edge::Left => x - w[0], Edge::Right => w[0] + w[2] - x, Edge::Top => y - w[1], Edge::Bottom => w[1] + w[3] - y };
         if !(dist <= FLICK_REACH) { return false; }
-        let recent: Vec<&(f64, f64, u64)> = self.trail.iter().filter(|s| t.saturating_sub(s.2) <= FLICK_WINDOW_MS).collect();
+        let recent: Vec<&(f64, f64, u64)> = self.trail.iter().filter(|s| s.2 <= t && t - s.2 <= FLICK_WINDOW_MS).collect();
         let (Some(a), Some(b)) = (recent.first(), recent.last()) else { return false };
         let dt = b.2.saturating_sub(a.2);
         if dt < FLICK_MIN_DT_MS { return false; }
@@ -1083,6 +1084,15 @@ mod tests {
     #[test]
     fn thrown_hard_at_an_edge_it_goes_in_even_from_a_little_way_off() {
         // 300 points in 100 ms toward the right edge, let go 140 points from it.
+        let l = near_the_right_edge(&[(1000.0, 400.0, 0), (1300.0, 400.0, 100)], 110);
+        assert!(matches!(l.how, Landing::Edge(Edge::Right, _)), "{:?}", l.how);
+    }
+    #[test]
+    fn a_drag_begun_on_the_real_clock_still_reads_a_throw_timed_by_hand() {
+        // The begin sample is timed on the real clock; when that clock is ahead of the hand given times it must not count
+        // (it once made this whole file pass or fail by the order the tests ran in).
+        let _ = mono_ms();
+        std::thread::sleep(std::time::Duration::from_millis(250));
         let l = near_the_right_edge(&[(1000.0, 400.0, 0), (1300.0, 400.0, 100)], 110);
         assert!(matches!(l.how, Landing::Edge(Edge::Right, _)), "{:?}", l.how);
     }

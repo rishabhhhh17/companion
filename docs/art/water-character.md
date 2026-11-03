@@ -1,6 +1,8 @@
 # The water character: where the pictures come from
 
-Written 22 Oct 2026.
+Written 22 Oct 2026. Updated 3 Nov 2026 (M60).
+
+**Now (M60, 2 Nov 2026).** The founder's friends said the old creature looked like poop, and the founder picked a new Flowflow from six concepts: the Orb with Fizz's trailing bubbles. The eleven pictures keep their names and their size (351 by 249, see through), but they are no longer cut from the ChatGPT sheet. They are drawn from code: `app/src/orbArt.ts` holds the one geometry (a perfectly round bubble of water, two soft closed arc eyes and no mouth, two small bubbles trailing below and behind it in a gentle arc), and `app/scripts/make-orb-poses.ts` writes the PNGs from it in Ocean's colours (run `bun app/scripts/make-orb-poses.ts` from the repo root; never edit the pictures by hand). The pages turn them to the chosen water with a hue turn, so no safety colour (amber, green) is ever painted into a picture. The same geometry draws the Water choices in Settings, in each water's own colours. `orbArt.test.ts` keeps the outline round, two eyes and no mouth, the bubbles in an arc rather than a line, and everything on the canvas. The sections below are the history of the first pictures.
 
 **What it is.** The first character, the water creature (the Flow group; the founder named it in F24). Eleven pictures in `app/public/characters/water/`, one per pose, all the same size and lined up on the same bottom line so the character never jumps when its state changes. Which picture shows for which state is in `app/src/characters.ts`; `characters.test.ts` checks it.
 

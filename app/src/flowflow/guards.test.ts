@@ -63,10 +63,12 @@ describe("how it reaches the app", () => {
 
 // M46 (F28): the resting sway is the only motion at rest, scaled by the choice, on its own clock.
 describe("how lively reaches the drawing (M46)", () => {
-  test("the point sway, the side waves and the base spread all multiply uSway and run on uSwayTime", () => {
+  test("the round body's sway, the waves round its rim and its slow widening all multiply uSway and run on uSwayTime", () => {
+    // M60: the orb replaced the drop, so the three sway lines are the orb's own (the drop's point sway, side waves and base
+    // spread are gone with its shape).
     const sh = read("shaders.ts");
-    const body = sh.slice(sh.indexOf("float body(vec3 p){"), sh.indexOf("return d * 0.8;"));
-    const sway = body.split("\n").filter((l) => /sways like poured liquid|slow waves running up|base spreads and gathers/.test(l));
+    const body = sh.slice(sh.indexOf("float body(vec3 p){"), sh.indexOf("return d * 0.85;"));
+    const sway = body.split("\n").filter((l) => /the round body sways|slow waves run round its rim|widens and narrows/.test(l));
     expect(sway.length).toBe(3);
     for (const l of sway) { expect(l).toContain("calmed * uSway"); expect(l).toContain("uSwayTime"); expect(l).not.toContain("uTime"); }
     expect(sh).toContain("uniform float uSway;"); expect(sh).toContain("uniform float uSwayTime;");
@@ -101,5 +103,42 @@ describe("the live drawing takes no CSS motion (M46)", () => {
     const dock = readFileSync(join(dir, "..", "dock.tsx"), "utf8");
     expect(dock).toContain('data-live={live ? "on" : undefined}');
     expect(dock).toContain("data-motion={live ? undefined : motionFor(state, reduced)}");
+  });
+});
+
+// M60 (2 Nov 2026, the founder: the old drop "looks like poop"): Flowflow is a round orb that floats, with two small bubbles
+// that follow it, drawn in the same picture. No point on top, no flat bottom, and the same cost: one ray march, no extra pass.
+describe("the orb (M60)", () => {
+  const sh = read("shaders.ts");
+  const frag = sh.slice(sh.indexOf("export const BODY_FRAGMENT"), sh.indexOf("export const DROP_VERTEX"));
+  test("the body is a round ball: no cone, no point, no flat underside", () => {
+    const body = sh.slice(sh.indexOf("float body(vec3 p){"), sh.indexOf("return d * 0.85;"));
+    expect(body).toContain("length(q) - uOrb");
+    for (const gone of ["sdRoundCone", "sdEll(", "flat underside", "-(q.y + 0.68)"]) expect(sh, gone).not.toContain(gone);
+  });
+  test("one ray march for the orb and both bubbles, and the renderer draws no extra pass", () => {
+    expect(frag.match(/for \(int i = 0; i < \d+; i\+\+\)/g)?.length).toBe(1);
+    expect(frag).toContain("uniform vec4 uBub;"); expect(frag).toContain("min(drop(p), bubbles(p))");
+    const r = read("renderer.ts");
+    expect(r.match(/new ShaderMaterial\(/g)?.length).toBe(2);   // the orb's picture and the tiny droplets, as before
+    expect(r.match(/new Mesh\(/g)?.length).toBe(1);
+    expect(r).toContain("s.followers");
+  });
+  test("the face is two soft arcs shaped by the state, with the blink, the glint and the look kept", () => {
+    expect(frag).toContain("uniform vec2 uFace;");
+    for (const keep of ["uOpen", "uEyes.xy", "uEyes.zw", "glint"]) expect(frag, keep).toContain(keep);
+    expect(read("renderer.ts")).toContain("u.uFace.value = [look.eyeArc, look.eyeDot];");
+  });
+});
+
+// M60: the orb's soft halo on a dark page. Home draws its own glow behind the character and masks the top of its box, which
+// would cut the halo into a box, so Home turns it off; everywhere else it is on.
+describe("the halo (M60)", () => {
+  test("it reaches the drawing as a uniform, Home turns it off, and it fades out before any canvas edge", () => {
+    const sh = read("shaders.ts"), r = read("renderer.ts"), v = read("view.tsx"), c = read("controller.ts");
+    expect(sh).toContain("uniform float uHaloK;"); expect(sh).toContain("halo *= uHaloK;"); expect(sh).toContain("min(room.x, room.y)");
+    expect(r).toContain("setHalo(on: boolean)"); expect(c).toContain("setHalo(on: boolean)"); expect(v).toContain("halo?: boolean");
+    const home = readFileSync(join(dir, "..", "homeCharacter.tsx"), "utf8");
+    expect(home).toMatch(/<FlowflowView [^>]*halo=\{false\}/);
   });
 });
