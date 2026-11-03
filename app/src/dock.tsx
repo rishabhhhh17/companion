@@ -1,16 +1,20 @@
-import { StrictMode, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { StrictMode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { invoke, listen } from "./tauri.ts";
 import type { FlowflowController } from "./flowflow/controller.ts";
 import { characterName } from "./companion.ts";
 import { useLook } from "./useLook.ts";
 import { play, wantSound, type Cue } from "./sound.ts";
-import { livelinessOf, SIZE_SCALE, sizeOf } from "./lookfeel.ts";
+import { livelinessOf, SIZE_SCALE, sizeOf, waterOf } from "./lookfeel.ts";
 import { useRest } from "./useRest.ts";
 import { LENGTH_MS, Reactor, reactionFor, reactionsOn, type Reaction } from "./reactions.ts";
-import { characterWords, motionFor } from "./model.ts";
+import { characterWords, motionFor as stateMotion, type CharacterState } from "./model.ts";
 import { characterShows } from "./home.ts";
-import { poseFor, poseUrl } from "./characters.ts";
+import { poseFor, poseUrl, ringFor } from "./characters.ts";
+import { dockShows, dockWords, orbMotion } from "./chromeLook.ts";
+import { useCharacterLook } from "./flowflowMini.tsx";
+import { glassOrbSvg, svgUrl } from "./orbArt.ts";
+import { Orb } from "./ui/parts.tsx";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { usePeek } from "./peek.ts";
@@ -24,6 +28,7 @@ import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import "./style.css";
+import "./ui/chrome.css";
 
 // The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((m) => ({ default: m.FlowflowView })));
@@ -101,7 +106,6 @@ function Dock() {
   // Its state, as the model says. With When something needs me set to only mark the tab and no island in the notch, it
   // also carries the island's mark (home.ts characterShows); its own lights for the screen and the microphone stay.
   const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);
-  const label = characterWords(m);
   // The group at work and its named look, as data for the founder's art (F20 item 4): Flow is water, clearer when the checks
   // pass and murkier when they fail. Only names on the element; the art decides what they look like, and the reduced motion
   // rules above still apply to every motion.
@@ -112,7 +116,7 @@ function Dock() {
   // The look (M19): the water's colour on this page and the character's size on the edge.
   const colours = useLook();
   const sizeSet = useSetting("look.size");
-  const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
+  const waterSet = useSetting("look.water");
   // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
   // fluidity mechanics"). Off: the pose pictures,
   // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's
@@ -120,9 +124,20 @@ function Dock() {
   // cannot start, or the GPU context is lost, the pictures come back and nothing else about the character changes.
   const liveOn = useSetting("character.live") === true;
   const [liveFailed, setLiveFailed] = useState(false);
-  const live = liveOn && !liveFailed;
+  // M65: under Instrument (or with Glass orb picked) the edge shows the faceless glass orb with its state ring, the same one
+  // as in the notch and in Home (chromeLook.ts dockShows): no live water, no soft water, no pictures, no cartoon moves.
+  const charLook = useCharacterLook();
+  const shows = dockShows(charLook, liveOn, liveFailed);
+  const orb = shows === "orb";
+  // The word under it agrees with the orb's ring (chromeLook.ts dockWords): Needs you while something waits.
+  const label = dockWords(charLook, state, waiting, characterWords(m));
+  const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
+  const orbSrc = useMemo(() => svgUrl(glassOrbSvg(waterOf(waterSet))), [waterSet]);
+  const live = !orb && liveOn && !liveFailed;
+  // The state's motion: none for the orb, whose ring and words say the state (chromeLook.ts orbMotion).
+  const motionFor = (s: CharacterState, r: boolean) => orbMotion(charLook, stateMotion(s, r));
   const pose = poseFor(state, { roam: roam.phase, react: react?.r });
-  const flow = useFlow({ pose, state, calm: reduced, off: liveOn && !liveFailed });
+  const flow = useFlow({ pose, state, calm: reduced, off: shows !== "picture" });
   const button = useRef<HTMLButtonElement>(null);
   const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
   // A click opens or closes the card; dragging moves the character anywhere on the screen, or to any edge or corner. M47:
@@ -234,13 +249,14 @@ function Dock() {
     wasDone.current = state === "done";
   }, [state]);
   return (
-    <main className="dock" data-drop={dropMark}>
-      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-flow={flow.ready ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={react?.r}
+    <main className="dock" data-drop={dropMark} data-character={charLook}>
+      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-character={charLook} data-flow={flow.ready && !orb ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={orb ? undefined : pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={orb ? undefined : react?.r}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={lost} onLostPointerCapture={lost}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        {liveOn && !liveFailed
+        {orb ? <Orb src={orbSrc} ring={ringFor(state, waiting)} />
+          : live
           ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
@@ -251,7 +267,7 @@ function Dock() {
       {/* M26: the words show only when there is something to say; resting, "Ready" is for VoiceOver only, so Flowflow is not
           labelled like a debug readout. */}
       <div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>
-      {!flow.failed && !(liveOn && !liveFailed) && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
+      {!flow.failed && shows === "picture" && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />
     </main>

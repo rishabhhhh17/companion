@@ -23,7 +23,7 @@ button, select, input, textarea { font: inherit; }
 .btn.sm { min-height: var(--h-sm); padding: 0 var(--space-3); font-size: var(--t-small); line-height: var(--lh-small); }
 .btn.lg { min-height: var(--h-lg); }
 /* The one main button on a screen: a neutral white pill, one edge of light on top, one soft 1 point edge below, and no band. */
-.btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; border-radius: var(--r-pill); background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
+.btn.primary { padding: 0 var(--space-btn-x); border-color: transparent; border-radius: var(--r-main); background: var(--main); color: var(--main-ink); box-shadow: var(--main-shadow); }
 .btn.primary:hover:not(:disabled) { background: var(--main-hover); }
 .btn.primary:active:not(:disabled) { background: var(--main-press); box-shadow: var(--main-shadow-press); }
 /* A Pro tag inside the main button takes the button's own words, and its edge is drawn in them (payments spec section 3). */
@@ -37,7 +37,7 @@ button, select, input, textarea { font: inherit; }
 .btn.quiet:hover:not(:disabled), .btn.quiet:active:not(:disabled) { background: transparent; color: var(--fg); }
 .btn.quiet:disabled { background: transparent; color: var(--ink-disabled); }
 /* A quiet button that opens a place (Home's top bar): the open one is filled, a change of fill and not of colour alone. */
-.btn.quiet[aria-pressed="true"] { border-radius: var(--r-pill); background: var(--surface-2); color: var(--fg); }
+.btn.quiet[aria-pressed="true"] { border-radius: var(--r-main); background: var(--surface-2); color: var(--fg); }
 .btn.danger { border-color: var(--bad-edge); color: var(--bad); }
 .btn.danger:hover:not(:disabled) { background: var(--bad-hover); }
 .btn.danger:active:not(:disabled) { background: var(--bad-press); }
@@ -110,7 +110,7 @@ button, select, input, textarea { font: inherit; }
 .ui-pop-item { display: flex; align-items: center; width: 100%; min-height: var(--h-menu-item); padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); text-align: left; }
 .ui-pop-item:hover, .ui-pop-item:focus-visible { background: var(--surface-3); }
 /* A setting kept for this project only: a tag styled like a key label. */
-.ui-tag { display: inline-flex; align-items: center; min-height: var(--h-key); padding: 0 var(--space-key-x); box-sizing: border-box; border: var(--hair) solid var(--line-strong); border-radius: var(--r-key); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.ui-tag { display: inline-flex; align-items: center; min-height: var(--h-key); padding: 0 var(--space-key-x); box-sizing: border-box; border: var(--hair) solid var(--tag-edge); background: var(--tag-bg); border-radius: var(--r-key); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 /* Narrow (the biggest text sizes): the control moves under the words, lined up on the left. In rem, so it follows the
    text size: 392 at Standard, under Settings' 420 column (island.rs with_settings), so Standard rows stay side by side
    (settingsLayout.test.ts). */
@@ -137,7 +137,7 @@ button, select, input, textarea { font: inherit; }
 /* ---------- Segmented: two or three options, all the same width ---------- */
 .ui-seg { position: relative; display: inline-grid; grid-template-columns: repeat(var(--n), minmax(var(--w-seg), 1fr)); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-sm); padding: var(--space-seg); background: var(--inset); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
 /* The picked option: a wash of the water with an accent edge, so the choice in use stands out by edge and fill (M51 polish). */
-.ui-seg-thumb { position: absolute; top: var(--space-seg); bottom: var(--space-seg); left: var(--space-seg); width: calc((100% - var(--space-seg) * 2) / var(--n)); box-sizing: border-box; background: var(--pick-wash); border: var(--hair) solid var(--pick); border-radius: var(--r-thumb); transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-2) var(--ease-out); pointer-events: none; }
+.ui-seg-thumb { position: absolute; top: var(--space-seg); bottom: var(--space-seg); left: var(--space-seg); width: calc((100% - var(--space-seg) * 2) / var(--n)); box-sizing: border-box; background: var(--seg-thumb); border: var(--hair) solid var(--seg-thumb-edge); border-radius: var(--r-thumb); transform: translateX(calc(var(--i) * 100%)); transition: transform var(--dur-2) var(--ease-out); pointer-events: none; }
 .ui-seg[data-none] .ui-seg-thumb { opacity: 0; }
 .ui-seg-opt { position: relative; z-index: 1; min-width: 0; margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); overflow-wrap: normal; transition: color var(--dur-1) var(--ease-out); }
 .ui-seg-opt:hover:not(:disabled), .ui-seg-opt[aria-checked="true"] { color: var(--fg); }
@@ -227,13 +227,13 @@ button, select, input, textarea { font: inherit; }
 .ui-verdict[data-bare] .ui-verdict-sub { grid-column: 1; }
 
 /* ---------- Proof chip: a fact that cannot be pressed ---------- */
-.ui-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-pill); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.ui-chip { display: inline-flex; align-items: center; gap: var(--space-1); min-height: var(--h-chip); box-sizing: border-box; padding: 0 var(--space-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-chip); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
 .ui-chip-mark { display: grid; place-items: center; color: var(--fg-2); }
 .ui-chip[data-kind="pass"] .ui-chip-mark, .ui-chip[data-kind="allowed"] .ui-chip-mark { color: var(--ok); }
 .ui-chip[data-kind="fail"] .ui-chip-mark { color: var(--bad); }
 .ui-chip[data-kind="notAllowed"] .ui-chip-mark { color: var(--amber); }
 .ui-chip[data-kind="notRun"] { border-style: dashed; color: var(--fg-2); }
-.ui-chip[data-kind="notNeeded"] { color: var(--fg-2); }
+.ui-chip[data-kind="notNeeded"], .ui-chip[data-kind="plain"] { color: var(--fg-2); }
 
 /* ---------- Recent row: the whole row opens its receipt ---------- */
 .ui-recent { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: var(--space-row-y) var(--space-4); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); text-align: left; transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
@@ -288,3 +288,29 @@ button, select, input, textarea { font: inherit; }
 .ui-toast { position: fixed; left: 50%; bottom: var(--space-4); z-index: 40; display: flex; align-items: center; gap: var(--space-2); max-width: min(calc(100% - var(--space-7)), var(--w-toast-max)); box-sizing: border-box; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); transform: translateX(-50%); animation: ui-toast-in var(--dur-2) var(--ease-out) both; }
 .ui-toast-text { min-width: 0; overflow-wrap: anywhere; }
 @keyframes ui-toast-in { from { opacity: 0; transform: translate(-50%, var(--rise)); } }
+
+/* ---------- M65, the Instrument look's own parts (the lab's look A) ----------
+   A tag that says stop; the status line, a small dot and its words in their meaning's colour; a file row with its folder,
+   a short tag and its added and removed lines; the footer line; and the faceless glass orb with its state ring. */
+.ui-tag[data-tone="stop"] { border-color: transparent; background: var(--tag-stop-bg); color: var(--bad); }
+.ui-status { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.ui-status-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: currentColor; }
+.ui-status[data-tone="needs"] { color: var(--amber); }
+.ui-status[data-tone="proven"] { color: var(--ok); }
+.ui-status[data-tone="stop"] { color: var(--bad); }
+.ui-status[data-tone="working"] { color: var(--status-working); }
+.ui-status[data-tone="working"] .ui-status-dot { background: var(--ring-working); }
+.ui-files { margin: 0; padding: 0; list-style: none; }
+.ui-file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--space-3); align-items: center; padding: var(--space-row-y) var(--space-4); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); }
+.ui-file-name { min-width: 0; overflow-wrap: anywhere; }
+.ui-file-dir { margin-inline-start: var(--space-1); color: var(--fg-2); font-size: var(--t-small); }
+.ui-file-diff { display: inline-flex; gap: var(--space-1); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.ui-file-plus { color: var(--ok); }
+.ui-file-minus { color: var(--bad); }
+.ui-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); margin: 0; padding: var(--space-2) var(--space-4); border-top: var(--hair) solid var(--line); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.ui-orb { display: block; flex: none; width: var(--orb); height: var(--orb); border-radius: var(--r-round); outline: var(--orb-ring) solid transparent; outline-offset: var(--orb-gap); transition: outline-color var(--dur-2) var(--ease-enter); }
+.ui-orb img { display: block; width: 100%; height: 100%; }
+.ui-orb[data-ring="stop"] { outline-color: var(--ring-stop); }
+.ui-orb[data-ring="needs"] { outline-color: var(--ring-needs); }
+.ui-orb[data-ring="proven"] { outline-color: var(--ring-proven); }
+.ui-orb[data-ring="working"] { outline-color: var(--ring-working); }

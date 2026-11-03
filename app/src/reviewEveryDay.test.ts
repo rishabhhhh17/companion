@@ -39,11 +39,16 @@ describe("feature 5: the instant key warning", () => {
     const reviewed = run([batch({ keys: [{ file: "src/pay.ts", line: 12 }] }), ok({ rating: "stop" })])!;
     expect(keyWarned(reviewed)).toBe(false);
   });
-  test("it needs you: the stamp says so, and Home's top says Fix this first with the key line, still offering Review the changes", () => {
+  test("it is a stop: the stamp says Not fixed yet, and Home's top names the file, still offering Review the changes", () => {
     const r = run([batch({ keys: [{ file: "src/pay.ts", line: 12 }] })])!;
-    expect(reviewStamp(r)).toBe("needsYou");
+    expect(reviewStamp(r)).toBe("notFixed");
     const lead = reviewLead(r, P)!;
-    expect(lead).toEqual({ headline: S.review.rating.stop, line: S.review.keyWarning, main: "review" });
+    // M65 step 4: in Instrument the headline is the problem itself, the line says how much changed, once; Fix this first is
+    // the status. Friendly keeps Fix this first over the key line (M65 step 6).
+    expect(lead).toEqual({ headline: "A key was written into pay.ts", line: S.review.riskyLine(r.count, 1), main: "review", stop: true, friendly: { headline: S.review.rating.stop, line: S.review.keyWarning } });
+    expect(S.review.riskyLine(4, 1)).toBe("4 files changed. One looks risky.");
+    expect(S.review.riskyLine(4, 2)).toBe("4 files changed. 2 look risky.");
+    expect(S.review.keyHeadline(["src/pay.ts", "src/cart.ts"])).toBe("Keys were written into 2 files");
     expect(S.review.keyWarning).toBe("A change wrote what looks like a key into the code.");
     expect(S.panel.reviewKey).toBe(S.review.keyWarning);
     expect(S.review.keyWarning).not.toMatch(NOT_HONEST);

@@ -3,9 +3,14 @@
 // the desktop and in Home, in the water colour chosen in Settings. With Draw live off (character.live), or where the live
 // water cannot run, the picture pose instead, as on the desktop. `still`: one still frame on each change, no loop (a panel
 // that is not on screen, or a small mark that should not pull the eye).
-import { Suspense, lazy, useEffect, useState } from "react";
-import { poseFor, poseUrl, type Pose } from "./characters.ts";
-import { flowColours, hueTurn, livelinessOf, waterOf, type Water } from "./lookfeel.ts";
+// M65 (the Instrument look): under Instrument, or with Glass orb picked, it is the faceless glass orb with its state ring
+// instead (chromeLook.ts miniShows): no face, no bubbles, no water scene.
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { poseFor, poseUrl, ringOf, type Pose } from "./characters.ts";
+import { characterOf, flowColours, hueTurn, livelinessOf, waterOf, type CharacterLook, type Water } from "./lookfeel.ts";
+import { miniShows } from "./chromeLook.ts";
+import { glassOrbSvg, svgUrl } from "./orbArt.ts";
+import { Orb } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -28,8 +33,12 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
   // notch stays quiet, so the small one makes none of the character's small moves (reacts={false}); its states still show.
   const mode = livelinessOf(useSetting("character.lively"));
   const resting = useRest();
+  const look = useCharacterLook();
+  const orbSrc = useMemo(() => svgUrl(glassOrbSvg(water ?? chosen)), [water, chosen]);
+  const shows = miniShows(look, { live: liveOn, failed, pose: !!pose });
+  if (shows === "orb") return <span className={`${className} ff-orb`} data-character="orb" aria-hidden="true"><Orb src={orbSrc} ring={ringOf(state)} /></span>;
   const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
-  if (pose || !liveOn || failed) return picture;
+  if (shows === "picture") return picture;
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>
@@ -37,4 +46,9 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
       </Suspense>
     </span>
   );
+}
+
+/** The character the look shows (look.style and look.character, lookfeel.ts characterOf): the orb or the friendly one. */
+export function useCharacterLook(): CharacterLook {
+  return characterOf(useSetting("look.style"), useSetting("look.character"));
 }

@@ -232,7 +232,10 @@ export function ratingLook(k: ReviewRating): { words: string; line: string; icon
 }
 
 /** The project's checks as a chip: passed and failed are marks; not run and could not tell are dashed. */
-export function checksLook(c: ReviewChecks): { label: string; kind: "pass" | "fail" | "notRun" } {
+/** M65 step 4: checks that passed under a stop or a worth a look are a plain chip that says what is still left, never a
+ *  green all good (green means proven, and the rating says it is not). `key`: the stop is a key in the code. */
+export function checksLook(c: ReviewChecks, rating?: ReviewRating, key = false): { label: string; kind: "pass" | "fail" | "notRun" | "plain" } {
+  if (c === "passed" && (rating === "stop" || rating === "worth_a_look")) return { kind: "plain", label: rating === "stop" ? S.review.checksPassedBut[key ? "key" : "stop"] : S.review.checksPassedBut.worth_a_look };
   return { label: S.review.checks[c], kind: c === "passed" ? "pass" : c === "failed" ? "fail" : "notRun" };
 }
 
@@ -251,8 +254,10 @@ export function dismissHow(r: ReviewCard | null | undefined): (typeof REVIEW_CLO
 /** The review's badge in the list on the left: working while it runs, needs you on a stop or worth a look, else new. */
 export function reviewStamp(r: ReviewCard): Stamp {
   if (r.stage === "reviewing" || r.asked || r.fix === "sent") return "working";
+  // M65 step 4: a stop is Not fixed yet in red, as the card and Home's status line say; worth a look needs you.
+  if (r.result && r.result.rating === "stop") return "notFixed";
   if (r.result && r.result.rating !== "safe") return "needsYou";
-  if (keyWarned(r)) return "needsYou";
+  if (keyWarned(r)) return "notFixed";
   return "new";
 }
 

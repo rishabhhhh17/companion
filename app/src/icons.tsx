@@ -11,7 +11,7 @@ type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shie
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | HomeIcon, ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | "copy" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -48,6 +48,8 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   spin: <path className="ic-spin" d="M12 4.5a7.5 7.5 0 107.5 7.5" />,
   sparkle: <path d="M12 4c.6 4.2 1.8 5.4 6 6-4.2.6-5.4 1.8-6 6-.6-4.2-1.8-5.4-6-6 4.2-.6 5.4-1.8 6-6z" />,
   alert: <path d="M12 5.5v8M12 18h.01" />,
+  // M65 step 4: copy is two overlapping sheets (Copy for my AI had an up arrow, which reads as send).
+  copy: <><rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6.5a2 2 0 00-2-2h-7a2 2 0 00-2 2v7a2 2 0 002 2h2" /></>,
   eye: <><path d="M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z" /><circle cx="12" cy="12" r="2.8" /></>,
   updown: <><path d="M8 9.5l4-4 4 4" /><path d="M8 14.5l4 4 4-4" /></>,
   // The strip at the bottom of Home

@@ -50,7 +50,8 @@ describe("parts.css reads every value from tokens.css", () => {
     for (const m of PARTS_CSS().matchAll(/var\((--[\w-]+)/g)) if (!["--n", "--i"].includes(m[1])) expect(defined.has(m[1]), m[1]).toBe(true);
   });
   test("the type scale has seven sizes, and parts.css uses no other", () => {
-    const scale = [...TOKENS_CSS().matchAll(/(--t-[\w-]+):/g)].map((m) => m[1]);
+    // A style may set the sizes again (M65, Instrument), never add one: the names are still seven.
+    const scale = [...new Set([...TOKENS_CSS().matchAll(/(--t-[\w-]+):/g)].map((m) => m[1]))];
     expect(scale.sort()).toEqual([...TYPE_SCALE].sort());
     for (const m of PARTS_CSS().matchAll(/var\((--t-[\w-]+)\)/g)) expect(TYPE_SCALE, m[1]).toContain(m[1]);
     for (const r of parts) for (const [k, v] of r.decl) if (k === "font-size") expect(v, r.sel).toMatch(/^var\(--t-[a-z]+\)$/);

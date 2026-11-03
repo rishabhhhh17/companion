@@ -55,6 +55,11 @@ export const LOOK_CHOICES = {
   /** How much colour: Vivid, or Calm, a step quieter and the usual since 2 Nov 2026. It turns the room's light, the cards'
    *  tint and the gel's shine up or down together (ui/tokens.css). */
   "look.colour": { attr: "data-colour", values: ["calm", "vivid"], usual: "calm" },
+  /** The look's style (M65, 4 Nov 2026, the founder: the look is "too childish"). Instrument, the usual, is the grown up
+   *  look the founder picked from the lab (like Raycast or Linear: a graphite page, hairlines, small type, rectangle
+   *  buttons, colour only where it means something). Friendly is the look from before, kept whole as a choice: no rule in
+   *  ui/tokens.css matches it, so it is :root's own tokens, exactly as they were (lookChoices.test.ts pins them). */
+  "look.style": { attr: "data-style", values: ["instrument", "friendly"], usual: "instrument" },
 } as const;
 export type LookChoice = keyof typeof LOOK_CHOICES;
 /** A saved value as the attribute's value: Stamps is a switch (false is off); anything not one of the values is the usual. */
@@ -63,17 +68,32 @@ export function choiceOf(key: LookChoice, v: unknown): string {
   if (key === "look.stamps") return v === false ? "off" : "on";
   return typeof v === "string" && (values as readonly string[]).includes(v) ? v : LOOK_CHOICES[key].usual;
 }
-/** Every look attribute for the saved values: the theme, whether it is dark or light, and the seven choices. */
-export function lookAttrs(values: Partial<Record<"look.theme" | LookChoice, unknown>>): Record<string, string> {
+export type Style = (typeof LOOK_CHOICES)["look.style"]["values"][number];
+/** The character in the look (look.character, M65): Match, the usual, takes the one that goes with the style: the faceless
+ *  glass orb with Instrument, the friendly one with Friendly. Orb or Friendly pick one whatever the style. The friendly
+ *  character is the only one with a face, bubbles and the water scene; the orb never has them. */
+export const CHARACTER_CHOICES = ["match", "orb", "friendly"] as const;
+export type CharacterChoice = (typeof CHARACTER_CHOICES)[number];
+export type CharacterLook = "orb" | "friendly";
+export function characterOf(style: unknown, character: unknown): CharacterLook {
+  if (character === "orb" || character === "friendly") return character;
+  return choiceOf("look.style", style) === "friendly" ? "friendly" : "orb";
+}
+/** Every look attribute for the saved values: the theme, whether it is dark or light, the choices, and the character the
+ *  look shows (data-character). A store saved before M65 has no look.style or look.character: it reads Instrument with the
+ *  orb, and every value it did save reads as before. */
+export function lookAttrs(values: Partial<Record<"look.theme" | "look.character" | LookChoice, unknown>>): Record<string, string> {
   const theme = themeOf(values["look.theme"]);
   const out: Record<string, string> = { "data-theme": theme, "data-tone": THEME_TONE[theme] };
   for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) out[LOOK_CHOICES[k].attr] = choiceOf(k, values[k]);
+  out["data-character"] = characterOf(values["look.style"], values["look.character"]);
   return out;
 }
-/** Sets the seven choices on a page's root (Home and Settings; the island and the character keep the notch's look). */
-export function applyLookChoices(root: { setAttribute: (k: string, v: string) => void }, values: Partial<Record<LookChoice, unknown>>): void {
+/** Sets the choices on a page's root (Home and Settings; the island and the character keep the notch's look). */
+export function applyLookChoices(root: { setAttribute: (k: string, v: string) => void }, values: Partial<Record<"look.character" | LookChoice, unknown>>): void {
   const attrs = lookAttrs(values);
   for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) root.setAttribute(LOOK_CHOICES[k].attr, attrs[LOOK_CHOICES[k].attr]);
+  root.setAttribute("data-character", attrs["data-character"]);
 }
 
 /** The CSS custom properties a page sets for the water chosen (style.css reads only these for water), with the turn of hue

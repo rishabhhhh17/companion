@@ -34,7 +34,7 @@
 .thread-node { position: relative; z-index: 1; display: grid; place-items: center; width: 14px; aspect-ratio: 1; box-sizing: border-box; border: var(--hair-2) solid var(--edge-control); border-radius: var(--r-round); background: var(--surface-1); transition: background-color var(--dur-3) var(--ease-out), border-color var(--dur-3) var(--ease-out); }
 .thread-step[data-state="now"] .thread-node { border-color: var(--water); }
 .thread-step[data-state="done"] .thread-node { border-color: var(--water); }
-.thread-tick { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--r-round); background: var(--water); color: var(--gel-ink); }
+.thread-tick { display: grid; place-items: center; width: 100%; aspect-ratio: 1; border-radius: var(--r-round); background: var(--tick-fill); color: var(--gel-ink); }
 .thread-label { color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
 .thread-step[data-state="todo"] .thread-label, .thread-step[data-state="failed"] .thread-label { color: var(--fg-2); }
 .thread-state { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
@@ -150,7 +150,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .hist-review-mark[data-tone="good"] { color: var(--ok); }
 .hist-review-mark[data-tone="mixed"] { color: var(--amber); }
 .hist-review-mark[data-tone="bad"] { color: var(--bad); }
-.hist-files { color: var(--fg-2); font-size: var(--t-caption); overflow-wrap: anywhere; }
+.hist-files { color: var(--fg-2); font-family: var(--font-code); font-size: var(--t-caption); overflow-wrap: anywhere; }
 .hist-review-stamp { display: inline-flex; align-items: center; margin-top: 2px; min-height: var(--lh-caption); padding: 0 var(--space-1); border: var(--hair) solid currentColor; border-radius: var(--r-stamp); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 
 /* ---------- Settings' Look pictures (M51 polish): a small drawing per option, so Home's look is chosen by looking ----------
@@ -363,10 +363,10 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 
 /* Buttons are pills (the brand language: round, lit, slightly swollen): a secondary button is a neutral key, graphite a
    step up with a white line on top and a dark one under it; the colour stays on the one gel pill. */
-.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border-color: transparent; border-radius: var(--r-pill); background: var(--keycap); box-shadow: inset 0 0 0 var(--hair) var(--keycap-ring), inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
+.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border-color: transparent; border-radius: var(--r-main); background: var(--keycap); box-shadow: inset 0 0 0 var(--hair) var(--keycap-ring), inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):hover:not(:disabled) { background: var(--keycap-hover); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):disabled { background: var(--fill-disabled); box-shadow: none; }
-.home .bar .ui-menu-btn, .home .hist .ui-menu-btn { border-radius: var(--r-pill); background: var(--keycap); border-color: transparent; box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under); }
+.home .bar .ui-menu-btn, .home .hist .ui-menu-btn { border-radius: var(--r-main); background: var(--keycap); border-color: transparent; box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under); }
 .home .ui-chip { background: color-mix(in srgb, var(--raise) 70%, transparent); }
 
 /* The ask box is the one glass surface: graphite at 85 percent, its hairline edge, a soft drop and a shadow in the room's
@@ -377,7 +377,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* Focus shows plainly (the audit, item 19): the focus colour on the edge and a ring outside it, never a step of 1.4 to 1. */
 .home .askwrap .ask:focus-within { border-color: var(--focus); box-shadow: inset 0 var(--hair) 3px var(--sheen-top), 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent), 0 14px 30px -14px var(--el-shadow); }
 /* The send arrow lights once there are words to send, and is plainly off while a job works. */
-.home .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled) { background: var(--el-base); color: var(--el-ink); border-radius: var(--r-pill); }
+.home .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled) { background: var(--el-base); color: var(--el-ink); border-radius: var(--r-main); }
 .home .ask:has(textarea:not(:placeholder-shown)) .send:not(:disabled):hover { background: var(--el-light); color: var(--el-ink); }
 .home .ask .send:disabled { color: var(--ink-disabled); cursor: not-allowed; }
 
@@ -385,7 +385,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
    its words read on any light behind it), a small dot of that colour before the words, and no outline. Working is the
    water's light and its dot breathes; New is grey; Proven is green; Needs you is amber, a step fuller, its dot ringed.
    Colour is never the only signal: the words say it. */
-.home .stamp { gap: 5px; border-color: transparent; border-radius: var(--r-pill); padding: 0 calc(var(--space-2) - var(--hair)) 0 calc(var(--space-1) + var(--hair) * 2); background: color-mix(in srgb, currentColor var(--stamp-fill-a), var(--surface-1)); }
+.home .stamp { gap: 5px; border-color: transparent; border-radius: var(--r-badge); padding: 0 calc(var(--space-2) - var(--hair)) 0 calc(var(--space-1) + var(--hair) * 2); background: color-mix(in srgb, currentColor var(--stamp-fill-a), var(--surface-1)); }
 .home .stamp::before { content: ""; flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: currentColor; }
 .home .stamp[data-stamp="working"] { color: var(--el-text); }
 .home .stamp[data-stamp="working"]::before { animation: stamp-breathe 1.4s ease-in-out infinite alternate; }
@@ -436,8 +436,8 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* The places along the top of the tall Home read in full words over the lit sky; the open one stays the solid pill. */
 .home .places .btn.quiet:not([aria-pressed="true"]) { color: var(--fg); }
 /* The tall places answer the pointer (the audit, item 23), lighter than the place that is open. */
-.home .places .btn.quiet:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--r-pill); }
-.home .places .btn.quiet:not([aria-pressed="true"]):active { background: color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--r-pill); }
+.home .places .btn.quiet:not([aria-pressed="true"]):hover { background: color-mix(in srgb, var(--fg) 8%, transparent); border-radius: var(--r-main); }
+.home .places .btn.quiet:not([aria-pressed="true"]):active { background: color-mix(in srgb, var(--fg) 14%, transparent); border-radius: var(--r-main); }
 /* The open place keeps its pill under the pointer too (a quiet button's hover cleared it, so the place just pressed lost its mark). */
 .home .places .btn.quiet[aria-pressed="true"]:is(:hover, :active) { background: var(--surface-2); }
 /* A follow up's one line field: a long example in it ends in an ellipsis, never cut off mid word. */
@@ -554,3 +554,35 @@ details.raw[open] > summary .ic { transform: rotate(90deg); }
 
 /* The notch's own step and line are in style.css, the one sheet the island page loads (M55). */
 /* end M55 live progress */
+
+/* ---------- M65, the review and change cards in the Instrument look (the lab's look A) ----------
+   Each rule reads a token only Instrument sets (ui/tokens.css, --rv-*), with today's value as the fallback, so Friendly is
+   unchanged and no rule here reads a look attribute (lookChoices.test.ts). In Instrument a changed file is a row: its name,
+   its folder in grey, a short tag (Key in code in red) and its added and taken away lines where known (changesCard.tsx).
+   The reason block is a quiet inset; History's and Memory's rows take the same row: a hairline between them, no card
+   around each. Buttons are rectangles by their own tokens. */
+.changes { margin: var(--rv-box-m, var(--space-2) 0); border-width: var(--rv-box-w, 1px); border-radius: var(--rv-box-r, var(--r-control)); background: var(--rv-box-bg, var(--surface-1)); }
+.home .changes { background: var(--rv-box-bg, color-mix(in srgb, var(--fg) 4%, transparent)); }
+.changes-head { padding: var(--rv-head-pad, var(--space-2) var(--space-3)); border-bottom-width: var(--rv-head-edge, 1px); color: var(--rv-head-ink, var(--fg-2)); font-size: var(--rv-head-t, var(--t-small)); font-weight: var(--rv-head-w, 600); }
+.changes ul { padding: var(--rv-list-pad, var(--space-1) 0); }
+.changes li { grid-template-columns: var(--rv-cols, 1em minmax(0, 1fr) auto); align-items: var(--rv-align, baseline); column-gap: var(--rv-gap, var(--space-2)); min-height: var(--rv-row-h, 0); box-sizing: border-box; padding: var(--rv-row-pad, 3px var(--space-3)); }
+.changes .changes-mark, .changes .changes-kind { display: var(--rv-old, inline); }
+.changes .changes-tag { display: var(--rv-new, none); grid-column: 2; }
+.changes .changes-diff { display: var(--rv-new, none); grid-column: 3; gap: var(--space-1); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.changes-plus { color: var(--ok); }
+.changes-minus { color: var(--bad); }
+.changes li b { font: var(--rv-name-font, var(--w-strong) var(--t-small) / var(--lh-small) var(--font-code)); }
+.changes-file .changes-dir { margin-left: var(--rv-dir-gap, var(--space-2)); font-family: var(--rv-dir-face, var(--font-code)); font-size: var(--rv-dir-t, var(--t-caption)); }
+.review-reasons li { border-radius: var(--rv-why-r, var(--r-control)); background: var(--rv-why-bg, var(--surface-1)); }
+.home .review-reasons li { background: var(--rv-why-bg, color-mix(in srgb, var(--fg) 4%, transparent)); }
+.review-keywarn .review-reasons { margin: var(--rv-keywarn-m, 0); }
+.review-tag { border-radius: var(--rv-tag-r, var(--r-stamp)); background: var(--rv-tag-bg, color-mix(in srgb, var(--fg) 8%, transparent)); }
+.review-label, .review .answer-lead { font-weight: var(--rv-label-w, 600); }
+.hist-row { align-items: var(--rv-hist-align, start); min-height: var(--rv-hist-h, 0); box-sizing: border-box; padding: var(--rv-hist-pad, var(--space-2) 0); }
+.note { margin: var(--rv-note-m, 0 0 var(--space-2)); padding: var(--rv-note-pad, var(--space-3) var(--space-4)); border-width: var(--rv-note-edge, var(--hair)); border-radius: var(--rv-note-r, var(--r-card)); background: var(--rv-note-bg, var(--surface-1)); }
+.home .note { background: var(--rv-note-bg, color-mix(in srgb, var(--fg) 4%, transparent)); }
+.note-text { font-weight: var(--rv-note-text-w, var(--w-bold)); }
+.note-src { margin-top: var(--rv-src-m, 10px); padding-top: var(--rv-src-pad, 6px); border-top-width: var(--rv-src-edge, var(--hair)); }
+.note-btn { border-radius: var(--rv-btn-r, 6px); }
+.note + .row { margin: var(--rv-erase-m, var(--space-2) 0); padding-top: var(--rv-erase-pad, 0); border-top: var(--rv-erase-edge, 0) solid var(--line); }
+/* end M65 review and change cards */

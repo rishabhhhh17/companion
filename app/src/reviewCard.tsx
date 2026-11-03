@@ -9,6 +9,7 @@
 import { useState } from "react";
 import { ConfirmStep } from "./confirm.tsx";
 import { ChangesCard } from "./changesCard.tsx";
+import { keyFiles } from "./changeRows.ts";
 import { copyable } from "./copytext.ts";
 import { Icon } from "./icons.tsx";
 import { formatUsd } from "./model.ts";
@@ -16,7 +17,7 @@ import { canFix, checksLook, fixedSince, keyWarned, placeSaid, ratingLook, sendB
 import type { ReviewReasonKind } from "../../protocol/index.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
-import { ProofChip } from "./ui/parts.tsx";
+import { ProofChip, Said } from "./ui/parts.tsx";
 
 export const REVIEW_ID = "home-review";
 const FIX_ID = "home-review-fix";
@@ -46,7 +47,7 @@ function SendBack({ text, onCopied }: { text: string; onCopied?: () => void }) {
       .then(() => { setState("copied"); onCopied?.(); setTimeout(() => setState("idle"), 4000); }).catch(() => setState("failed"));
   };
   return <>
-    <button className="btn" type="button" title={S.review.sendBackHelp} onClick={copy}><Icon name="send" size={14} />{S.review.sendBack}</button>
+    <button className="btn" type="button" title={S.review.sendBackHelp} onClick={copy}><Icon name="copy" size={14} />{S.review.sendBack}</button>
     <span className={state === "idle" ? "sr" : "line review-copied"} role="status">{state === "copied" ? S.review.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
 }
@@ -54,7 +55,7 @@ function SendBack({ text, onCopied }: { text: string; onCopied?: () => void }) {
 export function ReviewCardView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, heroSays = false }: Props) {
   const res = r.result;
   const look = res ? ratingLook(res.rating) : null;
-  const checks = res && res.checks ? checksLook(res.checks) : null;
+  const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
   return (
     <section id={REVIEW_ID} tabIndex={-1} className="panel review" data-stage={r.stage} data-rating={res?.rating} aria-labelledby={`${REVIEW_ID}-title`}>
       {look && (
@@ -83,7 +84,7 @@ export function ReviewCardView({ r, onReview, onDismiss, onAskFix, onFix, onCanc
           {heroSays
             ? <div className="ui-verdict review-rating" data-tone="bad" role="status">
               <span className="ui-verdict-mark" aria-hidden="true"><Icon name="halt" size={20} /></span>
-              <span className="ui-verdict-words"><span className="sr">{S.review.rating.stop}: </span>{S.review.keyWarning}</span>
+              <span className="ui-verdict-words"><span className="sr">{S.review.rating.stop}: </span><Said text={S.review.keyMove} friendly={S.review.keyWarning} /></span>
             </div>
             : <div className="ui-verdict review-rating" data-size="card" data-tone="bad" role="status">
               <span className="ui-verdict-mark" aria-hidden="true"><Icon name="halt" size={20} /></span>
@@ -99,14 +100,18 @@ export function ReviewCardView({ r, onReview, onDismiss, onAskFix, onFix, onCanc
       {/* Jumping by heading lands here and hears the rating with it (the audit, item 37); the rating's arrival is said once. */}
       {/* Once rated, the rating leads the card, so this heading is for VoiceOver only (the review, 2 Nov 2026: Changes to
           review sat over What changed). */}
-      <h2 id={`${REVIEW_ID}-title`} className={look ? "sr" : undefined}>{S.review.title}{look && <span className="sr">: {look.words}</span>}</h2>
+      <h2 id={`${REVIEW_ID}-title`} className={look || heroSays ? "sr" : undefined}>{S.review.title}{look && <span className="sr">: {look.words}</span>}</h2>
       <div className="sr" role="status">{look ? S.review.arrived(look.words, look.line) : ""}</div>
-      <div className="answer">
-        <div className="answer-lead">{S.review.whatChanged}</div>
-        <p className="answer-words">{res?.summary || S.review.lead(r.count)}</p>
-        {r.away && <div className="line muted">{S.review.away[r.away]}</div>}
-        {res?.notes.map((n, i) => <div className="line muted" key={i}>{n}</div>)}
-      </div>
+      {/* Before a review, Home's top already says how much changed (M65 step 4: it was said three times), so the card goes
+          straight to its presses and its list of files. */}
+      {(res || !heroSays) && (
+        <div className="answer">
+          <div className="answer-lead">{S.review.whatChanged}</div>
+          <p className="answer-words">{res?.summary || S.review.lead(r.count)}</p>
+          {r.away && <div className="line muted">{S.review.away[r.away]}</div>}
+          {res?.notes.map((n, i) => <div className="line muted" key={i}>{n}</div>)}
+        </div>
+      )}
       {/* The presses come right after what changed (the audit, item 13): in Home's 480 points a card of a thousand points
           never hides its buttons at its foot. The reasons, the checks and the files follow as the evidence. */}
       {r.note && <div className="line" role="status">{r.note}</div>}
@@ -131,7 +136,8 @@ export function ReviewCardView({ r, onReview, onDismiss, onAskFix, onFix, onCanc
               closes only it. It comes back, with the keyboard, when the question is answered or put away. */}
           {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}><Icon name="wrench" size={14} />{S.review.fix}</button>}
           <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
-          <button className="btn" type="button" onClick={onDismiss}>{S.review.looksFine}</button>
+          {/* On a stop it keeps the change as it is, so it says so, as a quiet text button (M65 step 4). */}
+          <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? S.review.keepAnyway : S.review.looksFine}</button>
         </div>
       )}
       {r.fix === "confirm" && (
@@ -173,11 +179,13 @@ export function ReviewCardView({ r, onReview, onDismiss, onAskFix, onFix, onCanc
         <div className="review-checks" role="group" aria-label={S.review.checksLabel}>
           {checks.kind === "notRun"
             ? <span className="ui-chip" data-kind="notRun"><span className="ui-chip-mark" aria-hidden="true"><Icon name="dash" size={12} /></span><span>{checks.label}</span></span>
+            : checks.kind === "plain"
+            ? <span className="ui-chip" data-kind="plain"><span>{checks.label}</span></span>
             : <ProofChip kind={checks.kind} label={checks.label} />}
           {res?.checksNote && <span className="review-checks-note">{res.checksNote}</span>}
         </div>
       )}
-      <ChangesCard changed={r.files} />
+      <ChangesCard changed={r.files} keys={keyFiles(r)} />
       {r.capped && <div className="line muted">{S.review.capped(r.files.length, r.count)}</div>}
       {r.secretFiles.length > 0 && <div className="line review-secret"><Icon name="lock" size={14} /><span>{S.review.secretFiles(r.secretFiles.join(", "))}</span></div>}
       {res?.note && <div className="line muted">{res.note}</div>}

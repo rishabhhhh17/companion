@@ -233,6 +233,13 @@ describe("the words and marks", () => {
     expect(checksLook("failed").kind).toBe("fail");
     expect(checksLook("not_run").kind).toBe("notRun");
     expect(checksLook("unknown").kind).toBe("notRun");
+    // M65 step 4: passed checks under a stop or worth a look are never a green all good: a plain chip that says what is left.
+    expect(checksLook("passed", "stop")).toEqual({ kind: "plain", label: S.review.checksPassedBut.stop });
+    expect(checksLook("passed", "stop", true)).toEqual({ kind: "plain", label: S.review.checksPassedBut.key });
+    expect(checksLook("passed", "worth_a_look")).toEqual({ kind: "plain", label: S.review.checksPassedBut.worth_a_look });
+    expect(checksLook("passed", "safe").kind).toBe("pass");
+    expect(checksLook("failed", "stop").kind).toBe("fail");
+    expect(S.review.checksPassedBut.key).toBe("Tests passed. The key still needs fixing.");
   });
   test("the text Send back copies is hidden again for anything that looks like a key, and is nothing with no review", () => {
     const r = run([batch(), ok({ sendBack: "Rating: stop.\nThe key sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH is in src/pay.ts." })])!;
@@ -249,10 +256,10 @@ describe("the words and marks", () => {
     expect(canFix(run([batch()]))).toBe(false);
     expect(canFix(run([batch(), ok(), { type: "ui.reviewFixAsked", batch: "rv_4f2a9c01de" }, { type: "ui.reviewFixSent", batch: "rv_4f2a9c01de" }]))).toBe(false);
   });
-  test("the list on the left stamps the review: new while ready, working while it runs, needs you on a stop or worth a look", () => {
+  test("the list on the left stamps the review: new while ready, working while it runs, not fixed on a stop, needs you on worth a look", () => {
     expect(reviewStamp(run([batch()])!)).toBe("new");
     expect(reviewStamp(run([batch(), { type: "review.started", project: P, batch: "rv_4f2a9c01de", proof: false }])!)).toBe("working");
-    expect(reviewStamp(run([batch(), ok()])!)).toBe("needsYou");
+    expect(reviewStamp(run([batch(), ok()])!)).toBe("notFixed");
     expect(reviewStamp(run([batch(), ok({ rating: "worth_a_look" })])!)).toBe("needsYou");
     expect(reviewStamp(run([batch(), ok({ rating: "safe", reasons: [] })])!)).toBe("new");
   });
@@ -365,5 +372,26 @@ describe("M57: the notes, how strict, and Don't flag this kind here again", () =
   });
   test("the new words are plain, with no em dash", () => {
     for (const w of [S.review.fixedSince, S.review.ruleFiles("AGENTS.md"), S.review.hidden(3), S.review.silence, S.review.silenced, S.set["review.strictness"].help, S.set["review.autoQuietSeconds"].help]) expect(w).not.toMatch(/—|your AI did/);
+  });
+});
+
+describe("the review card's words and presses (M65 step 4, the critics)", () => {
+  const view = readFileSync(new URL("./reviewCard.tsx", import.meta.url), "utf8");
+  test("Copy for my AI shows a copy drawing, never an arrow that reads as send", () => {
+    expect(view).toContain('<Icon name="copy" size={14} />{S.review.sendBack}');
+    expect(view).not.toContain('<Icon name="send" size={14} />{S.review.sendBack}');
+  });
+  test("on a stop, closing the card is Keep it anyway, a quiet text button, never an equal Looks fine", () => {
+    expect(view).toContain("res?.rating === \"stop\" ? S.review.keepAnyway : S.review.looksFine");
+    expect(S.review.keepAnyway).toBe("Keep it anyway");
+  });
+  test("plain, short words: once each, and full sentences", () => {
+    expect(S.review.askFirst).toBe("Review runs your tests and a browser check on a copy. Your files are not touched.");
+    expect(S.review.keyWarningLine).toBe("Only the key check has run so far.");
+    expect(S.review.reviewNow).toBe("Review changes");
+    expect(S.history.reviewDid.sent_back).toBe("You copied it for an AI tool");
+  });
+  test("with Home's top saying how much changed, the card does not say it again before a review", () => {
+    expect(view).toContain("(res || !heroSays) && (");
   });
 });

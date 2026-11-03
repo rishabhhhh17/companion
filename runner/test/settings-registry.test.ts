@@ -109,6 +109,10 @@ describe("the shipped list of settings", () => {
       "look.density": "comfortable", "look.icons": "plain", "look.stamps": true, "look.gloss": "flat", "look.corners": "soft",
       "look.light": "off",
       "look.colour": "calm",
+      // M65 (4 Nov 2026, the founder: the look is "too childish"): Instrument, the grown up look, is the usual; Friendly is
+      // today's look, kept as a choice. The character matches the look unless one is picked: the faceless glass orb, or the
+      // friendly one with its face, its bubbles and its water.
+      "look.style": "instrument", "look.character": "match",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -160,6 +164,13 @@ describe("the shipped list of settings", () => {
       expect(defOf(k), k).toMatchObject({ section: "look", kind: "choice", default: options[0], options: [...options], scope: "app", applies: ["pages"], store: "settings", live: true });
     }
     expect(defOf("look.stamps")).toMatchObject({ section: "look", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    // M65: the look's style (Instrument, the usual, or Friendly, today's look) and the character in it, for the pages only.
+    // A store saved before has neither key, so it reads the usual: Instrument, with the character matching it.
+    expect(defOf("look.style")).toMatchObject({ section: "look", kind: "choice", default: "instrument", options: ["instrument", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: ["match", "orb", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("look.style")!, "childish").ok).toBe(false);
+    expect(validate(defOf("look.character")!, "friendly").ok).toBe(true);
+    expect(defOf("look.style")!.from).toBeUndefined();
     expect(defOf("character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
     expect(defOf("character.motion")!.options).toEqual(["followMac", "less"]);
     // M46 (F28): How lively, in the order Settings shows the three choices; Still is the usual one.

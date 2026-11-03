@@ -158,7 +158,7 @@ describe("with the island turned off", () => {
     const dock = read("./dock.tsx");
     expect(dock).toContain('const state = characterShows(m, useSetting("home.goToNeeds") === "markTab", useSetting("island.show") !== false);');
     expect(dock).toContain("data-state={state}");
-    expect(dock).toContain("const label = characterWords(m);");
+    expect(dock).toContain("const label = dockWords(charLook, state, waiting, characterWords(m));");   // M65 step 4: the orb says Needs you while something waits
     // M26: the words hide only at rest with nothing waiting; every look at the screen and the microphone is not rest.
     expect(dock).toContain('<div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>');
     expect([...dock.matchAll(/"(island|home)\.\w+"/g)].map((x) => x[0]).sort()).toEqual(['"home.goToNeeds"', '"island.show"']);

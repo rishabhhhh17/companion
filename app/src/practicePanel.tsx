@@ -17,6 +17,7 @@ import { costWords, FIRST_PRACTICE, practiceKind, threadOf, timeWords, type List
 import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
+import "./ui/chrome.css";
 
 const placeLine = (w?: { file?: string; line?: number; message?: string }) => `${w?.file ? `${w.file}, line ${w.line}: ` : ""}${w?.message ?? ""}`;
 

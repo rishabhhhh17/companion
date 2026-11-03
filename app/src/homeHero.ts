@@ -8,7 +8,8 @@ import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { pointFixRoute, practiceOf } from "./practice.ts";
-import { canFix, keyWarned, type ReviewCard } from "./review.ts";
+import { canFix, fixedSince, keyWarned, type ReviewCard } from "./review.ts";
+import type { Ring } from "./characters.ts";
 
 /** The quiet buttons with words in the top bar, in order: Learn (only until the first practice is done, or while it has
  *  something for the person or is open), then History, Memory and Settings. Now is Home itself. */
@@ -25,7 +26,7 @@ export const placeAfter = (open: Tab, pressed: Tab): Tab => (pressed === open ? 
  *  detail: after a result, the verdict's own sentence (M45), drawn muted under the line. */
 export type HeroTone = "idle" | "working" | "needsYou" | "done" | "notDone" | "partly" | "plain";
 /** `count`: the line is workingLine(count), so the page can count the cost up to it (M55, smoothMotion.ts CountUp). */
-export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string; count?: number };
+export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string; count?: number; /** Friendly's words where they differ (ReviewLead) */ friendly?: { headline: string; line: string } };
 /** The working line with what the job has cost so far ("About 12 cents so far"). */
 export const workingLine = (usd: number): string => S.look.working(formatUsd(usd));
 
@@ -382,20 +383,47 @@ export function blockerOf(o: { connected: Model["connected"] | string; runnerUp:
 /** Changes from another AI tool that lead Home (item 11): waiting to be reviewed, being reviewed, or reviewed with something
  *  found that is not fixed yet. main: Review the changes, only while nothing has started; once reviewed, the card's own
  *  Fix it is the one main button, so the hero has none. */
-export type ReviewLead = { headline: string; line: string; main: "review" | null };
+export type ReviewLead = { headline: string; line: string; main: "review" | null; stop: boolean; friendly?: { headline: string; line: string } };
+/** A stop's headline in Instrument is the problem itself (M65 step 4): the first reason that still holds (a recheck may
+ *  have marked some "Changed since", as the runner's own stop line skips them, review/service.ts stateFor), as one line
+ *  with no full stop at its end. With none left open, the rating's own words. */
+const problemOf = (r: ReviewCard): string => {
+  const open = r.result?.reasons.find((_, i) => !fixedSince(r, i));
+  return (open?.say ?? S.review.rating.stop).trim().replace(/\.$/, "");
+};
+/** `friendly`: Friendly's words where they differ from Instrument's (M65 step 6, the review): Friendly is the look from
+ *  before, so on a stop its headline still says Fix this first, and on a key, the key line under it. The page shows one of
+ *  the two by a token (ui/parts.tsx Said), never by reading the style. */
 export function reviewLead(r: ReviewCard | null | undefined, project: string): ReviewLead | null {
   if (!r || !project || r.project.replace(/\/+$/, "") !== project.replace(/\/+$/, "")) return null;
   // A fix asked for from the review, before its task has begun (the card closes when it begins).
-  if (r.fix === "sent") return { headline: S.review.fixStarting, line: S.review.lead(r.count), main: null };
-  // M57 feature 5: the instant key warning leads as Fix this first, before any review ran.
-  if (r.stage === "ready" && keyWarned(r)) return { headline: S.review.rating.stop, line: S.review.keyWarning, main: r.asked ? null : "review" };
-  if (r.stage === "ready") return { headline: S.review.lead(r.count), line: r.away ? S.review.away[r.away] : S.review.heroLine(r.count), main: r.asked ? null : "review" };
-  if (r.stage === "reviewing") return { headline: S.review.lead(r.count), line: r.proof ? S.review.reviewingChecks : S.review.reviewing, main: null };
-  if (r.result && r.result.rating !== "safe" && canFix(r)) return { headline: S.review.rating[r.result.rating], line: S.review.lead(r.count), main: null };
+  if (r.fix === "sent") return { headline: S.review.fixStarting, line: S.review.lead(r.count), main: null, stop: false };
+  // M57 feature 5: the instant key warning leads, before any review ran. M65 step 4: the status line says Fix this first in
+  // red; the headline names the file and the line under it says how much changed, once.
+  if (r.stage === "ready" && keyWarned(r)) {
+    const files = [...new Set(r.keys!.map((k) => k.file))];
+    return { headline: S.review.keyHeadline(files), line: S.review.riskyLine(r.count, files.length), main: r.asked ? null : "review", stop: true,
+      friendly: { headline: S.review.rating.stop, line: S.review.keyWarning } };
+  }
+  if (r.stage === "ready") return { headline: S.review.lead(r.count), line: r.away ? S.review.away[r.away] : S.review.heroLine(r.count), main: r.asked ? null : "review", stop: false };
+  if (r.stage === "reviewing") return { headline: S.review.lead(r.count), line: r.proof ? S.review.reviewingChecks : S.review.reviewing, main: null, stop: false };
+  if (r.result && r.result.rating !== "safe" && canFix(r)) {
+    const stop = r.result.rating === "stop";
+    const line = S.review.lead(r.count);
+    return stop ? { headline: problemOf(r), line, main: null, stop, friendly: { headline: S.review.rating.stop, line } } : { headline: S.review.rating[r.result.rating], line, main: null, stop };
+  }
   // Safe on a look, but the project's checks did not run on the changes: it keeps leading, so Home never says the project
   // works over them (must fix 11).
-  if (r.result && r.result.rating === "safe" && r.result.checks !== "passed") return { headline: S.review.rating.safe, line: S.review.safeUnchecked, main: null };
+  if (r.result && r.result.rating === "safe" && r.result.checks !== "passed") return { headline: S.review.rating.safe, line: S.review.safeUnchecked, main: null, stop: false };
   return null;
+}
+
+/** Home's top already says the review's rating (its headline is the rating's words, or, on a stop, the status line says Fix
+ *  this first over the problem itself), so the card leads with its one line only. */
+export function reviewHeroSays(mode: HomeMode, lead: ReviewLead | null, r: ReviewCard | null | undefined): boolean {
+  if (mode !== "review" || !lead || !r) return false;
+  if (r.result) return lead.stop || lead.headline === S.review.rating[r.result.rating];
+  return keyWarned(r) && lead.stop;
 }
 
 /** In the wide Home, the hero folds to one line (no pond, no main button) while a card that needs a tap shows (item 13): an
@@ -405,7 +433,54 @@ export function heroCompact(m: Model, reviewOn: boolean): boolean {
 }
 const resultIsFresh = (m: Model): boolean => (m.character === "done" || m.character === "error") && m.agents[m.task!.agent] === m.character;
 
-/** The live line under the working card's steps (item 25): which try it is, else the check under way, else the last step. */
+/** The live line under the working card's steps (item 25): which try it is, else the check under way, else the last step,
+ *  else what the character is doing (Listening, Checking your project, Working). */
 export function jobNowWords(m: Pick<Model, "task"> & Partial<Model>, retry: string | null, lines: readonly { words: string }[]): string {
   return retry ?? m.task?.proof?.steps.find((s) => s.status === "running")?.label ?? lines.at(-1)?.words ?? characterWords(m as Model);
 }
+/** That line in each look (M65 step 6): Instrument's status line over the card already says Working, so there it says
+ *  Getting started instead; Friendly keeps its own words (`friendly`, only where they differ; ui/parts.tsx Said). */
+export function jobNowSays(words: string): { text: string; friendly?: string } {
+  return words.trim().toLowerCase() === S.ui.status.working.toLowerCase() ? { text: S.home.gettingStarted, friendly: words } : { text: words };
+}
+
+
+// ---- the Instrument look (M65, 4 Nov 2026, the founder: the look is "too childish"; look A from the lab) ----
+
+/** The status line's kind over Home's headline (ui/parts.tsx StatusLine): Needs you, Proven, Not checked yet, Working or
+ *  Not fixed yet. A result says its own verdict (only a proven fix is Proven); at rest, how the project is from its last
+ *  check. Nothing can run (no key, the engine stopped) is Needs you, never Not fixed yet. An answer from Look it up or
+ *  Rescue is no check of anything, so it has no status line, and neither has Home with no project yet. */
+export type HeroStatus = keyof typeof S.ui.status;
+const RESULT_STATUS: Record<HeroTone, HeroStatus> = { done: "proven", notDone: "stop", partly: "notChecked", plain: "notChecked", needsYou: "needs", working: "working", idle: "notChecked" };
+const REST_STATUS: Record<StatusKind, HeroStatus | null> = { works: "proven", failing: "stop", changed: "notChecked", unchecked: "notChecked", noProject: null };
+export function heroStatusOf(mode: HomeMode, status: Pick<HomeStatus, "kind">, tone: HeroTone, reviewStop = false): HeroStatus | null {
+  if (mode === "working") return "working";
+  // Changes rated stop, or a key in the code (M65 step 4): red, as the card's own mark is, never amber.
+  if (mode === "review" && reviewStop) return "fixFirst";
+  if (mode === "question" || mode === "needs" || mode === "review" || mode === "blocked") return "needs";
+  if (mode === "result") return RESULT_STATUS[tone];
+  if (mode === "answer") return null;
+  return REST_STATUS[status.kind];
+}
+/** The line under the headline says only what the status line says ("Working" under "Working"): Instrument leaves it out. */
+export const lineSaidByStatus = (kind: HeroStatus | null, line: string): boolean => kind !== null && S.ui.status[kind].trim().toLowerCase() === line.trim().toLowerCase();
+/** The status line steps aside when the headline already says the same words ("Not checked yet" twice, one over the other). */
+export const statusLineShown = (kind: HeroStatus | null, headline: string): kind is HeroStatus =>
+  kind !== null && S.ui.status[kind].trim().toLowerCase() !== headline.trim().toLowerCase();
+
+/** The orb's ring on Home agrees with the status line, so the colour never says one thing while the words say another. At
+ *  rest it has none (the lab: no ring at rest), whatever the last check said; the status line says that. */
+const STATUS_RING: Record<HeroStatus, Ring | null> = { needs: "needs", proven: "proven", stop: "stop", working: "working", notChecked: null, fixFirst: "stop" };
+export const heroRingOf = (mode: HomeMode, kind: HeroStatus | null): Ring | null => (mode === "rest" || kind === null ? null : STATUS_RING[kind]);
+
+/** The footer line under Home's work: when the project was last checked on one side, and Undo is ready on the other (only
+ *  when the result offers it). None when it would say nothing. */
+export type HomeFoot = { start: string; end: string };
+export function homeFoot(status: Pick<HomeStatus, "ago">, undoReady: boolean): HomeFoot | null {
+  const start = status.ago ? S.home.checkedAgo(status.ago) : "";
+  const end = undoReady ? S.home.undoReady : "";
+  return start || end ? { start, end } : null;
+}
+/** The line under the status headline, unless the footer already says it (Checked 4 min ago, once). */
+export const statusSubShown = (sub: string, foot: HomeFoot | null): string => (sub && sub !== foot?.start ? sub : "");

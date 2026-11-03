@@ -1,0 +1,94 @@
+/* M65 step 2, the chrome in the Instrument look: everything around Home. Every rule here is gated on the Instrument style
+   (data-style) or on the orb character (data-character), so Friendly is exactly as it was (chrome.test.ts). It writes no
+   colour and no size of its own: each value is a token from ui/tokens.css. Loaded by the pages it styles (dock.tsx,
+   island.tsx, settingsPage.tsx, practicePanel.tsx), after style.css.
+
+   The faceless glass orb in the small places (flowflowMini.tsx): the notch's wing, its panel, the practice panel and
+   Settings' About. Its own drawing carries the water's colour, so the hue turn the friendly pictures take is off. */
+.ff-orb[data-character="orb"] { display: grid; place-items: center; filter: none; }
+.island-wing .ff-orb[data-character="orb"] { --orb: var(--orb-notch); --orb-gap: var(--hair); width: var(--orb-notch); }
+.island-panel .ff-orb[data-character="orb"] { --orb: var(--orb-panel); --orb-gap: var(--hair); height: auto; }
+
+/* The orb on the screen's edge (dock.tsx): the same orb, a little bigger, in the middle of the character's button. The
+   window keeps its size (island.rs is unchanged). The word under it takes the style's small corners. */
+.character[data-character="orb"] { --orb: var(--orb-edge); display: grid; place-items: center; }
+.dock[data-character="orb"] .dock-label { border-radius: var(--r-key); }
+/* The count of questions waiting sits on the orb's own shoulder, not on the far corner of the button. It is amber with dark
+   words, like the ring it sits on (needs you), never the notch's black. */
+.character[data-character="orb"] .badge { top: calc(50% - var(--orb) / 2 - var(--space-1)); right: calc(50% - var(--orb) / 2 - var(--space-1)); background: var(--amber); color: var(--amber-ink); box-shadow: none; }
+
+/* The island stays the notch's black (keepNight; no colour is set here). Under Instrument its panel takes the style's
+   small corners: 6 on a button, 10 on the shape and its cards. The pill in the menu bar stays a pill. */
+.island[data-style="instrument"] { --r-control: var(--r-key); --r-main: var(--r-key); --r-chip: var(--r-stamp); --r-card: var(--r-bubble); }
+
+/* Settings in Instrument: the open page is a plain neutral row, like the rest of the list. No stripe of light, no glow,
+   no tint of the water; a hover is a fainter fill of the same grey. */
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item { border-radius: var(--r-control); }
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] { background: var(--surface-2); box-shadow: none; }
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] .ic { color: var(--fg); }
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { display: none; }
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+:root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):active { background: var(--surface-2); }
+
+/* The practice panel: the orb at Home's size beside the line, and the line in plain quiet words, not a speech bubble. */
+:root[data-character="orb"] .pr-peek:has(+ .practice) { --peek: var(--orb); }
+:root[data-style="instrument"] .pr-peek:has(+ .practice) .say { padding: 0; border: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; color: var(--fg-2); }
+:root[data-style="instrument"] .pr-peek:has(+ .practice) .say::after { display: none; }
+
+/* ---------- Home in Instrument, after the critics (M65 step 4) ----------
+   Three critics read the shots of Home. What they found is fixed here, each rule gated on Instrument, so Friendly is as it
+   was. Values are tokens (ui/tokens.css).
+   Cards are flat: the page's first step with a hairline. No tinted glow, halo or wash (a glow is not a meaning). A card
+   with a meaning's edge (amber, waiting on you) keeps it. */
+:root[data-style="instrument"] .home .view .panel:not(.bare):not(.amber), :root[data-style="instrument"] .home .ui-group-card { background: var(--surface-1); box-shadow: var(--card-flat); }
+:root[data-style="instrument"] .home .view .panel.job, :root[data-style="instrument"] .home .view .panel.practice { background-image: none; }
+/* The working card's breathing blue rim is Friendly's: the status line and the step bar say it is at work. */
+:root[data-style="instrument"] .home .view .panel.job::after { display: none; }
+
+/* The ask box is a quiet field. Home puts the cursor in it every time it opens, so an accent frame or a glow round it was
+   the loudest thing on the page and always on. Its edge is neutral: a control's edge at rest, a little brighter on hover
+   and plainly brighter while it has the cursor, each 3 to 1 or more on the page and on the field (ui/tokens.css). */
+:root[data-style="instrument"] .home .askwrap .ask { border-color: var(--ask-edge); box-shadow: none; }
+:root[data-style="instrument"] .home .askwrap .ask:hover { border-color: var(--ask-hover-edge); }
+:root[data-style="instrument"] .home .askwrap .ask:focus-within { border-color: var(--ask-focus-edge); box-shadow: none; }
+
+/* One size for a screen's title: the folded hero (a card under it that needs a tap) keeps the 17 point headline, so the
+   most urgent state is never the smallest. A card's own title is the card size, never a second page title. */
+:root[data-style="instrument"] .home[data-side] .hero[data-compact] .headline, :root[data-style="instrument"] .home[data-side] .hero[data-compact] .status-head { font-size: var(--t-display); line-height: var(--lh-display); }
+:root[data-style="instrument"] .home .ui-verdict[data-size="card"] .ui-verdict-words { font-size: var(--t-label); line-height: var(--lh-label); font-weight: var(--w-bold); letter-spacing: 0; }
+:root[data-style="instrument"] .home .ui-verdict[data-size="card"] .ui-verdict-mark .ic { width: var(--icon-md); height: var(--icon-md); }
+:root[data-style="instrument"] .home .ui-verdict[data-size="card"] { column-gap: var(--space-2); }
+
+/* The project's name and Settings' back arrow start on the page's left edge, like the title and the ask box under them.
+   The name keeps its hover fill, drawn a little outside it. */
+:root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn { position: relative; padding-inline: 0; background: transparent; box-shadow: none; }
+:root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--space-1) * -1) calc(var(--space-2) * -1); border-radius: var(--r-control); background: transparent; transition: background-color var(--dur-hover) var(--ease-hover); }
+:root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn:hover::before { background: var(--surface-2); }
+:root[data-style="instrument"] .home .bar > .back { margin-inline-start: calc(var(--space-3) * -1); margin-inline-end: calc(var(--space-2) * -1); }
+
+/* A result: what changed comes first, then Undo these changes, so Undo is offered once you know what it puts back. The
+   card is a column so its parts can take that order; nothing fades over its foot, the page scrolls instead, and a hairline
+   marks where the work goes under the ask box. */
+:root[data-style="instrument"] .home .panel.receipt { display: flex; flex-direction: column; align-items: stretch; }
+:root[data-style="instrument"] .home .panel.receipt > .result-actions { order: 1; align-self: flex-start; margin-top: var(--space-3); }
+:root[data-style="instrument"] .home .panel.receipt > .changes ~ * { order: 2; }
+:root[data-style="instrument"] .home[data-side] .work > .askwrap::before { display: none; }
+:root[data-style="instrument"] .home[data-side][data-more] .work > .askwrap::after { border-top: var(--hair) solid var(--line); }
+
+/* Both side lists mark the open place the same way, as Settings' does: a plain grey row, no stripe of light, no glow. */
+:root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"] { background: var(--surface-2); box-shadow: none; }
+:root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"]::after { display: none; }
+:root[data-style="instrument"] .home[data-side] .side .sb-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
+/* The review's row has its drawing alone, with no chip behind it like no other row; its waiting dot is a solid fill with
+   the page's colour in its mark (amber needs you, red not fixed), never a dim ring. */
+:root[data-style="instrument"] .home[data-side] .side-review .tile { background: none; box-shadow: none; color: var(--fg-2); }
+:root[data-style="instrument"] .home[data-side] .side-work .stamp[data-dot][data-stamp="needsYou"], :root[data-style="instrument"] .home[data-side] .side-work .stamp[data-dot][data-stamp="notFixed"] { border-radius: var(--r-round); background: currentColor; box-shadow: none; }
+:root[data-style="instrument"] .home[data-side] .side-work .stamp[data-dot][data-stamp="needsYou"] .ic, :root[data-style="instrument"] .home[data-side] .side-work .stamp[data-dot][data-stamp="notFixed"] .ic { color: var(--bg); }
+
+/* Dividers inside a card are inset on both sides. */
+:root[data-style="instrument"] .ui-row + .ui-row::before { right: var(--space-4); }
+
+/* History: a review's mark is the size of a task's tile, so every row's words start on one line. */
+:root[data-style="instrument"] .hist-review-mark { min-width: var(--tile-lg); min-height: var(--tile-lg); }
+/* The note under the list (why Undo is on the newest task) starts on the rows' words, not under their drawings. */
+:root[data-style="instrument"] .hist-list + .line.muted { padding-inline-start: calc(var(--tile-lg) + var(--space-3)); }

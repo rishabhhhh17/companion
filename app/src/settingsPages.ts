@@ -51,10 +51,12 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   look: {
     icon: "image",
     groups: [
-      { id: "look.home", items: ["look.layout", "look.theme", "look.colour", "look.water"] },
-      { id: "look.details", items: ["look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"] },
+      { id: "look.home", items: ["look.style", "look.character", "look.layout", "look.theme", "look.colour", "look.water"] },
+      { id: "look.details", items: ["look.corners", "look.density", "look.icons", "look.stamps"] },
     ],
-    more: [],
+    // M65: the light behind Home and the glossy button belong to the Friendly style's water and gel, so they wait in More
+    // options, kept whole, and the Look page stays at ten (the spec, 3.4).
+    more: [{ id: "more.look.extras", items: ["look.light", "look.gloss"] }],
   },
   fixing: {
     icon: "wrench",

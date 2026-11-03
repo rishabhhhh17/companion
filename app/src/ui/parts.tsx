@@ -8,6 +8,7 @@ import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
 import type { Verdict } from "../verdict.ts";
+import type { Ring } from "../characters.ts";
 import { clampTo, commitText, menuOpensUp, moveIndex, stepBy, tabWrap, typeahead, verdictMark, type Range, type Stepped } from "./partsLogic.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
@@ -367,6 +368,50 @@ export function RecentRow({ verdict, name, meta, cost, onOpen, running }: { verd
       <span className="ui-recent-cost" aria-hidden="true">{cost}</span>
     </button>
   );
+}
+
+// ---------- M65, the Instrument look's parts ----------
+
+export type StatusKind = keyof typeof S.ui.status;
+const STATUS_TONE: Record<StatusKind, string> = { needs: "needs", proven: "proven", notChecked: "plain", working: "working", stop: "stop", fixFirst: "stop" };
+/** The small status line over a headline: a 6 px dot and its words, in the meaning's colour (amber needs you, green
+ *  proven, red stop, the accent working, grey not checked). The words always say it, never the colour alone. */
+export function StatusLine({ kind }: { kind: StatusKind }) {
+  return <p className="ui-status" data-tone={STATUS_TONE[kind]}><span className="ui-status-dot" aria-hidden="true" />{S.ui.status[kind]}</p>;
+}
+
+/** The faceless glass orb (the Instrument character): the water's glass from orbArt.ts with a thin ring whose colour says
+ *  the state (characters.ts ringOf). It is a picture only: the status line beside it says the state in words. */
+export function Orb({ src, ring }: { src: string; ring: Ring | null }) {
+  return <span className="ui-orb" data-ring={ring ?? undefined} aria-hidden="true"><img src={src} alt="" draggable={false} /></span>;
+}
+
+/** One changed file: its name, its folder in quiet words, a short tag, and the lines added and taken away. */
+export function FileRow({ name, dir, tag, stop, added = 0, removed = 0 }: { name: string; dir?: string; tag?: string; stop?: boolean; added?: number; removed?: number }) {
+  return (
+    <li className="ui-file">
+      <span className="ui-file-name">{name}{dir ? <span className="ui-file-dir">{dir}</span> : null}</span>
+      {tag ? <span className="ui-tag" data-tone={stop ? "stop" : undefined}>{tag}</span> : <span />}
+      <span className="ui-file-diff">
+        <span className="sr">{S.ui.fileDiff(added, removed)}</span>
+        {added ? <span className="ui-file-plus" aria-hidden="true">+{added}</span> : null}
+        {removed ? <span className="ui-file-minus" aria-hidden="true">{"\u2212"}{removed}</span> : null}
+      </span>
+    </li>
+  );
+}
+
+/** Words that differ between the looks (M65 step 6): Instrument's `text`, and Friendly's own where they are not the same.
+ *  Both are on the page and a token shows one (ui/home.css .say-friendly, .say-instrument), so no page reads the style and
+ *  Friendly keeps the words it had. A hidden one is display: none, so VoiceOver reads only the one shown. */
+export function Said({ text, friendly }: { text: string; friendly?: string }) {
+  if (friendly === undefined || friendly === text) return <>{text}</>;
+  return <><span className="say-instrument">{text}</span><span className="say-friendly">{friendly}</span></>;
+}
+
+/** The footer line under a view: when it was last checked on one side, and whether Undo is ready on the other. */
+export function FootLine({ start, end, className }: { start?: ReactNode; end?: ReactNode; className?: string }) {
+  return <p className={className ? `ui-foot ${className}` : "ui-foot"}><span>{start}</span><span>{end}</span></p>;
 }
 
 // ---------- Settings' frame ----------

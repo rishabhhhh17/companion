@@ -10,6 +10,8 @@ export const PARTS_CSS = (): string => read("./parts.css");
 export const LOOK_CSS = (): string => read("./look.css");
 /** The wide Home (M51 step 2), loaded after look.css. */
 export const WIDE_CSS = (): string => read("./wide.css");
+/** Home in the Instrument look and the faceless orb in Home (M65 step 2), loaded after wide.css on Home's page. */
+export const HOME_CSS = (): string => read("./home.css");
 export const STYLE_CSS = (): string => read("../style.css");
 /** Every rule a page gets, as one text, in cascade order (style.css's own @import lines taken out: they are the other two). */
-export const ALL_CSS = (): string => [TOKENS_CSS(), PARTS_CSS(), LOOK_CSS(), WIDE_CSS(), STYLE_CSS().replace(/^@import [^;]+;\n/gm, "")].join("\n");
+export const ALL_CSS = (): string => [TOKENS_CSS(), PARTS_CSS(), LOOK_CSS(), WIDE_CSS(), HOME_CSS(), STYLE_CSS().replace(/^@import [^;]+;\n/gm, "")].join("\n");

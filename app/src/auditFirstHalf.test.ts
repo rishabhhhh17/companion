@@ -3,7 +3,7 @@
 // settingsSearch.ts, model.ts, confirm.tsx); the stylesheets are read as text for the items that are only a look.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { initial, reduce, visualState, type Model } from "./model.ts";
+import { characterWords, initial, reduce, visualState, type Model } from "./model.ts";
 import { askRoute, blockerOf, heroCompact, heroWords, homeFixRoute, homeMode, homeStatus, jobNowWords, reviewLead, type HomeStatus } from "./homeHero.ts";
 import { need } from "./home.ts";
 import { whatOf, approvalWords } from "./approvals.ts";
@@ -144,8 +144,13 @@ describe("(11) changes waiting for review lead Home", () => {
   test("reviewing: no main button; reviewed and not safe: the rating leads and the card's own Fix it is the only one", () => {
     expect(reviewLead(rc({ stage: "reviewing" }), P)!.main).toBeNull();
     const done = reviewLead(rc({ stage: "reviewed", result: { rating: "stop", touches: [], summary: "", notes: [], reasons: [{ kind: "secret", say: "A key" }], checks: "notRun", sendBack: "", lane: "quick", usdEstimate: 0 } as never }), P)!;
-    expect(done.headline).toBe(S.review.rating.stop);
+    // M65 step 4: a stop's headline is the problem itself, and the status line over it says Fix this first in red.
+    expect(done.headline).toBe("A key");
+    expect(done.stop).toBe(true);
     expect(done.main).toBeNull();
+    const look = reviewLead(rc({ stage: "reviewed", result: { rating: "worth_a_look", touches: [], summary: "", notes: [], reasons: [{ kind: "secret", say: "A key" }], checks: "notRun", sendBack: "", lane: "quick", usdEstimate: 0 } as never }), P)!;
+    expect(look.headline).toBe(S.review.rating.worth_a_look);
+    expect(look.stop).toBe(false);
   });
   test("a safe review, or another folder's, does not lead", () => {
     expect(reviewLead(rc({ stage: "reviewed", result: { rating: "safe", touches: [], summary: "", notes: [], reasons: [], checks: "passed", sendBack: "", lane: "quick", usdEstimate: 0 } as never }), P)).toBeNull();
@@ -277,6 +282,9 @@ describe("(25) the live line under Checking says the check under way", () => {
     expect(jobNowWords(m, "Trying again (2 of 3)", [{ words: "Changing a file" }])).toBe("Trying again (2 of 3)");
     expect(jobNowWords({ ...m, task: { ...m.task!, proof: undefined } } as Model, null, [{ words: "Changing a file" }])).toBe("Changing a file");
     expect(card).toMatch(/jobNowWords\(m, js\.retry, lines\)/);
+    // Before the first step, what the character is doing (M65 step 6: Instrument says Getting started for a bare Working,
+    // homeWords.test.ts).
+    expect(jobNowWords({ ...m, task: { ...m.task!, proof: undefined } } as Model, null, [])).toBe(characterWords({ ...m, task: { ...m.task!, proof: undefined } } as Model));
   });
 });
 

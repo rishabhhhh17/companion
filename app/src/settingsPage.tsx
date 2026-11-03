@@ -45,6 +45,7 @@ import { askTurnOffPro, deleteGoesPro, deleteKeeps, proDeleteProblem, proInvento
 import { LimitPanel, PlanCardView, ProTag } from "./planCard.tsx";
 import { usePlan } from "./usePlan.ts";
 import { resetUsed, risen, useUsedOften, wayLabel } from "./usedOften.ts";
+import "./ui/chrome.css";
 
 const send = (cmd: unknown) => invoke("send_command", { cmd });
 

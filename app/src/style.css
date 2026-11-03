@@ -698,7 +698,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* The rows come with the panel itself, not one by one (M25: it opens on every hover). While the panel is hidden, nothing in
    it keeps animating. */
 .island-panel:not([data-shown]) *, .island-panel:not([data-shown]) *::after { animation-play-state: paused; }
-.island-panel .ip-job { position: relative; overflow: hidden; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: var(--notch-card); box-shadow: inset 0 0 0 1px var(--notch-edge); transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.island-panel .ip-job { position: relative; overflow: hidden; box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: var(--notch-card); box-shadow: inset 0 0 0 1px var(--notch-edge); transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
 .island-panel .ip-job:hover, .island-panel .ip-ask:hover { background: var(--notch-card-hover); }
 .island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 0 0 1px var(--notch-edge-strong); }
 /* While it works, a thin water light runs along the card's foot ("Squibby is acting"). */

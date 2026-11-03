@@ -14,7 +14,7 @@ import type { HistoryItem } from "./model.ts";
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const registry = JSON.parse(read("../../protocol/settings.json")) as { settings: { key: string; kind: string; default: unknown; options?: string[]; applies: string[]; section: string; live: boolean; store: string }[] };
 const def = (k: string) => registry.settings.find((s) => s.key === k);
-const KEYS = ["look.theme", "look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour"] as const;
+const KEYS = ["look.theme", "look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour", "look.style", "look.character"] as const;
 
 // ---------- reading tokens.css ----------
 type Block = { sel: string; media: string | null; decl: Record<string, string> };
@@ -51,6 +51,16 @@ const THEME_TOKENS: [string, Record<string, string>][] = [
   ["Black", { ...root, ...block(':root[data-theme="black"]') }],
   ["Black, more contrast", { ...root, ...block(':root[data-theme="black"]'), ...block(':root[data-theme="black"]', MORE) }],
 ];
+// M65: every theme again in the Instrument style (look.style, the usual since 4 Nov 2026), in the order the page's cascade
+// gives its tokens: :root, Instrument's page, the theme, then Instrument over every theme and over that theme.
+const IS = ':root[data-style="instrument"]';
+for (const [name, theme] of [["Graphite", null], ["Paper", "paper"], ["Deep", "deep"], ["Black", "black"]] as const) for (const m of [false, true]) {
+  const th = theme ? `:root[data-theme="${theme}"]` : null;
+  THEME_TOKENS.push([`Instrument, ${name}${m ? ", more contrast" : ""}`, {
+    ...root, ...(m ? block(":root", MORE) : {}), ...block(IS), ...(m ? block(IS, MORE) : {}),
+    ...(th ? block(th) : {}), ...(th && m ? block(th, MORE) : {}), ...block(`${IS}[data-tone]`), ...(theme ? block(`${IS}[data-theme="${theme}"]`) : {}),
+  }]);
+}
 
 // ---------- colour ----------
 type RGBA = [number, number, number, number];
@@ -112,14 +122,21 @@ describe("the choices are real settings, with their words and one place in Setti
   });
   // M51 polish: the look was three levels deep (Settings, General, More options, Look) as words only. It is a page of its
   // own now, one press from the sidebar, beside the water's colour, and the big choices are pictures.
-  test("all six sit on the Look page, with the layout and the water: Home first, then the details", () => {
+  // M65: the style and the character lead the page; the light and the gloss (the Friendly style's water and gel) moved to
+  // the page's More options, kept whole, so the page stays at ten settings.
+  test("all of them sit on the Look page, with the layout and the water: Home first, then the details, then the extras", () => {
     expect(PAGES.look.groups.map((g) => g.id)).toEqual(["look.home", "look.details"]);
-    expect(PAGES.look.groups[0].items).toEqual(["look.layout", "look.theme", "look.colour", "look.water"]);
-    expect(PAGES.look.groups[1].items).toEqual(["look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
+    expect(PAGES.look.groups[0].items).toEqual(["look.style", "look.character", "look.layout", "look.theme", "look.colour", "look.water"]);
+    expect(PAGES.look.groups[1].items).toEqual(["look.corners", "look.density", "look.icons", "look.stamps"]);
+    expect(PAGES.look.more).toEqual([{ id: "more.look.extras", items: ["look.light", "look.gloss"] }]);
+    expect(S.setGroupTitles["more.look.extras"]).toBe("Light and gloss");
     expect(S.pages.look.title).toBe("Look");
     expect(S.setGroupTitles["look.home"]).toBe("Home");
     expect(S.setGroupTitles["look.details"]).toBe("Details");
-    for (const k of [...KEYS, "look.layout", "look.water"]) expect(placeOf(k), k).toMatchObject({ page: "look", more: false });
+    for (const k of [...KEYS, "look.layout", "look.water"]) {
+      if (k === "look.light" || k === "look.gloss") expect(placeOf(k), k).toMatchObject({ page: "more", more: true, topic: "more.look.extras" });
+      else expect(placeOf(k), k).toMatchObject({ page: "look", more: false });
+    }
     expect(PAGES.general.more.some((t) => t.id === "more.general.look")).toBe(false);
     // Home's topic keeps only how Home behaves and its size, and (M55, adapts to you) what its main button and More ways follow.
     expect(PAGES.general.more.find((t) => t.id === "more.general.home")!.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", { fixed: "usedOften" }]);
@@ -139,9 +156,9 @@ describe("the choices are real settings, with their words and one place in Setti
 
 describe("each choice is a data attribute on the root, never a branch in the code", () => {
   test("the usual values give the usual attributes, and odd values read as the usual", () => {
-    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm" });
-    expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid" }))
-      .toEqual({ "data-theme": "deep", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid" });
+    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "orb" });
+    expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid", "look.style": "friendly" }))
+      .toEqual({ "data-theme": "deep", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "friendly", "data-character": "friendly" });
     expect(lookAttrs({ "look.theme": "paper" })["data-tone"]).toBe("light");
     for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) for (const junk of [undefined, "", "Compact", 7]) expect(choiceOf(k, junk), `${k} ${String(junk)}`).toBe(LOOK_CHOICES[k].values[0]);
     // Every choice's first value is the registry's usual one; Stamps is a switch, on.
@@ -154,7 +171,7 @@ describe("each choice is a data attribute on the root, never a branch in the cod
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
     applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.corners": "crisp" });
-    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm" });
+    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "orb" });
     const theme: Record<string, string> = {};
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } }, "ocean", "night");
     expect(theme["data-theme"]).toBe("graphite");
@@ -172,10 +189,10 @@ describe("each choice is a data attribute on the root, never a branch in the cod
   test("only tokens.css reads the attributes, and nothing else in the code branches on the choices' values", () => {
     const css = ALL_CSS().replace(/\/\*[\s\S]*?\*\//g, "");
     const outside = css.replace(TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, ""), "");
-    for (const a of ["data-theme", "data-density", "data-icons", "data-stamps", "data-gloss", "data-corners", "data-light", "data-colour"]) expect(outside, a).not.toContain(`[${a}=`);
+    for (const a of ["data-theme", "data-density", "data-icons", "data-stamps", "data-gloss", "data-corners", "data-light", "data-colour", "data-style", "data-character"]) expect(outside, a).not.toContain(`[${a}=`);
     for (const f of ["./card.tsx", "./homeSide.tsx", "./practicePanel.tsx", "./itemMarks.tsx", "./itemLook.ts"]) {
       const src = read(f);
-      for (const k of ["look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour"]) expect(src, `${f} reads ${k}`).not.toContain(`"${k}"`);
+      for (const k of ["look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour", "look.style"]) expect(src, `${f} reads ${k}`).not.toContain(`"${k}"`);
     }
   });
 });
@@ -429,6 +446,31 @@ describe("the details are drawn in the lists", () => {
   });
 });
 
+// M65 step 6 (the review): in Instrument the ask box's edge is the field's only boundary and its only focus cue (the
+// textarea's own outline is transparent), so it is measured, at rest, on hover and in focus, against the page round it and
+// the field's own fill, in every theme. Focus is plainly brighter than rest, so the cursor is never the only sign.
+describe("Instrument's ask box: its edge stands out (3 to 1) at rest and in focus, in every theme", () => {
+  const chrome = blocks(read("./ui/chrome.css"));
+  const askRule = (sel: string) => chrome.find((b) => b.sel === `:root[data-style="instrument"] .home .askwrap .ask${sel}`)?.decl ?? {};
+  test("the field's rules read the ask tokens", () => {
+    expect(askRule("")["border-color"]).toBe("var(--ask-edge)");
+    expect(askRule(":hover")["border-color"]).toBe("var(--ask-hover-edge)");
+    expect(askRule(":focus-within")["border-color"]).toBe("var(--ask-focus-edge)");
+  });
+  for (const [name, t] of THEME_TOKENS.filter(([n]) => n.startsWith("Instrument"))) {
+    test(name, () => {
+      for (const under of ["--bg", "--surface-1", "--inset"]) {
+        const u = colour(`var(${under})`, t);
+        const edge = (k: string) => ratio(over(colour(`var(${k})`, t), u), u);
+        expect(edge("--ask-edge"), `at rest on ${under}`).toBeGreaterThanOrEqual(3);
+        expect(edge("--ask-hover-edge"), `on hover on ${under}`).toBeGreaterThanOrEqual(3);
+        expect(edge("--ask-focus-edge"), `in focus on ${under}`).toBeGreaterThanOrEqual(3);
+        expect(edge("--ask-focus-edge"), `focus is plainly brighter than rest on ${under}`).toBeGreaterThanOrEqual(edge("--ask-edge") * 2);
+      }
+    });
+  }
+});
+
 // M51 polish: Settings' switches were white with a black knob in every water, and the picked option of a segmented choice
 // was grey on grey, so what is picked barely showed and the water was nowhere in Settings. Both take the accent now: the
 // water, mixed into the page's words so it reads in every theme with every water.
@@ -456,7 +498,10 @@ describe("the accent: what is picked in Settings, in the water chosen", () => {
     // accent's own deep blue (measured above).
     expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]')?.decl.background).toBe("var(--switch-on)");
     expect(parts.find((b) => b.sel === '.ui-switch[aria-checked="true"]::after')?.decl.background).toBe("var(--knob-on)");
-    expect(parts.find((b) => b.sel === ".ui-seg-thumb")?.decl).toMatchObject({ background: "var(--pick-wash)", border: "var(--hair) solid var(--pick)" });
+    // M65: through tokens of its own, which are the accent's in Friendly and a neutral thumb with a 3 to 1 edge in Instrument.
+    expect(parts.find((b) => b.sel === ".ui-seg-thumb")?.decl).toMatchObject({ background: "var(--seg-thumb)", border: "var(--hair) solid var(--seg-thumb-edge)" });
+    expect(root["--seg-thumb"]).toBe("var(--pick-wash)");
+    expect(root["--seg-thumb-edge"]).toBe("var(--pick)");
     expect(parts.find((b) => b.sel === '.ui-pic[aria-checked="true"]')?.decl["border-color"]).toBe("var(--pick)");
   });
   test("Paper keeps the pastel tiles with a deep ink; the dark themes take the deep washes", () => {

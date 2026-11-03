@@ -77,6 +77,8 @@ describe("the chrome does not read a skin", () => {
       "--notch-ok", "--notch-bad", "--fr-ok", "--fr-bad", "--fr-amber", "--fr-note", "--fr-drop-deep", "--fl-ok", "--fl-bad",
       // M51 (the founder, 1 Nov 2026): the marker, the one highlighter on the line Flowflow found, and its ink.
       "--marker", "--marker-ink",
+      // M65: the accent as a fill (Instrument's main button and the working ring), the water chosen a step deeper.
+      "--acc",
       // 1 Nov 2026 (the elemental colour): the sea under Home's waterline, before the room lights it, is the water's too.
       "--w-sea",
       // M51 step 3 (the founder asked for HeyClicky's kind of fun): the five soft tints of the items' tiles and their inks. They
@@ -118,7 +120,7 @@ describe("the chrome does not read a skin", () => {
     // not allowed, and a sidebar page that needs attention. In Settings (the spec, 3.10): the Plan card's mark when the Pro key
     // is not active (it needs you).
     const uses = css.split("\n").filter((l) => /var\(--amber(-line)?\)/.test(l) && !/^--|^:root|^@media/.test(l.trim()) && !l.trim().startsWith("/*"));
-    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|data-tone="partly"|data-tone="mixed"|data-tone="ask"|data-kind="notAllowed"|\.sb-dot|\.plan-line\[data-mark="amber"\]|@keyframes (glow|pose-glow)|--amber-line: var\(--amber\)/);
+    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|data-tone="partly"|data-tone="mixed"|data-tone="ask"|data-kind="notAllowed"|\.sb-dot|\.ui-status\[data-tone="needs"\]|\.plan-line\[data-mark="amber"\]|@keyframes (glow|pose-glow)|--amber-line: var\(--amber\)/);
   });
   test("the main button is flat silver: one fill, one edge of light, no band (the founder, 31 Oct: no random middle line)", () => {
     const parts = PARTS_CSS(), tokens = TOKENS_CSS();

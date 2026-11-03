@@ -3,8 +3,8 @@
 // `keepNight`: the island page. The notch is the hardware notch and stays black in every theme (ui/tokens.css), so its page
 // takes the water only and keeps Night's tokens (a "night" reads as Graphite, lookfeel.ts themeOf): Paper's dark words
 // would vanish on the black panel.
-// `choices`: Home and Settings also take the other look choices (M51 step 3: density, icons, stamps, gloss, corners) as data
-// attributes on the root (lookfeel.ts applyLookChoices). The character's window and the island keep their own look.
+// `choices`: Home and Settings also take the other look choices (M51 step 3: density, icons, stamps, gloss, corners; M65:
+// the style and the character) as data attributes on the root (lookfeel.ts applyLookChoices). The character's window and the island keep their own look.
 // `forceTheme`: a theme to show whatever is chosen. Nothing uses it since 2 Nov 2026: the first run takes the chosen theme
 // (a new person gets Black, the usual), its tokens are the theme's own (ui/tokens.css --fr-*).
 import { useEffect } from "react";
@@ -17,9 +17,10 @@ export function useLook(opts: { keepNight?: boolean; choices?: boolean; forceThe
   useEffect(() => { applyLook(document.documentElement, water, theme); }, [water, theme]);
   const density = useSetting("look.density"), icons = useSetting("look.icons"), stamps = useSetting("look.stamps");
   const gloss = useSetting("look.gloss"), corners = useSetting("look.corners"), light = useSetting("look.light"), colour = useSetting("look.colour");
+  const style = useSetting("look.style"), character = useSetting("look.character");
   const choices = !!opts.choices && !opts.keepNight;
   useEffect(() => {
-    if (choices) applyLookChoices(document.documentElement, { "look.density": density, "look.icons": icons, "look.stamps": stamps, "look.gloss": gloss, "look.corners": corners, "look.light": light, "look.colour": colour });
-  }, [choices, density, icons, stamps, gloss, corners, light, colour]);
+    if (choices) applyLookChoices(document.documentElement, { "look.density": density, "look.icons": icons, "look.stamps": stamps, "look.gloss": gloss, "look.corners": corners, "look.light": light, "look.colour": colour, "look.style": style, "look.character": character });
+  }, [choices, density, icons, stamps, gloss, corners, light, colour, style, character]);
   return flowColours(waterOf(water));
 }

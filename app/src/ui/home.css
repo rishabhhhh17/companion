@@ -1,0 +1,65 @@
+/* Home in the Instrument look (M65 step 2, 4 Nov 2026, the founder: the look is "too childish"; look A from the lab), tall
+   and wide, and the first run. Loaded after wide.css on Home's page only.
+   Two kinds of rule, and neither reads a look attribute (only ui/tokens.css does, lookChoices.test.ts):
+   - The faceless orb (homeCharacter.tsx draws .home-orb only when the look's character is the orb): found with :has, so
+     the friendly character keeps its water, its glow and its bubble exactly as before.
+   - What the style changes (the status line, the footer line, Friendly's chatty lines, the ask box's sheen): each reads a
+     token that only Instrument sets (ui/tokens.css), with today's value as the fallback, so Friendly is unchanged.
+   Colours, sizes and corners are tokens (homeInstrument.test.ts). */
+
+/* ---------- The orb in Home: about 40 points at the top right of the words ----------
+   No water band under it, no sea down to the ask box, no glow behind it and no fade over its foot. The words keep their own
+   column beside it, so nothing runs under it. */
+.home:has(.hero .home-orb) .hero[data-mode] { --char: var(--orb); --line-up: 0px; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; min-height: 0; padding-top: var(--space-4); padding-bottom: var(--space-3); }
+.home:has(.hero .home-orb) .hero[data-mode] .hero-words { grid-column: 1; padding-right: 0; align-self: start; margin-bottom: 0; }
+.home:has(.hero .home-orb) .hero[data-mode] .hero-words > h1 { margin-right: 0; }
+.home:has(.hero .home-orb) .hero[data-mode] .home-pond { display: block; grid-column: 2; align-self: start; padding-top: var(--space-1); }
+.home:has(.hero .home-orb) .home-pond > .ch-water { display: none; }
+.home:has(.hero .home-orb) .home-pond::after { display: none; }
+.home:has(.hero .home-orb) .home-pond .ch-char { padding: 0; margin: 0; -webkit-mask-image: none; mask-image: none; }
+.home:has(.hero .home-orb) .home-pond .ch-char::before { display: none; }
+.home:has(.hero .home-orb) .sea-fill { display: none; }
+.home-orb { display: grid; place-items: center; padding: calc(var(--orb-ring) + var(--orb-gap)); }
+
+/* ---------- The orb in the first run ----------
+   At the top right of the panel, under the steps count, as on Home. No rising water, no waterline, no falling drop and no ripple: the steps count
+   says how far along it is. It comes in with a short settle that never overshoots (the spring token). */
+.fr:has(.home-orb) > .fr-tank { top: 0; height: auto; background: none; opacity: 1; }
+.fr:has(.home-orb) .fr-tank .waterline { display: none; }
+.fr:has(.home-orb) .fr-tank .fr-float { top: calc(var(--space-6) + var(--h-md) + var(--space-4)); right: var(--space-6); width: auto; translate: none; -webkit-mask-image: none; mask-image: none; }
+.fr-hello:has(.home-orb) .fr-drop, .fr-hello:has(.home-orb) .fr-ripple { display: none; }
+.fr-hello .fr-rise:has(.home-orb) { top: calc(var(--space-4) + var(--space-1)); right: 0; bottom: auto; left: auto; translate: none; -webkit-mask-image: none; mask-image: none; opacity: 1; animation: fr-rise-in var(--dur-3) var(--ease-spring) both; }
+
+/* ---------- What the style shows ----------
+   Instrument: a status line with its dot over the headline, and the footer line under the ask box (when it was checked,
+   and Undo is ready). Friendly: neither, as before. */
+.home .hero-words > .ui-status { display: var(--hero-status-show, none); margin-bottom: var(--space-1); }
+.home .askwrap > .ui-foot { display: var(--home-foot-show, none); margin: var(--space-2) 0 0; padding: var(--space-2) 0 0; }
+/* In the tall Home the ask box sits near the top, so the footer line is the page's last line (M65 step 4). */
+.home .home-foot-end { display: var(--home-foot-show, none); margin: var(--space-4) 0 0; padding: var(--space-2) 0 0; }
+/* Words that differ between the looks (ui/parts.tsx Said): Friendly's by default, Instrument's where its tokens say so. */
+.say-friendly { display: var(--say-friendly-show, inline); }
+.say-instrument { display: var(--say-instrument-show, none); }
+/* Friendly's chatty lines, which Instrument leaves out: the invitation under the ask box ("Type a small task in the box
+   above, then press Return."), the verdict's second sentence under a result, a status line the footer line already says,
+   Flowflow's bubble, and the mark before the status headline (the status line's dot says it). */
+.home .askwrap .ask-hint { display: var(--hero-chatty-show, block); }
+.home .hero-words > h1 ~ .subline.muted:not(.pro-last) { display: var(--hero-chatty-show, block); }
+.home .status-head[data-foot-says] .status-sub { display: var(--hero-chatty-show, block); }
+.home .hero-words[data-line-said] > h1 + .subline { display: var(--hero-chatty-show, block); }   /* "Working" under "Working" */
+.home[data-side] .hero[data-compact] .status-head[data-foot-says] .status-sub { display: var(--hero-chatty-show, -webkit-box); }   /* the folded hero keeps its one clamped line */
+.home .hero .say { display: var(--hero-say-show, inline-block); }
+.home .hero .status-head .ui-verdict-mark { display: var(--hero-mark-show, grid); }
+.home .status-head:has(.ui-verdict:not([data-bare])) .status-sub { padding-left: var(--status-sub-indent, calc(20px + var(--space-2))); }
+/* The ask box: in Instrument a quiet field, the page's first step up with its edge and no sheen, drop or glow under it. The
+   key caps stay inside it on the right. Friendly keeps its glass. */
+.home .askwrap .ask { box-shadow: var(--ask-shadow, inset 0 var(--hair) 3px var(--sheen-top), 0 var(--hair) 4px var(--sheen-drop), 0 14px 30px -14px var(--el-shadow)); }
+.home .askwrap .ask { padding: var(--ask-pad, calc(4rem / 14)); }
+/* Its focus is the focus colour on its edge alone: Home puts the cursor in it whenever it opens, so a ring and a glow round
+   it would be on all the time. The edge is 3 to 1 or more on the field (a11y.test.ts). */
+.home .askwrap .ask:focus-within { box-shadow: var(--ask-focus-shadow, inset 0 var(--hair) 3px var(--sheen-top), 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent), 0 14px 30px -14px var(--el-shadow)); }
+/* The band under the wide Home's ask box is the page itself in Instrument (there is no room light to blend into). */
+.home[data-side] .work > .askwrap { --band: var(--ask-band, color-mix(in srgb, var(--el-foot) calc(var(--room-floor-a) * var(--room-show)), var(--room-base))); }
+/* The first run's headline: smaller in Instrument, its answer in the page's plain grey rather than the room's tint. */
+.home .fr .fr-title { font-size: var(--first-title-size, calc(28rem / 14)); line-height: var(--first-title-lh, 1.08); letter-spacing: var(--first-title-track, -0.03em); }
+.home .fr .fr-title-2 { color: var(--first-title-2, var(--el-text)); }

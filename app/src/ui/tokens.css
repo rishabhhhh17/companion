@@ -40,6 +40,7 @@
   --focus: var(--flow-focus);          /* the focus ring: the accent's light, 3 to 1 or more on every surface */
   --ok: #34D399;                       /* proven only */
   --amber: #FFB224;                    /* needs you only */
+  --amber-ink: #1A1A1A;                /* words on an amber fill (the count waiting on the orb) */
   --bad: #F0605F;                      /* not fixed, refused, the danger zone only (#E5484D falls under 4.5 to 1 as words, so this tint) */
   --bad-edge: rgba(240, 96, 95, .45);
   --bad-hover: rgba(240, 96, 95, .1);
@@ -434,6 +435,40 @@
   --fl-ok: #187A42;
   --fl-edge: rgba(255, 255, 255, .08);
 
+  /* ---------- M65, the grown up look: tokens the parts read so the style can switch them. Each value here is the one the
+     look had before (Friendly), so a Friendly page is exactly as it was; Instrument sets its own (the foot of this file). */
+  --r-main: var(--r-pill);             /* the one main button, Home's keys, the open place and the send arrow */
+  --r-chip: var(--r-pill);             /* a proof chip */
+  --r-badge: var(--r-pill);            /* a badge on an item in Home */
+  --tag-bg: transparent;               /* a short tag (ui/parts.css .ui-tag) */
+  --tag-edge: var(--line-strong);
+  --tag-stop-bg: var(--bad-hover);     /* a tag that says stop (a key in the code): red words on a faint red */
+  --seg-thumb: var(--pick-wash);       /* the picked option of a segmented choice */
+  --seg-thumb-edge: var(--pick);
+  /* The accent as a fill (Instrument's main button and the working ring): a deeper step of the water chosen, so white words
+     read on it (4.5 to 1) and it stands out on every page (3 to 1). Each water has its own (below; instrument.test.ts). */
+  --acc: #2F6FE4;
+  --acc-hover: color-mix(in srgb, var(--acc) 90%, #000000);
+  --acc-press: color-mix(in srgb, var(--acc) 80%, #000000);
+  --acc-ink: #FFFFFF;
+  /* The faceless orb (ui/parts.css .ui-orb): its size in Home, its ring and the gap between them. Each state's ring is one
+     meaning colour (characters.ts ringOf): red stop, amber needs you, green proven, the accent while working. */
+  --orb: 40px;
+  --orb-ring: 2px;
+  --orb-gap: 2px;
+  --ring-stop: var(--bad);
+  --ring-needs: var(--amber);
+  --ring-proven: var(--ok);
+  --ring-working: var(--focus);        /* the accent's light step on a dark page, its deep step on White: it parts from the blue orb */
+  /* The status line's words in each meaning (ui/parts.css .ui-status): its dot is the ring's colour. */
+  --status-working: var(--stamp-working);
+  --tick-fill: var(--water);           /* a step's tick in the thread (ui/look.css .thread-tick), under the gel's ink */
+  /* The orb in the chrome (ui/chrome.css): on the screen's edge (inside the 132 by 94 button), in the notch's wing and in
+     its panel. */
+  --orb-edge: 56px;
+  --orb-notch: 16px;
+  --orb-panel: 24px;
+
   font: 14px var(--font);
 }
 
@@ -443,6 +478,118 @@
 :root[data-text="larger"] { font-size: 18px; }
 :root[data-text="largest"] { font-size: 20px; }
 :root[data-text="huge"] { font-size: 28px; }
+
+/* ---------- Instrument (look.style, M65; 4 Nov 2026, the founder: the look is "too childish", then picked look A from the
+   lab): like Raycast or Linear. A graphite page with hairlines, the Mac's own face at 13 px, a 17 px semibold headline with
+   a little negative tracking, small corners (6 on a control, 10 on a card), 28 px rectangle buttons (the main one filled with
+   the accent, the others a hairline edge), and colour only where it means something. Motion settles with no overshoot, in
+   150 to 250 ms. Friendly, the look from before, has no rule: it is :root's own tokens.
+   This block comes before the themes, so Black, White and Deep keep their own page colours; the Graphite page is the lab's
+   own (#161618). What must win over a theme (the main button, Home's keys) is in its own block at the foot of this file. */
+:root[data-style="instrument"] {
+  --bg: #161618;
+  --surface-1: #1D1D20;
+  --surface-2: #26262A;
+  --surface-3: #2E2E33;
+  --inset: #1D1D20;
+  --fg: #EDEDEF;
+  --fg-2: #A1A1A8;                     /* 5 to 1 or more on every step */
+  --fg-3: #85858D;
+  --line: rgba(255, 255, 255, .07);
+  --line-strong: rgba(255, 255, 255, .12);
+  --ok: #3DD68C;
+  --bad: #F2655F;
+  --bad-edge: rgba(242, 101, 95, .45);
+  --bad-hover: rgba(242, 101, 95, .1);
+  --bad-press: rgba(242, 101, 95, .16);
+  --pond: #121214;
+  --key-fill: #26262A;
+  --key-edge: rgba(255, 255, 255, .1);
+  --key-down: color-mix(in srgb, var(--water) 14%, #26262A);
+  --bubble: rgba(38, 38, 42, .92);
+  --room-base: #131315;
+  --fg-2-room: #A1A1A8;
+  --shadow-raised: 0 12px 28px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .06);
+
+  /* Type: 13 px body, a 17 px semibold headline. */
+  --t-answer: calc(14rem / 14);   --lh-answer: calc(20rem / 14);
+  --t-display: calc(17rem / 14);  --lh-display: calc(22rem / 14);
+  --t-verdict: calc(17rem / 14);  --lh-verdict: calc(22rem / 14);
+  --track-display: -0.012em; --track-verdict: -0.012em;
+  /* Space and size: 28 px buttons, rows a little closer. A target stays 24 points or more. */
+  --space-row-y: 7px;
+  --space-btn-x: 12px;
+  --space-btn2-x: 12px;
+  --h-md: 28px;
+  --h-lg: 28px;
+  --h-row: 36px;
+  --h-bar: 40px;
+  --h-ask: 36px;
+  --h-chip: 22px;
+  /* Corners: 6 on a control, 10 on a card, 4 on a tag. */
+  --r-key: 4px;
+  --r-thumb: 4px;
+  --r-control: 6px;
+  --r-card: 10px;
+  --r-panel: 14px;
+  --r-tile: 4px;
+  --r-stamp: 4px;
+  --r-bubble: 8px;
+  --r-glass: var(--r-card);
+  --r-main: var(--r-control);
+  --r-chip: var(--r-key);
+  --r-badge: var(--r-key);
+  /* Tags are a quiet fill, segmented choices a neutral thumb found by its edge (3 to 1). */
+  --tag-bg: var(--surface-2);
+  --tag-edge: transparent;
+  --seg-thumb: var(--surface-3);
+  --seg-thumb-edge: var(--edge-control);
+  /* Motion: 150 to 250 ms, and the spring settles with no overshoot (it never passes 1). */
+  --dur-1: 150ms; --dur-3: 250ms; --dur-4: 250ms;
+  --dur-enter: 200ms;
+  --dur-move: 220ms;
+  --ease-spring: linear(0, 0.184, 0.35, 0.493, 0.61, 0.703, 0.776, 0.832, 0.876, 0.908, 0.932, 0.95, 0.964, 0.974, 0.981, 0.986, 0.99, 0.993, 0.995, 0.996, 1);
+  --press: .98;  /* Home in Instrument (ui/home.css, M65 step 2): the status line and the footer line show; Friendly's chatty lines (the
+     invitation under the ask box, a result's second sentence, Flowflow's bubble, the mark before the status) do not, and
+     the ask box has no sheen. Friendly sets none of these: ui/home.css falls back to today's values. */
+  --hero-status-show: flex;
+  --home-foot-show: flex;
+  --say-friendly-show: none;
+  --say-instrument-show: inline;
+  --hero-chatty-show: none;
+  --hero-say-show: none;
+  --hero-mark-show: none;
+  --status-sub-indent: 0px;
+  --ask-shadow: none;
+  --ask-focus-shadow: none;
+  --ask-pad: calc(1rem / 14);
+  --ask-band: var(--bg);
+  --first-title-size: var(--t-display);
+  --first-title-lh: var(--lh-display);
+  --first-title-track: var(--track-display);
+  --first-title-2: var(--fg-2);
+  /* The review and change cards in Instrument (ui/look.css, at the end, M65 step 2): a changed file is a row with its tag,
+     the reason block a quiet inset, History's and Memory's rows hairline rows. Friendly sets none: look.css falls back to
+     today's values. */
+  --rv-old: none; --rv-new: inline-flex;
+  --rv-box-m: var(--space-3) 0 0; --rv-box-w: var(--hair) 0 0 0; --rv-box-r: 0; --rv-box-bg: transparent;
+  --rv-head-pad: var(--space-3) 0 var(--space-1); --rv-head-edge: 0; --rv-head-ink: var(--fg); --rv-head-t: var(--t-label); --rv-head-w: var(--w-strong);
+  --rv-list-pad: 0; --rv-cols: minmax(0, 1fr) auto; --rv-align: center; --rv-gap: var(--space-3); --rv-row-h: var(--h-row); --rv-row-pad: var(--space-1) 0;
+  --rv-name-font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font);
+  --rv-dir-gap: var(--space-1); --rv-dir-face: var(--font); --rv-dir-t: var(--t-small);
+  --rv-why-bg: var(--inset); --rv-why-r: var(--r-card); --rv-keywarn-m: var(--space-1) 0 var(--space-2);
+  --rv-tag-r: var(--r-key); --rv-tag-bg: var(--tag-bg); --rv-label-w: var(--w-strong);
+  --rv-hist-align: center; --rv-hist-h: var(--h-row); --rv-hist-pad: var(--space-row-y) 0;
+  --rv-note-m: 0; --rv-note-pad: var(--space-row-y) 0; --rv-note-edge: var(--hair) 0 0 0; --rv-note-r: 0; --rv-note-bg: transparent; --rv-note-text-w: var(--w-regular);
+  --rv-src-m: 0; --rv-src-pad: 0; --rv-src-edge: 0; --rv-btn-r: var(--r-control);
+  --rv-erase-edge: var(--hair); --rv-erase-pad: var(--space-3); --rv-erase-m: var(--space-2) 0 var(--space-4);
+  /* M65 step 4 (ui/chrome.css): a card is the page's first step with a hairline, no glow. The ask box's edges are in the
+     block over every theme below. */
+  --card-flat: inset 0 0 0 var(--hair) var(--line-strong);
+}
+@media (prefers-contrast: more) {
+  :root[data-style="instrument"] { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); --fg-2-room: #D6D7DB; }
+}
 
 /* ---------- Colour, White (look.theme = paper; 2 Nov 2026, the founder: "so we gonna have white and black"): Home and
    Settings only. Pure white with near white steps, near black words, and hairlines where white meets white (a shadow alone
@@ -467,6 +614,7 @@
   --focus: var(--flow-deep);           /* the accent's deep colour: its light ones are 1.5 to 2.5 to 1 on white */
   --ok: #0E7E4E;
   --amber: #8F5B00;
+  --amber-ink: #FFFFFF;
   --bad: #B3261E;
   --bad-room: #B3261E;
   --bad-edge: rgba(179, 38, 30, .45);
@@ -648,6 +796,7 @@
    the water's colour, never a second hue beside it. The values are the ones measured on 1 Nov 2026 (element.test.ts runs
    every contrast test on each); Lime's lean green, never olive. */
 :root[data-water="lagoon"] {
+  --acc: #057D69;
   --w-sea: #017C70; --w-foot: #04605B;
   --flow-base: #0ABFA1; --flow-light: #8DE5CF; --flow-deep: #036B59; --flow-glow: #3FDABA; --flow-tint: #0B2C28;
   --flow-grad-1: #86E9BC; --flow-grad-2: #08B89B; --flow-grad-3: #088378;
@@ -655,6 +804,7 @@
   --flow-shadow: rgba(1, 53, 44, .45); --flow-wash: rgba(10, 191, 161, .15); --flow-focus: #8DE5CF;
 }
 :root[data-water="lime"] {
+  --acc: #4E7D0A;
   --w-sea: #028048; --w-foot: #026341;
   --flow-base: #8ED618; --flow-light: #BBDE9A; --flow-deep: #436800; --flow-glow: #B8EA80; --flow-tint: #132C1D;
   --flow-grad-1: #CBDC7B; --flow-grad-2: #8AD00A; --flow-grad-3: #348704;
@@ -662,6 +812,7 @@
   --flow-shadow: rgba(33, 52, 0, .45); --flow-wash: rgba(142, 214, 24, .15); --flow-focus: #BBDE9A;
 }
 :root[data-water="berry"] {
+  --acc: #C23A88;
   --w-sea: #AA3488; --w-foot: #930165;
   --flow-base: #F868B9; --flow-light: #FFB9DB; --flow-deep: #9A216C; --flow-glow: #FD99CD; --flow-tint: #331E2B;
   --flow-grad-1: #FFB6EE; --flow-grad-2: #F65BB5; --flow-grad-3: #CB0375;
@@ -669,6 +820,7 @@
   --flow-shadow: rgba(77, 16, 54, .45); --flow-wash: rgba(248, 104, 185, .15); --flow-focus: #FFB9DB;
 }
 :root[data-water="midnight"] {
+  --acc: #6A5FD6;
   --w-sea: #5A59CA; --w-foot: #5031B9;
   --flow-base: #9791FF; --flow-light: #CBCBFF; --flow-deep: #5446B2; --flow-glow: #B1B1FF; --flow-tint: #222438;
   --flow-grad-1: #C4CCFF; --flow-grad-2: #9189FE; --flow-grad-3: #7D3DF2;
@@ -875,4 +1027,72 @@
   --r-tile: 3px;
   --r-stamp: 2px;
   --r-bubble: 4px;
+}
+
+/* ---------- Instrument over every theme (M65): what must win over a theme's own block. The main button is the accent
+   filled, with white words; Home's other keys are a hairline edge, filled only under the pointer; no gloss, no glow (the
+   Glossy button choice is Friendly's). Spacing and corners keep working on top of it. ---------- */
+:root[data-style="instrument"][data-tone] {
+  --main: var(--acc);
+  --main-hover: var(--acc-hover);
+  --main-press: var(--acc-press);
+  --main-ink: var(--acc-ink);
+  --main-shadow: none;
+  --main-shadow-press: none;
+  --keycap: transparent;
+  --keycap-hover: var(--surface-2);
+  --keycap-lip: transparent;
+  --keycap-under: transparent;
+  --keycap-ring: var(--line-strong);
+  --sheen-drop: transparent;
+  --gel-hi: var(--acc); --gel-mid: var(--acc); --gel-lo: var(--acc); --gel-top: var(--acc);
+  --gel-edge: transparent; --gel-lip: transparent; --gel-gloss: transparent; --gel-glow: transparent;
+  --gel-ink: var(--acc-ink);
+  --tick-fill: var(--acc);
+  /* M65 step 4 (the critics: the working and review cards sat in a blue halo, the practice card had a blue wash): no
+     tinted glow, halo or wash on a card. Colour is for meaning only. */
+  --card-halo-a: 0%;
+  --card-tint-a: 0%;
+  --card-lit-a: 0%;
+  /* The ask box (ui/chrome.css, M65 step 6): its edge is the field's only boundary and its only focus cue, so it is a
+     control's edge, 3 to 1 or more on the page and on its own fill in every theme (lookChoices.test.ts). It stays neutral
+     in focus (Home puts the cursor in it on every open, so an accent frame would always be on): the page's own word colour,
+     at least twice the contrast it has at rest, so focus shows without the cursor. */
+  --ask-edge: var(--edge-control);
+  --ask-hover-edge: var(--edge-control-hover);
+  --ask-focus-edge: var(--fg);
+}
+/* A shadow under a card is neutral in Instrument, never the room's blue (the room's element sets its own, so this is set
+   on Home's element too). */
+:root[data-style="instrument"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .35); --card-halo-a: 0%; --card-tint-a: 0%; --card-lit-a: 0%; }
+:root[data-style="instrument"][data-theme="paper"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .08); }
+:root[data-style="instrument"][data-theme="paper"] {
+  --card-flat: inset 0 0 0 var(--hair) var(--line), 0 1px 2px rgba(0, 0, 0, .04);
+}
+:root[data-style="instrument"][data-theme="deep"] { --fg-2-room: #A9BACB; }
+:root[data-style="instrument"][data-density="compact"] {
+  --space-row-y: 5px;
+  --h-md: 24px;
+  --h-lg: 24px;
+  --h-row: 30px;
+  --h-bar: 34px;
+  --h-ask: 32px;
+}
+:root[data-style="instrument"][data-corners="crisp"] {
+  --r-key: 2px;
+  --r-thumb: 2px;
+  --r-control: 3px;
+  --r-card: 5px;
+  --r-panel: 7px;
+  --r-tile: 2px;
+  --r-stamp: 2px;
+  --r-bubble: 4px;
+}
+/* In Home's room the gel and the second words are the room's own, so Instrument sets them there too: the flat accent, and
+   the page's plain grey words with no tint of light. */
+:root[data-style="instrument"] [data-element] {
+  --gel-hi: var(--acc); --gel-mid: var(--acc); --gel-lo: var(--acc); --gel-top: var(--acc); --gel-body: var(--acc);
+  --gel-edge: transparent; --gel-lip: transparent; --gel-gloss: transparent; --gel-glow: transparent;
+  --gel-ink: var(--acc-ink); --gel-shine: transparent; --gel-shade: transparent;
+  --fg-2: var(--fg-2-room);
 }

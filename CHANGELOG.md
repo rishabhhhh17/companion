@@ -2,6 +2,30 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A grown up look, second part: 4 Nov 2026
+
+Three separate reviewers looked at every screen of the new Instrument look. What they found is fixed. With Friendly picked, Home looks as before, apart from two small fixes that help both looks (the last two points).
+
+- **The glass orb is quieter.** It is one deep blue ball lit from the top left, with a soft shade at its foot. The big white shine, the sparkles and the light ring inside its edge are gone. Its state ring is a little thicker and sits a little away from it, and while it works the ring is a lighter blue, so you can see it against the ball.
+- **Cards are flat.** No blue glow, halo or tinted wash around a card any more, and no breathing blue edge on the working card. A card is the page's own grey with a thin line round it. Colour is kept for meaning: red stop, amber needs you, green proven.
+- **The ask box is calm.** Home puts the cursor in it every time it opens, so its bright blue frame was always on and was the loudest thing on the page. Now its edge is grey, a little brighter on hover and brighter again while you type.
+- **A key in the code says so clearly.** The line over the headline says Fix this first in red, the ring and the mark in the list on the left are red too, and the headline names the file: "A key was written into pay.ts". Under it: "4 files changed. One looks risky." It used to say the same sentence two or three times.
+- **Clearer review words.** "Review them" is now "Review changes". The line about what a review does is two short sentences: "Review runs your tests and a browser check on a copy. Your files are not touched." Passed tests under a stop no longer show a green tick: the chip says "Tests passed. The key still needs fixing." On a stop, Looks fine is now "Keep it anyway", a quiet text button. Copy for my AI shows a copy drawing, not an arrow. History says "You copied it for an AI tool".
+- **A result reads in order.** What changed comes first, then Undo these changes. Nothing fades over the bottom of the card any more; the page scrolls, and a thin line marks where it goes under the ask box. In the tall Home, the line that says when it was checked is now at the very bottom of the page.
+- **The same sizes everywhere.** A screen's title is one size, even when a card under it needs you. A card's own title (Fixed and proven) is the card size, not a second page title. The project's name and the Settings back arrow now line up with the page's left edge, and both side lists mark the open place the same way.
+- **Small tidy ups.** The working card says "Looking for the problem" before its first step, instead of a second "Working". Lines between rows in a card are inset on both sides. History's review mark is the same size as a task's, and its note lines up with the rows.
+- **The character on the edge of your screen agrees with itself.** While a question waits for you, its ring is amber and the word under it says Needs you, never Working. The count on it is amber too.
+- **For both looks:** the notch's question card no longer runs off the right side of its panel, and History's file names use the same code font as the rest of Squibby.
+
+## A grown up look, first part: 4 Nov 2026
+
+- **Squibby has a calmer, more grown up look, called Instrument.** Smaller headlines, small corners, rectangle buttons, thin lines between things and colour only where it means something. The main button is a deeper blue with white words. Graphite is now the soft dark grey of the new look.
+- **The look from before stays, called Friendly.** Pick it under Settings, Look, Style. It looks exactly as it did.
+- **A new Character choice** on the same page: match the look, a small glass orb with no face, or the friendly one with a face and bubbles. This part adds the choice and the orb; Home and the edge of the screen start using the orb in the next part.
+- **The light behind Home and the glossy button moved to More options** on the Look page, so the page stays short. Both still work as before.
+- **Around Home, the same calm look.** The character on the edge of your screen, in the notch and in the practice panel is now the small glass orb. A thin ring round it shows its state: the accent while it works, amber when it needs you, green when a fix is proven, red when it stopped. Settings' list of pages marks the open page with a plain grey row, and the notch's panel has smaller corners. The notch stays black. With Friendly picked, all of it looks as before.
+- **Home and the first run in the new look.** A short status line with a small dot (Working, Needs you, Proven, Not fixed yet) sits over a smaller headline, with one sentence under it. The small glass orb sits at the top right, its ring in the same colour as the status line, with no water under it. The ask box is a quiet field with its keys inside, and a line at the foot of Home says when the project was last checked and when Undo is ready. The tip under the ask box and the extra sentence under a result are gone in this look. The first run shows the same orb, with no rising water. With Friendly picked, Home and the first run look as before.
+
 ## Reviews of changes, checked again: 4 Nov 2026
 
 A review of the work above found six places where it fell short. Each now has a test that failed before the fix.

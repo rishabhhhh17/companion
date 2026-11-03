@@ -34,7 +34,8 @@ describe("the layout setting", () => {
     expect(w.also.length).toBeGreaterThan(2);
     for (const t of [w.label, w.help, S.short["look.layout"], ...w.also]) expect(t).not.toMatch(/[–—]/);
     // First on the Look page (M51 polish; it was in More options), with the theme and the water, chosen by its picture.
-    expect(PAGES.look.groups[0].items[0]).toBe("look.layout");
+    // M65: after the style and the character the look's style picks.
+    expect(PAGES.look.groups[0].items.slice(0, 3)).toEqual(["look.style", "look.character", "look.layout"]);
   });
 });
 

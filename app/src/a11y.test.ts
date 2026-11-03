@@ -290,7 +290,7 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
   });
   test("the character says its name, its state and how many questions wait", () => {
     const dock = read("./dock.tsx");
-    expect(dock).toContain("const label = characterWords(m);");
+    expect(dock).toContain("const label = dockWords(charLook, state, waiting, characterWords(m));");   // M65 step 4: the orb says Needs you while something waits
     // Its name as chosen (character.name, M18), or its own.
     expect(dock).toMatch(/const spoken = `\$\{characterName\(nameSet\)\}: \$\{label\}/);
     expect(dock).toContain('const nameSet = useSetting("character.name");');
@@ -791,6 +791,18 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
   const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper], ["Deep", deep], ["Black", black],
     ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }],
     ["Deep, more contrast", { ...deep, ...decls(':root[data-theme="deep"]', more) }], ["Black, more contrast", { ...black, ...decls(':root[data-theme="black"]', more) }]];
+  // M65: every theme again in the Instrument style (look.style), the usual since 4 Nov 2026, with and without More contrast.
+  // Its tokens fall in the order the page's cascade gives them: :root, Instrument's page, the theme, then Instrument's
+  // block over every theme and its block for that theme. Friendly is :root's own tokens, measured above.
+  const IS = ':root[data-style="instrument"]';
+  const instrument = (theme: string | null, m: boolean): Record<string, string> => ({
+    ...night, ...(m ? decls(":root", more) : {}), ...decls(IS, null), ...(m ? decls(IS, more) : {}),
+    ...(theme ? decls(`:root[data-theme="${theme}"]`, null) : {}), ...(theme && m ? decls(`:root[data-theme="${theme}"]`, more) : {}),
+    ...decls(`${IS}[data-tone]`, null), ...(theme ? decls(`${IS}[data-theme="${theme}"]`, null) : {}),
+  });
+  for (const [name, theme] of [["Graphite", null], ["White", "paper"], ["Deep", "deep"], ["Black", "black"]] as const) {
+    themes.push([`Instrument, ${name}`, instrument(theme, false)], [`Instrument, ${name}, more contrast`, instrument(theme, true)]);
+  }
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.

@@ -1,5 +1,7 @@
 # The look (rules for every screen and every character)
 
+Since 4 Nov 2026 the usual look is Instrument, and the look below is the Friendly choice. What Instrument is and what was built is in `docs/milestones/M65-grown-up-look.md`.
+
 Written after the first hands on Mac session (26 Oct 2026), where the founder said the app looked bad, the card was complicated, replies were in a small box, and Flowflow was "a photo in a square box". These are the rules the real app follows now. They are not a brand: no colour, font or shape has been chosen. The founder has not picked a visual direction, so the app is calm, neutral and simple, and the motion carries the personality. Everything here is in `app/src/style.css` as tokens, `app/src/skins.ts`, `app/src/flow/` (the pictures' motion) and `app/src/flowflow/` (the founder's live drawing, off by default).
 
 ## 1. Black and white base

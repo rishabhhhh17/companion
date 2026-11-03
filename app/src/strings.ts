@@ -133,6 +133,9 @@ export const S = {
     main: { fix: "Fix it", shipCheck: "Check before going live", check: "Check my project", folder: "Choose a project", carryOn: "Carry on", explain: "Explain an error" } as Record<"fix" | "shipCheck" | "check" | "folder" | "carryOn" | "explain", string>,
     // Changes from another AI tool wait for a review (homeHero.ts reviewLead): the main button opens them.
     reviewMain: "Review the changes",
+    // M65 step 6: in Instrument, the working card before its first step, so it never says Working under the status
+    // line's Working (homeHero.ts jobNowSays). Friendly keeps the character's own words.
+    gettingStarted: "Getting started",
     // Nothing can run (homeHero.ts blockerOf): what stops it, and the one way out as the main button.
     blocked: {
       key: { headline: "Add your Claude key to start", line: "Nothing can run until Claude is connected.", main: "Add your key" },
@@ -183,6 +186,8 @@ export const S = {
     notchNothing: "Nothing is running.",
     notchChanged: (name: string) => `${name} changed since its last check.`,
     addKey: "Add your key",
+    // The footer line under Home in the Instrument look (M65, homeHero.ts homeFoot), when the result offers Undo.
+    undoReady: "Undo is ready",
   },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
   cardHint: "{keys} opens this box. Esc closes it.",
@@ -320,6 +325,12 @@ export const S = {
   noCost: "No cost",
   // The parts every screen is built from (ui/parts.tsx; the overhaul spec, 2.3). Sentence case, plain words.
   ui: {
+    // M65, the Instrument look: the status line's words (a dot in the meaning's colour before them), and a file row's
+    // added and taken away lines as VoiceOver reads them.
+    status: { needs: "Needs you", proven: "Proven", notChecked: "Not checked yet", working: "Working", stop: "Not fixed yet", fixFirst: "Fix this first" },
+    fileDiff: (added: number, removed: number) => [added ? `${added} ${added === 1 ? "line" : "lines"} added` : "", removed ? `${removed} ${removed === 1 ? "line" : "lines"} taken away` : ""].filter(Boolean).join(", "),
+    // M65, a changed file's short tag in the Instrument look (changeRows.ts): how it changed, or that a key was found in it.
+    fileTag: { added: "Added", modified: "Changed", deleted: "Removed", key: "Key in code" },
     stepLess: (label: string) => `Less: ${label}`,
     stepMore: (label: string) => `More: ${label}`,
     setToMax: (n: string) => `Set to ${n}, the most it can be.`,
@@ -473,6 +484,8 @@ export const S = {
     "look.light": "A coloured light behind Home: off, the usual, still or drifting.",
     "look.colour": "Calm, the usual, is one blue accent. Vivid adds colour.",
     "look.corners": "Soft rounds the corners of cards and buttons. Crisp keeps them tight.",
+    "look.style": "Instrument is calm and compact, the usual. The other is the playful look with water.",
+    "look.character": "A glass orb whose ring shows its state, or the one with a face and bubbles.",
     "character.name": `What ${PRODUCT_S} character is called.`,
     "character.follow": "Still only follows while listening or pointing.",
     "character.dockWhen": "Pushed in hard, thrown at it, or held there two seconds. Playing near it leaves it where it is.",
@@ -521,6 +534,7 @@ export const S = {
   setGroupTitles: {
     "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending",
     "look.home": "Home", "look.details": "Details",
+    "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
     "fixing.review": "Reviews of changes to your project", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
@@ -1371,10 +1385,11 @@ export const S = {
     away: { closed: `Changed while ${PRODUCT} was closed.`, notWatching: `Changed while ${PRODUCT} was not watching this project.` } as Record<"closed" | "notWatching", string>,
     capped: (shown: number, n: number) => `Showing the first ${shown} of ${n} files.`,
     secretFiles: (names: string) => `A settings or key file changed (${names}). ${PRODUCT} did not read it, and nothing in it is sent anywhere.`,
-    askFirst: "Nothing is looked at until you ask. Review them also runs your project's own checks on a separate test copy, the browser check included.",
+    // M65 step 4 (the critics: not a sentence): what a review does, in two short ones.
+    askFirst: "Review runs your tests and a browser check on a copy. Your files are not touched.",
     later: (n: number) => `More changes came in since this review (${n === 1 ? "1 file" : `${n} files`}). They show here once you close this one.`,
     autoLine: "This is reviewed by itself, with your project's own checks.",
-    reviewNow: "Review them",
+    reviewNow: "Review changes",
     quickLook: "Quick look, no checks",
     reviewing: "Looking at the changes.",
     reviewingChecks: "Looking at the changes and running your project's checks.",
@@ -1408,7 +1423,17 @@ export const S = {
     notSent: "That did not reach the review. Try again in a moment.",
     // M57 feature 5: the instant key warning, before any review ran. "A change", never "your AI": who wrote it is not known.
     keyWarning: "A change wrote what looks like a key into the code.",
-    keyWarningLine: "Only the key check ran, on this Mac. Review them to see the rest, then Fix it.",
+    keyWarningLine: "Only the key check has run so far.",
+    // The card's one line under Home's headline (which already names the file): what to do about it.
+    keyMove: "Take it out of the code before you share or ship this.",
+    // M65 step 4: Home's headline names the problem (Fix this first is the status line over it), and the line under it
+    // says how much changed, once. The file's name only, never its folder; never who wrote it.
+    keyHeadline: (files: readonly string[]) => (files.length === 1 ? `A key was written into ${files[0].split("/").filter(Boolean).at(-1) ?? files[0]}` : `Keys were written into ${files.length} files`),
+    riskyLine: (n: number, risky: number) => `${n === 1 ? "1 file" : `${n} files`} changed. ${risky === 1 ? (n === 1 ? "It looks risky." : "One looks risky.") : `${risky} look risky.`}`,
+    // On a stop, closing the card keeps the change as it is, said plainly (never Looks fine over a key in the code).
+    keepAnyway: "Keep it anyway",
+    // Passed checks under a stop or a worth a look: never a green all good.
+    checksPassedBut: { stop: "Tests passed. It still needs fixing.", key: "Tests passed. The key still needs fixing.", worth_a_look: "Tests passed. Still worth a look." },
     keyAt: (file: string, line: number) => `${file}, line ${line}`,
     // M57 feature 4: a reason the rules checked again after a newer change, and found it no longer holds.
     fixedSince: "Changed since, this no longer applies.",
@@ -1671,7 +1696,7 @@ export const S = {
   history: {
     reviewsTitle: "Reviews of changes",
     reviewMark: "Review",
-    reviewDid: { open: "Not closed", looks_fine: "You said it looks fine", sent_back: "Sent back with Copy for my AI", fix: "You pressed Fix it", no_longer_applies: "Changed since, it no longer applies" } as Record<string, string>,
+    reviewDid: { open: "Not closed", looks_fine: "You said it looks fine", sent_back: "You copied it for an AI tool", fix: "You pressed Fix it", no_longer_applies: "Changed since, it no longer applies" } as Record<string, string>,
     reviewMore: (n: number) => `and ${n} more`,
     reviewsKept: (days: string) => `Kept for ${days}. Only file names are kept, never what is in them.`,
   },
@@ -1836,9 +1861,11 @@ export const S = {
     "look.density": { label: "Spacing", help: "Comfortable, the usual, gives everything room. Compact pulls rows, buttons and the space between them in, so more fits in Home at once. Buttons stay big enough to press.", also: ["density", "dense", "compact", "comfortable", "tight", "roomy", "padding", "space", "smaller rows", "fit more"], options: { comfortable: "Comfortable", compact: "Compact" } },
     "look.icons": { label: "List icons", help: "Each item in your lists has a small square whose drawing says what kind of work it was. It can be a fix, going live, a question, an explanation or something new. Plain, the usual, keeps the squares grey. Colour gives each kind its own colour.", also: ["icons", "colour", "color", "coloured squares", "tiles", "plain", "grey", "list"], options: { plain: "Plain", colour: "Colour" } },
     "look.stamps": { label: "Status labels", help: "Small labels at the end of items in your lists: Working, New, Proven, Not fixed yet and Needs you. In the wide Home's list on the left each is a small dot with its own drawing. Point at a task to read it. Off shows the same in plain words or a small mark.", also: ["stamps", "status labels", "labels", "tags", "working", "proven", "new", "needs you", "marks"] },
-    "look.gloss": { label: "Glossy button", help: "The one main button in each view, in the water's colour. Flat, the usual, is its plain colour. On gives it a soft shine and glow.", also: ["glossy", "gloss", "shine", "shiny", "flat", "main button", "pill"], options: { on: "On", flat: "Flat" } },
+    "look.gloss": { label: "Glossy button", help: "The one main button in each view, in the Friendly style, in the water's colour. Flat, the usual, is its plain colour. On gives it a soft shine and glow. The Instrument style keeps its main button flat.", also: ["glossy", "gloss", "shine", "shiny", "flat", "main button", "pill"], options: { on: "On", flat: "Flat" } },
     "look.light": { label: "Light behind Home", help: "Off, the usual, keeps Home a plain page: no coloured sky, no rays, no drifting light and no water. Still lights Home from behind in water blue, as one picture. Moving lets that light drift slowly while you use Home. It holds still after 10 quiet seconds, or when Home is closed. Colour sets how strong it is. Reduce motion holds it still.", also: ["light", "glow", "background", "colour", "color", "room", "ambient", "battery", "motion", "plain", "colourful"], options: { off: "Off", still: "Still", moving: "Moving" } },
     "look.colour": { label: "Colour", help: "How much colour Home has. Calm, the usual, keeps one colour, water blue, for the main button, focus, the place you are on and progress. Green, red and amber only mark proven, failed and needs you. Vivid gives each part of Home its own colour, such as gold for Learn. It tints the cards and makes the light stronger. Words read the same in both.", also: ["colour", "color", "colourful", "colorful", "vivid", "bright", "calm", "quiet", "muted", "saturation", "intensity", "tone down"], options: { calm: "Calm", vivid: "Vivid" } },
+    "look.style": { label: "Style", help: "Instrument, the usual, is calm and compact. It has a graphite page, small corners and rectangle buttons, with colour only where it means something. Friendly is the playful look from before, with round buttons, big headlines and water across Home. Every other look choice works in both.", also: ["style", "look", "instrument", "friendly", "playful", "grown up", "serious", "professional", "childish", "cartoon", "minimal", "compact"], options: { instrument: "Instrument", friendly: "Friendly" } },
+    "look.character": { label: "Character", help: `Which character shows in Home and on the edge of the screen. Match the look, the usual, picks the one that goes with the style. Glass orb is a small round orb with no face. A thin ring round it shows its state: red when it stopped, amber when it needs you, green when a fix is proven. Friendly has a face, two bubbles that follow it and its water.`, also: ["character", "orb", "glass orb", "face", "eyes", "bubbles", "mascot", "friendly", "ring", "water"], options: { match: "Match look", orb: "Glass orb", friendly: "Friendly" } },
     "look.corners": { label: "Corners", help: "Soft, the usual, rounds the corners of cards, buttons and fields. Crisp makes them tighter, for a sharper look. The notch keeps its own shape.", also: ["corners", "rounded", "round", "radius", "sharp", "square", "crisp", "soft"], options: { soft: "Soft", crisp: "Crisp" } },
     "character.follow": { label: "Follow your pointer", help: "What follows your pointer when How lively is Lively. Its eyes: its eyes and body lean toward your pointer. A water ring: its eyes, plus a small ring of water around your pointer's tip. In Still and Gentle its eyes stay ahead, and the ring shows only while it is listening. Off: nothing follows, not even while it listens. Only where the pointer is, never what you type or what is on the screen, and never kept.", also: ["Follow my pointer", "pointer", "cursor", "mouse", "eyes", "follow", "drop", "ring", "water ring", "buddy"], options: { eyes: "Its eyes", drop: "A water ring", off: "Off" } },
     "look.size": { label: "Size", help: "How big the character is on the edge of the screen. Large is as big as it can be and still have room to move.", also: ["Character size", "size", "bigger", "smaller", "large", "small", "character"], options: { small: "Small", usual: "Usual", large: "Large" } },

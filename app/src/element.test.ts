@@ -102,7 +102,8 @@ describe("every element reads, in every dark theme", () => {
   for (const w of OTHER_WATERS) {
     test(`${w} water: its block gives the pond a sea and a foot (deep enough for white words) and the whole accent`, () => {
       const wb = block(WATER_SEL(w));
-      expect(Object.keys(wb).sort(), w).toEqual(["--w-foot", "--w-sea", ...FLOW_SLOTS].sort());
+      // M65: and the accent as a fill, white words on it (instrument.test.ts measures it).
+      expect(Object.keys(wb).sort(), w).toEqual(["--acc", "--w-foot", "--w-sea", ...FLOW_SLOTS].sort());
       for (const k of ["--w-sea", "--w-foot"]) expect(ratio(WHITE, colour(wb[k], wb)), `${w} ${k}`).toBeGreaterThanOrEqual(3);
     });
   }

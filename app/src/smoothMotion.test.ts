@@ -171,7 +171,7 @@ describe("numbers count up rather than jumping", () => {
     expect(h.count).toBe(0.12);
     expect(h.line).toBe(workingLine(0.12));
     expect(heroWords(initial(), "/p").count).toBeUndefined();
-    expect(card).toContain("{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : heroShown.line}");
+    expect(card).toContain("{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}");
   });
 });
 

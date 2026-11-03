@@ -125,9 +125,9 @@ describe("the top says the job in big words", () => {
   });
   test("the headline is Home's heading, large, with one short line under it", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
-    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>');
+    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline"><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>');
     // M55: while a job costs something, the line counts its cost up to the new number (smoothMotion.ts CountUp).
-    expect(card).toContain('<p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : heroShown.line}</p>');
+    expect(card).toContain('<p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -220,7 +220,8 @@ describe("it springs open from the notch, and not at all with less motion", () =
   });
   test("the character in Home is Flowflow, with the dock's own pose for each state", () => {
     const ch = read("./homeCharacter.tsx");
-    expect(ch).toContain("useFlow({ pose, state, calm: reduced, off: live })");
+    // M65: no live water runs under the faceless orb either.
+    expect(ch).toContain("useFlow({ pose, state, calm: reduced, off: live || orb })");
     // With Draw live on, the founder's live water, loaded only then; the pictures come back if it cannot start.
     expect(ch).toContain('useSetting("character.live") === true');
     expect(ch).toContain('import("./flowflow/view.tsx")');

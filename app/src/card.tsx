@@ -28,7 +28,7 @@ import { followLessMotion } from "./motion.ts";
 import { CountUp, useHomeMotion } from "./smoothMotion.ts";
 import { JobLive } from "./jobLive.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, jobNowWords, workingLine, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, type FrontKind, type MainAct } from "./homeHero.ts";
+import { reviewHeroSays, jobNowSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, jobNowWords, workingLine, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroStatusOf, homeFoot, lineSaidByStatus, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
@@ -74,7 +74,7 @@ import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
 import { FailingLine, lineOf } from "./failingLine.tsx";
-import { Button, Group, KeyLabel, Menu, ProofChip, Row, Switch, VerdictLine } from "./ui/parts.tsx";
+import { Button, FootLine, Group, KeyLabel, Menu, ProofChip, Row, Said, StatusLine, Switch, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
@@ -82,6 +82,7 @@ import { planNow, usePlan } from "./usePlan.ts";
 import "./style.css";
 import "./ui/look.css";
 import "./ui/wide.css";
+import "./ui/home.css";
 
 // A command the shell will not pass on (the engine restarting, its queue full, a group switched off) is never a silent
 // failure (must fix 13, bar rule 11): send says so in one plain line by default, through the card's model, so whatever was
@@ -1677,7 +1678,12 @@ function Card() {
   const compact = side && heroCompact(m, reviewOn);
   const statusFirst = mode === "rest" || mode === "result";
   const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: S.home.blocked[blocker].line, detail: undefined, count: undefined }
-    : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined, count: undefined } : hero;
+    : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined, count: undefined, friendly: rlead.friendly } : hero;
+  // M65, the Instrument look: a status line with its dot over the headline, the orb's ring agreeing with that line, and the
+  // footer line under the ask box (homeHero.ts). The page never branches on the style: the tokens show them in Instrument
+  // and hide them in Friendly (ui/tokens.css --home-instrument-show, ui/wide.css).
+  const heroStatus = heroStatusOf(mode, status, hero.tone, !!rlead?.stop);
+  const foot = homeFoot(status, undoCan(m, project));
   // The one way out of a block, or into the review, as the main button.
   const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
   const reviewMain = mode === "review" && rlead?.main === "review";
@@ -1964,18 +1970,20 @@ function Card() {
           {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
               while changes wait for it (only while that card is on Now). */}
           <div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
-            leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} /></div>
+            ring={heroRingOf(mode, heroStatus)} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} /></div>
         </div>
-        <div className="hero-words">
+        <div className="hero-words" data-line-said={!statusFirst && statusLineShown(heroStatus, heroShown.headline) && lineSaidByStatus(heroStatus, heroShown.line) ? "" : undefined}>
+          {statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}
+          {/* data-foot-says: the footer line already says this line (Checked 4 min ago), so Instrument shows it once. */}
           {statusFirst
-            ? <div className="status-head"><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}</div>
+            ? <div className="status-head" data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}</div>
             : <>
               {/* The tag only when the headline does not already say it is a practice (the review, 2 Nov 2026: "Practice" over
                   "Practice: find it, fix it, prove it"). */}
               {practiceNow && !heroShown.headline.startsWith(S.look.practiceTag) && <span className="hero-tag">{S.look.practiceTag}</span>}
-              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline">{heroShown.headline}</h1>
+              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline"><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>
               {/* M55: the cost counts up to its new number rather than jumping (smoothMotion.ts). */}
-              <p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : heroShown.line}</p>
+              <p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
@@ -2070,13 +2078,16 @@ function Card() {
               </div>
             </details>
           )}
+          {/* M65: the footer line in the Instrument look (the tokens hide it in Friendly): when it was last checked and whether
+              Undo is ready, on Now only. */}
+          {foot && home.tab === "now" && side && <FootLine start={foot.start} end={foot.end} />}
           </div>
           {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
           <ClaudeNotice st={claudeSt} setSt={setClaudeSt} />
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
       {/* In the tall Home, changes to review come before the recent list (item 11); in the wide one they lead the work below. */}
-      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && (m.review?.result ? rlead.headline === S.review.rating[m.review.result.rating] : keyWarned(m.review) && rlead.headline === S.review.rating.stop)} /></div>}
+      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} /></div>}
       {home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
@@ -2283,7 +2294,7 @@ function Card() {
         </section>
       )}
 
-      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && (m.review?.result ? rlead.headline === S.review.rating[m.review.result.rating] : keyWarned(m.review) && rlead.headline === S.review.rating.stop)} />}
+      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} />}
 
       {show("drive") && m.drive && (
         <section className="panel">
@@ -2368,7 +2379,7 @@ function Card() {
             </ol>
             {/* The step under way in words, except while files or checks are listed: the list already says it (the review,
                 3 Nov 2026: "Changing signup.js" sat over the row "signup.js"). A new try is said here only, so it stays. */}
-            {(live.kind === "none" || js.retry) && <p className="job-now">{jobNowWords(m, js.retry, lines)}</p>}
+            {(live.kind === "none" || js.retry) && <p className="job-now"><Said {...jobNowSays(jobNowWords(m, js.retry, lines))} /></p>}
             <JobLive view={live} />
             {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second at
                 a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
@@ -2760,6 +2771,8 @@ function Card() {
       {m.cloneNote && <div className="error" role="alert">{m.cloneNote} <button className="btn" type="button" onClick={() => dispatch({ type: "ui.cloneNoteClosed" })}>{S.onlineClose}</button></div>}
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
       </div>}
+      {/* M65 step 4: in the tall Home the ask box sits near the top, so the footer line comes last, under the work. */}
+      {foot && home.tab === "now" && !side && <FootLine className="home-foot-end" start={foot.start} end={foot.end} />}
       </div>
       </PartBoundary>)}
       </div>
