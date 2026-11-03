@@ -2,6 +2,33 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Reviews of changes, checked again: 4 Nov 2026
+
+A review of the work above found six places where it fell short. Each now has a test that failed before the fix.
+
+- **Changes from while Squibby was closed stay on their own card.** A save made after opening used to join that card, drop its "while closed" label and, with reviews on Automatic, start a review by itself, with your project's checks. Now the card from while closed never grows. A later save waits and becomes its own card once you close the first one. The card from while closed is never reviewed by itself, and your project's checks run on it only when you ask for them.
+- **Only your own press can quiet a kind of problem.** "Don't flag this kind here again" still saves a line in What I remember. But that file sits inside your project, so another tool or a project you copied could write the same line there. Now the line counts only if you pressed the button for it, which Squibby notes in its own folder on this Mac. Forget the line and the problem shows again.
+- **Quiet no longer hides a changed key file or data every signed in account can read.** Those two are now shown at every strictness, like a key in the code and data open to anyone.
+- **Reviews never say an AI made the change.** Squibby cannot tell another tool's edits from your own. Claude was still told "another AI tool made this change", so its summary could say "Your AI changed the price". Now it is told nobody can know who made it, and any sentence that still says an AI or a named tool made, fixed or broke something is left off the card and out of History.
+- **The key warning is off unless you turn it on.** It looks at the changed files without asking, so it waits for the founder's yes before it is on for everyone. The privacy notes now say so.
+- **The folder watcher was tested on two more cases on this Mac:** a long pause between saves (two separate cards, nothing lost) and closing and opening the folder again (the first save after opening arrives). It was also tested with the real review and the real undo copies, not only the watcher on its own.
+
+## Reviews of changes, every day: 4 Nov 2026
+
+- **Changes made while Squibby was closed are no longer lost.** When Squibby opens your project again, it compares the folder with its own last copy and offers what changed as one batch: "Changed while Squibby was closed". Nothing is looked at until you ask, even with reviews set to Automatic.
+- **Snapshots are much faster.** Squibby used to read every file of your project again for each saved version. Now it only rereads files whose size or time changed. On a project of 4000 files a save went from about half a second to under a tenth. Undo still puts back every byte.
+- **The folder watcher was tested on this Mac.** It was tried with the ways AI tools save files: many small saves, a save renamed over the file, 1500 files at once, one file rewritten 50 times. Every change arrived once, and only after the files settled. Two small faults were fixed: new folders took up room in the list of changes, and the temporary name some tools save under was counted as a change. Still to check by hand: real Claude Code, Codex and Cursor.
+- **Honest words.** Squibby cannot tell another tool's edits from your own, so the card now says "12 files changed in this project" instead of "Your AI tool changed 12 files". The setting is now called "Review changes to your project".
+- **A security look you can read.** A review now runs the same checks as Ship on the files that changed, with no Claude. A new database table that anyone with your site address can read, or a key in a file sent to every visitor, is "Fix this first", with the file and the line.
+- **Your house rules count in reviews.** A change to a file your rules say never to edit is "Fix this first", and the card quotes your rule. A file your rules say to ask about first is "Worth a look". When Claude writes the review's words, your project's notes for AI tools (AGENTS.md, CLAUDE.md, Cursor's rules) are given to it as notes to read, never as orders, and the card lists which ones it read.
+- **Reviews stay current.** When a newer change is reviewed, Squibby checks the earlier review's problems again with its own rules. A problem that is gone says "Changed since, this no longer applies", and a card with nothing left gives way to the newer review. With reviews on Automatic, Squibby now waits a minute of quiet before it looks, so a tool that pauses is not reviewed half way.
+- **History keeps your reviews.** Each review is one row in History, with its own mark: when, which files by name, what it found and what you did (Looks fine, Copy for my AI, Fix it, or "it no longer applies"). Squibby never keeps the text of your files. Rows go after 90 days unless you choose otherwise, and Delete everything removes them.
+- **A key in the code is said at once.** When a change writes what looks like a key into your code, the card and the notch's quiet line say "A change wrote what looks like a key into the code", marked Fix this first, before you ask for a review. Only that one check runs, on this Mac, with no Claude and nothing sent. It has its own switch in Settings, off unless you turn it on (see the entry above).
+- **Where was I knows what changed.** Coming back after a break, it can say "Since then: 12 files changed. Not reviewed yet." or that a review still says Fix this first, and its button is Review the changes. Nothing pops up by itself.
+- **The review setting is easier to find.** It now leads the Fixing page in Settings, with its other choices under More. Searching for Cursor, Codex, Claude Code or CodeRabbit finds it.
+- **Beta numbers count reviews too**, if you turned them on: changes ready, reviews run, each rating, Fix it, Copy for my AI, Looks fine, Where was I and the daily limit. Counts only, never words or file names.
+- **Choose how strict reviews are.** Quiet shows only what needs fixing first. Normal is the usual. Careful shows everything. On a smaller point you can press "Don't flag this kind here again": it saves a line in What I remember, and forgetting the line brings it back. A key in the code or data open to anyone is always shown.
+
 ## Fixes to the fixes: 4 Nov 2026
 
 A second review checked the fixes above and found ten places where they fell short. Each has a test that failed before the fix.

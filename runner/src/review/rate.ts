@@ -158,7 +158,11 @@ export type RateInput = {
   checks: Checks; checksNote?: string; count: number; capped: boolean;
   /** The model's own worry about the change (words only), which may raise safe to worth a look. */
   concern?: boolean; concernSay?: string;
+  /** M57: reasons other rules found (look.ts: open data, keys that reach the page, house rules). Those of a Fix this first
+   *  kind come after the key and before the rest; the others are worth a look. */
+  found?: Reason[];
 };
+const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule"]);
 
 const TOUCH_WORDS: Record<Touch, string> = { sign_in: "sign in", payments: "payments", data: "your data", settings: "settings", secrets: "secrets and keys", dependencies: "the packages it uses", look_only: "the look only" };
 /** The plain words for a touch, for sentences the engine writes (the pages have their own, in strings.ts). */
@@ -177,6 +181,7 @@ export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   for (const s of i.secrets.slice(0, 5)) stop.push({ kind: "secret_in_code", file: s.file, line: s.line, say: `A key or password is written into ${s.file} at line ${s.line}. It belongs in a settings file such as .env, not in the code.` });
   // The place named is the line that still uses the removed file, in the file that is still there: the removed one has no
   // lines any more.
+  for (const f of i.found ?? []) if (FOUND_STOP.has(f.kind)) stop.push(f);
   for (const u of i.stillUsed.slice(0, 5)) stop.push({ kind: "removed_still_used", file: u.by, line: u.line, say: `${u.file} was removed, but ${u.by} still uses it at line ${u.line}, so the project may not start.` });
   if (i.checks === "failed") {
     const note = i.checksNote ? clip(redactOutput(i.checksNote).replace(/\s+/g, " ").trim(), 160) : "";
@@ -190,6 +195,7 @@ export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   const removed = i.changes.filter((c) => c.kind === "deleted" && !i.stillUsed.some((u) => u.file === c.file)).length;
   if (removed) look.push({ kind: "files_removed", say: `${plural(removed, "file was", "files were")} removed.` });
   if (i.capped || i.count > MAX_BATCH_FILES) look.push({ kind: "too_many", say: `${plural(i.count, "file", "files")} changed at once, more than can be looked at one by one.` });
+  for (const f of i.found ?? []) if (!FOUND_STOP.has(f.kind)) look.push(f);
   if (i.concern) look.push({ kind: "model_concern", say: i.concernSay ? clip(i.concernSay, 200) : "Something in the change may not do what was meant." });
   const rating: Rating = stop.length ? "stop" : look.length ? "worth_a_look" : "safe";
   return { rating, reasons: [...stop, ...look] };

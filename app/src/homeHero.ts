@@ -8,7 +8,7 @@ import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { pointFixRoute, practiceOf } from "./practice.ts";
-import { canFix, type ReviewCard } from "./review.ts";
+import { canFix, keyWarned, type ReviewCard } from "./review.ts";
 
 /** The quiet buttons with words in the top bar, in order: Learn (only until the first practice is done, or while it has
  *  something for the person or is open), then History, Memory and Settings. Now is Home itself. */
@@ -387,7 +387,9 @@ export function reviewLead(r: ReviewCard | null | undefined, project: string): R
   if (!r || !project || r.project.replace(/\/+$/, "") !== project.replace(/\/+$/, "")) return null;
   // A fix asked for from the review, before its task has begun (the card closes when it begins).
   if (r.fix === "sent") return { headline: S.review.fixStarting, line: S.review.lead(r.count), main: null };
-  if (r.stage === "ready") return { headline: S.review.lead(r.count), line: S.review.heroLine(r.count), main: r.asked ? null : "review" };
+  // M57 feature 5: the instant key warning leads as Fix this first, before any review ran.
+  if (r.stage === "ready" && keyWarned(r)) return { headline: S.review.rating.stop, line: S.review.keyWarning, main: r.asked ? null : "review" };
+  if (r.stage === "ready") return { headline: S.review.lead(r.count), line: r.away ? S.review.away[r.away] : S.review.heroLine(r.count), main: r.asked ? null : "review" };
   if (r.stage === "reviewing") return { headline: S.review.lead(r.count), line: r.proof ? S.review.reviewingChecks : S.review.reviewing, main: null };
   if (r.result && r.result.rating !== "safe" && canFix(r)) return { headline: S.review.rating[r.result.rating], line: S.review.lead(r.count), main: null };
   // Safe on a look, but the project's checks did not run on the changes: it keeps leading, so Home never says the project

@@ -149,6 +149,10 @@
     { "key": "watch.quietTo", "section": "watch", "kind": "number", "default": 7, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "review.mode", "section": "watch", "kind": "choice", "default": "ask", "options": ["ask", "automatic", "off"], "scope": "app", "applies": ["runner", "pages"], "store": "settings", "live": true },
     { "key": "review.quietSeconds", "section": "watch", "kind": "number", "default": 20, "min": 5, "max": 120, "step": 5, "unit": "seconds", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.autoQuietSeconds", "section": "watch", "kind": "number", "default": 60, "min": 20, "max": 600, "step": 10, "unit": "seconds", "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.strictness", "section": "watch", "kind": "choice", "default": "normal", "options": ["quiet", "normal", "careful"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.keyWarning", "section": "watch", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.keepDays", "section": "watch", "kind": "choice", "default": "90", "options": ["30", "90", "180", "365"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
 
     { "key": "memory.paused", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
     { "key": "memory.learnFromFiles", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },

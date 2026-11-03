@@ -4,7 +4,8 @@
 // that found something (stop, worth a look) is never replaced before the person closes it: newer changes wait behind it
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
-import { REVIEW_CHECKS, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_TOUCHES, type ReviewChecks, type ReviewFile, type ReviewRating, type ReviewReason, type ReviewTouch } from "../../protocol/index.ts";
+import { REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch } from "../../protocol/index.ts";
+import { addMemory } from "./commands.ts";
 import { redact } from "../../runner/src/redact.ts";
 import type { IconName } from "./icons.tsx";
 import type { Stamp } from "./itemLook.ts";
@@ -26,6 +27,12 @@ export type ReviewDone = {
   checks: ReviewChecks; checksNote?: string; sendBack: string; lane: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** Why no model wrote the words (the day's limit, no Claude connected, Claude not reached). */
   note?: string;
+  /** M57: the project's notes for AI tools the words were written with, by name (read as notes only). */
+  ruleFiles?: string[];
+  /** M57: how many smaller reasons were not shown (how strict, or a kind not to flag here). */
+  hidden?: number;
+  /** M57: the places of reasons that no longer hold, checked again after a newer change ("Changed since"). */
+  fixed?: number[];
 };
 /** The card. stage: ready (changes wait to be reviewed), reviewing, or reviewed (result is there). asked: Review them was
  *  pressed and the engine has not started yet. fix: Fix it's question is open, or its task was asked for. note: one plain
@@ -33,9 +40,17 @@ export type ReviewDone = {
 export type ReviewCard = {
   project: string; batch: string; stage: "ready" | "reviewing" | "reviewed";
   files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; proof: boolean;
+  /** Must fix 8: these changes were made while the engine was closed, or not watching this project. */
+  away?: (typeof REVIEW_AWAY)[number];
   asked: boolean; fix: "confirm" | "sent" | null; note: string | null; result: ReviewDone | null;
   /** Newer changes waiting behind a review that found something, until it is closed. */
   later?: ReviewCard | null;
+  /** M57: the kinds Don't flag this kind here again was pressed for on this card (saved in What I remember). */
+  silenced?: ReviewReasonKind[];
+  /** M57 feature 5: the instant key warning, where a key was written (file and line only), before any review ran. */
+  keys?: ReviewKeyPlace[];
+  /** M57 feature 1: Copy for my AI was pressed on this card, so closing it is "sent back" in History. */
+  sentBack?: boolean;
 };
 
 type Ev = Record<string, unknown> & { type?: string };
@@ -61,6 +76,19 @@ function reasonsOf(v: unknown): ReviewReason[] | null {
   return out.slice(0, MAX_REASONS);
 }
 
+/** M57 feature 5: the instant key warning's places, a file from the project folder down and a line from 1, at most 10.
+ *  Anything else, and the whole list is left out. */
+function keysOf(v: unknown): ReviewKeyPlace[] | undefined {
+  if (!Array.isArray(v) || !v.length || v.length > 10) return undefined;
+  const ok = v.every((k) => {
+    const o = k as Record<string, unknown> | null;
+    const f = o?.file;
+    return !!o && typeof o === "object" && typeof f === "string" && f.length > 0 && f.length <= 1000 && !f.startsWith("/") && !f.includes("\\") && !f.split("/").some((x) => x === ".." || x === "")
+      && typeof o.line === "number" && Number.isInteger(o.line) && o.line >= 1;
+  });
+  return ok ? (v as ReviewKeyPlace[]).map((k) => ({ file: k.file, line: k.line })) : undefined;
+}
+
 /** What a review that ran said, or null when the event does not keep to the protocol (an unknown rating, touch or check). */
 function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[] }) | null {
   if (!(REVIEW_RATINGS as readonly string[]).includes(e.rating as string)) return null;
@@ -70,9 +98,11 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   if (!files || !reasons || !notes || summary === null || sendBack === null) return null;
   const lane = (REVIEW_LANES as readonly string[]).includes(e.lane as string) ? (e.lane as ReviewDone["lane"]) : "none";
   const checksNote = str(e.checksNote), note = str(e.note);
+  const ruleFiles = strings(e.ruleFiles, 10), hidden = whole(e.hidden);
   return {
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
     ...(checksNote ? { checksNote } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
+    ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),
     files, count: whole(e.count) ?? files.length, capped: e.capped === true, secretFiles: strings(e.secretFiles ?? [], MAX_SECRET_FILES) ?? [],
   };
 }
@@ -106,7 +136,10 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       if (count === 0) return !r || r.batch === e.batch ? null : r;
       const same = r?.batch === e.batch;
       const base = same ? r! : fresh(e.project, e.batch);
-      return { ...base, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true };
+      const away = (REVIEW_AWAY as readonly unknown[]).includes(e.away) ? (e.away as ReviewCard["away"]) : undefined;
+      const keys = keysOf(e.keys);
+      const { away: _was, keys: _k, ...rest } = base;
+      return { ...rest, project: e.project, files, count, capped: e.capped === true, secretFiles, auto: e.auto === true, ...(away ? { away } : {}), ...(keys ? { keys } : {}) };
     }
     case "review.started": {
       if (!isProject(e.project) || !isBatch(e.batch)) return r;
@@ -130,6 +163,23 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       const base = r ?? fresh(e.project, e.batch);
       return { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result };
     }
+    // M57 feature 4: the rules looked again after a newer change. The places that no longer hold are marked; a card with
+    // nothing left closes, and the newer review waiting behind it (later) takes its place.
+    case "review.recheck": {
+      if (!r?.result || !isProject(e.project) || norm(e.project) !== norm(r.project) || e.batch !== r.batch) return r;
+      const n = r.result.reasons.length;
+      if (!Array.isArray(e.fixed) || !e.fixed.length || !e.fixed.every((i) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < n)) return r;
+      if (e.closed === true) return r.later ?? null;
+      return { ...r, result: { ...r.result, fixed: [...new Set([...(r.result.fixed ?? []), ...(e.fixed as number[])])].sort((a, b) => a - b) } };
+    }
+    // M57 feature 7: Don't flag this kind here again was pressed (card.tsx sends the memory line).
+    case "ui.reviewSilenced": {
+      if (!r || e.batch !== r.batch || !REVIEW_SILENCE_LINES[e.kind as ReviewReasonKind]) return r;
+      const k = e.kind as ReviewReasonKind;
+      return (r.silenced ?? []).includes(k) ? r : { ...r, silenced: [...(r.silenced ?? []), k] };
+    }
+    // M57 feature 1: Copy for my AI was pressed (and the text reached the clipboard).
+    case "ui.reviewSentBack": return r && e.batch === r.batch && r.result && !r.sentBack ? { ...r, sentBack: true } : r;
     // The person's presses on the card (card.tsx), each naming the card's batch.
     case "ui.reviewAsked": return r && e.batch === r.batch ? { ...r, asked: true, note: null } : r;
     case "ui.reviewFixAsked": return r && e.batch === r.batch && canFix(r) ? { ...r, fix: "confirm", note: null } : r;
@@ -186,10 +236,23 @@ export function checksLook(c: ReviewChecks): { label: string; kind: "pass" | "fa
   return { label: S.review.checks[c], kind: c === "passed" ? "pass" : c === "failed" ? "fail" : "notRun" };
 }
 
+/** M57 feature 5: the instant key warning shows: a key was written into the code, and no review has run on it yet (once
+ *  one has, its own reasons say it). */
+export function keyWarned(r: ReviewCard | null | undefined): r is ReviewCard {
+  return !!r && !r.result && r.stage !== "reviewed" && (r.keys?.length ?? 0) > 0;
+}
+
+/** M57 feature 1: how a closed card was closed, for its row in History. Nothing for a batch skipped before any review. */
+export function dismissHow(r: ReviewCard | null | undefined): (typeof REVIEW_CLOSED_HOW)[number] | undefined {
+  if (!r?.result) return undefined;
+  return r.sentBack ? "sentBack" : "looksFine";
+}
+
 /** The review's badge in the list on the left: working while it runs, needs you on a stop or worth a look, else new. */
 export function reviewStamp(r: ReviewCard): Stamp {
   if (r.stage === "reviewing" || r.asked || r.fix === "sent") return "working";
   if (r.result && r.result.rating !== "safe") return "needsYou";
+  if (keyWarned(r)) return "needsYou";
   return "new";
 }
 
@@ -197,4 +260,24 @@ export function reviewStamp(r: ReviewCard): Stamp {
 export function placeSaid(r: { say: string; file?: string | null; line?: number | null }): boolean {
   const name = (r.file ?? "").split("/").filter(Boolean).at(-1) ?? "";
   return !!name && r.say.includes(name);
+}
+
+/** M57 feature 4: the reason at this place no longer holds after a newer change. */
+export function fixedSince(r: ReviewCard | null | undefined, i: number): boolean {
+  return !!r?.result?.fixed?.includes(i);
+}
+
+/** M57 feature 7: Don't flag this kind here again is offered on a worth a look reason of a kind it may silence (the
+ *  protocol's REVIEW_SILENCE_LINES): never on a key, a settings or key file, open data or a Fix this first, never on one
+ *  that no longer holds, and once pressed, not again. */
+export function silenceOffered(r: ReviewCard | null | undefined, i: number): boolean {
+  const x = r?.result?.reasons[i];
+  return !!x && r!.stage === "reviewed" && !!REVIEW_SILENCE_LINES[x.kind] && !fixedSince(r, i) && !(r!.silenced ?? []).includes(x.kind);
+}
+
+/** The memory line that silences a kind in this project, with its source (What I remember shows both and can forget it).
+ *  Null for a kind that may never be silenced. */
+export function silenceCommand(project: string, kind: ReviewReasonKind): Command | null {
+  const line = REVIEW_SILENCE_LINES[kind];
+  return line ? addMemory(project, "project", line, S.review.silenceSource) : null;
 }

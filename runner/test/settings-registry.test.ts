@@ -81,6 +81,12 @@ describe("the shipped list of settings", () => {
       // M52 (F30): every change another AI tool makes is reviewed when asked (a quiet dot says there are new changes), once
       // nothing has changed for 20 seconds. Automatic reviews each batch by itself; off does not watch the folder at all.
       "review.mode": "ask", "review.quietSeconds": 20,
+      // M57: Automatic waits for a minute of quiet (a tool that pauses is not reviewed half way), and reviews are Normal:
+      // everything is shown except the kinds the person said not to flag here.
+      "review.autoQuietSeconds": 60, "review.strictness": "normal",
+      // M57 features 1 and 5: the instant key warning is off until the founder says yes (the plan; it changes M52's "nothing runs until asked"), and
+      // History keeps a review's row for 90 days.
+      "review.keyWarning": false, "review.keepDays": "90",
       // F23, M14: something asked for with no project open gets a new folder in the home folder (newfolder.rs).
       "make.folder": "home",
       // M18: the character's name, chosen in the first run or Settings; empty is its own name.
@@ -112,6 +118,19 @@ describe("the shipped list of settings", () => {
     expect(defOf("review.quietSeconds")).toMatchObject({ section: "watch", kind: "number", default: 20, min: 5, max: 120, step: 5, unit: "seconds", scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(validate(defOf("review.quietSeconds")!, 3).ok).toBe(false);
     expect(validate(defOf("review.mode")!, "always").ok).toBe(false);
+  });
+  test("M57: how long Automatic waits, and how strict a review is", () => {
+    expect(defOf("review.autoQuietSeconds")).toMatchObject({ section: "watch", kind: "number", default: 60, min: 20, max: 600, step: 10, unit: "seconds", scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("review.autoQuietSeconds")!, 10).ok).toBe(false);
+    expect(defOf("review.strictness")).toMatchObject({ section: "watch", kind: "choice", default: "normal", options: ["quiet", "normal", "careful"], scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("review.strictness")!, "loud").ok).toBe(false);
+  });
+  test("M57: the instant key warning has its own switch, and History keeps review rows for a chosen number of days", () => {
+    expect(defOf("review.keyWarning")).toMatchObject({ section: "watch", kind: "switch", default: false, scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("review.keyWarning")!, "yes").ok).toBe(false);
+    expect(defOf("review.keepDays")).toMatchObject({ section: "watch", kind: "choice", default: "90", options: ["30", "90", "180", "365"], scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("review.keepDays")!, "forever").ok).toBe(false);
+    expect(validate(defOf("review.keepDays")!, 90).ok).toBe(false);
   });
   test("the worked example: most turns in one task, read when a task starts, for the engine only", () => {
     expect(defOf("work.maxTurns")).toMatchObject({ kind: "number", min: 20, max: 200, step: 10, unit: "count", scope: "app", applies: ["runner"], store: "settings", live: false });

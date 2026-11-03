@@ -137,6 +137,7 @@ describe("(11) changes waiting for review lead Home", () => {
     const l = reviewLead(rc(), P)!;
     expect(l.headline).toBe(S.review.lead(4));
     expect(l.line).toBe(S.review.heroLine(4));
+    expect(reviewLead(rc({ away: "closed" }), P)!.line).toBe(S.review.away.closed);
     expect(l.main).toBe("review");
     expect(S.home.reviewMain).toBe("Review the changes");
   });

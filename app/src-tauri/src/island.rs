@@ -358,18 +358,24 @@ pub fn unseen_next(n: u32, home_open: bool) -> u32 { if home_open { 0 } else { (
 /// fine) or fixes it, when the changes went away again (count 0), or when the engine starts again (it knows no batch then).
 /// Only the batch's name is kept, never a file name or a word of the review.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ReviewReady { batch: Option<String> }
+pub struct ReviewReady { batch: Option<String>, key: bool }
 /// A batch's name as the engine makes them ("rv_" and a few hex characters); anything else is not one.
 fn review_batch(v: &serde_json::Value) -> Option<&str> {
     v.get("batch").and_then(serde_json::Value::as_str)
         .filter(|b| b.len() > 3 && b.len() <= 40 && b.starts_with("rv_") && b[3..].chars().all(|c| c.is_ascii_alphanumeric()))
 }
 fn same_folder(a: &str, b: &str) -> bool { let (a, b) = (a.trim_end_matches('/'), b.trim_end_matches('/')); !a.is_empty() && a == b }
+/// M57 feature 5: the batch carries the instant key warning (its places, or only their count as the shell passes it on).
+fn has_keys(v: &serde_json::Value) -> bool {
+    match v.get("keys") { Some(serde_json::Value::Array(a)) => !a.is_empty(), Some(k) => k.as_u64().unwrap_or(0) > 0, None => false }
+}
 impl ReviewReady {
-    pub const fn new() -> Self { ReviewReady { batch: None } }
+    pub const fn new() -> Self { ReviewReady { batch: None, key: false } }
     pub fn on(&self) -> bool { self.batch.is_some() }
+    /// M57 feature 5: the lit batch has the instant key warning, so the panel's quiet line says a key was written.
+    pub fn key(&self) -> bool { self.batch.is_some() && self.key }
     /// Puts it out. True when it was on.
-    pub fn clear(&mut self) -> bool { self.batch.take().is_some() }
+    pub fn clear(&mut self) -> bool { self.key = false; self.batch.take().is_some() }
     fn light(&mut self, id: &str) -> bool { let was = self.batch.replace(id.to_string()); was.as_deref() != Some(id) }
     /// An event from the engine. `project`: the folder open now (an event about another one is not news here). `seen`: Home
     /// is open and in front, so what it says is seen at once. True when the dot changed.
@@ -382,13 +388,19 @@ impl ReviewReady {
         if t == "review.result" {
             // A review that could not be done is nothing new to look at; a finished one is, unless Home shows it now.
             if v.get("ok") != Some(&serde_json::Value::Bool(true)) { return false; }
-            return if seen { self.clear() } else { self.light(id) };
+            // Once reviewed, the review's own words say any key; the warning's line gives way.
+            if seen { return self.clear(); }
+            let was_key = std::mem::replace(&mut self.key, false);
+            return self.light(id) || was_key;
         }
         if v.get("count").and_then(serde_json::Value::as_u64).unwrap_or(0) == 0 {
             // The changes went away again. A batch that already moved on says nothing about the newer one.
             return self.batch.as_deref() == Some(id) && self.clear();
         }
-        if seen { self.clear() } else { self.light(id) }
+        if seen { return self.clear(); }
+        let key = has_keys(v);
+        let was_key = std::mem::replace(&mut self.key, key);
+        self.light(id) || was_key != key
     }
     /// A command a page sent, after the shell's checks: Review now, Looks fine or Fix it. One that names a batch that already
     /// moved on leaves the newer one lit. True when the dot changed.
@@ -1335,6 +1347,35 @@ mod tests {
     }
 
     #[test]
+    fn the_instant_key_warning_is_said_on_the_quiet_line_until_a_review_or_a_newer_batch_without_one() {
+        // M57 feature 5: erv10 carries a key's place; the shell passes on only how many (main.rs review_heard).
+        let ev = events();
+        let mut r = ReviewReady::new();
+        assert!(r.heard(by_id(&ev, "erv10"), P, false));
+        assert!(r.on() && r.key());
+        let mut counted = by_id(&ev, "erv10").clone();
+        counted["keys"] = serde_json::json!(1);
+        let mut r2 = ReviewReady::new();
+        assert!(r2.heard(&counted, P, false) && r2.key(), "a count from the shell works the same");
+        // The same batch said again without the warning (it grew, and the key is gone): the line changes, the dot stays.
+        let mut plain = by_id(&ev, "erv10").clone();
+        plain.as_object_mut().unwrap().remove("keys");
+        assert!(r.heard(&plain, P, false), "the line changed");
+        assert!(r.on() && !r.key());
+        assert!(r.heard(by_id(&ev, "erv10"), P, false) && r.key());
+        // A finished review takes over: its own words say the key.
+        let mut done = by_id(&ev, "erv4").clone();
+        done["batch"] = by_id(&ev, "erv10")["batch"].clone();
+        assert!(r.heard(&done, P, false), "the warning gives way");
+        assert!(r.on() && !r.key());
+        assert!(r.heard(by_id(&ev, "erv10"), P, false) && r.key());
+        assert!(r.clear() && !r.key());
+        // Seen at once while Home is in front: nothing lit, nothing said.
+        assert!(!r.heard(by_id(&ev, "erv10"), P, true));
+        assert!(!r.key());
+    }
+
+    #[test]
     fn a_batch_said_while_home_is_in_front_is_seen_at_once() {
         let ev = events();
         let mut r = ReviewReady::new();
@@ -1421,7 +1462,9 @@ mod tests {
         assert!(body("fn project_now(").contains("review_ready().clear()"), "another folder");
         let applied = body("fn setting_applied(");
         assert!(applied.contains("\"review.mode\"") && applied.contains("\"flow.on\"") && applied.contains("!review_watched()"), "{applied}");
-        assert!(body("fn island_state(").contains("v[\"review\"] = json!(review_ready().on())"), "a page that loads late");
+        // M57 feature 5: a page that loads late also learns whether the waiting batch carries the instant key warning.
+        let state = body("fn island_state(");
+        assert!(state.contains("v[\"review\"] = json!(r.on())") && state.contains("v[\"reviewKey\"] = json!(r.key())"), "a page that loads late");
     }
 
     // ---------- M55 section 2: live progress on the notch ----------

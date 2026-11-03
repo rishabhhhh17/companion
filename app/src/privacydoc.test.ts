@@ -78,12 +78,14 @@ describe("the privacy note names every flow that reads or sends something", () =
   });
   // Must fix 21: a review sends the changed lines of the project to Claude, with no tap in Automatic. The note and the
   // launch policy both say what is read, through what, and when.
-  test("the review of changes your AI makes says what is read, through what, when, and how to turn it off", () => {
-    const r = row("Another AI tool changes your project (**Review changes your AI makes**");
+  test("the review of changes to your project says what is read, through what, when, and how to turn it off", () => {
+    const r = row("Another AI tool changes your project (**Review changes to your project**");
     expect(r).not.toBe("");
-    for (const w of ["only the project folder you chose", "changed", "names", "[secret]", "never read", "Claude", "under your key", S.set["review.mode"].options!.ask, S.set["review.mode"].options!.automatic, "without a tap", "daily limit", S.set["review.mode"].label, S.set["review.mode"].options!.off]) expect(r, w).toContain(w);
+    for (const w of ["only the project folder you chose", "changed", "names", "[secret]", "never read", "Claude", "under your key", S.set["review.mode"].options!.ask, S.set["review.mode"].options!.automatic, "without a tap", "daily limit", S.set["review.mode"].label, S.set["review.mode"].options!.off, "while it was closed"]) expect(r, w).toContain(w);
+    // M57 features 1 and 5: the one check that runs without asking, and History's review rows, by their settings' names.
+    for (const w of [S.set["review.keyWarning"].label, "without asking", "never what it is", S.set["review.keepDays"].label, "never the text of a file", "Delete everything"]) expect(r, w).toContain(w);
     const policy = readFileSync(new URL("../../docs/launch/legal/privacy-policy.md", import.meta.url), "utf8");
-    const p = policy.split("\n").find((l) => l.startsWith("| **Review changes your AI makes**")) ?? "";
+    const p = policy.split("\n").find((l) => l.startsWith("| **Review changes to your project**")) ?? "";
     for (const w of ["changed", "names", "keys hidden", "never read", "Automatic", "without a tap", "Off"]) expect(p, w).toContain(w);
   });
 });

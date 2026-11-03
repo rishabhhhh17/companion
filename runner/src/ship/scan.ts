@@ -22,7 +22,7 @@ const JWT = /\beyJ[A-Za-z0-9_-]{10,}\.([A-Za-z0-9_-]{10,})\.[A-Za-z0-9_-]{10,}/;
 const SECRETISH = /(?:key|token|secret|password|passwd|pwd)[A-Za-z0-9_]*\s*[=:]\s*(["'])([^\s"'\n]{12,})\1/i;
 const SECRETISH_RAW = /(?:key|token|secret|password|passwd|pwd)[A-Za-z0-9_]*\s*[=:]\s*([^\s"'\n#]{12,})/i;
 const ENV_LINE = /^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$/;
-const PUBLIC_PREFIX = /^(?:NEXT_PUBLIC_|NUXT_PUBLIC_|EXPO_PUBLIC_|REACT_APP_|VITE_|PUBLIC_|GATSBY_)/;
+export const PUBLIC_PREFIX = /^(?:NEXT_PUBLIC_|NUXT_PUBLIC_|EXPO_PUBLIC_|REACT_APP_|VITE_|PUBLIC_|GATSBY_)/;
 const SECRET_NAME = /SECRET|PRIVATE|SERVICE_ROLE|SERVICE_KEY|ADMIN_KEY|MASTER_KEY|PASSWORD|PASSWD|TOKEN|CREDENTIAL/;
 const PLACEHOLDER = /^(?:["']?)(?:your[_-]|<|xxx|changeme|change[_-]me|example|placeholder|todo|\.\.\.|\*{3,}|replace)/i;
 
@@ -95,7 +95,8 @@ function ignoredBy(patterns: string[], rel: string): boolean {
   });
 }
 
-const publicDir = (rel: string) => BUILD_DIRS.some((b) => rel === b || rel.startsWith(b + "/"));
+/** A built or published folder: every file in it is sent to whoever opens the site. */
+export const publicDir = (rel: string) => BUILD_DIRS.some((b) => rel === b || rel.startsWith(b + "/"));
 const TEMPLATE_ENV = /(^|\/)\.env\.(example|sample|template|dist)$/;
 
 export function scanProject(dir: string, o: ScanOptions = {}): { findings: Finding[]; scanned: number; skipped: number; unreadablePublic: number } {

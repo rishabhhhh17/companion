@@ -38,7 +38,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
     expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");
-    expect(mainKeys("fixing")).toEqual(["rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
+    // M57 UI 12: the review of changes leads the Fixing page.
+    expect(mainKeys("fixing")).toEqual(["review.mode", "rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
     // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
     expect(mainKeys("look")).toEqual(["look.layout", "look.theme", "look.colour", "look.water", "look.light", "look.gloss", "look.corners", "look.density", "look.icons", "look.stamps"]);
     expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);

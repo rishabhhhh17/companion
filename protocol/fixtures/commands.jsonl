@@ -90,4 +90,5 @@
 {"v":1,"id":"rv1","type":"review.now","project":"p_9f2c","batch":"rv_4f2a9c01de"}
 {"v":1,"id":"rv2","type":"review.now","project":"p_9f2c","proof":true}
 {"v":1,"id":"rv3","type":"review.dismiss","project":"p_9f2c","batch":"rv_4f2a9c01de"}
+{"v":1,"id":"rv3b","type":"review.dismiss","project":"p_9f2c","batch":"rv_4f2a9c01de","how":"sentBack"}
 {"v":1,"id":"rv4","type":"review.fix","project":"p_9f2c","batch":"rv_4f2a9c01de","agent":"builder-1","model":"claude-sonnet-5-5","budgetUsd":3}

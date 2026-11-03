@@ -36,7 +36,7 @@ import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
 import { readDeployFailure } from "./ship/buildlog.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
-import { whereWasI, type WatchLite } from "./wherewasi.ts";
+import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
 import { browserCheck } from "./proof/browser.ts";
 import { applyRules, loadRules, withHouseRule } from "./rules.ts";
@@ -138,6 +138,9 @@ export type RunnerOptions = {
   ci?: CiReader;
   // The watches of a project, for Where was I (F21). Without it, Where was I names none.
   watches?: { forProject(project: string): WatchLite[] };
+  // M57 feature 6: what the review of changes says about a project (review/service.ts stateFor), for Where was I. Without it,
+  // Where was I says nothing about changes.
+  reviewState?: (project: string) => ReviewState | null;
   browser?: typeof browserCheck;
   // The visual receipt: after a passing check, the page before and after, with the change circled. Without it, off.
   pictures?: { workDir: string; saveDir: string; before?: typeof captureBefore; draw?: typeof drawReceipt; card?: typeof makeShareCard };
@@ -420,6 +423,7 @@ export class AgentRunner {
     const r = whereWasI({
       rows: this.o.log.list(cmd.project, 100), since: cmd.since ?? null, now: this.now().getTime(), watches: this.o.watches?.forProject(cmd.project) ?? [],
       pendingApprovals, waitingPlans, pausedPlans, question: asked ? { text: asked[1].offTheRecord ? null : asked[1].question ?? null } : null,
+      review: (() => { try { return this.o.reviewState?.(cmd.project) ?? null; } catch { return null; } })(),
     });
     this.emit({ type: "where.ready", project: cmd.project, lines: r.lines, next: r.next } as never);
   }
@@ -791,7 +795,9 @@ export class AgentRunner {
       case "tasks.list": {
         const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
-        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}) } as never);
+        // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
+        const reviews = this.o.log.reviews(resolve(cmd.project), 50, { keepDays: Number(this.setting("review.keepDays")) });
+        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}) } as never);
         return;
       }
       case "agent.send": await this.followUp(cmd); return;

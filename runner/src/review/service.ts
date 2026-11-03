@@ -1,4 +1,4 @@
-// M52, the review of every change your AI makes (F30, docs/milestones/M52-review-every-change.md). The engine's side:
+// M52, the review of every change to the project (F30, docs/milestones/M52-review-every-change.md). The engine's side:
 //  - It watches only the open project folder (the one the shell names in settings.apply), only while review.mode is not
 //    off and Flow is on (batcher.ts). Never the screen, never another folder. Only changed paths are kept, in memory.
 //  - A batch is everything that changed since the last review, or since the engine's own last work in the project,
@@ -21,7 +21,8 @@
 import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
-import type { Command } from "../../../protocol/index.ts";
+import { reviewSilenced, type Command, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
+import { loadRules } from "../rules.ts";
 import { NEEDS_GIT, type Checkpoint, type CheckpointStore } from "../checkpoints.ts";
 import type { FastLike } from "../lanes.ts";
 import { PRODUCT, PRODUCT_S } from "../names.ts";
@@ -31,7 +32,8 @@ import { limitReached } from "../spending.ts";
 import { diffForExplain, hideSecretRuns, taskHunks, teachable, type Hunk } from "../teach.ts";
 import { NO_PROJECT } from "../walk.ts";
 import { ChangeBatcher, ignoredPath, type WatchFn } from "./batcher.ts";
-import { importersOf, MAX_BATCH_FILES, needsStrongModel, rate, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines } from "./rate.ts";
+import { applyStrictness, houseRuleReasons, keysInPage, lineHash, MIGRATION, openDataItems, recheckFiles, recheckHolds, ruleFilesOf, type Recheck, type RuleFile } from "./look.ts";
+import { importersOf, MAX_BATCH_FILES, needsStrongModel, rate, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
 import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
 
@@ -81,17 +83,33 @@ export type ReviewDeps = {
   quietMs?: () => number;
   modelTimeoutMs?: number;
   checkTimeoutMs?: number;
+  /** M57 feature 7: the project's memory lines (What I remember), where "Don't flag this kind here again" is saved. */
+  silenced?: (project: string) => readonly string[];
+  /** M57 feature 1: where each review that ran is kept as one row (the task log, tasklog.ts), and what was done with it. */
+  history?: ReviewHistory;
+};
+/** M57 feature 1: a review's row in History. Names of files only, never their text (TaskLog.addReview keeps nothing else). */
+export type ReviewHistory = {
+  add(row: { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string }): void;
+  did(project: string, batch: string, did: "looks_fine" | "sent_back" | "fix" | "no_longer_applies"): void;
 };
 
-type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean };
+type Away = (typeof REVIEW_AWAY)[number];
+/** away: the batch of changes made while the engine was closed or not watching (must fix 8). It never grows (it is frozen
+ *  from the start, so a later save waits and becomes its own batch once this one is closed), it is never reviewed by
+ *  itself, and its project's checks and scripts run only when the person asks for them. */
+type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away };
 /** Changes of the other tool set aside while the engine's own work, a review or an earlier batch was in the way: said as
  *  their own batch once that is over. to: null while the engine's work still runs. only: the files that are the other
  *  tool's (null: every file from..to). quiet: wait for the folder to be quiet first. stops: Stop everything's count when
  *  they were set aside; after a Stop they are said, but not reviewed by themselves. */
 type Held = { from: Promise<string | null>; to: Promise<string | null> | null; only: Promise<string[]>[] | null; capped: boolean; quiet: boolean; stops: number };
-type Reviewed = { batch: Batch; words: ReviewWords };
+/** A review that ran, kept for Fix it and for its recheck (M57 feature 4): how each shown reason is checked again by the
+ *  rules, and the places of those that no longer hold. */
+type Reviewed = { batch: Batch; words: ReviewWords; rechecks: Recheck[]; fixed: Set<number> };
 
 const SHOWN_FILES = 50;          // files named in an event
+const KEY_PLACES = 10;           // places the instant key warning names (M57 feature 5)
 const READ_FILES = 60;           // files whose text the rules and the model look at
 const DIFF_CHARS = 12_000;       // the most of the change a model is shown
 const KEEP_REVIEWED = 5;         // reviews kept for Fix it until the card is closed
@@ -152,6 +170,30 @@ function withoutKeys(hunks: Hunk[]): Hunk[] {
   return hunks.map((h) => hideSecretRuns([h], (t) => secretsInCode([{ file: h.file, line: 1, text: t }]).length > 0)[0]);
 }
 
+/** How a shown reason is checked again later (M57 feature 4). A key: its line, by hash. A removed file still used: the
+ *  import. Open data: the table. Anything else is about the change itself: it holds until its files are back as they were. */
+function recheckOf(r: Reason, o: { b: Batch; added: AddedLine[]; stillUsed: StillUsed[]; open: { reason: Reason; table: string; open: "anyone" | "signedIn" }[] }): Recheck {
+  const all: Recheck = { how: "files", files: o.b.files.map((f) => f.file) };
+  if ((r.kind === "secret_in_code" || r.kind === "key_in_page") && r.file) {
+    const line = o.added.find((a) => a.file === r.file && a.line === r.line);
+    return line ? { how: "line", file: r.file, hash: lineHash(line.text) } : { how: "files", files: [r.file] };
+  }
+  if (r.kind === "removed_still_used") {
+    const u = o.stillUsed.find((x) => x.by === r.file && x.line === r.line);
+    return u ? { how: "import", file: u.file, by: u.by } : all;
+  }
+  if (r.kind === "open_table" || r.kind === "signed_in_open") {
+    const t = o.open.find((x) => x.reason === r);
+    return t ? { how: "table", table: t.table, open: t.open } : all;
+  }
+  if ((r.kind === "house_rule" || r.kind === "house_rule_ask") && r.file) return { how: "files", files: [r.file] };
+  if (r.kind === "files_removed") {
+    const gone = o.b.files.filter((f) => f.kind === "deleted" && !o.stillUsed.some((u) => u.file === f.file)).map((f) => f.file);
+    return gone.length ? { how: "files", files: gone } : all;
+  }
+  return all;
+}
+
 export class ReviewService {
   private project: string | null = null;     // the open project, as the shell last named it
   private watching: string | null = null;    // the project being watched now
@@ -180,6 +222,9 @@ export class ReviewService {
   private made: string[] = [];
   /** The store was full (FULL), so nothing was measured: a fresh starting point is taken once there is room. */
   private paused = false;
+  /** Projects watched before in this run of the engine: changes found when one is watched again were made while it was not
+   *  watched (another project was open, or reviews were off), not while the engine was closed. */
+  private watchedBefore = new Set<string>();
   constructor(private deps: ReviewDeps) {}
 
   /** A version for the review: it only needs to tell whether a .env file changed, so it keeps a salted hash of it, never a
@@ -220,7 +265,15 @@ export class ReviewService {
   async ready(): Promise<void> { await this.baseline; await this.chain.catch(() => undefined); }
   private on(): boolean { return this.deps.setting("review.mode") !== "off" && this.deps.setting("flow.on") !== false; }
   private auto(): boolean { return this.deps.setting("review.mode") === "automatic"; }
-  private quietMs(): number { return this.deps.quietMs ? this.deps.quietMs() : Math.max(1, Number(this.deps.setting("review.quietSeconds")) || 20) * 1000; }
+  /** How long the folder must be quiet before a batch is said. Automatic waits longer (review.autoQuietSeconds, usual 60):
+   *  a tool that pauses while it works is not reviewed half way, until the other tool can say it is done (M57 feature 4). */
+  private quietMs(): number {
+    if (this.deps.quietMs) return this.deps.quietMs();
+    const auto = this.auto();
+    return Math.max(1, Number(this.deps.setting(auto ? "review.autoQuietSeconds" : "review.quietSeconds")) || (auto ? 60 : 20)) * 1000;
+  }
+  /** For tests: the quiet time in force now. */
+  quietTimeMs(): number { return this.quietMs(); }
   private ownOf(p: string): number { return this.ownBy.get(p) ?? 0; }
 
   private startWatching(p: string): void {
@@ -235,7 +288,17 @@ export class ReviewService {
     this.startProblem = null;
     this.unguard?.(); this.made = []; this.paused = false;
     try { this.unguard = store.guard(() => this.inUse()); } catch { this.unguard = null; }   // a store that cannot keep them: the newest 100 still stay
-    this.baseline = this.serial(() => this.snap(store, LABEL_START).then((c) => c.id)).catch((e: unknown) => {
+    // Must fix 8: before the new starting point, the project's newest earlier version in the shadow store. What differs
+    // between the two was changed while the engine was closed (or not watching): one batch, only offered, never reviewed by
+    // itself and with no scripts, whatever review.mode says. Nothing earlier (the first time): nothing to offer.
+    const away: Away = this.watchedBefore.has(p) ? "notWatching" : "closed";
+    this.watchedBefore.add(p);
+    this.baseline = this.serial(async () => {
+      const earlier = await store.list().then((l) => l.at(-1) ?? null, () => null);
+      const start = await this.snap(store, LABEL_START);
+      if (earlier && gen === this.gen && !store.full) await this.announce(store, earlier.id, start.id, false, false, null, null, away).catch(() => null);
+      return start.id;
+    }).catch((e: unknown) => {
       if (gen === this.gen) this.startProblem = String((e as Error)?.message ?? e) === NEEDS_GIT ? NEEDS_GIT : NO_COPY;
       return null;
     });
@@ -419,7 +482,7 @@ export class ReviewService {
    *  the starting point on. frozen: the engine's own work began since, so the batch cannot grow any more. auto: Stop's
    *  count when it was asked for; with review.mode automatic it is reviewed by itself only if Stop was not pressed since
    *  (null: never by itself). only: just these files (changes set aside while the engine worked). */
-  private async announce(store: CheckpointStore, from: string, to: string, capped: boolean, frozen: boolean, auto: number | null, only: Set<string> | null = null): Promise<Batch | null> {
+  private async announce(store: CheckpointStore, from: string, to: string, capped: boolean, frozen: boolean, auto: number | null, only: Set<string> | null = null, away?: Away): Promise<Batch | null> {
     const p = this.watching!;
     const changed = (await store.diff(from, to)).filter((c) => !only || only.has(c.file));
     const env = (await store.envChanged(from, to)).filter((f) => (!only || only.has(f)) && !changed.some((c) => c.file === f));
@@ -431,12 +494,50 @@ export class ReviewService {
       if (old) this.deps.emit({ type: "review.batch", project: p, batch: old.id, files: [], count: 0, capped: false, secretFiles: [], auto: this.auto() });
       return null;
     }
-    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > MAX_BATCH_FILES, secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen };
+    // Must fix 8 (review finding, 4 Nov 2026): a batch from while away is frozen from the start, so measure never grows it
+    // with a later save (which used to drop its mark and, in Automatic, review the evening's changes by themselves).
+    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > MAX_BATCH_FILES, secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}) };
     this.open = b;
-    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto() });
-    if (this.auto() && auto !== null && auto === this.stops) void this.reviewBatch(b, true, auto, false).catch(() => undefined);
+    // M57 feature 5: the instant key warning, before the batch is said. Only when review.keyWarning is on: it is off by
+    // usual until the founder says yes, because it reads the changed files without a press. The batch is open first, so
+    // the engine's own work that begins meanwhile still freezes it.
+    const gen = this.gen;
+    const keys = this.deps.setting("review.keyWarning") !== true ? [] : await this.keyPlaces(store, from, to, files).catch(() => []);
+    if (gen !== this.gen || this.open !== b) return null;
+    this.deps.emit({ type: "review.batch", project: p, batch: b.id, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20), auto: this.auto(), ...(away ? { away } : {}), ...(keys.length ? { keys } : {}) });
+    if (this.auto() && auto !== null && auto === this.stops && !away) void this.reviewBatch(b, true, auto, false).catch(() => undefined);
     return b;
   }
+  /** M57 feature 5, the instant key warning: only the key rule (rate.ts secretsInCode), on the lines this batch added, on
+   *  this Mac with no model, no scripts and no network. Settings and key files are never read (teach.ts teachable). Where
+   *  each key is, never its text. */
+  private async keyPlaces(store: CheckpointStore, from: string, to: string, files: FileChange[]): Promise<ReviewKeyPlace[]> {
+    const readable = files.filter((f) => f.kind !== "deleted" && teachable(f.file)).slice(0, READ_FILES);
+    if (!readable.length) return [];
+    const names = new Set(readable.map((f) => f.file));
+    const [before, after] = [await store.readFiles(from, (x) => names.has(x)), await store.readFiles(to, (x) => names.has(x))];
+    const added: AddedLine[] = [];
+    for (const h of taskHunks(readable, before, after)) h.after.forEach((text, i) => added.push({ file: h.file, line: h.afterAt + i, text }));
+    return secretsInCode(added).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line).slice(0, KEY_PLACES).map((x) => ({ file: x.file, line: x.line }));
+  }
+
+  /** M57 feature 6, for Where was I: what the review says about this project now. waiting: files changed and not reviewed
+   *  yet (the open batch). stop: the first reason, still holding, of a review that said Fix this first and is not closed.
+   *  Null for a project that is not the one watched. Read from memory only; nothing is measured or run. */
+  stateFor(project: string): { waiting: number; stop: string | null } | null {
+    let p: string;
+    try { p = resolve(project); } catch { return null; }
+    if (!this.watching || p !== this.watching) return null;
+    const waiting = this.open && !this.reviewed.has(this.open.id) ? this.open.count : 0;
+    let stop: string | null = null;
+    for (const rec of [...this.reviewed.values()].reverse()) {
+      if (rec.words.rating !== "stop") continue;
+      const i = rec.words.reasons.findIndex((_, k) => !rec.fixed.has(k));
+      if (i >= 0) { stop = clip(redact(rec.words.reasons[i].say), 160); break; }
+    }
+    return { waiting, stop };
+  }
+
   /** The open batch is closed (reviewed, or Looks fine): the next one starts where it ended. */
   private close(b: Batch): void {
     if (this.open?.id === b.id) {
@@ -477,11 +578,19 @@ export class ReviewService {
     if (cmd.type === "review.now") return this.reviewNow(cmd);
     if (cmd.type === "review.dismiss") {
       const b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch;
+      // M57 feature 1: a review that ran was closed: Looks fine, or after Copy for my AI. A skipped batch has no row.
+      const ran = this.reviewed.get(cmd.batch);
+      if (ran) this.said(ran.batch, cmd.how === "sentBack" ? "sent_back" : "looks_fine");
       this.reviewed.delete(cmd.batch);
       if (b && b.id === this.open?.id) this.close(b);
       return;
     }
     return this.fix(cmd);
+  }
+
+  /** M57 feature 1: what was done with a review, in its row. Never in the way of the review itself. */
+  private said(b: Batch, did: Parameters<ReviewHistory["did"]>[2]): void {
+    try { this.deps.history?.did(b.project, b.id, did); } catch { /* the row is a nicety */ }
   }
 
   private notReviewed(project: string, reason: string, batch?: string): void {
@@ -516,7 +625,8 @@ export class ReviewService {
       b = b ?? measured ?? this.open;
       if (!b) { this.notReviewed(cmd.project, NOTHING); return; }
     }
-    await this.reviewBatch(b, cmd.proof === true || this.auto(), stops, cmd.proof === true);
+    // A batch from while away runs the project's checks only when the person asks for them, whatever review.mode says.
+    await this.reviewBatch(b, cmd.proof === true || (this.auto() && !b.away), stops, cmd.proof === true);
   }
 
   private async fix(cmd: Extract<ReviewCmd, { type: "review.fix" }>): Promise<void> {
@@ -524,9 +634,38 @@ export class ReviewService {
     const fail = (reason: string) => this.deps.emit({ type: "protocol.error", reason, failed: "review.fix" });
     if (!rec || rec.batch.project !== resolve(cmd.project)) { fail("Review these changes first, then press Fix it."); return; }
     if (!this.deps.fix) { fail("Fixing is not available here."); return; }
+    this.said(rec.batch, "fix");
     this.reviewed.delete(cmd.batch);
     // An ordinary task: it keeps a safety copy first and can be undone, like every fix. The plan gate admits it in main.ts.
     await this.deps.fix({ v: 1, id: cmd.id, type: "agent.start", project: cmd.project, agent: cmd.agent, mode: "drive", prompt: fixPrompt(rec.words), model: cmd.model, budgetUsd: cmd.budgetUsd });
+  }
+
+  /** The project's memory lines, for "do not flag" (M57 feature 7). None when they cannot be read. */
+  private silencedLines(project: string): readonly string[] {
+    try { return this.deps.silenced?.(project) ?? []; } catch { return []; }
+  }
+
+  /** M57 feature 4: each still open reason of the earlier reviews kept here is checked again by the rules (no model, no
+   *  script) against the newer batch's version. Those that no longer hold are said (review.recheck); a review with nothing
+   *  left closes, and its card gives way to the newer review. */
+  private async recheck(newer: Batch): Promise<void> {
+    const store = this.deps.store(newer.project);
+    for (const rec of [...this.reviewed.values()]) {
+      if (rec.batch.id === newer.id || rec.batch.project !== newer.project || rec.words.rating === "safe") continue;
+      const open = rec.rechecks.map((_, i) => i).filter((i) => !rec.fixed.has(i));
+      if (!open.length) continue;
+      const ts = open.map((i) => rec.rechecks[i]);
+      const want = new Set(recheckFiles(ts));
+      const text = want.size ? await store.readFiles(newer.to, (x) => want.has(x)) : {};
+      const migrations = ts.some((t) => t.how === "table") ? await store.readFiles(newer.to, (x) => MIGRATION.test(x)) : {};
+      const changedSinceBefore = new Set([...(await store.diff(rec.batch.from, newer.to)).map((c) => c.file), ...(await store.envChanged(rec.batch.from, newer.to))]);
+      let grew = false;
+      for (const i of open) if (!recheckHolds(rec.rechecks[i], { text, changedSinceBefore, migrations })) { rec.fixed.add(i); grew = true; }
+      if (!grew || !this.reviewed.has(rec.batch.id)) continue;
+      const closed = rec.fixed.size >= rec.rechecks.length;
+      if (closed) { this.reviewed.delete(rec.batch.id); this.said(rec.batch, "no_longer_applies"); }
+      this.deps.emit({ type: "review.recheck", project: rec.batch.project, batch: rec.batch.id, by: newer.id, fixed: [...rec.fixed].sort((x, y) => x - y), closed });
+    }
   }
 
   // ---------- the review ----------
@@ -557,7 +696,22 @@ export class ReviewService {
         l.added.push(...h.after); l.removed.push(...h.before);
         h.after.forEach((text, i) => added.push({ file: h.file, line: h.afterAt + i, text }));
       }
-      const secrets = secretsInCode(added);
+      // M57 feature 2: Ship's own checks on the changed files only. A key in a published folder, or a secret setting read
+      // under a name the build makes public, is said as a key that reaches the page; other keys Ship's scan knows join the
+      // usual key in the code.
+      const page = keysInPage(added);
+      const at = (x: { file?: string; line?: number }) => `${x.file}\u0000${x.line}`;
+      const inPage = new Set(page.page.map(at));
+      const secrets = secretsInCode(added).filter((x) => !inPage.has(at(x)));
+      for (const c of page.code) if (!secrets.some((x) => at(x) === at(c))) secrets.push(c);
+      secrets.sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line);
+      const changedNames = b.files.map((f) => f.file);
+      const open = changedNames.some((f) => MIGRATION.test(f))
+        ? openDataItems(changedNames, await store.readFiles(b.from, (x) => MIGRATION.test(x)), await store.readFiles(b.to, (x) => MIGRATION.test(x)))
+        : [];
+      // M57 feature 3: the project's own "never edit" and "ask before editing" rules, against every changed path.
+      const house = houseRuleReasons(loadRules(b.project).rules, b.files);
+      const found: Reason[] = [...page.page, ...open.map((x) => x.reason), ...house];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
       const touches = touchesOf(b.files, lines, b.secretFiles);
@@ -580,18 +734,21 @@ export class ReviewService {
           checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 200) : undefined;
         }
       }
-      const input = { changes: b.files, touches, secrets, stillUsed, secretFiles: b.secretFiles, checks, checksNote, count: b.count, capped: b.capped };
+      const input = { changes: b.files, touches, secrets, stillUsed, secretFiles: b.secretFiles, checks, checksNote, count: b.count, capped: b.capped, found };
       let rated = rate(input);
 
       // The words: the cheap lane, or the stronger model for a stop, sign in or payments. Only with room left today.
       let lane: "cheap" | "strong" | "none" = "none", note: string | undefined, words: Words | null = null;
+      // M57 feature 3: the project's notes for AI tools, only when a model writes the words, quoted to it as data.
+      let ruleNotes: RuleFile[] = [];
       const strong = needsStrongModel(rated.rating, touches);
       const model = strong && this.deps.strong ? this.deps.strong : this.deps.cheap;
       if (!model) note = "No Claude is connected, so these are the rules' own words.";
       else if (this.deps.spend.room(b.project) <= 0) note = limitReached(b.project);
       else {
         lane = model === this.deps.strong && strong ? "strong" : "cheap";
-        const req = wordsRequest({ files: b.files, count: b.count, touches, reasons: rated.reasons, diff: diffForExplain(withoutKeys(hunks), DIFF_CHARS), checks: checks === "not_run" ? "not run" : checks });
+        ruleNotes = ruleFilesOf(b.project);
+        const req = wordsRequest({ files: b.files, count: b.count, touches, reasons: rated.reasons, diff: diffForExplain(withoutKeys(hunks), DIFF_CHARS), checks: checks === "not_run" ? "not run" : checks, notes: ruleNotes });
         // The call has its own stop switch: Stop ends it, and so does waiting too long, so no Claude process is left
         // running. Whatever it cost is booked when it answers (F29), even after the review stopped waiting for it.
         const call = new AbortController();
@@ -614,17 +771,27 @@ export class ReviewService {
         } finally { abort.signal.removeEventListener("abort", endCall); }
       }
       if (words?.concern) rated = rate({ ...input, concern: true, concernSay: words.concernSay });
+      // M57 feature 7: how strict. Smaller reasons may be left out (Quiet, or a kind the person said not to flag here);
+      // a Fix this first, a key, a settings or key file and open data never are.
+      const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));
       const summary = words?.summary ?? plainSummary(b.files, b.count);
       const notes = (words?.notes ?? []).map((n) => clip(redact(n), 200));
-      const review: ReviewWords = { rating: rated.rating, reasons: rated.reasons, touches, files: b.files, count: b.count, summary, notes };
+      const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes };
+      const ruleFiles = lane !== "none" ? ruleNotes.map((n) => n.name) : [];
       if (gen !== this.gen || abort.signal.aborted) throw new Error("stopped");
       this.deps.emit({
-        type: "review.result", project: b.project, batch: b.id, ok: true, rating: rated.rating, touches, summary: clip(redact(summary), 400), notes,
-        reasons: rated.reasons, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
+        type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
+        reasons: shown.reasons, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
+        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}),
       });
-      this.reviewed.set(b.id, { batch: b, words: review });
+      // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
+      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400) }); } catch { /* the row is a nicety */ }
+      const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
+      this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set() });
       while (this.reviewed.size > KEEP_REVIEWED) this.reviewed.delete(this.reviewed.keys().next().value as string);
+      // M57 feature 4: the reasons of earlier reviews still open are checked again by the rules against this newer version.
+      await this.recheck(b).catch(() => undefined);
       this.reviewing = null;
       this.close(b);
     } catch (e) {

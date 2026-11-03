@@ -114,15 +114,17 @@ function Island() {
   const [unseen, setUnseen] = useState(0);
   // M52: changes another AI tool made, ready to review (the shell's island.rs ReviewReady decides when it is on).
   const [review, setReview] = useState(false);
+  // M57 feature 5: that batch carries the instant key warning, so the quiet line says a key was written.
+  const [reviewKey, setReviewKey] = useState(false);
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); setReview((v as { review?: unknown } | null)?.review === true); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); setReview((v as { review?: unknown } | null)?.review === true); setReviewKey((v as { reviewKey?: unknown } | null)?.reviewKey === true); }).catch(() => {});
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
     // M34: results finished while Home was closed, counted until Home opens. M46: said on the hover panel only.
     const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(99, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
-    const offReview = listen("review-ready", (e) => setReview((e.payload as { on?: unknown } | null)?.on === true));
+    const offReview = listen("review-ready", (e) => { const p = e.payload as { on?: unknown; key?: unknown } | null; setReview(p?.on === true); setReviewKey(p?.on === true && p?.key === true); });
     return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); offReview.then((f) => f()); };
   }, []);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
@@ -253,7 +255,7 @@ function Island() {
         </button>
         {/* The four step words, laid out but never shown, so the wings are asked for once, as wide as the longest needs. */}
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} />
       </span>
     </main>
   );

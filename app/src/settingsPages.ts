@@ -42,7 +42,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
       { id: "more.general.files", parent: "files.on", items: ["drop.on", "drop.imageFormat", "drop.docFormat", "drop.audioFormat", "drop.videoFormat", "drop.resizeTo", "drop.quality", "drop.sampleRate", "drop.saveTo", "attach.docLimit"] },
-      { id: "more.general.watch", items: ["watch.schedule", "watch.dailyHour", "watch.quiet", "watch.quietFrom", "watch.quietTo", "review.mode", "review.quietSeconds", "where.after", f("google")] },
+      { id: "more.general.watch", items: ["watch.schedule", "watch.dailyHour", "watch.quiet", "watch.quietFrom", "watch.quietTo", "where.after", f("google")] },
     ],
   },
   // M51 polish (the founder, 1 Nov 2026: "as much customization as possible", "very unique"): Home's whole look on a page of
@@ -59,11 +59,14 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   fixing: {
     icon: "wrench",
     groups: [
+      // M57 UI 12: the review of changes to the project, first on the page about fixing, where people look for it.
+      { id: "fixing.review", items: ["review.mode"] },
       { id: "fixing.rules", items: ["rules.house", "check.install"] },
       { id: "fixing.checks", items: ["check.pageSize", "explain.mode"] },
       { id: "fixing.undo", items: ["undo.protectMyEdits"] },
     ],
     more: [
+      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"] },
       { id: "more.fixing.run", items: ["work.maxTurns", "work.tries", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after"] },
       { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun"] },
     ],

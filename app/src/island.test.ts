@@ -517,9 +517,10 @@ describe("the bare notch (M46)", () => {
     // review is asked for or closed, or the changes went away. The page only shows what it is told, on load and after.
     expect(page).toContain('listen("review-ready"');
     expect(page).toMatch(/setReview\(\(v as \{ review\?: unknown \} \| null\)\?\.review === true\)/);
-    expect(main).toContain('app.emit_to("island", "review-ready", json!({ "on": on }))');
+    // M57 feature 5: with the instant key warning, the same quiet line says a key was written (only a count crosses over).
+    expect(main).toContain('app.emit_to("island", "review-ready", json!({ "on": on, "key": key }))');
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("{!brief && review && <p className=\"ip-new\">{S.panel.reviewReady}</p>}");
+    expect(panel).toContain("{!brief && review && <p className=\"ip-new\">{reviewKey ? S.panel.reviewKey : S.panel.reviewReady}</p>}");
     // Never in a panel that opened by itself, never the wings, never a sound: it does not ask for the island to open.
     expect(page).not.toMatch(/review[^\n]*island_alert|island_alert[^\n]*review/);
     expect(S.panel.reviewReady).toBe("Changes ready to review");

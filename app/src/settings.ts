@@ -61,6 +61,11 @@ export function numbersLines(s: NumbersSummary): string[] {
     `Lesson steps that worked the first way: ${pct(s.rates.stepSuccess)}`,
     `Checks that passed: ${pct(s.rates.proofPass)}`,
     `Pointing in other apps compared with builder tools: ${pct(s.rates.anywhereShare)}`,
+    // M57 feature 1: the review of changes. Counts only, never a streak.
+    `Changes ready to review: ${t("review_batch")}, reviews run: ${t("review_run")}`,
+    `Reviews that said Looks safe: ${t("review_safe")}, Worth a look: ${t("review_worth_a_look")}, Fix this first: ${t("review_stop")}`,
+    `After a review: Fix it ${t("review_fix")}, Copy for my AI ${t("review_send_back")}, Looks fine ${t("review_looks_fine")}`,
+    `Where you left off shown: ${t("where_opened")}, daily limit reached: ${t("daily_limit")}`,
     `Times you corrected a guess: ${s.rates.softRingCorrections ?? 0}`,
   ];
 }

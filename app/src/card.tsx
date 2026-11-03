@@ -43,7 +43,8 @@ import { FlowMini } from "./flowflowMini.tsx";
 import { layoutOf, seaFills, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
-import { changesWait, reviewShown } from "./review.ts";
+import { changesWait, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
+import { reviewRowLook } from "./reviewHistory.ts";
 import { roomElement, useRoomStill } from "./element.ts";
 import { RoomLight } from "./roomLight.tsx";
 import { historyStamp, taskName } from "./itemLook.ts";
@@ -56,7 +57,7 @@ import { failNote } from "./failwords.ts";
 import { CheckDetail, checkParts } from "./checkDetail.tsx";
 import { fileNames, undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
-import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
+import type { NewFolderKind, ReviewReasonKind, ReviewRowView, WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
 import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
@@ -262,7 +263,7 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
 // the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
 // focus: the task a recent fix on Now opened (F28): its row is scrolled to and flashes once, as a Settings search hit does.
-function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk }: { items: HistoryItem[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void }) {
+function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk }: { items: HistoryItem[]; reviews?: ReviewRowView[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
@@ -321,6 +322,24 @@ function HistoryPanel({ items, q, setQ, undoState: u, project, keepsMine, dispat
         </li>
       ); })}</ul>}
       {explainWhy && <div className="line muted">{S.historyUndoWhy}</div>}
+      {/* M57 feature 1: the reviews of changes to this project, each with its own mark (Review), the rating in words and
+          with its drawing, what was done with it, and the files by name only. Not searched with the tasks: their own list. */}
+      {reviews.length > 0 && !filtering && (
+        <div className="hist-reviews" role="group" aria-labelledby={`${undoId}-reviews`}>
+          <h3 id={`${undoId}-reviews`} className="review-label">{S.history.reviewsTitle}</h3>
+          <ul className="hist-list">{reviews.map((x) => { const l = reviewRowLook(x, now); return (
+            <li className="hist-row hist-review" key={`review-${x.id}`} data-rating={x.rating}>
+              <span className="ui-verdict-mark hist-review-mark" data-tone={l.tone} aria-hidden="true"><Icon name={l.icon} size={18} /></span>
+              <div className="hist-main">
+                <span className="hist-name">{l.name}</span>
+                <span className="hist-meta">{l.meta}</span>
+                <code className="hist-files">{l.files}</code>
+              </div>
+              <span className="ui-stamp hist-review-stamp">{l.mark}</span>
+            </li>
+          ); })}</ul>
+        </div>
+      )}
     </section>
   );
 }
@@ -988,7 +1007,25 @@ function Card() {
       const r = nowModel.current.review;
       if (!r || !project) return;
       dispatch({ type: "ui.reviewDismissed", batch: r.batch });
-      void sendQuiet(reviewDismiss(project, r.batch)).catch(explainRefusal);
+      // M57 feature 1: how it was closed, for its row in History (nothing for a batch skipped before any review).
+      void sendQuiet(reviewDismiss(project, r.batch, dismissHow(r))).catch(explainRefusal);
+    },
+    // M57 feature 1: Copy for my AI reached the clipboard: counted (beta numbers, if on) and kept for History's row.
+    onSentBack: () => {
+      const r = nowModel.current.review;
+      if (!r) return;
+      dispatch({ type: "ui.reviewSentBack", batch: r.batch });
+      count("review_send_back");
+    },
+    // M57 feature 7: Don't flag this kind here again saves the shared line in the project's memory, with its source. Only
+    // for a kind it may silence (review.ts silenceCommand gives nothing for a key, a settings file or open data).
+    onSilence: (kind: ReviewReasonKind) => {
+      const r = nowModel.current.review;
+      if (!r || !project) return;
+      const c = silenceCommand(project, kind);
+      if (!c) return;
+      dispatch({ type: "ui.reviewSilenced", batch: r.batch, kind });
+      void sendQuiet(c).catch(explainRefusal);
     },
     onAskFix: () => {
       const r = nowModel.current.review;
@@ -1015,6 +1052,15 @@ function Card() {
     if (!n || !project) return;
     if (n.action === "fixWatch") { const w = m.watches[n.watch]; if (w) watchHandlers.onFix(w); return; }
     if (n.action === "findProblem") { if (!toolOn("findProblem")) { dispatch({ type: "app.notice", message: offLine() }); return; } homeDispatch({ type: "pick", tab: "now" }); pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" })); return; }
+    // M57 feature 6: Review the changes. The card is there: go to it. Not on the page (Home was reloaded): this press is the
+    // ask, as Review them would be, with the project's checks.
+    if (n.action === "review") {
+      homeDispatch({ type: "pick", tab: "now" });
+      if (nowModel.current.review) { openReview(); return; }
+      pressed();
+      void sendQuiet(reviewNow(project, undefined, true)).catch(explainRefusal);
+      return;
+    }
     homeDispatch({ type: "pick", tab: "now" });
   };
   useEffect(() => {
@@ -2030,7 +2076,7 @@ function Card() {
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
       {/* In the tall Home, changes to review come before the recent list (item 11); in the wide one they lead the work below. */}
-      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && !!m.review?.result && rlead.headline === S.review.rating[m.review.result.rating]} /></div>}
+      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && (m.review?.result ? rlead.headline === S.review.rating[m.review.result.rating] : keyWarned(m.review) && rlead.headline === S.review.rating.stop)} /></div>}
       {home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList items={project ? m.history : []} now={clock} onOpen={openRecent} />}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
@@ -2237,7 +2283,7 @@ function Card() {
         </section>
       )}
 
-      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && !!m.review?.result && rlead.headline === S.review.rating[m.review.result.rating]} />}
+      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={mode === "review" && !!rlead && (m.review?.result ? rlead.headline === S.review.rating[m.review.result.rating] : keyWarned(m.review) && rlead.headline === S.review.rating.stop)} />}
 
       {show("drive") && m.drive && (
         <section className="panel">
@@ -2690,7 +2736,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>

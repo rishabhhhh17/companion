@@ -78,9 +78,13 @@ After M51 (the look). Before M50's front door is switched on, because both need 
 - **House rules** checked against the change.
 - **A file the other tool creates during a task of Squibby's** cannot be told apart from the task's own. It is not in a review. The task's receipt lists it, with Undo.
 
+### Proven on this Mac (M57 step 1, 4 Nov 2026, `runner/test/review-watcher-real.test.ts`)
+- Writes that imitate the tools: many small saves, a save renamed over the file, 1500 files at once, one file rewritten 50 times in 5 seconds, a folder deleted and made again, and writes into `node_modules` and `.git` that never count. One batch each, only after the quiet time, nothing lost, nothing counted twice; the 1000 path cap holds. About 0.2% of one core while idle. Also a long pause between saves (two batches) and the folder closed and opened again (the first save after opening arrives), and the review service with the real shadow store. Numbers in `technical_research.md` (corrections log, 4 Nov 2026).
+- A snapshot of an unchanged project of 4000 files takes about 80 ms (must fix 27).
+- Changes made while Squibby was closed are offered as one batch when the project opens again (must fix 8).
+
 ### Still [verify] on a real Mac
-- File events while Claude Code, Codex and Cursor write, including how long a tool goes quiet between saves.
-- A tool that rewrites many files at once (the 1000 path cap, and the time a snapshot takes).
+- File events while real Claude Code, Codex and Cursor write, including how long each goes quiet between saves (needs a person's hands).
 - Battery with the watcher on all day.
 - The browser check in a review on a real project: the server starts, the page opens, and the server ends with the review (and with Stop everything).
 - The safety box running a review's checks on this Mac, and a review's checks never running outside it.

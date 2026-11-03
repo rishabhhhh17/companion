@@ -4,6 +4,11 @@
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Command, Event } from "../../protocol/index.ts";
+import { LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT } from "./spending.ts";
+
+const LIMIT_WORDS = new Set([LIMIT_REACHED, LIMIT_REACHED_NO_PROJECT]);
+/** The day's limit stopped something: a task or plan that could not start, or words written by the rules instead. */
+const atLimit = (reason: unknown): boolean => typeof reason === "string" && (reason.startsWith("daily_limit:") || LIMIT_WORDS.has(reason));
 
 export const NOTES = [
   "session", "hero_press", "soft_ring_corrected", "anywhere_use", "builder_use",
@@ -11,6 +16,10 @@ export const NOTES = [
   "proof_passed", "proof_failed", "proof_gaps", "diagram_made", "diagram_none",
   // The practice projects (app/src/practice.ts practiceNotes): a practice started, its problem found, and finished.
   "practice_started", "practice_found", "practice_done",
+  // M57 feature 1: the review of every change, so F30's bet can be measured. Counts only: a batch said, a review that ran,
+  // each rating, Fix it, Copy for my AI (a note from the card), Looks fine, Where was I shown, and the day's limit reached.
+  "review_batch", "review_run", "review_safe", "review_worth_a_look", "review_stop", "review_fix", "review_send_back", "review_looks_fine",
+  "where_opened", "daily_limit",
 ] as const;
 type Name = typeof NOTES[number];
 const KEEP_DAYS = 120;
@@ -74,9 +83,27 @@ export class Metrics {
       case "walk.stopped": this.bump("walk_stopped"); return;
       case "proof.result": if (x.verdict === "passed") this.bump("proof_passed"); else if (x.verdict === "failed") this.bump("proof_failed"); else if (x.verdict === "passed_with_gaps") this.bump("proof_gaps"); return;
       case "diagram.ready": this.bump(x.made === true ? "diagram_made" : "diagram_none"); return;
+      // A batch that went away again (count 0) is not a new one. A batch that grew is said again, under a new name.
+      case "review.batch": if (typeof x.count === "number" && x.count > 0) this.bump("review_batch"); return;
+      case "review.result": {
+        if (x.ok !== true) return;
+        this.bump("review_run");
+        if (x.rating === "safe") this.bump("review_safe"); else if (x.rating === "worth_a_look") this.bump("review_worth_a_look"); else if (x.rating === "stop") this.bump("review_stop");
+        if (atLimit(x.note)) this.bump("daily_limit");
+        return;
+      }
+      case "where.ready": this.bump("where_opened"); return;
+      case "protocol.error": if (atLimit(x.reason)) this.bump("daily_limit"); return;
     }
   }
-  observeCommand(c: Command) { try { if (c.type === "walk.start") this.bump("walk_started"); } catch { /* never in the way */ } }
+  observeCommand(c: Command) {
+    try {
+      if (c.type === "walk.start") this.bump("walk_started");
+      else if (c.type === "review.fix") this.bump("review_fix");
+      // Copy for my AI is counted by its own note when it is pressed, so a card closed after it is not counted twice.
+      else if (c.type === "review.dismiss" && c.how === "looksFine") this.bump("review_looks_fine");
+    } catch { /* never in the way */ }
+  }
 
   /** Erases every count. If counting is on it stays on (the setting is kept), so a restart does not quietly turn it off. */
   erase() {

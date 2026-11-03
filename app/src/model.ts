@@ -9,7 +9,8 @@ import { S, PRODUCT } from "./strings.ts";
 import { withKeys } from "./keys.ts";
 import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
-import type { WatchView, WhereNext } from "../../protocol/index.ts";
+import type { ReviewRowView, WatchView, WhereNext } from "../../protocol/index.ts";
+import { reviewRowsOf } from "./reviewHistory.ts";
 import { validView } from "./watch.ts";
 import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } from "./plan.ts";
 import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
@@ -233,6 +234,8 @@ export type Model = {
   plan: PlanCard | null;
   drive: DriveProgress | null;
   history: HistoryItem[];
+  /** M57 feature 1: the reviews of changes to the open project, as History's own rows (names of files only). */
+  reviewHistory?: ReviewRowView[];
   runnerUp: boolean;
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
@@ -676,7 +679,7 @@ function reduceRest(m: Model, e: Ev): Model {
     case "where.ready": {
       if (!Array.isArray(e.lines) || !e.lines.length) return { ...m, recap: null };
       const n = e.next as { action?: string; watch?: unknown } | undefined;
-      const next: WhereNext | undefined = n?.action === "fixWatch" && typeof n.watch === "string" ? { action: "fixWatch", watch: n.watch } : n?.action === "findProblem" || n?.action === "open" ? { action: n.action } : undefined;
+      const next: WhereNext | undefined = n?.action === "fixWatch" && typeof n.watch === "string" ? { action: "fixWatch", watch: n.watch } : n?.action === "findProblem" || n?.action === "review" || n?.action === "open" ? { action: n.action } : undefined;
       return { ...m, recap: { lines: e.lines.map(String), ...(next ? { next } : {}) } };
     }
     // Watch routines: one watch changed, or a project's whole list. A watch that is not failing has no alert left.
@@ -726,7 +729,7 @@ function reduceRest(m: Model, e: Ev): Model {
       const back = Object.entries(m.workIn).find(([a, w]) => to && w.project === to && away[a] === undefined && !["idle", "done", "error"].includes(m.agents[a] ?? ""));
       const task: Task | null = back ? { agent: back[0], project: to, ...(back[1].checkpoint ? { checkpoint: back[1].checkpoint } : {}), label: back[1].label, lines: [], costUsd: 0 } : null;
       m = { ...m, folder: to || null, away, driveAway: plan && plan !== to ? plan : null, currentCheckpoint: task?.checkpoint };
-      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], followUp: "idle", error: null, notice: null, task };
+      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], reviewHistory: [], followUp: "idle", error: null, notice: null, task };
     }
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
@@ -951,7 +954,7 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "drive.done": if (m.driveAway !== null) return { ...m, driveAway: null };
       return { ...m, plan: null, stuck: null, paused: null, receipt: wholePlanReceipt(m.receipt, m.drive?.whole, e.usdEstimate), drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total }, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
-    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [], sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
+    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
     case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's

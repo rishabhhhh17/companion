@@ -5,7 +5,8 @@
 // looked at half way. While the engine's own work runs in the project, changes are not counted in a batch: their paths are
 // kept aside (takeOwnSeen), so the review can tell which of them the engine's work could not have made. For a moment after
 // that work, late file events are its own. One batch holds at most a fixed number of paths.
-import { watch as fsWatch } from "node:fs";
+import { lstatSync, watch as fsWatch } from "node:fs";
+import { join } from "node:path";
 
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
@@ -13,9 +14,10 @@ const IGNORED_DIRS = new Set([
   "__pycache__", ".claude", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
   ".build", ".idea", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".expo", ".angular", ".docusaurus", ".yarn", ".pnpm-store",
 ]);
-/** Scratch files editors write while saving (vim's swap and test files, emacs' locks and backups), the Finder's notes, and
- *  TypeScript's build notes (a check of the project writes them). */
-const SCRATCH = /(^|\/)(\.DS_Store|4913|\.#[^/]*|[^/]*~|\.[^/]*\.sw[a-p]|[^/]*\.tmp|[^/]*\.tsbuildinfo)$/;
+/** Scratch files editors write while saving (vim's swap and test files, emacs' locks and backups), the Finder's notes,
+ *  TypeScript's build notes (a check of the project writes them), and the temporary name a tool writes before renaming it
+ *  over the file (file.tmp.<pid>.<time>, seen on this Mac in M57 step 1). */
+const SCRATCH = /(^|\/)(\.DS_Store|4913|\.#[^/]*|[^/]*~|\.[^/]*\.sw[a-p]|[^/]*\.tmp|[^/]*\.tmp(\.\d+)+|[^/]*\.tsbuildinfo)$/;
 
 /** A path the review never counts: ignored, scratch, or one that would leave the folder. */
 export function ignoredPath(rel: string): boolean {
@@ -53,6 +55,9 @@ export type BatcherOptions = {
 export class ChangeBatcher {
   private w: { close(): void } | null = null;
   private paths = new Set<string>();
+  /** Folders whose own event came (made, removed, coalesced): they wake the batch but take no place under the cap, and are
+   *  handed over only when no file came (M57 step 1: 1500 files in 15 new folders gave 1516 paths). */
+  private dirs = new Set<string>();
   private capped = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private own = 0;
@@ -76,7 +81,7 @@ export class ChangeBatcher {
     this.clearTimer();
     try { this.w?.close(); } catch { /* already closed */ }
     this.w = null;
-    this.paths.clear(); this.capped = false;
+    this.paths.clear(); this.dirs.clear(); this.capped = false;
     this.ownSeen.clear(); this.ownCapped = false; this.poked = false;
   }
   /** The engine's own work in the project begins: what changes now is not counted in a batch, only kept aside. */
@@ -89,8 +94,8 @@ export class ChangeBatcher {
   /** What is waiting now, handed over and forgotten (Review now, or the engine's own work about to start). */
   take(): { paths: string[]; capped: boolean } {
     this.clearTimer();
-    const out = { paths: [...this.paths].sort(), capped: this.capped };
-    this.paths.clear(); this.capped = false; this.poked = false;
+    const out = { paths: [...(this.paths.size ? this.paths : this.dirs)].sort(), capped: this.capped };
+    this.paths.clear(); this.dirs.clear(); this.capped = false; this.poked = false;
     return out;
   }
   /** The paths that changed while the engine's own work ran, handed over and forgotten. */
@@ -103,6 +108,7 @@ export class ChangeBatcher {
   poke(): void { if (!this.on) return; this.poked = true; this.arm(); }
   /** Paths waiting for the quiet time to end. */
   waiting(): number { return this.paths.size; }
+  private isDir(rel: string): boolean { try { return lstatSync(join(this.o.project, rel)).isDirectory(); } catch { return false; } }
 
   private holding(): boolean { return this.own > 0 || Date.now() < this.quietUntil; }
   private seen(raw: string): void {
@@ -114,6 +120,7 @@ export class ChangeBatcher {
       return;
     }
     if (this.holding()) return;
+    if (this.isDir(rel)) { this.dirs.add(rel); this.arm(); return; }
     if (!this.paths.has(rel)) {
       if (this.paths.size >= (this.o.maxPaths ?? MAX_PATHS)) this.capped = true;
       else this.paths.add(rel);
@@ -127,7 +134,7 @@ export class ChangeBatcher {
   }
   private fire(): void {
     this.timer = null;
-    if (!this.on || (!this.paths.size && !this.capped && !this.poked)) return;
+    if (!this.on || (!this.paths.size && !this.dirs.size && !this.capped && !this.poked)) return;
     // Other work of the engine, or its own work, is busy in the project: look again in a moment instead of now.
     if (this.holding() || this.o.busy?.()) { this.timer = setTimeout(() => this.fire(), Math.max(50, Math.min(1000, Number(this.o.quietMs()) || 0))); return; }
     const out = this.take();

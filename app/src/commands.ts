@@ -96,7 +96,8 @@ export const watchCheck = (project: string, watch: string): Command => ({ v: 1, 
 // M52 (F30): the review of another AI tool's changes. Each names the project and the batch the card shows (the shell holds
 // them to the chosen folder). Fix it starts an ordinary task in drive mode, with its safety copy and Undo, counted as a fix.
 export const reviewNow = (project: string, batch?: string, proof?: boolean): Command => ({ v: 1, id: id(), type: "review.now", project, ...(batch ? { batch } : {}), ...(proof ? { proof: true } : {}) });
-export const reviewDismiss = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.dismiss", project, batch });
+/** how (M57 feature 1): Looks fine, or closed after Copy for my AI, for the review's row in History. None for Skip this one. */
+export const reviewDismiss = (project: string, batch: string, how?: "looksFine" | "sentBack"): Command => ({ v: 1, id: id(), type: "review.dismiss", project, batch, ...(how ? { how } : {}) });
 export const reviewFix = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.fix", project, batch, agent: AGENT, model: workModel(), budgetUsd: budgetFor("budget.task") });
 export const watchFix = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.fix", project, watch });
 export const whereWasI = (project: string, since?: string): Command => ({ v: 1, id: id(), type: "where.was.i", project, ...(since ? { since } : {}) });

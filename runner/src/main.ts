@@ -10,6 +10,8 @@ import { createEngine, createLanes, currentAuth, quickModelOf, readSettings } fr
 import { AssistService, ImageStore } from "./lanes.ts";
 import { Ledger } from "./ledger.ts";
 import { promptHelpMemory } from "./memory/recall.ts";
+import { MemoryStore } from "./memory/store.ts";
+import { SilenceLedger } from "./review/silence.ts";
 import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
@@ -72,7 +74,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // The plan gate (plan.ts, F25): nothing is gated until the shell says payments are on (plan.state). The free fix count lives
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
-const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -92,11 +94,20 @@ function ownWork(project: string | undefined, start: () => Promise<unknown>, kin
   void work.then(settle, settle);
   return work;
 }
+// M57 feature 7: which "Don't flag this kind here again" lines the person pressed for, kept in this data folder, outside
+// every project (review/silence.ts). A line the tool being reviewed writes into the project's memory file silences nothing.
+const silences = new SilenceLedger(join(settings.data, "review-silenced.json"));
+const projectLines = (p: string): string[] => { try { return new MemoryStore({ project: p, profileDir: settings.data }).list("project").entries.map((e) => e.text); } catch { return []; } };
 const review = new ReviewService({
   emit: (e) => say(e), setting: (k) => runnerSettings.get(k), store: (p) => runner.checkpointsFor(p),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
   check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p),
+  // M57 feature 7: "Don't flag this kind here again" is a line in the project's memory (What I remember), read each review,
+  // and it counts only when the person pressed for it (silences).
+  silenced: (p) => silences.lines(p, projectLines(p)),
+  // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
+  history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d) },
   fix: (start) => {
     const admitted = plan.admit(start);
     if (!admitted) return;
@@ -189,6 +200,12 @@ function dispatch(cmd: Command) {
     ? (assist ? assist.handle(c) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", c.type) })))
     : OWN_WORK.has(c.type) ? ownWork(ownProject(c), () => runner.handle(c), c.type) : runner.handle(c);
   if (cmd.type === "agent.interruptAll" && assist) assist.cancelAll();
+  // M57 feature 7: a press of "Don't flag this kind here again" is recorded once its line is in memory; a line forgotten,
+  // edited or erased ends its silence.
+  if ((c.type === "memory.add" || c.type === "memory.forget" || c.type === "memory.edit" || c.type === "memory.erase") && c.scope === "project") {
+    const after = () => { try { if (c.type === "memory.add") silences.pressed(c.project, c.text, projectLines(c.project)); else silences.prune(c.project, projectLines(c.project)); } catch { /* the safe side: nothing silenced */ } };
+    void work.then(after, after);
+  }
   const p = work.catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p));
   inflight.add(p);
 }

@@ -196,15 +196,42 @@ export const REVIEW_RATINGS = ["safe", "worth_a_look", "stop"] as const;
 export type ReviewRating = (typeof REVIEW_RATINGS)[number];
 export const REVIEW_TOUCHES = ["sign_in", "payments", "data", "settings", "secrets", "dependencies", "look_only"] as const;
 export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
-export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern"] as const;
+// M57: open_table (a table anyone can read, from a changed migration), signed_in_open (every signed in account can read
+// all its rows), key_in_page (a key that would reach the page every visitor loads), house_rule (a "never edit" rule of the
+// project's own .companion/rules.txt matched a changed file) and house_rule_ask (an "ask before editing" rule matched).
+export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
+/** M57 feature 7: how strict a review is (review.strictness). Quiet shows only Fix this first; Normal is the usual and leaves
+ *  out the kinds the person said not to flag here; Careful shows every worth a look, those kinds too. */
+export const REVIEW_STRICTNESS = ["quiet", "normal", "careful"] as const;
+export type ReviewStrictness = (typeof REVIEW_STRICTNESS)[number];
+/** The reasons "Don't flag this kind here again" may be offered on, and the line it saves in What I remember (the project's
+ *  memory, with its source). The engine reads the same lines back, so the two can never disagree; a line the person edits
+ *  or forgets no longer silences anything. Never a key, a settings or key file, open data or any Fix this first: those are
+ *  not in this list, and the engine refuses them whatever the memory says. */
+export const REVIEW_SILENCE_LINES: Partial<Record<ReviewReasonKind, string>> = {
+  touches_risky: "In reviews of this project, do not flag changes to risky areas.",
+  files_removed: "In reviews of this project, do not flag removed files.",
+  too_many: "In reviews of this project, do not flag large batches of changes.",
+  model_concern: "In reviews of this project, do not flag concerns from the written summary.",
+};
+/** The kinds a project's memory lines silence (the lines of REVIEW_SILENCE_LINES, any capital letters, nothing else). */
+export function reviewSilenced(lines: readonly string[]): Set<ReviewReasonKind> {
+  const want = new Set(lines.map((l) => l.trim().toLowerCase()));
+  const out = new Set<ReviewReasonKind>();
+  for (const [k, line] of Object.entries(REVIEW_SILENCE_LINES)) if (line && want.has(line.toLowerCase())) out.add(k as ReviewReasonKind);
+  return out;
+}
 export const REVIEW_CHECKS = ["passed", "failed", "unknown", "not_run"] as const;
 export type ReviewChecks = (typeof REVIEW_CHECKS)[number];
 export const REVIEW_LANES = ["cheap", "strong", "none"] as const;
 export type ReviewFile = { file: string; kind: "added" | "modified" | "deleted" };
 export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number };
 export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
-export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string };
+/** M57 feature 1: how the card was closed, for its row in History. looksFine: Looks fine. sentBack: Copy for my AI was
+ *  pressed on this card before it was closed. Absent: closed with no review (Skip this one). */
+export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack"] as const;
+export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
 export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
 
@@ -322,7 +349,12 @@ export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: n
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
  *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
-export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed" };
+/** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary
+ *  had secrets hidden before it was kept. did: what the person did with it (open: nothing yet, or the engine closed before;
+ *  no_longer_applies: a newer change made every reason go away). */
+export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies"] as const;
+export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
+export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
@@ -396,14 +428,26 @@ export type WatchListEvent = Envelope & { type: "watch.list"; project: string; w
 export type WatchAlert = Envelope & { type: "watch.alert"; project: string; watch: string; what: "failing" | "recovered"; kind: WatchKind; target?: string; reason: string; since: string };
 // stopped: it was stopped or took too long, so text is only the watch's own reason; the page stops waiting and starts nothing.
 export type WatchEvidence = Envelope & { type: "watch.evidence"; project: string; watch: string; kind: WatchKind; target?: string; text: string; stopped?: boolean };
-export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
+// M57 feature 6: review, the project changed since and nobody looked yet, or a review said Fix this first and it still holds.
+export type WhereNext = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "review" } | { action: "open" } | { action: "none" };
 export type WhereReady = Envelope & { type: "where.ready"; project: string; lines: string[]; next: WhereNext };
 // M52. A batch of changes is ready to review: up to 50 files (count is all of them; capped when more changed than one batch
 // may look at one by one), the settings and key files among them by name only (secretFiles: nothing in them is read), and
 // auto when review.mode is automatic, so its review follows by itself. A batch with count 0 means the changes it named are
 // gone again (put back as they were): nothing is left to review, and the page closes its card.
-export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean };
+/** Must fix 8 (M57): a batch of changes made while the engine was closed, or while it watched another project (or reviews
+ *  were off). Only on the batch found when watching starts; a batch that grows after it has no mark. Never reviewed by itself. */
+export const REVIEW_AWAY = ["closed", "notWatching"] as const;
+/** M57 feature 5, the instant key warning (review.keyWarning): only the key rule ran, on this Mac with no model, on the
+ *  lines the batch added. Where each key is (file and line, at most 10), never its text. Absent when the setting is off or
+ *  nothing like a key was added. */
+export type ReviewKeyPlace = { file: string; line: number };
+export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[] };
 export type ReviewStarted = Envelope & { type: "review.started"; project: string; batch: string; proof: boolean };
+/** M57 feature 4: when a newer batch was reviewed, the rules looked again at an earlier review's reasons that were still
+ *  open, with no model. fixed: the places (in that review's reasons) of those that no longer hold ("Changed since, this no
+ *  longer applies"). closed: nothing is left, so its card closes and the newer review (by) shows. */
+export type ReviewRecheck = Envelope & { type: "review.recheck"; project: string; batch: string; by: string; fixed: number[]; closed: boolean };
 // The review. ok false: nothing was reviewed, reason says why in plain words (batch, when one was named). ok true: what changed
 // (summary, notes: plain words, secrets hidden), what it touches, the rating and its reasons (the most serious first, each
 // with its file and line when it has one), the files, what the project's own checks said (checks, and checksNote: one plain
@@ -415,8 +459,13 @@ export type ReviewResultEvent = Envelope & {
   secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
   /** One plain line about the words when no model wrote them: the day's limit reached, or no Claude connected. */
   note?: string;
+  /** M57: the project's own notes for AI tools (AGENTS.md, CLAUDE.md, Cursor rules) the words were written with, by name.
+   *  Only when a model wrote the words; they were given to it as quoted data, never as instructions. */
+  ruleFiles?: string[];
+  /** M57: how many smaller reasons were left out by review.strictness or a "do not flag" line. Never a Fix this first. */
+  hidden?: number;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -437,7 +486,7 @@ const day: (k: string) => Check = (k) => (m) => {
   return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d ? null : `"${k}" must be a real day`;
 };
 // An optional field: absent is fine, present must be valid.
-const NEXT_ACTIONS = ["fixWatch", "findProblem", "open", "none"];
+const NEXT_ACTIONS = ["fixWatch", "findProblem", "review", "open", "none"];
 const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
@@ -499,6 +548,26 @@ const isReviewReason = (r: unknown): boolean => {
 };
 const filesListOk = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every(isReviewFile) ? null : `"${k}" must be a list of files, each with file and kind`);
 const textList = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every((x) => typeof x === "string") ? null : `"${k}" must be a list of text`);
+// M57 feature 5: where the instant key warning found a key: a file in the project and a line from 1, nothing else (never text).
+const keyPlacesOk: Check = (m) => {
+  const k = m.keys;
+  return Array.isArray(k) && k.length >= 1 && k.length <= 10 && k.every((x) => {
+    const o = x as Record<string, unknown> | null;
+    return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((n) => n === "file" || n === "line") && fileInProject("file")(o) === null && Number.isInteger(o.line) && (o.line as number) >= 1;
+  }) ? null : '"keys" must be 1 to 10 places, each a file and a line, nothing else';
+};
+// M57 feature 1: the review rows History shows. Names of files only (no text field of any kind besides the summary).
+const reviewRowsOk: Check = (m) => {
+  const rows = m.reviews;
+  const ok = Array.isArray(rows) && rows.length <= 200 && rows.every((x) => {
+    const o = x as Record<string, unknown> | null;
+    return !!o && typeof o === "object" && !Array.isArray(o) && Number.isInteger(o.id) && typeof o.at === "string" && !Number.isNaN(Date.parse(o.at as string)) && Number.isInteger(o.count) && (o.count as number) >= 0
+      && Array.isArray(o.files) && (o.files as unknown[]).length <= 20 && (o.files as unknown[]).every((f) => typeof f === "string" && f.length > 0)
+      && (REVIEW_RATINGS as readonly string[]).includes(o.rating as string) && Array.isArray(o.touches) && (o.touches as unknown[]).every((t) => (REVIEW_TOUCHES as readonly string[]).includes(t as string))
+      && (REVIEW_CHECKS as readonly string[]).includes(o.checks as string) && (REVIEW_DID as readonly string[]).includes(o.did as string) && typeof o.summary === "string";
+  });
+  return ok ? null : '"reviews" must be a list of review rows: id, at, count, files (names), rating, touches, checks, did and summary';
+};
 const reviewOk: Check = (m) => {
   if (m.ok !== true) return typeof m.reason === "string" && m.reason.length > 0 ? null : 'a review that did not run says why in "reason"';
   if (typeof m.batch !== "string" || !m.batch) return 'a review names its "batch"';
@@ -514,7 +583,7 @@ const reviewOk: Check = (m) => {
 
 const COMMANDS: Record<string, Check[]> = {
   "review.now": [str("project"), opt("batch", str("batch")), opt("proof", bool("proof"))],
-  "review.dismiss": [str("project"), str("batch")],
+  "review.dismiss": [str("project"), str("batch"), opt("how", oneOf("how", [...REVIEW_CLOSED_HOW]))],
   "review.fix": [str("project"), str("batch"), str("agent"), str("model"), num("budgetUsd")],
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk, practiceOk],
   "tasks.list": [str("project")],
@@ -592,15 +661,16 @@ const COMMANDS: Record<string, Check[]> = {
 
 const EVENTS: Record<string, Check[]> = {
   // M52, the review of every change (runner/src/review/service.ts).
-  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto")],
+  "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
   "review.started": [str("project"), str("batch"), bool("proof")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), reviewOk],
+  "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
     (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
-  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"]))],
+  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk)],
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],

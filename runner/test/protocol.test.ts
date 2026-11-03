@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { parseCommand, parseEvent, serialize, PROTOCOL_VERSION } from "../../protocol/index.ts";
+import { parseCommand, parseEvent, serialize, PROTOCOL_VERSION, REVIEW_DID, REVIEW_SILENCE_LINES, REVIEW_STRICTNESS, reviewSilenced } from "../../protocol/index.ts";
 
 const lines = (f: string) => readFileSync(new URL(`../../protocol/fixtures/${f}`, import.meta.url), "utf8").split("\n").filter(Boolean);
 
@@ -295,12 +295,62 @@ describe("the review of a change", () => {
     expect(parseEvent(JSON.stringify({ ...fx("review.batch"), files: [{ file: "a.ts" }] })).ok).toBe(false);
     expect(parseEvent(JSON.stringify({ ...fx("review.batch"), count: 1.5 })).ok).toBe(false);
     expect(parseEvent(JSON.stringify({ ...fx("review.batch"), secretFiles: [3] })).ok).toBe(false);
+    // Must fix 8 (M57): the mark for changes made while away is one of two words, or absent.
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), away: "closed" })).ok).toBe(true);
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), away: "notWatching" })).ok).toBe(true);
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), away: "yesterday" })).ok).toBe(false);
+    expect(parseEvent(JSON.stringify({ ...fx("review.batch"), away: true })).ok).toBe(false);
   });
   test("a review that ran has its batch, a known rating, known touches and reasons, the checks, send back and its lane", () => {
     expect(parseEvent(JSON.stringify(result())).ok).toBe(true);
     for (const [k, v] of [["batch", undefined], ["rating", "fine"], ["touches", ["love"]], ["reasons", [{ kind: "vibes", say: "x" }]], ["reasons", [{ kind: "secret_in_code", say: "x", line: 0 }]], ["checks", "maybe"], ["sendBack", ""], ["lane", "best"], ["summary", ""], ["count", -1]] as const) {
       expect(parseEvent(JSON.stringify({ ...result(), [k]: v })).ok, `${k}`).toBe(false);
     }
+  });
+  // M57: the security look, house rules, the project's notes for AI tools and how strict.
+  test("M57: a review names the notes it used and how many smaller reasons it left out", () => {
+    const r7 = JSON.parse(lines("events.jsonl").find((l) => JSON.parse(l).id === "erv7")!);
+    expect(parseEvent(JSON.stringify(r7)).ok).toBe(true);
+    expect(r7.reasons.map((x: { kind: string }) => x.kind)).toEqual(["open_table", "key_in_page", "house_rule", "house_rule_ask"]);
+    for (const [k, v] of [["ruleFiles", "AGENTS.md"], ["ruleFiles", [3]], ["hidden", -1], ["hidden", 1.5]] as const) expect(parseEvent(JSON.stringify({ ...r7, [k]: v })).ok, `${k}`).toBe(false);
+    const { ruleFiles: _a, hidden: _b, ...plain } = r7;
+    expect(parseEvent(JSON.stringify(plain)).ok).toBe(true);
+  });
+  test("M57: a recheck names the earlier batch, the newer one, the places that no longer hold and whether the card closes", () => {
+    const rc = fx("review.recheck");
+    expect(parseEvent(JSON.stringify(rc)).ok).toBe(true);
+    for (const [k, v] of [["by", undefined], ["batch", ""], ["fixed", []], ["fixed", [-1]], ["fixed", [0.5]], ["fixed", "0"], ["closed", "yes"]] as const) expect(parseEvent(JSON.stringify({ ...rc, [k]: v })).ok, `${k}`).toBe(false);
+  });
+  test("M57: the do not flag lines are read back exactly, and never for a key, a settings file, open data or a Fix this first", () => {
+    expect([...reviewSilenced([REVIEW_SILENCE_LINES.files_removed!.toUpperCase(), "  " + REVIEW_SILENCE_LINES.too_many! + " ", "do not flag anything"])].sort()).toEqual(["files_removed", "too_many"]);
+    expect(reviewSilenced(["In reviews of this project, do not flag removed files, please."]).size).toBe(0);
+    for (const k of ["secret_in_code", "key_in_page", "secret_file_changed", "open_table", "signed_in_open", "removed_still_used", "checks_failed", "risky_with_failing_checks", "house_rule", "house_rule_ask"] as const) expect(REVIEW_SILENCE_LINES[k], k).toBeUndefined();
+    expect(REVIEW_STRICTNESS).toEqual(["quiet", "normal", "careful"]);
+  });
+  test("M57 feature 5: the instant key warning names places only, a file and a line, never any text", () => {
+    const b = JSON.parse(lines("events.jsonl").find((l) => JSON.parse(l).id === "erv10")!);
+    expect(parseEvent(JSON.stringify(b)).ok).toBe(true);
+    for (const v of [[], [{ file: "src/pay.ts" }], [{ file: "src/pay.ts", line: 0 }], [{ file: "/etc/passwd", line: 1 }], [{ file: "../x.ts", line: 1 }], [{ file: "a.ts", line: 1, text: "sk_live_x" }], Array.from({ length: 11 }, (_, i) => ({ file: "a.ts", line: i + 1 })), "src/pay.ts"]) {
+      expect(parseEvent(JSON.stringify({ ...b, keys: v })).ok, JSON.stringify(v)).toBe(false);
+    }
+  });
+  test("M57 feature 1: History's review rows hold names of files, a known rating, checks and what was done, and nothing else", () => {
+    const t = JSON.parse(lines("events.jsonl").find((l) => JSON.parse(l).id === "erv11")!);
+    expect(parseEvent(JSON.stringify(t)).ok).toBe(true);
+    const row = t.reviews[0];
+    for (const [k, v] of [["did", "ignored"], ["rating", "fine"], ["checks", "maybe"], ["files", [{ file: "a.ts", text: "x" }]], ["files", Array.from({ length: 21 }, (_, i) => `f${i}.ts`)], ["at", "yesterday"], ["touches", ["love"]], ["summary", undefined]] as const) {
+      expect(parseEvent(JSON.stringify({ ...t, reviews: [{ ...row, [k]: v }] })).ok, k).toBe(false);
+    }
+    expect(REVIEW_DID).toEqual(["open", "looks_fine", "sent_back", "fix", "no_longer_applies"]);
+    // A closed card says how: Looks fine, or after Copy for my AI. Nothing else.
+    expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), how: "sentBack" })).ok).toBe(true);
+    expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), how: "looksFine" })).ok).toBe(true);
+    expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), how: "fixed" })).ok).toBe(false);
+  });
+  test("M57 feature 6: Where was I's next step may be Review the changes", () => {
+    const w = JSON.parse(lines("events.jsonl").find((l) => JSON.parse(l).id === "ew8")!);
+    expect(parseEvent(JSON.stringify(w)).ok).toBe(true);
+    expect(parseEvent(JSON.stringify({ ...w, next: { action: "reviewAll" } })).ok).toBe(false);
   });
   test("a review that did not run says why", () => {
     expect(parseEvent(JSON.stringify({ v: 1, id: "x", type: "review.result", project: "p", ok: false, usdEstimate: 0 })).ok).toBe(false);

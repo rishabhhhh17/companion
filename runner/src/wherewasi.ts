@@ -23,8 +23,13 @@ export type WhereInput = {
   pausedPlans: number;
   /** A question a task is still waiting to have answered: its text, or null when that task was off the record. */
   question: { text: string | null } | null;
+  /** M57 feature 6: the review of changes to the open project (review/service.ts stateFor). waiting: files changed and not
+   *  reviewed yet. stop: the words of a review's Fix this first that still holds, secrets already hidden. Absent or null
+   *  when the project is not the one watched. */
+  review?: ReviewState | null;
 };
-export type Next = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "open" } | { action: "none" };
+export type ReviewState = { waiting: number; stop: string | null };
+export type Next = { action: "fixWatch"; watch: string } | { action: "findProblem" } | { action: "review" } | { action: "open" } | { action: "none" };
 
 /** Time as people say it: "14:02", with the day when it is not today. */
 export function clock(ms: number, now: number): string {
@@ -76,6 +81,9 @@ export function whereWasI(i: WhereInput): { lines: string[]; next: Next } {
   if (i.waitingPlans > 0) open.push(i.waitingPlans === 1 ? "A plan is waiting for your approval." : `${i.waitingPlans} plans are waiting for your approval.`);
   if (i.pausedPlans > 0) open.push(i.pausedPlans === 1 ? "A plan is paused, waiting for you to carry on." : `${i.pausedPlans} plans are paused, waiting for you to carry on.`);
   if (i.pendingApprovals > 0) open.push(i.pendingApprovals === 1 ? "A task needs your yes or no." : `${i.pendingApprovals} tasks need your yes or no.`);
+  // M57 feature 6: a review said Fix this first and it still holds. Its own words, never who made the change.
+  const stop = i.review?.stop ? plainReason(i.review.stop) : "";
+  if (stop) open.push(`a review says Fix this first: ${stop}`);
   if (open.length === 0) lines.push("Nothing is unfinished.");
   else for (const o of open) lines.push(`Not finished: ${o}`);
 
@@ -86,6 +94,10 @@ export function whereWasI(i: WhereInput): { lines: string[]; next: Next } {
     const away = recapLines(i.rows, new Date(given).toISOString(), 0)[1];
     if (away) lines.push(away.replace(/^While you were away: /, "Since then: "));
   }
+  // M57 feature 6: changes to the project nobody has looked at yet. "Changed", never "your AI changed": Squibby cannot tell
+  // another tool's edits from the person's own.
+  const waiting = i.review && Number.isInteger(i.review.waiting) && i.review.waiting > 0 ? i.review.waiting : 0;
+  if (waiting) lines.push(`Since then: ${waiting === 1 ? "1 file" : `${waiting} files`} changed. Not reviewed yet.`);
   if (!Number.isNaN(sinceMs)) {
     for (const w of i.watches) {
       const moves = w.history.filter((h) => Date.parse(h.at) > sinceMs && (h.state === "failing" || h.state === "ok")).slice(-2);
@@ -98,6 +110,7 @@ export function whereWasI(i: WhereInput): { lines: string[]; next: Next } {
   let next: Next = { action: "none" };
   if (failing.length) next = { action: "fixWatch", watch: failing[0].id };
   else if (lastFailed) next = { action: "findProblem" };
+  else if (stop || waiting) next = { action: "review" };
   else if (i.question || i.waitingPlans || i.pausedPlans || i.pendingApprovals) next = { action: "open" };
   return { lines, next };
 }

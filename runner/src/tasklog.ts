@@ -4,6 +4,16 @@ import type { Database } from "bun:sqlite";
 import { openDatabase } from "./db.ts";
 import { PRODUCT } from "./names.ts";
 import { CheckpointStore } from "./checkpoints.ts";
+import { clip, redact } from "./redact.ts";
+import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch } from "../../protocol/index.ts";
+
+/** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
+export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string };
+export type ReviewDid = (typeof REVIEW_DID)[number];
+/** The most file names a row keeps, and how long its summary may be. */
+const ROW_FILES = 20;
+const ROW_SUMMARY = 400;
+const DAY_MS = 86_400_000;
 
 export type TaskRow = { id: number; project: string; agent: string; mode: string; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null;
   /** M45: an Undo put the project back to before this task. back: and then "Bring the fix back" put the task's files back
@@ -39,6 +49,11 @@ export class TaskLog {
     // same copy. A later Undo marks the row again (and clears brought_back).
     if (!have.includes("undone_by")) this.db.run("ALTER TABLE tasks ADD COLUMN undone_by TEXT");
     if (!have.includes("brought_back")) this.db.run("ALTER TABLE tasks ADD COLUMN brought_back INTEGER NOT NULL DEFAULT 0");
+    // M57 feature 1: one row per review that ran. Names of files only, the summary with secrets hidden, and what the person
+    // did with it. No file text, no diff and no reasons' words are ever kept here.
+    this.db.run(`CREATE TABLE IF NOT EXISTS reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, batch TEXT NOT NULL, at TEXT NOT NULL, files TEXT NOT NULL,
+      count INTEGER NOT NULL, rating TEXT NOT NULL, touches TEXT NOT NULL, checks TEXT NOT NULL, did TEXT NOT NULL DEFAULT 'open', summary TEXT NOT NULL)`);
     // A task still marked "running" when the log opens was cut short by a crash or a forced quit.
     this.db.run("UPDATE tasks SET status = 'interrupted', ended_at = COALESCE(ended_at, started_at) WHERE status = 'running'");
   }
@@ -76,6 +91,39 @@ export class TaskLog {
       for (const r of rows) { if (r.checkpoint) out.add(r.checkpoint); if (r.undone_by) out.add(r.undone_by); }
     }
     return [...out];
+  }
+  /** M57 feature 1: keeps one review that ran. Only names of files (at most 20) and the summary, with secrets hidden again
+   *  and cut short. Rows older than keepDays go first. Never in the way of the review: a write that fails is dropped. */
+  addReview(r: ReviewRowIn, o: { keepDays?: number; now?: Date } = {}): number {
+    try {
+      this.pruneReviews(o.keepDays, o.now);
+      const files = r.files.filter((f) => typeof f === "string" && f.length > 0).slice(0, ROW_FILES).map((f) => clip(f, 300));
+      const touches = r.touches.filter((t) => (REVIEW_TOUCHES as readonly string[]).includes(t));
+      const rating = (REVIEW_RATINGS as readonly string[]).includes(r.rating) ? r.rating : "worth_a_look";
+      const checks = (REVIEW_CHECKS as readonly string[]).includes(r.checks) ? r.checks : "unknown";
+      const q = this.db.query("INSERT INTO reviews (project, batch, at, files, count, rating, touches, checks, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      return Number(q.run(r.project, r.batch, r.at, JSON.stringify(files), Math.max(0, Math.floor(r.count)), rating, JSON.stringify(touches), checks, clip(redact(r.summary).replace(/\s+/g, " ").trim(), ROW_SUMMARY)).lastInsertRowid);
+    } catch { return 0; }
+  }
+  /** What the person did with a review (or that a newer change made it go away). Only the first close is kept. */
+  reviewDid(project: string, batch: string, did: ReviewDid) {
+    if (!(REVIEW_DID as readonly string[]).includes(did) || did === "open") return;
+    try { this.db.query("UPDATE reviews SET did = ? WHERE project = ? AND batch = ? AND did = 'open'").run(did, project, batch); } catch { /* never in the way */ }
+  }
+  /** Removes the review rows older than keepDays (review.keepDays). Nothing for a limit that is not a whole number of days. */
+  pruneReviews(keepDays?: number, now: Date = new Date()) {
+    if (typeof keepDays !== "number" || !Number.isFinite(keepDays) || keepDays < 1) return;
+    try { this.db.query("DELETE FROM reviews WHERE at < ?").run(new Date(now.getTime() - Math.floor(keepDays) * DAY_MS).toISOString()); } catch { /* never in the way */ }
+  }
+  /** The project's review rows, newest first, as History shows them. */
+  reviews(project: string, limit = 50, o: { keepDays?: number; now?: Date } = {}): ReviewRowView[] {
+    this.pruneReviews(o.keepDays, o.now);
+    const rows = this.db.query("SELECT * FROM reviews WHERE project = ? ORDER BY at DESC, id DESC LIMIT ?").all(project, limit) as any[];
+    const parse = (t: string): unknown[] => { try { const v = JSON.parse(t); return Array.isArray(v) ? v : []; } catch { return []; } };
+    return rows.map((r) => ({
+      id: r.id, at: r.at, count: r.count, files: parse(r.files).filter((f): f is string => typeof f === "string" && f.length > 0).slice(0, ROW_FILES),
+      rating: r.rating, touches: parse(r.touches).filter((t): t is ReviewTouch => (REVIEW_TOUCHES as readonly string[]).includes(t as string)), checks: r.checks, did: r.did, summary: r.summary,
+    }));
   }
   // Newest first. Pass a project to see only its tasks.
   list(project?: string, limit = 200): TaskRow[] {

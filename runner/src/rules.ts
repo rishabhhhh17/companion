@@ -63,7 +63,9 @@ function relPaths(project: string, p: string): string[] {
   if (out.size === 0) out.add(p);
   return [...out];
 }
-function pathMatches(pattern: string, rel: string): boolean {
+/** Whether a rule's pattern covers a path from the project folder down: the file itself, or any folder above it. Also used
+ *  by the review (M57) to check a change against "never edit" and "ask before editing" rules, in code. */
+export function pathMatches(pattern: string, rel: string): boolean {
   const pat = pattern.replace(/^\.\//, "").replace(/\/+$/, "");                 // "src/" means the folder src
   const clean = rel.replace(/^\.\//, "");
   const re = globToRegex(pat);

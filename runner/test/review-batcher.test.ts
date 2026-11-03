@@ -80,6 +80,29 @@ describe("the cap on one batch", () => {
   });
 });
 
+describe("found on this Mac (M57 step 1)", () => {
+  test("a folder's own event wakes the batch but takes no place under the cap; it is handed over only when nothing else came", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "companion-test-review-dirs-"));
+    made.push(dir);
+    mkdirSync(join(dir, "gen"), { recursive: true });
+    const f = fake();
+    const ready: { paths: string[]; capped: boolean }[] = [];
+    const b = new ChangeBatcher({ project: dir, quietMs: () => 40, maxPaths: 2, watch: f.watch, onReady: (paths, capped) => ready.push({ paths, capped }) });
+    b.start();
+    f.fire("gen", "gen/a.ts", "gen/b.ts");
+    await sleep(100);
+    expect(ready).toEqual([{ paths: ["gen/a.ts", "gen/b.ts"], capped: false }]);
+    f.fire("gen");   // only a folder changed (a coalesced event): the review is still woken
+    await sleep(100);
+    expect(ready[1]).toEqual({ paths: ["gen"], capped: false });
+    b.stop();
+  });
+  test("a tool's temporary save name (file.tmp.<pid>.<time>) never counts", () => {
+    for (const p of ["src/page.tsx.tmp.88374.1793726217711", "a.ts.tmp.1"]) expect(ignoredPath(p), p).toBe(true);
+    for (const p of ["src/tmp.ts", "tmp/a.ts", "notes.tmp.md"]) expect(ignoredPath(p), p).toBe(false);
+  });
+});
+
 describe("the engine's own work", () => {
   test("while its own work runs in the project, changes are not counted, and for a moment after it ends", async () => {
     const { b, f, ready } = batcher({ quietMs: 40, graceMs: 60 });

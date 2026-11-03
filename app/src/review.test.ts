@@ -3,10 +3,10 @@
 // offered only after a review that ran, and every command names the project and the batch.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { REVIEW_CHECKS, REVIEW_RATINGS, REVIEW_TOUCHES } from "../../protocol/index.ts";
+import { REVIEW_CHECKS, REVIEW_RATINGS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES } from "../../protocol/index.ts";
 import { initial, reduce } from "./model.ts";
 import { S } from "./strings.ts";
-import { canFix, checksLook, ratingLook, reviewReduce, reviewShown, reviewStamp, sendBackCopy, type ReviewCard } from "./review.ts";
+import { canFix, checksLook, fixedSince, ratingLook, reviewReduce, reviewShown, reviewStamp, sendBackCopy, silenceCommand, silenceOffered, type ReviewCard } from "./review.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
 
 const P = "/Users/me/shop";
@@ -19,6 +19,27 @@ const ok = (over: Record<string, unknown> = {}) => ({
 });
 const fixtures = (name: string) => readFileSync(new URL(`../../protocol/fixtures/${name}`, import.meta.url), "utf8").split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
 const run = (events: Record<string, unknown>[], from: ReviewCard | null = null) => events.reduce<ReviewCard | null>((r, e) => reviewReduce(r, e as { type: string }), from);
+
+describe("must fix 8 (M57): changes made while Squibby was closed", () => {
+  test("the mark is kept on the card, and only a known mark", () => {
+    expect(run([batch({ away: "closed" })])!.away).toBe("closed");
+    expect(run([batch({ away: "notWatching" })])!.away).toBe("notWatching");
+    expect(run([batch({ away: "yesterday" })])!.away).toBeUndefined();
+    expect(run([batch()])!.away).toBeUndefined();
+  });
+  test("a batch that grew after it has no mark any more", () => {
+    const r = run([batch({ away: "closed" }), batch({ batch: "rv_aaaaaaaaaa", count: 3 })])!;
+    expect(r.away).toBeUndefined();
+  });
+  test("honest words: nothing says the changes were made by your AI", () => {
+    for (const line of [S.review.lead(1), S.review.lead(4), S.review.heroLine(1), S.review.heroLine(12), S.review.away.closed, S.review.away.notWatching, S.set["review.mode"].label]) {
+      expect(line).not.toMatch(/your AI|AI tool changed|from your AI/i);
+    }
+    expect(S.review.heroLine(12)).toBe("Changed since your last check: 12 files.");
+    expect(S.set["review.mode"].label).toBe("Review changes to your project");
+    expect(S.review.away.closed).toMatch(/^Changed while .+ was closed\.$/);
+  });
+});
 
 describe("the card follows the engine's batches", () => {
   test("a batch with changes opens the card, ready to review, with its files and the names of the settings files only", () => {
@@ -277,5 +298,72 @@ describe("the card on Home", () => {
   });
   test("files in mono, through the changes card", () => {
     expect(view).toContain("<ChangesCard");
+  });
+});
+
+// M57 features 3, 4 and 7 on the card: the notes it was written with, a review that stays current, how strict, and Don't
+// flag this kind here again. Tests first (rule 17).
+describe("M57: a review that stays current", () => {
+  const two = [ok({ reasons: [{ kind: "secret_in_code", file: "src/pay.ts", line: 2, say: "A key." }, { kind: "files_removed", say: "1 file was removed." }] })];
+  const recheck = (over: Record<string, unknown> = {}) => ({ type: "review.recheck", project: P, batch: "rv_4f2a9c01de", by: "rv_bbbbbbbbbb", fixed: [0], closed: false, ...over });
+  test("a reason that no longer holds is marked, the others stay, and the card stays open", () => {
+    const r = run([batch(), ...two, recheck()])!;
+    expect(r.result!.fixed).toEqual([0]);
+    expect(r.stage).toBe("reviewed");
+    expect(fixedSince(r, 0)).toBe(true);
+    expect(fixedSince(r, 1)).toBe(false);
+  });
+  test("a card with nothing left closes and the newer review takes its place", () => {
+    const newer = { batch: "rv_bbbbbbbbbb" };
+    const r = run([batch(), ...two, batch({ ...newer, count: 1 }), ok({ ...newer, rating: "safe", reasons: [] }), recheck({ fixed: [0, 1], closed: true })])!;
+    expect(r.batch).toBe("rv_bbbbbbbbbb");
+    expect(r.result!.rating).toBe("safe");
+    expect(run([batch(), ...two, recheck({ fixed: [0, 1], closed: true })])).toBeNull();
+  });
+  test("a recheck for another batch, out of range or badly shaped changes nothing", () => {
+    const r = run([batch(), ...two])!;
+    for (const e of [recheck({ batch: "rv_cccccccccc" }), recheck({ fixed: [5] }), recheck({ fixed: "0" }), recheck({ project: "/elsewhere" })]) expect(reviewReduce(r, e as never)).toBe(r);
+  });
+  test("the words say it plainly, and the card draws the mark", () => {
+    expect(S.review.fixedSince).toBe("Changed since, this no longer applies.");
+    const view = readFileSync(new URL("./reviewCard.tsx", import.meta.url), "utf8");
+    expect(view).toContain("S.review.fixedSince");
+  });
+});
+
+describe("M57: the notes, how strict, and Don't flag this kind here again", () => {
+  test("the notes it was written with and how many were left out are kept, only when well shaped", () => {
+    const r = run([batch(), ok({ ruleFiles: ["AGENTS.md", ".cursor/rules/db.mdc"], hidden: 2 })])!;
+    expect(r.result!.ruleFiles).toEqual(["AGENTS.md", ".cursor/rules/db.mdc"]);
+    expect(r.result!.hidden).toBe(2);
+    const bad = run([batch(), ok({ ruleFiles: "AGENTS.md", hidden: -1 })])!;
+    expect(bad.result!.ruleFiles).toBeUndefined();
+    expect(bad.result!.hidden).toBeUndefined();
+    expect(S.review.ruleFiles("AGENTS.md")).toMatch(/notes for AI tools/);
+    expect(S.review.hidden(1)).toMatch(/^1 smaller thing was not shown/);
+  });
+  test("Don't flag is offered only on the kinds it may silence, never on a key, a settings file, open data or Fix this first", () => {
+    const r = run([batch(), ok({ rating: "worth_a_look", reasons: [{ kind: "touches_risky", say: "It touches payments." }, { kind: "secret_file_changed", say: "A settings file changed." }, { kind: "signed_in_open", file: "m.sql", say: "Open." }] })])!;
+    expect(silenceOffered(r, 0)).toBe(true);
+    expect(silenceOffered(r, 1)).toBe(false);
+    expect(silenceOffered(r, 2)).toBe(false);
+    const s = run([batch(), ok()])!;
+    expect(silenceOffered(s, 0)).toBe(false);
+  });
+  test("pressed, it is saved once as the shared line with its source, and the card says where", () => {
+    const r = run([batch(), ok({ rating: "worth_a_look", reasons: [{ kind: "files_removed", say: "1 file was removed." }] }), { type: "ui.reviewSilenced", batch: "rv_4f2a9c01de", kind: "files_removed" }])!;
+    expect(r.silenced).toEqual(["files_removed"]);
+    expect(silenceOffered(r, 0)).toBe(false);
+    expect(reviewReduce(r, { type: "ui.reviewSilenced", batch: "rv_4f2a9c01de", kind: "secret_in_code" } as never)).toBe(r);
+    const c = silenceCommand(P, "files_removed")!;
+    expect(c).toMatchObject({ type: "memory.add", project: P, scope: "project", text: REVIEW_SILENCE_LINES.files_removed, source: S.review.silenceSource });
+    expect(silenceCommand(P, "secret_in_code")).toBeNull();
+    expect(S.review.silence).toBe("Don't flag this kind here again");
+    expect(S.review.silenced).toMatch(/What I remember/);
+    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
+    expect(card).toContain("silenceCommand(project");
+  });
+  test("the new words are plain, with no em dash", () => {
+    for (const w of [S.review.fixedSince, S.review.ruleFiles("AGENTS.md"), S.review.hidden(3), S.review.silence, S.review.silenced, S.set["review.strictness"].help, S.set["review.autoQuietSeconds"].help]) expect(w).not.toMatch(/—|your AI did/);
   });
 });

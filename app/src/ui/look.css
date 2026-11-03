@@ -143,6 +143,15 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .hist-meta { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
 .hist-row > .stamp { margin-top: 2px; }
 .hist-row > .hist-extra { grid-column: 2 / -1; }
+/* M57 feature 1: the reviews of changes, their own list under the tasks. The mark is the rating's own drawing (never colour
+   alone: the name starts with the rating in words), and "Review" is always shown, whatever the stamps setting says. */
+.hist-reviews { margin-top: var(--space-4); }
+.hist-review-mark { min-width: 28px; min-height: 28px; margin-top: 2px; border-radius: var(--r-stamp); background: var(--surface-2); }
+.hist-review-mark[data-tone="good"] { color: var(--ok); }
+.hist-review-mark[data-tone="mixed"] { color: var(--amber); }
+.hist-review-mark[data-tone="bad"] { color: var(--bad); }
+.hist-files { color: var(--fg-2); font-size: var(--t-caption); overflow-wrap: anywhere; }
+.hist-review-stamp { display: inline-flex; align-items: center; margin-top: 2px; min-height: var(--lh-caption); padding: 0 var(--space-1); border: var(--hair) solid currentColor; border-radius: var(--r-stamp); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 
 /* ---------- Settings' Look pictures (M51 polish): a small drawing per option, so Home's look is chosen by looking ----------
    A window: a side column and a main column with two lines of words and the water's pill. The theme pictures take each

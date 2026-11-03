@@ -5,7 +5,7 @@
 // index, so the user's .git, index, branches and history are never read for
 // writing. A project that is not a git project never gets a .git.
 
-import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -551,12 +551,45 @@ export class CheckpointStore {
    *  tree. Nothing is saved as an undo point. */
   /** `reuse`: an index kept from an earlier stage is updated as it is (only changed files are read again); without one, or
    *  without `reuse`, it starts from the newest version. */
+  /** Must fix 27: a fresh index from `read-tree` has no size or time for any file, so git read and hashed the whole project
+   *  for every snapshot. The index a snapshot ends with is kept (`index-snap-<tree>`, named by the tree it wrote), and the
+   *  next stage starts from a copy of it when the newest version is still that tree: git then rereads only files whose size
+   *  or modified time changed. The copy keeps the kept one's date (rounded down, never later), so git's own care for "racily
+   *  clean" files still holds: a file saved in the same moment as that index is read again, never trusted by its time. */
+  private seedIndex(idx: string, tree: string | null): boolean {
+    if (!tree || !/^[0-9a-f]{40,64}$/.test(tree)) return false;
+    const kept = join(this.shadowDir, `index-snap-${tree}`);
+    try {
+      const st = statSync(kept);
+      copyFileSync(kept, idx);
+      const back = new Date(Math.floor(st.mtimeMs) - 1);
+      utimesSync(idx, back, back);
+      return true;
+    } catch { rmSync(idx, { force: true }); return false; }
+  }
+  /** Keeps the index a snapshot ended with, for the next one (seedIndex). Only one is kept. */
+  private keepIndex(idx: string, tree: string): void {
+    try {
+      for (const n of readdirSync(this.shadowDir)) if (/^index-snap-[0-9a-f]+$/.test(n) && n !== `index-snap-${tree}`) rmSync(join(this.shadowDir, n), { force: true });
+      renameSync(idx, join(this.shadowDir, `index-snap-${tree}`));
+    } catch { /* the next snapshot reads everything, as before */ }
+  }
   private async stage(idx: string, o: { reuse?: boolean } = {}): Promise<{ tree: string; skipped: Skipped[]; last: { n: number } | undefined; parent: string | null }> {
     const all = this.refs();
     const last = all[all.length - 1];
-    const parent = last ? (await this.git(["rev-parse", last.ref])).trim() : null;
-    if (parent && !(o.reuse && existsSync(idx))) await this.git(["read-tree", parent], { index: idx });
-
+    const [parent, parentTree] = last ? (await this.git(["rev-parse", last.ref, `${last.ref}^{tree}`])).trim().split("\n") : [null, null];
+    if (!parent || (o.reuse && existsSync(idx))) return this.stageFrom(idx, last, parent);
+    if (this.seedIndex(idx, parentTree ?? null)) {
+      try { return await this.stageFrom(idx, last, parent); } catch {
+        // A kept index git cannot read (damaged, cut short): never trusted again, and this snapshot reads everything.
+        for (const n of readdirSync(this.shadowDir)) if (n.startsWith("index-snap-")) rmSync(join(this.shadowDir, n), { force: true });
+        rmSync(idx, { force: true });
+      }
+    }
+    await this.git(["read-tree", parent], { index: idx });
+    return this.stageFrom(idx, last, parent);
+  }
+  private async stageFrom(idx: string, last: { n: number } | undefined, parent: string | null): Promise<{ tree: string; skipped: Skipped[]; last: { n: number } | undefined; parent: string | null }> {
     // Files over 2 MiB, new or grown, are skipped and reported, never silently saved. Folders with their own git history are
     // reported as not covered. Neither is allowed to break the snapshot.
     const skipped: Skipped[] = [];
@@ -608,6 +641,7 @@ export class CheckpointStore {
       await this.git(["update-ref", `refs/cp/${n}`, commit]);
       const id = `cp_${String(n).padStart(4, "0")}`;
       const files = (await this.git(["ls-tree", "-r", "--name-only", "-z", tree])).split("\0").filter(Boolean).length;
+      this.keepIndex(idx, tree);
       const envFiles = envCopies ? this.saveEnvFiles(id) : this.saveEnvDigests(id);
       const cp: Checkpoint = { id, commit, label, files, skipped, createdAt: new Date().toISOString(), envFiles };
       mkdirSync(this.metaPath(id), { recursive: true });

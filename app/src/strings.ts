@@ -447,6 +447,8 @@ export const S = {
     "island.pointOpens": "What opens when you point at the notch: Home, or one status line.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
+    // M57 UI 12: the review of changes, first on the Fixing page.
+    "review.mode": "When your project changes, say what changed and whether it is safe. Ask first waits for your press.",
     "home.escStops": `Esc removes what ${PRODUCT} is showing on your screen.`,
     "display.textSize": "Every word in Home gets bigger. The notch keeps its size.",
     "guide.on": "Points at where to click, step by step.",
@@ -520,7 +522,7 @@ export const S = {
     "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending",
     "look.home": "Home", "look.details": "Details",
     "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
-    "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
+    "fixing.review": "Reviews of changes to your project", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.danger": "Danger zone",
@@ -528,7 +530,7 @@ export const S = {
     "more.account.spending": "Spending per job and models",
     "more.general.notch": "Notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
-    "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
+    "more.fixing.review": "Reviews of changes", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
     "more.flowflow.motion": "Motion and placement",
     "more.keys.talking": "Talking", "more.keys.prompt": "Prompt help",
     "more.privacy.memory": "Memory", "more.privacy.calls": "Calls and counts",
@@ -725,6 +727,8 @@ export const S = {
     newCount: (n: number) => `${n > 9 ? "9+" : n} new`,
     // M52 (F30): another AI tool changed the open project and the changes wait to be reviewed. Said on the same top line.
     reviewReady: "Changes ready to review",
+    // M57 feature 5: the instant key warning on the same quiet line (no sound, no focus change). The same words as the card's.
+    reviewKey: "A change wrote what looks like a key into the code.",
     label: `${PRODUCT}: what is happening`,
     needsYou: "Needs your OK. Look at it first.",
     // M23: a question answered right in the notch (islandPanel.ts answerHere), this once only.
@@ -1347,9 +1351,9 @@ export const S = {
   yourTurnSetting: "Your turn after a fix",
   yourTurnHelp: "When a fix makes the same change in two places, offer to leave the second one for you, so you learn it by doing. It is only an offer: ignore it if you like.",
   recapTitle: "Where you left off",
-  recapSource: `From your tasks with ${PRODUCT}, your watches and what is waiting. Nothing is sent anywhere.`,
+  recapSource: `From your tasks with ${PRODUCT}, your watches, changes to your project and what is waiting. Nothing is sent anywhere.`,
   // The one next step Where was I suggests. A button; nothing starts until it is pressed.
-  recapNext: { fixWatch: "Fix it", findProblem: "Point at the problem", open: "Show me what is waiting" } as Record<string, string>,
+  recapNext: { fixWatch: "Fix it", findProblem: "Point at the problem", review: "Review the changes", open: "Show me what is waiting" } as Record<string, string>,
   recapClose: "Got it",
   // M52 (F30): the review of the changes another AI tool made in the open project (review.ts, reviewCard.tsx). Plain words;
   // the rating is said in words and with its own drawing, never by colour alone.
@@ -1359,9 +1363,12 @@ export const S = {
     arrived: (rating: string, line: string) => `Changes to review: ${rating}. ${line}`,
     sideItem: "Review changes",
     sideLabel: (state: string) => `Review changes. ${state}`,
-    lead: (n: number) => (n === 1 ? "Your AI tool changed 1 file in this project." : `Your AI tool changed ${n} files in this project.`),
+    // Honest words (M57): Squibby cannot tell another tool's edits from the person's own, so nothing here says "your AI did".
+    lead: (n: number) => (n === 1 ? "1 file changed in this project." : `${n} files changed in this project.`),
     // Under that, on Now's top while nobody has looked yet (homeHero.ts reviewLead).
-    heroLine: (n: number) => `Changed since your last check: ${n === 1 ? "1 file" : `${n} files`} from your AI tool.`,
+    heroLine: (n: number) => `Changed since your last check: ${n === 1 ? "1 file" : `${n} files`}.`,
+    // Must fix 8: a batch found when the project is opened, measured against the last snapshot from before.
+    away: { closed: `Changed while ${PRODUCT} was closed.`, notWatching: `Changed while ${PRODUCT} was not watching this project.` } as Record<"closed" | "notWatching", string>,
     capped: (shown: number, n: number) => `Showing the first ${shown} of ${n} files.`,
     secretFiles: (names: string) => `A settings or key file changed (${names}). ${PRODUCT} did not read it, and nothing in it is sent anywhere.`,
     askFirst: "Nothing is looked at until you ask. Review them also runs your project's own checks on a separate test copy, the browser check included.",
@@ -1399,6 +1406,21 @@ export const S = {
     // Before any review has run, closing the card is skipping it, never a judgement (the audit, item 16).
     skipThis: "Skip this one",
     notSent: "That did not reach the review. Try again in a moment.",
+    // M57 feature 5: the instant key warning, before any review ran. "A change", never "your AI": who wrote it is not known.
+    keyWarning: "A change wrote what looks like a key into the code.",
+    keyWarningLine: "Only the key check ran, on this Mac. Review them to see the rest, then Fix it.",
+    keyAt: (file: string, line: number) => `${file}, line ${line}`,
+    // M57 feature 4: a reason the rules checked again after a newer change, and found it no longer holds.
+    fixedSince: "Changed since, this no longer applies.",
+    // M57 feature 3: the project's own notes for AI tools the words were written with. They were read as notes, never obeyed.
+    ruleFiles: (names: string) => `Written with your project's notes for AI tools, read as notes only: ${names}.`,
+    // M57 feature 7: smaller reasons left out by how strict reviews are, or by a kind not to flag here.
+    hidden: (n: number) => `${n === 1 ? "1 smaller thing was" : `${n} smaller things were`} not shown, because of how strict reviews are or what you asked not to flag here.`,
+    silence: "Don't flag this kind here again",
+    silenceHelp: "Saves a line in What I remember. Forget that line to see this kind again.",
+    silenced: "Saved in What I remember. Forget that line to see this kind again.",
+    // The source the memory line shows (at most 80 characters, no commas).
+    silenceSource: "a review: Don't flag this kind here again",
   },
   // Watch routines (F21). Plain words; nothing here scores, praises or counts a streak (rule 16).
   watch: {
@@ -1645,6 +1667,14 @@ export const S = {
   historySearch: "Search tasks",
   historyStatusLabel: "How it ended",
   historyStatus: { all: "All", done: "Done", not_done: "Not done", stopped: "Stopped", undone: "Undone", running: "Running" },
+  // M57 feature 1: the reviews of changes, as their own rows in History (reviewHistory.ts). What was done, never a score.
+  history: {
+    reviewsTitle: "Reviews of changes",
+    reviewMark: "Review",
+    reviewDid: { open: "Not closed", looks_fine: "You said it looks fine", sent_back: "Sent back with Copy for my AI", fix: "You pressed Fix it", no_longer_applies: "Changed since, it no longer applies" } as Record<string, string>,
+    reviewMore: (n: number) => `and ${n} more`,
+    reviewsKept: (days: string) => `Kept for ${days}. Only file names are kept, never what is in them.`,
+  },
   historyMatches: (n: number, of: number) => `${n} of ${of} tasks ${n === 1 ? "matches" : "match"}.`,
   historyNoMatch: "No task matches. Try fewer words, or All.",
   historyClear: "Clear search",
@@ -1915,8 +1945,14 @@ export const S = {
     "watch.quiet": { label: "Quiet hours for watch alerts", help: "Between the hours below, a watch that fails does not tell you. It is still checked, and if it is still failing when the quiet hours end, you are told then.", also: ["watch", "alert", "night", "sleep", "do not disturb", "quiet"] },
     "watch.quietFrom": { label: "Quiet hours start at hour", help: "From 0 to 23 on this Mac's clock. Used only with quiet hours on.", also: ["watch", "quiet", "night", "start"] },
     "watch.quietTo": { label: "Quiet hours end at hour", help: "From 0 to 23 on this Mac's clock. Used only with quiet hours on. The same hour as the start means no quiet hours.", also: ["watch", "quiet", "morning", "end"] },
-    "review.mode": { label: "Review changes your AI makes", help: `When another AI tool, such as Claude Code, Codex or Cursor, changes your project, ${PRODUCT} looks once the files settle. It says what changed, what it touches and whether it is safe. Ask first: a dot says there are new changes, and nothing is looked at until you ask. Automatic: each change is reviewed by itself, with your project's own checks, and counts in your daily limit. Off: the folder is not watched at all.`, also: ["review", "changes", "code review", "claude code", "codex", "cursor", "watch folder", "ai changes"], options: { ask: "Ask first", automatic: "Automatic", off: "Off" } },
+    "review.mode": { label: "Review changes to your project", help: `When your project changes, for example when another AI tool such as Claude Code, Codex or Cursor edits it, ${PRODUCT} looks once the files settle. Changes made while ${PRODUCT} was closed are offered when it opens the project again. It says what changed, what it touches and whether it is safe. Ask first: a dot says there are new changes, and nothing is looked at until you ask. Automatic: each change is reviewed by itself, with your project's own checks, and counts in your daily limit. Off: the folder is not watched at all.`, also: ["review", "changes", "code review", "Claude Code", "Codex", "Cursor", "CodeRabbit", "watch folder", "ai changes"], options: { ask: "Ask first", automatic: "Automatic", off: "Off" } },
     "review.quietSeconds": { label: "Wait before a review", help: `How long your project's files must stay unchanged before ${PRODUCT} treats them as one finished change. Longer suits a tool that pauses while it works.`, also: ["review", "wait", "quiet", "seconds", "debounce"] },
+    "review.autoQuietSeconds": { label: "Wait before an automatic review", help: `With reviews on Automatic, how long your project's files must stay unchanged before ${PRODUCT} reviews them by itself. Longer means a tool that pauses while it works is not reviewed half way through.`, also: ["review", "automatic", "wait", "quiet", "seconds"] },
+    // M57 feature 5: the one check that runs without a press. Its help says so plainly (it changes M52's "nothing runs until asked").
+    "review.keyWarning": { label: "Warn at once about a key in the code", help: `Off unless you turn it on. When on, and a change adds what looks like a key or password to your code, ${PRODUCT} says so at once, without asking first. Only that one check runs, on this Mac, with no model and nothing sent anywhere. Everything else still waits until you ask for a review.`, also: ["review", "key", "secret", "password", "token", "api key", "warning", "Cursor", "Codex", "Claude Code"] },
+    // M57 feature 1: how long History keeps its review rows (names of files only, never their text).
+    "review.keepDays": { label: "Keep reviews in History for", help: `Each review is one row in History: when, which files by name, what it found and what you did. ${PRODUCT} never keeps the text of your files. Older rows are removed, and Delete everything removes them all.`, also: ["review", "history", "keep", "days", "retention", "delete"], options: { "30": "30 days", "90": "90 days", "180": "180 days", "365": "A year" } },
+    "review.strictness": { label: "How strict reviews are", help: `Quiet shows only what needs fixing first. Normal shows what is worth a look too, except the kinds you asked ${PRODUCT} not to flag in this project. Careful shows everything, those kinds too. A key in the code, a changed settings or key file, and data open to anyone or to every signed in account are always shown.`, also: ["review", "strict", "quiet", "careful", "noise", "flag", "Cursor", "Codex", "Claude Code"], options: { quiet: "Quiet", normal: "Normal", careful: "Careful" } },
     "numbers.on": { label: `Count how I use ${PRODUCT}`, help: `${PRODUCT} counts how often things happen, never words, names, files or your screen. The counts stay on this Mac, and nothing is sent.`, also: ["metrics", "stats", "analytics", "beta", "numbers"] },
   },
   // The fixed part of a setting that can never change, shown under its row, by the id its definition names (floor).

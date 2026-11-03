@@ -506,8 +506,8 @@ fn review_ready() -> std::sync::MutexGuard<'static, island::ReviewReady> { REVIE
 /// Tells the island page when the dot changed (`changed`, from island::ReviewReady). The page shows it on the hover panel.
 fn review_dot_told(app: &AppHandle, changed: bool) {
     if !changed { return; }
-    let on = review_ready().on();
-    let _ = app.emit_to("island", "review-ready", json!({ "on": on }));
+    let (on, key) = { let r = review_ready(); (r.on(), r.key()) };
+    let _ = app.emit_to("island", "review-ready", json!({ "on": on, "key": key }));
 }
 /// The engine watches the open project for changes only while review.mode is not off and Flow is on (runner/src/review).
 fn review_watched() -> bool { setting_now("review.mode") != json!("off") && !group_off("flow.on") }
@@ -516,8 +516,10 @@ fn review_watched() -> bool { setting_now("review.mode") != json!("off") && !gro
 pub(crate) fn review_heard(app: &AppHandle, v: &Value) {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !(t == "review.batch" || t == "review.result" || t == "runner.hello" || t == "app.runner_down") { return; }
-    // Only what the dot needs: the type, the project, the batch's name, its count and whether the review was done.
-    let v = json!({ "type": t, "project": v.get("project"), "batch": v.get("batch"), "count": v.get("count"), "ok": v.get("ok") });
+    // Only what the dot needs: the type, the project, the batch's name, its count and whether the review was done, and
+    // (M57 feature 5) how many places the instant key warning named, never the places themselves.
+    let keys = v.get("keys").and_then(Value::as_array).map_or(0, |a| a.len());
+    let v = json!({ "type": t, "project": v.get("project"), "batch": v.get("batch"), "count": v.get("count"), "ok": v.get("ok"), "keys": keys });
     let a = app.clone();
     let _ = app.run_on_main_thread(move || {
         let seen = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
@@ -723,7 +725,7 @@ fn island_state() -> Value {
     if !v.is_object() { v = json!({ "mode": "rest", "kind": "pill" }); }
     v["update"] = UPDATE_READY.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|u| json!({ "version": u })).unwrap_or(Value::Null);
     v["unseen"] = json!(UNSEEN.load(Ordering::SeqCst));
-    v["review"] = json!(review_ready().on());
+    { let r = review_ready(); v["review"] = json!(r.on()); v["reviewKey"] = json!(r.key()); }
     v
 }
 
