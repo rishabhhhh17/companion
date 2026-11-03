@@ -455,7 +455,7 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(card).toContain("setNews(n.line.text)");
     expect(card).toMatch(/<div className="sr" role="status" aria-live="polite" aria-atomic="true">\{news\}<\/div>/);
     // Outside the first run's switch, so it is there before anything changes (a live line must exist first).
-    expect(card.indexOf("{news}</div>")).toBeLessThan(card.indexOf("{!onboarded && <Onboarding"));
+    expect(card.indexOf("{news}</div>")).toBeLessThan(card.indexOf("{!onboarded && <PartBoundary part=\"firstRun\"><Onboarding"));
     const a11y = read("./a11y.ts");
     expect(a11y).not.toMatch(/document|\.focus\(|window\./);
   });

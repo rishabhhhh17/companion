@@ -76,4 +76,14 @@ describe("the privacy note names every flow that reads or sends something", () =
     expect(row("You press **Get Pro**")).toContain(S.plan.buttons.billing);
     expect(note).toContain("keeps the date a Pro trial started (and says so)");
   });
+  // Must fix 21: a review sends the changed lines of the project to Claude, with no tap in Automatic. The note and the
+  // launch policy both say what is read, through what, and when.
+  test("the review of changes your AI makes says what is read, through what, when, and how to turn it off", () => {
+    const r = row("Another AI tool changes your project (**Review changes your AI makes**");
+    expect(r).not.toBe("");
+    for (const w of ["only the project folder you chose", "changed", "names", "[secret]", "never read", "Claude", "under your key", S.set["review.mode"].options!.ask, S.set["review.mode"].options!.automatic, "without a tap", "daily limit", S.set["review.mode"].label, S.set["review.mode"].options!.off]) expect(r, w).toContain(w);
+    const policy = readFileSync(new URL("../../docs/launch/legal/privacy-policy.md", import.meta.url), "utf8");
+    const p = policy.split("\n").find((l) => l.startsWith("| **Review changes your AI makes**")) ?? "";
+    for (const w of ["changed", "names", "keys hidden", "never read", "Automatic", "without a tap", "Off"]) expect(p, w).toContain(w);
+  });
 });

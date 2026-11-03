@@ -65,7 +65,62 @@ describe("asking for the timeline", () => {
     await runner.handle({ v: 1, id: "q", type: "tasks.list", project: "/nowhere" });
     expect((events.filter((e) => e.type === "tasks.list").at(-1) as any).tasks).toEqual([]);
   });
+  // Must fix 11 (review of 4 Nov): Home must never say the project works over files nobody checked. The engine knows the
+  // version its last check passed on, so the list says whether the project changed since.
+  test("right after a proven task, the project is the same as checked", async () => {
+    const { project, events, runner } = await run();
+    await runner.handle({ v: 1, id: "q", type: "tasks.list", project });
+    expect((events.filter((e) => e.type === "tasks.list").at(-1) as any).sinceCheck).toBe("same");
+  });
+  test("after the person edits a file, it says the project changed since its last check, and makes no undo point", async () => {
+    const { project, events, runner } = await run();
+    writeFileSync(join(project, "a.txt"), "edited by hand");
+    const points = () => events.filter((e) => e.type === "checkpoint.created").length;
+    const before = points();
+    await runner.handle({ v: 1, id: "q", type: "tasks.list", project });
+    expect((events.filter((e) => e.type === "tasks.list").at(-1) as any).sinceCheck).toBe("changed");
+    expect(points()).toBe(before);
+    // Put back as it was checked, it is the same again.
+    writeFileSync(join(project, "a.txt"), "x");
+    await runner.handle({ v: 1, id: "q2", type: "tasks.list", project });
+    expect((events.filter((e) => e.type === "tasks.list").at(-1) as any).sinceCheck).toBe("same");
+  });
+  // Review of M56: the proven version was kept only in memory, so after a relaunch Home said "works" again over files
+  // that changed. It is now kept beside the project's snapshots.
+  test("after the engine restarts, it still knows the version its last check passed on", async () => {
+    const project = tmp("pr"); writeFileSync(join(project, "a.txt"), "x");
+    const shadowRoot = tmp("sr");
+    const make = (events: Event[]) => new AgentRunner({ shadowRoot, engine: new ScriptedEngine([bash("echo hi > new.txt")]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict: "passed", steps: [] }) });
+    const first: Event[] = [];
+    await make(first).handle({ v: 1, id: "c1", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "add a note", model: "m", budgetUsd: 3 });
+    writeFileSync(join(project, "a.txt"), "edited in another editor while the app was closed");
+    const after: Event[] = [];
+    const again = make(after);
+    await again.handle({ v: 1, id: "q", type: "tasks.list", project });
+    expect((after.filter((e) => e.type === "tasks.list").at(-1) as any).sinceCheck).toBe("changed");
+    writeFileSync(join(project, "a.txt"), "x");
+    await again.handle({ v: 1, id: "q2", type: "tasks.list", project });
+    expect((after.filter((e) => e.type === "tasks.list").at(-1) as any).sinceCheck).toBe("same");
+  });
+  test("a failed check remembered across a restart never reads as proven", async () => {
+    const project = tmp("pf"); writeFileSync(join(project, "a.txt"), "x");
+    const shadowRoot = tmp("sf");
+    const make = (events: Event[], verdict: "passed" | "failed") => new AgentRunner({ shadowRoot, engine: new ScriptedEngine([bash("echo hi > new.txt")]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict, steps: [] }) });
+    await make([], "failed").handle({ v: 1, id: "c1", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "add a note", model: "m", budgetUsd: 0.05 });
+    const after: Event[] = [];
+    await make(after, "passed").handle({ v: 1, id: "q", type: "tasks.list", project });
+    expect("sinceCheck" in (after.find((e) => e.type === "tasks.list") as any)).toBe(false);
+  });
+  test("with no passed check known, it says nothing either way", async () => {
+    const project = tmp("p2"); writeFileSync(join(project, "a.txt"), "x");
+    const events: Event[] = [];
+    const runner = new AgentRunner({ shadowRoot: tmp("s2"), engine: new ScriptedEngine([]), log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict: "passed", steps: [] }) });
+    await runner.handle({ v: 1, id: "q", type: "tasks.list", project });
+    expect("sinceCheck" in (events.find((e) => e.type === "tasks.list") as any)).toBe(false);
+  });
   test("the protocol knows the new command and event", () => {
+    expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "tasks.list", project: "/p", tasks: [], sinceCheck: "changed" })).ok).toBe(true);
+    expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "tasks.list", project: "/p", tasks: [], sinceCheck: "maybe" })).ok).toBe(false);
     expect(parseCommand(JSON.stringify({ v: 1, id: "q", type: "tasks.list", project: "/p" })).ok).toBe(true);
     expect(parseCommand(JSON.stringify({ v: 1, id: "q", type: "tasks.list" })).ok).toBe(false);
     expect(parseEvent(JSON.stringify({ v: 1, id: "e", type: "tasks.list", project: "/p", tasks: [] })).ok).toBe(true);

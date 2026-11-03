@@ -95,7 +95,8 @@ These lists are the contract for `runner/src/plan.ts`. Every type in `protocol/i
 
 **Gated as Pro only:**
 
-- `ship.check`, `ship.preview`, `ship.live`.
+- `ship.preview`, `ship.live`.
+- Changed 4 Nov 2026 (review must fix 20): `ship.check` moved to Never gated. It only runs checks on the Mac and costs nothing, and F25 promises every safety feature on Free. This spec said Pro before; the founder is told of the change.
 - `recap.ask`.
 - `settings.apply` when it sets `look.water` to a value other than the default.
 
@@ -104,7 +105,7 @@ These lists are the contract for `runner/src/plan.ts`. Every type in `protocol/i
 - Stopping: `agent.interrupt`, `agent.interruptAll`, `drive.pause`, `drive.resume`.
 - Undo and restore: `checkpoint.restore`, `checkpoint.putBack`, `bisect.undo`, `ship.rollback`.
 - Approvals: `approval.resolve`.
-- Checks and proof: `browser.check`, `browser.install`, `doctor.check`, `problem.find`, `secondlook.check`.
+- Checks and proof: `browser.check`, `browser.install`, `doctor.check`, `problem.find`, `secondlook.check`, `ship.check` (the check before going live).
 - Help: `error.explain`, `assist.*`, `walk.*`, `teach.*`, `research.ask`, `diagram.ask`.
 - Everything else: `memory.*`, `tasks.list`, `where.wasI`, `spending.*`, `metrics.*`, `watch.add`, `watch.list`, `watch.remove`, `watch.pause`, `watch.check`, `bisect.start`, `project.*`, `auth.check`, `google.accounts`, `engine.warm`, `runner.ping`, `loop.choose`, `explain.set`.
 - `settings.apply` for every other key.
@@ -520,7 +521,7 @@ Each file also holds `redirect_url` (section 4) and `paymentsOn`. It is parsed l
 - `runner/src/db.ts`: the `free_fixes` table.
 - `runner/src/main.ts`: handle `plan.state`, and call the gate for every command in the gated lists.
 - `runner/src/agent.ts`: record a fix on a proven verdict. Undo and Bring back leave the count alone.
-- `runner/src/ship/*`: gate `ship.check`, `ship.preview` and `ship.live`. `ship.rollback` is never gated.
+- `runner/src/ship/*`: gate `ship.preview` and `ship.live` (`ship.check` is never gated, see section 2a). `ship.rollback` is never gated.
 - `runner/src/recap.ts`: gate `recap.ask`.
 
 **UI:**

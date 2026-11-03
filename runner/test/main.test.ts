@@ -55,6 +55,8 @@ describe("the runner program", () => {
     const before = r.lines.length;
     r.send({ v: 1, id: "ping-1", type: "runner.ping" });
     await r.waitFor(() => r.events().slice(before).some((e: any) => e.type === "runner.pong"), 15_000);
+    // The answer names the ping it answers (must fix 12), so the Stop key waits for its own answer, not any event.
+    expect(r.events().slice(before).find((e: any) => e.type === "runner.pong").ping).toBe("ping-1");
     expect(r.events().some((e: any) => e.type === "receipt")).toBe(false);   // the task was still going
     r.send({ v: 1, id: "k", type: "agent.interruptAll", reason: "test" });
     await r.close();

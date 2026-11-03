@@ -829,6 +829,9 @@ export function buildChildEnv(parent: Record<string, string | undefined>, r: Rou
   e.CLAUDE_CODE_SUBPROCESS_ENV_SCRUB = "1";   // commands Claude Code starts never see the key
   e.CLAUDE_CODE_DISABLE_AUTO_MEMORY = "1";    // memory stays in files the user can read
   e.DISABLE_UPDATES = "1";                    // the shipped binary never updates itself
+  // A failed request is tried at most 3 more times, not Claude Code's usual 10 (read from the pinned 0.3.293 binary), so
+  // a person waiting offline hears "could not reach Claude" in seconds, not minutes (must fix 16). [verify] the times.
+  e.CLAUDE_CODE_MAX_RETRIES = "3";
   return e;
 }
 

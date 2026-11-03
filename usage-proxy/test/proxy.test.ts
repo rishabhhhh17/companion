@@ -211,6 +211,78 @@ describe("money", () => {
     expect(t.store.records[0].usd).toBeGreaterThan(0);
     expect(t.store.inFlight("u1")).toBe(0);
   });
+  // Must fix 10: a cancelled stream booked its first event only (input, no output), so three cancelled streams cost almost
+  // nothing and the budget never tripped. An incomplete stream is now booked as if it had used its whole max_tokens, and
+  // past the daily limit the next request is refused.
+  test("a stream cancelled mid way is booked as its full output, and the day's limit then stops the next request", async () => {
+    const cut = () => new Response(new ReadableStream({ async start(c) { c.enqueue(enc.encode(STREAM.split("event: content_block_delta")[0])); await new Promise((r) => setTimeout(r, 50)); try { c.enqueue(enc.encode("more")); c.close(); } catch { /* cancelled */ } } }), { headers: { "content-type": "text/event-stream" } });
+    const t = rig({ plan: "free", upstream: cut });
+    const body = { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] };
+    const full = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 64_000, cache_read_input_tokens: 8000, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    let sent = 0;
+    for (let i = 0; i < 10; i++) {
+      const r = await t.send({ body });
+      if (r.status === 402) break;
+      sent++;
+      const reader = r.body!.getReader(); await reader.read(); await reader.cancel();
+      await new Promise((x) => setTimeout(x, 20));
+    }
+    expect(t.store.records[0].complete).toBe(false);
+    expect(t.store.records[0].usd).toBeCloseTo(full, 8);
+    expect(sent).toBeLessThanOrEqual(Math.ceil(PLANS.free.dailyUsd / full) + 1);
+    expect(sent).toBeLessThan(10);
+  });
+  // Review of M56 (a): every request already running holds its worst case (max_tokens as output) until it ends, so many
+  // long streams opened at once with a cent left cannot all pass the check before any of them is booked.
+  test("requests opened at once each hold their worst case, so only the first passes near the day's limit", async () => {
+    let open: ((v?: unknown) => void) | undefined; const gate = new Promise((r) => { open = r; });
+    const t = rig({ plan: "free", maxInFlight: 8, upstream: async () => { await gate; return sseResponse(STREAM); } });
+    t.store.setSpent("u1", NOW, { day: PLANS.free.dailyUsd - 0.01, month: 0.5 });
+    const body = { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] };
+    const pending = Array.from({ length: 6 }, () => t.send({ body }));
+    await new Promise((x) => setTimeout(x, 20));
+    open!();
+    const statuses = (await Promise.all(pending)).map((r) => r.status);
+    expect(statuses.filter((s) => s === 200).length).toBe(1);
+    expect(statuses.filter((s) => s === 402).length).toBe(5);
+    expect(t.seen.length).toBe(1);
+  });
+  test("a hold is let go when the request ends, so what is booked is only what was used", async () => {
+    const t = rig({ upstream: () => sseResponse(STREAM) });
+    await (await t.send({ body: { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] } })).text();
+    const booked = t.store.records[0].usd;
+    expect((await t.store.spent("u1", NOW)).day).toBeCloseTo(booked, 10);
+    expect(t.store.inFlight("u1")).toBe(0);
+  });
+  // Review of M56 (b): a reply Anthropic itself ended with an error event was booked as 64k output tokens.
+  test("a stream Anthropic ended with an error event is booked from what it reported, not as its full output", async () => {
+    const broken = sse([
+      { type: "message_start", message: { id: "m", usage: { input_tokens: 2000, output_tokens: 1 } } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: REPLY_MARK } },
+      { type: "error", error: { type: "overloaded_error", message: "Overloaded" } },
+    ]);
+    const t = rig({ upstream: () => sseResponse(broken) });
+    await (await t.send({ body: { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] } })).text();
+    const seenCost = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    expect(t.store.records[0].complete).toBe(false);
+    expect(t.store.records[0].usd).toBeCloseTo(seenCost, 8);
+  });
+  test("Anthropic's own spacing of an error event (as its docs show it) counts too", async () => {
+    const text = sse([{ type: "message_start", message: { id: "m", usage: { input_tokens: 2000, output_tokens: 1 } } }]) + 'event: error\ndata: {"type": "error", "error": {"type": "overloaded_error", "message": "Overloaded"}}\n\n';
+    const t = rig({ upstream: () => sseResponse(text) });
+    await (await t.send({ body: { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] } })).text();
+    expect(t.store.records[0].usd).toBeLessThan(0.01);
+  });
+  test("words in a reply that look like an error event never count as one", async () => {
+    const tricky = sse([
+      { type: "message_start", message: { id: "m", usage: { input_tokens: 2000, output_tokens: 1 } } },
+      { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: '{"type":"error"}' } },
+    ]);
+    const t = rig({ upstream: () => sseResponse(tricky) });
+    await (await t.send({ body: { model: "claude-sonnet-5-5", max_tokens: 64_000, stream: true, messages: [] } })).text();
+    const full = costOf("claude-sonnet-5-5", { input_tokens: 2000, output_tokens: 64_000, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    expect(t.store.records[0].usd).toBeCloseTo(full, 8);
+  });
   test("at the daily limit the next request is refused with a plain message and never reaches Anthropic", async () => {
     const t = rig({ plan: "free" });
     t.store.setSpent("u1", NOW, { day: PLANS.free.dailyUsd, month: 0.5 });

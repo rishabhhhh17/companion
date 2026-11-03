@@ -38,14 +38,20 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // undid an earlier task after this one: this task's files stay, but the engine no longer follows its conversation up.
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
-  undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean };
+  undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
+  // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
+  // receipt's checkpoint is then the first step's, so Undo puts back the whole fix.
+  wholePlan?: { steps: number; last: string } };
 // checkpoint: the undo point it began with (a task that changes files; a read only look has none).
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
 export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
-export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number } };
+export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number }; whole?: PlanWhole };
+/** What a plan's steps did so far, added up from each step's receipt (must fix 7): the first step's undo point, every file
+ *  changed, the commands, what cannot be undone and the cost. drive.done turns it into one receipt for the whole fix. */
+export type PlanWhole = { first: string; last: string; steps: number; changed: Receipt["changed"]; commands: number; notUndoable: string[]; usd: number };
 // tries and same: how the tries ran out, when it was not the usual three identical failures (work.tries, work.askOnAnyFailure).
 // agent: the one it holds up (a task that keeps going in the folder before is named with its folder).
 // failure: the check that kept failing, and its result in plain words with the raw output kept for behind Details (M45).
@@ -193,6 +199,9 @@ export type Model = {
   cloneNote: string | null;
   shipFlow: ShipFlow | null;
   currentCheckpoint?: string;
+  // Whether the project's files changed since the version its last passed check ran on, from the engine (tasks.list, must
+  // fix 11). Unknown until the engine says, and again after a new result until it says again.
+  sinceCheck?: { project: string; changed: boolean };
   explain: Explain | null;
   stepExplains: StepExplain[];
   // The checkpoints of the current plan's steps (since its plan.ready, in this folder): only their explanations are listed.
@@ -927,13 +936,13 @@ function reduceRest(m: Model, e: Ev): Model {
     case "drive.step": {
       if (m.driveAway !== null) return m;
       const done = e.status === "done" ? Math.max(m.drive?.completed ?? 0, Number(e.index)) : m.drive?.completed ?? 0;
-      return { ...m, plan: null, rescue: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done } };
+      return { ...m, plan: null, rescue: null, stuck: null, paused: null, drive: { index: e.index, total: e.total, title: e.title, status: e.status, completed: done, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
     }
     case "drive.done": if (m.driveAway !== null) return { ...m, driveAway: null };
-      return { ...m, plan: null, stuck: null, paused: null, drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total } } };
-    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [] };
+      return { ...m, plan: null, stuck: null, paused: null, receipt: wholePlanReceipt(m.receipt, m.drive?.whole, e.usdEstimate), drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total }, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
+    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [], sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
-    case "receipt.visual": return m.receipt && m.receipt.checkpoint === e.checkpoint && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
+    case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
     // card always comes after the step's receipt.
     case "receipt": {
@@ -943,8 +952,11 @@ function reduceRest(m: Model, e: Ev): Model {
       m = { ...m, workIn: without(m.workIn, e.agent) };
       if (away !== undefined) return away ? { ...m, notice: S.awayFinished(folderName(away)) } : m;
       if (m.folder && (w?.project ?? m.task?.project) !== m.folder) return m;
+      // A plan's step: what it did joins the plan's whole fix, which drive.done shows as one receipt (must fix 7).
+      if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
-      return { ...m, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
+      // What the engine said about the files since the last check is older than this result: it is asked again.
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
@@ -1033,6 +1045,34 @@ const followGone = (r: Receipt): boolean => !!r.undone || !!r.gone || !!r.earlie
  *  its work is no longer in them. The receipt is marked undone with the safety copy the engine made first (Bring the fix
  *  back restores it), and a finished task's tick and "Done" go at once, not 4 seconds later (ui.settle). A receipt already
  *  undone keeps its first safety copy: that one has the fix in it. */
+/** One more step of a plan, added to what the plan did so far (must fix 7). A file added and then deleted again is gone from
+ *  the list; one deleted and then added again was modified; otherwise the first "added" stays and the latest kind wins. */
+export function addPlanStep(w: PlanWhole | undefined, e: Ev): PlanWhole {
+  const changed = new Map<string, string>((w?.changed ?? []).map((c) => [c.file, c.kind]));
+  for (const c of Array.isArray(e.changed) ? e.changed : []) {
+    if (!c || typeof c.file !== "string") continue;
+    const was = changed.get(c.file), kind = String(c.kind);
+    if (was === "added" && kind === "deleted") changed.delete(c.file);
+    else if (was === "added") changed.set(c.file, "added");
+    else if (was === "deleted" && kind === "added") changed.set(c.file, "modified");
+    else changed.set(c.file, kind);
+  }
+  const usd = typeof e.usdEstimate === "number" && Number.isFinite(e.usdEstimate) && e.usdEstimate > 0 ? e.usdEstimate : 0;
+  const notUndoable = [...(w?.notUndoable ?? [])];
+  for (const x of Array.isArray(e.notUndoable) ? e.notUndoable : []) if (typeof x === "string" && !notUndoable.includes(x)) notUndoable.push(x);
+  return { first: w?.first ?? String(e.checkpoint), last: String(e.checkpoint), steps: (w?.steps ?? 0) + 1, changed: [...changed].map(([file, kind]) => ({ file, kind })),
+    commands: (w?.commands ?? 0) + (typeof e.commands === "number" ? e.commands : 0), notUndoable, usd: (w?.usd ?? 0) + usd };
+}
+/** At a plan's end, its last step's receipt becomes the whole fix's (must fix 7): every changed file, the whole cost, and an
+ *  undo point before the first step, so Undo puts back the whole fix. The last step's proof and ending stay: its checks ran
+ *  on the project as the whole plan left it. A plan of one step keeps its receipt as it is. */
+function wholePlanReceipt(r: Receipt | null, w: PlanWhole | undefined, usdEstimate: unknown): Receipt | null {
+  if (!r || !w || w.steps < 2 || r.wholePlan || r.checkpoint !== w.last) return r;
+  // The turn offer belongs to the last step's own undo point, so it does not carry over.
+  const { repeat: _repeat, turnTaken: _turnTaken, ...rest } = r;
+  const total = typeof usdEstimate === "number" && Number.isFinite(usdEstimate) ? usdEstimate : 0;
+  return { ...rest, checkpoint: w.first, changed: w.changed, commands: w.commands, notUndoable: w.notUndoable, usdEstimate: Math.max(total, w.usd), wholePlan: { steps: w.steps, last: w.last } };
+}
 function filesWentBack(m: Model, project: unknown, safety: unknown): Model {
   const r = m.receipt;
   if (!r || (typeof project === "string" && m.task?.project && project !== m.task.project)) return m;

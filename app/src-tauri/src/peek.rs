@@ -686,7 +686,11 @@ mod wiring {
         // Tucked away, the pointer at the edge beside it counts as on it, read often but only while it is hidden.
         let on = body("fn pointer_on_character(");
         assert!(on.contains("macos_see::pointer()") && on.contains("peek::at_edge(home, edge, s, &list, (p.x, p.y))"), "{on}");
-        assert!(MAIN.contains("std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));\n                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }"));
+        // Must fix 33: while it is not tucked away the edge thread is parked (no timer), and tucking it away wakes it.
+        assert!(MAIN.contains("if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { std::thread::park(); continue; }\n                std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));"));
+        assert!(MAIN.contains("let _ = EDGE_THREAD.set(std::thread::current());"));
+        let apply = body("fn peek_apply(");
+        assert!(apply.find("*PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;").unwrap() < apply.find("if pose == peek::Pose::Hidden { edge_wake(); }").expect("tucking away wakes the edge thread"), "{apply}");
         assert!(body("fn peek_edge_poll(").contains("pointer_on_character(mtm) == Some(true)"));
         // Turned on or off in Settings: applied at once.
         assert!(body("fn home_setting_applied(").contains("\"character.peek\" | \"character.peekIdle\""));

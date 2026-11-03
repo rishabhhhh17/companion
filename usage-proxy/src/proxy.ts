@@ -4,7 +4,7 @@
 // It never stores or logs a request or a reply body, and never puts one in an error. What it logs is the SafeEvent below, and
 // nothing else: a test holds it to that.
 import { checkRequest, MAX_BODY_BYTES } from "./filter.ts";
-import { budgetCheck, planOf } from "./plans.ts";
+import { budgetCheck, nextReset, planOf } from "./plans.ts";
 import type { Store } from "./store.ts";
 import { hashToken, tokenFromHeaders } from "./tokens.ts";
 import { UsageSniffer, costOf, usageFromJson } from "./usage.ts";
@@ -108,6 +108,16 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       { status: 200, headers: { "content-type": "application/json", "cache-control": "no-store" } });
   };
 
+  const overBudget = (b: ReturnType<typeof budgetCheck>, userId: string) => {
+    // Only reached when the hold did not fit, so a check that now passes (a hold let go meanwhile) still counts as the day.
+    const reason = b.ok ? "day" : b.reason;
+    const resetsAt = b.ok ? nextReset("day", now()) : b.resetsAt;
+    const message = reason === "day"
+      ? `Today's included ${PRODUCT} usage is used up. It comes back at midnight UTC. To keep going now, add your own Claude key in Settings.`
+      : `This month's included ${PRODUCT} usage is used up. It comes back on the 1st (UTC). To keep going now, add your own Claude key in Settings or change plan.`;
+    return refuse(`${reason}_limit`, error(402, "billing_error", message, { "x-companion-resets-at": new Date(resetsAt).toISOString() }), userId);
+  };
+
   return async (req) => {
     if (!d.enabled()) return refuse("disabled", error(503, "api_error", `${PRODUCT_S} included usage is not switched on yet. Use your own Claude key in Settings for now.`));
     if (secretProblem(d.userIdSecret)) return refuse("no_user_id_secret", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later, or use your own Claude key in Settings.`));
@@ -129,17 +139,19 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     const plan = planOf(user.plan);
     if (!checked.free) {
       const b = budgetCheck(plan, await d.store.spent(user.id, now()), now());
-      if (!b.ok) {
-        const message = b.reason === "day"
-          ? `Today's included ${PRODUCT} usage is used up. It comes back at midnight UTC. To keep going now, add your own Claude key in Settings.`
-          : `This month's included ${PRODUCT} usage is used up. It comes back on the 1st (UTC). To keep going now, add your own Claude key in Settings or change plan.`;
-        return refuse(`${b.reason}_limit`, error(402, "billing_error", message, { "x-companion-resets-at": new Date(b.resetsAt).toISOString() }), user.id);
-      }
+      if (!b.ok) return overBudget(b, user.id);
     }
     if (!(await d.store.begin(user.id, maxInFlight))) return refuse("busy", error(429, "rate_limit_error", "Too many requests at once. Try again in a moment."), user.id);
+    // Must fix 10 (a): the request holds its worst case (its whole max_tokens as output) while it runs, checked and held in
+    // one step, so many requests opened at once cannot all pass on the same last cent. The hold goes when it ends.
+    const worst = checked.free ? 0 : costOf(checked.model, { input_tokens: 0, output_tokens: checked.maxTokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
+    if (!checked.free && !(await d.store.hold(user.id, worst, now(), (s) => budgetCheck(plan, s, now()).ok))) {
+      await d.store.end(user.id);
+      return overBudget(budgetCheck(plan, await d.store.spent(user.id, now()), now()), user.id);
+    }
 
     let released = false;
-    const release = async () => { if (!released) { released = true; await d.store.end(user.id); } };
+    const release = async () => { if (!released) { released = true; if (worst > 0) await d.store.unhold(user.id, worst); await d.store.end(user.id); } };
     try {
       const beta = (req.headers.get("anthropic-beta") ?? "").replace(/\s+/g, "");
       const headers = new Headers({ "content-type": "application/json", "x-api-key": d.anthropicKey, "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
@@ -149,7 +161,12 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       const back = new Headers();
       for (const h of PASS_BACK) { const v = res.headers.get(h); if (v) back.set(h, v); }
 
-      const book = async (usage: ReturnType<typeof usageFromJson>, complete: boolean) => {
+      const book = async (seen: ReturnType<typeof usageFromJson>, complete: boolean, failedUpstream = false) => {
+        // Must fix 10: a stream cut short (the client went away, or the connection broke) never told us its output, and
+        // Anthropic may have written it all. It is booked as the whole answer the request allowed, so cancelling cannot
+        // get round the budget. A reply Anthropic itself ended with an error event (overloaded_error) is booked from what it
+        // reported: the person does not pay a full answer for Anthropic's failure.
+        const usage = complete || failedUpstream ? seen : { ...seen, output_tokens: Math.max(seen.output_tokens, checked.maxTokens) };
         const usd = costOf(checked.model, usage);
         if (usd > 0) await d.store.record({ userId: user.id, model: checked.model, usage, usd, at: now(), complete });
         log({ kind: "request", userId: user.id, model: checked.model, usd, status: res.status, complete });
@@ -163,7 +180,7 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       if (checked.free) { const text = await res.text(); await release(); return new Response(text, { status: res.status, headers: back }); }
       if (res.body && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
         const sniffer = new UsageSniffer();
-        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete()); } finally { await release(); } }), { status: res.status, headers: back });
+        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete(), sniffer.failedUpstream()); } finally { await release(); } }), { status: res.status, headers: back });
       }
       const text = await res.text();
       await book(usageFromJson(text), true);

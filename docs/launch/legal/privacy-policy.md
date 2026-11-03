@@ -65,6 +65,7 @@ When you use a feature that needs Claude, the app sends the request from your Ma
 | **A file you drop in the ask box**, after you press Start | That file only (key-like text hidden; files such as `.env` are never read) |
 | **Lessons** | A picture of your screen at each step, as for **S**. The "setting practice" lesson does not look at your screen |
 | **Your typed answer to a question under a result** | Your answer, with anything that looks like a key or password hidden |
+| **Review changes your AI makes** (Ask first unless you change it) | When another AI tool changes the project you chose: the names of the changed files, the changed lines with keys hidden, and what your project's own checks said. Settings and key files such as `.env` are never read. With Ask first, nothing is sent until you ask. With Automatic, each change is sent without a tap once the files are quiet. Off stops watching the folder |
 | **A second-opinion review** of risky changes | Text with key-like values hidden |
 
 **Your voice** is turned into words on your Mac. The audio is never saved or sent. Only the words go in the box, and they are sent only if you send them.

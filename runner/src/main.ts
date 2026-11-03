@@ -4,7 +4,7 @@ import { setGoogleAccounts } from "./google/state.ts";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PROTOCOL_VERSION, parseCommand, serialize, type Command, type Event } from "../../protocol/index.ts";
+import { PROTOCOL_VERSION, serialize, type Command, type Event } from "../../protocol/index.ts";
 import { AgentRunner } from "./agent.ts";
 import { createEngine, createLanes, currentAuth, quickModelOf, readSettings } from "./engines.ts";
 import { AssistService, ImageStore } from "./lanes.ts";
@@ -13,7 +13,6 @@ import { promptHelpMemory } from "./memory/recall.ts";
 import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
-import { label } from "./redact.ts";
 import { heldKey } from "./keychain.ts";
 import { testKey } from "./keytest.ts";
 import { TaskLog } from "./tasklog.ts";
@@ -33,6 +32,8 @@ import { GhCli } from "./connections.ts";
 import { makeChecks, makeEvidence } from "./watchwire.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
 import { failure } from "./plainfail.ts";
+import { pumpLine } from "./pump.ts";
+import { claudeReachable } from "./reach.ts";
 import { FreeFixes } from "./db.ts";
 import { PlanGate } from "./plan.ts";
 import { MODELS } from "./models.ts";
@@ -54,7 +55,10 @@ try { mkdirSync(join(settings.data, "shadow"), { recursive: true }); } catch { p
 // The settings the shell applied (settings.apply, T16): in memory only, read by each task as it starts, and by the fast lane
 // for each request ("Claude for quick answers").
 const runnerSettings = new RunnerSettings();
-const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings, {}, { quickModel: () => quickModelOf(runnerSettings) }) : null;
+// Must fix 16: with the real Claude, a quick look that it is in reach comes before each request (reach.ts), so offline is
+// said at once instead of after Claude Code's tries.
+const claudeOnline = (host = "api.anthropic.com") => claudeReachable(host);
+const lanes = settings.engine === "sdk" || settings.assistStub ? createLanes(settings, { reachable: settings.engine === "sdk" ? claudeOnline : undefined }, { quickModel: () => quickModelOf(runnerSettings) }) : null;
 // The daily spending limit the person chose in Settings, kept in the data folder (a developer's setting wins, for tests).
 const spending = new SpendingStore(join(settings.data, SPENDING_FILE));
 // "My internet is slow" (net.slow): the waits for things that go over the internet are doubled, read each time.
@@ -68,7 +72,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // The plan gate (plan.ts, F25): nothing is gated until the shell says payments are on (plan.state). The free fix count lives
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
-const runner = new AgentRunner({ settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -77,7 +81,7 @@ watchList.engine = watches;
 // M52 (F30): the review of every change another AI tool makes in the open project. The words come from the fast lane, the
 // stronger model (MODELS.review) only for a stop or a change to sign in or payments; both are booked like Explain. Fix it is
 // an ordinary task, admitted by the plan gate and wrapped as the engine's own work like every other.
-const strongLane = settings.engine === "sdk" && !settings.assistStub ? createLanes(settings, {}, { quickModel: () => MODELS.review }).fast : null;
+const strongLane = settings.engine === "sdk" && !settings.assistStub ? createLanes(settings, { reachable: claudeOnline }, { quickModel: () => MODELS.review }).fast : null;
 /** The engine's own work in a project: the review counts nothing it writes, and starts again from what it left. Called
  *  before the work starts (rule: measure the other tool's changes first). */
 function ownWork(project: string | undefined, start: () => Promise<unknown>, kind: string): Promise<unknown> {
@@ -136,7 +140,8 @@ function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, b
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
-  if (cmd.type === "runner.ping") { say({ type: "runner.pong" }); return; }
+  // The answer names the ping it answers (must fix 12): the Stop key waits for its own, never for just any event.
+  if (cmd.type === "runner.ping") { say({ type: "runner.pong", ping: cmd.id }); return; }
   // The plan on this Mac, from the shell only (a page cannot send it). It changes what the next command may start; nothing
   // running is stopped, slowed or changed.
   if (cmd.type === "plan.state") { plan.setState(cmd); return; }
@@ -218,15 +223,9 @@ async function main() {
       const line = buf.slice(0, i).trim();
       buf = buf.slice(i + 1);
       if (!line) continue;
-      // The key handoff from the app is not part of the page protocol: it is taken here, before anything is parsed, logged
-      // or echoed, and a damaged one is dropped without its text ever being repeated.
-      if (line.startsWith('{"v":1,"type":"auth.key"')) { takeKey(line); continue; }
-      let r: ReturnType<typeof parseCommand>;
-      // A Google accounts line carries access tokens (M21): if it is damaged, only its type is ever repeated, never its text.
-      const shown = line.includes('"google.accounts"') ? "google.accounts" : label(line, 200);
-      try { r = parseCommand(line); } catch { say({ type: "protocol.error", ...failure("a line could not be read"), line: shown }); continue; }   // never let one bad line stop the engine
-      if (!r.ok) say({ type: "protocol.error", ...failure(r.error), line: shown });
-      else dispatch(r.msg);
+      // The key handoff, parsing and a throw in one command are all handled line by line (pump.ts, must fix 12): one
+      // command that goes wrong is said for that command, and the next one is still read.
+      pumpLine(line, { takeKey, dispatch, say });
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.

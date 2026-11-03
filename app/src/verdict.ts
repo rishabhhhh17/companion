@@ -27,7 +27,7 @@ export type Facts = {
 };
 
 export type VerdictKind =
-  | "proven" | "partial" | "unchecked" | "noChange" | "turn"
+  | "proven" | "passes" | "partial" | "unchecked" | "noChange" | "turn"
   | "failed" | "stopped" | "limit" | "needsYou" | "error"
   | "undone" | "back";
 export type Tone = "good" | "mixed" | "bad" | "plain" | "ask";
@@ -42,7 +42,7 @@ export type Verdict = {
   tone: Tone;
   icon: VerdictIcon;
   offer: Offer;            // the one undo kind of button this result offers
-  proven: boolean;         // true only for kind "proven". The only "proven" anywhere.
+  proven: boolean;         // true only for kind "proven", and "passes" (its checks passed on the project as it is). The only "proven" anywhere.
 };
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -85,6 +85,8 @@ function body(f: Facts): Body {
   // 8 to 12: it finished (or did not say, which counts only with a pass: the checks run only after a whole round).
   if (finished && f.proof === "passed") {
     if (f.turnOpen) return { kind: "turn", headline: V.turn, line: V.turnLine, tone: "mixed", icon: "wait" };
+    // The checks passed but nothing was changed: nothing was fixed, so it is never "Fixed and proven" (must fix 7).
+    if (f.changed === 0) return { kind: "passes", headline: V.passes, line: V.passesLine, tone: "good", icon: "tick" };
     return { kind: "proven", headline: V.proven, line: null, tone: "good", icon: "tick" };
   }
   if (f.proof === "partial") return { kind: "partial", headline: V.partial, line: missingWords(f.missing), tone: "mixed", icon: "wait" };
@@ -98,5 +100,5 @@ export function verdictOf(f: Facts): Verdict {
   const b = body(f);
   const hasFix = f.changed > 0 || f.proof === "passed" || f.proof === "partial";
   const offer: Offer = f.changed > 0 && (!f.undone || !!f.back) ? "undo" : f.undone && !f.back && f.canBringBack && hasFix ? "bringBack" : null;
-  return { ...b, say: S.verdict.say(b.headline, b.line), offer, proven: b.kind === "proven" };
+  return { ...b, say: S.verdict.say(b.headline, b.line), offer, proven: b.kind === "proven" || b.kind === "passes" };
 }

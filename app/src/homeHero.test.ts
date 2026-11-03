@@ -176,8 +176,8 @@ describe("one ask field, and the main button does what the existing paths do", (
     const doMain = card.slice(card.indexOf("const doMain = (a: MainAct) => {"), card.indexOf("\n  };", card.indexOf("const doMain = (a: MainAct) => {")));
     expect(doMain.match(/return; \}/g)?.length).toBe(3);
     expect(doMain).toContain('if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }');
-    // Ship's own check is in shipIt (shipGate), so every way into Ship asks the same way (plan.test.ts).
-    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return;");
+    // Every way into the check goes through shipIt; it is free (must fix 20, F25), going online asks the plan (plan.test.ts).
+    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return;");
     const f = card.slice(card.indexOf("const findFromHome = "), card.indexOf("\n", card.indexOf("const findFromHome = ")));
     expect(f).toContain("latest.current.find(null)");
     expect(card).toContain("latest.current.find(e.payload)");
@@ -418,7 +418,7 @@ describe("one main button per state", () => {
     expect(now.match(/kind="primary"/g)?.length).toBe(1);
     // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
     // 2 Nov 2026 (the ranked UI audit): or the way out of a block, or Review the changes; still one button (heroMain).
-    expect(now).toContain('{heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}{heroMain.status && <>{shipTagged && <ProTag />}</>}</Button></div>}');
+    expect(now).toContain('{heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}</Button></div>}');
     expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
     expect(now).not.toMatch(/btn primary/);
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));

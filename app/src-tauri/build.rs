@@ -23,5 +23,20 @@ fn main() {
         let value = v[key].as_str().unwrap_or_else(|| panic!("protocol/names.json has no text for {key}"));
         println!("cargo:rustc-env={var}={value}");
     }
+    commit();
     tauri_build::build()
+}
+
+/// Must fix 6: the commit this build came from, so a tester's report can be matched to its source. Read only git commands
+/// (rule 10). "unknown" outside a git checkout. release.sh only builds from a clean, tested commit, so a released build's
+/// commit is exact; a developer's build says "with changes" when files differed from the commit as it was built.
+fn commit() {
+    let git = |args: &[&str]| std::process::Command::new("git").args(args).output().ok().filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).filter(|s| !s.is_empty());
+    let id = git(&["rev-parse", "--short=12", "HEAD"]);
+    let dirty = id.is_some() && git(&["--no-optional-locks", "status", "--porcelain", "--untracked-files=no"]).is_some();
+    let label = match id { Some(id) if dirty => format!("{id} with changes"), Some(id) => id, None => "unknown".into() };
+    println!("cargo:rustc-env=SQUIBBY_COMMIT={label}");
+    // Built again when HEAD moves (a new commit or another branch) or the staging area changes.
+    for p in ["HEAD", "index", "packed-refs"] { if let Some(path) = git(&["rev-parse", "--git-path", p]) { println!("cargo:rerun-if-changed={path}"); } }
+    if let Some(r) = git(&["symbolic-ref", "-q", "HEAD"]) { if let Some(path) = git(&["rev-parse", "--git-path", &r]) { println!("cargo:rerun-if-changed={path}"); } }
 }

@@ -9,6 +9,7 @@ import { ComputerUseVision, withFallback } from "./aim.ts";
 import { FastLane, StubFast, VisionLane, type DescribeReq, type FastLike, type Look, type VisionLike } from "./lanes.ts";
 import { DirectFastLane, DirectVisionLane, type DirectAuth } from "./direct.ts";
 import { buildChildEnv } from "./safety.ts";
+import { NOT_REACHED, reachHost } from "./reach.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
@@ -96,7 +97,9 @@ async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: R
 
 // Tests only: a fake SDK in place of the real one (and a plain folder in place of the in memory drive), so the wiring
 // above can be checked without starting Claude.
-export type EngineDeps = { queryFn?: typeof realQuery; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> }; fetchFn?: typeof fetch; keyFn?: () => Promise<string | null> };
+/** reachable (must fix 16): a quick look that the Claude service is in reach, run before each light request (Prompt help,
+ *  Explain, a review's words, pictures). main.ts passes it only with the real Claude; tests pass their own. */
+export type EngineDeps = { queryFn?: typeof realQuery; tmpDrive?: { ensure: () => Promise<string>; wipe: () => Promise<void> }; fetchFn?: typeof fetch; keyFn?: () => Promise<string | null>; reachable?: (host: string) => Promise<boolean> };
 
 class LazySdkEngine implements Engine {
   readonly executesTools = true;
@@ -121,6 +124,23 @@ export const quickModelOf = (settings: { get(key: string): unknown }, passed?: r
 // look: an everyday stuck moment's look (everyday.ts), on the vision lane's model; the free stand in has none, so there only
 // the spreadsheet table can name one.
 export function createLanes(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
+  const lanes = createLanesNow(s, deps, o);
+  return deps.reachable && !s.assistStub ? inReach(lanes, s, deps.reachable) : lanes;
+}
+/** The light lanes, each request first checked to be in reach (must fix 16): offline, "could not reach Claude" is said at
+ *  once, before Claude Code or a request starts, instead of after its tries run out. A look that itself fails never stops
+ *  the request. */
+function inReach(l: ReturnType<typeof createLanesNow>, s: Settings, reachable: (host: string) => Promise<boolean>): ReturnType<typeof createLanesNow> {
+  const host = reachHost(s);
+  const first = async () => { if (host && !(await reachable(host).catch(() => true))) throw new Error(NOT_REACHED); };
+  return {
+    fast: { ...(l.fast.canSearch !== undefined ? { canSearch: l.fast.canSearch } : {}), run: async (req, onDelta, signal) => { await first(); return l.fast.run(req, onDelta, signal); } },
+    vision: { locate: async (req, signal) => { await first(); return l.vision.locate(req, signal); } },
+    describe: async (req, signal) => { await first(); return l.describe(req, signal); },
+    ...(l.look ? { look: async (req: Parameters<Look>[0], signal: AbortSignal) => { await first(); return l.look!(req, signal); } } : {}),
+  };
+}
+function createLanesNow(s: Settings, deps: EngineDeps = {}, o: { quickModel?: () => string } = {}): { fast: FastLike; vision: VisionLike; describe: Describe; look?: Look } {
   if (s.assistStub) return { fast: new StubFast(), vision: { locate: async () => ({ point: null, costUsd: 0 }) }, describe: async () => { throw new Error("pictures cannot be looked at in this mode"); } };
   if (s.route === "managed" || s.lanes === "direct") return directLanes(s, deps, o);
   const lane = async () => ({ ...(await claudeLaunch(s)), ...(deps.queryFn ? { queryFn: deps.queryFn } : {}) });

@@ -6,6 +6,7 @@
 // Code's own text (which names its own /login) is never what the person reads. Used by the agent engine (sdkEngine.ts) and
 // the fast and vision lanes (lanes.ts). Plain, testable rules; [verify] on a real Mac with the Wi-Fi off which words and
 // status Claude Code really sends (it costs nothing: no request reaches Anthropic).
+import { lookup as dnsLookup } from "node:dns/promises";
 import { clip, redact } from "./redact.ts";
 import { PRODUCT } from "./names.ts";
 
@@ -72,3 +73,26 @@ export const isClaudeStop = (msg: string): boolean => NAMED.test(msg);
 /** The same stop, for a flow with no Try again (planning, Rescue's look, Research, the lanes, looking at a picture): marked,
  *  so the card says to ask again instead of pointing at a button that is not there. */
 export const withoutTryAgain = (msg: string): string => msg.replace(NAMED, "$1 (ask again)");
+
+// ---------- before a request: is Claude in reach at all? (must fix 16, review of 4 Nov) ----------
+// Offline, Claude Code tries a failed request again and again before it gives up (CLAUDE_CODE_MAX_RETRIES, 10 by default in
+// the pinned 0.3.293 binary, read from it; safety.ts buildChildEnv lowers it), so a fix sat at Working for minutes. One quick
+// look first says "could not reach Claude" at once: before a task, a review, Prompt help and Explain, and in the proof
+// ladder. [verify] on a real Mac with the Wi-Fi off: how long each takes to say so (a name may still resolve from the Mac's
+// cache, or on a cafe's sign in page, and then Claude Code's own fewer tries decide), and record the numbers here.
+
+type Lookup = (host: string) => Promise<unknown>;
+/** Can this Mac reach the Claude service now? A name lookup of its address, within `ms` (three seconds). */
+export function claudeReachable(host = "api.anthropic.com", lookupFn: Lookup = dnsLookup, ms = 3000): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((res) => { timer = setTimeout(() => res(false), ms); });
+  return Promise.race([lookupFn(host).then(() => true, () => false), late]).finally(() => clearTimeout(timer));
+}
+/** The address the requests really go to: Anthropic's for Claude Code (its child never gets another base address, safety.ts),
+ *  and Companion's own server on managed usage. Null when it is not known, and then nothing is looked up. */
+export function reachHost(s: { route?: string; managedBase?: string }): string | null {
+  if (s.route !== "managed") return "api.anthropic.com";
+  try { return s.managedBase ? new URL(s.managedBase).hostname || null : null; } catch { return null; }
+}
+/** The stop said when the quick look fails: the usual no connection stop, so the card says it in plain words. */
+export const NOT_REACHED = reachMessage("no_connection", "this Mac could not reach Claude's address");

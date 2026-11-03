@@ -16,8 +16,13 @@ const CRASH_DAYS: u64 = 14;
 
 /// The only events and fields the activity log may contribute. Detailed (developer) logging adds app names and window
 /// shapes; none of that is ever exported.
-const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "approval_asked", "approval_answered"];
-const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason", "approval", "risk", "tool", "outcome"];
+/// Must fix 15: how the engine ended each time (runner_exit) and how the app quit (app_quit) are in it too.
+const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "approval_asked", "approval_answered", "runner_exit", "app_quit"];
+const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason", "approval", "risk", "tool", "outcome", "code", "signal", "uptime_ms", "starts", "quitting", "from", "voice", "commit"];
+/// Must fix 15: the last lines of the engine's own error output (engine.log, already scrubbed when written, scrubbed again
+/// here with the rest of the file), each cut short.
+const ENGINE_LINES: usize = 60;
+const ENGINE_LINE_MAX: usize = 300;
 
 const SECRET_STARTS: &[&str] = &["sk-", "sk_", "pk_live_", "pk_test_", "rk_live_", "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "glpat-", "xoxb-", "xoxp-", "xoxa-", "xoxs-", "xoxe", "AKIA", "ASIA", "eyJ", "npm_", "AIza", "hf_", "gsk_"];
 /// Common folder names that are not worth hiding when they are all that is left of a project's name.
@@ -126,6 +131,11 @@ pub fn safe_activity(raw: &str) -> String {
 
 pub struct Facts { pub version: String, pub macos: String, pub arch: String, pub permissions: Vec<(String, String)>, pub key_saved: bool, pub speech_ready: bool, pub browser_installed: bool, pub kept: Vec<(String, u64)> }
 
+/// Must fix 6: the commit this build came from (build.rs), as About, the launch log line and the support file show it.
+pub const BUILD_COMMIT: &str = env!("SQUIBBY_COMMIT");
+/// The version with its commit, as the support file and About show it: "0.1.0 (commit 1a2b3c4d5e6f)".
+pub fn version_label(version: &str, commit: &str) -> String { if commit.is_empty() { version.to_string() } else { format!("{version} (commit {commit})") } }
+
 /// The last `n` lines of a text.
 pub fn tail_lines(text: &str, n: usize) -> String {
     let lines: Vec<&str> = text.lines().collect();
@@ -150,6 +160,10 @@ pub fn crash_part(text: &str) -> String {
 
 /// The whole file, scrubbed. `activity` is the raw activity log, `crash` the newest crash report as (file name, text).
 pub fn compose(f: &Facts, activity: &str, crash: Option<(&str, &str)>, home: &str, names: &[String], projects: &[String]) -> String {
+    compose_all(f, activity, "", crash, home, names, projects)
+}
+/// The same, with the engine's own error output (`engine`, the text of engine.log) after the activity log (must fix 15).
+pub fn compose_all(f: &Facts, activity: &str, engine: &str, crash: Option<(&str, &str)>, home: &str, names: &[String], projects: &[String]) -> String {
     let yes = |b: bool| if b { "yes" } else { "no" };
     let mut s = String::new();
     s.push_str(concat!(crate::product!(), " support log\n"));
@@ -163,6 +177,8 @@ pub fn compose(f: &Facts, activity: &str, crash: Option<(&str, &str)>, home: &st
     s.push_str("\nActivity log (the last events, with times; no content):\n");
     s.push_str(&tail_lines(&safe_activity(activity), ACTIVITY_LINES));
     s.push('\n');
+    let engine_tail = tail_lines(engine, ENGINE_LINES).lines().map(|l| l.chars().take(ENGINE_LINE_MAX).collect::<String>()).collect::<Vec<_>>().join("\n");
+    if engine_tail.trim().is_empty() { s.push_str("\nNo messages from the engine.\n"); } else { s.push_str(&format!("\nMessages from the engine (the last lines, scrubbed):\n{engine_tail}\n")); }
     if let Some((name, text)) = crash { s.push_str(&format!("\nNewest crash report ({name}):\n{}\n", crash_part(text))); } else { s.push_str("\nNo recent crash report.\n"); }
     scrub(&s, home, names, projects)
 }
@@ -304,6 +320,41 @@ mod tests {
         assert!(out.contains("\"seq\":400") && !out.contains("\"seq\":100,") && out.matches("\"ev\":\"hotkey\"").count() == ACTIVITY_LINES);
         assert!(out.contains(concat!(crate::product!(), "-2026.ips")) && out.contains("<project 1>"));
         for leaked in ["/Users/sam", "shop", "sk-ant", "sam", "Zoom"] { assert!(!out.contains(leaked), "{leaked}"); }
+    }
+    #[test]
+    fn how_the_engine_ended_how_the_app_quit_and_the_engines_messages_are_in_the_file() {
+        // Must fix 15.
+        let raw = [
+            r#"{"run":"1-2","seq":1,"ev":"runner_exit","code":null,"signal":6,"uptime_ms":5000,"starts":2,"quitting":false,"t":1,"ms":2}"#,
+            r#"{"run":"1-2","seq":2,"ev":"app_quit","from":"menu","voice":"closed","t":3,"ms":4}"#,
+        ].join("\n");
+        let out = safe_activity(&raw);
+        for want in ["\"ev\":\"runner_exit\"", "\"signal\":6", "\"uptime_ms\":5000", "\"starts\":2", "\"ev\":\"app_quit\"", "\"from\":\"menu\"", "\"voice\":\"closed\""] { assert!(out.contains(want), "{want}: {out}"); }
+        let f = Facts { version: "v".into(), macos: "m".into(), arch: "a".into(), permissions: vec![], key_saved: false, speech_ready: false, browser_installed: false, kept: vec![] };
+        let engine = (1..=100).map(|i| format!("1700000000 line {i} in /Users/sam/Developer/shop with sk-ant-api03-AbCdEfGhIjKlMnOp {}", "x".repeat(400))).collect::<Vec<_>>().join("\n");
+        let file = compose_all(&f, &raw, &engine, None, HOME, &n(&["sam"]), &["/Users/sam/Developer/shop".into()]);
+        assert!(file.contains("Messages from the engine") && file.contains("line 100") && !file.contains("line 40 "), "{file}");
+        for leaked in ["/Users/sam", "shop", "sk-ant", "AbCdEfGh"] { assert!(!file.contains(leaked), "{leaked}"); }
+        assert!(file.lines().all(|l| l.chars().count() <= 400));
+        assert!(compose(&f, "", None, HOME, &n(&["sam"]), &[]).contains("No messages from the engine."));
+        // The app's export reads engine.log.
+        let main = include_str!("main.rs");
+        assert!(main.contains("logexport::compose_all(&facts, &activity, &engine,"));
+    }
+    #[test]
+    fn the_build_knows_its_commit_and_the_support_file_and_the_launch_line_carry_it() {
+        // Must fix 6: a tester's report can be matched to the source it was built from.
+        assert!(!BUILD_COMMIT.is_empty());
+        assert!(BUILD_COMMIT == "unknown" || BUILD_COMMIT.chars().take(12).all(|c| c.is_ascii_hexdigit()), "{BUILD_COMMIT}");
+        assert_eq!(version_label("0.1.0", "1a2b3c4d5e6f"), "0.1.0 (commit 1a2b3c4d5e6f)");
+        let f = Facts { version: version_label("0.1.0", "1a2b3c4d5e6f"), macos: "m".into(), arch: "a".into(), permissions: vec![], key_saved: false, speech_ready: false, browser_installed: false, kept: vec![] };
+        let out = compose(&f, r#"{"run":"1-2","seq":1,"ev":"launch","commit":"1a2b3c4d5e6f","t":1,"ms":0}"#, None, HOME, &n(&["sam"]), &[]);
+        assert!(out.contains(concat!(crate::product!(), " version: 0.1.0 (commit 1a2b3c4d5e6f)")), "{out}");
+        assert!(out.contains("\"commit\":\"1a2b3c4d5e6f\""), "the launch line keeps its commit: {out}");
+        let main = include_str!("main.rs");
+        assert!(main.contains("version: logexport::version_label(env!(\"CARGO_PKG_VERSION\"), logexport::BUILD_COMMIT)"), "the support file uses it");
+        assert!(main.contains("log(\"launch\", json!({ \"commit\": logexport::BUILD_COMMIT }))"), "the launch line logs it");
+        assert!(main.contains("\"commit\": logexport::BUILD_COMMIT"), "About is told it");
     }
     #[test]
     fn no_crash_says_so() {

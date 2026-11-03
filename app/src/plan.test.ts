@@ -77,9 +77,9 @@ describe("payments off: the pages behave exactly as before", () => {
     const card = read("./card.tsx");
     expect(card).toContain("const proLimit = pro.paymentsOn ? m.proLimit ?? null : null;");
     expect(card).toContain('const shipTags = proTag("ship", pro);');
-    expect(card).toContain('const shipTagged = main === "shipCheck" && shipTags;');
-    expect(card).toContain("{shipTagged && <ProTag />}");
-    expect(card).toContain("else if (proCovers(planNow())) void send(askRecap(");
+    // Must fix 20 (F25): Check before going live is free, so the main button never carries the Pro tag.
+    expect(card).not.toContain("shipTagged");
+    expect(card).toContain("else if (proCovers(planNow())) void sendQuiet(askRecap(");
     expect(card).toContain('if (a === "fix" && atFreeLimit(pro, usage))');
   });
   test("the page model never changes on its own: only plan.usage and plan.limit, which the engine sends only with payments on", () => {
@@ -205,14 +205,12 @@ describe("Home: the limit card, the last free fix line and the Pro tags (section
     for (const [k, v] of [["character.lively", "lively"], ["look.theme", "paper"], ["look.size", "large"], ["display.textSize", "huge"], ["character.motion", "less"]]) expect(proOnly(k, v), k).toBe(false);
     expect(proTag("ship", on())).toBe(true);
     for (const s of [on({ plan: "pro", state: "pro", key: KEY }), on({ plan: "trial", state: "trial", trial: TRIAL, trialUsed: true })]) expect(proTag("ship", s)).toBe(false);
-    // The tag is drawn on every way into Ship on Home (the main button, the Is it safe chip, Put it online) and on the water
-    // colours in Settings, and nowhere else.
+    // The tag is drawn on Put it online (going online is Pro) and on the water colours in Settings, and nowhere else. Must
+    // fix 20 (F25, every safety feature on Free): never on Check before going live, the main button or the Is it safe chip.
     const uses = ["./card.tsx", "./settingsPage.tsx", "./home.ts", "./homeHero.ts", "./lookfeel.ts", "./skins.ts"].flatMap((f) => read(f).split("\n").filter((l) => l.includes("<ProTag")).map((l) => `${f}: ${l.trim()}`));
-    expect(uses.length).toBe(4);
-    expect(uses[0]).toContain("{shipTagged && <ProTag />}");
-    expect(uses[1]).toContain("{S.look.chipSafe}{shipTags && <ProTag />}");
-    expect(uses[2]).toContain("{S.onlineButton}{shipTags && <ProTag />}");
-    expect(uses[3]).toContain('{tagged && proOnly("look.water", w) && <ProTag corner />}');
+    expect(uses.length).toBe(2);
+    expect(uses[0]).toContain("{S.onlineButton}{shipTags && <ProTag />}");
+    expect(uses[1]).toContain('{tagged && proOnly("look.water", w) && <ProTag corner />}');
   });
   test("a recap the page asks by itself never shows a card", () => {
     expect(limitShown({ reason: "recaps" })).toBe(false);
@@ -241,13 +239,14 @@ describe("what the reviewers found (31 Oct 2026)", () => {
   test("every way into Ship asks first and, on a plan without Pro, sends nothing and clears nothing", () => {
     const card = read("./card.tsx");
     expect(card).toContain('const shipGate = (): boolean => { if (!proTag("ship", planNow())) return true; dispatch({ type: "ui.proLimit", reason: "ship" }); return false; };');
-    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return;");
+    // Must fix 20 (F25): the check before going live is free, so it never asks the plan; going online does.
+    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return;");
     expect(card).toContain("const shipOnline = () => { if (!project || !shipGate()) return;");
     // No other line sends a ship command or asks for the ship clearing.
     const code = card.split("\n").filter((l) => !/^\s*(\/\/|\*)/.test(l));
     // Every other line that sends one is the practice's own files check (its lesson, never a ship) or Make it live, which
     // only a preview the gate let through can show.
-    for (const l of code.filter((l) => /send\((?:checkShip|shipPreview|shipLive)\(/.test(l))) expect(/shipGate\(\)|e\.find === "gate"|e\.prove === "gate"|send\(shipLive\(project, f\.previewUrl!\)\)/.test(l), l.trim()).toBe(true);
+    for (const l of code.filter((l) => /send\((?:shipPreview|shipLive)\(/.test(l))) expect(/shipGate\(\)|e\.find === "gate"|e\.prove === "gate"|send\(shipLive\(project, f\.previewUrl!\)\)/.test(l), l.trim()).toBe(true);
     expect(code.filter((l) => l.includes('"ui.planRequested", ship: true')).length).toBe(2);
     // The card behind the tag keeps the result: ui.proLimit never clears the task or its receipt.
     const m = { ...initial(), receipt: { checkpoint: "c1" } as unknown as ReturnType<typeof initial>["receipt"] };

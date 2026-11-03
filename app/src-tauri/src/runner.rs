@@ -308,7 +308,7 @@ pub fn plan_changed(last: &mut Option<Value>, line: &Value) -> bool {
 use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender, TrySendError};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const QUEUE: usize = 256;
@@ -342,11 +342,21 @@ pub struct Shared {
     forced_stops: AtomicU64,
     /// M28: the person pressed Restart: a supervisor that gave up starts again, and one waiting between tries stops waiting.
     retry: AtomicBool,
+    /// Must fix 12: the id of the ping the engine last answered (runner.pong carries it back as `ping`). The Stop key's check
+    /// waits for the answer to its own ping, never for just any event: an engine whose command loop ended can still be
+    /// sending events from work already under way.
+    pong: Mutex<Option<String>>,
+    /// Must fix 12: how many event lines a page's handler panicked on. The reader carries on with the next line.
+    handler_panics: AtomicU64,
+    /// Must fix 33: the supervisor sleeps on this between tries and after giving up; Restart and quitting wake it at once.
+    wake: (Mutex<()>, Condvar),
 }
+/// Each Stop key's ping has its own id (must fix 12), even two in the same millisecond.
+static PINGS: AtomicU64 = AtomicU64::new(0);
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> { m.lock().unwrap_or_else(|e| e.into_inner()) }   // one panic must never poison everything after it
 
 impl Shared {
-    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), events_read: AtomicU64::new(0), stop_checks: AtomicU64::new(0), forced_stops: AtomicU64::new(0), retry: AtomicBool::new(false) }) }
+    pub fn new() -> Arc<Shared> { Arc::new(Shared { tx: Mutex::new(None), child: Mutex::new(None), quitting: AtomicBool::new(false), events_read: AtomicU64::new(0), stop_checks: AtomicU64::new(0), forced_stops: AtomicU64::new(0), retry: AtomicBool::new(false), pong: Mutex::new(None), handler_panics: AtomicU64::new(0), wake: (Mutex::new(()), Condvar::new()) }) }
     /// Queue one line for the engine. Never waits: a full queue or a missing engine is an immediate, plain error.
     pub fn send_line(&self, line: String) -> Result<(), String> {
         match lock(&self.tx).as_ref() {
@@ -355,6 +365,21 @@ impl Shared {
         }
     }
     pub fn kill(&self) { if let Some(c) = lock(&self.child).as_mut() { kill_group(c); } }
+    /// Restart pressed (M28): noted, and the supervisor woken (must fix 33).
+    pub fn ask_retry(&self) { self.retry.store(true, Ordering::SeqCst); self.wake_supervisor(); }
+    /// Quitting: noted, and the supervisor woken so it ends now (must fix 33).
+    pub fn ask_quit(&self) { self.quitting.store(true, Ordering::SeqCst); self.wake_supervisor(); }
+    fn wake_supervisor(&self) { let _g = lock(&self.wake.0); self.wake.1.notify_all(); }
+    /// Sleeps until `until` (or for good with None), or until Restart or quitting wakes it. A flag set without a wake is
+    /// still seen within a second.
+    fn sleep_until(&self, until: Option<Instant>) {
+        let mut g = lock(&self.wake.0);
+        loop {
+            if self.quitting.load(Ordering::SeqCst) || self.retry.load(Ordering::SeqCst) { return; }
+            let left = match until { Some(u) => match u.checked_duration_since(Instant::now()) { Some(d) if !d.is_zero() => d, _ => return }, None => Duration::from_secs(1) };
+            g = self.wake.1.wait_timeout(g, left.min(Duration::from_secs(1))).map(|(g, _)| g).unwrap_or_else(|e| e.into_inner().0);
+        }
+    }
 }
 
 impl Runner {
@@ -362,7 +387,7 @@ impl Runner {
     /// Claude installed at first run.
     pub fn restart(&self) { self.shared.kill(); }
     /// M28: Restart pressed: the engine is started again now, even after its supervisor gave up.
-    pub fn retry(&self) { self.shared.retry.store(true, Ordering::SeqCst); self.shared.kill(); }
+    pub fn retry(&self) { self.shared.ask_retry(); self.shared.kill(); }
 }
 
 /// Runs the engine for as long as the app lives: start it, read its lines, and start it again when it stops.
@@ -402,15 +427,25 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
                             for line in split_lines(&mut buf, &chunk[..n]) {
                                 if let Ok(v) = serde_json::from_str::<Value>(&line) {
                                     shared.events_read.fetch_add(1, Ordering::SeqCst);
-                                    on_type(v.get("type").and_then(Value::as_str).unwrap_or("?"));   // the type only, never the content
-                                    emit(v);
+                                    if let Some(p) = pong_of(&v) { *lock(&shared.pong) = Some(p); }
+                                    // Must fix 12: a panic in a feature's handler (the hooks publish calls) never ends this
+                                    // reader, and with it the supervision of the engine and Stop: that line is dropped, the
+                                    // next one is read.
+                                    let handled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                        on_type(v.get("type").and_then(Value::as_str).unwrap_or("?"));   // the type only, never the content
+                                        emit(v);
+                                    }));
+                                    if handled.is_err() { shared.handler_panics.fetch_add(1, Ordering::SeqCst); }
                                 }
                             }
                         }
                     }
                     *lock(&shared.tx) = None;                  // ends the writer thread
-                    if let Some(mut c) = lock(&shared.child).take() { kill_group(&mut c); let _ = c.wait(); }   // never leave a zombie behind
-                    emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down" }));
+                    let status = lock(&shared.child).take().and_then(|mut c| { kill_group(&mut c); c.wait().ok() });   // never leave a zombie behind
+                    // Must fix 15: how it ended (its exit code or the signal that ended it, how long it ran, how many starts so
+                    // far), for the log only (Runner::publish takes it off before any page sees the event).
+                    let exit = exit_facts(status, started.elapsed(), starts, shared.quitting.load(Ordering::SeqCst));
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| emit(serde_json::json!({ "v": 1, "id": "app-down", "type": "app.runner_down", "exit": exit }))));
                 }
             }
             if shared.quitting.load(Ordering::SeqCst) { return; }
@@ -421,17 +456,57 @@ pub fn supervise_first(shared: Arc<Shared>, spawn: Arc<dyn Fn() -> io::Result<Ch
                 shared.retry.store(false, Ordering::SeqCst);
                 while !shared.retry.load(Ordering::SeqCst) {
                     if shared.quitting.load(Ordering::SeqCst) { return; }
-                    std::thread::sleep(Duration::from_millis(50));
+                    shared.sleep_until(None);   // must fix 33: no timer; Restart or quitting wakes it
                 }
                 shared.retry.store(false, Ordering::SeqCst);
                 failures = 0;
                 continue;
             };
-            let until = Instant::now() + wait;
-            while Instant::now() < until && !shared.quitting.load(Ordering::SeqCst) && !shared.retry.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(20).min(wait)); }
+            shared.sleep_until(Some(Instant::now() + wait));
             shared.retry.store(false, Ordering::SeqCst);
         }
     })
+}
+
+/// Must fix 12: the ping a runner.pong answers (the engine echoes the ping's id as `ping`).
+fn pong_of(v: &Value) -> Option<String> {
+    if v.get("type").and_then(Value::as_str) != Some("runner.pong") { return None; }
+    v.get("ping").and_then(Value::as_str).map(str::to_string)
+}
+/// Must fix 15: how one run of the engine ended, for the log (`runner_exit`): its exit code, or the signal that ended it,
+/// how long it ran, how many times it has been started, and whether the app was quitting.
+pub fn exit_facts(status: Option<std::process::ExitStatus>, ran: Duration, starts: u32, quitting: bool) -> Value {
+    use std::os::unix::process::ExitStatusExt;
+    serde_json::json!({ "code": status.and_then(|s| s.code()), "signal": status.and_then(|s| s.signal()), "uptime_ms": ran.as_millis() as u64, "starts": starts, "quitting": quitting })
+}
+/// Must fix 15: the exit facts are taken off app.runner_down before any page sees it (or a late page replays it).
+pub fn take_exit(v: &mut Value) -> Option<Value> {
+    if v.get("type").and_then(Value::as_str) != Some("app.runner_down") { return None; }
+    v.as_object_mut()?.remove("exit")
+}
+
+/// Must fix 15: the engine's own error output, kept in a small file only the person can read (engine.log, 0600), each line
+/// cut short and scrubbed as the support log is (keys, tokens, emails, the home folder, the user name). It never grows
+/// without limit (one old copy is kept). Nothing in it is sent anywhere.
+pub const ENGINE_LOG_MAX: u64 = 256 * 1024;
+pub fn engine_log_line(raw: &str, home: &str, user: &str, at_secs: u64) -> String {
+    let cut: String = raw.trim_end().chars().take(1000).collect();
+    let names: Vec<String> = if user.is_empty() { vec![] } else { vec![user.to_string()] };
+    format!("{at_secs} {}", crate::logexport::scrub(&cut, home, &names, &[]))
+}
+fn keep_engine_stderr(err: std::process::ChildStderr, path: PathBuf) {
+    std::thread::spawn(move || {
+        use std::io::BufRead;
+        let home = std::env::var("HOME").unwrap_or_default();
+        let user = std::env::var("USER").unwrap_or_default();
+        for line in std::io::BufReader::new(err).split(b'\n') {
+            let Ok(bytes) = line else { break };
+            let text = String::from_utf8_lossy(&bytes);
+            if text.trim().is_empty() { continue; }
+            let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+            crate::logfile::append_line(&path, &engine_log_line(&text, &home, &user, at), ENGINE_LOG_MAX);
+        }
+    });
 }
 
 pub struct Runner { shared: Arc<Shared>, sticky: Mutex<BTreeMap<String, Value>>, timing: Timing }
@@ -447,6 +522,7 @@ impl Runner {
     pub fn publish(app: &AppHandle, mut v: Value) {
         // A failure's raw detail is for the log only: taken off before any page sees the event (or a late page replays it).
         if let Some(d) = take_detail(&mut v) { crate::log("failure_detail", detail_line(v["type"].as_str().unwrap_or(""), v.get("failed").and_then(Value::as_str), &d)); }
+        if let Some(x) = take_exit(&mut v) { crate::log("runner_exit", x); }   // must fix 15: every time the engine ends
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
         crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)
@@ -461,21 +537,24 @@ impl Runner {
     pub fn start(&self, app: &AppHandle, loc: &Locations, on_type: impl Fn(&str) + Send + Sync + 'static, first_line: impl Fn() -> Option<String> + Send + Sync + 'static) -> Result<(), String> {
         std::fs::create_dir_all(&loc.data).map_err(|e| e.to_string())?;
         let loc = loc.clone();
-        let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
+        let engine: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || {
             // Anthropic's Claude is checked again at every start, not only when it was installed (once per change of the
             // file, claude_install::cleared): a file that is no longer Anthropic's signed build is never handed the key.
             let installed = loc.claude.as_ref().filter(|p| p.is_file());
             let cleared = installed.and_then(|p| crate::claude_install::cleared(p).map(|id| (p.clone(), id)));
             if installed.is_some() && cleared.is_none() { crate::log("failure_detail", detail_line("claude.check", None, "the installed Claude build did not pass its signature check at this start, so it was not used")); }
-            engine_command(&loc, cleared).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn()
+            // Must fix 15: its error output goes to engine.log (scrubbed, capped, owner only), never to nowhere.
+            let mut child = engine_command(&loc, cleared).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+            if let Some(err) = child.stderr.take() { keep_engine_stderr(err, loc.data.join("engine.log")); }
+            Ok(child)
         });
-        // Fail loudly now, not later, if the engine cannot be started at all.
-        let first = spawn().map_err(|e| { crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}"))); HELPER_DOWN.to_string() })?;
-        let first = Arc::new(Mutex::new(Some(first)));
-        let spawn2: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = { let first = first.clone(); let again = spawn.clone(); Arc::new(move || match lock(&first).take() { Some(c) => Ok(c), None => again() }) };
+        // Must fix 33: even the first start is the supervisor's, on its own thread: it checks Claude's signature with
+        // codesign (about 0.65 s), which must never hold the app's setup on the main thread. An engine that cannot be
+        // started at all is reported by the supervisor (app.runner_down with HELPER_DOWN), and logged here.
+        let spawn: Arc<dyn Fn() -> io::Result<Child> + Send + Sync> = Arc::new(move || engine().inspect_err(|e| crate::log("failure_detail", detail_line("app.runner_down", None, &format!("could not start the runner: {e}")))));
         let a = app.clone();
         let emit: Arc<dyn Fn(Value) + Send + Sync> = Arc::new(move |v| Runner::publish(&a, v));
-        supervise_first(self.shared.clone(), spawn2, emit, Arc::new(on_type), Arc::new(first_line), self.timing);
+        supervise_first(self.shared.clone(), spawn, emit, Arc::new(on_type), Arc::new(first_line), self.timing);
         Ok(())
     }
 
@@ -504,11 +583,14 @@ impl Runner {
         let read_before = self.shared.events_read.load(Ordering::SeqCst);
         let r = self.send(&serde_json::json!({ "v": 1, "id": format!("kill-{}", std::process::id()), "type": "agent.interruptAll", "reason": reason }));
         if r.is_err() { self.shared.kill(); return r; }
-        let _ = self.send(&serde_json::json!({ "v": 1, "id": format!("ping-{}", now_ms()), "type": "runner.ping" }));   // a healthy engine always answers this
+        // Must fix 12: only the answer to this very ping counts. Any event read after the Stop could come from work already
+        // under way in an engine whose command loop has ended, which would never stop anything.
+        let ping = format!("ping-{}-{}", now_ms(), PINGS.fetch_add(1, Ordering::SeqCst));
+        let _ = self.send(&serde_json::json!({ "v": 1, "id": ping, "type": "runner.ping" }));   // a healthy engine always answers this
         let (shared, wait) = (self.shared.clone(), self.timing.heartbeat);
         std::thread::spawn(move || {
             let until = Instant::now() + wait;
-            let answered = || shared.events_read.load(Ordering::SeqCst) > read_before;
+            let answered = || shared.events_read.load(Ordering::SeqCst) > read_before && lock(&shared.pong).as_deref() == Some(ping.as_str());
             while !answered() && Instant::now() < until && !shared.quitting.load(Ordering::SeqCst) { std::thread::sleep(Duration::from_millis(20).min(wait)); }
             if !answered() && !shared.quitting.load(Ordering::SeqCst) { shared.forced_stops.fetch_add(1, Ordering::SeqCst); shared.kill(); }
             shared.stop_checks.fetch_add(1, Ordering::SeqCst);
@@ -518,7 +600,7 @@ impl Runner {
 
     /// Quitting. Close the pipe so the engine can finish, wait a moment, then force it.
     pub fn shut_down(&self) {
-        self.shared.quitting.store(true, Ordering::SeqCst);
+        self.shared.ask_quit();
         *lock(&self.shared.tx) = None;
         let deadline = Instant::now() + self.timing.quit_grace;
         loop {
@@ -1081,10 +1163,12 @@ mod tests {
     }
     #[test]
     fn the_key_reaches_the_engine_in_the_exact_form_the_engine_takes_it() {
-        // The engine takes the key only from a line that starts exactly like this (runner/src/main.ts). Any other line is
-        // read as a page command and refused, and the engine would stay without a key.
+        // The engine takes the key only from a line that starts exactly like this (runner/src/pump.ts, which the engine's
+        // loop in main.ts runs every line through). Any other line is read as a page command and refused, and the engine
+        // would stay without a key.
         let prefix = r#"{"v":1,"type":"auth.key""#;
-        assert!(include_str!("../../../runner/src/main.ts").contains(&format!("line.startsWith('{prefix}')")));
+        assert!(include_str!("../../../runner/src/pump.ts").contains(&format!("line.startsWith('{prefix}')")));
+        assert!(include_str!("../../../runner/src/main.ts").contains("pumpLine(line, { takeKey, dispatch, say });"));
         let out = std::env::temp_dir().join(format!("companion-handoff-{}", std::process::id()));
         let _ = std::fs::remove_file(&out);
         let script: &'static str = Box::leak(format!("read -r a; read -r b; printf '%s\\n%s\\n' \"$a\" \"$b\" > '{}'; sleep 5", out.display()).into_boxed_str());
@@ -1162,9 +1246,38 @@ mod tests {
         let n = spawns.load(Ordering::SeqCst);
         std::thread::sleep(Duration::from_millis(200));
         assert_eq!(spawns.load(Ordering::SeqCst), n, "nothing is tried after giving up");
-        shared.retry.store(true, Ordering::SeqCst);
+        shared.ask_retry();
         assert!(wait_for(|| spawns.load(Ordering::SeqCst) > n, 3000), "Restart starts it again");
         shared.quitting.store(true, Ordering::SeqCst);
+    }
+    #[test]
+    fn a_supervisor_that_gave_up_sleeps_until_restart_and_wakes_at_once() {
+        // Must fix 33: after giving up it waits on a Condvar, not a 20 a second poll, and Restart wakes it straight away.
+        let shared = Shared::new(); let spawns = Arc::new(AtomicU64::new(0)); let s2 = spawns.clone();
+        let events = Arc::new(Mutex::new(Vec::new())); let e2 = events.clone();
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); Err(io::Error::new(io::ErrorKind::NotFound, "no bun")) }), Arc::new(move |v| e2.lock().unwrap().push(v)), Arc::new(|_| {}), quick());
+        assert!(wait_for(|| events.lock().unwrap().iter().any(|e| e["reason"] == KEEPS_STOPPING), 5000));
+        std::thread::sleep(Duration::from_millis(50));
+        let n = spawns.load(Ordering::SeqCst);
+        let t = Instant::now();
+        shared.ask_retry();
+        assert!(wait_for(|| spawns.load(Ordering::SeqCst) > n, 3000));
+        assert!(t.elapsed() < Duration::from_millis(400), "woken at once, not on a later tick: {:?}", t.elapsed());
+        shared.ask_quit();
+        let src = include_str!("runner.rs");
+        let sup = &src[src.find("pub fn supervise_first(").unwrap()..];
+        let sup = &sup[..sup.find("\n}\n").unwrap()];
+        assert!(!sup.contains("std::thread::sleep("), "the supervisor never polls: {sup}");
+    }
+    #[test]
+    fn the_first_engine_start_happens_on_the_supervisor_thread_never_on_the_caller() {
+        // Must fix 33: start() runs in the app's setup on the main thread, and the first start checks Claude's signature
+        // with codesign (about 0.65 s). So start() only hands the work to the supervisor.
+        let src = include_str!("runner.rs");
+        let start = &src[src.find("pub fn start(").unwrap()..];
+        let start = &start[..start.find("\n    }\n").unwrap()];
+        assert!(!start.contains("= spawn()") && !start.contains("let first"), "no start before the supervisor's: {start}");
+        assert!(start.contains("supervise_first(self.shared.clone(), spawn, emit,"), "{start}");
     }
     #[test]
     fn an_engine_that_cannot_be_started_at_all_is_reported_not_fatal() {
@@ -1216,7 +1329,7 @@ mod tests {
         // given here (three in the app) are only the test's own limit; an engine that never answered would be forced.
         let shared = Shared::new(); let spawns = Arc::new(AtomicUsize::new(0)); let s2 = spawns.clone();
         let t = Timing { healthy: Duration::from_secs(120), heartbeat: Duration::from_secs(30), ..quick() };
-        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(r#"while read l; do sleep 1; echo '{"v":1,"id":"p","type":"runner.pong"}'; done"#) }), Arc::new(|_| {}), Arc::new(|_| {}), t);
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(PONGS) }), Arc::new(|_| {}), Arc::new(|_| {}), t);
         let runner = Runner::with_shared(shared.clone(), t);
         assert!(wait_for(|| runner.send(&json!({})).is_ok(), 3000));
         let read_before = shared.events_read.load(Ordering::SeqCst);
@@ -1227,6 +1340,76 @@ mod tests {
         assert_eq!(spawns.load(Ordering::SeqCst), 1, "a healthy engine was restarted");
         assert!(lock(&shared.child).as_mut().is_some_and(|c| matches!(c.try_wait(), Ok(None))), "the engine is not running");
         runner.shut_down();
+    }
+    /// A pretend engine that answers each line a second late, as the real one does: a ping with a pong carrying its id
+    /// (must fix 12), anything else with an event of its own.
+    const PONGS: &str = r#"while read l; do sleep 1; id=$(printf '%s' "$l" | sed -n 's/.*"id":"\(ping-[0-9-]*\)".*/\1/p'); if [ -n "$id" ]; then echo "{\"v\":1,\"id\":\"p\",\"type\":\"runner.pong\",\"ping\":\"$id\"}"; else echo '{"v":1,"id":"s","type":"agent.state","agent":"a","state":"working"}'; fi; done"#;
+    #[test]
+    fn stop_everything_waits_for_the_answer_to_its_own_ping_not_for_any_event() {
+        // Must fix 12: an engine whose command loop has ended still sends events from work already under way. It answers every
+        // line, but never with a pong, so it is not listening to commands: the Stop key's check must still force it.
+        let shared = Shared::new(); let spawns = Arc::new(AtomicUsize::new(0)); let s2 = spawns.clone();
+        let t = Timing { healthy: Duration::from_secs(60), heartbeat: Duration::from_secs(3), ..quick() };
+        supervise(shared.clone(), Arc::new(move || { s2.fetch_add(1, Ordering::SeqCst); sh(r#"while read l; do echo '{"v":1,"id":"s","type":"agent.state","agent":"a","state":"working"}'; done"#) }), Arc::new(|_| {}), Arc::new(|_| {}), t);
+        let runner = Runner::with_shared(shared.clone(), t);
+        assert!(wait_for(|| runner.send(&json!({})).is_ok(), 3000));
+        let read_before = shared.events_read.load(Ordering::SeqCst);
+        runner.stop_everything("test").unwrap();
+        assert!(wait_for(|| shared.stop_checks.load(Ordering::SeqCst) == 1, 30_000), "the Stop key's check never ended");
+        assert!(shared.events_read.load(Ordering::SeqCst) > read_before, "the engine sent nothing back");
+        assert_eq!(shared.forced_stops.load(Ordering::SeqCst), 1, "events that were not the pong counted as an answer");
+        assert!(wait_for(|| spawns.load(Ordering::SeqCst) >= 2, 15_000), "the engine was not started again");
+        runner.shut_down();
+    }
+    #[test]
+    fn a_pong_names_the_ping_it_answers() {
+        assert_eq!(pong_of(&json!({ "type": "runner.pong", "ping": "ping-1-0" })).as_deref(), Some("ping-1-0"));
+        assert_eq!(pong_of(&json!({ "type": "runner.pong" })), None);
+        assert_eq!(pong_of(&json!({ "type": "agent.state", "ping": "ping-1-0" })), None);
+    }
+    #[test]
+    fn a_handler_that_panics_on_one_event_leaves_the_next_one_read() {
+        // Must fix 12: a feature's hook that panics on one line never ends the reader, so the engine stays supervised.
+        let shared = Shared::new();
+        let events = Arc::new(Mutex::new(Vec::<Value>::new())); let e2 = events.clone();
+        supervise(shared.clone(), Arc::new(|| sh(r#"echo '{"v":1,"id":"1","type":"boom"}'; echo '{"v":1,"id":"2","type":"runner.hello"}'; sleep 5"#)),
+            Arc::new(move |v| { if v["type"] == "boom" { panic!("a hook failed"); } e2.lock().unwrap().push(v); }), Arc::new(|_| {}), quick());
+        assert!(wait_for(|| events.lock().unwrap().iter().any(|v| v["type"] == "runner.hello"), 5000), "the reader stopped at the panic");
+        assert_eq!(shared.handler_panics.load(Ordering::SeqCst), 1);
+        shared.quitting.store(true, Ordering::SeqCst); shared.kill();
+    }
+    #[test]
+    fn when_the_engine_ends_its_code_signal_time_and_starts_are_kept_for_the_log_only() {
+        // Must fix 15: the exit code and the signal used to be thrown away.
+        let r = rig("exit 3", quick());
+        assert!(wait_for(|| r.events.lock().unwrap().iter().any(|v| v["type"] == "app.runner_down" && v.get("exit").is_some()), 5000));
+        let down = r.events.lock().unwrap().iter().find(|v| v["type"] == "app.runner_down" && v.get("exit").is_some()).cloned().unwrap();
+        assert_eq!(down["exit"]["code"], 3);
+        assert!(down["exit"]["signal"].is_null());
+        assert!(down["exit"]["starts"].as_u64().unwrap() >= 1);
+        assert!(down["exit"]["uptime_ms"].is_u64());
+        r.shared.quitting.store(true, Ordering::SeqCst); r.shared.kill();
+        let k = rig("kill -9 $$", quick());
+        assert!(wait_for(|| k.events.lock().unwrap().iter().any(|v| v["type"] == "app.runner_down" && v.get("exit").is_some()), 5000));
+        let down = k.events.lock().unwrap().iter().find(|v| v["type"] == "app.runner_down" && v.get("exit").is_some()).cloned().unwrap();
+        assert_eq!(down["exit"]["signal"], 9);
+        k.shared.quitting.store(true, Ordering::SeqCst); k.shared.kill();
+        // Taken off before any page sees it.
+        let mut v = json!({ "type": "app.runner_down", "exit": { "code": 3 } });
+        assert_eq!(take_exit(&mut v), Some(json!({ "code": 3 })));
+        assert!(v.get("exit").is_none());
+        assert_eq!(take_exit(&mut json!({ "type": "agent.state", "exit": 1 })), None);
+    }
+    #[test]
+    fn the_engines_error_output_is_kept_short_and_scrubbed() {
+        let l = engine_log_line("Error at /Users/sam/Developer/shop/index.ts with sk-ant-api03-AbCdEfGhIjKlMnOpQrStUv for sam@example.com\n", "/Users/sam", "sam", 1700000000);
+        assert!(l.starts_with("1700000000 "), "{l}");
+        assert!(!l.contains("/Users/sam") && !l.contains("AbCdEfGhIjKlMnOp") && !l.contains("sam@example.com"), "{l}");
+        assert!(engine_log_line(&"x".repeat(5000), "/Users/sam", "sam", 1).len() < 1100);
+        // The engine's stderr is read into engine.log, never thrown away.
+        let src = include_str!("runner.rs");
+        let start = src.split("pub fn start(").nth(1).unwrap().split("supervise_first(").next().unwrap();
+        assert!(start.contains(".stderr(Stdio::piped())") && start.contains("keep_engine_stderr(err, loc.data.join(\"engine.log\"))") && !start.contains("Stdio::null()"), "{start}");
     }
     #[test]
     fn stop_everything_with_no_engine_says_so_plainly() {

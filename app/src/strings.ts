@@ -112,6 +112,8 @@ export const S = {
     works: (name: string) => `${name} works`,
     failing: (name: string) => `${name} has a problem`,
     notChecked: "Not checked yet",
+    // The files changed since the version its last check passed on (must fix 11): never "works" over code nobody checked.
+    changedSince: (name: string) => `${name} changed since its last check`,
     // The project's own checks passed just now (a check, not a fix: never "works", which only a proven fix may say).
     checksPass: (name: string) => `${name}'s checks pass`,
     noProject: "Choose a project to start",
@@ -165,12 +167,15 @@ export const S = {
     timeSoFar: (clock: string) => `${clock} so far`,
     // The result card (4.2).
     undoFix: "Undo these changes",
+    // After a plan: Undo goes back to before its first step (must fix 7).
+    undoWholeFix: "Undo the whole fix",
     seeProof: "See proof",
     // The notch's hover panel, when nothing is live (4.3): one true line.
     notchWorks: (name: string, ago: string) => `${name} works. Last fix proven ${ago}.`,
     notchFailing: (name: string, ago: string) => `${name} has a problem. A check failed ${ago}.`,
     notchNotChecked: (name: string) => `${name} is not checked yet.`,
     notchNothing: "Nothing is running.",
+    notchChanged: (name: string) => `${name} changed since its last check.`,
     addKey: "Add your key",
   },
   // Lines that name a job's keys say {keys}: the page fills in the keys in use now (keys.ts), since every key can be changed.
@@ -328,6 +333,7 @@ export const S = {
     unsavedQuestion: "Your changes are not saved yet.",
     dismiss: "Close this message",
     notRun: (check: string) => `${check} did not run`,
+    failedStep: (check: string) => `Failed: ${check}`,
     allowed: "Allowed",
     notAllowed: "Not allowed",
     notNeededYet: "Not needed yet",
@@ -338,6 +344,9 @@ export const S = {
   },
   verdict: {
     proven: "Fixed and proven",
+    // The checks passed on a task that changed nothing (must fix 7): nothing was fixed, so it is never "Fixed".
+    passes: "Checked, it passes",
+    passesLine: "Nothing needed changing.",
     partial: "Fixed, not fully proven",
     someCouldNotRun: "Some checks could not run.",
     couldNotRun: (names: string) => `${names} could not run.`,
@@ -405,6 +414,11 @@ export const S = {
   notConnectedNotice: "Add your Claude key to start fixing things.",
   addYourKey: "Add your key",
   followDone: "Fixed. Checks pass.",
+  // A part of a page that could not be drawn (must fix 4): the rest of the window still works.
+  partFailed: "This part could not be shown. The rest of the window still works.",
+  partReload: "Reload this part",
+  // A press the app could not pass on to its engine (must fix 13): never silent.
+  sendRefused: `That did not reach ${PRODUCT}. Try again in a moment.`,
   // M28: the second level of Settings.
   // Settings' pages (the overhaul spec, 3.2; settingsPages.ts): a title and one line each. Plain words, sentence case.
   pages: {
@@ -597,7 +611,8 @@ export const S = {
     report: "Report a problem",
     acknowledgements: "Acknowledgements",
     putBack: "Put back",
-    version: (v: string) => (v ? `Version ${v}` : ""),
+    /** About: the version, and the commit it was built from when the build knows it (must fix 6). */
+    version: (v: string, commit = "") => (!v ? "" : commit && commit !== "unknown" ? `Version ${v}, build ${commit}` : `Version ${v}`),
     otherJobs: "Other jobs",
     restoreKeys: "Restore usual keys",
     keyChangeSheet: (job: string) => `Keys for ${job}`,
@@ -707,6 +722,9 @@ export const S = {
   },
   // The checks that ran on a fix, as chips under its receipt (proofChips.ts): one per rung of the proof ladder.
   proofChip: { install: "Installs", checks: "Builds", tests: "Tests pass", start: "Starts", browser: "Works in a browser", review: "Second look" } as Record<string, string>,
+  // The same chips when that check failed. The words change, not only the icon: the icon is hidden from VoiceOver, so a
+  // failed check must never be read aloud as a pass (rule 14).
+  proofChipFailed: { install: "Install failed", checks: "Build failed", tests: "Tests fail", start: "Does not start", browser: "Broken in a browser", review: "Second look found a problem" } as Record<string, string>,
   proofChipsLabel: "Checks that ran on this fix",
   // The recorded first run (firstLook.ts): the whole promise, before any key, folder or question. Every name and line in it is
   // the real signup practice's (firstLook.test.ts).
@@ -1357,6 +1375,10 @@ export const S = {
     fixYes: "Yes, fix it",
     fixNo: "Not now",
     fixSent: "Starting the fix.",
+    // Home's headline while a fix sent from the review has not started yet (must fix 11).
+    fixStarting: "Starting the fix",
+    // Under "Looks safe" on Home when the project's checks did not run on the change (must fix 11).
+    safeUnchecked: "Its checks did not run on these changes, so nothing is proven yet.",
     sendBack: "Copy for my AI",
     sendBackHelp: "Copies a message about what the review found, for you to paste into the AI tool that made the change.",
     copied: "Copied. Paste it into your AI tool.",

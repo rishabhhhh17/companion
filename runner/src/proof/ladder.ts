@@ -11,7 +11,7 @@ import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } 
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
-import { lookup } from "node:dns/promises";
+import { claudeReachable } from "../reach.ts";
 import { boxRefusal, boxWorks, type Net } from "./box.ts";
 import { startServer } from "./server.ts";
 import { onEngineBun, withPracticeBun } from "./practicerun.ts";
@@ -195,8 +195,8 @@ const INSTALL_ENV = { CI: "1", HUSKY: "0", LEFTHOOK: "0", SKIP_INSTALL_SIMPLE_GI
 /** A JavaScript build that was given the internet after the box stopped it, and still could not reach it, on a Mac that is
  *  offline now (reachable). With the Mac online, the same words are the project's own failure (a bad address, say). */
 const NO_INTERNET = (what: string) => `${what[0].toUpperCase()}${what.slice(1)} needs the internet, and this Mac is not connected to the internet right now, so it could not run here. That says nothing about your code.`;
-/** The usual answer to "is this Mac online?": a name lookup of the one service Squibby always needs, within three seconds. */
-const anthropicReachable = (): Promise<boolean> => Promise.race([lookup("api.anthropic.com").then(() => true, () => false), new Promise<boolean>((res) => setTimeout(() => res(false), 3000))]);
+// The usual answer to "is this Mac online?" is reach.ts claudeReachable: a name lookup of the one service Squibby always
+// needs, within three seconds (must fix 16 moved it there, so a task, a review and the light lanes use the same look).
 const WITHOUT_PACKAGES = {
   typecheck: "The type check could not run because the project's packages are not installed.",
   lint: "The lint check could not run because the project's packages are not installed.",
@@ -501,7 +501,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
         if (why) { missed.push(why); tried.push({ name: c.name, status: "missing" }); continue; }
         const what = c.name === "typecheck" ? "the type check" : c.name === "build" ? "the build" : `the ${c.name} check`;
         // With the internet given, the same refusal means this Mac could not reach it: still not the code's failure.
-        const offline = !nat && !py && online && boxed && !r.timedOut && boxRefusal(r.stdout + "\n" + r.stderr, "local") === "net" && !(await (o.reachable ?? anthropicReachable)()) ? NO_INTERNET(what) : null;
+        const offline = !nat && !py && online && boxed && !r.timedOut && boxRefusal(r.stdout + "\n" + r.stderr, "local") === "net" && !(await (o.reachable ?? claudeReachable)()) ? NO_INTERNET(what) : null;
         if (offline && !left.includes(offline)) left.push(offline);
         const stopped = r.timedOut ? null : offline ?? boxGap(r.stdout + "\n" + r.stderr, what, online ? "open" : "local");
         if (stopped) { missed.push(stopped); tried.push({ name: c.name, status: "not_started" }); continue; }

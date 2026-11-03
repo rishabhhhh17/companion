@@ -32,7 +32,8 @@ tauri-signing*.key
 # ---------------------------------------------------------------
 # Dependencies and build output
 # ---------------------------------------------------------------
-node_modules/
+# No slash: a node_modules that is a link is ignored too (must fix 36; two links were once committed by mistake).
+node_modules
 dist/
 build/
 out/
@@ -91,6 +92,9 @@ logs/
 *.db-journal
 .cache/
 tmp/
+
+# The note scripts/test-all.sh leaves when every suite passed on a commit (scripts/tested-mark.sh, read by release.sh)
+.tested-head
 
 # Companion's own per-run notes, if we dogfood Companion on this repo
 .companion/session.md

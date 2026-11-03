@@ -214,7 +214,8 @@ export type Reply = { key: string; text: string; kind: AskKind };
 export function repliesIn(m: Model, project: string): Reply[] {
   const out: Reply[] = [];
   // The result as the verdict says it (M45); the key stays, so it is said once, at the end.
-  if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}`, text: receiptVerdict(m)?.say ?? "", kind: "task" });
+  // A plan's whole fix has its own key, so it is said once at the plan's end (must fix 7).
+  if (m.receipt?.checkpoint) out.push({ key: `receipt:${project}:${m.receipt.checkpoint}${m.receipt.wholePlan ? ":plan" : ""}`, text: receiptVerdict(m)?.say ?? "", kind: "task" });
   // Each answer by its own number (n): one asked off the record has no file, and two such answers must not share a key.
   if (m.research?.answer) out.push({ key: `research:${project}:${m.research.n ?? m.research.file}`, text: m.research.answer, kind: "research" });
   return out;

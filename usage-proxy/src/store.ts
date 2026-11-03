@@ -16,6 +16,11 @@ export interface Store {
   /** Take one of the user's running request slots; false when `max` are already running. */
   begin(userId: string, max: number): Promise<boolean>;
   end(userId: string): Promise<void>;
+  /** Hold `usd` (a request's worst case) against the user's budget while it runs, in one step with the check: `fits` sees
+   *  what is spent plus what other running requests hold, and false means nothing was held. `spent` counts what is held. */
+  hold(userId: string, usd: number, now: number, fits: (s: Spent) => boolean): Promise<boolean>;
+  /** Let go of a hold when its request ends (its real cost is booked with `record`). */
+  unhold(userId: string, usd: number): Promise<void>;
   /** Save a sign in token's hash for an owner (the token itself is never kept). */
   addUser(hash: string, u: User): void | Promise<void>;
   /** Every owner id we hold, for finding who an opaque user id belongs to. */
@@ -35,6 +40,7 @@ export class MemoryStore implements Store {
   #users = new Map<string, User>();
   #spent = new Map<string, number>();
   #running = new Map<string, number>();
+  #held = new Map<string, number>();
   #suspended = new Set<string>();
   #log: SuspensionRecord[] = [];
   records: UsageRecord[] = [];
@@ -65,7 +71,18 @@ export class MemoryStore implements Store {
     this.#log.push({ ownerId, kind: "restored", at: info.at, ...(info.caseId ? { caseId: info.caseId } : {}) });
     return true;
   }
-  async spent(userId: string, now: number): Promise<Spent> { return { day: this.#spent.get(`${userId}|d|${dayKey(now)}`) ?? 0, month: this.#spent.get(`${userId}|m|${monthKey(now)}`) ?? 0 }; }
+  async spent(userId: string, now: number): Promise<Spent> { return this.#spentNow(userId, now); }
+  #spentNow(userId: string, now: number): Spent {
+    const held = this.#held.get(userId) ?? 0;
+    return { day: (this.#spent.get(`${userId}|d|${dayKey(now)}`) ?? 0) + held, month: (this.#spent.get(`${userId}|m|${monthKey(now)}`) ?? 0) + held };
+  }
+  // No await between the check and the hold, so two requests can never both pass on the same room.
+  async hold(userId: string, usd: number, now: number, fits: (s: Spent) => boolean) {
+    if (!fits(this.#spentNow(userId, now))) return false;
+    this.#held.set(userId, (this.#held.get(userId) ?? 0) + usd);
+    return true;
+  }
+  async unhold(userId: string, usd: number) { this.#held.set(userId, Math.max(0, (this.#held.get(userId) ?? 0) - usd)); }
   async record(r: UsageRecord) {
     this.records.push(r);
     for (const k of [`${r.userId}|d|${dayKey(r.at)}`, `${r.userId}|m|${monthKey(r.at)}`]) this.#spent.set(k, (this.#spent.get(k) ?? 0) + r.usd);
@@ -74,5 +91,5 @@ export class MemoryStore implements Store {
   async end(userId: string) { this.#running.set(userId, Math.max(0, (this.#running.get(userId) ?? 0) - 1)); }
   inFlight(userId: string) { return this.#running.get(userId) ?? 0; }
   /** Everything held, for a test that checks no text or secret is among it. */
-  dump() { return { users: [...this.#users], suspended: [...this.#suspended], log: this.#log, spent: [...this.#spent], running: [...this.#running], records: this.records }; }
+  dump() { return { users: [...this.#users], suspended: [...this.#suspended], log: this.#log, spent: [...this.#spent], running: [...this.#running], held: [...this.#held], records: this.records }; }
 }

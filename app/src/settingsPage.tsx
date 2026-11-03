@@ -30,7 +30,8 @@ import { invoke, listen } from "./tauri.ts";
 import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
-import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, type Done } from "./settingsStore.ts";
+import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
+import { PartBoundary } from "./partBoundary.tsx";
 import { floorWords, homeSizeHint, PLACE_KEYS, problemWords, rowModel, shownNow, valueWords, wordsOf } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
 import { Button, Card, Disclosure, Field, Group, KeyLabel, Menu, PageHead, PictureChoice, ProofChip, Row, Segmented, Sheet, SidebarItem, Stepper, Switch, Toast, type ChipKind } from "./ui/parts.tsx";
@@ -695,8 +696,7 @@ function ItemRows({ item, parentOff = "", indent }: { item: Item; parentOff?: st
 /** A page's group: its title, its rows, its footer. A group with nothing to show is left out. */
 function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
   const c = useCtx();
-  for (const i of items) { const k = keyOf(i); if (k) useSetting(k); }
-  useSetting("groups.cutNotice");
+  useSettings([...items.map(keyOf).filter((k): k is string => !!k), "groups.cutNotice"]);
   if (items.length === 1 && typeof items[0] === "string" && items[0] === "keys.hotkeys") return <KeysRows keys={c.keys} />;
   const only = items.length === 1 && typeof items[0] !== "string" ? items[0].fixed : null;
   // A few parts are a whole group on their own, with their own card.
@@ -1178,7 +1178,7 @@ function PageView({ page }: { page: PageId }) {
   const n = moreKeys(page).filter((k) => !defOf(k)?.hidden).length;
   // What the changed dot means, said once on a page that shows one (the review, 2 Nov 2026: it was a dot with no words).
   const keys = mainKeys(page);
-  for (const k of keys) useSetting(k);
+  useSettings(keys);
   const changedHere = changedNow().some((k) => keys.includes(k));
   return (<>
     <PageHead title={S.pages[page].title} line={S.pages[page].sub} />
@@ -1191,12 +1191,12 @@ function PageView({ page }: { page: PageId }) {
 
 /** About opens with the app's own card: its drawing, its name and its version. */
 function AboutHead() {
-  const [version, setVersion] = useState("");
-  useEffect(() => { void invoke("update_status").then((v) => setVersion(String((v as { version?: string })?.version ?? ""))).catch(() => {}); }, []);
+  const [info, setInfo] = useState({ version: "", commit: "" });
+  useEffect(() => { void invoke("update_status").then((v) => { const o = (v ?? {}) as { version?: string; commit?: string }; setInfo({ version: String(o.version ?? ""), commit: String(o.commit ?? "") }); }).catch(() => {}); }, []);
   return (
     <Card className="set-about">
       <span className="set-about-icon" aria-hidden="true"><FlowMini state="idle" className="pic-flow" still /></span>
-      <span className="set-about-words"><b>{S.product}</b><span>{S.setRows.version(version)}</span></span>
+      <span className="set-about-words"><b>{S.product}</b><span>{S.setRows.version(info.version, info.commit)}</span></span>
     </Card>
   );
 }
@@ -1212,7 +1212,7 @@ function MorePage({ open, setOpen }: { open: ReadonlySet<string>; setOpen: (id: 
 function MoreSection({ page, open, setOpen }: { page: PageId; open: ReadonlySet<string>; setOpen: (id: string, on: boolean) => void }) {
   const c = useCtx();
   const keys = moreKeys(page);
-  for (const k of keys) useSetting(k);
+  useSettings(keys);
   const changed = changedNow().filter((k) => keys.includes(k));
   // Asked first, naming every setting that goes back (T16), and the engine's own settings not heard yet, which stay as they
   // are. Putting Pictures to keep back to usual while more are kept says first how many pictures go, as lowering it does.
@@ -1442,9 +1442,12 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
         <div className="settings-content" ref={content} role="region" aria-label={q ? S.setFrame.search : S.pages[page].title}>
           {problems.map((p, i) => <p className="set-problem" key={i}>{p}</p>)}
           {spent?.problem && <p className="set-problem" role="alert">{spent.problem}</p>}
+          {/* One part that fails to draw never blanks Settings: the sidebar and search stay (must fix 4). */}
+          <PartBoundary part="settings" resetKey={page}>
           {q ? <SearchResults q={q} />
             : page === "more" ? <MorePage open={openTopics} setOpen={(id, on) => setOpenTopics((s) => { const n = new Set(s); if (on) n.add(id); else n.delete(id); return n; })} />
             : <PageView key={page} page={page} />}
+          </PartBoundary>
           {!q && page === "account" && spent && <p className="set-note" role="status">{spendingLine(spent)}</p>}
           {!q && page === "account" && !project && <p className="set-note">{S.setSpendingNoProject}</p>}
         </div>

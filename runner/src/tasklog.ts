@@ -67,6 +67,16 @@ export class TaskLog {
   bringBack(project: string, safetyId: string) {
     this.db.query("UPDATE tasks SET brought_back = 1 WHERE project = ? AND undone_by = ?").run(project, safetyId);
   }
+  /** The undo points the project's newest tasks point at (their Before, and the Undo that took each back), so the undo store
+   *  never prunes one a History row can still use (must fix 26). projects: the folder as it may have been written. */
+  checkpointsOf(projects: string[], limit = 200): string[] {
+    const out = new Set<string>();
+    for (const p of new Set(projects)) {
+      const rows = this.db.query("SELECT checkpoint, undone_by FROM tasks WHERE project = ? ORDER BY id DESC LIMIT ?").all(p, limit) as { checkpoint: string | null; undone_by: string | null }[];
+      for (const r of rows) { if (r.checkpoint) out.add(r.checkpoint); if (r.undone_by) out.add(r.undone_by); }
+    }
+    return [...out];
+  }
   // Newest first. Pass a project to see only its tasks.
   list(project?: string, limit = 200): TaskRow[] {
     const rows = (project === undefined

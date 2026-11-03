@@ -53,7 +53,7 @@ describe("(34) a failed result: one way forward, the failure said once, no raw c
     expect(checkParts({ status: "failed", detail: "The page answered with an error (404). more" }).summary).toContain("the page was not found");
   });
   test("Try again is the one primary; the follow up box is the other way", () => {
-    expect(card).toContain('<button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>');
+    expect(card).toContain('<button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void sendQuiet(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>');
   });
   test("the failed proof is drawn as failed (red), on the column, never as needing you", () => {
     expect(card).not.toMatch(/notDoneReason\(m\) && !receiptUndone\(m\.receipt\) \? "amber"/);

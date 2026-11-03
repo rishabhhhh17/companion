@@ -8,7 +8,7 @@
 import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, rmdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { RULES_FILE } from "./rules.ts";
 import { PRODUCT } from "./names.ts";
 
@@ -45,7 +45,29 @@ const DEFAULT_EXCLUDES = [
   "node_modules/", ".next/", "dist/", "build/", ".turbo/", ".cache/", "__pycache__/", ".venv/", "venv/", "target/", "coverage/", ".DS_Store",
   ".gradle/", ".build/",   // Gradle's and Swift's own working folders, which the checks of Java, Kotlin and Swift projects make
   ".claude/.cc-writes",   // Claude Code's own write tracking, not the user's work
+  // Build output and caches the review of changes ignores too (review/batcher.ts IGNORED_DIRS), made again by a build (must fix 26).
+  ".nuxt/", ".output/", ".svelte-kit/", ".vercel/", ".netlify/", ".vite/", ".parcel-cache/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/",
+  ".expo/", ".angular/", ".docusaurus/", ".pnpm-store/", ".yarn/cache/",
 ];
+// T06's cap (must fix 26, 3 Nov 2026): the newest 100 checkpoints per project, and every one something still points at
+// (guard); pruned a few at a time; gc about weekly, only while the store is idle and the Mac is on power; about 2 GB, past
+// which more is pruned (down to the newest 20) and the store says it is full.
+const KEEP_NEWEST = 100;
+const PRUNE_SLACK = 10;
+const KEEP_WHEN_FULL = 20;
+const CAP_BYTES = 2 * 1024 * 1024 * 1024;
+const GC_EVERY_MS = 7 * 24 * 60 * 60_000;
+const IDLE_MS = 2 * 60_000;
+const SIZE_EVERY_MS = 60 * 60_000;
+const XATTR = "/usr/bin/xattr";
+const BACKUP_EXCLUDE = "com.apple.metadata:com_apple_backup_excludeItem";
+// The value tmutil writes: a binary property list holding the string "com.apple.backupd".
+const BACKUP_EXCLUDE_VALUE = "62706C69737430305F1011636F6D2E6170706C652E6261636B75706408000000000000010100000000000000010000000000000000000000000000001C";
+/** Whether the Mac runs on power (pmset), for the weekly gc. A Mac with no battery, or no pmset, counts as on power. */
+export function onPower(): boolean {
+  try { const r = Bun.spawnSync(["/usr/bin/pmset", "-g", "batt"], { stdout: "pipe", stderr: "ignore", timeout: 5000 }); const out = r.stdout.toString(); return r.exitCode !== 0 || !/Battery Power/.test(out); } catch { return true; }
+}
+export type MaintainResult = { pruned: number; gc: boolean; bytes: number | null; full: boolean };
 // The person's own house rules (rules.ts RULES_FILE), changed only from Settings. They are not a task's work, so no Undo
 // ever changes them: putting a version back, or undoing one task, leaves the file exactly as it is now, there or not (T16).
 // They stay in every snapshot, so a copy of an earlier version (a before picture, which task broke it) still has them.
@@ -80,9 +102,29 @@ export class CheckpointStore {
   private maxFiles: number;
   /** How long one git step of a snapshot may take: five minutes, doubled by "my internet is slow" (set by the runner). */
   gitTimeoutMs = GIT_TIMEOUT_MS;
-  constructor(shadowDir: string, projectDir: string, opts: { recoveryBudgetBytes?: number; maxFiles?: number } = {}) {
+  private keepNewest: number;
+  private pruneSlack: number;
+  private capBytes: number;
+  private gcEveryMs: number;
+  private idleMs: number;
+  private powered: () => boolean;
+  /** What else must be kept (History rows, open cards, Your turn, a review in progress), each asked at every prune. */
+  private guards = new Set<() => Iterable<string>>();
+  private lastWork = 0;
+  private lastSized = 0;
+  private fullNow = false;
+  private maintainTimer: ReturnType<typeof setTimeout> | null = null;
+  private backupFlag: Promise<void> | null = null;
+  private saltNow: Buffer | null = null;
+  constructor(shadowDir: string, projectDir: string, opts: { recoveryBudgetBytes?: number; maxFiles?: number; keepNewest?: number; pruneSlack?: number; capBytes?: number; gcEveryMs?: number; idleMs?: number; onPower?: () => boolean } = {}) {
     this.recoveryBudget = opts.recoveryBudgetBytes ?? 2 * 1024 * 1024 * 1024;
     this.maxFiles = opts.maxFiles ?? 150_000;
+    this.keepNewest = Math.max(1, opts.keepNewest ?? KEEP_NEWEST);
+    this.pruneSlack = Math.max(0, opts.pruneSlack ?? PRUNE_SLACK);
+    this.capBytes = opts.capBytes ?? CAP_BYTES;
+    this.gcEveryMs = opts.gcEveryMs ?? GC_EVERY_MS;
+    this.idleMs = opts.idleMs ?? IDLE_MS;
+    this.powered = opts.onPower ?? onPower;
     this.shadowDir = resolve(shadowDir);
     this.projectDir = resolve(projectDir);
     this.assertSensible();
@@ -92,14 +134,37 @@ export class CheckpointStore {
     }
   }
 
-  // Operations run one at a time per project.
-  private serial<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(fn, fn);
+  // Operations run one at a time per project. Each one counts as work, for "idle" (maintain); maintenance itself does not.
+  private serial<T>(fn: () => Promise<T>, o: { upkeep?: boolean } = {}): Promise<T> {
+    const work = o.upkeep ? fn : async () => { this.lastWork = Date.now(); try { return await fn(); } finally { this.lastWork = Date.now(); } };
+    const run = this.queue.then(work, work);
     this.queue = run.catch(() => undefined);
     return run;
   }
 
-  snapshot(label: string): Promise<Checkpoint> { return this.serial(() => this.snapshotNow(label)).catch((e) => { throw friendly(e); }); }
+  /** A saved version of the project. envCopies: false for a version that only needs to tell whether a .env file changed
+   *  (the review of changes): it keeps a salted hash of each .env file, never a copy, so Undo to it cannot put .env back. */
+  snapshot(label: string, o: { envCopies?: boolean } = {}): Promise<Checkpoint> {
+    return this.serial(async () => {
+      const c = await this.snapshotNow(label, o.envCopies !== false);
+      try { await this.pruneNow(); } catch { /* pruning that failed leaves more than needed, never less */ }
+      this.scheduleMaintain();
+      return c;
+    }).catch((e) => { throw friendly(e); });
+  }
+  /** Keep these checkpoints whatever their age, for as long as the guard is in place: it is asked at every prune, and when
+   *  it cannot answer nothing is removed. Gives back the way to take the guard away. */
+  guard(fn: () => Iterable<string>): () => void { this.guards.add(fn); return () => { this.guards.delete(fn); }; }
+  /** Over the size cap, even after pruning down to the newest few and gc: the review of changes pauses for this project. */
+  get full(): boolean { return this.fullNow; }
+  /** Nothing is waiting in the store (for tests): every step done, the backup flag set. */
+  async idle(): Promise<void> { await this.queue; await this.backupFlag; }
+  /** Upkeep (T06): prune; gc when it is due (about weekly), the store has been idle for a while and the Mac is on power, or
+   *  when the store is over its cap (idle is still needed then, power is not); and measure the store's size (at most hourly).
+   *  force: all of it now, for tests and for the cap. Never makes a store that is not there. */
+  maintain(o: { force?: boolean } = {}): Promise<MaintainResult> {
+    return this.serial(() => this.maintainNow(o.force === true), { upkeep: true });
+  }
   /** Put the project back to a saved version. Files the person changed themselves are left as they are (the default, `protect`),
    *  and listed in `yours`; with `protect: false` only those the watcher saw changed while a plan was paused are kept. `force` is for
    *  the one place where the person's own version is meant to go: "Put my fix back" in Your turn. Nothing is kept; their version is
@@ -146,6 +211,26 @@ export class CheckpointStore {
     });
   }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
+  /** The files that differ between a saved version and the project as it is now, without making an undo point (must fix
+   *  11). The .env copies kept beside a version are not compared. Home asks this on every refresh, so (review of M56) it
+   *  keeps one index of its own between asks (`index-since`): git then rereads only the files whose size or time changed,
+   *  not the whole project. It is upkeep, not work, so it never pushes back the weekly clean up's idle test. If that index
+   *  cannot be used (the clean up removed a file only it pointed at, or it is damaged), it is made again from the newest
+   *  version, as a snapshot does. */
+  changedSinceNow(id: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> {
+    return this.serial(async () => {
+      const m = this.readMeta(id);
+      if (!m) throw new Error(`Unknown checkpoint: ${id}`);
+      this.prepare();
+      const idx = join(this.shadowDir, "index-since");
+      let tree: string;
+      try { tree = (await this.stage(idx, { reuse: true })).tree; } catch {
+        rmSync(idx, { force: true });
+        tree = (await this.stage(idx, { reuse: true })).tree;
+      }
+      return CheckpointStore.nameStatus(await this.git(["diff-tree", "-r", "--name-status", "--no-renames", "-z", m.commit, tree]));
+    }, { upkeep: true });
+  }
   /** Copy the project as it was at a checkpoint (its private .env copies too) into an empty folder outside the project,
    *  for the "before" picture of a visual receipt. The project itself is never touched. */
   exportTo(id: string, dir: string): Promise<void> { return this.serial(() => this.exportNow(id, dir)); }
@@ -155,7 +240,7 @@ export class CheckpointStore {
     return this.serial(async () => {
       if ((await this.diffNow(fromId, toId)).length > 0) return true;
       const a = this.readMeta(fromId)!, b = this.readMeta(toId)!;
-      return [...new Set([...a.envFiles, ...b.envFiles])].some((rel) => { const [x, y] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)]; return !(x === y || (x && y && x.equals(y))); });
+      return [...new Set([...a.envFiles, ...b.envFiles])].some((rel) => this.envSig(fromId, rel) !== this.envSig(toId, rel));
     });
   }
   /** The .env files whose private copies differ between two saved versions (made, changed or removed), by name only. Their
@@ -164,7 +249,7 @@ export class CheckpointStore {
     return this.serial(async () => {
       const a = this.readMeta(fromId), b = this.readMeta(toId);
       if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
-      return [...new Set([...a.envFiles, ...b.envFiles])].filter((rel) => { const [x, y] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)]; return !(x === y || (x && y && x.equals(y))); }).sort();
+      return [...new Set([...a.envFiles, ...b.envFiles])].filter((rel) => this.envSig(fromId, rel) !== this.envSig(toId, rel)).sort();
     });
   }
   /** Could the one task that went from `fromId` to `toId` be undone on its own, given the project as saved in `nowId`? Writes nothing. */
@@ -241,6 +326,7 @@ export class CheckpointStore {
       Bun.spawnSync(["git", "--git-dir", this.shadowDir, "config", k, v], { env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } });
     }
     mkdirSync(join(this.shadowDir, "meta"), { recursive: true });
+    try { writeFileSync(this.stampPath(), new Date().toISOString()); } catch { /* the first gc then comes sooner */ }
   }
 
   // Companion's excludes, plus the project's own .git/info/exclude (read only).
@@ -352,18 +438,124 @@ export class CheckpointStore {
   private prepare() {
     this.assertSensible();
     this.ensureInit();
+    this.keepOutOfBackups();
     this.sweepLeftovers();
     this.writeExcludes();
     this.writeAttributes();
   }
 
+  // ---------- upkeep (T06, must fix 26) ----------
+
+  // The store holds every version of the project and the .env copies Undo needs, so Time Machine is told to leave it out:
+  // the flag `tmutil addexclusion` sets (a sticky exclusion, on this folder only), written straight onto the folder, since
+  // tmutil itself waited on the backup service for about 11 seconds each time on this Mac. Once per store per run; a Mac
+  // without xattr gets no flag.
+  private keepOutOfBackups() {
+    if (this.backupFlag || process.platform !== "darwin" || !existsSync(XATTR)) return;
+    this.backupFlag = (async () => {
+      try { const p = Bun.spawn([XATTR, "-wx", BACKUP_EXCLUDE, BACKUP_EXCLUDE_VALUE, this.shadowDir], { stdout: "ignore", stderr: "ignore" }); await p.exited; } catch { /* backed up as before */ }
+    })();
+  }
+  private stampPath() { return join(this.shadowDir, "last-gc"); }
+  private gcDue(): boolean {
+    try { return Date.now() - statSync(this.stampPath()).mtimeMs >= this.gcEveryMs; } catch { return true; }   // never done: due
+  }
+  /** The checkpoints that stay: the newest keepNewest, every one a guard names, and a task's After versions with its kept
+   *  Before (Undo of one task, Which task broke it). Null when a guard cannot answer: then nothing goes. */
+  private kept(all: { id: string }[], keepNewest: number): Set<string> | null {
+    const keep = new Set<string>();
+    try { for (const g of this.guards) for (const id of g()) if (typeof id === "string") keep.add(id); } catch { return null; }
+    for (const r of all.slice(-keepNewest)) keep.add(r.id);
+    let afterOf = false;
+    for (const r of all) {
+      const label = this.readMeta(r.id)?.label ?? "";
+      if (label.startsWith("Before: ")) afterOf = keep.has(r.id);
+      else if (afterOf && label.startsWith("After: ")) keep.add(r.id);
+    }
+    return keep;
+  }
+  /** Removes the checkpoints that do not stay (kept), with their notes and private .env copies, once there are more than
+   *  keepNewest and the slack. What the person saved aside in recovered/ stays. Gives how many went. */
+  private async pruneNow(keepNewest = this.keepNewest, slack = this.pruneSlack): Promise<number> {
+    if (!existsSync(join(this.shadowDir, "HEAD"))) return 0;
+    const all = this.refs();
+    if (all.length <= keepNewest + slack) return 0;
+    const keep = this.kept(all, keepNewest);
+    if (!keep) return 0;
+    let n = 0;
+    for (const r of all) {
+      if (keep.has(r.id)) continue;
+      const d = await this.gitFull(["update-ref", "-d", r.ref]);
+      if (d.code !== 0) continue;   // still there: its notes stay with it
+      rmSync(this.metaPath(r.id), { recursive: true, force: true });
+      n++;
+    }
+    return n;
+  }
+  /** The undo history's size on disk, links not followed. What Undo saved aside of the person's own files (recovered/) is
+   *  not counted: pruning never removes it, so it could only ever hold the store at full. */
+  private bytesNow(): number {
+    let total = 0;
+    const walk = (dir: string) => {
+      let names: string[];
+      try { names = readdirSync(dir); } catch { return; }
+      for (const name of names) {
+        if (dir === this.shadowDir && name === "recovered") continue;
+        const p = join(dir, name); let st; try { st = lstatSync(p); } catch { continue; } if (st.isDirectory()) walk(p); else total += st.size;
+      }
+    };
+    walk(this.shadowDir);
+    return total;
+  }
+  // gc with the store's refs left as files (refs() reads them that way), and nothing unreachable kept.
+  private async gcNow(): Promise<void> {
+    await this.git(["-c", "gc.packRefs=false", "-c", "gc.reflogExpire=now", "-c", "gc.reflogExpireUnreachable=now", "gc", "--prune=now", "--quiet"]);
+    try { writeFileSync(this.stampPath(), new Date().toISOString()); } catch { /* the next one is due sooner */ }
+  }
+  private async maintainNow(force: boolean): Promise<MaintainResult> {
+    const out: MaintainResult = { pruned: 0, gc: false, bytes: null, full: this.fullNow };
+    if (!existsSync(join(this.shadowDir, "HEAD"))) return out;
+    out.pruned = await this.pruneNow().catch(() => 0);
+    const idle = Date.now() - this.lastWork >= this.idleMs;
+    const sizeDue = force || Date.now() - this.lastSized >= SIZE_EVERY_MS;
+    let bytes = sizeDue ? this.bytesNow() : null;
+    if (sizeDue) this.lastSized = Date.now();
+    const over = bytes !== null && bytes > this.capBytes;
+    if (force || (idle && ((this.gcDue() && this.powered()) || over))) {
+      await this.gcNow();
+      out.gc = true;
+      bytes = this.bytesNow();
+      if (bytes > this.capBytes) {
+        out.pruned += await this.pruneNow(KEEP_WHEN_FULL, 0).catch(() => 0);
+        await this.gcNow();
+        bytes = this.bytesNow();
+      }
+    }
+    if (bytes !== null) { out.bytes = bytes; this.fullNow = bytes > this.capBytes; }
+    out.full = this.fullNow;
+    return out;
+  }
+  /** Upkeep a while after the last snapshot, when it is due; the timer never keeps the engine running. */
+  private scheduleMaintain() {
+    if (this.maintainTimer) return;
+    if (!this.gcDue() && Date.now() - this.lastSized < SIZE_EVERY_MS) return;
+    const t = setTimeout(() => {
+      this.maintainTimer = null;
+      void this.maintain().then((r) => { if (!r.gc && (this.gcDue() || r.full)) this.scheduleMaintain(); }, () => undefined);
+    }, Math.max(this.idleMs, 1000));
+    (t as { unref?: () => void }).unref?.();
+    this.maintainTimer = t;
+  }
+
   /** Put the project as it is now into the temporary index `idx` (starting from the newest saved version), and write it as a
    *  tree. Nothing is saved as an undo point. */
-  private async stage(idx: string): Promise<{ tree: string; skipped: Skipped[]; last: { n: number } | undefined; parent: string | null }> {
+  /** `reuse`: an index kept from an earlier stage is updated as it is (only changed files are read again); without one, or
+   *  without `reuse`, it starts from the newest version. */
+  private async stage(idx: string, o: { reuse?: boolean } = {}): Promise<{ tree: string; skipped: Skipped[]; last: { n: number } | undefined; parent: string | null }> {
     const all = this.refs();
     const last = all[all.length - 1];
     const parent = last ? (await this.git(["rev-parse", last.ref])).trim() : null;
-    if (parent) await this.git(["read-tree", parent], { index: idx });
+    if (parent && !(o.reuse && existsSync(idx))) await this.git(["read-tree", parent], { index: idx });
 
     // Files over 2 MiB, new or grown, are skipped and reported, never silently saved. Folders with their own git history are
     // reported as not covered. Neither is allowed to break the snapshot.
@@ -403,18 +595,20 @@ export class CheckpointStore {
     return { tree, skipped, last, parent };
   }
 
-  private async snapshotNow(label: string): Promise<Checkpoint> {
+  private async snapshotNow(label: string, envCopies = true): Promise<Checkpoint> {
     this.prepare();
     const idx = this.tmpIndex();
     try {
-      const { tree, skipped, last, parent } = await this.stage(idx);
-      const commitArgs = ["commit-tree", tree, ...(parent ? ["-p", parent] : []), "-m", label];
+      const { tree, skipped, last } = await this.stage(idx);
+      // No parent (must fix 26): each version stands alone, so one that is pruned can really be freed by gc. Nothing reads
+      // the store's history; every version is found by its own ref.
+      const commitArgs = ["commit-tree", tree, "-m", label];
       const commit = (await this.git(commitArgs, { index: idx })).trim();
       const n = (last?.n ?? 0) + 1;
       await this.git(["update-ref", `refs/cp/${n}`, commit]);
       const id = `cp_${String(n).padStart(4, "0")}`;
       const files = (await this.git(["ls-tree", "-r", "--name-only", "-z", tree])).split("\0").filter(Boolean).length;
-      const envFiles = this.saveEnvFiles(id);
+      const envFiles = envCopies ? this.saveEnvFiles(id) : this.saveEnvDigests(id);
       const cp: Checkpoint = { id, commit, label, files, skipped, createdAt: new Date().toISOString(), envFiles };
       mkdirSync(this.metaPath(id), { recursive: true });
       writeFileSync(join(this.metaPath(id), "meta.json"), JSON.stringify(cp));
@@ -452,6 +646,34 @@ export class CheckpointStore {
       chmodSync(dst, 0o600);
     }
     return files;
+  }
+  // A version that only tells whether .env changed (must fix 26): a salted hash of each file, never a copy. The salt is the
+  // store's own (0600, made once), so the same file gives the same hash only in this store, and a short value cannot be
+  // looked up in a table of known hashes.
+  private salt(): Buffer {
+    if (this.saltNow) return this.saltNow;
+    const p = join(this.shadowDir, "env-salt");
+    try { const b = readFileSync(p); if (b.length >= 16) return (this.saltNow = b); } catch { /* not made yet */ }
+    const b = randomBytes(32);
+    try { mkdirSync(this.shadowDir, { recursive: true }); writeFileSync(p, b, { mode: 0o600, flag: "wx" }); }
+    catch { try { const there = readFileSync(p); if (there.length >= 16) return (this.saltNow = there); } catch { /* use this one */ } }
+    return (this.saltNow = b);
+  }
+  private envDigest(b: Buffer): string { return `h1:${createHmac("sha256", this.salt()).update(b).digest("hex")}`; }
+  private saveEnvDigests(id: string): string[] {
+    const out: Record<string, string> = {};
+    for (const rel of this.findEnvFiles()) { try { out[rel] = this.envDigest(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
+    mkdirSync(this.metaPath(id), { recursive: true });
+    writeFileSync(join(this.metaPath(id), "env-digests.json"), JSON.stringify(out), { mode: 0o600 });
+    return Object.keys(out).sort();
+  }
+  private envDigestsOf(id: string): Record<string, string> {
+    try { const j = JSON.parse(readFileSync(join(this.metaPath(id), "env-digests.json"), "utf8")); return j && typeof j === "object" ? j : {}; } catch { return {}; }
+  }
+  /** What a .env file was in a version, as a salted hash: from its copy, or from the hash kept instead. Null: not there. */
+  private envSig(id: string, rel: string): string | null {
+    const copy = this.envCopy(id, rel);
+    return copy ? this.envDigest(copy) : (this.envDigestsOf(id)[rel] ?? null);
   }
 
   // Text of selected files as they were at a checkpoint (for comparing before and after). Only files (blobs) are read.
@@ -510,7 +732,9 @@ export class CheckpointStore {
   private async diffNow(fromId: string, toId: string) {
     const a = this.readMeta(fromId), b = this.readMeta(toId);
     if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
-    const out = await this.git(["diff-tree", "-r", "--name-status", "--no-renames", "-z", a.commit, b.commit]);
+    return CheckpointStore.nameStatus(await this.git(["diff-tree", "-r", "--name-status", "--no-renames", "-z", a.commit, b.commit]));
+  }
+  private static nameStatus(out: string): { file: string; kind: "added" | "modified" | "deleted" }[] {
     const parts = out.split("\0").filter(Boolean);
     const res: { file: string; kind: "added" | "modified" | "deleted" }[] = [];
     for (let i = 0; i + 1 < parts.length; i += 2) res.push({ file: parts[i + 1], kind: parts[i] === "A" ? "added" : parts[i] === "D" ? "deleted" : "modified" });
@@ -536,10 +760,16 @@ export class CheckpointStore {
   /** The number in a checkpoint id: "cp_0012" gives 12 (0 when it has none). */
   static num(id: string): number { return Number(id.replace(/^cp_/, "")) || 0; }
   private static hash(b: Buffer): string { return createHash("sha256").update(b).digest("hex"); }
-  /** A hash of each .env file in this version (their private copies), by name. */
-  private envHashes(id: string): Record<string, string> {
+  /** A salted hash of each .env file in this version, by name (envSig). like: what it is compared with; where that holds an
+   *  old plain hash (own.json from before 3 Nov 2026), the plain hash is given for that file, so an untouched .env is never
+   *  taken for the person's own change after the upgrade. */
+  private envHashes(id: string, like?: Record<string, string>): Record<string, string> {
     const out: Record<string, string> = {};
-    for (const rel of this.readMeta(id)?.envFiles ?? []) { const b = this.envCopy(id, rel); if (b) out[rel] = CheckpointStore.hash(b); }
+    for (const rel of this.readMeta(id)?.envFiles ?? []) {
+      const b = this.envCopy(id, rel), old = like?.[rel] && !like[rel].startsWith("h1:");
+      const v = b ? (old ? CheckpointStore.hash(b) : this.envDigest(b)) : this.envDigestsOf(id)[rel];
+      if (v) out[rel] = v;
+    }
     return out;
   }
   private async changedNames(a: string, b: string): Promise<string[]> {
@@ -560,7 +790,7 @@ export class CheckpointStore {
     try {
       const { tree, skipped } = await this.stage(idx);
       const env: Record<string, string> = {};
-      for (const rel of this.findEnvFiles()) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
+      for (const rel of this.findEnvFiles()) { try { env[rel] = this.envDigest(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
       const big = this.bigNow(skipped);
       this.updateOwn((own) => { own.baseline = { tree, env, big }; });
     } finally { rmSync(idx, { force: true }); }
@@ -576,7 +806,7 @@ export class CheckpointStore {
       if (!base || names.length === 0) return;
       const newTree = await this.retree(base.tree, names);
       const env: Record<string, string> = {};
-      for (const rel of names) if (rel in base.env || this.findEnvFiles().includes(rel)) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
+      for (const rel of names) if (rel in base.env || this.findEnvFiles().includes(rel)) { try { env[rel] = this.envDigest(readFileSync(join(this.projectDir, rel))); } catch { /* gone */ } }
       this.updateOwn((own) => {
         if (!own.baseline) return;
         const e = { ...own.baseline.env };
@@ -592,7 +822,7 @@ export class CheckpointStore {
     if (!m || !base) { this.updateOwn((own) => { own.left = null; }); return; }
     const since = Math.max(0, CheckpointStore.num(beforeId) - 1);
     const found = (await this.changedNames(base.tree, m.commit)).filter((rel) => !KEPT_ON_UNDO.includes(rel));
-    const now = this.envHashes(beforeId);
+    const now = this.envHashes(beforeId, base.env);
     const envFound = [...new Set([...Object.keys(base.env), ...Object.keys(now)])].filter((rel) => base.env[rel] !== now[rel]);
     this.updateOwn((own) => {
       for (const rel of [...found, ...envFound]) own.found[rel] = Math.max(own.found[rel] ?? 0, since);
@@ -612,7 +842,7 @@ export class CheckpointStore {
       if (own.baseline) for (const rel of await this.changedNames(own.baseline.tree, current.commit)) consider.add(rel);
     }
     if (protect && own.baseline) {
-      const now = this.envHashes(current.id);
+      const now = this.envHashes(current.id, own.baseline.env);
       for (const rel of new Set([...Object.keys(own.baseline.env), ...Object.keys(now)])) if (own.baseline.env[rel] !== now[rel]) consider.add(rel);
     }
     if (consider.size === 0) return mine;
@@ -801,13 +1031,14 @@ export class CheckpointStore {
     for (const rel of back) {
       const abs = this.inProject(rel), src = join(this.metaPath(id), "env", rel);
       if (targetMeta.envFiles.includes(rel) && existsSync(src)) { mkdirSync(dirname(abs), { recursive: true }); copyFileSync(src, abs); chmodSync(abs, 0o600); }
+      else if (targetMeta.envFiles.includes(rel)) continue;              // that version kept only a hash of it: left as it is
       else if (!inTree.has(rel)) this.removeWithEmptyDirs(abs);          // a file the person made: not in that version at all
     }
     // The files put back are what our work left now, not the person's: the next Undo may treat them as ordinary files again.
     const baseTree = this.readOwn().baseline?.tree;
     const newTree = baseTree && back.length ? await this.retree(baseTree, back) : baseTree;
     const envHere: Record<string, string> = {};
-    for (const rel of back) { try { envHere[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { /* removed */ } }
+    for (const rel of back) { try { envHere[rel] = this.envDigest(readFileSync(join(this.projectDir, rel))); } catch { /* removed */ } }
     this.updateOwn((o) => {
       for (const m of [o.watched, o.found]) for (const rel of back) delete m[rel];
       if (o.baseline && newTree) {
@@ -852,7 +1083,7 @@ export class CheckpointStore {
     const big = new Set(files.filter((x) => String(x.reason ?? "").startsWith("over 2 MiB")).map((x) => x.path));
     const unsaved = new Set(files.map((x) => x.path).filter((p) => !big.has(p)));
     const ownGit = all.filter((x) => x.path.endsWith("/")).map((x) => x.path);
-    const why: Record<"later" | "link" | "big" | "unsaved" | "git", string[]> = { later: [], link: [], big: [], unsaved: [], git: [] };
+    const why: Record<"later" | "link" | "big" | "unsaved" | "git" | "nocopy", string[]> = { later: [], link: [], big: [], unsaved: [], git: [], nocopy: [] };
     const blocked = (rel: string): keyof typeof why | null => {
       if (later.has(rel)) return "later";
       if (big.has(rel)) return "big";
@@ -867,14 +1098,16 @@ export class CheckpointStore {
     // .env files are kept beside each version (they are usually not in the saved files): a change to one counts too.
     const env: string[] = [];
     for (const rel of [...new Set([...a.envFiles, ...b.envFiles])].sort()) {
-      const [ea, eb] = [this.envCopy(fromId, rel), this.envCopy(toId, rel)];
-      if (ea === eb || (ea && eb && ea.equals(eb))) continue;
+      const [ea, eb] = [this.envSig(fromId, rel), this.envSig(toId, rel)];
+      if (ea === eb) continue;
       env.push(rel);
-      const ec = this.envCopy(nowId, rel);
-      if (!(eb === null ? ec === null : ec !== null && eb.equals(ec))) { if (!why.later.includes(rel)) why.later.push(rel); continue; }
+      const ec = this.envSig(nowId, rel);
+      if (eb !== ec) { if (!why.later.includes(rel)) why.later.push(rel); continue; }
+      // The version before kept only a hash of it (a review's version): there is no copy to put back, and never a removal.
+      if (a.envFiles.includes(rel) && !this.envCopy(fromId, rel)) { why.nocopy.push(rel); continue; }
       try { if (this.hasLinkOnTheWay(this.inProject(rel)) || lstatSync(join(this.projectDir, rel)).isSymbolicLink()) why.link.push(rel); } catch { /* not there now: fine */ }
     }
-    const conflicts = [...new Set([...why.later, ...why.link, ...why.big, ...why.unsaved, ...why.git])].sort();
+    const conflicts = [...new Set([...why.later, ...why.link, ...why.big, ...why.unsaved, ...why.git, ...why.nocopy])].sort();
     const names = (l: string[]) => (l.length <= 5 ? l.join(", ") : `${l.slice(0, 5).join(", ")} and ${l.length - 5} more`);
     const are = (l: string[]) => (l.length === 1 ? "is" : "are");
     let reason: string | undefined;
@@ -892,6 +1125,7 @@ export class CheckpointStore {
     else if (why.big.length) reason = `${names(why.big)} ${are(why.big)} too big to have a saved copy (over 2 MiB).`;
     else if (why.unsaved.length) reason = `${names(why.unsaved)} could not be read when a version was saved, so there is no copy to put back.`;
     else if (why.git.length) reason = `${names(why.git)} ${are(why.git)} inside a folder with its own git history, which Undo does not cover.`;
+    else if (why.nocopy.length) reason = `${PRODUCT} kept no copy of ${names(why.nocopy)} from before this task, so the task cannot be undone on its own.`;
     else if (changed.length + env.length === 0) reason = "This task changed nothing that can be undone.";
     else if (changed.length > MAX_UNDO_ONE_FILES) reason = `This task changed ${changed.length} files, too many to undo one by one.`;
     return { safe: !reason, changed, env, conflicts, ...(reason ? { reason } : {}) };
@@ -938,7 +1172,7 @@ export class CheckpointStore {
       const base = this.readOwn().baseline;
       if (base) {
         const tree = await this.retree(base.tree, plan.changed.map((x) => x.file)), env = { ...base.env };
-        for (const rel of plan.env) { try { env[rel] = CheckpointStore.hash(readFileSync(join(this.projectDir, rel))); } catch { delete env[rel]; } }
+        for (const rel of plan.env) { try { env[rel] = this.envDigest(readFileSync(join(this.projectDir, rel))); } catch { delete env[rel]; } }
         this.updateOwn((own) => { if (own.baseline) own.baseline = { tree, env, big: own.baseline.big }; });
       }
     } catch { /* the next task's end saves it again */ }

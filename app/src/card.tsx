@@ -56,6 +56,8 @@ import { fixWhat, watchesOf } from "./watch.ts";
 import type { NewFolderKind, WatchKind, WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
 import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
+import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
+import { PartBoundary } from "./partBoundary.tsx";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -77,10 +79,16 @@ import "./style.css";
 import "./ui/look.css";
 import "./ui/wide.css";
 
-const send = (cmd: unknown) => invoke("send_command", { cmd });
+// A command the shell will not pass on (the engine restarting, its queue full, a group switched off) is never a silent
+// failure (must fix 13, bar rule 11): send says so in one plain line by default, through the card's model, so whatever was
+// waiting for the answer stops waiting. sendQuiet is for the page's own background asks and for presses that handle a
+// refusal themselves.
+const sendQuiet = (cmd: unknown) => invoke("send_command", { cmd });
+let refused: ((ev: RefusedEvent) => void) | null = null;
+const send = (cmd: unknown) => { const p = sendQuiet(cmd); p.catch((e) => refused?.(refusedEvent(e, cmd))); return p; };
 // Beta numbers: a fixed name, counted only if the person turned numbers on.
 const SESSION_GAP_MS = 30 * 60 * 1000;
-const count = (name: string) => { void send(metricsNote(name)); };
+const count = (name: string) => { void sendQuiet(metricsNote(name)); };
 // When the person last used the card. Kept only on this Mac, in this page's own storage. Where was I is asked for after the
 // break the person chose (where.after, memorySettings.ts).
 const SEEN_KEY = "companion.lastSeen";
@@ -98,13 +106,13 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
   const sendIt = () => {
     const c = followUp(project, text);
     if (!c || sending) return;
-    onSent(true); void send(c).catch(onRefused); setText("");
+    onSent(true); void sendQuiet(c).catch(onRefused); setText("");
   };
   return (
     <div className="followup">
       {retry && (
         <div className="row">
-          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void send(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
+          <button className="btn primary" type="button" disabled={sending} onClick={() => { if (sending) return; onSent(false); void sendQuiet(retryTask(project)).catch(onRefused); }}>{S.tryAgain}</button>
           <span className="muted">{S.tryAgainHelp}</span>
         </div>
       )}
@@ -366,8 +374,11 @@ function Card() {
   const pro = usePlan();
   // A command of a tool whose group is switched off is refused with one plain line (the shell, then the engine). The line is
   // shown, and whatever waiting state the press had set is closed, so nothing stays on "checking", "fixing" or "asking".
-  const explainRefusal = (e: unknown) => { const line = refusalNotice(e); if (line) dispatch({ type: "app.notice", message: line }); };
-  const sendOrExplain = (cmd: unknown, closed?: () => void): Promise<void> => send(cmd).then(() => undefined, (e) => { closed?.(); explainRefusal(e); });
+  // Every refusal is said, not only a group switched off (must fix 13).
+  const explainRefusal = (e: unknown) => dispatch({ type: "app.notice", message: refusedLine(e) });
+  const sendOrExplain = (cmd: unknown, closed?: () => void): Promise<void> => sendQuiet(cmd).then(() => undefined, (e) => { closed?.(); explainRefusal(e); });
+  // Where send's refusals go: this card's model (protocol.error), as if the engine had refused the command itself.
+  useEffect(() => { refused = (ev) => dispatch(ev); return () => { refused = null; }; }, [dispatch]);
   // The model as it is now, for callbacks set up once (a click elsewhere, a practice button pressed after a change).
   const nowModel = useRef(m); nowModel.current = m;
   // Groups of tools (F20): re-draws when a group is switched; the buttons of a group that is off are not drawn.
@@ -431,7 +442,7 @@ function Card() {
   // The zero cost warm up: when Home opens or the box gets the keyboard, the engine reads the Claude binary through so
   // the first task starts sooner (runner/src/warm.ts). Nothing is run or sent. At most once a minute from here.
   const warmedAt = useRef(0);
-  const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void send(warmEngine()).catch(() => {}); };
+  const warmSoon = () => { const t = Date.now(); if (t - warmedAt.current < 60_000) return; warmedAt.current = t; void sendQuiet(warmEngine()).catch(() => {}); };
   // VoiceOver hears each new question, the loop card, a finished task and an error once, politely, on one line (a11y.ts),
   // with the tab it is on when that is not the open one (the tab open when it came: Home moves there after). It is Home's
   // only live line for these; the keyboard is never moved for it. The line empties once what it said is gone, so nothing
@@ -606,11 +617,11 @@ function Card() {
   const routinesOn = useSetting("watch.on") === true;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
   const bv = browserView(m);
-  useEffect(() => { if (m.runnerUp) void send(checkBrowser()).catch(() => {}); }, [m.runnerUp]);
+  useEffect(() => { if (m.runnerUp) void sendQuiet(checkBrowser()).catch(() => {}); }, [m.runnerUp]);
   const getTheBrowser = () => {
     if (bv?.busy) return;   // a second press while it downloads does nothing
     dispatch({ type: "ui.browserInstallAsked" });
-    void send(getBrowser()).catch(() => dispatch({ type: "browser.install", stage: "failed", detail: S.browserFailed }));
+    void sendQuiet(getBrowser()).catch(() => dispatch({ type: "browser.install", stage: "failed", detail: S.browserFailed }));
   };
   useEffect(() => { dispatch({ type: "ui.undoClosed" }); }, [m.receipt?.checkpoint]);
   // A question that was not answered in time is dropped from the card, because the engine has already refused it.
@@ -756,7 +767,7 @@ function Card() {
   const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(failNote(e, "folder")); });
   // About this project: asked each time a folder is opened (reads files only).
-  useEffect(() => { if (project) void send(inspectProject(project)); }, [project]);
+  useEffect(() => { if (project) void sendQuiet(inspectProject(project)); }, [project]);
   // Opened from a link: once it is copied, it becomes the project folder.
   useEffect(() => {
     const off = listen("runner-event", (e) => {
@@ -904,10 +915,23 @@ function Card() {
   const firstCheck = () => { pressed(); dispatch({ type: "ui.findProblem", fresh: true }); void sendOrExplain(findProblem(project, true), () => dispatch({ type: "ui.pointClosed" })); };
   const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
-  useEffect(() => { if (project) void send(listTasks(project)); }, [project, m.receipt]);
+  useEffect(() => { if (project) void sendQuiet(listTasks(project)); }, [project, m.receipt, m.review?.batch]);
+  // Coming back to the front after editing elsewhere: the list (and whether the files changed since the last check, must
+  // fix 11) is asked again, so Home never says the project works over edits nobody checked. Home is a non activating panel
+  // (rule 9), so "focus" may never fire: it also asks when the pointer comes onto it, at most once every SINCE_ASK_MS, and
+  // each time Home opens (the "opened" listener below).
+  useEffect(() => {
+    if (!project) return;
+    const SINCE_ASK_MS = 3000;
+    let last = 0;
+    const again = () => { const t = Date.now(); if (t - last < SINCE_ASK_MS) return; last = t; void sendQuiet(listTasks(project)); };
+    window.addEventListener("focus", again);
+    window.addEventListener("pointerenter", again);
+    return () => { window.removeEventListener("focus", again); window.removeEventListener("pointerenter", again); };
+  }, [project]);
   // The project's watches (F21): asked for whenever the folder is known or changes, and when Flow is switched back on.
   const watchOn = groups.on("watch");
-  useEffect(() => { if (project && watchOn) void send(watchList(project)); }, [project, watchOn]);
+  useEffect(() => { if (project && watchOn) void sendQuiet(watchList(project)); }, [project, watchOn]);
   // Fix it on a failed watch: the evidence was asked for on the person's press (model.ts only keeps evidence that was asked
   // for), and the ordinary task starts once with it. Nothing starts by itself.
   const fixing = m.watchFix;
@@ -917,7 +941,7 @@ function Card() {
     if (fixing.project !== projectRef.current || !toolOn("drive")) return;
     dispatch({ type: "ui.undoClosed" });
     homeDispatch({ type: "pick", tab: "now" });
-    void send(fixWatch(fixing.project, fixWhat(fixing.kind, fixing.target), fixing.text)).catch(explainRefusal);
+    void sendQuiet(fixWatch(fixing.project, fixWhat(fixing.kind, fixing.target), fixing.text)).catch(explainRefusal);
   }, [fixing]);
   // The Watch list's buttons (F21). Each is a press; Fix it only asks for the evidence, and the task starts when it comes.
   const watchHandlers = {
@@ -929,7 +953,7 @@ function Card() {
       if (!project) return;
       if (!toolOn("connections") || !toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
       dispatch({ type: "ui.watchAsked", watch: w.watch });
-      void send(watchFix(project, w.watch)).catch((e) => { dispatch({ type: "ui.watchAsked" }); explainRefusal(e); });
+      void sendQuiet(watchFix(project, w.watch)).catch((e) => { dispatch({ type: "ui.watchAsked" }); explainRefusal(e); });
     },
   };
   // M52 (F30): the review of another AI tool's changes, on Now for the open folder only, with reviews and Flow on. Each
@@ -942,13 +966,13 @@ function Card() {
       const r = nowModel.current.review;
       if (!r || !project) return;
       dispatch({ type: "ui.reviewAsked", batch: r.batch });
-      void send(reviewNow(project, r.batch, proof)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
+      void sendQuiet(reviewNow(project, r.batch, proof)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
     },
     onDismiss: () => {
       const r = nowModel.current.review;
       if (!r || !project) return;
       dispatch({ type: "ui.reviewDismissed", batch: r.batch });
-      void send(reviewDismiss(project, r.batch)).catch(explainRefusal);
+      void sendQuiet(reviewDismiss(project, r.batch)).catch(explainRefusal);
     },
     onAskFix: () => {
       const r = nowModel.current.review;
@@ -963,7 +987,7 @@ function Card() {
       if (atFreeLimit(planNow(), nowModel.current.proUsage ?? null)) { dispatch({ type: "ui.reviewFixCancelled" }); dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: nowModel.current.proUsage?.resetsOn }); return; }
       dispatch({ type: "ui.reviewFixSent", batch: r.batch });
       dispatch({ type: "ui.undoClosed" });
-      void send(reviewFix(project, r.batch)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
+      void sendQuiet(reviewFix(project, r.batch)).catch((e) => dispatch({ type: "ui.reviewRefused", batch: r.batch, reason: refusalNotice(e) }));
     },
     onCancelFix: () => dispatch({ type: "ui.reviewFixCancelled" }),
   };
@@ -998,11 +1022,12 @@ function Card() {
       // as it is now: this listener is set up once, before the folder is known.
       const last = lastSeen();
       const here = projectRef.current;
+      if (here) void sendQuiet(listTasks(here));   // must fix 11: whether the files changed since the last check, asked again
       // Where was I (F21) is Flow's; with Flow off the older three line version (core) is asked instead. Never in the background:
       // only when Home is opened, after the break chosen in Settings.
       // Recaps are Pro (the payments spec, section 2): on a plan that does not cover them, the older version is not asked,
       // so no Pro card ever comes up unasked. Where was I is free and is asked as before.
-      if (last && here && recapDue(last, Date.now())) { if (toolOn("whereWasI")) void send(whereWasI(here, new Date(last).toISOString())); else if (proCovers(planNow())) void send(askRecap(here, new Date(last).toISOString())); }
+      if (last && here && recapDue(last, Date.now())) { if (toolOn("whereWasI")) void sendQuiet(whereWasI(here, new Date(last).toISOString())); else if (proCovers(planNow())) void sendQuiet(askRecap(here, new Date(last).toISOString())); }
       if (!last || Date.now() - last >= SESSION_GAP_MS) count("session");   // a new visit after a break, not every time the card opens
       touch();
     });
@@ -1311,7 +1336,8 @@ function Card() {
   const gear = () => pickTab("settings");
   // M33: a fix just proven is said beside the pointer too (the drop that follows it), as HeyClicky announces at the cursor.
   // Only what the verdict calls proven (M45): a pass on a task that then stopped or hit a limit is not said as done.
-  const provenAt = receiptVerdict(m)?.proven && !m.receipt!.gone ? m.receipt!.checkpoint : null;
+  // "Fixed. Checks pass." only over a real fix: a pass that changed nothing fixed nothing (must fix 7).
+  const provenAt = receiptVerdict(m)?.kind === "proven" && !m.receipt!.gone ? m.receipt!.checkpoint : null;
   useEffect(() => { if (provenAt) void invoke("follow_say", { text: S.followDone }).catch(() => {}); }, [provenAt]);
   // Command comma opens Settings, as in every Mac app (Apple's menu bar guidance).
   const gearRef = useRef(gear); gearRef.current = gear;
@@ -1324,15 +1350,15 @@ function Card() {
   // the lessons (those that read the project need a chosen folder; the others, installing a tool or leaving a builder, do
   // not), what Companion knows, and the task history.
   useEffect(() => {
-    if (home.tab === "learn") { void send(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void send(checkMac()); }
-    if (home.tab === "memory" && project) void send(listMemory(project));
-    if (home.tab === "did" && project) void send(listTasks(project));
+    if (home.tab === "learn") { void sendQuiet(walkList(project || NO_PROJECT)); loadPractice(); if (needsMacCheck(m.doctor)) void sendQuiet(checkMac()); }
+    if (home.tab === "memory" && project) void sendQuiet(listMemory(project));
+    if (home.tab === "did" && project) void sendQuiet(listTasks(project));
   }, [home.tab, project]);
   // Node was installed while Home stayed open: coming back to Companion checks again, only on Learn and only while Node is
   // flagged missing.
   useEffect(() => {
     if (home.tab !== "learn" || !nodeMissing(m.doctor)) return;
-    const again = () => void send(checkMac());
+    const again = () => void sendQuiet(checkMac());
     window.addEventListener("focus", again);
     return () => window.removeEventListener("focus", again);
   }, [home.tab, m.doctor]);
@@ -1469,7 +1495,7 @@ function Card() {
     sent.current = { prompt, attached: attachedNow.current, off };
     // Something shows at once (the audit, item 27): the words and Starting, until the engine answers.
     dispatch({ type: "ui.taskSent", words: prompt });
-    void send(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
+    void sendQuiet(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
   };
   // The Explain chip: words in the box (an error pasted or typed into Squibby itself) are explained the way the explain keys
@@ -1496,7 +1522,7 @@ function Card() {
   sendFollowNow.current = () => {
     const c = followUp(project, followText);
     if (!c || m.followUp === "sending" || !followShown.current) return;
-    followSent(true); void send(c).catch(followRefused); setFollowText("");
+    followSent(true); void sendQuiet(c).catch(followRefused); setFollowText("");
   };
 
   // Which task broke it: earlier saved versions are checked in a private copy; the project itself is never touched.
@@ -1527,10 +1553,11 @@ function Card() {
     phArmedFor.current = m.ph.text;
     void invoke("ph_ready", { text: m.ph.text, handback: m.ph.handback ?? "paste", req: m.ph.req ?? "" }).then((v) => { setPhArmed(armedFor(v)); setPhKeysUp(true); clearTimeout(phKeysTimer.current); phKeysTimer.current = setTimeout(() => setPhKeysUp(false), PH_KEYS_MS); }).catch(() => {});
   }, [m.ph?.stage, m.ph?.text, phShown]);
-  // Every way into Ship (the main button, the chip, Put it online, the notch, the confirm rows) comes through shipGate: on a
-  // plan without Pro it shows the card behind the Pro tag and sends nothing, so the result, its verdict and Undo stay.
+  // Every way online (Put it online) comes through shipGate: on a plan without Pro it shows the card behind the Pro tag and
+  // sends nothing, so the result, its verdict and Undo stay. Must fix 20 (F25, every safety feature on Free): the check
+  // before going live (the main button, the chip, the notch, the confirm rows) only checks on this Mac, so it is free.
   const shipGate = (): boolean => { if (!proTag("ship", planNow())) return true; dispatch({ type: "ui.proLimit", reason: "ship" }); return false; };
-  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
+  const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); };
   const research = () => {
     if (inNewFolder) { startNew("research"); return; }
@@ -1599,9 +1626,8 @@ function Card() {
   const usage = m.proUsage ?? null;
   const main = proLimit ? null : mainFor(mode, status, (b) => buttonShown(b));
   const shipTags = proTag("ship", pro);
-  const shipTagged = main === "shipCheck" && shipTags;
-  // At the free fix limit, Fix it starts nothing and shows the limit card (section 3); on a plan without Pro, Check before
-  // going live shows the card behind its Pro tag. The engine refuses both the same way (runner/src/plan.ts).
+  // At the free fix limit, Fix it starts nothing and shows the limit card (section 3). Check before going live is free on
+  // every plan (must fix 20). The engine refuses the same way (runner/src/plan.ts).
   const doMain = (a: MainAct) => {
     if (a === "fix" && atFreeLimit(pro, usage)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: usage?.resetsOn }); return; }
     if (a === "shipCheck") { shipIt(); return; }
@@ -1808,8 +1834,8 @@ function Card() {
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
         onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
-      {!onboarded && <Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
-        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} />}
+      {!onboarded && <PartBoundary part="firstRun"><Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
+        point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} /></PartBoundary>}
       {/* The work: one column (in the wide Home, beside the list, with the ask box along its bottom; otherwise no box at all). */}
       <div className="work">
       {/* The top bar (F28, the overhaul spec 4.1): on Now, the project's name with a chevron menu (Change folder, Open from a
@@ -1846,7 +1872,9 @@ function Card() {
           </PlacesBox>
         </header>
       )}
-      {onboarded && (<>
+      {/* Each place sits in its own boundary (must fix 4): a part that fails to draw shows one line and Reload this part,
+          and the top bar above still leads everywhere else. */}
+      {onboarded && (<PartBoundary part={home.tab} resetKey={home.tab}>
       {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
           founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
           that status picks. While a job works, a question waits or an answer is in: that job's own words. */}
@@ -1871,7 +1899,7 @@ function Card() {
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
               while the hero is folded for a card that needs a tap (item 13): that card's own buttons are the ones. */}
-          {heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}{heroMain.status && <>{shipTagged && <ProTag />}</>}</Button></div>}
+          {heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}</Button></div>}
           {lastFree && <p className="subline muted pro-last">{lastFree}</p>}
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
           {stopCan(m) && !jobShown && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
@@ -1940,7 +1968,7 @@ function Card() {
               <div className="more-pop">
               <div className="more-ways" onMouseOver={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onFocus={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onMouseLeave={() => setMoreDesc("")}>
                 {buttonShown("findProblem") && main !== "fix" && main !== "check" && <Button size="sm" title={tip("find", "problem")} onClick={findFromHome}><Icon name="find" size={14} />{S.look.chipFind}</Button>}
-                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" title={tip("safe")} onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}{shipTags && <ProTag />}</Button>}
+                {buttonShown("shipCheck") && main !== "shipCheck" && <Button size="sm" title={tip("safe")} onClick={() => shipIt()}><Icon name="shield" size={14} />{S.look.chipSafe}</Button>}
                 {toolOn("errorHelp") && <Button size="sm" title={tip("explain", "explain")} onClick={explainFromBox}><Icon name="explain" size={14} />{S.look.chipExplain}</Button>}
                 {buttonShown("showMe") && <Button size="sm" title={tip("showMe", "showme")} onClick={() => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } }}><Icon name="pointer" size={14} />{S.look.chipShowMe}</Button>}
                 {buttonShown("plan") && <Button size="sm" title={tip("plan")} onClick={plan}><Icon name="grid" size={14} />{S.planIt}</Button>}
@@ -2289,7 +2317,7 @@ function Card() {
               receipt's own question follows on a press. "Put back as it was" shows for two seconds once it is done. */}
           {undoCan(m, project) && (
             <div className="row result-actions">
-              <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.home.undoFix}</Button>
+              <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix}</Button>
             </div>
           )}
           <h2>{receiptHeading(m.receipt)}</h2>
@@ -2641,7 +2669,7 @@ function Card() {
       {folderNote && <div className="error" role="alert">{folderNote}</div>}
       </div>}
       </div>
-      </>)}
+      </PartBoundary>)}
       </div>
       </div>
     </main>

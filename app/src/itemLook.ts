@@ -56,7 +56,7 @@ export function historyStamp(i: Pick<HistoryItem, "status" | "proof" | "changed"
   if (i.status === "running") return "working";
   const v = verdictOf(historyFacts(i));
   if (v.kind === "needsYou") return "needsYou";
-  if (v.kind === "proven") return "proven";
+  if (v.proven) return "proven";
   // A check failed: History stamps it as it stamps Proven (the audit, item 31); the side list keeps its own cross for it.
   if (v.kind === "failed") return "notFixed";
   if (!NEW_KINDS.includes(v.kind)) return null;

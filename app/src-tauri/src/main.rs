@@ -20,6 +20,7 @@ mod updates;
 mod speak;
 mod fuzz;
 mod logfile;
+mod quit;
 mod permissions;
 mod ax;
 mod phelp;
@@ -1111,6 +1112,7 @@ fn peek_apply(app: &AppHandle, light: bool) {
     with_panels(|d, _| set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES));
     *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = pose;
+    if pose == peek::Pose::Hidden { edge_wake(); }
     // The page leans toward the screen while it peeks (dock.tsx data-peek). Where it may not hide, it is simply in.
     let shown = if f == home { peek::Pose::In } else { pose };
     // M37d: and where the screen's edge is from the window's own top left, so the water flattens against the real edge.
@@ -1152,6 +1154,9 @@ static FOLLOW_THREAD: OnceLock<std::thread::Thread> = OnceLock::new();
 /// When the ring's page last finished loading (now(), in ms); 0 until it has. follow::reshow.
 static FOLLOW_PAGE_AT: AtomicU64 = AtomicU64::new(0);
 fn gaze_wake() { if let Some(t) = GAZE_THREAD.get() { t.unpark(); } }
+/// The thread that watches for the pointer at the edge while the character is tucked away (must fix 33): parked otherwise.
+static EDGE_THREAD: OnceLock<std::thread::Thread> = OnceLock::new();
+fn edge_wake() { if let Some(t) = EDGE_THREAD.get() { t.unpark(); } }
 /// Wakes the ring's thread, so it looks again at once whether the water ring should show (listening, a ring pointing at a
 /// place put up or put away, a setting, hidden or shown, rest). Any thread.
 fn follow_wake() { if let Some(t) = FOLLOW_THREAD.get() { t.unpark(); } }
@@ -2795,7 +2800,7 @@ static UPDATE_READY: Mutex<Option<String>> = Mutex::new(None);
 
 /// Is the updater set up in this build, and which version is running.
 #[tauri::command]
-fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse_config(include_str!("../updater.json")).is_some(), "version": app.package_info().version.to_string() }) }
+fn update_status(app: AppHandle) -> Value { json!({ "configured": updates::parse_config(include_str!("../updater.json")).is_some(), "version": app.package_info().version.to_string(), "commit": logexport::BUILD_COMMIT }) }
 
 /// Asks the update address whether a newer version exists. Only when the person asked (or turned on the daily check).
 #[tauri::command]
@@ -2843,6 +2848,13 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     u.install(bytes).map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     log("update_installed", json!({}));
     // `restart` goes round the normal exit path: end the engine (and what it runs) properly first, so nothing is left running.
+    // The speech models go before it (must fix 1): Tauri's restart always runs the clean up at exit, which aborted with one
+    // still loaded. The quit is written down as an update's (must fix 15).
+    quit::mark(quit::UPDATE);
+    // Must fix 22: the exit handler must know this exit is a restart, so a quit that has to end at once still comes back.
+    quit::set_restarting();
+    let a = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || quit_now(&a, quit::UPDATE, quit::VOICE_WAIT_UPDATE)).await;
     app.state::<runner::Runner>().shut_down();
     app.restart();
 }
@@ -3091,16 +3103,18 @@ fn write_support_log() -> Result<String, String> {
         let inv = wipe::inventory(std::path::Path::new(&home), &data, key_saved(), &[]);
         let kept: Vec<(String, u64)> = inv["items"].as_array().map(|a| a.iter().map(|r| (r["label"].as_str().unwrap_or("").to_string(), r["bytes"].as_u64().unwrap_or(0))).collect()).unwrap_or_default();
         let facts = logexport::Facts {
-            version: env!("CARGO_PKG_VERSION").to_string(), macos: cmd_out("/usr/bin/sw_vers", &["-productVersion"]), arch: cmd_out("/usr/bin/uname", &["-m"]),
+            version: logexport::version_label(env!("CARGO_PKG_VERSION"), logexport::BUILD_COMMIT), macos: cmd_out("/usr/bin/sw_vers", &["-productVersion"]), arch: cmd_out("/usr/bin/uname", &["-m"]),
             permissions: vec![("Screen Recording".into(), word("screen_recording").into()), ("Accessibility".into(), word("accessibility").into()), ("Microphone".into(), word("microphone").into())],
             key_saved: key_saved(), speech_ready: voice_mac::model_ready(&data), browser_installed: std::fs::read_dir(std::path::Path::new(&home).join("Library/Application Support/Companion/browsers")).is_ok_and(|mut d| d.next().is_some()), kept,
         };
         let activity = [data.join("events.jsonl.1"), data.join("events.jsonl")].iter().filter_map(|p| std::fs::read_to_string(p).ok()).collect::<Vec<_>>().join("\n");
+        // Must fix 15: the engine's own error output (runner/engine.log, written scrubbed by runner.rs), its last lines.
+        let engine = [data.join("runner/engine.log.1"), data.join("runner/engine.log")].iter().filter_map(|p| std::fs::read_to_string(p).ok()).collect::<Vec<_>>().join("\n");
         let crash = logexport::latest_crash(&std::path::Path::new(&home).join("Library/Logs/DiagnosticReports"), std::time::SystemTime::now());
         // Words that identify the person or the machine: the user name and the computer's names.
         let mut names: Vec<String> = vec![std::env::var("USER").unwrap_or_else(|_| home.rsplit('/').next().unwrap_or("").to_string()), cmd_out("/usr/sbin/scutil", &["--get", "ComputerName"]), cmd_out("/usr/sbin/scutil", &["--get", "LocalHostName"]), cmd_out("/bin/hostname", &[])];
         names.retain(|n| !n.is_empty()); names.dedup();
-        let text = logexport::compose(&facts, &activity, crash.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &home, &names, &projects);
+        let text = logexport::compose_all(&facts, &activity, &engine, crash.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &home, &names, &projects);
         let dir = std::path::Path::new(&home).join("Downloads");
         if !dir.is_dir() { return Err("Your Downloads folder was not found.".to_string()); }
         let stamp = cmd_out("/bin/date", &["+%Y-%m-%d-%H%M"]);
@@ -3314,6 +3328,10 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool,
     if with_practice == Some(true) { let (moved, kept) = trash_practice_copies("", false); log("practice_removed_all", json!({ "moved": moved.len(), "kept": kept.len() })); }
     // A file being converted: its tool is ended and its work folder removed before the app quits.
     let _ = tauri::async_runtime::spawn_blocking(drop_end_for_quit).await;
+    // The speech models go before the exit (must fix 1), and the quit is written down as Delete everything's (must fix 15).
+    quit::mark(quit::WIPE);
+    let a = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || quit_now(&a, quit::WIPE, quit::VOICE_WAIT)).await;
     app.exit(0);
     Ok(())
 }
@@ -4090,7 +4108,7 @@ fn show_me_key(app: &AppHandle) {
     let state = voice::ShowMeKeyState {
         setting_on: setting_now("showme.listen").as_bool().unwrap_or(true),
         voice_on: setting_now("voice.on").as_bool().unwrap_or(true),
-        model_ready: voice_mac::model_ready(&data_dir()),
+        model_ready: voice_mac::model_ready_quick(&data_dir()),   // must fix 33: no 148 MB read on the main thread
         mic_allowed: voice_mac::mic_status() == voice_mac::Mic::Allowed,
         hidden: companion_hidden(),
         listening: listening_now(),
@@ -4125,7 +4143,8 @@ fn show_me_key(app: &AppHandle) {
 /// Hidden: Companion was just hidden (a full screen app came forward, or Hide from the menu bar). It only wakes the worker,
 /// which then closes an open microphone at once instead of at its next one second check.
 /// Down carries what the hold is for (M36): talking to Squibby, or typing into the app in front.
-enum VoiceMsg { Down(u64, talkkeys::Mode), Up(u64), Cancel, Hidden }
+/// Quit (must fix 1): the app is quitting; both speech models are let go, and the answer says whether none is left loaded.
+enum VoiceMsg { Down(u64, talkkeys::Mode), Up(u64), Cancel, Hidden, Quit(std::sync::mpsc::Sender<bool>) }
 const LISTENING: &str = "Listening. Let go of the keys when you are done.";
 /// Hold to talk is listening: from just before the light comes on until the microphone is closed (let go, Stop everything,
 /// the cap running out, Companion being hidden, or a microphone that would not start). Nothing is said meanwhile (`speak`).
@@ -4155,7 +4174,10 @@ fn say_voice(app: &AppHandle, stage: &str, message: &str, extra: Value) {
     runner::Runner::publish(app, v);
 }
 
+/// The app is quitting (must fix 1): no hold to talk worker starts again.
+static VOICE_CLOSED: AtomicBool = AtomicBool::new(false);
 fn voice_send(app: &AppHandle, m: VoiceMsg) {
+    if VOICE_CLOSED.load(Ordering::SeqCst) { return; }
     let mut g = VOICE_TX.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_none() {
         let (tx, rx) = std::sync::mpsc::channel::<VoiceMsg>();
@@ -4190,6 +4212,21 @@ fn set_user_hidden(app: &AppHandle, hide: bool) {
     gaze_recompute(); follow_wake();
     log("menu_hide", json!({ "hidden": hide }));
 }
+/// Must fix 1: the app is quitting. The hold to talk worker lets both speech models go (the one in use and the one loaded
+/// ahead) and answers. True when no model is left loaded: none was ever started, or the worker answered that it let both
+/// go and none is still loading. False when it did not answer within `wait` (it is still turning speech into words).
+fn voice_quit(wait: Duration) -> bool {
+    VOICE_CLOSED.store(true, Ordering::SeqCst);
+    let Some(tx) = VOICE_TX.lock().unwrap_or_else(|e| e.into_inner()).take() else { return true };
+    let (ack, answer) = std::sync::mpsc::channel::<bool>();
+    if tx.send(VoiceMsg::Quit(ack)).is_err() { return true; }   // the worker already ended, and its models with it
+    answer.recv_timeout(wait).unwrap_or(false)
+}
+/// Must fixes 1 and 15: a quit's steps (quit.rs), once, from wherever the quit began. Blocks for up to `wait`.
+fn quit_now(app: &AppHandle, from: &'static str, wait: Duration) {
+    if !quit::first() { return; }
+    if quit::exit_steps(from, || voice_quit(wait), drop_end_for_quit, || app.state::<runner::Runner>().shut_down(), &mut |e, x| log(e, x)) { quit::set_hard(); }
+}
 /// Companion was just hidden: wake the hold to talk worker if it is running, so a microphone that is open closes at once.
 /// A worker that was never started has nothing open, so none is started here.
 fn voice_tell_hidden() {
@@ -4205,6 +4242,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let mut speech: Option<voice_mac::Speech> = None;
     // Loaded by a helper while the person talks, so a Stop or a let-go is never queued behind a 1 to 3 second load.
     let preload: std::sync::Arc<Mutex<Option<voice_mac::Speech>>> = std::sync::Arc::new(Mutex::new(None));
+    // Must fix 17: the helper loading it, so there is only ever one load at a time and a let go waits for it.
+    let mut loader: Option<std::thread::JoinHandle<()>> = None;
     // The open project's own words for the speech model (voicewords.rs), gathered by a helper while the person talks.
     // Each press has its own number, so a helper still running from an earlier press never hands over its words late.
     let words_slot: std::sync::Arc<Mutex<Option<(u64, String)>>> = std::sync::Arc::new(Mutex::new(None));
@@ -4220,7 +4259,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     loop {
         let msg = rx.recv_timeout(Duration::from_secs(1));
         if matches!(msg, Err(std::sync::mpsc::RecvTimeoutError::Disconnected)) { break; }
-        if speech.is_some() && hold.phase == voice::Phase::Idle && last_used.elapsed() > Duration::from_secs(300) { speech = None; }
+        // Must fix 17: both copies go, the one in use and the one a helper loaded but nobody took (a hold too short or silent).
+        if hold.phase == voice::Phase::Idle && last_used.elapsed() > Duration::from_secs(300) { speech = None; *preload.lock().unwrap_or_else(|e| e.into_inner()) = None; }
         // The microphone is closed by force, whatever the keys are doing, the moment Companion is hidden (the light can no
         // longer be seen) and at its cap (a minute unless changed, Longest hold to talk). What was heard is dropped.
         if let Some(why) = hold.must_close(now() as u64, companion_hidden()) {
@@ -4313,9 +4353,12 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                         if !project.is_empty() {   // names only, on this Mac only, never a file's content (voicewords.rs)
                             std::thread::spawn(move || { let w = voicewords::prompt(&voicewords::collect(std::path::Path::new(&project), &voicewords::settings_for(&project))); *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some((this, w)); });
                         }
-                        if speech.is_none() {   // while the person is talking, on a helper thread
+                        // While the person is talking, on a helper thread; never a second load beside one under way or one
+                        // already waiting (must fix 17). The five idle minutes start again from here.
+                        if speech.is_none() && loader.as_ref().is_none_or(|h| h.is_finished()) && preload.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
                             let (slot, path) = (preload.clone(), voice_mac::model_path(&data));
-                            std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } });
+                            last_used = std::time::Instant::now();
+                            loader = Some(std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } }));
                         }
                     }
                     Err(e) => { hold.cancel(); listening(false); log("failure_detail", json!({ "what": "microphone", "detail": e.to_string() })); say_voice(&app, "error", "I could not use the microphone just now. Check it is connected, then try again.", json!({})); }
@@ -4345,6 +4388,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                 if VOICE_STOPS.load(Ordering::SeqCst) != stops_at { hold.finished(); say_voice(&app, "idle", "", json!({})); continue; }
                                 say_voice(&app, "transcribing", "Understanding what you said", json!({}));
                                 let t0 = now();
+                                // Must fix 17: a load still under way is waited for, never started again beside it.
+                                if speech.is_none() { if let Some(h) = loader.take() { let _ = h.join(); } }
                                 if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); }
                                 if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }
                                 // The project's own words (empty if the helper is not done) and the language picked in Settings.
@@ -4380,6 +4425,16 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                 }
             }
             Ok(VoiceMsg::Cancel) => { if let Some(r) = rec.take() { let _ = r.finish(); } listening(false); if hold.cancel() { say_voice(&app, "idle", "", json!({})); } }
+            // Must fix 1: the app is quitting. The microphone closes, both speech models go now (not in the clean up at
+            // exit, where one still loaded aborted the process), and the answer says whether a helper is still loading one.
+            Ok(VoiceMsg::Quit(ack)) => {
+                if let Some(r) = rec.take() { let _ = r.finish(); }
+                listening(false);
+                speech = None;
+                *preload.lock().unwrap_or_else(|e| e.into_inner()) = None;
+                let _ = ack.send(std::sync::Arc::strong_count(&preload) == 1);
+                break;
+            }
             // Already closed by the check at the top of the loop.
             Ok(VoiceMsg::Hidden) | Err(_) => {}
         }
@@ -4848,7 +4903,7 @@ fn main() {
             }
         })
         .setup(move |app| {
-            log("launch", json!({}));
+            log("launch", json!({ "commit": logexport::BUILD_COMMIT }));   // must fix 6: which build this is
             let _ = speak::WORD_HOOK.set(speech_word);   // M38: drawing keeps pace with the voice
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
@@ -4962,12 +5017,13 @@ fn main() {
             // Tucked away past the edge, the character is called in by the pointer at that edge: the pointer's place is
             // read often while it is hidden, and not by this loop otherwise.
             let h = app.handle().clone();
-            std::thread::spawn(move || loop {
+            // Must fix 33: parked (no timer) while it is not tucked away; peek_apply wakes it when it tucks away.
+            std::thread::spawn(move || { let _ = EDGE_THREAD.set(std::thread::current()); loop {
+                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { std::thread::park(); continue; }
                 std::thread::sleep(Duration::from_millis(peek::EDGE_POLL_MS));
-                if *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) != peek::Pose::Hidden { continue; }
                 let h2 = h.clone();
                 let _ = h.run_on_main_thread(move || peek_edge_poll(&h2));
-            });
+            } });
             // Follow my pointer (gaze.rs): the pointer's place, a few times a second, only while the eyes follow it (Lively)
             // and the character is in view; otherwise the thread sleeps with no timer (M46).
             gaze_recompute();
@@ -5020,7 +5076,7 @@ fn main() {
                         let _ = app.emit("runner-event", stop);
                         showme_stop(&app);
                     }
-                    "quit" => app.exit(0),
+                    "quit" => { quit::mark(quit::MENU); app.exit(0) }
                     _ => {}
                 })
                 .build(app)?;
@@ -5036,7 +5092,17 @@ fn main() {
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
     app.run(|app, ev| match ev {
-        RunEvent::Exit => { drop_end_for_quit(); app.state::<runner::Runner>().shut_down(); }
+        // Must fixes 1 and 15: the speech models go first, the quit is written down with where it came from, then the
+        // engine shuts down. A speech model that may still be loaded never reaches the clean up at exit (the crash on
+        // quit): the process ends at once instead, after the engine has shut down.
+        RunEvent::Exit => {
+            quit_now(app, quit::from(), quit::VOICE_WAIT);
+            match quit::ending(quit::hard(), quit::restarting()) {
+                quit::Ending::Usual => {}
+                quit::Ending::AtOnce => unsafe { libc::_exit(0) },
+                quit::Ending::RelaunchThenAtOnce => { relaunch_now(app); unsafe { libc::_exit(0) } }
+            }
+        }
         // Companion opened again while it runs (Finder, Spotlight, Launchpad): macOS asks this copy to reopen.
         RunEvent::Reopen { .. } => reopened(app),
         _ => {}
@@ -5046,6 +5112,20 @@ fn main() {
 /// Opening Companion again shows it if the person hid it from the menu bar (that icon can be out of reach: behind the notch,
 /// or turned off in macOS's menu bar settings), the same way the menu does; otherwise it opens Home. Never the keyboard.
 /// Main thread (the app's own event loop).
+/// Must fix 22: starts the updated copy before this one ends at once. Waits up to two seconds for `open` to hand the
+/// launch to macOS, so the request is not lost when this process ends.
+fn relaunch_now(app: &AppHandle) {
+    let Ok(binary) = tauri::process::current_binary(&app.env()) else { log("update_relaunch_failed", json!({ "why": "binary" })); return };
+    let (prog, args) = quit::relaunch_command(&binary);
+    match std::process::Command::new(prog).args(args).spawn() {
+        Ok(mut child) => {
+            let until = std::time::Instant::now() + Duration::from_secs(2);
+            while std::time::Instant::now() < until { if let Ok(Some(_)) = child.try_wait() { break } std::thread::sleep(Duration::from_millis(50)); }
+            log("update_relaunched", json!({}));
+        }
+        Err(_) => log("update_relaunch_failed", json!({ "why": "spawn" })),
+    }
+}
 fn reopened(app: &AppHandle) {
     log("reopened", json!({ "hidden": USER_HID.load(Ordering::SeqCst) }));
     if USER_HID.load(Ordering::SeqCst) { set_user_hidden(app, false); } else { open_card(app, "reopen", false); }

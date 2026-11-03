@@ -9,13 +9,14 @@ const TAIL = 8000;   // the end of the output is where the error usually is
 const GRACE_MS = 1000;   // after the command itself ends, how long to wait for its output to finish before giving up on the pipes
 
 // A command runs in its own process group, so when the app has to end the engine by force (a stuck engine after Stop
-// everything, or a crash), killing the engine's group does not reach it. With endWithUs, a helper in the command's own group
-// waits on a pipe that only this program holds open and never writes to; when this program ends, however it ends, the pipe
-// closes and the helper ends the whole group. The command itself still gets empty input, as without it.
-const LIFELINE = 'exec 3<&0 </dev/null; ( while read x <&3; do :; done; kill -s KILL 0 ) >/dev/null 2>&1 & exec 3<&-; c=$1; shift; eval "$c"';
+// everything, or a crash), killing the engine's group does not reach it. So a helper in the command's own group waits on a
+// pipe that only this program holds open and never writes to; when this program ends, however it ends, the pipe closes and
+// the helper ends the whole group. The command itself still gets empty input, as without it. Must fix 14: every command
+// runs this way unless it says endWithUs: false, and the project's own server for a check too (server.ts).
+export const LIFELINE = 'exec 3<&0 </dev/null; ( while read x <&3; do :; done; kill -s KILL 0 ) >/dev/null 2>&1 & exec 3<&-; c=$1; shift; eval "$c"';
 
 // onOutput: each piece of output as it arrives (both streams), for a command whose progress is shown while it runs.
-// endWithUs: the command ends the moment this program ends (see LIFELINE). For a long download that must obey rule 11.
+// endWithUs: the command ends the moment this program ends (see LIFELINE). On unless set to false (must fix 14).
 // keep: how much of the end of each stream to keep (a long build log needs more than a test run).
 // box: run it in the safety box for proof checks (box.ts), with its own temporary folder as TMPDIR. A box that cannot be
 // made runs nothing (code 126): a command meant for the box never runs outside it.
@@ -29,7 +30,8 @@ export function runCommand(command: string, o: RunOptions): Promise<RunResult> {
     if (o.box && !box) return resolve({ code: 126, signal: null, stdout: "", stderr: BOX_UNAVAILABLE, timedOut: false, ms: 0 });
     if (box) env.TMPDIR = `${box.tmp}/`;
     const sh = (args: string[]): [string, string[]] => (box ? [SANDBOX_EXEC, [...box.args, "/bin/sh", ...args]] : ["sh", args]);
-    const child = o.endWithUs
+    const lifeline = o.endWithUs !== false;
+    const child = lifeline
       ? spawn(...sh(["-c", LIFELINE, "sh", command]), { cwd: o.cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"] })
       : spawn(...sh(["-c", command]), { cwd: o.cwd, env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
     child.stdin?.on("error", () => { /* the command's side closed first; nothing is ever written */ });

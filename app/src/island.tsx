@@ -12,6 +12,7 @@ import { S } from "./strings.ts";
 import { useDrop } from "./dropRing.tsx";
 import { activeGroup } from "./groups.ts";
 import { running } from "./dropmenu.ts";
+import { PartBoundary } from "./partBoundary.tsx";
 import "./style.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
@@ -217,4 +218,5 @@ function Island() {
 // The settings in force, kept in step with every change (settingsStore.ts), so the island reads them the same way.
 startSettings();
 followLessMotion();
-createRoot(document.getElementById("root")!).render(<StrictMode><Island /></StrictMode>);
+// Must fix 4: a draw error never leaves this window blank for good (partBoundary.tsx).
+createRoot(document.getElementById("root")!).render(<StrictMode><PartBoundary part="island" auto><Island /></PartBoundary></StrictMode>);

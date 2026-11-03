@@ -22,13 +22,13 @@ import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import type { Command } from "../../../protocol/index.ts";
-import { NEEDS_GIT, type CheckpointStore } from "../checkpoints.ts";
+import { NEEDS_GIT, type Checkpoint, type CheckpointStore } from "../checkpoints.ts";
 import type { FastLike } from "../lanes.ts";
 import { PRODUCT, PRODUCT_S } from "../names.ts";
 import { clip, redact, redactOutput } from "../redact.ts";
 import { isEnvFile } from "../secretfiles.ts";
 import { limitReached } from "../spending.ts";
-import { diffForExplain, taskHunks, teachable, type Hunk } from "../teach.ts";
+import { diffForExplain, hideSecretRuns, taskHunks, teachable, type Hunk } from "../teach.ts";
 import { NO_PROJECT } from "../walk.ts";
 import { ChangeBatcher, ignoredPath, type WatchFn } from "./batcher.ts";
 import { importersOf, MAX_BATCH_FILES, needsStrongModel, rate, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines } from "./rate.ts";
@@ -105,8 +105,10 @@ const MOVED_ON = "Those changes were already reviewed or have moved on. Review t
 const NOTHING = "Nothing has changed since the last review.";
 const STOPPED = "The review was stopped.";
 const COULD_NOT = `${PRODUCT} could not look at those changes just now. Try again.`;
-const HIDDEN_LINE = "[a line with a key or password, hidden]";
 const NO_COPY = `${PRODUCT} could not keep a copy of this project to compare with, so its changes cannot be reviewed. Try opening the project again.`;
+const FULL = `Reviews of changes are paused for this project: ${PRODUCT_S} undo history for it is full (over 2 GB). Older undo points are removed as new ones are made, and reviews start again by themselves when there is room. Changes made meanwhile are not reviewed.`;
+/** The review's own versions kept from pruning (must fix 26), besides those of the open and the reviewed batches. */
+const KEEP_MADE = 20;
 
 const later = <T>(p: Promise<T>, ms: number, signal: AbortSignal): Promise<T> => new Promise<T>((ok, no) => {
   if (signal.aborted) { no(new Error("stopped")); return; }
@@ -143,10 +145,11 @@ export function liveCode(project: string, maxFiles = 3000, maxBytes = 300_000, m
 }
 
 /** The change as the model is shown it: every line the review's own rule calls a key in code (and any removed or nearby
- *  line like it) is replaced before the text is made, so the rule and the redaction can never disagree on what leaves. */
+ *  line like it) is replaced before the text is made, so the rule and the redaction can never disagree on what leaves.
+ *  Lines are judged with the lines around them (teach.ts hideSecretRuns), never one at a time: hiding only a private key's
+ *  BEGIN line once let its body go to the model (must fix 3, 3 Nov 2026). */
 function withoutKeys(hunks: Hunk[]): Hunk[] {
-  const hide = (file: string) => (t: string) => (secretsInCode([{ file, line: 1, text: t }]).length ? HIDDEN_LINE : t);
-  return hunks.map((h) => ({ ...h, before: h.before.map(hide(h.file)), after: h.after.map(hide(h.file)), context: h.context.map(hide(h.file)) }));
+  return hunks.map((h) => hideSecretRuns([h], (t) => secretsInCode([{ file: h.file, line: 1, text: t }]).length > 0)[0]);
 }
 
 export class ReviewService {
@@ -172,7 +175,31 @@ export class ReviewService {
   private stops = 0;
   private gen = 0;
   private chain: Promise<unknown> = Promise.resolve();
+  /** The undo store's guard while a project is watched, and the newest versions the review itself made (must fix 26). */
+  private unguard: (() => void) | null = null;
+  private made: string[] = [];
+  /** The store was full (FULL), so nothing was measured: a fresh starting point is taken once there is room. */
+  private paused = false;
   constructor(private deps: ReviewDeps) {}
+
+  /** A version for the review: it only needs to tell whether a .env file changed, so it keeps a salted hash of it, never a
+   *  copy (must fix 26). Remembered, so the store keeps it while the review may still use it. */
+  private snap(store: CheckpointStore, label: string): Promise<Checkpoint> {
+    return store.snapshot(label, { envCopies: false }).then((c) => { this.made.push(c.id); if (this.made.length > KEEP_MADE) this.made.shift(); return c; });
+  }
+  /** What the store must keep for the review: the open batch, the reviewed ones (Review again), and its newest versions. */
+  private inUse(): string[] {
+    const out = [...this.made];
+    for (const b of [this.open, ...[...this.reviewed.values()].map((r) => r.batch)]) if (b) out.push(b.from, b.to);
+    return out;
+  }
+  /** The store is full: nothing is measured or saved, and it is said once. False when there is room. */
+  private full(store: CheckpointStore, project: string): boolean {
+    if (!store.full) return false;
+    if (!this.paused) { this.paused = true; this.notReviewed(project, FULL); }
+    this.dirty.clear(); this.dirtyCapped = false;
+    return true;
+  }
 
   // ---------- what is watched ----------
 
@@ -206,13 +233,16 @@ export class ReviewService {
     this.batcher = b; this.watching = p;
     this.open = null; this.dirty.clear(); this.dirtyCapped = false; this.reviewed.clear();
     this.startProblem = null;
-    this.baseline = this.serial(() => store.snapshot(LABEL_START).then((c) => c.id)).catch((e: unknown) => {
+    this.unguard?.(); this.made = []; this.paused = false;
+    try { this.unguard = store.guard(() => this.inUse()); } catch { this.unguard = null; }   // a store that cannot keep them: the newest 100 still stay
+    this.baseline = this.serial(() => this.snap(store, LABEL_START).then((c) => c.id)).catch((e: unknown) => {
       if (gen === this.gen) this.startProblem = String((e as Error)?.message ?? e) === NEEDS_GIT ? NEEDS_GIT : NO_COPY;
       return null;
     });
   }
   private stopWatching(): void {
     this.gen++;
+    this.unguard?.(); this.unguard = null; this.made = [];
     this.batcher?.stop();
     this.batcher = null; this.watching = null; this.open = null;
     this.dirty.clear(); this.dirtyCapped = false; this.held = null; this.win = null;
@@ -268,10 +298,10 @@ export class ReviewService {
     const stops = this.stops;
     const from = this.open && !this.open.frozen ? Promise.resolve(this.open.to) : this.baseline;
     let pre = from;
-    if (this.dirty.size || this.dirtyCapped) {
+    if ((this.dirty.size || this.dirtyCapped) && !this.full(this.deps.store(p), p)) {
       // Taken now, before the engine writes anything: the store runs one step at a time, so this snapshot comes first.
       const store = this.deps.store(p);
-      const snap = store.snapshot(LABEL_BATCH);
+      const snap = this.snap(store, LABEL_BATCH);
       snap.catch(() => undefined);
       pre = snap.then((c) => c.id, () => null);
       const gen = this.gen, capped = this.dirtyCapped;
@@ -320,7 +350,9 @@ export class ReviewService {
     const store = this.deps.store(p);
     const gen = this.gen;
     this.dirty.clear(); this.dirtyCapped = false;
-    const next = this.serial(async () => (gen === this.gen ? (await store.snapshot(LABEL_AFTER)).id : null)).catch(() => null);
+    // While the store is full nothing is saved; a fresh starting point is taken once there is room (measure).
+    if (store.full) this.paused = true;
+    const next = this.paused ? Promise.resolve(null) : this.serial(async () => (gen === this.gen ? (await this.snap(store, LABEL_AFTER)).id : null)).catch(() => null);
     this.baseline = next.then(async (id) => id ?? null);
     // Work that never edits code: what else changed meanwhile is the other tool's.
     const during = w && !w.heavy ? seen.paths.filter((x) => !LIGHT_OWN_FILE.test(x)) : [];
@@ -361,6 +393,15 @@ export class ReviewService {
       const p = this.watching;
       if (gen !== this.gen || !p || this.reviewing || this.open?.frozen || this.ownOf(p) > 0 || stops !== this.stops) return null;
       if (!this.dirty.size && !this.dirtyCapped) return null;
+      if (this.full(this.deps.store(p), p)) return null;
+      if (this.paused) {
+        // There is room again: what changed while it was full is not reviewed; the next batch starts from here.
+        this.paused = false;
+        this.dirty.clear(); this.dirtyCapped = false;
+        const start = await this.snap(this.deps.store(p), LABEL_START).then((c) => c.id, () => null);
+        if (gen === this.gen) { this.open = null; this.baseline = Promise.resolve(start); }
+        return null;
+      }
       const from = this.open ? this.open.from : await this.baseline;
       if (!from || gen !== this.gen || stops !== this.stops) return null;
       const taken = [...this.dirty], wasCapped = this.dirtyCapped;
@@ -368,7 +409,7 @@ export class ReviewService {
       this.dirty.clear(); this.dirtyCapped = false;
       const store = this.deps.store(p);
       const epoch = this.ownEpoch;
-      const to = await store.snapshot(LABEL_BATCH);
+      const to = await this.snap(store, LABEL_BATCH);
       if (gen !== this.gen) return null;
       if (stops !== this.stops) { for (const x of taken) this.dirty.add(x); if (wasCapped) this.dirtyCapped = true; return null; }
       return this.announce(store, from, to.id, capped, this.ownEpoch !== epoch, o.noAuto ? null : stops);
@@ -456,6 +497,7 @@ export class ReviewService {
     await this.baseline;
     if (stopped()) return;
     if (this.startProblem && !this.open) { this.notReviewed(cmd.project, this.startProblem, cmd.batch); return; }
+    if (this.deps.store(p).full) { this.notReviewed(cmd.project, FULL, cmd.batch); return; }
     let b: Batch | null | undefined;
     if (cmd.batch) {
       b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch;

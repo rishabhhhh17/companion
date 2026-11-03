@@ -22,6 +22,7 @@ import { SKIN, skinVars } from "./skins.ts";
 import { useFlow } from "./flow/useFlow.ts";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
+import { PartBoundary } from "./partBoundary.tsx";
 import "./style.css";
 
 // The live drawing (and the three.js it needs) is loaded only when asked for: with character.live off, nothing of it is fetched.
@@ -257,4 +258,5 @@ function Dock() {
 // The settings in force (reactions, motion), kept in step with every change (settingsStore.ts).
 startSettings();
 followLessMotion();
-createRoot(document.getElementById("root")!).render(<StrictMode><Dock /></StrictMode>);
+// Must fix 4: a draw error never leaves this window blank for good (partBoundary.tsx).
+createRoot(document.getElementById("root")!).render(<StrictMode><PartBoundary part="dock" auto><Dock /></PartBoundary></StrictMode>);

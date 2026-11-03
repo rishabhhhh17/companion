@@ -81,6 +81,28 @@ describe("the change as Explain sees it", () => {
     expect(d).not.toContain("MIIEowIBAAKCAQEA");
     expect(d).not.toContain("QWERTYUIOP");
   });
+  // Must fix 3 (3 Nov 2026): a key changed inside a file shows only its body in the diff, with no BEGIN line to anchor on.
+  test("a private key's body is hidden even when its BEGIN line is not in view", () => {
+    const keep = ["MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7Vq3mKx9fQe2Lw", "Z8pR4tYc1uNb6sJd0hGk3aXy5WvTq7oPmEiLr9DnBfC2zHjU8gKxQ4sMvYw1eRt"];
+    const was = ["Q1aW2sE3dR4fT5gY6hU7jI8kO9lP0zXcVbNmQaZwSxEdCrFvTgByHnUjMiKoLpQ", "w9xY"];
+    const now = ["Nq6Hp0bLm3cVd7xSa9fJk2gTy4uWe8iO1rPz5hQn6vXb3mCt0kLs9yDf2jGh4aR", "Xw7e"];
+    const file = (body: string[]) => lines("const k = `-----BEGIN PRIVATE KEY-----", ...keep, ...body, "-----END PRIVATE KEY-----`;", "export default k;");
+    const d = diffForExplain(taskHunks([{ file: "src/key.js", kind: "modified" }], { "src/key.js": file(was) }, { "src/key.js": file(now) }));
+    for (const b of [...keep, ...was, ...now]) expect(d).not.toContain(b);
+  });
+  test("a key's BEGIN line hidden on its own never leaves the body after it in view", () => {
+    const body = ["MIIEowIBAAKCAQEA1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJ", "short1"];
+    const h = taskHunks([{ file: "src/key.js", kind: "added" }], {}, { "src/key.js": lines("-----BEGIN OPENSSH PRIVATE KEY-----", ...body, "-----END OPENSSH PRIVATE KEY-----") });
+    // A caller that hid the BEGIN line itself (as the review once did) took away the anchor; the body must still go.
+    const d = diffForExplain(h.map((x) => ({ ...x, after: x.after.map((l) => (l.includes("BEGIN") ? "[hidden]" : l)) })));
+    for (const b of body) expect(d).not.toContain(b);
+  });
+  test("ordinary code next to a key stays readable", () => {
+    const h = taskHunks([{ file: "src/pay.js", kind: "added" }], {}, { "src/pay.js": lines("const key = \"sk_live_abcdefghijklmnop1234\";", "export const total = (a, b) => a + b;") });
+    const d = diffForExplain(h);
+    expect(d).not.toContain("sk_live_abcdef");
+    expect(d).toContain("export const total = (a, b) => a + b;");
+  });
   test("it is cut to a size limit and says so", () => {
     const big = Array.from({ length: 2000 }, (_, i) => `line number ${i} with some words`).join("\n");
     const d = diffForExplain(taskHunks([{ file: "a.txt", kind: "added" }], {}, { "a.txt": big }), 3000);

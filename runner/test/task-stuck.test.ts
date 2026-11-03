@@ -10,16 +10,18 @@ import { TaskLog } from "../src/tasklog.ts";
 import { STUCK_OPTIONS } from "../src/drive.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
+import { Runners, waitFor } from "./helpers/settle.ts";
 
 const made: string[] = [];
-afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
+// Must fix 5: runners left waiting (a test that failed or ran out of time) are stopped before their folders go.
+const live = new Runners();
+afterEach(async () => { await live.stopAll(); while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-ts-${l}-`))); made.push(d); return d; };
 const write = (f: string, c: string): Step => ({ tool: { name: "Write", input: { file_path: f, content: c } }, costUsd: 0.01 });
 const ok = (): LadderResult => ({ verdict: "passed", steps: [] });
 const bad = (detail: string): LadderResult => { const s = { rung: "browser", label: "Opening it in a browser", status: "failed", detail, ms: 1 } as never; return { verdict: "failed", steps: [s], failedAt: s }; };
 const of = (e: Event[], t: string) => e.filter((x) => x.type === t) as any[];
 const states = (e: Event[]) => of(e, "agent.state").map((x) => x.state);
-const waitFor = async (fn: () => boolean) => { for (let i = 0; i < 500 && !fn(); i++) await Bun.sleep(10); };
 const writes = (n: number) => Array.from({ length: n }, (_, i) => [write("a.txt", String(i + 1))]);
 
 function setup(rounds: Step[][], proofs: LadderResult[]) {
@@ -29,7 +31,7 @@ function setup(rounds: Step[][], proofs: LadderResult[]) {
   const engine = new ScriptedEngine(rounds);
   const log = new TaskLog(":memory:");
   let n = 0;
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)] });
+  const runner = live.track(new AgentRunner({ shadowRoot: tmp("s"), engine, log, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)] }));
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: "Fix the signup page", model: "m", budgetUsd: 3, ...extra } as never);
   const choose = (choice: string) => runner.handle({ v: 1, id: "c", type: "loop.choose", agent: "builder-1", choice } as never);
   return { project, events, engine, log, runner, start, choose };
@@ -40,7 +42,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("the card shows the evidence and the same options, and the task waits for an answer", async () => {
     const r = setup(writes(4), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     const card = of(r.events, "loop.stuck")[0];
     expect(card).toMatchObject({ agent: "builder-1", index: 0, title: "Fix the signup page" });
     expect(card.failure.detail).toContain("x is not defined");
@@ -55,7 +57,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("Stop here ends the task as Not done, with one receipt", async () => {
     const r = setup(writes(4), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.choose("stop");
     await run;
     expect(r.engine.calls.length).toBe(3);
@@ -68,7 +70,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("a different approach carries on in the same task, with the history, and can still finish", async () => {
     const r = setup(writes(4), [same, same, same, ok()]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.choose("different");
     await run;
     expect(r.engine.calls.length).toBe(4);
@@ -85,7 +87,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("it is offered once: if the new approach fails the same way three more times, the task ends", async () => {
     const r = setup(writes(7), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.choose("different");
     await run;
     expect(of(r.events, "loop.stuck").length).toBe(1);
@@ -98,7 +100,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("the tries keep counting through a different approach, so a fix after it is never shown as a first try", async () => {
     const r = setup(writes(4), [same, same, same, ok()]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.choose("different");
     await run;
     expect(of(r.events, "proof.result").map((p) => p.tries)).toEqual([1, 2, 3, 4]);
@@ -108,7 +110,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("off the record, the different approach is told the request again", async () => {
     const r = setup(writes(4), [same, same, same, ok()]);
     const run = r.start({ offTheRecord: true });
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     expect(of(r.events, "loop.stuck")[0].title).toBe("Off the record task");
     await r.choose("different");
     await run;
@@ -120,7 +122,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("Stop while the card waits ends the task", async () => {
     const r = setup(writes(4), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.runner.handle({ v: 1, id: "k", type: "agent.interrupt", agent: "builder-1" });
     await run;
     expect(r.log.list()[0].status).toBe("interrupted");
@@ -131,7 +133,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("Stop everything while the card waits ends the task", async () => {
     const r = setup(writes(4), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.runner.handle({ v: 1, id: "k", type: "agent.interruptAll", reason: "kill switch" });
     await run;
     expect(r.log.list()[0].status).toBe("interrupted");
@@ -141,7 +143,7 @@ describe("three identical failures in a single task stop and ask", () => {
   test("while the card waits, the agent is busy: a new task is refused", async () => {
     const r = setup(writes(4), [same]);
     const run = r.start();
-    await waitFor(() => of(r.events, "loop.stuck").length > 0);
+    await waitFor("the loop card", () => of(r.events, "loop.stuck").length > 0);
     await r.start({ prompt: "Something else" });
     expect(of(r.events, "protocol.error").at(-1).reason).toMatch(/already working/i);
     await r.choose("stop");
@@ -155,12 +157,13 @@ describe("it does not cry wolf", () => {
     await r.start();
     expect(of(r.events, "loop.stuck").length).toBe(0);
     expect(r.log.list()[0].status).toBe("not_done");
-  }, 20_000);
-  // Three real task runs in a row: well under a second alone, but past bun's 5 s default on a loaded Mac (1 Nov 2026).
+  });
+  // Three real task runs in a row: well under a second alone, but past bun's old 5 s default on a loaded Mac (1 Nov 2026);
+  // the gate now gives every test 30 s (must fix 5).
   test("two identical failures then a pass is just a fix", async () => {
     const r = setup(writes(3), [bad("x"), bad("x"), ok()]);
     await r.start();
     expect(of(r.events, "loop.stuck").length).toBe(0);
     expect(r.log.list()[0].status).toBe("done");
-  }, 20_000);
+  });
 });

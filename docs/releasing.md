@@ -23,21 +23,21 @@ Checked offline on 20 Oct 2026 (build, disk image, bundle contents, Info.plist, 
    - The address is baked into the app when it is built. A build made before this step can never update itself, and `release.sh` refuses to run until the file is filled in.
    - "A Companion update key already exists": good, do not make another. Making a second one would strand every installed copy.
    - If the private key is lost, installed copies can never update again and people must reinstall. If it leaks, someone could push a fake update. Back it up like a password.
-6. **Where problem reports go**, once: put your email address (or an https page for reports) in `app/src-tauri/report.json`. Until you do, Report a problem opens an email with no recipient and the person types one in.
+6. **Where problem reports go**, once: put your email address (or an https page for reports) in `app/src-tauri/report.json`, and commit it. Until you do, Report a problem opens an email with no recipient, and `release.sh` refuses to build (`COMPANION_ALLOW_NO_REPORT=1` skips this on purpose).
 7. **Tools on this Mac**: Apple Silicon, Bun 1.4.2 exactly (`bun --version`), Rust, and the Tauri tool (`cargo tauri --version`). The build checks and tells you what is wrong. If `cargo tauri` is not found, install it with `cargo install tauri-cli --version "^2" --locked`.
 
 ## Every release
 
 1. **Checks.** `sh scripts/audit.sh` and `python3 scripts/make-acknowledgements.py --check`. Both must be clean. If the second says the licence notices are out of date, run it without `--check` and commit the result.
 2. **Version.** Raise `version` in `app/src-tauri/tauri.conf.json` and `app/src-tauri/Cargo.toml` (same number in both). Write what changed in `whatsNew` in `app/src/strings.ts` (a few short plain sentences; Home shows them once after the update, and a page test fails until the new version has some).
-3. **Everything passes.** `sh scripts/test-all.sh` (it includes the release script tests).
+3. **Commit, then everything passes.** Commit every change first, then run `sh scripts/test-all.sh` (it includes the release script tests and the permission lint). When every suite passes on a tree with nothing uncommitted, it notes the commit in `.tested-head`. `release.sh` builds only that exact commit, and the app shows it in About and in the support log, so a report can be matched to its source.
 4. **Look at the plan.** `sh app/scripts/release.sh --dry-run`. Every line under "Your setup" should say found or set. `COMPANION_SIGN_ID: NOT SET` is normal here; you set it in the next step.
 5. **Release.**
    `COMPANION_SIGN_ID="Developer ID Application: Your Name (TEAMID)" sh app/scripts/release.sh`
-   It builds, signs, sends the app to Apple, waits (usually 2 to 15 minutes; the first ones can be hours), staples, makes the disk image, signs it, sends it to Apple, waits, staples, and checks. Total about 20 to 40 minutes. macOS may ask once to let `codesign` use your key: choose Always Allow.
+   It first checks the commit was tested and nothing is uncommitted, that `report.json` and `updater.json` are filled in, and installs Claude for real once from Anthropic (a few minutes, needs the internet). Then it builds, signs, sends the app to Apple, waits (usually 2 to 15 minutes; the first ones can be hours), staples, makes the disk image, signs it, sends it to Apple, waits, staples, and checks. Total about 20 to 40 minutes. macOS may ask once to let `codesign` use your key: choose Always Allow.
    Success ends with `ready to send: .../app/installer/Squibby-<version>.dmg`, and the lines `accepted` / `source=Notarized Developer ID` from `spctl`.
 6. **Try it on a Mac that is not yours** (or a fresh user account on your Mac): copy the `.dmg` over by AirDrop or a download, open it, drag Squibby to Applications, open it. It must open with no "Open Anyway" and no "damaged" message. Do not skip this: it is the only test of the real thing.
-7. **Update files.** `sh app/scripts/build-update.sh "what changed, in plain words"`. It asks for the update key password and prints the one `gh release create ...` command that publishes. Read what it made in `app/installer/update`, then run that command. It goes public.
+7. **Update files.** `sh app/scripts/build-update.sh "what changed, in plain words"`. It asks for the update key password and prints the one `gh release create ...` command that publishes. The update file names this version's own download (`.../releases/download/v<version>/Squibby.app.tar.gz`), never the "latest" one, which moves on with the next release. Read what it made in `app/installer/update`, then run that command. It goes public.
 8. **The installer for friends.** Upload `app/installer/Squibby-<version>.dmg` to the same public release (the `gh release create` command above can take it as one more file), and send the release page link. The first friends install the disk image by hand. After that, installed copies find new versions by themselves (once a day, if on) and install only when the person presses Install and nothing is running.
 
 ## What goes wrong, and what you will see
@@ -46,7 +46,11 @@ Checked offline on 20 Oct 2026 (build, disk image, bundle contents, Info.plist, 
 |---|---|---|
 | `COMPANION_SIGN_ID: set COMPANION_SIGN_ID ...` | You ran release.sh with no identity | Add `COMPANION_SIGN_ID="..."` in front, exact text from step 2 |
 | `FAIL: no valid signing certificate named ...` | The name does not match any certificate in your Keychain | Copy the exact name from `security find-identity -v -p codesigning` |
+| `FAIL: there are uncommitted changes ...` | Something is not committed | Commit it (or put it aside), run `sh scripts/test-all.sh`, release again |
+| `FAIL: the full test suite has not passed on commit ...` | test-all.sh was not run on this commit, or it failed | Run `sh scripts/test-all.sh` until it ends with "All suites passed", then release again |
 | `FAIL: updater.json is empty ...` | Step 5 of One time was skipped | Run make-update-key.sh, commit, release again. `COMPANION_ALLOW_NO_UPDATER=1` skips this on purpose |
+| `FAIL: report.json is empty ...` | Step 6 of One time was skipped | Put your email address or page in it, commit, release again. `COMPANION_ALLOW_NO_REPORT=1` skips this on purpose |
+| `FAIL: installing Claude for real did not work` | No internet, or Anthropic's download changed | Check the internet and read the test's output; if it is about the signature or the pin, tell the agent session |
 | `FAIL: this build is pinned to Bun 1.4.2 ...` | Wrong Bun | Install Bun 1.4.2 |
 | `FAIL: this build needs an Apple Silicon Mac` | Built on an Intel Mac | Use an Apple Silicon Mac |
 | `FAIL: these programs inside the engine are not signed with a Developer ID ...` | A program in the engine lost its maker's signature | Do not re-sign it. Reinstall the pinned packages (`stage-engine.sh` reruns on every build) |

@@ -5,7 +5,7 @@
 // Settings and key files, Companion's, Claude's and git's own folders, installed packages, build output and lock files are
 // never used, and every secret looking value is hidden before any of it leaves this file.
 import { isEnvFile } from "./diagram.ts";
-import { clip, label, redact } from "./redact.ts";
+import { clip, label, redact, secretLines } from "./redact.ts";
 import { PROTECTED } from "./safety.ts";
 
 export type Changed = { file: string; kind: string };
@@ -118,13 +118,29 @@ export function taskHunks(changed: Changed[], before: Record<string, string>, af
   return out;
 }
 
+/** What a line that held part of a secret says instead, wherever the change is shown to a model. */
+export const HIDDEN_LINE = "[a line with a key or password, hidden]";
+/** The places with every line that holds part of a secret replaced (redact.ts secretLines): the lines above a place and
+ *  the lines taken away are judged as one run, and the same lines above with the lines added as another, so a key written
+ *  over several lines is hidden whole, its body included, even when its BEGIN line is out of view. isSecret: the caller's
+ *  own rule for one line (the review's rule for a key in code); a key's shape when not given. */
+export function hideSecretRuns(hunks: Hunk[], isSecret?: (line: string) => boolean): Hunk[] {
+  return hunks.map((h) => {
+    const n = h.context.length;
+    const was = secretLines([...h.context, ...h.before], isSecret), now = secretLines([...h.context, ...h.after], isSecret);
+    const hide = (l: string, secret: boolean) => (secret ? HIDDEN_LINE : l);
+    return { ...h, context: h.context.map((l, i) => hide(l, was[i] || now[i])), before: h.before.map((l, i) => hide(l, was[n + i])), after: h.after.map((l, i) => hide(l, now[n + i])) };
+  });
+}
+
 const LINE_MAX = 200;
 /** The change in a plain form for Explain: per file, where each place is, then lines taken away (-) and added (+). Every
- *  secret looking value is hidden over the whole text first (a key can span lines), then lines and the whole are cut. */
+ *  line that holds part of a secret is hidden first, judged with the lines around it (hideSecretRuns), then every secret
+ *  looking value left is hidden over the whole text (a key can span lines), then lines and the whole are cut. */
 export function diffForExplain(hunks: Hunk[], maxChars = 6000): string {
   const rows: string[] = [];
   let file = "";
-  for (const h of hunks) {
+  for (const h of hideSecretRuns(hunks)) {
     if (h.file !== file) { file = h.file; rows.push(`--- ${h.file}`); }
     rows.push(`@@ line ${h.afterAt}`);
     for (const c of h.context) rows.push(`  ${c}`);

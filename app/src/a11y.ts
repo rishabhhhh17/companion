@@ -35,7 +35,7 @@ function gather(m: Model, at: Tab): { news: News[]; quiet: string[] } {
   if (m.receipt) {
     // The result as the verdict says it (M45). Its kind is in the key, so an Undo is said once, as Undone.
     const label = m.task?.label ?? "", v = receiptVerdict(m)!;
-    out.push({ key: `receipt:${m.receipt.checkpoint}:${v.kind}`, text: on("receipt", S.saidResult(label, v.say)) });
+    out.push({ key: `receipt:${m.receipt.checkpoint}${m.receipt.wholePlan ? ":plan" : ""}:${v.kind}`, text: on("receipt", S.saidResult(label, v.say)) });
   }
   const n = need(m);
   if (n && !out.some((x) => x.key === n.key)) {

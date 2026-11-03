@@ -5,11 +5,21 @@
 # Usage: sh app/scripts/build-update.sh "what changed, in plain words"
 set -eu
 cd "$(dirname "$0")/.."
+# Must fix 22: the download address of one version's update. The update file is fetched from the "latest" address, but the
+# file it names must be this version's own (GitHub's .../releases/download/v<version>/...), never the "latest" one, which
+# moves to the next release and would pair this version's signature with another version's file.
+url_for() {
+  BASE="${1%/latest.json}"
+  case "$BASE" in
+    */releases/latest/download) echo "${BASE%/latest/download}/download/v$2/Squibby.app.tar.gz" ;;
+    *) echo "$BASE/v$2/Squibby.app.tar.gz" ;;
+  esac
+}
+if [ "${1:-}" = "--url-for" ]; then url_for "${2:?endpoint}" "${3:?version}"; exit 0; fi
 NOTES="${1:?say what changed, in plain words}"
 CFG="src-tauri/updater.json"
 ENDPOINT="$(python3 -c 'import json;print(json.load(open("'"$CFG"'"))["endpoint"])')"
 [ -n "$ENDPOINT" ] || { echo "FAIL: updater.json is not filled in. Run make-update-key.sh first."; exit 1; }
-BASE="${ENDPOINT%/latest.json}"
 APP="${CARGO_TARGET_DIR:-src-tauri/target}/release/bundle/macos/Squibby.app"
 [ -d "$APP" ] || { echo "FAIL: build the app first (release.sh)"; exit 1; }
 spctl -a -t exec "$APP" 2>/dev/null || { echo "FAIL: the app is not notarized and signed for distribution; an update must be the finished app"; exit 1; }
@@ -25,11 +35,10 @@ printf "Update key password: "; read -rs PW; echo
 TAURI_SIGNING_PRIVATE_KEY="$KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$PW" cargo tauri signer sign --app-version "$VERSION" "$OUT/Squibby.app.tar.gz" >/dev/null
 [ -f "$OUT/Squibby.app.tar.gz.sig" ] || { echo "FAIL: the update was not signed"; exit 1; }
 base64 -d < "$OUT/Squibby.app.tar.gz.sig" | grep -q "$VERSION" || { echo "FAIL: the signature does not carry version $VERSION, so the app would refuse it"; exit 1; }
-python3 - "$OUT" "$VERSION" "$NOTES" "$BASE" <<'PY'
+python3 - "$OUT" "$VERSION" "$NOTES" "$(url_for "$ENDPOINT" "$VERSION")" <<'PY'
 import json, sys, datetime
-out, version, notes, base = sys.argv[1:5]
+out, version, notes, url = sys.argv[1:5]
 sig = open(out + "/Squibby.app.tar.gz.sig").read().strip()
-url = f"{base}/Squibby.app.tar.gz"
 entry = {"signature": sig, "url": url}
 latest = {"version": version, "notes": notes, "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "platforms": {"darwin-aarch64": entry}}
 open(out + "/latest.json", "w").write(json.dumps(latest, indent=2) + "\n")

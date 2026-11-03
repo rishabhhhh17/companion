@@ -302,7 +302,8 @@ export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval:
 export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: { id: number; title: string }[]; truncated: boolean; estimateUsd: number };
 export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
 export type DriveDone = Envelope & { type: "drive.done"; agent: string; status: string; completed: number; total: number; usdEstimate: number };
-export type RunnerPong = Envelope & { type: "runner.pong" };
+/** ping (must fix 12): the id of the runner.ping it answers, so the Stop key's check waits for the answer to its own ping. */
+export type RunnerPong = Envelope & { type: "runner.pong"; ping?: string };
 export type ShipGates = Envelope & { type: "ship.gates"; project: string; canShip: boolean; gates: { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean; places?: { table: string; file: string; line: number; lineText: string }[] }[]; blockedBy: string[]; needsYou: string[]; confirmed: string[]; allowedCount: number };
 // file: where the notes were filed in the project; none off the record, where nothing is kept.
 export type ResearchDone = Envelope & { type: "research.done"; agent: string; title: string; answer: string; notes: { text: string; source: string }[]; file?: string };
@@ -315,7 +316,9 @@ export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: n
 // undone (M45): an Undo put the project back to before this task. back: "Bring the fix back" then put its files back again
 // (undone stays set: nothing was checked since).
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
-export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[] };
+/** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
+ *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
+export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed" };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
@@ -587,8 +590,8 @@ const EVENTS: Record<string, Check[]> = {
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
     (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
-  "tasks.list": [str("project"), list("tasks")],
-  "runner.pong": [],
+  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"]))],
+  "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],

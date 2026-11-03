@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { AssistService, ImageStore } from "../src/lanes.ts";
+import { AssistService, ImageStore, MAX_IMAGES } from "../src/lanes.ts";
 import { parseCommand, serialize } from "../../protocol/index.ts";
 import type { Event } from "../../protocol/index.ts";
 
@@ -59,5 +59,33 @@ describe("a screenshot sent from the Mac side", () => {
   test("asking about a screenshot that was never sent, or that already expired, says so", async () => {
     const r = rig(); await r.locate();
     expect((r.events.at(-1) as any).reason).toMatch(/not found or has expired/);
+  });
+});
+
+// Must fix 31 (rule 5, dropped as soon as it is used): an expired picture never waits for someone to read it again.
+describe("the picture store forgets on its own", () => {
+  const img = { base64: "/9j/4AAQSkZJRg==", mediaType: "image/jpeg", w: 10, h: 10 } as never;
+  const size = (s: ImageStore) => (s as unknown as { m: Map<string, unknown> }).m.size;
+  test("putting a picture drops every expired one", () => {
+    let t = 0;
+    const s = new ImageStore(1000, () => t);
+    s.put("a", img); s.put("b", img);
+    t = 2000;
+    s.put("c", img);
+    expect(size(s)).toBe(1);
+    expect(s.get("c")).toBeDefined();
+  });
+  test("the store holds a few pictures at most, dropping the oldest", () => {
+    const s = new ImageStore(60_000, () => 0);
+    for (let i = 0; i < MAX_IMAGES + 3; i++) s.put(`p${i}`, img);
+    expect(size(s)).toBe(MAX_IMAGES);
+    expect(s.get("p0")).toBeUndefined();
+    expect(s.get(`p${MAX_IMAGES + 2}`)).toBeDefined();
+  });
+  test("a picture whose locate never comes is dropped when its time is up, with nothing else happening", async () => {
+    const s = new ImageStore(40);
+    s.put("lonely", img);
+    await Bun.sleep(150);
+    expect(size(s)).toBe(0);
   });
 });

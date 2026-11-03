@@ -150,7 +150,7 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
   });
   test("Undo is the same flow as before: the receipt's own question, on the same button id, with the same condition", () => {
     expect(result).toContain("id={undoId}");
-    expect(result).toContain("{S.home.undoFix}");
+    expect(result).toContain("{m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix}");
     expect(result).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
     expect(card).toContain("label={S.undoSure} back={undoId}");
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);

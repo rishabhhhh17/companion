@@ -17,9 +17,13 @@ import { minimalEnv } from "../src/env.ts";
 import { MAX_RUNS } from "../src/bisect.ts";
 import { parseEvent, type Event } from "../../protocol/index.ts";
 import { PRODUCT_S } from "../src/names.ts";
+import { Runners } from "./helpers/settle.ts";
 
 const made: string[] = [];
-afterEach(() => { while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
+// Must fix 5: every runner a test made is stopped, and what it was running waited for, before its folders are deleted. A
+// test that ran out of time keeps running otherwise, into the next test.
+const live = new Runners();
+afterEach(async () => { await live.stopAll(); while (made.length) rmSync(made.pop()!, { recursive: true, force: true }); });
 const tmp = (l: string) => { const d = realpathSync(mkdtempSync(join(tmpdir(), `companion-bis-${l}-`))); made.push(d); return d; };
 const of = (e: Event[], t: string) => e.filter((x) => x.type === t) as any[];
 const write = (file: string, content: string): Step => ({ tool: { name: "Write", input: { file_path: file, content } }, costUsd: 0.01 });
@@ -51,12 +55,12 @@ function setup(o: { breaks?: number; tasks?: number; judge?: (ctx: ProofContext)
   const checked: string[] = [];
   let clock = Date.parse("2026-10-14T09:00:00Z");
   const judge = o.judge ?? (async (ctx: ProofContext) => (readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing));
-  const runner = new AgentRunner({
+  const runner = live.track(new AgentRunner({
     shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e),
     now: () => new Date((clock += 60_000)), bisect: { workDir: work },
     // During a task the work passes its checks; the search's checks look at the copy they are given.
     proof: async (ctx) => { if (ctx.project === project) return passing; checked.push(ctx.project); return judge(ctx); },
-  });
+  }));
   const runTasks = async () => { for (let i = 1; i <= n; i++) await runner.handle({ v: 1, id: `t${i}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `Task number ${i}`, model: "m", budgetUsd: 3 }); };
   const bisect = () => runner.handle({ v: 1, id: "b1", type: "bisect.start", project, agent: "builder-1" });
   return { project, work, events, checked, runner, runTasks, bisect };
@@ -325,8 +329,8 @@ describe("undoing just the task that broke it", () => {
     writeFileSync(join(project, "app.js"), "ok\n");
     const rounds: Step[][] = [[write("x.txt", "1"), say], [write("app.js", "BUG\n"), say], [write("app.js", "BUG\nmore later work\n"), say]];
     const events: Event[] = [];
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e), bisect: { workDir: work },
-      proof: async (ctx) => (ctx.project === project ? passing : readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing) });
+    const runner = live.track(new AgentRunner({ shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e), bisect: { workDir: work },
+      proof: async (ctx) => (ctx.project === project ? passing : readFileSync(join(ctx.project, "app.js"), "utf8").includes("BUG") ? failing() : passing) }));
     for (let i = 1; i <= 3; i++) await runner.handle({ v: 1, id: `t${i}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `Task number ${i}`, model: "m", budgetUsd: 3 });
     await runner.handle({ v: 1, id: "b", type: "bisect.start", project, agent: "builder-1" });
     const r = of(events, "bisect.result")[0];
@@ -451,11 +455,11 @@ function pyProject(o: { tasks: Record<number, Step[]>; n?: number; requirements?
     if (app.includes("BUG")) return r(1, "FAILED tests/test_app.py::test_total - assert 16 == 15\n1 failed in 0.02s\n");
     return r(0, "1 passed in 0.01s\n");
   };
-  const runner = new AgentRunner({
+  const runner = live.track(new AgentRunner({
     shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e),
     now: () => new Date((clock += 60_000)), bisect: { workDir: work, ...(o.venv === false ? { run: ask as never } : {}) },
     proof: async (ctx) => (ctx.project === project ? passing : runLadder({ ...ctx, run: pytest as never })),
-  });
+  }));
   const runTasks = async () => { for (let i = 1; i <= n; i++) await runner.handle({ v: 1, id: `t${i}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `Task number ${i}`, model: "m", budgetUsd: 3 }); };
   const bisect = () => runner.handle({ v: 1, id: "b1", type: "bisect.start", project, agent: "builder-1" });
   const venvAsked = () => (existsSync(askLog) ? readFileSync(askLog, "utf8").split("\n").filter(Boolean) : []);
@@ -649,12 +653,12 @@ function realPyProject(n: number, breaks: number) {
   for (let i = 1; i <= n; i++) rounds.push(i === breaks ? [write("app.py", "def total():\n    return 16\n"), say] : [write(`notes${i}.txt`, `task ${i}\n`), say]);
   const events: Event[] = [];
   let clock = Date.parse("2026-10-14T09:00:00Z");
-  const runner = new AgentRunner({
+  const runner = live.track(new AgentRunner({
     shadowRoot: tmp("s"), engine: new ScriptedEngine(rounds), log: new TaskLog(":memory:"), emit: (e) => events.push(e),
     // The same real Python is asked where it imports code from as runs the checks (never a python3 looked up some other way).
     now: () => new Date((clock += 60_000)), bisect: { workDir: work, detect: (d) => detectProject(d, undefined, { path: realPath }) },
     proof: async (ctx) => (ctx.project === project ? passing : runLadder({ ...ctx, detect: (d) => detectProject(d, undefined, { path: realPath }) })),
-  });
+  }));
   return { project, work, events, runner, run: async () => {
     for (let i = 1; i <= n; i++) await runner.handle({ v: 1, id: `t${i}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `Task number ${i}`, model: "m", budgetUsd: 3 });
     await runner.handle({ v: 1, id: "b1", type: "bisect.start", project, agent: "builder-1" });
@@ -669,7 +673,7 @@ describe("a Python project with this Mac's real Python", () => {
     // Only the tasks' own changes: no __pycache__ or .pytest_cache written into the project.
     expect(readdirSync(s.project).sort()).toEqual(["app.py", "conftest.py", "notes1.txt", "notes2.txt", "notes4.txt", "requirements.txt", "tests"]);
     expect(readdirSync(join(s.project, "tests"))).toEqual(["test_app.py"]);
-  }, 60_000);
+  }, 60_000);   // real pytest runs, several times: more than the gate's 30 s on a loaded Mac
   (realPy && !realPytest ? test : test.skip)("without pytest installed, the check of now says what to install, and no task is blamed", async () => {
     const s = realPyProject(4, 3);
     await s.run();

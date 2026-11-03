@@ -147,19 +147,21 @@ export function agoWords(iso: string | null | undefined, now: number): string {
 }
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
+const samePlace = (a: string, b: string): boolean => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 /** The project's last check: the result on Home now, else the newest finished row of History. Its verdict is M45's, whole. */
 export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string): { verdict: Verdict; at: string | null } | null {
   if (m.receipt && m.task && (!m.task.project || m.task.project === project)) {
     const v = receiptVerdict(m);
-    const row = m.history.find((h) => h.checkpoint === m.receipt!.checkpoint);
+    const at = m.receipt.wholePlan?.last ?? m.receipt.checkpoint;
+    const row = m.history.find((h) => h.checkpoint === at);
     if (v) return { verdict: v, at: row?.endedAt ?? null };
   }
   const done = recentOf(m.history.filter((h) => h.status !== "running"))[0];
   return done ? { verdict: verdictOf(historyFacts(done)), at: done.endedAt ?? done.startedAt } : null;
 }
 
-export type StatusKind = "works" | "failing" | "unchecked" | "noProject";
+export type StatusKind = "works" | "changed" | "failing" | "unchecked" | "noProject";
 /** The one main button: Fix it, Check before going live, Check my project, or (no project yet) Choose a project. */
 export type MainAct = "fix" | "shipCheck" | "check" | "folder";
 /** `verdict`: what the headline draws (ui/parts.tsx VerdictLine). Its mark is the last check's own: a tick only when that
@@ -171,7 +173,7 @@ const dot = (headline: string): Verdict => ({ kind: "noChange", headline, line: 
 
 /** How the project is, in its own name, from the last check only (F28): "test-shop works" (proven), "test-shop has a
  *  problem" (a check failed), or "Not checked yet" (nothing proven: never checked, stopped, undone, partly checked). */
-export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history"> & { point?: Model["point"] }, project: string, now: number): HomeStatus {
+export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history"> & { point?: Model["point"]; sinceCheck?: Model["sinceCheck"] }, project: string, now: number): HomeStatus {
   const name = nameOf(project);
   if (!name) return { kind: "noProject", verdict: dot(S.home.noProject), sub: "", ago: "", main: "folder" };
   // The project's own checks just answered (the first run's first check, or Point at the problem), with no task result on
@@ -182,6 +184,8 @@ export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "histor
   if (pt?.stage === "clear") return { kind: "unchecked", verdict: dot(S.home.checksPass(name)), sub: S.home.inProject(name), ago: "", main: "check" };
   const last = lastResult(m, project);
   const ago = last ? agoWords(last.at, now) : "";
+  // The engine says the files changed since the version its last check passed on (must fix 11): never "works" over them.
+  if (last?.verdict.proven && m.sinceCheck?.changed && samePlace(m.sinceCheck.project, project)) return { kind: "changed", verdict: dot(S.home.changedSince(name)), sub: S.home.checkedAgo(ago), ago, main: "check" };
   if (last?.verdict.proven) return { kind: "works", verdict: said(last.verdict, S.home.works(name)), sub: S.home.checkedAgo(ago), ago, main: "shipCheck" };
   if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: S.home.failedAgo(ago), ago, main: "fix" };
   return { kind: "unchecked", verdict: dot(S.home.notChecked), sub: last ? S.home.lastWas(last.verdict.headline, ago) : S.home.inProject(name), ago, main: "check" };
@@ -192,6 +196,7 @@ export function notchStatusLine(s: HomeStatus, project: string): string {
   const name = nameOf(project);
   // A check that just answered has no time of its own (homeStatus, the point): its headline as one sentence.
   if (!s.ago && (s.kind === "failing" || (s.kind === "unchecked" && s.verdict.headline !== S.home.notChecked))) return S.verdict.say(s.verdict.headline, null);
+  if (s.kind === "changed") return S.home.notchChanged(name);
   return s.kind === "works" ? S.home.notchWorks(name, s.ago) : s.kind === "failing" ? S.home.notchFailing(name, s.ago) : s.kind === "unchecked" ? S.home.notchNotChecked(name) : S.home.notchNothing;
 }
 
@@ -305,10 +310,15 @@ export function blockerOf(o: { connected: Model["connected"] | string; runnerUp:
  *  Fix it is the one main button, so the hero has none. */
 export type ReviewLead = { headline: string; line: string; main: "review" | null };
 export function reviewLead(r: ReviewCard | null | undefined, project: string): ReviewLead | null {
-  if (!r || !project || r.project.replace(/\/+$/, "") !== project.replace(/\/+$/, "") || r.fix === "sent") return null;
+  if (!r || !project || r.project.replace(/\/+$/, "") !== project.replace(/\/+$/, "")) return null;
+  // A fix asked for from the review, before its task has begun (the card closes when it begins).
+  if (r.fix === "sent") return { headline: S.review.fixStarting, line: S.review.lead(r.count), main: null };
   if (r.stage === "ready") return { headline: S.review.lead(r.count), line: S.review.heroLine(r.count), main: r.asked ? null : "review" };
   if (r.stage === "reviewing") return { headline: S.review.lead(r.count), line: r.proof ? S.review.reviewingChecks : S.review.reviewing, main: null };
   if (r.result && r.result.rating !== "safe" && canFix(r)) return { headline: S.review.rating[r.result.rating], line: S.review.lead(r.count), main: null };
+  // Safe on a look, but the project's checks did not run on the changes: it keeps leading, so Home never says the project
+  // works over them (must fix 11).
+  if (r.result && r.result.rating === "safe" && r.result.checks !== "passed") return { headline: S.review.rating.safe, line: S.review.safeUnchecked, main: null };
   return null;
 }
 

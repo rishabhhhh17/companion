@@ -129,13 +129,30 @@ export class StubFast implements FastLike {
 // ---------- images, in memory only ----------
 
 export type Image = { base64: string; mediaType: string; w?: number; h?: number };
+/** The most pictures the store holds at once (must fix 31): one look sends at most MAX_SCREENS, so two looks' worth. */
+export const MAX_IMAGES = 8;
 export class ImageStore {
   private m = new Map<string, { img: Image; at: number }>();
+  private timer: ReturnType<typeof setTimeout> | undefined;
   constructor(private ttlMs = 5 * 60_000, private now: () => number = Date.now, private maxBase64 = 8 * 1024 * 1024) {}
   put(ref: string, img: Image) {
     if (img.base64.length > this.maxBase64) throw new Error("That image is too large to send");
+    // Must fix 31 (rule 5): an expired picture is dropped now, not when someone reads it again, and the store never holds
+    // more than MAX_IMAGES (the oldest goes first). A timer drops the rest once their time is up, even if nothing else
+    // happens; it never keeps the engine running.
+    this.sweep();
+    this.m.delete(ref);
     this.m.set(ref, { img, at: this.now() });
+    while (this.m.size > MAX_IMAGES) this.m.delete(this.m.keys().next().value as string);
+    this.arm();
   }
+  /** One timer for the store, a moment after the newest picture expires; it sweeps and sets itself again while any is left. */
+  private arm() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { this.timer = undefined; this.sweep(); if (this.m.size) this.arm(); }, this.ttlMs + 5);
+    (this.timer as { unref?: () => void }).unref?.();
+  }
+  private sweep() { const t = this.now(); for (const [k, e] of this.m) if (t - e.at > this.ttlMs) this.m.delete(k); }
   get(ref: string): Image | undefined {
     const e = this.m.get(ref);
     if (!e) return undefined;
@@ -143,7 +160,7 @@ export class ImageStore {
     return e.img;
   }
   delete(ref: string) { this.m.delete(ref); }
-  clear() { this.m.clear(); }
+  clear() { this.m.clear(); clearTimeout(this.timer); this.timer = undefined; }
 }
 
 // ---------- vision lane ----------

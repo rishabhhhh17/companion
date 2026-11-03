@@ -210,6 +210,38 @@ describe("secrets", () => {
     expect(r.sendBack).not.toContain(PEM);
     every(t.events);
   });
+  // Incident fixed 3 Nov 2026 (must fix 3): the review hid keys one line at a time, so only the BEGIN line of a private key
+  // was hidden, which also took away the line the whole text redaction looks for, and the key's body went to the model.
+  const BODY = [
+    "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7Vq3mKx9fQe2Lw",
+    "Z8pR4tYc1uNb6sJd0hGk3aXy5WvTq7oPmEiLr9DnBfC2zHjU8gKxQ4sMvYw1eRt",
+    "Nq6Hp0bLm3cVd7xSa9fJk2gTy4uWe8iO1rPz5hQn6vXb3mCt0kLs9yDf2jGh4aR",
+    "Xw7eB1nM",
+  ];
+  const sentLines = (t: ReturnType<typeof setup>) => JSON.stringify(t.asked);
+  test("a private key written over several lines into code never reaches the model, not one line of its body", async () => {
+    const t = setup({ files: { "src/sign.ts": "export const sign = () => 1;\n" } });
+    await started(t);
+    t.change({ "src/sign.ts": ["const PEM = `-----BEGIN PRIVATE KEY-----", ...BODY, "-----END PRIVATE KEY-----`;", "export const sign = () => PEM.length;", ""].join("\n") });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch }) as never);
+    const [r] = t.of("review.result");
+    expect(r.rating).toBe("stop");
+    expect(t.asked).toHaveLength(1);
+    for (const b of BODY) expect(sentLines(t)).not.toContain(b);
+    for (const b of BODY) expect(JSON.stringify(t.events)).not.toContain(b);
+  });
+  test("a key changed inside a file, with its BEGIN line out of view, still sends no line of its body", async () => {
+    const OLD = ["Q1aW2sE3dR4fT5gY6hU7jI8kO9lP0zXcVbNmQaZwSxEdCrFvTgByHnUjMiKoLpQ", "Lk8Jh7Gf6Ds5Aq4Wz3Ex2Rc1Tv0Yb9Un8Im7Ok6Pl5Az4Sx3Dc2Fv1Gb0Hn9Jm8KQ"];
+    const head = ["export const PEM = `-----BEGIN RSA PRIVATE KEY-----", BODY[0], BODY[1]];
+    const t = setup({ files: { "src/sign.ts": [...head, ...OLD, "-----END RSA PRIVATE KEY-----`;", ""].join("\n") } });
+    await started(t);
+    t.change({ "src/sign.ts": [...head, BODY[2], BODY[3], "-----END RSA PRIVATE KEY-----`;", ""].join("\n") });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch }) as never);
+    expect(t.asked).toHaveLength(1);
+    for (const b of [...BODY, ...OLD]) expect(sentLines(t)).not.toContain(b);
+  });
   test("a model that repeats a secret in its words has it hidden before anyone sees it", async () => {
     const t = setup({ files, words: JSON.stringify({ summary: `It now uses the key ${KEY} for payments.`, notes: [`Move ${KEY} to settings`], concern: true, concernSay: `The key ${KEY} is public.` }) });
     await started(t);
@@ -494,6 +526,51 @@ describe("hands off the person's git (rule 10)", () => {
     expect(hash(join(t.project, ".git"))).toBe(before);
     expect(existsSync(join(t.project, ".companion"))).toBe(false);
   });
+});
+
+// Must fix 26 (3 Nov 2026): every review batch added a checkpoint with a plain copy of every .env file, and nothing was pruned.
+describe("the undo store a review uses", () => {
+  const withEnv = { "src/App.tsx": "export const a = 1;\n", ".env": `DATABASE_PASSWORD=${ENV_VALUE}\n`, ".gitignore": ".env\n" };
+  const allText = (dir: string): string => { let out = ""; const walk = (d: string) => { for (const n of readdirSync(d)) { const x = join(d, n); const st = lstatSync(x); if (st.isDirectory()) walk(x); else if (st.isFile()) out += readFileSync(x, "latin1"); } }; walk(dir); return out; };
+  test("a review's own versions keep no copy of .env anywhere in the store, and a change to it is still named", async () => {
+    const t = setup({ files: withEnv });
+    await started(t);
+    t.change({ ".env": `DATABASE_PASSWORD=${ENV_VALUE}-rotated\n` });
+    await t.until(() => t.of("review.batch").length === 1);
+    expect(t.of("review.batch")[0].secretFiles).toEqual([".env"]);
+    expect(allText(t.shadow)).not.toContain(ENV_VALUE);
+  });
+  test("what a review is looking at is never pruned, however many versions come after it", async () => {
+    const t = setup();
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'One';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    const b = t.of("review.batch")[0];
+    // The open batch stays open (ask mode); the engine's own tasks make many versions meanwhile.
+    for (let i = 0; i < 115; i++) await t.store.snapshot(`Before: task ${i}`);
+    await t.svc.handle(t.cmd("review.now", { batch: b.batch }) as never);
+    expect(t.of("review.result")[0]).toMatchObject({ ok: true, batch: b.batch });
+  }, 60000);
+  test("when the undo store is full, reviews pause and say so, and start again by themselves from a fresh start", async () => {
+    const t = setup();
+    const flag = { full: false };
+    Object.defineProperty(t.store, "full", { get: () => flag.full, configurable: true });
+    await started(t);
+    flag.full = true;
+    t.change({ "src/App.tsx": "export const title = 'While full';\n" });
+    await t.until(() => t.of("review.result").length === 1);
+    expect(t.of("review.result")[0]).toMatchObject({ ok: false });
+    expect(t.of("review.result")[0].reason).toMatch(/full/);
+    expect(t.of("review.batch")).toEqual([]);
+    await t.svc.handle(t.cmd("review.now") as never);
+    expect(t.of("review.result").at(-1)!.reason).toMatch(/full/);
+    flag.full = false;
+    t.change({ "src/App.tsx": "export const title = 'Room again';\n" });
+    await sleep(300);
+    t.change({ "src/App.tsx": "export const title = 'Room again, changed';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    expect(t.of("review.batch")[0].files).toEqual([{ file: "src/App.tsx", kind: "modified" }]);
+  }, 30000);
 });
 
 describe("Stop everything", () => {

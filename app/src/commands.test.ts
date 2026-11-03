@@ -36,7 +36,7 @@ describe("the zero cost warm up", () => {
     const opened = card.slice(card.indexOf('listen("opened"'), card.indexOf("touch();", card.indexOf('listen("opened"')));
     expect(opened).toContain("warmSoon()");
     expect(card).toMatch(/<textarea ref=\{box\}[\s\S]*?onFocus=\{\(\) => warmSoon\(\)\}/);
-    expect(card).toMatch(/const warmSoon = \(\) => \{[^\n]*60_000[^\n]*send\(warmEngine\(\)\)/);
+    expect(card).toMatch(/const warmSoon = \(\) => \{[^\n]*60_000[^\n]*sendQuiet\(warmEngine\(\)\)/);
   });
 });
 

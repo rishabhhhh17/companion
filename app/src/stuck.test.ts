@@ -198,7 +198,8 @@ describe("A61: Check before going live or Put it online while a question waits",
     expect(m.receipt).toBeNull();
   });
   test("both buttons say they are the check before going live", () => {
-    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project || !shipGate()) return; dispatch({ type: \"ui.planRequested\", ship: true });");
+    // The check itself is free (must fix 20, F25), so only going online asks the plan.
+    expect(card).toContain("const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: \"ui.planRequested\", ship: true });");
     expect(card).toContain("const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: \"ui.planRequested\", ship: true }); void send(shipPreview(project)); };");
   });
 });

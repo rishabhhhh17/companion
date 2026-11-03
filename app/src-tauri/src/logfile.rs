@@ -12,7 +12,9 @@ pub const MAX_BYTES: u64 = 512 * 1024;
 /// a second copy of Companion leaving because one was already running, and the raw detail of a failure from Squibby's own
 /// machinery (the person reads one plain sentence; the detail, secrets hidden and the home folder written as ~, is kept
 /// here for a report).
-const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail"];
+/// Must fix 15: and every time the engine ended (its code or signal, how long it ran, how many starts) and every quit (where
+/// it came from: the menu, an update, Delete everything or the system).
+const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail", "runner_exit", "app_quit"];
 
 pub fn should_log(ev: &str, verbose: bool) -> bool { verbose || QUIET.contains(&ev) }
 

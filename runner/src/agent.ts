@@ -16,7 +16,7 @@ import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, est
 import { answerPrompt, differentTaskPrompt, endedWhyOf, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
-import { isClaudeStop, withoutTryAgain } from "./reach.ts";
+import { isClaudeStop, NOT_REACHED, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS } from "./models.ts";
 import { agentModesOf, type Owner } from "./groups.ts";
@@ -109,6 +109,9 @@ export type ProofRunner = (ctx: ProofContext) => Promise<LadderResult>;
 export type RunnerOptions = {
   shadowRoot: string;
   engine: Engine;
+  /** Must fix 16: a quick look that Claude is in reach before each round with Claude Code (reach.ts claudeReachable). Only
+   *  with the real Claude (main.ts); without it, nothing is looked up. */
+  reachable?: () => Promise<boolean>;
   log: TaskLog;
   emit: (e: Event) => void;
   executor?: ToolExecutor;
@@ -740,6 +743,7 @@ export class AgentRunner {
         if (this.projectInUse(cmd.project)) { this.fail("Something is still working on this project. Wait for it to finish, or press Stop, then undo."); return; }
         try {
           const r = await this.store(cmd.project).restore(cmd.checkpoint, { protect: this.setting<boolean>("undo.protectMyEdits", cmd.project) !== false, force: (cmd as { force?: boolean }).force === true });
+          this.noteSafety(cmd.project, r.safetyCheckpoint);
           // The files are not what any offer or turn was made for any more.
           this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
           // The files went back, so no conversation in this project matches them any more: nothing there can be followed up.
@@ -762,6 +766,7 @@ export class AgentRunner {
         if (this.projectInUse(cmd.project)) { said(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
         try {
           const r = await this.store(cmd.project).putBack(cmd.checkpoint, cmd.files);
+          if (r.putBack.length) this.noteSafety(cmd.project, r.safetyCheckpoint);
           this.teachOffers.delete(resolve(cmd.project)); this.teaching.delete(resolve(cmd.project));
           said(true, { putBack: r.putBack, skipped: r.skipped.map((x) => x.path), ...(r.putBack.length ? { savedTo: r.savedTo, safety: r.safetyCheckpoint } : {}), ...(r.putBack.length === 0 ? { reason: "There was nothing left to put back." } : {}) });
         } catch (e) {
@@ -772,7 +777,8 @@ export class AgentRunner {
       }
       case "tasks.list": {
         const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}) }));
-        this.emit({ type: "tasks.list", project: cmd.project, tasks } as never);
+        const sinceCheck = await this.sinceProven(cmd.project);
+        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}) } as never);
         return;
       }
       case "agent.send": await this.followUp(cmd); return;
@@ -869,7 +875,31 @@ export class AgentRunner {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
     const s = CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
     s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
+    if (!this.guardedStores.has(s)) { this.guardedStores.add(s); s.guard(() => this.pointedAt(project)); }
     return s;
+  }
+  private guardedStores = new WeakSet<CheckpointStore>();
+  /** The safety copies of the latest Undos in each project (their Bring back cards), newest last. */
+  private safeties = new Map<string, string[]>();
+  private noteSafety(project: string, id: string | undefined): void {
+    if (!id) return;
+    const key = resolve(project), l = [...(this.safeties.get(key) ?? []), id].slice(-10);
+    this.safeties.set(key, l);
+  }
+  /** The undo points something here still points at, which the store's pruning keeps (T06, must fix 26): the History rows
+   *  (the project's newest 50 tasks, all that History shows and more than Which task broke it searches, and the Undo that
+   *  took each back), the Bring back cards of the latest Undos, Your turn, the latest proof, the preview and Which task broke
+   *  it. A task's After version stays with its Before (the store). */
+  private pointedAt(project: string): string[] {
+    const key = resolve(project), out = this.o.log.checkpointsOf([project, key], 50);
+    out.push(...(this.safeties.get(key) ?? []));
+    const offer = this.teachOffers.get(key); if (offer) out.push(offer.checkpoint, offer.afterId);
+    const turn = this.teaching.get(key); if (turn) out.push(turn.checkpoint, turn.start, turn.restore);
+    const preview = this.previews.get(key); if (preview) out.push(preview.snapshot);
+    const found = this.bisected.get(key); if (found) out.push(found.before, found.after);
+    for (const [p, r] of this.lastProof) if (resolve(p) === key) out.push(r.snapshot);
+    const kept = this.proven(project); if (kept) out.push(kept.snapshot);
+    return out;
   }
 
   /** The shadow store every task of this project uses (T06), for the review of changes (review/service.ts), so its
@@ -1068,6 +1098,9 @@ export class AgentRunner {
     const tellCost = () => this.emit({ type: "cost.update", agent: cmd.agent, usdEstimate: usd, basis: "sdk_estimate", tokens: { ...tokens } } as never);
     const round = async (prompt: string, resumeSession?: string): Promise<boolean> => {
       finalWords = ""; afterTool = true;
+      // Offline, Claude Code would try for minutes: a quick look first says "could not reach Claude" at once, as the same
+      // stop a dropped connection gets (must fix 16). A look that itself fails never stops the work.
+      if (this.o.reachable && !(await this.o.reachable().catch(() => true))) { status = "no_connection"; this.fail(NOT_REACHED, cmd.agent); return false; }
       const gen = this.o.engine.start({
         prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns, tools,
         ...(offRecord ? { offTheRecord: true } : {}),
@@ -1178,7 +1211,7 @@ export class AgentRunner {
       // result (Put it online would refuse a version whose stopped check read as failed, and never check it again).
       if (abort.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks } as never);
-      if (res.verdict !== "cancelled") this.lastProof.set(cmd.project, { verdict: res.verdict, snapshot: after.id });
+      if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id });
       if (res.verdict === "cancelled") { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
@@ -1477,12 +1510,48 @@ export class AgentRunner {
     return (await store.diff(from, to)).filter((c) => !c.file.startsWith(".vercel/") && !c.file.startsWith(".companion/"));
   }
 
+  /** The project's last check that ended (its verdict and the version it ran on). Kept beside the project's snapshots,
+   *  outside the project, so a relaunch or Stop everything does not forget it (review of M56): Home would otherwise say
+   *  "works" again over files that changed while the engine was not running. */
+  private proofPath(project: string): string {
+    const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
+    return join(this.o.shadowRoot, `${id}.last-proof.json`);
+  }
+  private proven(project: string): { verdict: string; snapshot: string } | undefined {
+    const known = this.lastProof.get(project);
+    if (known) return known;
+    try {
+      const j = JSON.parse(readFileSync(this.proofPath(project), "utf8")) as { verdict?: unknown; snapshot?: unknown };
+      if (typeof j.verdict !== "string" || typeof j.snapshot !== "string" || !/^cp_[A-Za-z0-9_-]{1,80}$/.test(j.snapshot)) return undefined;
+      const rec = { verdict: j.verdict, snapshot: j.snapshot };
+      this.lastProof.set(project, rec);
+      return rec;
+    } catch { return undefined; }
+  }
+  private setProven(project: string, rec: { verdict: string; snapshot: string }) {
+    this.lastProof.set(project, rec);
+    try { mkdirSync(this.o.shadowRoot, { recursive: true }); writeFileSync(this.proofPath(project), JSON.stringify(rec), { mode: 0o600 }); } catch { /* kept for this run only */ }
+  }
+
+  /** Did the project change since the version its last passed check ran on (must fix 11)? Home says so instead of "works".
+   *  Unknown (no passed check this session, a task writing to it, or the store could not tell): nothing is said. Makes no
+   *  undo point. */
+  private async sinceProven(project: string): Promise<"same" | "changed" | undefined> {
+    const rec = this.proven(project);
+    if (!rec || rec.verdict !== "passed" || this.projectBusy.has(resolve(project))) return undefined;
+    try {
+      const changed = (await this.store(project).changedSinceNow(rec.snapshot)).filter((c) => !c.file.startsWith(".vercel/") && !c.file.startsWith(".companion/"));
+      return changed.length > 0 ? "changed" : "same";
+    } catch { return undefined; }
+  }
+
   // Every gate, on the project exactly as it is now. With runChecks, the checks are run first if the last pass is out of date.
   private async gateReport(project: string, runChecks: boolean, confirm?: string[]) {
     const store = this.store(project);
     const now = await store.snapshot("Ship check");
-    let rec = this.lastProof.get(project);
-    const changed = async () => !rec || (await this.changedSince(store, rec.snapshot, now.id)).length > 0;
+    let rec = this.proven(project);
+    // A kept version the store no longer has counts as changed: nothing proves the project as it is now.
+    const changed = async () => !rec || (await this.changedSince(store, rec.snapshot, now.id).catch(() => [null])).length > 0;
     // A check that did not fully pass (gaps, a failure, nothing to check) is run again when the person presses Put it online:
     // what stopped it may have been fixed in Settings or on the Mac without any file changing. Only a pass is reused.
     const stale = async () => !rec || rec.verdict !== "passed" || (await changed());
@@ -1495,7 +1564,7 @@ export class AgentRunner {
         let res = await (this.o.proof ?? runLadder)({ project, store, beforeId: now.id, afterId: now.id, onStep, signal: ac.signal, ...this.checkFor(project), askInstall: this.installAsker(this.sessions.get(sk), "ship", now.id), askScripts: this.scriptsAsker(this.sessions.get(sk), "ship", now.id), approvals: this.approvals(project) });
         if (ac.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };   // a stopped check is no result
         this.emit({ type: "proof.result", agent: "ship", verdict: res.verdict, steps: forPerson(res.steps), tries: 1 } as never);
-        if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.lastProof.set(project, rec); }
+        if (res.verdict !== "cancelled") { rec = { verdict: res.verdict, snapshot: now.id }; this.setProven(project, rec); }
       } catch { /* the proof gate will say it was not checked */ } finally { this.sessions.delete(sk); }
     }
     const proof: ProofRecord | undefined = rec ? { verdict: rec.verdict, unchangedSince: !(await changed()) } : undefined;
@@ -1931,6 +2000,7 @@ export class AgentRunner {
     if (this.projectInUse(cmd.project)) { done(false, { reason: "Something is still working on this project. Wait for it to finish, or press Stop, then try again." }); return; }
     try {
       const r = await this.store(cmd.project).undoOne(rec.before, rec.after, rec.label);
+      this.noteSafety(cmd.project, r.safetyCheckpoint);
       this.bisected.delete(key);
       // As with Undo: the files are not what any offer, turn or conversation in this project was made for any more.
       this.teachOffers.delete(key); this.teaching.delete(key);

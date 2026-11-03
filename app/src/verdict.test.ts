@@ -9,7 +9,7 @@ type Row = [ProofFact, string, boolean, number, Verdict["kind"], Verdict["tone"]
 
 /** proof, ending ("limit:daily", "failed:noConnection"), undone, files changed, then the expected kind, tone, icon, offer. */
 const MATRIX: Row[] = [
-  ["passed", "done", false, 0, "proven", "good", "tick", null],
+  ["passed", "done", false, 0, "passes", "good", "tick", null],
   ["passed", "done", false, 2, "proven", "good", "tick", "undo"],
   ["passed", "done", true, 0, "undone", "plain", "undo", null],
   ["passed", "done", true, 2, "undone", "plain", "undo", null],
@@ -49,7 +49,7 @@ const MATRIX: Row[] = [
   ["passed", "failed:error", false, 2, "error", "bad", "cross", "undo"],
   ["passed", "failed:error", true, 0, "undone", "plain", "undo", null],
   ["passed", "failed:error", true, 2, "undone", "plain", "undo", null],
-  ["passed", "unknown", false, 0, "proven", "good", "tick", null],
+  ["passed", "unknown", false, 0, "passes", "good", "tick", null],
   ["passed", "unknown", false, 2, "proven", "good", "tick", "undo"],
   ["passed", "unknown", true, 0, "undone", "plain", "undo", null],
   ["passed", "unknown", true, 2, "undone", "plain", "undo", null],
@@ -220,6 +220,7 @@ describe("the verdict", () => {
   test("the words for each kind", () => {
     const w = (p: ProofFact, e: string, u: boolean, c: number, more: Partial<Facts> = {}) => { const v = verdictOf(factsOf(p, e, u, c, more)); return [v.headline, v.line]; };
     expect(w("passed", "done", false, 2)).toEqual(["Fixed and proven", null]);
+    expect(w("passed", "done", false, 0)).toEqual(["Checked, it passes", "Nothing needed changing."]);
     expect(w("passed", "done", true, 2)).toEqual(["Undone", "The fix is gone, so the problem is back."]);
     expect(w("none", "done", true, 2)).toEqual(["Undone", "Your project is back as it was before this task."]);
     expect(w("failed", "needsYou", false, 2)).toEqual(["Waiting for your answer", "A check failed, and it needs something only you can give."]);
@@ -254,7 +255,9 @@ describe("the verdict", () => {
       expect(v.tone === "good", name).toBe(should);
       expect(v.icon === "tick", name).toBe(should);
       expect(v.proven, name).toBe(should);
-      expect(v.kind === "proven", name).toBe(should);
+      // A pass on a task that changed nothing is its own kind: nothing was fixed (must fix 7).
+      expect(v.kind === "proven" || v.kind === "passes", name).toBe(should);
+      if (should) expect(v.kind, name).toBe(f.changed > 0 ? "proven" : "passes");
     }
   });
 

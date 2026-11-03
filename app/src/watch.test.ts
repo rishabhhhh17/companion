@@ -196,7 +196,7 @@ describe("Home draws it, and starts nothing by itself", () => {
   });
   test("Fix it asks for the evidence on the press, and the task starts once the evidence comes, only for that press", () => {
     expect(card).toContain('dispatch({ type: "ui.watchAsked", watch: w.watch });');
-    expect(card).toContain("void send(watchFix(project, w.watch))");
+    expect(card).toContain("void sendQuiet(watchFix(project, w.watch))");
     const fixing = card.slice(card.indexOf("const fixing = m.watchFix;"), card.indexOf("// The Watch list's buttons"));
     expect(fixing).toContain('dispatch({ type: "ui.watchFixUsed" });');
     expect(fixing).toContain("fixing.project !== projectRef.current");

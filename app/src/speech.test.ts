@@ -89,7 +89,7 @@ describe("answers said out loud for a question asked by voice (off by default, T
   test("the answers on the card: a research answer and a finished task's result, each under its own key and kind", () => {
     const r = repliesIn(m({ research: { title: "Which host", answer: "Vercel fits this project best.", notes: [], file: ".companion/research/a.md" } } as never), "/p");
     expect(r).toEqual([{ key: "research:/p:.companion/research/a.md", text: "Vercel fits this project best.", kind: "research" }]);
-    const done = repliesIn(m({ receipt: { proof: "passed", checkpoint: "cp_0007", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
+    const done = repliesIn(m({ receipt: { proof: "passed", checkpoint: "cp_0007", changed: [{ file: "a.js", kind: "modified" }], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
     expect(done).toEqual([{ key: "receipt:/p:cp_0007", text: "Fixed and proven.", kind: "task" }]);
     // A rescue is started by its button, never by voice, so it is not an answer to say.
     expect(repliesIn(m({ rescue: { summary: "The site builds.", works: [], broken: "x", evidence: [] } } as never), "/p")).toEqual([]);
@@ -115,7 +115,7 @@ describe("answers said out loud for a question asked by voice (off by default, T
     const seen = new Set(before.map((x) => x.key));
     expect(newReply(before, seen)).toBeNull();
     // The task asked by voice finishes while the old research answer is still shown: its result is the new answer.
-    const after = repliesIn(m({ research, receipt: { proof: "passed", checkpoint: "cp_0008", changed: [], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
+    const after = repliesIn(m({ research, receipt: { proof: "passed", checkpoint: "cp_0008", changed: [{ file: "a.js", kind: "modified" }], commands: 0, notUndoable: [], usdEstimate: 0 } } as never), "/p");
     expect(newReply(after, seen)).toEqual({ key: "receipt:/p:cp_0008", text: "Fixed and proven.", kind: "task" });
     expect(newReply([], seen)).toBeNull();
   });
@@ -230,7 +230,7 @@ describe("a Show me asked by voice counts only its own answer", () => {
 // for ten minutes for the next pressed flow's answer. Research notes are named per project too.
 describe("answers in another project", () => {
   const m = (o: Partial<Model>): Model => ({ ...initial(), ...o });
-  const receipt = (checkpoint: string) => ({ proof: "passed", checkpoint, changed: [], commands: 0, notUndoable: [], usdEstimate: 0 });
+  const receipt = (checkpoint: string) => ({ proof: "passed", checkpoint, changed: [{ file: "a.js", kind: "modified" }], commands: 0, notUndoable: [], usdEstimate: 0 });
   test("the first receipt in another project is a new answer, though its checkpoint has the same number", () => {
     const seen = new Set(repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/practice").map((x) => x.key));
     const mine = repliesIn(m({ receipt: receipt("cp_0001") } as never), "/Users/me/shop");
@@ -263,7 +263,7 @@ describe("answers in another project", () => {
     const sent = card.slice(card.indexOf("const followSent = "), card.indexOf("\n", card.indexOf("const followSent = ")));
     expect(sent).toMatch(/if \(words && followFromVoice\.current\) voiceAsked\.current = \{ kind: "task", at: Date\.now\(\) \}; else pressed\(\);/);
     const box = card.slice(card.indexOf("function FollowUpBox("), card.indexOf("function ExplainBox("));
-    expect(box).toContain("onSent(false); void send(retryTask(project)).catch(onRefused);");
+    expect(box).toContain("onSent(false); void sendQuiet(retryTask(project)).catch(onRefused);");
     expect(card).toMatch(/setText=\{\(t\) => \{ setFollowText\(t\); if \(!t\) followFromVoice\.current = false; \}\}/);
     const fix = card.split("\n").find((l) => l.includes("send(fixError("))!;
     expect(fix).toContain("pressed();");

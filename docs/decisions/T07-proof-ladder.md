@@ -145,5 +145,17 @@ Spike `spikes/practice-bun` (README and RESULTS), run on this Mac with Bun 1.4.2
 
 **Tests:** `runner/test/proof-sandbox.test.ts` (the real box included), `runner/test/check-agent-settings.test.ts`, `app/src/onboarding.test.ts`. Reviewed adversarially (11 findings, all fixed).
 
+## Fixed 3 Nov 2026: the browser check keeps the page to this Mac (must fix 24, an incident under bar rule 9; tested with a real hidden browser and servers on this Mac, not yet in a real project run)
+- **What was wrong.** The browser check's network guard was put on only when it first pressed a button, after the page had loaded, and it never covered WebSockets. A page another AI wrote, or a cloned project, could send data out (a fetch, a beacon, a picture address, a WebSocket) during the proof run every user gets (F14). The project's server is in the safety box with "net local", but the hidden browser was not.
+- **Now** (`proof/browser.ts`):
+  - The guard is on the browser context before the first page loads, for requests and WebSockets alike (`reachableFrom`). A page served on this Mac reaches only this Mac's own addresses (localhost, 127.x, ::1, *.localhost, any port), as the box allows its server. Once a button is pressed, the old press rules apply on top: only the page's own address, writes answered with "nothing to do", and nothing the page sends on a WebSocket reaches the server.
+  - A second lock, in the browser itself, for what the guard cannot see (redirects, workers, early connections): it is started with a proxy that is a closed door of the check's own (a local port that ends every connection, gone when the check ends), with only this Mac's addresses bypassing it, calls over UDP switched off and name prefetching off. Tests show a redirect and a worker's WebSocket get through without it and are stopped with it.
+  - Code or data the page could not fetch from elsewhere (a script, a fetch, a WebSocket) is a gap: "The page asks for things from the internet (...), which a check never lets it reach, so anything that needs them was not checked." Errors after that are not counted as problems, as after a press the guard answered. Fonts, pictures and styles from elsewhere are left out quietly. So a project that loads its data from an online database on load now passes with gaps, not passes.
+  - A page on the internet (the preview check before going live) is blocked from this Mac's and the home network's addresses, by address only: a redirect to such an address, or a name that points at one, is not caught there.
+
+## Fixed 4 Nov 2026: check servers and test runs end with the engine (must fix 14; tested on this Mac with SIGKILL)
+- **What was wrong.** Proof commands and the project's own server run in their own process group. Only some commands used the lifeline, so when the engine was killed by force (Stop with no answer, a quit after the grace time, a crash) a check's server and test runs kept going until the Mac restarted, holding the port.
+- **Now.** Every proof command (`proof/exec.ts`, unless it says `endWithUs: false`) and every server `startServer` starts (`proof/server.ts`) runs behind `LIFELINE`: a helper in its group waits on a pipe only the engine holds, and ends the group when the engine ends, however it ends. `runner/test/proof-lifeline.test.ts` kills a stand in engine with SIGKILL and checks the command is gone and the server's port is free within about a second.
+
 ## Revisit if
 The false "done" rate does not stay near zero, its target in product_research.md section 17.

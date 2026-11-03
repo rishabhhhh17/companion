@@ -1,11 +1,20 @@
 // The browser check: open the page in a hidden browser (Playwright's own, never the user's Chrome),
 // watch for errors, check the words and click through the part that changed. It only ever looks at
 // the address it was given; it never sees the user's screen.
+// What the page may reach (must fix 24, 3 Nov 2026, an incident under the bar's rule 9): the guard is on the browser before
+// the first page loads, never only once a button is pressed, and it covers WebSockets too. A page served on this Mac (every
+// proof run) reaches only this Mac's own addresses, as the safety box allows its server ("net local"): twice over, by the
+// check's own rule on every request and WebSocket, and by the browser itself, which sends anything else to a closed door of
+// the check's own. A page on the internet (a preview) is blocked from this Mac's and the home network's addresses: by name
+// on every request, and by a proxy of the check's own that every connection goes through, which looks each name up itself
+// and connects only to a public address (publicProxy.ts), so a name that answers with a home address is never reached.
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
+import { clip, redact } from "../redact.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
+import { startPublicOnlyProxy, type Lookup } from "./publicProxy.ts";
 
 export const browsersPath = () => process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), "Library", "Application Support", "Companion", "browsers");
 
@@ -104,7 +113,10 @@ export type BrowserResult = { ok: boolean; skipped?: string; notInstalled?: true
 // click and expectAfterClick: the project's own .claude/proof.json (a selector, as before). press and expectAfterPress: a
 // button chosen in Settings, found by its label and pressed only when it is a plain button, link or tab whose words do not
 // sound risky, checked again on the real element. viewport: the page size (today's 1280 by 800 when not given).
-export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; press?: string; expectAfterPress?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal; viewport?: { width: number; height: number } };
+export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; press?: string; expectAfterPress?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal; viewport?: { width: number; height: number };
+  /** Tests only: names the hidden browser maps to addresses (host resolver rules), and the lookup and address test of the
+   *  internet preview's proxy, so a rebinding name can be played on this Mac. Never set by the app. */
+  _testNet?: { mapHosts?: Record<string, string>; lookup?: Lookup; isAllowed?: (ip: string, host: string) => boolean } };
 
 // Buttons that sound like they send, pay, delete or publish are never pressed by a check.
 const RISKY = /delet|remov|\bpay|buy|purchas|send|submit|sign.?out|log.?out|publish|deploy|reset|checkout|order|eras|clear|cancel|unsubscribe|subscribe|\bpost\b|confirm|donat|upload|install|download|transfer|withdraw|\bgo live|eliminar|borrar|pagar|comprar|enviar|publicar|cerrar sesi|supprimer|payer|acheter|envoyer|publier|d[ée]connexion|l[öo]schen|bezahlen|kaufen|senden|absenden|abmelden|excluir|sair|remover|apagar|削除|送信|支払|购买|删除|发送|支付|삭제|결제|보내기/i;
@@ -114,6 +126,39 @@ export const riskyLabel = (label: string): boolean => RISKY.test(label);
 
 const ignorable = (url: string) => /\/favicon\.ico(\?|$)/.test(url);
 
+// This Mac's own addresses (the safety box's LOCAL_NAME in box.ts, by the same names), and those of the home network.
+const LOOPBACK = /^(?:localhost|[\w.-]+\.localhost|127(?:\.\d{1,3}){3}|::1|0\.0\.0\.0)$/i;
+const PRIVATE = /^(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}|169\.254(?:\.\d{1,3}){2}|100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])(?:\.\d{1,3}){2}|f[cd][0-9a-f]{0,2}:[0-9a-f:.]*|fe[89ab][0-9a-f]?:[0-9a-f:.]*|::ffff:[0-9a-f:.]*|[\w-]+|[\w.-]+\.(?:local|internal|lan|home|arpa))$/i;
+const hostOf = (u: URL) => u.hostname.replace(/^\[|\]$/g, "");
+const onThisMac = (url: string): boolean => { try { return LOOPBACK.test(hostOf(new URL(url))); } catch { return false; } };
+/** May a page at pageUrl reach requestUrl? A page on this Mac: only this Mac's own addresses (any port, as the safety box
+ *  allows). A page on the internet: anything but this Mac and the home network. Data and blob addresses never leave the
+ *  browser. Anything that cannot be read as an address is never reached. Addresses are read the browser's way, so a number
+ *  written another way (0x7f000001) is still 127.0.0.1. */
+export function reachableFrom(pageUrl: string, requestUrl: string): boolean {
+  let u: URL;
+  try { u = new URL(requestUrl); } catch { return false; }
+  if (u.protocol === "data:" || u.protocol === "blob:" || u.protocol === "about:") return true;
+  if (!["http:", "https:", "ws:", "wss:"].includes(u.protocol)) return false;
+  const host = hostOf(u);
+  return onThisMac(pageUrl) ? LOOPBACK.test(host) : !LOOPBACK.test(host) && !PRIVATE.test(host);
+}
+// What a page may load from elsewhere without it changing what was checked: a look, never code or data.
+const PASSIVE = new Set(["stylesheet", "image", "media", "font", "texttrack", "manifest"]);
+const OUTSIDE_START = (local: boolean) => (local ? "The page asks for things from the internet" : "The page asks for things on this Mac or your home network");
+const OUTSIDE_GAP = (hosts: string[], local: boolean) => `${OUTSIDE_START(local)} (${hosts.slice(0, 3).join(", ")}${hosts.length > 3 ? ` and ${hosts.length - 3} more` : ""}), which a check never lets it reach, so anything that needs them was not checked. Errors after that were not counted as problems.`;
+/** The browser's own second lock for a page on this Mac: everything not on this Mac goes to a closed door of the check's own
+ *  (a proxy that answers nothing), redirects, workers and early connections included, and calls over UDP are switched off. */
+function localOnlyArgs(port: number): string[] {
+  return [`--proxy-server=http://127.0.0.1:${port}`, "--proxy-bypass-list=<-loopback>;localhost;*.localhost;127.0.0.1/8;[::1];0.0.0.0", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--dns-prefetch-disable"];
+}
+
+/** The browser's lock for a page on the internet: every connection, this Mac's own names included, goes through the
+ *  public only proxy (nothing bypasses it), and calls over UDP are switched off. */
+function publicOnlyArgs(port: number): string[] {
+  return [`--proxy-server=http://127.0.0.1:${port}`, "--proxy-bypass-list=<-loopback>", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp", "--dns-prefetch-disable"];
+}
+
 export async function browserCheck(url: string, o: BrowserOptions = {}): Promise<BrowserResult> {
   const t0 = Date.now();
   const blockedByUs = new Set<string>();   // per check, so two checks at once never mix up their lists
@@ -121,9 +166,30 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
   if (!browserInstalled()) return { ...result, skipped: "The hidden browser is not installed yet, so the page was not opened.", notInstalled: true, ms: 0 };
   if (o.signal?.aborted) return { ...result, skipped: "Stopped.", ms: 0 };
   const timeout = o.timeoutMs ?? 15000;
+  const local = onThisMac(url);
+  // Names the internet preview's proxy refused: said in the gap line once the check is running (run, below).
+  const refusedHosts: string[] = [];
+  let proxyRefused = (h: string) => { refusedHosts.push(h); };
+  const refusedFrom = new Set<string>();   // their hosts, so a request the proxy refused is never counted as the page failing
+  const refusedByProxy = (u: string) => { try { return refusedFrom.has(new URL(u).hostname.replace(/^\[|\]$/g, "")); } catch { return false; } };
+  // The closed door: it takes a connection and ends it at once, and goes when the check does (a door no one listens at
+  // could be taken by another program on this Mac).
+  let door: { port: number; stop: () => void } | null = null;
+  if (local) {
+    try { const d = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open(sk) { sk.end(); }, data() {} } }); door = { port: d.port, stop: () => d.stop(true) }; }
+    catch { return { ...result, skipped: "The hidden browser could not be kept to this Mac, so the page was not opened.", ms: 0 }; }
+  } else {
+    // A page on the internet: every connection goes through a proxy of the check's own that looks each name up itself and
+    // connects only to a public address (publicProxy.ts), so a name that answers with a home address is never reached.
+    try {
+      const p = await startPublicOnlyProxy({ lookup: o._testNet?.lookup, isAllowed: o._testNet?.isAllowed, onRefused: (h) => proxyRefused(h) });
+      door = { port: p.port, stop: p.stop };
+    } catch { return { ...result, skipped: "The hidden browser could not be kept off this Mac and the home network, so the page was not opened.", ms: 0 }; }
+  }
   let browser: import("playwright-core").Browser;
-  try { browser = await chromium.launch({ headless: true, executablePath: browserExecutable()! }); }
-  catch (e) { return { ...result, skipped: `The hidden browser could not be started (${(e as Error).message.split("\n")[0]}), so the page was not opened.`, ms: Date.now() - t0 }; }
+  const testArgs = o._testNet?.mapHosts ? [`--host-resolver-rules=${Object.entries(o._testNet.mapHosts).map(([h, ip]) => `MAP ${h} ${ip}`).join(", ")}`] : [];
+  try { browser = await chromium.launch({ headless: true, executablePath: browserExecutable()!, args: [...(door ? (local ? localOnlyArgs(door.port) : publicOnlyArgs(door.port)) : []), ...testArgs] }); }
+  catch (e) { door?.stop(); return { ...result, skipped: `The hidden browser could not be started (${(e as Error).message.split("\n")[0]}), so the page was not opened.`, ms: Date.now() - t0 }; }
   // However the check goes, the browser is closed by this deadline, so nothing is left running on the person's Mac.
   let hardStop: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<BrowserResult>((res) => { hardStop = setTimeout(() => { browser.close().catch(() => {}); res(finish({ ...result, problems: [...result.problems, "The page check took too long and was stopped"] }, t0)); }, timeout * 4 + 10_000); });
@@ -134,22 +200,64 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     onAbort = () => { browser.close().catch(() => {}); res({ ...result, skipped: "Stopped.", ms: Date.now() - t0 }); };
     if (o.signal.aborted) onAbort(); else o.signal.addEventListener("abort", onAbort, { once: true });
   });
-  return await Promise.race([run(), deadline, stopped]).finally(() => { clearTimeout(hardStop); if (onAbort) o.signal?.removeEventListener("abort", onAbort); });
+  return await Promise.race([run(), deadline, stopped]).finally(() => { clearTimeout(hardStop); if (onAbort) o.signal?.removeEventListener("abort", onAbort); door?.stop(); });
 
   async function run(): Promise<BrowserResult> {
   try {
     const view = o.viewport ?? { width: VIEW.w, height: VIEW.h };
     const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, serviceWorkers: "block" });
-    const page = await context.newPage();
-    // Nothing a press does reaches beyond the page's own address, and writes are answered with "nothing to do".
+    // Once a button is pressed, nothing reaches beyond the page's own address, and writes are answered with "nothing to do".
     let guarded = false;
     // The press now going on, or the last one: its label, and whether the guard answered or stopped a request of its. What
     // the page does after that (a logged error, a crash on the stand in answer) comes from the guard, not the project: it
     // was not checked, so it is a gap, never a problem blamed on the code (and never a ring on a working button).
     let pressLabel = "", guardedPress = "";
     const pressStarts = (label: string) => { if (label !== pressLabel) guardedPress = ""; pressLabel = label; };
-    const guard = async () => { if (guarded) return; guarded = true; await guardRoutes(page, url, blockedByUs, () => { if (pressLabel) guardedPress = pressLabel; }); };
+    const guard = async () => { guarded = true; };
+    const answered = () => { if (pressLabel) guardedPress = pressLabel; };
+    // Before any press: code or data the page could not fetch from elsewhere. Errors after that are a gap, as after a press.
+    const outsideHosts: string[] = [];
+    const blockedOutside = (to: string, kind: string) => {
+      blockedByUs.add(to);
+      if (guarded) { answered(); return; }
+      if (PASSIVE.has(kind)) return;
+      // A name can carry what a page tries to send out (secret.evil.example): hidden if it looks like a key, and cut short.
+      let host = "an address"; try { host = clip(redact(new URL(to).host), 60) || host; } catch { /* unreadable */ }
+      if (!outsideHosts.includes(host)) outsideHosts.push(host);
+      const g = OUTSIDE_GAP(outsideHosts, local);
+      const gaps = (result.gaps ??= []);
+      const at = gaps.findIndex((x) => x.startsWith(OUTSIDE_START(local)));
+      if (at >= 0) gaps[at] = g; else gaps.push(g);
+    };
+    proxyRefused = (h) => { refusedFrom.add(h); blockedOutside(`http://${h}/`, "fetch"); };
+    for (const h of refusedHosts.splice(0)) proxyRefused(h);
+    const home = new URL(url).host;
+    // Every request, from the first one: the address rule (reachableFrom), then the press rules.
+    await context.route("**/*", (route) => {
+      const req = route.request(), at = req.url();
+      if (!reachableFrom(url, at)) { blockedOutside(at, req.resourceType()); return route.abort("blockedbyclient"); }
+      if (guarded) {
+        let ours = false;
+        try { const u = new URL(at); ours = u.host === home || u.protocol === "data:" || u.protocol === "blob:"; } catch { ours = false; }
+        if (!ours) { blockedByUs.add(at); answered(); return route.abort("blockedbyclient"); }
+        // Whatever the label says, a press never changes anything on a server: writes are answered with "nothing to do", as an
+        // empty JSON object, so the common read of a JSON answer does not fail on the stand in.
+        if (!["GET", "HEAD", "OPTIONS"].includes(req.method())) { answered(); return route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); }
+      }
+      return route.continue();
+    });
+    // Every WebSocket, from the first one: the same address rule; once a button is pressed, only the page's own address, and
+    // nothing the page sends on any of them reaches the server (a message is a write).
+    await context.routeWebSocket(() => true, (ws) => {
+      const at = ws.url();
+      let ours = false; try { ours = new URL(at).host === home; } catch { ours = false; }
+      if (!reachableFrom(url, at) || (guarded && !ours)) { blockedOutside(at, "websocket"); return ws.close({ code: 1008, reason: "A check never connects here" }); }
+      const server = ws.connectToServer();
+      ws.onMessage((m) => { if (guarded) { answered(); return; } server.send(m); });
+    });
+    const page = await context.newPage();
     const fromGuard = (): boolean => {
+      if (outsideHosts.length && !guarded) return true;   // said once, in the gap about the internet
       if (!guardedPress || guardedPress !== pressLabel) return false;
       const g = `Pressing "${guardedPress}" talks to a server, which a check never does, so what it does after that was not checked.`;
       if (!(result.gaps ??= []).includes(g)) result.gaps.push(g);
@@ -160,11 +268,11 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     const after = () => (pressing ? ` (after pressing "${pressing}")` : "");
     page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text()) && !fromGuard()) result.consoleErrors.push(m.text() + after()); });
     page.on("pageerror", (e) => { if (!fromGuard()) result.problems.push(`The page crashed with: ${e.message}${after()}`); });
-    page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !blockedByUs.has(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
+    page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !blockedByUs.has(r.url()) && !refusedByProxy(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
     let mainStatus = 0;
     page.on("response", (r) => {
       if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && !mainStatus) mainStatus = r.status();
-      if (r.status() >= 400 && !ignorable(r.url()) && !r.request().isNavigationRequest()) result.failedRequests.push(`${r.url()} (${r.status()})`);
+      if (r.status() >= 400 && !ignorable(r.url()) && !r.request().isNavigationRequest() && !refusedByProxy(r.url())) result.failedRequests.push(`${r.url()} (${r.status()})`);
     });
     try { await page.goto(url, { waitUntil: "domcontentloaded", timeout }); await page.waitForLoadState("load", { timeout: Math.min(timeout, 5000) }).catch(() => {}); }
     catch (e) { result.problems.push(`The page could not be reached: ${(e as Error).message.split("\n")[0]}`); return finish(result, t0); }
@@ -209,20 +317,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
 }
 
 // Press each plain button once (a handful at most), to see whether the page still works when used.
-// Never anything risky, never a form submit, and nothing may reach beyond the page's own address.
-async function guardRoutes(page: import("playwright-core").Page, url: string, blockedByUs: Set<string>, answered: () => void = () => {}) {
-  const home = new URL(url).host;
-  await page.context().route("**/*", (route) => {
-    let ok = true;
-    try { const u = new URL(route.request().url()); ok = u.host === home || u.protocol === "data:" || u.protocol === "blob:"; } catch { ok = false; }
-    if (!ok) { blockedByUs.add(route.request().url()); answered(); return route.abort(); }
-    // Whatever the label says, a press never changes anything on a server: writes are answered with "nothing to do", as an
-    // empty JSON object, so the common read of a JSON answer does not fail on the stand in.
-    if (!["GET", "HEAD", "OPTIONS"].includes(route.request().method())) { answered(); return route.fulfill({ status: 200, contentType: "application/json", body: "{}" }); }
-    return route.continue();
-  });
-}
-
+// Never anything risky, never a form submit, and nothing may reach beyond the page's own address (the guard in browserCheck).
 async function tryButtons(page: import("playwright-core").Page, url: string, setPressing: (label: string) => void, timeout: number, guard: () => Promise<void>) {
   await guard();
   const pick = 'button[type="button"], button:not([type]):not(form button), [role="button"], input[type="button"]';

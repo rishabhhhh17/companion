@@ -8,7 +8,8 @@ export const MAX_BODY_BYTES = 8_000_000;   // a long working session with a few 
 export const MAX_OUTPUT_TOKENS = 64_000;
 const PATHS = new Set(["/v1/messages", "/v1/messages/count_tokens"]);
 
-export type Checked = { ok: true; model: string; stream: boolean; body: string; free: boolean } | { ok: false; status: number; message: string };
+/** maxTokens: the longest answer the request allows (0 for count_tokens), used to book a stream that was cut short. */
+export type Checked = { ok: true; model: string; stream: boolean; body: string; free: boolean; maxTokens: number } | { ok: false; status: number; message: string };
 const no = (status: number, message: string): Checked => ({ ok: false, status, message });
 
 /** The only tool a request may carry: Second Look's web search, exactly as runner/src/direct.ts sends it (the basic version,
@@ -46,5 +47,5 @@ export function checkRequest(method: string, path: string, raw: string, userId?:
     if (!Number.isInteger(j.max_tokens) || j.max_tokens < 1) return no(400, "The request did not say how long the answer may be.");
     if (j.max_tokens > MAX_OUTPUT_TOKENS) j.max_tokens = MAX_OUTPUT_TOKENS;
   }
-  return { ok: true, model: canonicalModel(j.model), stream: j.stream === true, body: JSON.stringify(j), free };
+  return { ok: true, model: canonicalModel(j.model), stream: j.stream === true, body: JSON.stringify(j), free, maxTokens: free ? 0 : j.max_tokens };
 }

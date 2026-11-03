@@ -244,16 +244,20 @@ describe("what counts as one free fix", () => {
     g.gate.proven(g.gate.ticketOf("builder-1"), 9);
     expect(g.store.count("2026-10")).toBe(1);
   });
-  test("a practice lesson's file check (ship.check on a practice copy) works on Free; Ship on a real folder stays Pro", () => {
+  // Must fix 20 (F25: every safety feature on Free): the check before going live runs only checks on the Mac and costs
+  // nothing, so it is never gated, on a practice copy or a real folder. Putting it online (preview, live) stays Pro.
+  test("the check before going live works on Free, on any folder; putting it online stays Pro", () => {
     const home = tmp("home");
     const copy = join(home, `${NAMES.practiceCopyBase} open table`); mkdirSync(copy);
     const g = gateOf({ limit: 1 });
     g.gate.setState(free);
     const check = (project: string) => ({ v: 1, id: "sc", type: "ship.check", project } as Command);
     expect(g.gate.admit(check(copy))).not.toBeNull();
-    expect(g.gate.admit(check(join(home, "my-site")))).toBeNull();
-    expect(g.limits().at(-1)).toMatchObject({ reason: "ship", command: "ship.check" });
-    // Only the check: putting a practice copy online is still Ship.
+    expect(g.gate.admit(check(join(home, "my-site")))).not.toBeNull();
+    expect(g.limits().length).toBe(0);
+    expect(NEVER_GATED as readonly string[]).toContain("ship.check");
+    expect(PRO_ONLY as readonly string[]).not.toContain("ship.check");
+    expect(g.gate.admit({ v: 1, id: "sp", type: "ship.preview", project: copy } as unknown as Command)).toBeNull();
     expect(g.gate.admit({ v: 1, id: "sl", type: "ship.live", project: copy } as unknown as Command)).toBeNull();
   });
   test("Research never counts and never ends up holding a fix's ticket", () => {

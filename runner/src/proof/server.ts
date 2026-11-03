@@ -7,6 +7,7 @@ import { join, relative, resolve, sep } from "node:path";
 import { minimalEnv } from "../env.ts";
 import { openBox, SANDBOX_EXEC, type Box } from "./box.ts";
 import type { Start } from "./detect.ts";
+import { LIFELINE } from "./exec.ts";
 import type { PythonServer } from "./python.ts";
 
 export type Running = { ok: true; url: string; port: number; stop: () => Promise<void> };
@@ -90,13 +91,17 @@ export async function startServer(start: Start, o: { cwd: string; timeoutMs: num
   const box = o.box ? openBox(o.box, env.HOME) : null;
   if (o.box && !box) return { ok: false, reason: BOX_NOT_STARTED, output: BOX_NOT_STARTED };
   if (box) env.TMPDIR = `${box.tmp}/`;
+  // Must fix 14: the server ends with the engine however the engine ends (exec.ts LIFELINE), so a check's server never
+  // keeps its port, a file watcher and memory after the engine was killed by force. It still gets empty input.
+  const args = ["-c", LIFELINE, "sh", command];
   const child = box
-    ? spawn(SANDBOX_EXEC, [...box.args, "/bin/sh", "-c", command], { cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"], env })
-    : spawn("sh", ["-c", command], { cwd: o.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"], env });
+    ? spawn(SANDBOX_EXEC, [...box.args, "/bin/sh", ...args], { cwd: o.cwd, detached: true, stdio: ["pipe", "pipe", "pipe"], env })
+    : spawn("sh", args, { cwd: o.cwd, detached: true, stdio: ["pipe", "pipe", "pipe"], env });
+  child.stdin?.on("error", () => { /* the server's side closed first; nothing is ever written */ });
   let output = "", exited = false, exitCode: number | null = null;
   const grab = (c: Buffer) => { output = (output + c.toString("utf8")).slice(-4000); };
   child.stdout!.on("data", grab); child.stderr!.on("data", grab);
-  child.on("close", (code) => { exited = true; exitCode = code; box?.close(); });
+  child.on("close", (code) => { exited = true; exitCode = code; child.stdin?.destroy(); box?.close(); });
   const kill = (sig: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, sig); } catch { /* gone */ } };
   const stop = async () => {
     kill("SIGTERM");

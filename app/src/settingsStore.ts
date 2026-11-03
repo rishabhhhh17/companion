@@ -96,6 +96,12 @@ export function useSetting(key: string): unknown {
   useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f); }; }, () => version, () => version);
   return setting(key);
 }
+/** Many settings at once, through one hook (must fix 4): a page that reads a list of keys calls this once, never
+ *  useSetting in a loop, so the number of hooks never changes with the list and a page can never draw blank for it. */
+export function useSettings(keys: readonly string[]): unknown[] {
+  useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f); }; }, () => version, () => version);
+  return keys.map((k) => setting(k));
+}
 export function subscribe(f: () => void): () => void { subs.add(f); return () => { subs.delete(f); }; }
 /** Resolves once the shell has answered the first settings_get (or could not be asked). */
 export const settingsReady = (): Promise<void> => ready;

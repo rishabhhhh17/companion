@@ -191,6 +191,23 @@ mod tests {
         assert_eq!(show_me_key(&can()), ShowMeKey::Listen);
     }
     #[test]
+    fn the_idle_rule_frees_both_copies_of_the_speech_model_and_a_let_go_waits_for_a_load_under_way() {
+        // Must fix 17: after five idle minutes the preloaded copy goes too, not only the one in use; and a let go while the
+        // helper is still loading waits for it instead of loading a second copy (which the helper's copy would then outlive).
+        let main = include_str!("main.rs");
+        let w = &main[main.find("fn voice_worker(").unwrap()..];
+        let w = &w[..w.find("\n}\n").unwrap()];
+        let idle = w.lines().find(|l| l.contains("last_used.elapsed() > Duration::from_secs(300)")).expect("the idle rule");
+        assert!(idle.contains("speech = None;") && idle.contains("*preload.lock().unwrap_or_else(|e| e.into_inner()) = None;"), "{idle}");
+        assert!(!idle.contains("if speech.is_some() &&"), "the idle rule runs with only a preloaded copy too: {idle}");
+        let down = &w[w.find("Ok(VoiceMsg::Down(t, mode)) => {").unwrap()..w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()];
+        assert!(down.contains("if speech.is_none() && loader.as_ref().is_none_or(|h| h.is_finished()) && preload.lock().unwrap_or_else(|e| e.into_inner()).is_none() {"), "one helper load at a time");
+        assert!(down.contains("loader = Some(std::thread::spawn("), "{down}");
+        let up = &w[w.find("Ok(VoiceMsg::Up(t)) => {").unwrap()..w.find("Ok(VoiceMsg::Cancel) =>").unwrap()];
+        let wait = up.find("if let Some(h) = loader.take() { let _ = h.join(); }").expect("waits for the helper");
+        assert!(wait < up.find("speech = preload.lock()").unwrap() && wait < up.find("speech = voice_mac::load(").unwrap(), "{up}");
+    }
+    #[test]
     fn a_second_press_ends_the_listening_it_started() {
         assert_eq!(show_me_key(&ShowMeKeyState { listening: true, started_by_key: true, ..can() }), ShowMeKey::Finish);
         // Even if the setting was switched off or Companion was hidden meanwhile: the microphone is closed, never kept open.

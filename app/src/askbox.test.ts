@@ -113,9 +113,9 @@ describe("a request the engine says no to is put back", () => {
     const submit = card.slice(card.indexOf("const submit = () => {"), card.indexOf("// Which task broke it"));
     // The engine's own check runs on the page first: a request it would refuse is never sent, and nothing is cleared.
     expect(submit).toMatch(/const added = forRequest\(attachedNow\.current\);\s*if \("error" in checkAttachments\(added\)\)/);
-    expect(submit.indexOf("checkAttachments(added)")).toBeLessThan(submit.indexOf("void send("));
+    expect(submit.indexOf("checkAttachments(added)")).toBeLessThan(submit.indexOf("void sendQuiet("));
     expect(submit).toContain("sent.current = { prompt, attached: attachedNow.current, off };");
-    expect(submit).toMatch(/void send\(startTask\(project, prompt, off, added\)\)\.catch\(\(e\) => \{ putBackSent\(\); explainRefusal\(e\); \}\)/);
+    expect(submit).toMatch(/void sendQuiet\(startTask\(project, prompt, off, added\)\)\.catch\(\(e\) => \{ putBackSent\(\); explainRefusal\(e\); \}\)/);
     expect(card).toMatch(/listen\("runner-event", \(e\) => onSentEvent\.current\(e\.payload\)\)/);
     expect(card).toContain("sentOutcome(payload, AGENT)");
     // Never on disk: only the box's own draft rules decide what is kept, and a new folder forgets it.

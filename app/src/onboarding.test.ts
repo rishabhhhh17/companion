@@ -85,7 +85,7 @@ describe("every step can be skipped and has a way back", () => {
   test("a returning person never sees it again unless they choose Replay", () => {
     const card = read("./card.tsx");
     expect(card).toContain('const [onboarded, setOnboarded] = useState(() => { try { return localStorage.getItem("companion.onboarded") === "1"; } catch { return true; } });');
-    expect(card).toContain("{!onboarded && <Onboarding ");
+    expect(card).toContain("{!onboarded && <PartBoundary part=\"firstRun\"><Onboarding ");
     expect(card).toContain('localStorage.setItem("companion.onboarded", "1")');
     expect(read("./settingsPage.tsx")).toContain("showFirstRunAgain();");
   });
@@ -126,7 +126,7 @@ describe("the first check of the real project", () => {
     expect(ui).toContain("const startCheck = () => { setAsked(true); setStoppedByMe(false); firstCheck(); go(\"check\"); };");
     // The reason is Home's error or notice line, which the first run covers, cleared when the check is pressed.
     const card = read("./card.tsx");
-    expect(card).toContain("why={m.error ?? m.notice} />}");
+    expect(card).toContain("why={m.error ?? m.notice} /></PartBoundary>}");
     expect(read("./model.ts")).toContain('case "ui.findProblem": return { ...m, point: { stage: "checking" }, ...(e.fresh ? { error: null, notice: null } : {}) };');
   });
   test("through the model: a NEEDS_GIT failure and a refused send each reach the check screen as its reason", () => {

@@ -31,7 +31,9 @@ export const FREE_FIXES_PER_MONTH = 3;
 /** Gated as a counted fix (the Free limit). How each is gated is in PlanGate.admit. */
 export const FIX_GATED = ["agent.start", "drive.plan", "drive.approve", "watch.fix", "rescue.diagnose", "agent.send", "review.fix"] as const;
 /** Gated as Pro only. settings.apply only for a water colour that is not the usual one; every other setting is never gated. */
-export const PRO_ONLY = ["ship.check", "ship.preview", "ship.live", "recap.ask", "settings.apply"] as const;
+/** Must fix 20 (F25: every safety feature on Free): ship.check, the check before going live, runs only checks on the Mac
+ *  and costs nothing, so it is never gated. Putting it online (ship.preview, ship.live) is Pro. */
+export const PRO_ONLY = ["ship.preview", "ship.live", "recap.ask", "settings.apply"] as const;
 /** Never gated, on any plan, at any count. */
 export const NEVER_GATED = [
   // the plan itself
@@ -43,7 +45,7 @@ export const NEVER_GATED = [
   // approvals
   "approval.resolve",
   // checks and proof
-  "browser.check", "browser.install", "doctor.check", "problem.find", "secondlook.check", "teach.try", "teach.check",
+  "browser.check", "browser.install", "doctor.check", "problem.find", "secondlook.check", "teach.try", "teach.check", "ship.check",
   // help
   "error.explain", "assist.prompt", "assist.locate", "assist.cancel", "assist.image",
   "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop", "research.ask", "diagram.ask",
@@ -86,8 +88,7 @@ export function isPracticeCopy(practice: unknown, project: string): boolean {
   if (typeof practice !== "string" || !practice) return false;
   return isPracticeFolder(project);
 }
-/** A folder named the way Companion names its practice copies. A lesson's own file check sends ship.check on it with no
- *  practice name (card.tsx), so that check alone goes by the folder. */
+/** A folder named the way Companion names its practice copies. */
 export function isPracticeFolder(project: string): boolean {
   const name = basename(resolve(project));
   return [NAMES.practiceCopyBase, ...NAMES.earlierPracticeCopyBases].some((b) => name === b || name.startsWith(`${b} `));
@@ -151,8 +152,7 @@ export class PlanGate implements FixCounter {
     const metered = this.metered();
     switch (cmd.type) {
       // Pro only.
-      // A practice lesson checks its copy's files through ship.check: that check stays free. Going online never does.
-      case "ship.check": return metered && !isPracticeFolder(cmd.project) ? this.refuse(cmd, "ship") : cmd;
+      // The check before going live (ship.check) is never gated (must fix 20). Going online is.
       case "ship.preview": case "ship.live": return metered ? this.refuse(cmd, "ship") : cmd;
       case "recap.ask": return metered ? this.refuse(cmd, "recaps") : cmd;
       case "settings.apply": {

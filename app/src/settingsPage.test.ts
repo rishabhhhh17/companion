@@ -19,11 +19,25 @@ describe("nothing unfinished in Settings (M28)", () => {
 describe("moving between Settings pages", () => {
   // Found 3 Nov 2026 while shooting the orb's pictures: a page reads one setting per row (PageView's useSetting loop), so
   // going from General to About or Character changed how many it read and the whole Settings window went blank (React
-  // error 300). Each page is its own component instance, keyed by the page, so the count never changes under it.
+  // error 300). Each page is its own component instance, keyed by the page, so the count never changes under it. Must fix
+  // 4 (review of 4 Nov): the loop itself is gone, one useSettings call reads the whole list (partBoundary.test.ts).
   test("each page is drawn fresh, so a page with fewer rows never breaks the window", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(src).toContain("for (const k of keys) useSetting(k);");
+    expect(src).toContain("useSettings(keys);");
+    expect(src).not.toContain("for (const k of keys) useSetting(k);");
     expect(src).toContain("<PageView key={page} page={page} />");
     expect(src).not.toMatch(/<PageView page=/);
+  });
+});
+
+describe("About names the build (must fix 6)", () => {
+  // A tester's report must match the source it came from: About shows the commit beside the version.
+  test("the version line carries the commit when the build knows it", () => {
+    expect(S.setRows.version("0.1.0", "1a2b3c4d5e6f")).toBe("Version 0.1.0, build 1a2b3c4d5e6f");
+    expect(S.setRows.version("0.1.0", "")).toBe("Version 0.1.0");
+    expect(S.setRows.version("0.1.0", "unknown")).toBe("Version 0.1.0");
+    expect(S.setRows.version("")).toBe("");
+    const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
+    expect(src).toContain("S.setRows.version(info.version, info.commit)");
   });
 });

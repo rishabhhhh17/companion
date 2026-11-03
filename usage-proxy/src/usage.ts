@@ -28,12 +28,15 @@ export class UsageSniffer {
   #dec = new TextDecoder();
   #u = ZERO();
   #done = false;
+  #failed = false;
   #skip = false;   // inside a line longer than the cap: ignore until its newline
   push(bytes: Uint8Array): void { this.#text(this.#dec.decode(bytes, { stream: true })); }
   end(): void { this.#text(this.#dec.decode()); if (this.#buf) this.#line(this.#buf); this.#buf = ""; }
   usage(): Usage { return { ...this.#u }; }
   /** Did the reply reach its end (message_stop)? A stream cut short did not. */
   complete(): boolean { return this.#done; }
+  /** Did Anthropic itself end the reply with an error event (overloaded_error, api_error)? */
+  failedUpstream(): boolean { return this.#failed; }
   #text(t: string): void {
     this.#buf += t;
     let i: number;
@@ -46,6 +49,8 @@ export class UsageSniffer {
   #line(line: string): void {
     if (!line.startsWith("data:")) return;
     if (line.includes('"message_stop"')) this.#done = true;
+    // An error event's own line starts with its type. Words in a reply are escaped inside a delta, so they never do.
+    if (/^data:\s*\{\s*"type"\s*:\s*"error"/.test(line)) { try { if (JSON.parse(line.slice(5))?.type === "error") this.#failed = true; } catch { /* not one */ } }
     if (!line.includes('"usage"')) return;   // text deltas never get parsed, so their words are never held
     let e: any;
     try { e = JSON.parse(line.slice(5)); } catch { return; }

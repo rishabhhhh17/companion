@@ -27,14 +27,27 @@ pub fn sha256_of(path: &Path) -> std::io::Result<String> {
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+/// Reading 148 MB to check it takes a moment, and this runs on every press of the talk keys: the answer is remembered for
+/// as long as the file is the same file (same size and last change).
+static CHECKED: std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, bool)>> = std::sync::Mutex::new(None);
+
+/// Must fix 33: for a key press on the main thread. The answer of a full check already done for this same file, or else
+/// only whether it is there at the right size (no reading). The voice worker runs model_ready, the full check, before it
+/// loads the model, so a file of the right size with the wrong bytes is still never used.
+pub fn model_ready_quick(data_dir: &Path) -> bool {
+    let p = model_path(data_dir);
+    let Ok(m) = std::fs::metadata(&p) else { return false };
+    if m.len() != MODEL_BYTES { return false; }
+    let stamp = m.modified().unwrap_or(std::time::UNIX_EPOCH);
+    if let Some((path, at, ok)) = CHECKED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
+    true
+}
+
 /// A model that is there and is the file we expect.
 pub fn model_ready(data_dir: &Path) -> bool {
     let p = model_path(data_dir);
     let Ok(m) = std::fs::metadata(&p) else { return false };
     if m.len() != MODEL_BYTES { return false; }
-    // Reading 148 MB to check it takes a moment, and this runs on every press of the talk keys: remember the answer for as
-    // long as the file is the same file (same size and last change).
-    static CHECKED: std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, bool)>> = std::sync::Mutex::new(None);
     let stamp = m.modified().unwrap_or(std::time::UNIX_EPOCH);
     if let Some((path, at, ok)) = CHECKED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
     let ok = sha256_of(&p).map(|s| s == MODEL_SHA256).unwrap_or(false);
@@ -375,6 +388,30 @@ mod tests {
         assert_eq!(super::peak(&[f32::NAN, 0.2, 9.0]), 1.0, "never past full, a broken sample is skipped");
     }
     use super::*;
+    #[test]
+    fn the_quick_check_on_a_key_press_never_reads_the_whole_model() {
+        // Must fix 33: the Show me key runs on the main thread, so it must not read 148 MB there. The quick check goes by
+        // the size (and a full check already done for this same file); the voice worker checks the whole file before it
+        // loads it.
+        let dir = std::env::temp_dir().join(format!("companion-quick-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!model_ready_quick(&dir), "no file");
+        std::fs::create_dir_all(dir.join("models")).unwrap();
+        let f = std::fs::File::create(model_path(&dir)).unwrap();
+        f.set_len(10).unwrap();
+        assert!(!model_ready_quick(&dir), "the wrong size");
+        f.set_len(MODEL_BYTES).unwrap();   // sparse: no time to make, but the wrong bytes
+        let t = std::time::Instant::now();
+        assert!(model_ready_quick(&dir), "the right size passes the quick check");
+        assert!(t.elapsed() < std::time::Duration::from_millis(50), "{:?}", t.elapsed());
+        assert!(!model_ready(&dir), "the full check reads it and finds the wrong bytes");
+        assert!(!model_ready_quick(&dir), "and the quick check then knows the full answer for this same file");
+        let _ = std::fs::remove_dir_all(&dir);
+        let main = include_str!("main.rs");
+        let key = &main[main.find("fn show_me_key(app: &AppHandle)").unwrap()..];
+        let key = &key[..key.find("\n}\n").unwrap()];
+        assert!(key.contains("model_ready: voice_mac::model_ready_quick(&data_dir()),") && !key.contains("voice_mac::model_ready(&"), "{key}");
+    }
     #[test]
     fn the_checksum_of_a_known_file_is_right_and_a_changed_file_is_noticed() {
         let d = std::env::temp_dir().join(format!("vm-{}", std::process::id())); std::fs::create_dir_all(&d).unwrap();
