@@ -15,6 +15,13 @@ describe("the character's page and peeking", () => {
     expect(peekFrom(null)).toEqual({ pose: "in", edge: "right" });
     expect(peekFrom("peek")).toEqual({ pose: "in", edge: "right" });
   });
+  test("M66: the shell says how long its move takes, and the water's lag ends with it (no bare 320 and 450 ms)", () => {
+    expect(peekFrom({ pose: "in", edge: "left", ms: 320 }).ms).toBe(320);
+    for (const bad of [undefined, -5, "320", Number.NaN, 5000]) expect(peekFrom({ pose: "in", edge: "left", ms: bad }).ms, String(bad)).toBeUndefined();
+    const dock = read("./dock.tsx");
+    expect(dock).not.toMatch(/\}, 320\)|\), 450\)/);
+    expect(dock).toContain("const inMs = peek.ms ?? DUR[4], outMs = peek.ms ?? DUR[3];");
+  });
   test("the page only adds the pose and the edge as data on the character, and asks the shell for nothing new", () => {
     const dock = read("./dock.tsx");
     expect(dock).toContain("const peek = usePeek();");

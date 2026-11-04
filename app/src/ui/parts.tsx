@@ -9,9 +9,33 @@ import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
 import type { Verdict } from "../verdict.ts";
 import type { Ring } from "../characters.ts";
-import { clampTo, commitText, menuOpensUp, moveIndex, stepBy, tabWrap, typeahead, verdictMark, type Range, type Stepped } from "./partsLogic.ts";
+import { clampTo, commitText, leaveThen, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
+import { EXIT_MS, type ExitKind } from "../motionTokens.ts";
+import { reducedMotion } from "../motion.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
+
+// ---------- Presence (M66 fix 9): what comes and goes leaves on its exit, never blinks out ----------
+
+/** How long a part's exit plays: its own time (motionTokens.ts EXIT_MS), or none with reduced motion, when it goes at once. */
+export const exitMs = (kind: ExitKind): number => (reducedMotion() ? 0 : EXIT_MS[kind]);
+
+/** Keeps a part that is told to go in the page, marked leaving (data-leaving), until its exit has played. */
+export function usePresence(open: boolean, kind: ExitKind): PresenceState {
+  const [state, setState] = useState<PresenceState>({ mounted: open, leaving: false });
+  const p = useRef<Presence | null>(null);
+  if (!p.current) p.current = new Presence(open, { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t as ReturnType<typeof setTimeout>) }, setState);
+  useLayoutEffect(() => { p.current!.set(open, exitMs(kind)); }, [open]);
+  useEffect(() => () => p.current?.stop(), []);
+  return { mounted: open || state.mounted, leaving: !open && state.leaving };
+}
+
+/** False once the part has left the page, so an exit that ends after its owner took it away tells nobody. */
+function useAlive(): { current: boolean } {
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  return alive;
+}
 
 // ---------- Button ----------
 
@@ -63,6 +87,7 @@ export function Row({ label, description, control, controlId, labelId, descripti
   const ownLabel = useId(), ownDesc = useId(), menuId = useId(), moreId = useId();
   const lid = labelId ?? ownLabel, did = descriptionId ?? ownDesc;
   const [menu, setMenu] = useState(false);
+  const pop = usePresence(menu, "menu");
   const [showMore, setShowMore] = useState(false);
   const hasMore = !!more && more.length > 0;
   const hasControl = control !== undefined && control !== null;
@@ -82,8 +107,8 @@ export function Row({ label, description, control, controlId, labelId, descripti
           {hasMore && <Button kind="icon" size="sm" className="ui-row-info" label={S.ui.learnMore} describedBy={lid} expanded={showMore} controls={moreId} onClick={() => setShowMore(!showMore)}><Icon name="info" size={14} /></Button>}
         </span>
         {description ? <span className="ui-row-desc" id={did}>{description}</span> : null}
-        {menu && restore && (
-          <div className="ui-pop" role="menu" id={menuId} aria-label={S.ui.changed(changed!.usual)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); } }}>
+        {pop.mounted && restore && (
+          <div className="ui-pop" role="menu" id={menuId} data-leaving={pop.leaving || undefined} aria-hidden={pop.leaving || undefined} aria-label={S.ui.changed(changed!.usual)} onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setMenu(false); } }}>
             <button type="button" role="menuitem" className="ui-pop-item" onClick={() => { setMenu(false); restore(); }}>{S.ui.restoreUsual}</button>
           </div>
         )}
@@ -166,6 +191,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, l
  *  select. `placeholder`: the words when nothing is chosen (an action menu keeps value ""). */
 export function Menu<T extends string>({ value, options, onChange, label, labelledBy, describedBy, id, disabled, placeholder = "", size = "sm", title }: Named & { value: T | ""; options: readonly Option<T>[]; onChange: (v: T) => void; placeholder?: string; size?: ButtonSize; /** The whole value as a tooltip, when its words may be cut (Home's folder menu). */ title?: string }) {
   const [open, setOpen] = useState(false);
+  const shownList = usePresence(open, "menu");
   const [active, setActive] = useState(0);
   const [up, setUp] = useState(false);
   const btn = useRef<HTMLButtonElement>(null), list = useRef<HTMLUListElement>(null), wrap = useRef<HTMLSpanElement>(null);
@@ -179,7 +205,9 @@ export function Menu<T extends string>({ value, options, onChange, label, labell
   // panel they are using). It opens upward when there is no room under its button.
   useLayoutEffect(() => {
     if (!open || !list.current || !btn.current) return;
-    setUp(menuOpensUp(btn.current.getBoundingClientRect(), list.current.offsetHeight, window.innerHeight));
+    // M66: inside Home the room is Home's own frame (its window is bigger than Home and mostly clear), elsewhere the window.
+    const b = btn.current.getBoundingClientRect(), f = btn.current.closest(".home-frame")?.getBoundingClientRect();
+    setUp(menuOpensUp(f ? { top: b.top - f.top, bottom: b.bottom - f.top } : b, list.current.offsetHeight, f ? f.height : window.innerHeight));
     list.current.focus();
   }, [open]);
   useEffect(() => { if (open) list.current?.querySelector<HTMLElement>(`#${CSS.escape(optId(active))}`)?.scrollIntoView({ block: "nearest" }); }, [open, active]);
@@ -208,8 +236,8 @@ export function Menu<T extends string>({ value, options, onChange, label, labell
         <span className="ui-menu-value" id={valueId}>{shown}</span>
         <Icon name="updown" size={12} />
       </button>
-      {open && (
-        <ul ref={list} className="ui-menu-list" id={listId} role="listbox" tabIndex={-1} data-up={up || undefined}
+      {shownList.mounted && (
+        <ul ref={list} className="ui-menu-list" id={listId} role="listbox" tabIndex={-1} data-up={up || undefined} data-leaving={shownList.leaving || undefined} aria-hidden={shownList.leaving || undefined}
           aria-label={label} aria-labelledby={labelledBy} aria-activedescendant={optId(active)} onKeyDown={onListKey}>
           {options.map((o, i) => (
             <li key={o.id} id={optId(i)} role="option" className="ui-menu-item" aria-selected={o.id === value} data-active={i === active || undefined}
@@ -436,13 +464,17 @@ export function Sheet({ title, dirty, onSave, onClose, saveLabel = S.ui.save, in
   const tid = useId();
   const head = useRef<HTMLHeadingElement>(null);
   const [asking, setAsking] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const alive = useAlive();
   const box = useRef<HTMLDivElement>(null);
   // The button that opened it gets the keyboard back when it closes, only by the rule every move in Home follows (focus.ts).
   const opener = useRef<HTMLElement | null>(typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null));
   useEffect(() => { head.current?.focus(); return () => { takeIfLost(() => opener.current); }; }, []);
-  const leave = () => { if (dirty && !instant) setAsking(true); else onClose(); };
+  // It slides back out before its owner hears it closed (M66 fix 9); with reduced motion it goes at once.
+  const close = () => { if (!leaving) leaveThen(setLeaving, exitMs("sheet"), () => { if (alive.current) onClose(); }); };
+  const leave = () => { if (dirty && !instant) setAsking(true); else close(); };
   return (
-    <div className="ui-sheet-layer">
+    <div className="ui-sheet-layer" data-leaving={leaving || undefined}>
       <div className="ui-scrim" aria-hidden="true" onPointerDown={leave} />
       <div className="ui-sheet" role="dialog" aria-modal="true" aria-labelledby={tid} ref={box}
         onKeyDown={(e) => {
@@ -463,8 +495,8 @@ export function Sheet({ title, dirty, onSave, onClose, saveLabel = S.ui.save, in
           {asking ? (<>
             <span className="ui-sheet-ask" role="status">{S.ui.unsavedQuestion}</span>
             <Button onClick={() => setAsking(false)}>{S.ui.keepEditing}</Button>
-            <Button onClick={onClose}>{S.ui.discardChanges}</Button>
-          </>) : instant ? <Button kind="primary" onClick={onClose}>{S.ui.done}</Button> : <Button kind="primary" disabled={!dirty} onClick={onSave}>{saveLabel}</Button>}
+            <Button onClick={close}>{S.ui.discardChanges}</Button>
+          </>) : instant ? <Button kind="primary" onClick={close}>{S.ui.done}</Button> : <Button kind="primary" disabled={!dirty} onClick={onSave}>{saveLabel}</Button>}
         </div>
       </div>
     </div>
@@ -476,11 +508,15 @@ export const TOAST_MS = 10_000;
  *  while the pointer is on it. */
 export function Toast({ text, action, onAction, onDone, ms = TOAST_MS }: { text: string; action?: string; onAction?: () => void; onDone: () => void; ms?: number }) {
   const left = useRef(ms), since = useRef(0), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const run = () => { since.current = Date.now(); timer.current = setTimeout(onDone, left.current); };
+  const [leaving, setLeaving] = useState(false);
+  // When its time is up it sinks and fades (M66 fix 9) before its owner takes it away.
+  const going = useRef(false), alive = useAlive();
+  const go = () => { going.current = true; leaveThen(setLeaving, exitMs("toast"), () => { if (alive.current && going.current) onDone(); }); };
+  const run = () => { if (going.current) return; since.current = Date.now(); timer.current = setTimeout(go, left.current); };
   const hold = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; left.current = Math.max(0, left.current - (Date.now() - since.current)); };
-  useEffect(() => { left.current = ms; run(); return hold; }, [text]);
+  useEffect(() => { left.current = ms; going.current = false; setLeaving(false); run(); return hold; }, [text]);
   return (
-    <div className="ui-toast" role="status" onPointerEnter={hold} onPointerLeave={run}>
+    <div className="ui-toast" role="status" data-leaving={leaving || undefined} onPointerEnter={hold} onPointerLeave={run}>
       <span className="ui-toast-text">{text}</span>
       {action && onAction ? <Button kind="quiet" size="sm" onClick={onAction}>{action}</Button> : null}
     </div>

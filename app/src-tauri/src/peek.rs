@@ -109,18 +109,22 @@ pub fn body_on_screen(r: Rect, s: &Screen) -> (f64, f64) {
     (w, h)
 }
 
-/// The motion between two poses: a short spring (`SPRING`), or None for at once. Always at once with Reduce motion or Less
-/// motion (`calm`), and always at once when coming fully in for a light (`light`: rule 5, the person must see it before
+/// The motion between two poses: a short plain ease (`curve`), or None for at once. Always at once with Reduce motion or
+/// Less motion (`calm`), and always at once when coming fully in for a light (`light`: rule 5, the person must see it before
 /// anything is heard or read).
 pub fn motion(from: Pose, to: Pose, calm: bool, light: bool) -> Option<f64> {
     if calm || from == to || (light && to == Pose::In) { return None; }
-    Some(if to == Pose::In { IN_SECS } else { OUT_SECS })
+    Some(if coming_in(from, to) { IN_SECS } else { OUT_SECS })
 }
-/// Coming in is quick; going back out is a little slower.
-pub const IN_SECS: f64 = 0.32;
-pub const OUT_SECS: f64 = 0.45;
-/// The curve of a move (a CAMediaTimingFunction's control points): it overshoots a little and settles, like a spring.
-pub const SPRING: [f32; 4] = [0.34, 1.45, 0.64, 1.0];
+/// Whether a move shows more of the character (hidden to peeking, or anything to fully in).
+pub fn coming_in(from: Pose, to: Pose) -> bool { to.shown() > from.shown() }
+/// M66 (the plan's fix 7, check B1 "it comes in quickly, no bounce"): coming in is the motion system's window move (--dur-4,
+/// motion.rs); going back past the edge is an exit, so it is quicker (--dur-3), like every exit.
+pub const IN_SECS: f64 = crate::motion::DUR_4_MS as f64 / 1000.0;
+pub const OUT_SECS: f64 = crate::motion::DUR_3_MS as f64 / 1000.0;
+/// The curve of a move (a CAMediaTimingFunction's control points), from the one motion system: coming in eases out and
+/// never passes its place (it used to overshoot by 45 percent, which read as a bounce); going out is the exit curve.
+pub fn curve(coming_in: bool) -> [f32; 4] { if coming_in { crate::motion::EASE_OUT } else { crate::motion::EASE_EXIT } }
 
 /// How long a peek lasts when something happens.
 pub const PEEK_MS: u64 = 3_000;
@@ -431,12 +435,33 @@ mod tests {
     fn coming_in_for_a_light_is_at_once_and_reduced_motion_is_always_at_once() {
         assert_eq!(motion(Pose::Hidden, Pose::In, false, false), Some(IN_SECS));
         assert_eq!(motion(Pose::In, Pose::Hidden, false, false), Some(OUT_SECS));
-        assert_eq!(motion(Pose::Hidden, Pose::Peek, false, false), Some(OUT_SECS));
+        // M66: peeking out from hidden shows more of it, so it comes in on the coming in time and curve.
+        assert_eq!(motion(Pose::Hidden, Pose::Peek, false, false), Some(IN_SECS));
+        assert_eq!(motion(Pose::Peek, Pose::Hidden, false, false), Some(OUT_SECS));
         assert_eq!(motion(Pose::Hidden, Pose::In, false, true), None, "rule 5: the light is there before anything is heard or read");
         for (a, b) in [(Pose::Hidden, Pose::In), (Pose::In, Pose::Hidden), (Pose::Hidden, Pose::Peek)] { assert_eq!(motion(a, b, true, false), None); }
         assert_eq!(motion(Pose::In, Pose::In, false, false), None);
-        // The spring overshoots a little and settles.
-        assert!(SPRING[1] > 1.0 && SPRING[3] == 1.0);
+    }
+
+    #[test]
+    fn coming_in_from_the_edge_never_bounces_and_going_out_is_quicker() {
+        // M66 fix 7: every control point lies in 0 to 1, so the move never passes its place (no bounce, check B1).
+        for c in [curve(true), curve(false)] { for v in c { assert!((0.0..=1.0).contains(&v), "{c:?}"); } }
+        assert_eq!(curve(true), crate::motion::EASE_OUT);
+        assert_eq!(curve(false), crate::motion::EASE_EXIT);
+        assert!(coming_in(Pose::Hidden, Pose::Peek) && coming_in(Pose::Peek, Pose::In) && coming_in(Pose::Hidden, Pose::In));
+        assert!(!coming_in(Pose::In, Pose::Peek) && !coming_in(Pose::Peek, Pose::Hidden) && !coming_in(Pose::In, Pose::In));
+        // The times are the motion system's, and an exit is quicker than its enter.
+        assert_eq!(IN_SECS, crate::motion::secs(crate::motion::DUR_4_MS));
+        assert_eq!(OUT_SECS, crate::motion::secs(crate::motion::DUR_3_MS));
+        assert!(OUT_SECS < IN_SECS);
+        // The shell uses the curve for the way it goes, and tells the page how long the move takes (dock.tsx no longer
+        // guesses 320 and 450 ms).
+        let src = include_str!("main.rs");
+        assert!(src.contains("fn spring_timing(ctx: &objc2_app_kit::NSAnimationContext) { curve_timing(ctx, peek::curve(PEEK_IN.load(Ordering::SeqCst))); }"));
+        assert!(src.contains("PEEK_IN.store(peek::coming_in(was, pose), Ordering::SeqCst);"));
+        assert!(src.contains("\"ms\": secs.map(|s| (s * 1000.0).round() as u64).unwrap_or(0)"));
+        assert!(!src.contains("peek::SPRING"));
     }
 
     // ---- the timing ----

@@ -62,7 +62,7 @@
 /* The project's name and Settings' back arrow start on the page's left edge, like the title and the ask box under them.
    The name keeps its hover fill, drawn a little outside it. */
 :root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn { position: relative; padding-inline: 0; background: transparent; box-shadow: none; }
-:root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--space-1) * -1) calc(var(--space-2) * -1); border-radius: var(--r-control); background: transparent; transition: background-color var(--dur-hover) var(--ease-hover); }
+:root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--space-1) * -1) calc(var(--space-2) * -1); border-radius: var(--r-control); background: transparent; transition: background-color var(--dur-hover) var(--ease-out); }
 :root[data-style="instrument"] .home .bar > .ui-menu .ui-menu-btn:hover::before { background: var(--surface-2); }
 :root[data-style="instrument"] .home .bar > .back { margin-inline-start: calc(var(--space-3) * -1); margin-inline-end: calc(var(--space-2) * -1); }
 

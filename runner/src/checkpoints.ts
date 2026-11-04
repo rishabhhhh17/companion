@@ -36,6 +36,10 @@ export type Changed = { file: string; kind: "added" | "modified" | "deleted" };
 export type UndoOnePlan = { safe: boolean; changed: Changed[]; env: string[]; conflicts: string[]; reason?: string };
 export type UndoOneResult = { safetyCheckpoint: string; reverted: string[]; env: string[] };
 /** Undoing one task stopped partway (after something was written): the version from just before it is in safetyCheckpoint. */
+/** M66: one changed file's lines, as git counts them; `was`: its length before, read only for a file that lost many. */
+export type LineCount = { added: number; removed: number; was?: number };
+/** A file that lost at least this many lines has its old length read, to tell a rewrite from an edit. */
+export const REWRITE_MIN_LINES = 40;
 export class UndoOneError extends Error { constructor(message: string, readonly safetyCheckpoint?: string) { super(message); } }
 const MAX_UNDO_ONE_FILES = 1000;
 
@@ -211,6 +215,10 @@ export class CheckpointStore {
     });
   }
   diff(fromId: string, toId: string): Promise<{ file: string; kind: "added" | "modified" | "deleted" }[]> { return this.serial(() => this.diffNow(fromId, toId)); }
+  /** M66: how many lines each changed file gained and lost between two versions, counted by git (never by a model), for the
+   *  size of a change on the result card. A file that lost many lines also says how many it had before (`was`), so a rewrite
+   *  of the whole file can be told from a small change. A file git cannot count as text (a picture) has no numbers. */
+  lineCounts(fromId: string, toId: string): Promise<Record<string, LineCount>> { return this.serial(() => this.lineCountsNow(fromId, toId)); }
   /** The files that differ between a saved version and the project as it is now, without making an undo point (must fix
    *  11). The .env copies kept beside a version are not compared. Home asks this on every refresh, so (review of M56) it
    *  keeps one index of its own between asks (`index-since`): git then rereads only the files whose size or time changed,
@@ -767,6 +775,23 @@ export class CheckpointStore {
     const a = this.readMeta(fromId), b = this.readMeta(toId);
     if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
     return CheckpointStore.nameStatus(await this.git(["diff-tree", "-r", "--name-status", "--no-renames", "-z", a.commit, b.commit]));
+  }
+  private async lineCountsNow(fromId: string, toId: string): Promise<Record<string, LineCount>> {
+    const a = this.readMeta(fromId), b = this.readMeta(toId);
+    if (!a || !b) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
+    const out: Record<string, LineCount> = {};
+    for (const row of (await this.git(["diff-tree", "-r", "--numstat", "--no-renames", "-z", a.commit, b.commit])).split("\0")) {
+      const [add, rem, ...rest] = row.split("\t");
+      const file = rest.join("\t"), added = Number(add), removed = Number(rem);
+      if (!file || !Number.isInteger(added) || !Number.isInteger(removed)) continue;   // "-": not text
+      out[file] = { added, removed };
+    }
+    // Only the few files that lost the most lines are read back, to say how long they were.
+    const big = Object.entries(out).filter(([, c]) => c.removed >= REWRITE_MIN_LINES).sort((x, y) => y[1].removed - x[1].removed).slice(0, 5);
+    for (const [file, c] of big) {
+      try { const text = await this.readBlob(a.commit, file); c.was = text ? text.split("\n").length - (text.endsWith("\n") ? 1 : 0) : 0; } catch { /* the size is left out */ }
+    }
+    return out;
   }
   private static nameStatus(out: string): { file: string; kind: "added" | "modified" | "deleted" }[] {
     const parts = out.split("\0").filter(Boolean);

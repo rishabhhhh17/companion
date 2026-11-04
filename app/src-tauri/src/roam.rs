@@ -798,8 +798,12 @@ mod tests {
         assert!(rt.contains(".tick(&roam::TickIn") && rt.contains("EndWhy::Hidden"), "hidden: home at once, with no trip");
         assert!(rt.contains("card_visible()") && rt.contains("overlay_busy()") && rt.contains("TURN.lock()"), "a ring or the card keeps it there");
         assert!(body(MAIN, "fn roam_kick(").contains("next_move(roam_blocked())"));
-        let fly = body(MAIN, "fn roam_fly(");
-        assert!(fly.contains("roam_blocked()") && fly.contains("roam::ease(") && fly.contains("roam::arc_at("), "it pauses under the pointer and flies the arrow's arc");
+        // M66: the trip runs on the display link (trip.rs Fly, which uses roam::ease and roam::arc_at), and each frame
+        // holds while the pointer is over it or it is dragged.
+        assert!(body(MAIN, "fn roam_fly(").contains("trip::Fly::new(from, to, ms, up)"));
+        assert!(body(MAIN, "fn trip_start(").contains("fly.frame(t, roam_blocked())"), "it pauses under the pointer");
+        let trip = include_str!("trip.rs");
+        assert!(trip.contains("roam::arc_at(self.from, self.to, roam::ease(self.done / self.total), self.up)"), "it flies the arrow's arc");
         let blocked = body(MAIN, "fn roam_blocked(");
         assert!(blocked.contains("dragging()") && blocked.contains("macos_see::pointer()"));
         assert!(body(MAIN, "fn drag_dock(").contains("DRAG_AT.store(now() as u64"));
@@ -825,7 +829,7 @@ mod tests {
             assert!(!follow.contains(heavy), "no {heavy} on each move");
         }
         // The same local watch as the ring's (follow_moves): no new global watch, never key events (rule 8).
-        assert!(MAIN.contains("follow_to_pointer(); drag_follow(unsafe { e.as_ref() }); e.as_ptr()"));
+        assert!(MAIN.contains("follow_to_pointer(); home_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr()"));
         assert_eq!(MAIN.matches("drag_follow(").count(), 2, "defined once, called from the local watch only");
         assert_eq!(MAIN.matches("addGlobalMonitorForEventsMatchingMask_handler(").count(), 1);
         // The let go: decided once (Drag::release takes the drag), saved once, placed once.
@@ -852,11 +856,13 @@ mod tests {
         // The same size in force for both (home.size): the tallest the trips keep clear of is the tallest Home grows to.
         assert!(body(MAIN, "fn card_room(").contains("home_size().max_h"));
         assert!(body(MAIN, "fn resize_card(").contains("home_size()") && body(MAIN, "fn resize_card(").contains("hs.max_h"), "the card never grows past what the plan keeps clear of");
-        for name in ["fn open_card(", "fn resize_card("] { assert!(body(MAIN, name).contains("place_card("), "{name} places the card, so it rechecks the visit"); }
+        assert!(body(MAIN, "fn open_card(").contains("place_card("), "opening places the card, so it rechecks the visit");
+        // M66: a content height never resizes Home's window; the visit is rechecked straight from the new height.
+        assert!(body(MAIN, "fn resize_card(").contains("roam_card_moved("), "growing rechecks the visit");
     }
     #[test]
     fn moving_it_never_takes_focus_or_shows_a_window() {
-        for name in ["fn roam_to(", "fn roam_kick(", "fn roam_animate(", "fn roam_fly(", "fn roam_set(", "fn roam_tick(", "fn roam_beside_window_of(", "fn roam_home_now(", "fn roam_card_moved(", "fn card_room("] {
+        for name in ["fn roam_to(", "fn roam_kick(", "fn roam_animate(", "fn roam_fly(", "fn trip_start(", "fn roam_set(", "fn roam_tick(", "fn roam_beside_window_of(", "fn roam_home_now(", "fn roam_card_moved(", "fn card_room("] {
             let b = body(MAIN, name);
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }

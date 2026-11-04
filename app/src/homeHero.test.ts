@@ -125,9 +125,10 @@ describe("the top says the job in big words", () => {
   });
   test("the headline is Home's heading, large, with one short line under it", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
-    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline"><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>');
+    // M66 fix 13: new words cross fade in by their key (homeFlow.test.ts).
+    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline hero-swap" key={`h:${heroShown.headline}`}><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>');
     // M55: while a job costs something, the line counts its cost up to the new number (smoothMotion.ts CountUp).
-    expect(card).toContain('<p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
+    expect(card).toContain('<p className="subline hero-swap" key={heroShown.count != null ? "count" : `l:${heroShown.line}`}>{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -198,25 +199,23 @@ describe("one ask field, and the main button does what the existing paths do", (
 });
 
 describe("it springs open from the notch, and not at all with less motion", () => {
-  test("a short spring from the top centre, played again at each opening", () => {
-    const spring = /@keyframes home-spring \{([^\n]*)\}/.exec(css)?.[1] ?? "";
-    expect(spring).toContain("transform");
-    // M25: it opens many times a day, so 240 ms on the strong ease out, no bounce. M55: one motion, on the tokens.
-    expect(css).toMatch(/\.home\.springing \{ animation: home-spring var\(--dur-open\) var\(--ease-enter\) both; \}/);
-    expect(tokens).toContain("--dur-open: 240ms;");
-    expect(tokens).toContain("--ease-enter: cubic-bezier(.23, 1, .32, 1);");
-    // It drops: a little above, slightly squashed, and grows down into place. Only transform and opacity, so nothing
-    // lays out or paints again while it opens (the clip it had before was painted on every frame).
-    expect(spring).toContain("scale(0.98, 0.94)"); expect(spring).toContain("translateY(");
-    expect(spring).not.toContain("clip-path");
-    expect(css).toMatch(/\.home \{[^}]*transform-origin: top center/);
-    expect(card).toContain('el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); }');
+  test("M66: it grows out of the notch at each opening, its content arriving from the top on the tokens", () => {
+    const sheet = read("./ui/homeShape.css");
+    // The content arrives once the shape is all but there: --dur-2 on the strong ease out, from a little higher and smaller
+    // (M66 step 5: later and quicker, so it never shows beyond the body).
+    expect(sheet).toContain("transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at);");
+    expect(read("./homeShape.ts")).toContain('content: out ? "none" : "translateY(-6px) scale(.97)",');
+    expect(tokens).toContain("--dur-3: 240ms;");
+    expect(tokens).toContain("--ease-out: cubic-bezier(.23, 1, .32, 1);");
+    // Only transform and opacity; never a clip painted on every frame.
+    expect(sheet).not.toMatch(/transition:[^;]*clip-path/);
     // M26: opened by a keyboard shortcut it is simply there (the shell says so, island.rs animates_open).
-    expect(card).toContain('const instant = !!(e.payload as { instant?: boolean } | null)?.instant;');
+    expect(card).toContain("stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant);");
+    expect(sheet).toContain(".home-stage[data-instant] :is(.hs > i, .hs > span, .hs > span > i, .home-frame) { transition: none; }");
   });
   test("reduced motion and Less motion stop it (the rules that stop every animation in the file)", () => {
-    expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }");
-    expect(css).toContain(":root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;");
+    expect(css).toContain(":root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;");
   });
   test("the character in Home is Flowflow, with the dock's own pose for each state", () => {
     const ch = read("./homeCharacter.tsx");

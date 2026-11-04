@@ -2,6 +2,42 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Smooth and flowy, Home grows out of the notch: 4 Nov 2026
+
+- **Home now grows out of the notch as one black shape.** The notch stretches sideways in the menu bar, then drops down into Home, and Home's words arrive once the shape is mostly there. Closing folds it back into the notch with no bounce. Home is the same black as the notch, with no line or gap where they meet.
+- **The notch answers the moment you point at it.** It grows a little at once, and opens Home after about a third of a second (it was 0.4 s; change it in Settings with "Open the notch after pointing at it for").
+- **A Home that pointing opened folds away when you move off it,** after the same short wait as the notch's status ("Close it after moving away for"). Once you click into it, it stays until you close it. With "Close Home when I click another app" off, it never folds by itself.
+- **Clicks beside Home land where you aimed.** The menu bar and the apps beside Home take their clicks first try, and a click beside Home never takes your typing away from your app.
+- **Home never hides what matters.** The Show me how arrow draws over Home, and the folder chooser and the Delete everything question show in front of it.
+- **Home changes size in one step.** When a result arrives or Settings opens in the tall Home, Home takes its new size at once, so nothing shows outside it, and Settings gets its full width again.
+- **Stop everything closes Home too.**
+- **On a Mac without a notch,** the small pill now hangs from the top edge, and Home grows from it the same way.
+- **Settings opens at its full size again in the tall Home.** It opened squeezed to the height of the place you came from (about 300 points, with only a sliver of its page showing). Now it takes its own height every time: from the Settings button, Command comma, the menu bar and the notch's Add your key.
+- **Moving between Now, History, Memory and Learn is quicker.** The new place starts to appear halfway through the old one leaving, so Home is never empty in between (about 80 ms from the click, it was about 150).
+- **The rays of light no longer jump** when a job starts or stops. They keep one slow sway, and while work runs a brighter layer fades in over them.
+- **The character on the edge no longer jumps when it starts or stops work.** The word under it fades in and out in its own place, so the character stays put (it used to hop about 14 points).
+- **The character comes in from the edge quickly, with no bounce.** Going back out is a little quicker still. Its water splashes as the move ends, not at a guessed time.
+- **Trips across the screen are smooth.** When the character goes to the window you are working in, it now moves once per screen refresh, on the screen's own clock, so it no longer stutters on a fast screen.
+- **The water ring stays on the cursor when you sweep fast.** Every move now lands a touch ahead of a moving pointer, and settles exactly on it when you stop. Before, this only happened the first time the ring showed.
+- **With Friendly picked, History, the notch and the practice panel open without a freeze.** The small live character used to start its drawing as they opened, which froze the screen for about half a second. Now the drawing is prepared in a quiet moment and handed over ready; until then you see its picture.
+- **Thinking shows at the character.** A small turning arc sits on its shoulder while it thinks, instead of an empty box waiting for words.
+- **The character's pictures fade from one state to the next** instead of swapping in place (with Draw live off).
+- **Prompt help no longer makes Home wobble while it writes.** Its words appear a few at a time, whole words only, in a box of four lines that keeps its size, with the oldest words fading out at its top. Home grows once, when the answer is ready.
+- **The words at the top of Now no longer jump** while a job works or finishes. They keep room for two lines, and new words fade in instead of popping.
+- **A card that needs you scrolls into view gently** instead of jumping there. While Home is opening it is simply in place.
+- **A proven fix lands once.** The tick draws in and the card glows softly one time, the first time you see it. In a practice, the line into its last step fills in first. Coming back to it later, it is just there. No score, no praise.
+- **A practice copy is checked when you first open it,** so Home and the notch say how it really is, instead of Not checked yet.
+- **Each result now says how big the change was,** counted from the files themselves: "Changed 3 lines in login.js", or "Rewrote the whole of index.html, 412 lines". When a short ask changed a lot, it says so plainly, so you know to look before you keep it.
+- **Every result ends with two or three quick buttons:** What changed, Explain this, and Fix it after a check that failed. Fix it asks first, and keeps a safety copy that Undo puts back.
+- **In the tall Home the ask box keeps room for two lines,** so typing a longer ask no longer pushes the page down.
+- **Home opens and closes as one clean shape.** Its words used to show a moment before the black shape had grown under them, as a faint second box below it, and stayed while it folded away. Now the words come once the shape is there and leave first, and only then does Home fold back into the notch. No faint line across Home while it grows, either.
+- **The notch's hover line waits for its shape.** The words show once the black has grown under them, and fade before it tucks back, so the edge never cuts through them. The shape's settle is also smoother: it no longer changes speed halfway.
+- **With a task running, the notch's wings stay put** as Home opens and closes over them. Home grows out of the wings and folds back into them, instead of the wings vanishing and popping back.
+- **A Home you pointed at, then clicked or typed into, stays.** Before, a very quick tap or a key could still let it fold away when the pointer drifted off. And it never folds on its own while a question or an approval waits for you.
+- **Clicks beside Home keep landing where you aimed** after you open Home again while it is folding away, or open it with a key.
+- **The character no longer flies off** when a setting or a display changes while Home is closed.
+- **New: Tap the trackpad when the notch opens.** A light tap you feel when you click or point at the notch. Off unless you turn it on (Settings, More options, under Notch).
+
 ## A grown up look, second part: 4 Nov 2026
 
 Three separate reviewers looked at every screen of the new Instrument look. What they found is fixed. With Friendly picked, Home looks as before, apart from two small fixes that help both looks (the last two points).

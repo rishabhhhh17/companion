@@ -16,6 +16,7 @@ import { characterOf, flowColours, livelinessOf, waterOf, type Liveliness } from
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb } from "./ui/parts.tsx";
 import { useRest } from "./useRest.ts";
+import { useSizeEase } from "./smoothMotion.ts";
 
 // With "Draw live" on (character.live), the founder's live water (src/flowflow/), loaded only then, as on the desktop.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
@@ -54,6 +55,8 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   const reacts = useSetting("character.reacts") !== false;
   const flow = useFlow({ pose, state, calm: reduced, off: live || orb });
   const box = useRef<HTMLDivElement>(null);
+  // M66 fix 10: its size follows the hero's at once; the drawing eases between the two by scale only.
+  useSizeEase(box, !orb);
   // A task that just finished: a ripple and droplets from the middle of the water, once.
   const wasDone = useRef(state === "done");
   useEffect(() => {

@@ -45,7 +45,7 @@ describe("the shipped list of settings", () => {
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true,
       // M55, live progress: while a job works, the notch says its step in a word, with a thin line of the four steps under it.
-      "island.showStep": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.4, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.showStep": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.3, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       // M55, adapts to you: Home's main action follows the kind of app in front, and the ways you press most come first in
       // More ways to ask. Both on, as the plan asks; the shell reads the first so that, off, it never reads the app in front.
@@ -113,6 +113,8 @@ describe("the shipped list of settings", () => {
       // today's look, kept as a choice. The character matches the look unless one is picked: the faceless glass orb, or the
       // friendly one with its face, its bubbles and its water.
       "look.style": "instrument", "look.character": "match",
+      // M66: a light tap on the trackpad as the notch opens under your own click or pointing. Off, like sounds (rule 16).
+      "island.haptics": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -141,7 +143,7 @@ describe("the shipped list of settings", () => {
   });
   test("area 4: Home, the island and the character, with the ranges in the plan", () => {
     const sec = (k: string, n: number, min: number, max: number, step: number, unit: string) => expect(defOf(k), k).toMatchObject({ section: "home", kind: "number", default: n, min, max, step, unit, scope: "app", live: true });
-    sec("island.openDelay", 0.4, 0.1, 1.5, 0.1, "seconds");
+    sec("island.openDelay", 0.3, 0.1, 1.5, 0.1, "seconds");
     sec("island.closeDelay", 0.3, 0.1, 1, 0.1, "seconds");
     sec("island.followDelay", 3, 1, 10, 1, "seconds");
     sec("character.position", 50, 0, 100, 5, "percent");

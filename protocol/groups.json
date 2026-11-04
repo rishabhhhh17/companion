@@ -12,7 +12,7 @@
   ],
   "tools": [
     { "id": "askBox", "group": "core", "hotkeys": ["card"], "permissions": [], "settings": [],
-      "commands": ["char_click", "ui_click", "restart_engine", "follow_say", "flowflow_rest", "note_failure", "open_card_cmd", "first_run_open", "toggle_card", "island_click", "island_alert", "island_state", "resize_card", "close_card", "quiet_now", "celebrate", "read_document", "drag_dock", "drop_dock", "replay_events"],
+      "commands": ["char_click", "ui_click", "restart_engine", "follow_say", "flowflow_rest", "note_failure", "open_card_cmd", "first_run_open", "toggle_card", "island_click", "island_alert", "island_state", "resize_card", "home_geom", "home_folded", "close_card", "quiet_now", "celebrate", "read_document", "drag_dock", "drop_dock", "replay_events"],
       "runner": ["engine.warm"] },
     { "id": "engine", "group": "core", "permissions": [], "settings": [],
       "commands": ["send_command"],

@@ -14,7 +14,7 @@ button, select, input, textarea { font: inherit; }
    A button is as wide as its words (flex: none) and never breaks inside a word. Its words go to a second line only when
    the panel itself is narrower than they are (the biggest text sizes), never a single line that runs off the panel
    (a11y.test.ts, reflow). A row hands a control that does not fit a line of its own first (Row, below). */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-md); margin: 0; padding: 0 var(--space-btn2-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: center; overflow-wrap: normal; cursor: default; transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover), border-color var(--dur-hover) var(--ease-hover), box-shadow var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-md); margin: 0; padding: 0 var(--space-btn2-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: center; overflow-wrap: normal; cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .btn:hover:not(:disabled) { background: var(--surface-2); }
 /* M55: it goes in quickly under the pointer and comes back out a little slower, on the same curve. */
 .btn:active:not(:disabled) { background: var(--surface-3); transform: scale(var(--press)); transition-duration: var(--dur-press); }
@@ -62,7 +62,7 @@ button, select, input, textarea { font: inherit; }
 .ui-disc + .ui-disc, .ui-group + .ui-disc { margin-top: var(--space-2); }
 .ui-disc + .ui-group { margin-top: var(--space-6); }
 /* A topic's head is a plain row with its chevron, not a card of its own over the card of its rows (M51 polish: a double box). */
-.ui-disc-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: 0 var(--space-4); border: 0; border-bottom: var(--hair) solid var(--line); border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.ui-disc-head { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: 0 var(--space-4); border: 0; border-bottom: var(--hair) solid var(--line); border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-disc-head:hover { background: var(--surface-2); }
 .ui-disc-head:active { transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
 .ui-disc-head:focus-visible { outline-offset: calc(var(--ring) * -1); }
@@ -106,7 +106,7 @@ button, select, input, textarea { font: inherit; }
    out of the flow, so the label never moves when a setting is changed or restored, and the row never grows a line. */
 .ui-row-dot { position: absolute; top: calc((var(--lh-label) - var(--icon-md)) / 2); inset-inline-start: calc(var(--icon-md) * -1); width: var(--icon-md); height: var(--icon-md); margin: 0; padding: 0; border: 0; border-radius: var(--r-key); background: transparent; }
 .ui-row-dot::before { content: ""; position: absolute; inset: 0; margin: auto; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--fg-2); }
-.ui-pop { position: absolute; top: 100%; left: 0; z-index: 5; min-width: var(--w-menu-min); padding: var(--space-1); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); }
+.ui-pop { position: absolute; top: 100%; left: 0; z-index: 5; min-width: var(--w-menu-min); padding: var(--space-1); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); transform-origin: top left; animation: ui-menu-in var(--dur-1) var(--ease-out) both; }
 .ui-pop-item { display: flex; align-items: center; width: 100%; min-height: var(--h-menu-item); padding: 0 var(--space-2); border: 0; border-radius: var(--r-thumb); background: transparent; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); text-align: left; }
 .ui-pop-item:hover, .ui-pop-item:focus-visible { background: var(--surface-3); }
 /* A setting kept for this project only: a tag styled like a key label. */
@@ -120,7 +120,7 @@ button, select, input, textarea { font: inherit; }
 }
 
 /* ---------- Switch: on is filled, off is hollow ---------- */
-.ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.ui-switch { position: relative; flex: none; width: var(--w-switch); min-width: var(--w-switch); height: var(--h-switch); margin: 0; padding: 0; border: 0; border-radius: var(--r-switch); background: transparent; box-shadow: inset 0 0 0 var(--hair-2) var(--edge-control); transition: background-color var(--dur-1) var(--ease-out); }
 .ui-switch::after { content: ""; position: absolute; top: var(--knob-inset); left: var(--knob-inset); width: var(--knob); height: var(--knob); border-radius: var(--r-switch); background: var(--knob-off); transform-origin: left center; transition: transform var(--dur-2) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 /* On is the accent, the water chosen (M51 polish: white on dark read as a plain preferences list), its knob the page's own. */
 .ui-switch[aria-checked="true"] { background: var(--switch-on); box-shadow: none; }
@@ -161,12 +161,15 @@ button, select, input, textarea { font: inherit; }
 .ui-menu-list:focus-visible .ui-menu-item[data-active] { outline: var(--ring) solid var(--focus); outline-offset: calc(var(--ring) * -1); }
 .ui-menu-tick { display: grid; place-items: center; flex: none; width: var(--icon-md); color: var(--fg); }
 @keyframes ui-menu-in { from { opacity: 0; transform: scale(var(--menu-from)); } }
+/* M66 fix 9: a menu that closes shrinks back a touch and fades (ui/parts.tsx usePresence keeps it until then), never blinks out. */
+.ui-menu-list[data-leaving], .ui-pop[data-leaving] { pointer-events: none; animation: ui-menu-out var(--dur-exit-menu) var(--ease-exit) both; }
+@keyframes ui-menu-out { to { opacity: 0; transform: scale(var(--menu-from)); } }
 @media (forced-colors: active) { .ui-menu-item[data-active] { outline: var(--hair) solid Highlight; } }
 
 /* ---------- Stepper: [−][value][+] joined in one 28 tall box, then a unit ---------- */
 .ui-stepper { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; max-width: 100%; }
 .ui-stepper-box { display: inline-flex; align-items: stretch; flex: none; box-sizing: border-box; height: var(--h-sm); border: var(--hair) solid var(--edge-control); border-radius: var(--r-control); background: var(--inset); overflow: clip; }
-.ui-stepper-btn { display: grid; place-items: center; flex: none; width: var(--h-sm); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.ui-stepper-btn { display: grid; place-items: center; flex: none; width: var(--h-sm); margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-stepper-btn:hover:not(:disabled) { background: var(--surface-2); }
 .ui-stepper-btn:active:not(:disabled) { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .ui-stepper-btn:disabled { color: var(--ink-disabled); cursor: not-allowed; }
@@ -192,7 +195,7 @@ button, select, input, textarea { font: inherit; }
 
 /* ---------- Picture choice ---------- */
 .ui-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--w-pic), 1fr)); gap: var(--space-2); }
-.ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: auto; box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.ui-pic { position: relative; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); width: auto; box-sizing: border-box; margin: 0; padding: var(--space-1) var(--space-1) var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); background: transparent; color: var(--fg); transition: border-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-pic:hover:not(:disabled) { border-color: var(--line-strong); }
 .ui-pic:active:not(:disabled) { transform: scale(var(--press-pic)); transition-duration: var(--dur-press); }
 .ui-pic[aria-checked="true"] { border-color: var(--pick); box-shadow: inset 0 0 0 calc(var(--hair-2) - var(--hair)) var(--pick); }
@@ -209,7 +212,7 @@ button, select, input, textarea { font: inherit; }
 
 /* ---------- Key label: each key its own cap ---------- */
 .ui-keys { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-key); }
-.ui-key { display: inline-grid; place-items: center; min-width: var(--h-key); min-height: var(--h-key); box-sizing: border-box; padding: 0 var(--space-key-x); border: var(--hair) solid var(--key-edge); border-radius: var(--r-key); background: var(--key-fill); box-shadow: inset 0 var(--hair) 0 var(--key-lip), 0 var(--hair) 0 var(--key-drop); color: var(--fg); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.ui-key { display: inline-grid; place-items: center; min-width: var(--h-key); min-height: var(--h-key); box-sizing: border-box; padding: 0 var(--space-key-x); border: var(--hair) solid var(--key-edge); border-radius: var(--r-key); background: var(--key-fill); box-shadow: inset 0 var(--hair) 0 var(--key-lip), 0 var(--hair) 0 var(--key-drop); color: var(--fg); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
 /* Held: the talk keys are down (the app's own state, never a key being read). The cap drops 1 point and takes the water's wash. */
 .ui-key[data-down], [data-talking] .ask-keys .ui-key { transform: translateY(var(--hair)); background: var(--key-down); box-shadow: inset 0 var(--hair) 0 var(--key-lip); }
 
@@ -236,7 +239,7 @@ button, select, input, textarea { font: inherit; }
 .ui-chip[data-kind="notNeeded"], .ui-chip[data-kind="plain"] { color: var(--fg-2); }
 
 /* ---------- Recent row: the whole row opens its receipt ---------- */
-.ui-recent { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: var(--space-row-y) var(--space-4); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); text-align: left; transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.ui-recent { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; width: 100%; min-height: var(--h-row); box-sizing: border-box; margin: 0; padding: var(--space-row-y) var(--space-4); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); text-align: left; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-recent:hover { background: var(--surface-2); }
 .ui-recent:active { background: var(--surface-3); transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
 .ui-recent:focus-visible { outline-offset: 0; }
@@ -253,7 +256,7 @@ button, select, input, textarea { font: inherit; }
 .sb-list { display: grid; gap: var(--hair); margin: 0; padding: 0; list-style: none; }
 .sb-head { margin: var(--space-4) 0 var(--space-1) var(--space-field-x); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-label); }
 .sb-head:first-child { margin-top: 0; }
-.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: 0 var(--space-field-x); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.sb-item { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: 0 var(--space-field-x); border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); text-align: left; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .sb-item .ic { flex: none; color: var(--fg-2); }
 .sb-item:hover { background: var(--surface-2); }
 .sb-item:active { background: var(--surface-3); transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
@@ -283,11 +286,20 @@ button, select, input, textarea { font: inherit; }
 .ui-sheet-ask { margin-right: auto; color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); }
 @keyframes ui-sheet-in { from { transform: translateX(100%); } }
 @keyframes ui-fade-in { from { opacity: 0; } }
+/* M66 fix 9: closing, it slides back out and the scrim fades, before its owner takes it away (ui/parts.tsx Sheet). */
+.ui-sheet-layer[data-leaving] { pointer-events: none; }
+.ui-sheet-layer[data-leaving] .ui-scrim { animation: ui-fade-out var(--dur-1) var(--ease-exit) both; }
+.ui-sheet-layer[data-leaving] .ui-sheet { animation: ui-sheet-out var(--dur-exit-sheet) var(--ease-exit) both; }
+@keyframes ui-sheet-out { to { transform: translateX(100%); } }
+@keyframes ui-fade-out { to { opacity: 0; } }
 
 /* ---------- Toast: bottom centre of the panel ---------- */
 .ui-toast { position: fixed; left: 50%; bottom: var(--space-4); z-index: 40; display: flex; align-items: center; gap: var(--space-2); max-width: min(calc(100% - var(--space-7)), var(--w-toast-max)); box-sizing: border-box; padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); background: var(--surface-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); box-shadow: var(--shadow-raised); color: var(--fg); font: var(--t-small) / var(--lh-small) var(--font); transform: translateX(-50%); animation: ui-toast-in var(--dur-2) var(--ease-out) both; }
 .ui-toast-text { min-width: 0; overflow-wrap: anywhere; }
 @keyframes ui-toast-in { from { opacity: 0; transform: translate(-50%, var(--rise)); } }
+/* M66 fix 9: its time up, it sinks back and fades. */
+.ui-toast[data-leaving] { pointer-events: none; animation: ui-toast-out var(--dur-exit-toast) var(--ease-exit) both; }
+@keyframes ui-toast-out { to { opacity: 0; transform: translate(-50%, var(--rise)); } }
 
 /* ---------- M65, the Instrument look's own parts (the lab's look A) ----------
    A tag that says stop; the status line, a small dot and its words in their meaning's colour; a file row with its folder,
@@ -308,9 +320,13 @@ button, select, input, textarea { font: inherit; }
 .ui-file-plus { color: var(--ok); }
 .ui-file-minus { color: var(--bad); }
 .ui-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); margin: 0; padding: var(--space-2) var(--space-4); border-top: var(--hair) solid var(--line); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
-.ui-orb { display: block; flex: none; width: var(--orb); height: var(--orb); border-radius: var(--r-round); outline: var(--orb-ring) solid transparent; outline-offset: var(--orb-gap); transition: outline-color var(--dur-2) var(--ease-enter); }
+.ui-orb { display: block; flex: none; width: var(--orb); height: var(--orb); border-radius: var(--r-round); outline: var(--orb-ring) solid transparent; outline-offset: var(--orb-gap); transition: outline-color var(--dur-2) var(--ease-out); }
 .ui-orb img { display: block; width: 100%; height: 100%; }
 .ui-orb[data-ring="stop"] { outline-color: var(--ring-stop); }
 .ui-orb[data-ring="needs"] { outline-color: var(--ring-needs); }
 .ui-orb[data-ring="proven"] { outline-color: var(--ring-proven); }
 .ui-orb[data-ring="working"] { outline-color: var(--ring-working); }
+
+/* ---------- Reduced motion (M66): a part that comes in still fades in, plainly; it leaves at once (parts.tsx exitMs) ---------- */
+@media (prefers-reduced-motion: reduce) { :is(.ui-menu-list, .ui-pop, .ui-scrim, .ui-sheet, .ui-toast) { animation: ui-fade-in var(--dur-1) linear both !important; } }
+:root[data-less-motion] .ui-menu-list, :root[data-less-motion] .ui-pop, :root[data-less-motion] .ui-scrim, :root[data-less-motion] .ui-sheet, :root[data-less-motion] .ui-toast { animation: ui-fade-in var(--dur-1) linear both !important; }

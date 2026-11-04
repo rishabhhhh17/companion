@@ -27,6 +27,8 @@ import { useFlow } from "./flow/useFlow.ts";
 import { activeGroup, groupLook, groupOn } from "./groups.ts";
 import { running } from "./dropmenu.ts";
 import { PartBoundary } from "./partBoundary.tsx";
+import { labelShows, posesKept, thinkingShows } from "./dockStates.ts";
+import { DUR } from "./motionTokens.ts";
 import "./style.css";
 import "./ui/chrome.css";
 
@@ -87,7 +89,8 @@ function Dock() {
     return () => { off.then((f) => f()); };
   }, []);
   // Coming in from the edge: the window slides in (peek.rs IN_SECS), the water lags behind it, then splashes as it stops.
-  // Going back out: it stretches toward the edge. None with less motion (the controller is still then).
+  // Going back out: it stretches toward the edge. None with less motion (the controller is still then). M66: as long as the
+  // shell says its move takes, so the splash lands when the window does.
   const lastPeek = useRef(peek.pose);
   useEffect(() => {
     const was = lastPeek.current; lastPeek.current = peek.pose;
@@ -95,8 +98,9 @@ function Dock() {
     const out = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] }[peek.edge as "left" | "right" | "top" | "bottom"] ?? [1, 0];
     const coming = peek.pose === "in" || (peek.pose === "peek" && was === "hidden");
     const speed = 1400, [ox, oy] = out;
-    if (coming) { vel(-ox * speed, -oy * speed); const t = setTimeout(() => { vel(0, 0); ffCtl.current?.arrive(ox, oy); }, 320); return () => clearTimeout(t); }
-    vel(ox * speed, oy * speed); const t = setTimeout(() => vel(0, 0), 450); return () => clearTimeout(t);
+    const inMs = peek.ms ?? DUR[4], outMs = peek.ms ?? DUR[3];
+    if (coming) { vel(-ox * speed, -oy * speed); const t = setTimeout(() => { vel(0, 0); ffCtl.current?.arrive(ox, oy); }, inMs); return () => clearTimeout(t); }
+    vel(ox * speed, oy * speed); const t = setTimeout(() => vel(0, 0), outMs); return () => clearTimeout(t);
   }, [peek.pose, peek.edge]);
   const [roam, setRoam] = useState<Roam>({ phase: "home", toward: null });
   useEffect(() => {
@@ -138,6 +142,10 @@ function Dock() {
   const motionFor = (s: CharacterState, r: boolean) => orbMotion(charLook, stateMotion(s, r));
   const pose = poseFor(state, { roam: roam.phase, react: react?.r });
   const flow = useFlow({ pose, state, calm: reduced, off: shows !== "picture" });
+  // M66: every pose shown stays on the page and the one in force fades in over the last (dockStates.ts), so a state
+  // change is a cross fade, never a new picture loading in place of the old one.
+  const kept = useRef<typeof pose[]>([]);
+  kept.current = posesKept(kept.current, pose);
   const button = useRef<HTMLButtonElement>(null);
   const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
   // A click opens or closes the card; dragging moves the character anywhere on the screen, or to any edge or corner. M47:
@@ -260,13 +268,18 @@ function Dock() {
           ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
-            <img className={`pose${flow.ready ? " flow-ready" : ""}`} src={poseUrl(pose)} alt="" draggable={false} />
+            <span className={`pose-stack${flow.ready ? " flow-ready" : ""}`}>
+              {kept.current.map((p) => <img key={p} className="pose" data-on={p === pose ? "" : undefined} src={poseUrl(p)} alt="" draggable={false} />)}
+            </span>
           </>}
         {waiting > 0 && <span className="badge" aria-hidden="true">{waiting}</span>}
+        {/* M66: thinking shows here, at the character, never as an empty card; always on the page, faded in and out. */}
+        <span className="think-glyph" data-on={thinkingShows(state) ? "" : undefined} aria-hidden="true" />
       </button>
       {/* M26: the words show only when there is something to say; resting, "Ready" is for VoiceOver only, so Flowflow is not
-          labelled like a debug readout. */}
-      <div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>
+          labelled like a debug readout. M66: always on the page under the character, out of the layout, shown by a fade, so
+          the character never moves when the word comes or goes (dockStates.ts labelShows). */}
+      <div className="dock-label" data-shown={labelShows(state, waiting, drop.s.menu?.at === "dock") ? "" : undefined} role="status" aria-live="polite">{label}</div>
       {!flow.failed && shows === "picture" && <canvas ref={flow.dropRef} className="drops" aria-hidden="true" />}
       {drop.s.hover && <div className="sr" role="status">{S.drop.over}</div>}
       <DropRing drop={drop} />

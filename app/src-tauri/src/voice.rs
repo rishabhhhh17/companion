@@ -355,7 +355,7 @@ mod tests {
         let tick = body("fn tick(");
         let hide = &tick[tick.find("HIDDEN_BY_US.swap(true").unwrap()..tick.find("} else if show && HIDDEN_BY_US.swap(false").unwrap()];
         assert!(hide.contains("voice_tell_hidden();"), "the full screen hide wakes the microphone's worker");
-        assert!(main.contains("if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide from the menu bar wakes it too");
+        assert!(main.contains("if hide { home_stop_now(\"hidden\"); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide from the menu bar wakes it too");
         let tell = body("fn voice_tell_hidden(");
         assert!(tell.contains("VoiceMsg::Hidden") && !tell.contains("voice_worker"), "only a worker already running is woken");
         assert!(body("fn companion_hidden(").contains("HIDDEN_BY_US") && body("fn companion_hidden(").contains("USER_HID"));

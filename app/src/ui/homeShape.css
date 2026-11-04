@@ -1,0 +1,72 @@
+/* Home grows out of the notch as one black shape (M66 Part 2 step 1; homeShape.ts draws the numbers, homeStage.tsx the
+   pieces). The window never changes size: only these pieces move, and only by transform (opacity and visibility for the
+   content and the fade), so Core Animation runs them at the display's rate. Every piece is laid out at its largest from the
+   shape's centre at the top of the window and only scaled down, so no radius ever stretches. Width pieces run on the
+   OPEN_W spring, the body's height on OPEN_H 60 ms later, everything folds back on CLOSE with no bounce. The curves and their
+   lengths are tokens (tokens.css, generated from islandSpring.ts). */
+.home-stage { position: fixed; inset: 0; overflow: hidden; }
+.home-stage .hs { position: absolute; inset: 0; pointer-events: none; visibility: hidden; transition: visibility 0s linear calc(var(--dur-exit-menu) + var(--dur-notch-close)); }
+.home-stage:is([data-phase="opening"], [data-phase="open"], [data-phase="closing"], [data-hover]) .hs { visibility: visible; transition-delay: 0s; }
+.hs > i, .hs > span, .hs > span > i { position: absolute; left: var(--cx); top: 0; display: block; transform-origin: 0 0; }
+.hs > span > i { left: 0; }
+.hs i { background: var(--notch); }
+.hs-band { width: var(--band-w); height: var(--band-h); transform: var(--t-band); }
+.hs-mid-y { width: 0; height: 0; transform: var(--t-mid-y); }
+.hs-mid { width: var(--mid-w); height: var(--mid-h); transform: var(--t-mid-x); }
+.hs-foot-y { width: 0; height: 0; transform: var(--t-foot-y); }
+.hs-strip { width: var(--strip-w); height: 24px; transform: var(--t-strip); }
+/* The foot reaches a point up into the middle, so no hairline shows where they meet while the height moves (homeShape.ts
+   SEAM). Its bottom, and so the shape, is unchanged. */
+.hs-foot-y > i { box-shadow: 0 -1px 0 var(--notch); }
+.hs .hs-corner { width: 24px; height: 24px; background: radial-gradient(circle at 100% 0, var(--notch) 23.5px, transparent 24px); }
+.hs .hs-corner.l { transform: var(--t-corner-l); }
+.hs .hs-corner.r { transform: var(--t-corner-r); background: radial-gradient(circle at 0 0, var(--notch) 23.5px, transparent 24px); }
+/* The concave shoulders: at the top edge beside the band, and where the band meets the wider body. */
+.hs .hs-top, .hs .hs-join { width: 12px; height: 12px; }
+.hs .hs-top.l { transform: var(--t-top-l); background: radial-gradient(circle at 0 100%, transparent 11.5px, var(--notch) 12px); }
+.hs .hs-top.r { transform: var(--t-top-r); background: radial-gradient(circle at 100% 100%, transparent 11.5px, var(--notch) 12px); }
+.hs .hs-join.l { transform: var(--t-join-l); background: radial-gradient(circle at 0 0, transparent 11.5px, var(--notch) 12px); }
+.hs .hs-join.r { transform: var(--t-join-r); background: radial-gradient(circle at 100% 0, transparent 11.5px, var(--notch) 12px); }
+
+/* Folding back (and closed): every piece on CLOSE together. Under the pointer while closed, the nudge on HOVER. */
+.hs > i, .hs > span, .hs > span > i { transition: transform var(--dur-notch-close) var(--ease-notch-close); }
+.home-stage[data-phase="closed"] .hs > i, .home-stage[data-phase="closed"] .hs > span, .home-stage[data-phase="closed"] .hs > span > i { transition: transform var(--dur-notch-hover) var(--ease-notch-hover); }
+/* M66 step 5: the content leaves first; the shape holds until it has gone, then folds, so the two never move against each
+   other. */
+.home-stage[data-phase="closing"] :is(.hs > i, .hs > span, .hs > span > i) { transition-delay: var(--dur-exit-menu); }
+/* Opening: the width first, in the menu bar row; then the height drops. Open (M66 step 6, F18): a new content height or
+   width takes the shape at once, in the same frame as the content's frame (--hh, --hw), so content is never drawn past the
+   body over the desktop, and Home never resizes with motion. */
+.home-stage[data-phase="opening"] .hs > i, .home-stage[data-phase="opening"] .hs > span > i { transition: transform var(--dur-notch-open-w) var(--ease-notch-open-w); }
+.home-stage[data-phase="opening"] .hs > span { transition: transform var(--dur-notch-open-h) var(--ease-notch-open-h) var(--seq-notch-height-at); }
+.home-stage[data-phase="open"] :is(.hs > i, .hs > span, .hs > span > i) { transition: none; }
+
+/* Opened by a keyboard shortcut (M26): simply there, no growing. */
+.home-stage[data-instant] :is(.hs > i, .hs > span, .hs > span > i, .home-frame) { transition: none; }
+
+/* Home's content: on the body, with no fill or foot of its own (the pieces above are the one black shape), arriving from
+   the top once the shape is all but there, leaving first and fast. */
+.home-stage[data-told] .home-frame { position: absolute; left: var(--hx); top: var(--hy); width: var(--hw); height: var(--hh); overflow: hidden; contain: layout paint; background: transparent; border-radius: 0; transform-origin: top center; transform: var(--t-content); opacity: var(--o-content); transition: opacity var(--dur-exit-menu) linear, transform var(--dur-exit-menu) var(--ease-exit); }
+.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at); }
+.home-stage:not([data-told]) .home-frame { position: absolute; inset: 0; }
+/* Before the shell's measures come (or if they were lost), a closed Home draws nothing over the screen. */
+.home-stage:not([data-told]):is([data-phase="closed"], [data-phase="closing"]) .home-frame { visibility: hidden; }
+.home-stage[data-told] .home-frame > .card.home { height: 100%; background: transparent; border: 0; border-radius: 0; }
+.home-stage[data-told] .home-frame > .home[data-side] .side { height: calc(var(--hh) - var(--hair)); }
+
+/* Reduce motion and Less motion: nothing grows or folds; the shape and the content fade on a short straight line. */
+@media (prefers-reduced-motion: reduce) {
+  .hs > i, .hs > span, .hs > span > i, .home-stage .hs > i, .home-stage .hs > span, .home-stage .hs > span > i { transition: none !important; }
+  .home-stage .hs { opacity: 0; transition: opacity var(--dur-1) linear, visibility 0s linear var(--dur-1) !important; }
+  .home-stage:is([data-phase="opening"], [data-phase="open"]) .hs { opacity: 1; transition: opacity var(--dur-1) linear !important; }
+  .home-stage[data-told] .home-frame { transform: none !important; transition: opacity var(--dur-1) linear !important; }
+}
+:root[data-less-motion] :is(.hs > i, .hs > span, .hs > span > i) { transition: none !important; }
+:root[data-less-motion] .home-stage .hs { opacity: 0; transition: opacity var(--dur-1) linear, visibility 0s linear var(--dur-1) !important; }
+:root[data-less-motion] .home-stage:is([data-phase="opening"], [data-phase="open"]) .hs { opacity: 1; transition: opacity var(--dur-1) linear !important; }
+:root[data-less-motion] .home-stage[data-told] .home-frame { transform: none !important; transition: opacity var(--dur-1) linear !important; }
+
+/* The island page (island.tsx): while Home's shape is out, the island stops drawing once Home's band is all but out
+   (OPEN_W 99 percent there, homeShape.ts islandHideAtMs), so its wings are never uncovered, and draws again at once when
+   Home has folded back into it. */
+.island[data-home] .island-shape { visibility: hidden; transition: visibility 0s linear var(--seq-island-hide-at); }

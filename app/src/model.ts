@@ -37,7 +37,7 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // as the person changed them after the Undo. fixKept: the last restore was "Put my fix back" on a turn, which puts the fix
 // itself back, so the files are as checked (undone stays true for the same reason). earlierUndone: "Which task broke it"
 // undid an earlier task after this one: this task's files stay, but the engine no longer follows its conversation up.
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string }[]; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string; added?: number; removed?: number; was?: number }[]; askWords?: number; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
   undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
   // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
@@ -970,7 +970,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
       // What the engine said about the files since the last check is older than this result: it is asked again.
-      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.

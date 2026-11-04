@@ -90,3 +90,47 @@ export function verdictMark(v: Pick<Verdict, "icon" | "tone"> & Partial<Pick<Ver
   const mark: MarkName = v.kind === "noChange" ? "ring" : v.icon === "wait" && v.tone === "mixed" ? "half" : v.icon;
   return { mark, tone: v.tone };
 }
+
+// ---------- Presence: a part that comes and goes leaves on its exit, never blinks out (M66 fix 9) ----------
+
+/** Where a part that comes and goes is: `mounted` while it shows and while it leaves; `leaving` only while it leaves. */
+export type PresenceState = { mounted: boolean; leaving: boolean };
+type Timer = unknown;
+type Clock = { set: (f: () => void, ms: number) => Timer; clear: (t: Timer) => void };
+
+/** Keeps a part in the page for `ms` after it is told to go, marked leaving, so its exit can play; then it goes. A new
+ *  show during the exit takes it back at once (never a blink). With no exit time (reduced motion) it goes at once. The
+ *  clock is passed in, so the timing is tested without waiting. */
+export class Presence {
+  state: PresenceState;
+  private timer: Timer | null = null;
+  constructor(open: boolean, private readonly clock: Clock, private readonly onChange: (s: PresenceState) => void) {
+    this.state = { mounted: open, leaving: false };
+  }
+  /** Show or hide it; `exitMs` is how long its exit plays (0 under reduced motion). */
+  set(open: boolean, exitMs: number): void {
+    if (open) {
+      this.stop();
+      this.put({ mounted: true, leaving: false });
+    } else if (this.state.mounted && !this.state.leaving) {
+      if (exitMs <= 0) { this.put({ mounted: false, leaving: false }); return; }
+      this.put({ mounted: true, leaving: true });
+      this.timer = this.clock.set(() => { this.timer = null; this.put({ mounted: false, leaving: false }); }, exitMs);
+    }
+  }
+  /** Stop waiting (the part is going from the page anyway). */
+  stop(): void { if (this.timer !== null) { this.clock.clear(this.timer); this.timer = null; } }
+  private put(s: PresenceState): void {
+    if (s.mounted === this.state.mounted && s.leaving === this.state.leaving) return;
+    this.state = s;
+    this.onChange(s);
+  }
+}
+
+/** Run `then` after a part's exit has played (`exitMs`, 0 under reduced motion: at once), marking it leaving first. For a
+ *  part whose closing is its owner's to do (a sheet's Cancel, a toast running out): the owner hears only once it has gone. */
+export function leaveThen(setLeaving: (on: boolean) => void, exitMs: number, then: () => void, set: (f: () => void, ms: number) => unknown = setTimeout): void {
+  if (exitMs <= 0) { then(); return; }
+  setLeaving(true);
+  set(then, exitMs);
+}

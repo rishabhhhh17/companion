@@ -15,7 +15,9 @@ import { ProjectWatcher } from "./watcher.ts";
 import { changeOf, inProject, markOf, type FileMark } from "./livefile.ts";
 import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
 import { answerPrompt, differentTaskPrompt, endedWhyOf, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
-import { CheckpointStore, NEEDS_GIT } from "./checkpoints.ts";
+import { CheckpointStore, NEEDS_GIT, type LineCount } from "./checkpoints.ts";
+/** M66: how many words the person asked in, for the result card's warning on a big rewrite for a small ask. */
+export const wordsIn = (s: unknown): number => (typeof s === "string" ? s.split(/\s+/).filter(Boolean).length : 0);
 import { asksForWhatOnlyTheyHave, asksPerson, questionOf, saidLine } from "./asks.ts";
 import { isClaudeStop, NOT_REACHED, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
@@ -1287,6 +1289,9 @@ export class AgentRunner {
     // same small change made twice for "your turn" (only when it is on, after a proven fix, outside a plan, and never off
     // the record).
     const hunks = changed.length ? await this.taskHunksOf(store, before.id, lastAfter, changed) : [];
+    // M66: the size of the change on the result card, counted by git between the same two versions (never by the model).
+    const counts = changed.length ? await store.lineCounts(before.id, lastAfter).catch(() => ({} as Record<string, LineCount>)) : {};
+    const sized = changed.map((c) => (counts[c.file] ? { ...c, ...counts[c.file] } : c));
     const changedAt = changeTarget(hunks);
     const projectKey = resolve(cmd.project);
     const repeat = yourTurn && status === "done" && (proof === "passed" || proof === "partial") && !cmd.offTheRecord && !this.driving.has(cmd.agent) ? repeatedChange(hunks) : null;
@@ -1297,7 +1302,7 @@ export class AgentRunner {
     // The agent's last words reach the card (secrets hidden, clipped), and whether they ask the person something: only for a
     // task that ended as needs you or done, never one that stopped or failed (that is tried again, not answered).
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed, commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);

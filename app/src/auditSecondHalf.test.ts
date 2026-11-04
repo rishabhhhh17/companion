@@ -209,21 +209,22 @@ describe("(31) one status, one drawing, never colour alone", () => {
 });
 
 describe("(39) the page does not lurch when a task starts and ends", () => {
-  test("Flowflow's size is a registered length, so the hero eases between its sizes", () => {
-    expect(ALL_CSS()).toContain('@property --char { syntax: "<length>"; inherits: true; initial-value: 104px; }');
-    // Inside the hero's own rule (style.css): when a task starts or ends, Flowflow eases between its sizes; reduced motion
-    // stops it with every other transition.
-    expect(css).toMatch(/\.hero \{ --char: calc\(104rem \/ 14\);[^}]*transition: --char var\(--dur-3\) var\(--ease-out\);/);
+  test("M66 fix 10: the layout takes Flowflow's new size in one frame, and the drawing eases by scale only", () => {
+    // Transitioning the registered --char laid the whole hero out again on every frame; it is gone.
+    expect(ALL_CSS()).not.toContain("@property --char");
+    expect(css).not.toMatch(/transition:[^;]*--char/);
+    expect(css).toContain(".home-pond .home-char { width: var(--char); margin: -8px -10px -4px; transform-origin: 50% 100%; }");
+    expect(read("./homeCharacter.tsx")).toContain("useSizeEase(box, !orb);");
   });
 });
 
 describe("(49) a room change runs at one speed", () => {
-  test("the card tint, the row tint and the gel's colours are registered too, and all of them move together", () => {
-    for (const p of ["--el-card", "--el-tint", "--el-grad-1", "--el-grad-2", "--el-grad-3"]) expect(ALL_CSS()).toContain(`@property ${p} { syntax: "<color>"; inherits: true;`);
-    const rule = css.match(/\.home\[data-element\] \{ transition: ([^}]*)\}/)?.[1] ?? "";
-    for (const p of ["--el-glow", "--el-deep", "--el-light", "--el-base", "--el-sky", "--el-foot", "--el-card", "--el-tint", "--el-grad-1", "--el-grad-2", "--el-grad-3"]) expect(rule).toContain(`${p} 280ms var(--ease-out)`);
+  test("M66 fix 11: every colour of the room changes at once, together; only the old light fades out on top, by opacity", () => {
+    expect(css).not.toMatch(/\.home\[data-element\] \{ transition:/);
+    expect(css).not.toMatch(/transition:[^;]*--el-/);
+    expect(css).toContain(".room.room-was { z-index: 0; animation: room-was-out var(--dur-3) var(--ease-out) both; }");
     expect(css).not.toMatch(/520ms/);
-    expect(css).toMatch(/\.home\[data-side\] \.side \.sb-item\[aria-current="page"\] \{[^}]*transition: background-color 280ms var\(--ease-out\)/);
+    expect(css).toMatch(/\.home\[data-side\] \.side \.sb-item\[aria-current="page"\] \{[^}]*transition: background-color var\(--dur-3\) var\(--ease-out\)/);
   });
 });
 

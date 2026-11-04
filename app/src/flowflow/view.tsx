@@ -1,9 +1,10 @@
 // Flowflow in a page: a canvas, the controller, and the picture poses underneath as the fallback. React only mounts and
 // unmounts it and passes the app's state in; the animation itself never goes through React state.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CharacterState } from "../model.ts";
 import type { Liveliness } from "../lookfeel.ts";
 import { FlowflowController } from "./controller.ts";
+import { flowflowPool } from "./pool.ts";
 import type { Side } from "./engine.ts";
 import type { Tuning } from "./physics.ts";
 
@@ -37,6 +38,10 @@ export type FlowflowViewProps = {
   askId?: string;
   /** M55: the id of the card it leans toward while changes wait for a review, or null when nothing waits. */
   leanTo?: string | null;
+  /** M66 (pool.ts): a small character that mounts as something opens (History, the notch's wings, a panel) never starts or
+   *  compiles a drawing then: it shows `placeholder` (its still picture) until a warm one is ready, made in an idle moment. */
+  waitForWarm?: boolean;
+  placeholder?: ReactNode;
 };
 
 /** M55: the way from the middle of the canvas to the middle of an element, in points (y down), or null if either is not laid
@@ -51,24 +56,45 @@ const ASK_MEASURE_MS = 400;
 /** The card is measured again once it has grown in (smoothMotion.ts, --dur-enter and a little). */
 const LEAN_SETTLED_MS = 450;
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo }: FlowflowViewProps) {
-  const canvas = useRef<HTMLCanvasElement>(null);
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo, waitForWarm, placeholder }: FlowflowViewProps) {
+  // M66: the canvas is the pool's (pool.ts), put into this host and taken out again on close; the host has no box of its
+  // own (display: contents), so the canvas is styled and placed as if it were here directly.
+  const host = useRef<HTMLSpanElement>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
-  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small });
+  const [ready, setReady] = useState(() => !waitForWarm || flowflowPool().ready > 0);
+  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small, className, waitForWarm });
+
+  // Waiting for a warm drawing: asked for in an idle moment, and kept warm from then on for the next open.
+  useEffect(() => {
+    if (ready || failed) return;
+    let live = true;
+    flowflowPool().keepWarm();
+    flowflowPool().warmSoon().then((ok) => { if (!live) return; if (ok) setReady(true); else { setFailed(true); initial.current.onFallback?.(); } });
+    return () => { live = false; };
+  }, [ready, failed]);
 
   useEffect(() => {
-    const c = canvas.current; if (!c) return;
+    const h = host.current; if (!h || !ready) return;
     const i = initial.current;
     const fail = () => { setFailed(true); i.onFallback?.(); };
-    const made = FlowflowController.create({ canvas: c, host: c.parentElement ?? c, tuning: i.tuning, reduced: i.reduced, followRange: i.followRange, onFallback: fail, small: i.small });
-    if (!made) { fail(); return; }
+    const wait = !!i.waitForWarm;
+    const got = flowflowPool().take() ?? (wait ? null : flowflowPool().fresh());
+    if (!got) { if (wait) setReady(false); else fail(); return; }   // another small one took the warm one: wait for the next
+    const c = got.canvas;
+    c.className = i.className ?? "flowflow"; c.setAttribute("aria-hidden", "true");
+    h.appendChild(c); canvas.current = c;
+    let given = false;
+    const giveBack = () => { if (given) return; given = true; c.remove(); flowflowPool().give(got); };
+    const made = FlowflowController.create({ canvas: c, host: h.parentElement ?? h, tuning: i.tuning, reduced: i.reduced, followRange: i.followRange, onFallback: fail, small: i.small, renderer: got.renderer, release: giveBack });
+    if (!made) { giveBack(); fail(); return; }
     ctl.current = made; if (controllerRef) controllerRef.current = made;
     made.setLiveliness(i.liveliness ?? "still");
     made.setState(i.state);
     if (i.resting) made.setResting(true);
-    return () => { made.dispose(); ctl.current = null; if (controllerRef) controllerRef.current = null; };
-  }, [controllerRef]);
+    return () => { made.dispose(); giveBack(); canvas.current = null; ctl.current = null; if (controllerRef) controllerRef.current = null; };
+  }, [controllerRef, ready]);
 
   useEffect(() => { ctl.current?.setState(state); }, [state]);
   useEffect(() => { ctl.current?.setLiveliness(liveliness ?? "still"); }, [liveliness]);
@@ -116,5 +142,6 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   }, [leanTo, ctl.current]);
 
   if (failed) return null;
-  return <canvas ref={canvas} className={className ?? "flowflow"} aria-hidden="true" />;
+  if (!ready) return <>{placeholder ?? null}</>;
+  return <span ref={host} className="ff-host" style={{ display: "contents" }} aria-hidden="true" />;
 }

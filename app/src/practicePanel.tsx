@@ -4,7 +4,8 @@
 // confirm step takes the keyboard to its safe choice (confirm.tsx). A plain Done, never a score or praise (rule 16).
 import { practiceStamp } from "./itemLook.ts";
 import { ItemTile, Stamp } from "./itemMarks.tsx";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
+import { threadLands } from "./homeFlow.ts";
 import { ChangesCard } from "./changesCard.tsx";
 import { ConfirmStep } from "./confirm.tsx";
 import { FailingLine, fromTest, lineOf } from "./failingLine.tsx";
@@ -30,10 +31,10 @@ export type PanelActions = {
 
 /** Find, fix, prove as a thread: a hairline with three nodes. A node fills with the water only when the stage after it was reached
  *  (practice.ts threadOf); the third stays empty when the checks did not pass. The state is in words too, never colour alone. */
-function Thread({ t }: { t: ThreadState }) {
+function Thread({ t, landed = false }: { t: ThreadState; landed?: boolean }) {
   const rows: [keyof ThreadState, string][] = [["find", S.practiceThread.find], ["fix", S.practiceThread.fix], ["prove", S.practiceThread.prove]];
   return (
-    <ol className="thread" aria-label={S.practiceThread.label}>
+    <ol className="thread" aria-label={S.practiceThread.label} data-landed={landed ? "" : undefined}>
       {rows.map(([k, label]) => (
         <li key={k} className="thread-step" data-state={t[k]}>
           <span className="thread-node" aria-hidden="true">{t[k] === "done" && <span className="thread-tick"><Icon name="tick" size={10} /></span>}</span>
@@ -135,6 +136,11 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
   next: PracticeEntry | null; undo: UndoState | null; explain: ReactNode; act: PanelActions; checks?: ProofLine[];
 }) {
   const w = S.practices[entry.id];
+  // M66 fix 17: proven while on screen, the thread lands once (its last line fills in, the tick draws in, the card glows
+  // once; ui/homeFlow.css). Opened already done, it is simply done.
+  const stageWas = useRef<string | null>(null), landed = useRef(false);
+  if (threadLands(stageWas.current, p.stage)) landed.current = true; else if (p.stage !== "done") landed.current = false;
+  stageWas.current = p.stage;
   const task = entry.fix === "task", gate = entry.find === "gate";
   // A practice leans on three Flow tools (its check, its fix and its drawing). With Flow off their buttons are not drawn and one
   // plain line says so, so the panel never waits on an answer that cannot come. The check before going live is the core's.
@@ -152,10 +158,10 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
   // line grows with bigger text (M51 review); the card is drawn over its foot, so it peeks over the card's top edge.
   return (<>
     <Peek stage={p.stage} />
-    <section className="panel practice" aria-label={S.practiceTitle} data-stage={p.stage}>
+    <section className="panel practice" aria-label={S.practiceTitle} data-stage={p.stage} data-landed={landed.current ? "" : undefined}>
       <h2>{S.practiceTitle}</h2>
       <div className="line muted">{w.title}</div>
-      <Thread t={threadOf(p)} />
+      <Thread t={threadOf(p)} landed={landed.current} />
       {note && <div className="line" role="status">{note}</div>}
       {p.stage === "start" && <>
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>

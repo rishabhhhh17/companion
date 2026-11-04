@@ -102,7 +102,8 @@ describe("the island window", () => {
   test("Home drops down from the island; beside the character only when there is no island", () => {
     // One place for Home (F18 items 1 and 2 together): placing it and the character keeping clear of it both ask card_spot,
     // which asks the tested rule in island.rs with the island's display.
-    expect(fnBody("place_card")).toContain("card_spot(mtm, d, CARD_H.load(");
+    // M66: Home's window is island.rs home_panel, with card_spot's place only when there is no island.
+    expect(fnBody("place_card")).toContain("island::home_panel(on.as_ref(), &sizes, home_size(), spot)");
     const spot = fnBody("card_spot");
     expect(spot).toContain("ISLAND_ON.lock()");
     expect(spot).toContain("island::card_spot(on.as_ref()");
@@ -116,8 +117,8 @@ describe("the island window", () => {
   test("opening Home brings the island to the display with the pointer, and starts the click away watch", () => {
     const open = fnBody("open_card");
     expect(open).toMatch(/place_island\(mtm, true, /);
-    expect(open).toContain("watch_click_away(");
-    const watch = fnBody("watch_click_away");
+    expect(open).toContain("watch_home(");
+    const watch = fnBody("watch_home");
     expect(watch).toContain("island::ClickAway::new(");
     expect(watch).toContain("HOME_OPEN.load(");
     expect(watch).toContain('emit_to("card", "home-click-away"');
@@ -125,9 +126,12 @@ describe("the island window", () => {
   test("every way Home closes tells the island", () => {
     // Close and the island or the character again roll Home up first (close_home_rolled), then close it the same way.
     for (const f of ["close_card", "toggle_home"]) expect(fnBody(f), f).toContain("close_home_rolled(");
-    expect(fnBody("close_home_rolled")).toContain("home_closed(");
+    // M66: every close ends in home_fold (after the page's fold, or at once), which tells the island and runs home_closed.
+    expect(fnBody("close_home_rolled")).toContain("home_fold(");
+    expect(fnBody("home_fold(extra")).toContain('emit_to("island", "home-state", json!({ "shown": false }))');
+    expect(fnBody("home_fold(extra")).toContain("home_closed();");
     const tick = fnBody("tick");
-    expect(tick.slice(tick.indexOf("if !show"), tick.indexOf("hidden_for_full_screen"))).toContain("home_closed(");
+    expect(tick.slice(tick.indexOf("if !show"), tick.indexOf("hidden_for_full_screen"))).toContain("home_stop_now(");
   });
 });
 
@@ -160,7 +164,8 @@ describe("with the island turned off", () => {
     expect(dock).toContain("data-state={state}");
     expect(dock).toContain("const label = dockWords(charLook, state, waiting, characterWords(m));");   // M65 step 4: the orb says Needs you while something waits
     // M26: the words hide only at rest with nothing waiting; every look at the screen and the microphone is not rest.
-    expect(dock).toContain('<div className={`dock-label${state === "idle" && !waiting ? " sr" : ""}`} role="status" aria-live="polite">{label}</div>');
+    // M66: always on the page and faded, so the character never jumps (dockStates.ts labelShows, dockStates.test.ts).
+    expect(dock).toContain('<div className="dock-label" data-shown={labelShows(state, waiting, drop.s.menu?.at === "dock") ? "" : undefined} role="status" aria-live="polite">{label}</div>');
     expect([...dock.matchAll(/"(island|home)\.\w+"/g)].map((x) => x[0]).sort()).toEqual(['"home.goToNeeds"', '"island.show"']);
     for (const e of [ev({ type: "app.showme", stage: "looking", message: "Looking at your screen" }), ev({ type: "app.voice", stage: "listening", message: "Listening" }), ev({ type: "agent.state", agent: "a", state: "checking" })]) {
       const m = run([e]);
@@ -254,14 +259,21 @@ describe("the island and Home open with a short motion", () => {
     expect(place).toContain("island::retract_ms(from, f, reduce_motion())");
     expect(fnBody("set_island_frame")).toContain("set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES)");
   });
-  test("Home drops open only when it opens, never on a resize, and is never left see through", () => {
+  test("M66: Home's window never moves, fades or resizes to open; only its page's shape moves", () => {
     const open = fnBody("open_card");
-    expect(open).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion())");
-    expect(open).toContain("c.setAlphaValue(0.0);");
-    expect(open).toContain("set_frame_moving(c, end, Some(island::OPEN_SECS), Some(1.0), &CARD_MOVES)");
-    // A resize goes through the same helper, at once (never a motion), so it replaces a drop still running.
+    for (const gone of ["home_drop", "setAlphaValue", "set_frame_moving", "OPEN_SECS"]) expect(open, gone).not.toContain(gone);
+    // Ordered in only if something hid it; never with focus unless a typing key opened it (rule 9).
+    expect(open).toContain("if !c.isVisible() { c.orderFrontRegardless(); }");
+    expect(open).toContain("if keyboard { HOME_KEY_BY_KEY.store(true, Ordering::SeqCst); c.makeKeyWindow(); }");
+    // A content height never resizes the window; a display or setting change places it at once through the one helper.
     expect(fnBody("resize_card")).not.toContain("set_frame_moving");
-    expect(fnBody("place_card")).toContain("set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES)");
+    // Only Settings opening or closing places it again (M66 step 6: the body's width in force); the window keeps its frame.
+    expect(fnBody("resize_card").split("place_card").length - 1).toBe(1);
+    expect(fnBody("resize_card")).toContain("if was != open { with_panels(|d, c| place_card(d, c)); }");
+    expect(fnBody("place_card")).toContain("set_frame_moving(c, to_appkit(p.frame, ph), None, None, &CARD_MOVES)");
+    // The close: no Rust sleep in step with a CSS time; the page's fold, with a longer backstop only.
+    expect(main).not.toContain("HOME_CLOSE_MS");
+    expect(fnBody("close_home_rolled")).toContain("HOME_FOLD_BACKSTOP_MS");
     const helper = fnBody("set_frame_moving");
     expect(helper).toContain("runAnimationGroup_completionHandler");
     // Whatever happens to the motion, Home ends fully drawn, and on the frame asked last.
@@ -393,7 +405,8 @@ describe("the fun island", () => {
     expect(page).toContain("springStep(");
     expect(page).toContain("followLessMotion();");
     const css = read("./style.css");
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.island \*, \.island \*::before, \.island \*::after \{ animation: none !important; transition: none !important; \} \}/);
+    // M66: its animations stop; its fades stay, plain and short, under the page wide rule.
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.island \*, \.island \*::before, \.island \*::after \{ animation: none !important; \} \}/);
   });
   test("the island page draws Flowflow from the character's poses, never from a skin directly", () => {
     const page = read("./island.tsx");
@@ -426,12 +439,13 @@ describe("the island's motion agrees with the app's timing", () => {
     for (; t < TUCK_MS / 1000; t += 1 / 120) s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c);
     expect(Math.abs(s.x - 185)).toBeLessThan(1);
     for (let u = 0; u < 0.5 && !settled(s, 185); u += 1 / 120) { s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c); expect(s.x - 185).toBeLessThan(1); }
-    // The panel stays drawn while the shape tucks back over it (island.tsx keeps it shown while tucking from a peek).
-    expect(read("./island.tsx")).toContain('shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"}');
+    // M66 step 5: the panel's words leave first and fast, and the shape waits for them (homeGlitches.test.ts), so the
+    // shape's edge never cuts them.
+    expect(read("./island.tsx")).toContain("shown={parts.panel}");
   });
   test("a proven fix widens the wings by island.rs CHEER on the softer spring, only with reactions and motion on", async () => {
     const { CHEER_SPRING, CHEER_AT_MS, CHEER_FOR_MS } = await import("./islandSpring.ts");
-    expect(CHEER_SPRING).toEqual({ k: 380, c: 22 });
+    expect(CHEER_SPRING).toEqual({ k: 273, c: 26.5 });   // M66: the HOVER spring
     const zeta = CHEER_SPRING.c / (2 * Math.sqrt(CHEER_SPRING.k));
     expect(zeta).toBeGreaterThan(0.4); expect(zeta).toBeLessThan(1);   // one soft overshoot, no jelly
     expect(CHEER_AT_MS).toBeGreaterThanOrEqual(120 + 280);   // after the tick has drawn (delay plus draw)
@@ -445,8 +459,9 @@ describe("the island's motion agrees with the app's timing", () => {
   test("the marks are drawn by hand: a turning arc, one breathing dot, and no grey", () => {
     const css = read("./style.css"), page = read("./island.tsx");
     expect(page).toContain('<circle cx="8" cy="8" r="6.5" />');
-    expect(css).toMatch(/\.island-wing \.mark\[data-mark="arc"\] svg \{[^}]*stroke-width: 1\.75; stroke-linecap: round;[^}]*island-spin \.8s cubic-bezier\(\.45, \.05, \.55, \.95\)/);
-    expect(css).toMatch(/\.island-wing \.mark\[data-mark="dots"\] i \{ width: 6px; height: 6px;[^}]*island-breathe 1\.4s/);
+    expect(css).toMatch(/\.island-wing \.mark\[data-mark="arc"\] svg \{[^}]*stroke-width: 1\.75; stroke-linecap: round;[^}]*island-spin var\(--loop-island-spin\) var\(--ease-loop\)/);
+    expect(css).toMatch(/\.island-wing \.mark\[data-mark="dots"\] i \{ width: 6px; height: 6px;[^}]*island-breathe var\(--loop-island-breathe\)/);
+    expect(TOKENS_CSS()).toContain("--loop-island-breathe: 1.4s; --loop-island-spin: .8s;");
     expect(css).toContain("@keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }");
     expect(css).not.toMatch(/#8e8e93/i);
     expect(css).toMatch(/\.mark \{[^}]*background: var\(--notch-dot\)/);
@@ -459,14 +474,11 @@ describe("the island's motion agrees with the app's timing", () => {
     // An agent's face shows only inside its own job card.
     expect(read("./islandPanel.tsx")).toContain('<FlowMini className="ip-agent" state={j.state} still={!shown} />');
   });
-  test("Home rolls back up in the time the shell waits before it hides it", () => {
-    const css = read("./style.css"), main = read("../src-tauri/src/main.rs");
-    const ms = Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]);
-    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-close\) var\(--ease-exit\) both; \}/);   // M25: never ease in on what a person watches
-    expect(Number(/--dur-close: (\d+)ms/.exec(TOKENS_CSS())?.[1])).toBe(ms);
-    expect(TOKENS_CSS()).toContain("--ease-exit: var(--ease-out);");
-    expect(main).toContain('let _ = a.emit_to("card", "closing", json!({}));');
-    expect(main).toMatch(/if reduce_motion\(\) \|\| !card_visible\(\) \{ go\(extra\); return; \}/);
+  test("Home folds back into the notch on the page's clock, and the shell waits for it", () => {
+    const main = read("../src-tauri/src/main.rs");
+    expect(main).toContain('let _ = a.emit_to("card", "closing", json!({ "reduced": reduce_motion() }));');
+    expect(main).toContain("if !card_visible() { home_fold(extra); return; }");
+    expect(read("./homeStage.tsx")).toContain('void invoke("home_folded")');
   });
 });
 
@@ -533,11 +545,11 @@ describe("the bare notch (M46)", () => {
     expect(TOKENS_CSS()).toMatch(/--font-code: ui-monospace,/);
   });
   test("needs you pulses three times, then holds steady, on the notch and on the pictures; never forever", () => {
-    expect(css).toMatch(/\.island-wing \.mark\[data-state="needsYou"\] \{[^}]*island-needsYou-pulse 1\.6s ease-in-out 200ms 3 both/);
+    expect(css).toMatch(/\.island-wing \.mark\[data-state="needsYou"\] \{[^}]*island-needsYou-pulse var\(--loop-island-pulse\) var\(--ease-loop\) var\(--dur-2\) 3 both/);
     expect(css).not.toMatch(/island-needsYou-pulse[^;]*infinite/);
-    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-pose\]\[data-motion="glow"\] \{ animation: pose-glow 1\.8s ease-in-out 3; \}/);
-    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-motion="glow"\] \{ animation: glow 1\.8s ease-in-out 3; \}/);
-    expect(css).not.toMatch(/(pose-glow|glow) 1\.8s ease-in-out infinite/);
+    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-pose\]\[data-motion="glow"\] \{ animation: pose-glow var\(--loop-glow\) var\(--ease-loop\) 3; \}/);
+    expect(css).toMatch(/\.character:not\(\[data-live\]\)\[data-motion="glow"\] \{ animation: glow var\(--loop-glow\) var\(--ease-loop\) 3; \}/);
+    expect(css).not.toMatch(/(pose-glow|glow) var\(--loop-glow\) var\(--ease-loop\) infinite/);
     // Each new question pulses again: the mark is keyed on how many wait.
     expect(page).toContain("key={`${mark}:${count}`}");
     expect(page).toContain("<Mark w={w} count={m.approvals.length} reduced={reduced} />");

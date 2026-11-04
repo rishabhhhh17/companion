@@ -273,11 +273,12 @@ describe("which room Home is, and when its light may move", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain("const room = roomElement({ tab: home.tab, active: activeGroup(m, dragging) });");
     expect(card).toContain('data-element={room} data-still={roomIsStill ? "" : undefined}');
-    expect(card).toContain("<RoomLight />");
+    expect(card).toContain("<RoomLight element={room} />");
     const look = readFileSync(new URL("./ui/look.css", import.meta.url), "utf8");
     expect(look).toContain(".home[data-still] .room > * { animation-play-state: paused; }");
-    expect(look).toMatch(/\.room-glow \{[^}]*animation: room-breathe 36s/);
-    // Only transforms and opacity move per frame; the light's colours fade once when the room changes.
+    expect(look).toMatch(/\.room-glow \{[^}]*animation: room-breathe var\(--loop-room\)/);
+    expect(TOKENS_CSS()).toContain("--loop-room: 36s;");
+    // Only transforms and opacity move per frame; a room change sets its colours at once (M66 fix 11).
     expect(look).toMatch(/@keyframes room-breathe \{ from \{ transform:[^}]*\} to \{ transform:[^}]*\} \}/);
     expect(TOKENS_CSS()).toContain('@property --el-glow { syntax: "<color>"; inherits: true;');
   });

@@ -1016,7 +1016,7 @@ mod tests {
         let hide = &tick[tick.find("HIDDEN_BY_US.swap(true").unwrap()..tick.find("} else if show && HIDDEN_BY_US.swap(false").unwrap()];
         assert!(hide.contains("pointers_gone_hidden(app);"), "the full screen hide: {hide}");
         let user = body("fn set_user_hidden(");
-        assert!(user.contains("if hide { home_closed(); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide in the menu bar: {user}");
+        assert!(user.contains("if hide { home_stop_now(\"hidden\"); voice_tell_hidden(); pointers_gone_hidden(app); }"), "Hide in the menu bar: {user}");
         assert!(main.contains("\"hide\" => { let a = app.clone(); let _ = app.run_on_main_thread(move || set_user_hidden(&a, !USER_HID.load(Ordering::SeqCst))); }"));
     }
     #[test]

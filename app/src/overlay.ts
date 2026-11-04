@@ -10,6 +10,7 @@ import { fadeMs, markFor, ringRadii } from "./marks.ts";
 import { INK, haloFor, inkMark, inkPath, penEase, type InkMark } from "./ink.ts";
 import { SpeechClock } from "./speechClock.ts";
 import { followLessMotion, playful, reducedMotion } from "./motion.ts";
+import { DRAW_MS, DUR, EASE_EXIT_CSS, PEN_CSS, transition } from "./motionTokens.ts";
 import { reactionsOn } from "./reactions.ts";
 import { setting, startSettings, takeSnapshot } from "./settingsStore.ts";
 import { S } from "./strings.ts";
@@ -140,7 +141,7 @@ function show(p: Point) {
     };
     if (reduced) {
       parts.forEach((_, i) => paint(i, 1));
-      g.style.opacity = "0"; g.getBoundingClientRect(); g.style.transition = "opacity 150ms linear"; g.style.opacity = "1";
+      g.style.opacity = "0"; g.getBoundingClientRect(); g.style.transition = transition("opacity", DUR[1], "linear"); g.style.opacity = "1";
     } else {
       // When each stroke starts and ends, from the first touch of the pen.
       let at = 0;
@@ -162,8 +163,8 @@ function show(p: Point) {
       if (mine !== drawGen) return;
       ringOn();
       if (reduced) { g.remove(); return; }
-      g.style.transition = "opacity 280ms cubic-bezier(0.3, 0, 0.8, 0.15)"; g.style.opacity = "0";
-      markTimer = setTimeout(() => g.remove(), 320);
+      g.style.transition = transition("opacity", DUR[3], EASE_EXIT_CSS); g.style.opacity = "0";
+      markTimer = setTimeout(() => g.remove(), DUR[4]);
     }, fadeMs(p.fadeMs));
   };
   const land = () => {
@@ -408,12 +409,12 @@ function drawDiagram(d: Laid, dockX: number, ms: number | null) {
       const t0 = 150 + gi * 700 + k * 220;
       setTimeout(() => {
         x.setAttribute("opacity", "1");
-        for (const p of paths) { const len = p.getTotalLength?.() ?? 0; if (!len) continue; p.style.strokeDasharray = `${len}`; p.style.strokeDashoffset = `${len}`; p.getBoundingClientRect(); p.style.transition = "stroke-dashoffset .55s ease-out"; p.style.strokeDashoffset = "0"; }
+        for (const p of paths) { const len = p.getTotalLength?.() ?? 0; if (!len) continue; p.style.strokeDasharray = `${len}`; p.style.strokeDashoffset = `${len}`; p.getBoundingClientRect(); p.style.transition = transition("stroke-dashoffset", DRAW_MS); p.style.strokeDashoffset = "0"; }
       }, t0);
     }));
   }
   // It fades after its time; one kept until closed stays until Close in Home or Stop everything (the shell clears it).
-  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; timer = setTimeout(clear, 700); }, ms);
+  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = transition("opacity", DUR[4], EASE_EXIT_CSS); g.style.opacity = "0"; timer = setTimeout(clear, DUR[4] + DUR[1]); }, ms);
 }
 // M33, Draw it as a picture (HeyClicky's drawn illustrations, made ours): a sheet of dotted paper with a handwritten title,
 // the picture drawn the way a hand would, outline first and then its colour, shape after shape in the model's order, all
@@ -480,14 +481,14 @@ export function drawSketch(sk: { title: string; caption: string; shapes: SketchS
       const start = at;
       setTimeout(() => {
         n.getBoundingClientRect();
-        if (m.stroked && m.len > 0) { n.style.transition = `stroke-dashoffset ${dur}ms cubic-bezier(.33,0,.2,1)`; n.style.strokeDashoffset = "0"; }
-        if (!m.stroked && !m.filled) { n.style.transition = "opacity 200ms ease-out"; n.style.opacity = "1"; }
+        if (m.stroked && m.len > 0) { n.style.transition = transition("stroke-dashoffset", dur, PEN_CSS); n.style.strokeDashoffset = "0"; }
+        if (!m.stroked && !m.filled) { n.style.transition = transition("opacity", DUR[2]); n.style.opacity = "1"; }
       }, start);
-      if (m.filled) setTimeout(() => { n.style.transition = `${n.style.transition ? n.style.transition + ", " : ""}fill-opacity 260ms ease-out`; n.style.fillOpacity = "1"; }, start + dur * 0.8);
+      if (m.filled) setTimeout(() => { n.style.transition = `${n.style.transition ? n.style.transition + ", " : ""}${transition("fill-opacity", DUR[3])}`; n.style.fillOpacity = "1"; }, start + dur * 0.8);
       at += (dur + 60) * squeeze;
     });
-    setTimeout(() => { cap.style.transition = "opacity 220ms ease-out"; cap.setAttribute("opacity", "1"); }, Math.min(at, 2500));
+    setTimeout(() => { cap.style.transition = transition("opacity", DUR[2]); cap.setAttribute("opacity", "1"); }, Math.min(at, 2500));
   }
-  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = "opacity .6s"; g.style.opacity = "0"; cap.style.transition = "opacity .6s"; cap.setAttribute("opacity", "0"); timer = setTimeout(clear, 700); }, Math.max(ms, 12_000));
+  if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = transition("opacity", DUR[4], EASE_EXIT_CSS); g.style.opacity = "0"; cap.style.transition = transition("opacity", DUR[4], EASE_EXIT_CSS); cap.setAttribute("opacity", "0"); timer = setTimeout(clear, DUR[4] + DUR[1]); }, Math.max(ms, 12_000));
 }
 void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid & { sketch?: { title: string; caption: string; shapes: SketchShape[] } }; dockX: number; ms?: number | null; settings?: unknown }; takeSnapshot(p.settings); if (p.diagram.sketch) drawSketch(p.diagram.sketch, p.dockX, diagramMsOf(p.ms)); else drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });

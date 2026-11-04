@@ -99,7 +99,7 @@ mod tests {
     fn with_nothing_changed_every_one_is_todays_behaviour() {
         assert_eq!(read(registry(), &File::default()), HomeSet::USUAL);
         let u = HomeSet::USUAL;
-        assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (400, 300, true, 3000, 1500));
+        assert_eq!((u.hover.in_ms, u.hover.out_ms, u.hover.peek, u.follow_ms, u.linger_ms), (300, 300, true, 3000, 1500));   // M66: 300 ms to open
         // M51 (1 Nov 2026, the founder): Home is wide by default; the tall panel is a choice (look.layout).
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::WIDE, false, false));
         assert_eq!((u.peek, u.stick, u.peek_idle), (true, true, false), "M37d: stuck half in view at its edge, out when the pointer comes");
@@ -178,9 +178,10 @@ mod wiring {
         let hover = body("fn island_hover_changed(");
         assert!(hover.contains("let times = home_set().hover;") && hover.contains("h.set_times(times);"));
         assert!(body("fn reset_hover(").contains("h.set_times(times)"));
-        // home.closeOnClickAway: no watch at all while it is off; an open Home's watch stops when it is turned off.
-        assert!(body("fn open_card(").contains("if !was_open && home_set().click_away { watch_click_away(&a); }"));
-        assert!(body("fn watch_click_away(").contains("&& home_set().click_away {"));
+        // home.closeOnClickAway: read at each look of Home's watch (M66: the watch also runs the click through), so turning it
+        // off stops the click away at once.
+        assert!(body("fn open_card(").contains("if !was_open { watch_home(&a); }"));
+        assert!(body("fn watch_home(").contains("if !hs.click_away { w = island::ClickAway::new(is_down); continue; }"));
         // home.size: see island.rs (one place for Home, at the size in force).
         // character.linger, character.motion, character.overFullScreen.
         assert!(body("fn roam_tick(").contains("linger_ms: home_set().linger_ms"));

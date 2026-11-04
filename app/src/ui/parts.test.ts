@@ -25,7 +25,7 @@ describe("the parts", () => {
     expect(part("Button(")).toContain('kind = "secondary"');
     // The parts themselves have one main button: a sheet's Save, or Done for a sheet whose changes apply at once.
     expect(src.match(/kind="primary"/g)?.length).toBe(2);
-    expect(part("Sheet(")).toContain('instant ? <Button kind="primary" onClick={onClose}>{S.ui.done}</Button> : <Button kind="primary" disabled={!dirty} onClick={onSave}>');
+    expect(part("Sheet(")).toContain('instant ? <Button kind="primary" onClick={close}>{S.ui.done}</Button> : <Button kind="primary" disabled={!dirty} onClick={onSave}>');
   });
   test("a switch is a switch to VoiceOver; a choice of two or three is a radio group; four or more is a menu, never a select", () => {
     expect(part("Switch(")).toContain('role="switch" className="ui-switch" aria-checked={checked}');
@@ -65,7 +65,9 @@ describe("the parts", () => {
   });
   test("a sheet keeps unsaved work: closing it asks Keep editing or Discard changes", () => {
     const sh = part("Sheet(");
-    expect(sh).toContain("const leave = () => { if (dirty && !instant) setAsking(true); else onClose(); };");
+    expect(sh).toContain("const leave = () => { if (dirty && !instant) setAsking(true); else close(); };");
+    // M66 fix 9: closing, it slides back out first, then its owner hears (at once with reduced motion).
+    expect(sh).toContain('const close = () => { if (!leaving) leaveThen(setLeaving, exitMs("sheet"), () => { if (alive.current) onClose(); }); };');
     expect(sh).toContain("{S.ui.keepEditing}");
     expect(sh).toContain("{S.ui.discardChanges}");
     expect(sh).toContain('role="dialog" aria-modal="true"');

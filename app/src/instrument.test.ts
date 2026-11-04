@@ -11,6 +11,7 @@ import type { CharacterState } from "./model.ts";
 import { PAGES, placeOf } from "./settingsPages.ts";
 import { S } from "./strings.ts";
 import { ALL_CSS, LOOK_CSS, PARTS_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
+import { MOTION_SPRING, springLinear } from "./motionTokens.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const registry = JSON.parse(read("../../protocol/settings.json")) as { settings: { key: string; kind: string; default: unknown; options?: string[]; applies: string[]; section: string; live: boolean; store: string }[] };
@@ -158,8 +159,9 @@ describe("Friendly is exactly the look from before", () => {
     expect(LOOK_CSS()).not.toMatch(/\.home \.btn:not\(\.primary[^{]*\{[^}]*var\(--r-pill\)/);
   });
   test("Friendly's sizes, corners and motion are the ones it had", () => {
-    expect(root).toMatchObject({ "--t-display": "calc(22rem / 14)", "--t-body": "calc(13rem / 14)", "--r-control": "8px", "--r-card": "12px", "--h-md": "32px", "--h-lg": "40px", "--dur-1": "120ms", "--dur-3": "280ms" });
-    expect(root["--ease-spring"]).toContain("1.068");
+    expect(root).toMatchObject({ "--t-display": "calc(22rem / 14)", "--t-body": "calc(13rem / 14)", "--r-control": "8px", "--r-card": "12px", "--h-md": "32px", "--h-lg": "40px", "--dur-1": "120ms", "--dur-3": "240ms" });
+    // M66: one motion table for both looks; the spring settles and never passes 1 (motionTokens.ts MOTION_SPRING).
+    expect(root["--ease-spring"]).toBe(springLinear(MOTION_SPRING));
   });
 });
 
@@ -192,17 +194,15 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
     for (const [k, v] of Object.entries(crisp)) expect(px(v), k).toBeLessThanOrEqual(px(ins[k]) / 2);
     expect(Object.keys(crisp).sort()).toEqual(Object.keys(block(':root[data-corners="crisp"]')).sort());
   });
-  test("motion is 150 to 250 ms, and the spring settles with no overshoot", () => {
-    for (const k of ["--dur-1", "--dur-2", "--dur-3", "--dur-4", "--dur-enter", "--dur-move", "--dur-hover"]) {
-      expect(ms(ins[k]), k).toBeGreaterThanOrEqual(150);
-      expect(ms(ins[k]), k).toBeLessThanOrEqual(250);
-    }
+  test("motion is the one table both looks share (M66), and the spring settles with no overshoot", () => {
+    for (const k of ["--dur-1", "--dur-2", "--dur-3", "--dur-4", "--dur-enter", "--dur-move", "--dur-hover", "--ease-out", "--ease-exit", "--ease-spring"]) expect(ins[k], k).toBe(root[k]);
+    expect([ms(ins["--dur-1"]), ms(ins["--dur-2"]), ms(ins["--dur-3"]), ms(ins["--dur-4"])]).toEqual([120, 200, 240, 320]);
     const pts = /^linear\((.+)\)$/.exec(ins["--ease-spring"])![1].split(",").map(Number);
     expect(pts[0]).toBe(0);
     expect(pts.at(-1)).toBe(1);
     for (let i = 1; i < pts.length; i++) expect(pts[i], `point ${i}`).toBeGreaterThanOrEqual(pts[i - 1]);
     expect(Math.max(...pts)).toBe(1);
-    expect(pts[1], "it answers at once, never an ease in").toBeGreaterThan(0.1);
+    expect(pts[1], "it answers at once, never an ease in").toBeGreaterThan(0.05);
   });
   test("the Graphite page is the lab's #161618 family; the other themes keep their own page", () => {
     expect(ins).toMatchObject({ "--bg": "#161618", "--surface-1": "#1D1D20", "--surface-2": "#26262A" });

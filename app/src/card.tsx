@@ -24,7 +24,8 @@ import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyV
 import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
-import { followLessMotion } from "./motion.ts";
+import { followLessMotion, reducedMotion } from "./motion.ts";
+import { HomeStage, useHomeStage } from "./homeStage.tsx";
 import { CountUp, useHomeMotion } from "./smoothMotion.ts";
 import { JobLive } from "./jobLive.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
@@ -64,6 +65,7 @@ import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
+import { shapeAsk } from "./settingsFit.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { memoryDate, offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
@@ -83,6 +85,13 @@ import "./style.css";
 import "./ui/look.css";
 import "./ui/wide.css";
 import "./ui/home.css";
+import "./ui/homeFlow.css";
+import { checksOnOpen, Landing, onlyStreamChanged, revealTo, STREAM_LINES, waitScroll } from "./homeFlow.ts";
+import { changeSize } from "./changeSize.ts";
+import { contentAtMs } from "./homeShape.ts";
+import { resultChips, type ChipId } from "./resultChips.ts";
+/** How long a proven result keeps its landing attribute: long enough for the glow to play once (ui/homeFlow.css). */
+const LAND_HOLD_MS = 2000;
 
 // A command the shell will not pass on (the engine restarting, its queue full, a group switched off) is never a silent
 // failure (must fix 13, bar rule 11): send says so in one plain line by default, through the card's model, so whatever was
@@ -133,6 +142,15 @@ function FollowUpBox({ project, retry, sending, text, setText, listening, onSent
       <div className="line muted">{S.followUpHelp}</div>
     </div>
   );
+}
+
+/** M66 fix 4: Prompt help's text while it is written. Whole words, a chunk at a time (homeFlow.ts revealTo), in a box that
+ *  keeps STREAM_LINES lines, pinned to the bottom under a top fade, so Home never grows or wobbles a line at a time. The
+ *  box comes once with the first words and goes once when the answer is ready. */
+function StreamBox({ text }: { text: string }) {
+  const shown = useRef("");
+  shown.current = revealTo(shown.current, text);
+  return <div className="ph-stream line muted" style={{ "--stream-lines": STREAM_LINES } as React.CSSProperties}><p>{shown.current}</p></div>;
 }
 
 // title and note: the same box for an everyday fix's why (everyday.ts whyShown), open from the start there.
@@ -441,6 +459,9 @@ function Card() {
   // A tab shown by itself took away what had the keyboard: it goes to that tab, so Esc and the arrows keep working.
   useEffect(() => { takeIfLost(() => placeEl(home.tab)); }, [home.tab]);
   const root = useRef<HTMLElement>(null);
+  // M66: the black shape Home grows out of the notch in, and its state (homeStage.tsx).
+  const homeStage = useHomeStage();
+  const stageOpen = useRef(homeStage.open); stageOpen.current = homeStage.open;
   // Where the keyboard goes back to for a place: its round button, or on Now (which has none) the ask box.
   const placeEl = (t: Tab): HTMLElement | null => document.getElementById(tabId(t)) ?? (t === "now" ? box.current : null);
   // The mic beside the ask box says how to hold to talk (the keys work in any app).
@@ -565,6 +586,7 @@ function Card() {
   // homeShown: Home is on screen (the shell's "opened" and "closed"). keysDown: where spoken words may go, as the talk keys
   // went down (askbox.ts FollowAim), used once when the words come back.
   const homeShown = useRef(false), keysDown = useRef<FollowAim | null>(null);
+  const openedAt = useRef(0);   // when Home last opened (M66 fix 15: a waiting card is placed, not scrolled, while it opens)
   const onArrival = useRef<(t: HomeArrival) => void>(() => {});
   // The same as state, for what must follow Home on and off screen (the Prompt help result's keys).
   const [homeOpen, setHomeOpen] = useState(false);
@@ -577,7 +599,10 @@ function Card() {
   }, []);
   // M55, smooth motion: a new place fades and rises in, a card that goes folds away, what stays slides to its new place.
   // Nothing with Reduce motion or Less motion, nothing while Home is away, nothing at rest.
-  useHomeMotion(root, work, view, home.tab, homeOpen);
+  // M66 fix 4: a render where only streamed text changed is not measured; its box keeps its size (homeFlow.ts).
+  const modelWas = useRef<typeof m | null>(null);
+  const streamOnly = onlyStreamChanged(modelWas.current, m); modelWas.current = m;
+  useHomeMotion(root, work, view, home.tab, homeOpen, streamOnly);
   // More on the ring around the character opens Home: the whole list is on Now.
   useEffect(() => { if (homeOpen && dropMenu?.at === "dock") homeDispatch({ type: "pick", tab: "now" }); }, [homeOpen, dropMenu?.id]);
   // The search in What I did, kept while the person moves between tabs; a new folder starts with none.
@@ -650,6 +675,12 @@ function Card() {
   // changed and the turn are not about what is in the files (M45). Put my fix back on a turn is not an Undo.
   const undone = receiptUndone(m.receipt) || (m.undo?.stage === "done" && !m.undo.back);
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
+  // M66 fix 17: a proven result lands once, the first time it is seen on Now (homeFlow.ts Landing), for long enough to
+  // play; after that, and on any return to it, it is simply there.
+  const landing = useRef(new Landing()), landedAt = useRef<{ id: string; at: number } | null>(null);
+  // M66 (the shortlist, item 1): Fix it from a chip asks first, then runs as a checked task with its own safety copy.
+  const [chipFixAsk, setChipFixAsk] = useState(false);
+  useEffect(() => { setChipFixAsk(false); }, [m.receipt?.checkpoint]);
   const routinesOn = useSetting("watch.on") === true;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
   const bv = browserView(m);
@@ -776,13 +807,14 @@ function Card() {
   const quietFind = useRef("");   // the project whose next Find answer is not pointed at (a copy opened again)
   useEffect(() => {
     const pr = m.practice;
-    if (!pr?.resumed || pr.stage !== "start" || pr.project !== project || isBusy(m) || !switched.current) return;
-    if (resumedKey.current === pr.project) return;
+    // M66 fix 16: a copy opened for the first time is checked once too (it said Not checked yet), quietly, like one opened
+    // again: Home and the notch then say how it really is (homeFlow.ts checksOnOpen).
+    if (!pr || !checksOnOpen({ practice: pr, project, busy: isBusy(m), switched: switched.current, seen: resumedKey.current })) return;
     resumedKey.current = pr.project;
     // Only the key's checks answer with problem.found; the open table's check before going live never points at all.
     if (practiceOf(pr.kind)?.find === "checks") quietFind.current = pr.project;
     practiceFind();
-  }, [m.practice?.project, m.practice?.stage, m.practice?.resumed]);
+  }, [m.practice?.project, m.practice?.stage, m.practice?.resumed, project]);
   // After its lesson or its fix: the practice's own checks again, so done is proven, not assumed.
   useEffect(() => {
     const pr = m.practice, e = practiceOf(pr?.kind);
@@ -1068,16 +1100,15 @@ function Card() {
     const off = listen("opened", (e) => {
       const keyboard = !!(e.payload as { keyboard?: boolean } | null)?.keyboard;
       overReceipt.current = false;   // Home was away: the pointer is on it again only once it moves over it
-      homeShown.current = true; setHomeOpen(true);
+      homeShown.current = true; setHomeOpen(true); openedAt.current = performance.now();
       // M55, adapts to you: the kind of app in front as Home opens (only the kind; Home ignores anything else).
       const k = frontKindOf({ kind: (e.payload as { front?: unknown } | null)?.front });
       if (k) setFrontKind(k);
-      // Home springs down out of the notch at each opening (style.css .home.springing; none with reduced or Less motion), except
-      // when a keyboard shortcut opened it (M26, island.rs animates_open): then it is simply there.
-      const instant = !!(e.payload as { instant?: boolean } | null)?.instant;
-      const el = root.current;
-      if (el) { el.classList.remove("closing"); el.classList.remove("springing"); if (!instant) { void el.offsetWidth; el.classList.add("springing"); } }
       homeDispatch({ type: "opened", keyboard });
+      // M66: Home grows out of the notch (homeStage.tsx), in the same update that set the place it opens on, so it never
+      // shows blank or the place it showed last. The motion is the stage's; with reduced or Less motion it fades.
+      // M26: opened by a keyboard shortcut (the shell says instant, island.rs animates_open), it is simply there.
+      stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant);
       // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
       const then = arrivalFrom(e.payload);
       if (then) onArrival.current(then);
@@ -1098,23 +1129,27 @@ function Card() {
       touch();
     });
     // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
-    // Closing (Close, Esc, the island or the character again): it rolls back up into the notch, then the shell hides it
-    // (main.rs HOME_CLOSE_MS). The shell does not ask with Reduce motion or Less motion.
-    const offClosing = listen("closing", () => { const el = root.current; if (el) { el.classList.remove("springing"); el.classList.add("closing"); } });
+    // Closing (Close, Esc, the island or the character again) folds Home back into the notch (homeStage.tsx listens).
     const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; });
-    return () => { off.then((f) => f()); offClosing.then((f) => f()); offClosed.then((f) => f()); };
+    return () => { off.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
+  // Tell the app how tall the content is, so the panel fits it. M66 fix 14: Settings fills Home and scrolls inside it, so it
+  // asks for its one height (settingsFit.ts), never the shape's own height back, or it stays at the last place's height.
+  const tellHeight = (el: HTMLElement) => {
+    homeStage.setContentH(shapeAsk(tabNow.current, el.offsetHeight));
+    void invoke("resize_card", { height: shapeAsk(tabNow.current, el.offsetHeight), settings: tabNow.current === "settings" });
+  };
   // Tell the app how tall the content is, so the panel fits it.
   useEffect(() => {
     const el = inner.current;
     if (!el) return;
-    const tell = () => void invoke("resize_card", { height: el.offsetHeight, settings: tabNow.current === "settings" });
-    const ro = new ResizeObserver(tell);
+    // M66: the page sizes Home's shape itself (homeShape.ts bodyHeight); the shell only keeps the height for the character.
+    const ro = new ResizeObserver(() => tellHeight(el));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
   // Settings uses the Large width and a fixed height while it is open (the spec, 3.1): told at once when the place changes.
-  useEffect(() => { const el = inner.current; if (el) void invoke("resize_card", { height: el.offsetHeight, settings: home.tab === "settings" }); }, [home.tab]);
+  useEffect(() => { const el = inner.current; if (el) tellHeight(el); }, [home.tab]);
 
   // Show me how: the engine chose one or more points in the picture, in order. Each is played in turn (sequence.ts): the
   // Mac side snaps it to a real button and draws the pointer, its line follows, then a short pause and the next one. Only
@@ -1494,7 +1529,11 @@ function Card() {
   const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
-    return () => { off.then((f) => f()); };
+    // M66 step 5: the pointer left a Home that pointing opened. It folds back the same way, only when nothing on it waits for
+    // the person (a question, an approval, words being typed); else it stays, and is the person's now (the shell asks once).
+    // Step 6: and only with Close Home when I click another app on, as the shell also checks.
+    const offLeft = listen("home-pointer-left", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
+    return () => { off.then((f) => f()); offLeft.then((f) => f()); };
   }, []);
   // A task that has ended on a question needs the person, but nothing runs: no Stop, and the ask box stays.
   const working = cardWorking(m);
@@ -1789,12 +1828,38 @@ function Card() {
   // over Home take the room for as long as they last.
   const room = roomElement({ tab: home.tab, active: activeGroup(m, dragging) });
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
+  // The result card's landing, the size of its change and its fixed chips (M66; homeFlow.ts, changeSize.ts, resultChips.ts).
+  const rcpt = m.receipt;
+  if (rcpt && homeOpen && home.tab === "now" && landing.current.lands(rcpt.checkpoint, receiptVerdict(m)?.proven === true)) landedAt.current = { id: rcpt.checkpoint, at: Date.now() };
+  const landed = !!rcpt && landedAt.current?.id === rcpt.checkpoint && Date.now() - landedAt.current.at < LAND_HOLD_MS;
+  const changeSz = rcpt && !undone ? changeSize(rcpt.changed, rcpt.askWords) : null;
+  const chips: ChipId[] = rcpt ? resultChips({
+    changed: rcpt.changed.length, undone, failed: rcpt.proof === "failed",
+    busy: chipFixAsk || m.followUp === "sending" || m.undo?.stage === "confirm" || m.undo?.stage === "working",
+    canUndo: undoCan(m, project), undoShown: undoCan(m, project),
+    explainReady: !!m.explain && m.explain.checkpoint === rcpt.checkpoint,
+    // Try again moves from under the follow up box into the chips (fixShown false): it is offered once, here.
+    canFix: groups.on("followUp") && canRetry({ ...m, followUp: "idle" }, project), fixShown: false,
+  }) : [];
+  const chipDo = (c: ChipId) => {
+    const r = nowModel.current.receipt;
+    if (!r) return;
+    const smooth: ScrollBehavior = reducedMotion() ? "auto" : "smooth";
+    switch (c) {
+      case "whatChanged": if (r.changedAt && project) pointAt(pointChange(project, r.changedAt, S.changedHere)); else root.current?.querySelector(".panel.receipt .changes")?.scrollIntoView({ block: "nearest", behavior: smooth }); return;
+      case "explain": { const d = root.current?.querySelector<HTMLDetailsElement>(".panel.receipt details.explain"); if (d) { d.open = true; d.scrollIntoView({ block: "nearest", behavior: smooth }); } return; }
+      case "undo": dispatch({ type: "ui.undoAsked", checkpoint: r.checkpoint }); return;
+      case "fix": setChipFixAsk(true); return;
+    }
+  };
   // A card that waits on the person comes into view when it arrives (the audit, items 11 and 13): an approval, a stuck fix,
   // the agents question, or new changes to review. Only as far as needed, and only while Now is open.
   const waitKey = [m.approvals[0]?.id ?? "", m.stuck ? "stuck" : "", m.agentsAsk ? "agents" : "", reviewOn ? m.review!.batch : "", m.point?.stage === "found" ? "found" : ""].join("|");
   useEffect(() => {
     if (!homeOpen || home.tab !== "now" || waitKey === "||||") return;
-    const id = setTimeout(() => root.current?.querySelector<HTMLElement>(".ask-card, #home-review, .panel.amber")?.scrollIntoView?.({ block: "nearest" }), 0);
+    // M66 fix 15: scrolled to, never jumped to; while Home opens it is placed before its content shows (homeFlow.ts).
+    const opening = openedAt.current > 0 && performance.now() - openedAt.current < contentAtMs();
+    const id = setTimeout(() => root.current?.querySelector<HTMLElement>(".ask-card, #home-review, .panel.amber")?.scrollIntoView?.({ block: "nearest", behavior: waitScroll({ opening, reduced: reducedMotion() }) }), 0);
     return () => clearTimeout(id);
   }, [waitKey, homeOpen, home.tab]);
   // What was checked (M45): while a job works it is the live list; under a result it is the result's evidence, after it.
@@ -1903,6 +1968,7 @@ function Card() {
 
       </div>  );
   return (
+    <HomeStage stage={homeStage}>
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
       data-element={room} data-still={roomIsStill ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
@@ -1911,7 +1977,7 @@ function Card() {
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       {/* The room's light (the brand language): out of focus, behind the work, in the element of the group at work. */}
-      <RoomLight />
+      <RoomLight element={room} />
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
@@ -1981,9 +2047,10 @@ function Card() {
               {/* The tag only when the headline does not already say it is a practice (the review, 2 Nov 2026: "Practice" over
                   "Practice: find it, fix it, prove it"). */}
               {practiceNow && !heroShown.headline.startsWith(S.look.practiceTag) && <span className="hero-tag">{S.look.practiceTag}</span>}
-              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline"><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>
+              {/* M66 fix 13: new words cross fade in by their key (ui/homeFlow.css hero-swap), the counting cost keeps its own. */}
+              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline hero-swap" key={`h:${heroShown.headline}`}><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>
               {/* M55: the cost counts up to its new number rather than jumping (smoothMotion.ts). */}
-              <p className="subline">{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
+              <p className="subline hero-swap" key={heroShown.count != null ? "count" : `l:${heroShown.line}`}>{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
@@ -2267,7 +2334,7 @@ function Card() {
               <button className="btn" type="button" onClick={() => void invoke("ph_consent", { choice: "never" })}>{S.phNever}</button>
             </div>
           )}
-          {m.ph.stage === "thinking" && m.ph.streaming && <div className="line muted">{m.ph.streaming}</div>}
+          {m.ph.stage === "thinking" && m.ph.streaming && <StreamBox text={m.ph.streaming} />}
           {(m.ph.stage === "reading" || m.ph.stage === "thinking") && <div className="row"><button className="btn" type="button" onClick={() => void invoke("ph_dismiss")}>{S.planCancel}</button></div>}
           {m.ph.stage === "ready" && (
             <>
@@ -2406,7 +2473,7 @@ function Card() {
       {!m.receipt && proofPanel}
 
       {show("receipt") && m.receipt && (
-        <section className="panel receipt" onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
+        <section className="panel receipt" data-landed={landed ? "" : undefined} onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           {/* M45 and the overhaul spec 4.2: the result first, as the verdict says it, at verdict size. A tick only for a
               proven fix (VerdictLine draws only what verdict.ts said). */}
           {(() => { const v = receiptVerdict(m)!; return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (
@@ -2433,6 +2500,10 @@ function Card() {
               {w.help && <div className="muted">{w.help}</div>}
             </div>
           ); })()}
+          {/* M66 (the shortlist, item 2): how big the change was, from the checkpoint diff, and a plain warning when a small ask
+              changed a lot (changeSize.ts). Nothing is said when the lines could not be counted. */}
+          {changeSz && <div className="line muted change-size">{changeSz.line}</div>}
+          {changeSz?.warn && <div className="line" role="status">{changeSz.warn}</div>}
           {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} undone={undone} />}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{undone ? S.stillThere : S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
           {m.receipt.visual?.image && !undone && m.undo?.stage !== "working" && (
@@ -2450,7 +2521,7 @@ function Card() {
           </ul>
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
           <div className="row"><CopyButton text={receiptCopy(m, project)} label={S.copyReceipt} /></div>
-          {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && (
+          {m.receipt.changedAt && !undone && m.undo?.stage !== "working" && project && !chips.includes("whatChanged") && (
             <div className="row"><button className="btn" type="button" onClick={() => pointAt(pointChange(project, m.receipt!.changedAt!, S.changedHere))}>{S.showChanged}</button></div>
           )}
           {canOfferTurn(m) && yourTurn && !undone && project && (
@@ -2495,10 +2566,24 @@ function Card() {
           )}
           {m.explain && m.explain.checkpoint === m.receipt.checkpoint && <ExplainBox e={m.explain} key={m.explain.checkpoint} />}
           {groups.on("followUp") && (canFollowUp(m, project) || m.followUp === "sending") && (
-            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project)} onSent={followSent} onRefused={followRefused}
+            <FollowUpBox project={project} sending={m.followUp === "sending"} retry={canRetry({ ...m, followUp: "idle" }, project) && !chips.includes("fix") && !chipFixAsk} onSent={followSent} onRefused={followRefused}
               text={followText} setText={(t) => { setFollowText(t); if (!t) followFromVoice.current = false; }}
               listening={m.voice?.stage === "listening" && overReceipt.current && setting("talk.followUpByPointing") === true}
               answer={!!m.receipt.asks && !undone} />
+          )}
+          {/* M66 (the shortlist, item 1): two or three fixed one tap chips, always last (resultChips.ts). Undo and Fix it only
+              ask: their own question comes first, then the change runs with its safety copy and its receipt. */}
+          {chips.length > 0 && (
+            <div className="row result-chips" role="group" aria-label={S.resultChips.label}>
+              {chips.map((c) => <Button key={c} id={c === "fix" ? "result-chip-fix" : undefined} size="sm" onClick={() => chipDo(c)}>{S.resultChips[c]}</Button>)}
+            </div>
+          )}
+          {chipFixAsk && project && (
+            <ConfirmStep className="line" label={S.resultChips.fixSure} back="result-chip-fix" onCancel={() => setChipFixAsk(false)}><div>{S.resultChips.fixSure}</div>
+              <div className="row">
+                <button className="btn" type="button" onClick={() => { setChipFixAsk(false); followSent(false); void send(retryTask(project)).catch(followRefused); }}>{S.resultChips.fixYes}</button>
+                <button className="btn" type="button" data-cancel onClick={() => setChipFixAsk(false)}>{S.resultChips.fixNo}</button>
+              </div></ConfirmStep>
           )}
         </section>
       )}
@@ -2778,6 +2863,7 @@ function Card() {
       </div>
       </div>
     </main>
+    </HomeStage>
   );
 }
 // Settings (settingsStore.ts): asked for once, kept in step with every change. The saved text size is on the page before

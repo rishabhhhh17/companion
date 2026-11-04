@@ -167,7 +167,8 @@ fn rest_frame(d: &Display) -> Rect {
     let x = around(center_x(d), w, fx, fw);
     match (d.notch, menu_bar(d)) {
         (Some(n), _) => [fx + n.x, fy, n.w, n.h],
-        (None, Some(mb)) => { let h = pill_h(mb); [x, fy + (mb - h) / 2.0, w, h] }
+        // M66: the pill hangs from the top edge, as a notch does, so Home grows from the edge, never from a point 2 pt down.
+        (None, Some(mb)) => [x, fy, w, pill_h(mb)],
         (None, None) => [x, fy, w, EDGE_H],
     }
 }
@@ -224,13 +225,12 @@ pub fn island_frame(d: &Display, mode: Mode) -> Rect { frame_of(d, mode, PANEL_M
 // has room to grow into. Shrinking waits RETRACT_MS, so the shape can tuck back before the window is cut to the new size.
 // Never with Reduce motion or Less motion (main.rs reduce_motion).
 
-/// How long the island takes to grow downward, and Home to drop open, in seconds.
-pub const OPEN_SECS: f64 = 0.18;
+/// How long the hover panel's words take to leave before the page's shape starts to tuck back (islandSpring.ts
+/// PANEL_EXIT_MS, M66 step 5: the words go first, never cut by the shape's edge).
+pub const PANEL_EXIT_MS: u64 = 80;
 /// How long the window waits before it gets smaller, while the shape tucks back: the same as islandSpring.ts TUCK_MS (the
-/// spring settles in about 0.26 s and the peek's tuck takes 280 ms; island.test.ts pins the two equal).
-pub const RETRACT_MS: u64 = 320;
-/// How far above its place Home starts its drop, in points: the gap under the island, so it never starts over the island.
-pub const DROP: f64 = GAP;
+/// panel's words leaving, then CLOSE from the wings to the notch, within a point by then; island.test.ts pins the two equal).
+pub const RETRACT_MS: u64 = 540;
 /// The new frame fits inside the old one around the same middle and top: the island is getting smaller where it is.
 pub fn shrinks_in_place(from: Rect, to: Rect) -> bool {
     let mid = |r: Rect| r[0] + r[2] / 2.0;
@@ -251,18 +251,187 @@ impl Moves {
     /// The motion asked as `mine` ended: the frame to set again now, if a newer one was set at once meanwhile.
     pub fn ended(&self, mine: u64) -> Option<Rect> { match self.last { Some((f, false)) if self.n != mine => Some(f), _ => None } }
 }
-/// Where Home starts its drop when it opens (`opening`; a resize while it is open is never animated): the same place
-/// across and the same size, DROP higher, then down to `to` while it fades in. None with `reduced` motion.
-pub fn home_drop(to: Rect, opening: bool, reduced: bool) -> Option<Rect> { (opening && !reduced).then_some([to[0], to[1] - DROP, to[2], to[3]]) }
+// ---- M66 Part 2: Home grows out of the notch as one black shape ----
+// Home's window is made once at a fixed size, top anchored on the island's display and centred on the notch, and it never
+// changes during a motion (only on a display, setting or Settings change). Its page draws one black shape inside it that is
+// the island at rest, widens, drops into Home and folds back (homeShape.ts), moving only by transform and opacity, so Core
+// Animation runs it at the display's rate. Clicks pass through the clear part of the window: the shell sets
+// ignoresMouseEvents from the pointer against the shape's rects (`shape_rects`, `inside_shape`), never from key events.
 
-/// Where Home drops down to: centered under the island, just below the menu bar (or the thin line), kept inside the work
-/// area (a tall Home is made shorter, and scrolls, rather than running under the Dock).
+/// The notch's springs: mass 1, stiffness and damping per second, from a response and a damping ratio (islandSpring.ts NOTCH,
+/// pinned equal by islandSpring.test.ts). The page runs them as CSS curves; these are for the tests and any native move.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Spring { pub k: f64, pub c: f64 }
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+impl Spring {
+    /// From a response (seconds for one swing) and a damping ratio: k = (2 pi / response) squared, c = 4 pi x damping / response.
+    pub fn of(response: f64, damping: f64) -> Spring {
+        let w = 2.0 * std::f64::consts::PI / response;
+        Spring { k: w * w, c: 4.0 * std::f64::consts::PI * damping / response }
+    }
+    pub fn damping(&self) -> f64 { self.c / (2.0 * self.k.sqrt()) }
+}
+/// The hover nudge, a press, the done pulse: response 0.38 s, damping 0.80.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const NOTCH_HOVER: Spring = Spring { k: 273.0, c: 26.5 };
+/// The width when Home opens: 0.36 s, 0.82.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const NOTCH_OPEN_W: Spring = Spring { k: 305.0, c: 28.6 };
+/// The height when Home opens, OPEN_H_DELAY_MS after the width: 0.42 s, 0.84.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const NOTCH_OPEN_H: Spring = Spring { k: 224.0, c: 25.1 };
+/// Every close and tuck back, never past its target: 0.45 s, 1.0.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const NOTCH_CLOSE: Spring = Spring { k: 195.0, c: 27.9 };
+/// The busy strip and its caption line: 0.30 s, 0.85.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const NOTCH_WORK: Spring = Spring { k: 439.0, c: 35.6 };
+/// The height starts this long after the width, so the notch reads as stretching sideways first, then dropping.
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const OPEN_H_DELAY_MS: u64 = 60;
+
+/// Room kept around the open shape inside Home's window, so the overshoot and the shoulders are never clipped.
+pub const HEADROOM: f64 = 24.0;
+/// Home's window level: just under the island (LEVEL), above the menu bar (24) and its status items (25), so its shape can
+/// hang from the top edge of the display like the notch it grows from.
+pub const HOME_LEVEL: isize = 26;
+/// The Show me how pointer's panel and the ring (main.rs make_overlay): above Home and the island, so an arrow pointing at
+/// something near the notch is never drawn under Home's body, and still below pop up menus (101).
+pub const POINTER_LEVEL: isize = 28;
+/// Home's level while one of our own macOS dialogs is up (the folder chooser, Open from a link, the Delete everything
+/// question, at the modal panel level 8): under them, as Home was before M66, so a dialog is never hidden behind it.
+pub const UNDER_DIALOG_LEVEL: isize = 3;
+/// Home's window level now: under our own dialogs while one is up, else above the menu bar (HOME_LEVEL).
+pub fn home_level(dialog_up: bool) -> isize { if dialog_up { UNDER_DIALOG_LEVEL } else { HOME_LEVEL } }
+/// Whether Home's panel may become the key window (take typing): only while the pointer is on its shape (the person is
+/// clicking into it) or a typing key opened it. Never from a press on its clear parts (rule 9).
+pub fn home_can_key(on_shape: bool, by_key: bool) -> bool { on_shape || by_key }
+/// Home's bottom corner when open, and the hardware notch's own corner it grows from (homeShape.ts OPEN_R, REST_R).
+pub const OPEN_R: f64 = 24.0;
+#[cfg_attr(not(test), allow(dead_code))]   // the page runs these; the tests pin them
+pub const REST_R: f64 = 11.0;
+
+/// The height of the island's row on a display: the menu bar's (the notch's on a notched Mac), or the thin line's where no
+/// menu bar shows. Home's band sits in it, and Home's body hangs under it.
+pub fn band_h(d: &Display) -> f64 { menu_bar(d).unwrap_or_else(|| rest_frame(d)[3]) }
+
+/// Home's window and the shape's measures inside it, as the page is told them (homeShape.ts HomeGeom). `kind`: what the
+/// shape grows from ("notch", "pill", "edge"), or "free" with no island (turned off in Settings): then the body only fades in
+/// where it sits. `cx`: the shape's centre from the window's left. `rest`: the island at rest. `band`: the band in the menu
+/// bar row when open (the notch and its wings, F18). `body_top`: from the window's top.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HomePanel { pub frame: Rect, pub kind: &'static str, pub cx: f64, pub rest: (f64, f64), pub band: (f64, f64), pub body_w: f64, pub min_h: f64, pub max_h: f64, pub body_top: f64 }
+impl HomePanel {
+    pub fn json(&self) -> serde_json::Value {
+        serde_json::json!({ "kind": self.kind, "pw": self.frame[2], "ph": self.frame[3], "cx": self.cx,
+            "rest": { "w": self.rest.0, "h": self.rest.1 }, "band": { "w": self.band.0, "h": self.band.1 },
+            "body": { "w": self.body_w, "minH": self.min_h, "maxH": self.max_h, "top": self.body_top } })
+    }
+    /// The body's height for a content height, between its least and its tallest.
+    pub fn body_h(&self, h: f64) -> f64 { if h.is_finite() { h.clamp(self.min_h, self.max_h) } else { self.min_h } }
+}
+
+/// Home's window for the size in force. `sizes`: every size Home may take without a display or setting change (the size, and
+/// the size with Settings open), so opening Settings never resizes the window. With the island's display (`on`): top
+/// anchored at the display's top, centred on the notch, as wide as the widest body or band plus HEADROOM each side, and as
+/// tall as the band, the tallest body and HEADROOM, kept on the display. Without one: `spot`, Home's own place beside the
+/// character at its tallest and widest, with HEADROOM all round. `now`: the size in force; the body is its width (held to
+/// the window), so a tall Standard Home is 640 wide with Settings closed and 680 with it open, in the same window.
+pub fn home_panel(on: Option<&Display>, sizes: &[HomeSize], now: HomeSize, spot: Option<Rect>) -> Option<HomePanel> {
+    let w = sizes.iter().map(|s| s.w).fold(0.0, f64::max);
+    let max_h = sizes.iter().map(|s| s.max_h).fold(0.0, f64::max);
+    let min_h = sizes.iter().map(|s| s.min_h).fold(f64::INFINITY, f64::min);
+    if !(w > 0.0 && max_h > 0.0 && min_h.is_finite()) { return None; }
+    let Some(d) = on else {
+        let s = spot?;
+        let frame = [s[0] - HEADROOM, s[1] - HEADROOM, s[2] + 2.0 * HEADROOM, s[3] + 2.0 * HEADROOM];
+        return Some(HomePanel { frame, kind: "free", cx: HEADROOM + s[2] / 2.0, rest: (0.0, 0.0), band: (0.0, 0.0), body_w: now.w.min(s[2]).max(0.0), min_h: min_h.min(s[3]), max_h: s[3], body_top: HEADROOM });
+    };
+    let (fx, fy, fw, fh) = (d.frame[0], d.frame[1], d.frame[2], d.frame[3]);
+    let r = rest_frame(d);
+    let bh = band_h(d);
+    let band_w = (r[2] + 2.0 * WING).min(fw);
+    let wide_w = w.min(d.work[2]).max(0.0);
+    let body_w = now.w.min(wide_w).max(0.0);
+    // Hanging from the band; never above the work area (a reading where the work area starts lower).
+    let top = (fy + bh).max(d.work[1]).min(d.work[1] + d.work[3]);
+    let room = (d.work[1] + d.work[3] - top - GAP).max(0.0);
+    let max_h = max_h.min(room);
+    let pw = (wide_w.max(band_w) + 2.0 * HEADROOM).min(fw);
+    let ph = (top - fy + max_h + HEADROOM).min(fh);
+    let cx = center_x(d);
+    let x = around(cx, pw, fx, fw);
+    Some(HomePanel { frame: [x, fy, pw, ph], kind: kind(d).word(), cx: cx - x, rest: (r[2], r[3]), band: (band_w, bh), body_w, min_h: min_h.min(max_h), max_h, body_top: top - fy })
+}
+
+/// Home grows from what the island shows, and folds back into it (M66 step 5): with something running (`wing`: the wings
+/// out, as wide as the page asked, island_alert), its shape at rest is the wings, not the bare notch, so the wings never
+/// vanish as Home opens over them nor pop back as it closes. The band open is never narrower than the wings it grew from,
+/// and so never wider than they are (F18). The window and the body are unchanged. Without an island ("free") nothing changes.
+pub fn grown_from(p: HomePanel, d: &Display, wing: Option<f64>) -> HomePanel {
+    let Some(asked) = wing else { return p };
+    if p.kind == "free" { return p; }
+    let f = look_winged(d, Mode::Alert, PANEL_MIN, asked).frame;
+    // Kept inside the window's headroom, centred on the notch.
+    let room = (2.0 * p.cx.min(p.frame[2] - p.cx) - 2.0 * HEADROOM).max(0.0);
+    let w = f[2].min(room.max(p.rest.0));
+    HomePanel { rest: (w, f[3]), band: (p.band.0.max(w), p.band.1), ..p }
+}
+
+/// The shape's rects in global points, for the hit test, the click away watch and the character keeping clear: open, the
+/// band and the body `h` tall (its content's height, held in range); closed, nothing (the island takes the pointer).
+pub fn shape_rects(p: &HomePanel, open: bool, h: f64) -> Vec<Rect> {
+    if !open { return Vec::new(); }
+    let (x, y) = (p.frame[0], p.frame[1]);
+    let body = [x + p.cx - p.body_w / 2.0, y + p.body_top, p.body_w, p.body_h(h)];
+    if p.kind == "free" { return vec![body]; }
+    vec![[x + p.cx - p.band.0 / 2.0, y, p.band.0, p.band.1], body]
+}
+
+/// Whether `pt` is on the shape: in one of its rects grown by `slack`, except outside the body's round bottom corners (the
+/// last rect, radius OPEN_R). Pure: the shell sets the window's click through from it.
+pub fn inside_shape(rects: &[Rect], pt: (f64, f64), slack: f64) -> bool {
+    let Some(last) = rects.len().checked_sub(1) else { return false };
+    rects.iter().enumerate().any(|(i, r)| {
+        let (x0, y0, x1, y1) = (r[0] - slack, r[1] - slack, r[0] + r[2] + slack, r[1] + r[3] + slack);
+        if !(pt.0 >= x0 && pt.0 < x1 && pt.1 >= y0 && pt.1 < y1) { return false; }
+        if i != last { return true; }
+        // The round foot: below the corner's centre line and beside it, the point must be within the corner's circle.
+        let rad = OPEN_R.min(r[2] / 2.0).min(r[3]);
+        let cy = r[1] + r[3] - rad;
+        if pt.1 <= cy { return true; }
+        let cxl = r[0] + rad;
+        let cxr = r[0] + r[2] - rad;
+        let dx = if pt.0 < cxl { cxl - pt.0 } else if pt.0 > cxr { pt.0 - cxr } else { 0.0 };
+        let dy = pt.1 - cy;
+        (dx * dx + dy * dy).sqrt() <= rad + slack
+    })
+}
+
+/// A Home that pointing opened folds back once the pointer has been off its shape for the grace (island.closeDelay, the
+/// same wait as the status's); a return inside the grace cancels it. Only with home.closeOnClickAway on (main.rs watch_home). Once the person presses inside it (to type, to choose), it is theirs and stays until Esc, Close or a
+/// click elsewhere. A Home opened by a click or a key never folds on leaving.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Leave { by_point: bool, owned: bool, out_since: Option<u64> }
+impl Leave {
+    pub const fn new(by_point: bool) -> Self { Leave { by_point, owned: false, out_since: None } }
+    pub fn pressed_inside(&mut self) { self.owned = true; self.out_since = None; }
+    /// The pointer is (`inside`) on the shape at `t`: true once it should fold back now.
+    pub fn sample(&mut self, inside: bool, t: u64, grace_ms: u64) -> bool {
+        if !self.by_point || self.owned || inside { self.out_since = None; return false; }
+        let since = *self.out_since.get_or_insert(t);
+        t.saturating_sub(since) >= grace_ms
+    }
+}
+
+/// Where Home's body is: centered under the island, hanging from the menu bar line (or the thin line) as one shape with the
+/// notch (M66: no gap), kept inside the work area (a tall Home is made shorter, and scrolls, rather than running under the
+/// Dock). The same body home_panel draws.
 pub fn home_frame(d: &Display, size: (f64, f64)) -> Rect {
     let [wx, wy, ww, wh] = d.work;
     let w = size.0.min(ww).max(0.0);
-    // While Home is open the island is at rest (`mode`), so Home starts just below that, and never above the work area.
-    let r = rest_frame(d);
-    let top = ((r[1] + r[3]).max(wy) + GAP).min(wy + wh);
+    let top = (d.frame[1] + band_h(d)).max(wy).min(wy + wh);
     let h = size.1.min((wy + wh - top - GAP).max(0.0)).max(0.0);
     [around(center_x(d), w, wx, ww), top, w, h]
 }
@@ -457,7 +626,7 @@ pub fn peek_hover(shown: bool, act: PointDo) -> bool { shown && act == PointDo::
 /// How long the pointer must rest on the island before the line opens (crossing the notch on the way along the menu bar,
 /// even slowly, does not open it), and how long off it before the line closes (a slip off the edge does not close it),
 /// unless Settings says otherwise (island.openDelay, island.closeDelay).
-pub const HOVER_IN_MS: u64 = 400;
+pub const HOVER_IN_MS: u64 = 300;
 pub const HOVER_OUT_MS: u64 = 300;
 
 /// The waits in force, and whether resting on the island opens the status at all (island.peekOnHover; off, the island
@@ -469,24 +638,30 @@ impl HoverTimes { pub const USUAL: HoverTimes = HoverTimes { in_ms: HOVER_IN_MS,
 /// The pointer on our own island. macOS tells us only when it enters and leaves that one window (a tracking area on it);
 /// nothing is read anywhere else.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Hover { inside: bool, since: u64, shown: bool, times: HoverTimes }
+pub struct Hover { inside: bool, since: u64, shown: bool, times: HoverTimes, dismissed: bool }
 impl Default for Hover { fn default() -> Self { Hover::new() } }
 impl Hover {
-    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false, times: HoverTimes::USUAL } }
+    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false, times: HoverTimes::USUAL, dismissed: false } }
     /// The waits from Settings (main.rs gives them each time the pointer comes or goes).
     pub fn set_times(&mut self, times: HoverTimes) { self.times = times; }
     pub fn enter(&mut self, t: u64) { if !self.inside { self.inside = true; self.since = t; } }
-    pub fn exit(&mut self, t: u64) { if self.inside { self.inside = false; self.since = t; } }
+    pub fn exit(&mut self, t: u64) { self.dismissed = false; if self.inside { self.inside = false; self.since = t; } }
+    /// M66: what pointing opened was put away (Esc, a click elsewhere, Close) while the pointer is still on the island: it
+    /// does not open again until the pointer has left once.
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn dismiss(&mut self) { if self.inside { self.dismissed = true; self.shown = false; } }
+    /// The pointer is on the island now (for the hover nudge, which answers at once).
+    pub fn inside(&self) -> bool { self.inside && !self.dismissed }
     fn need(&self) -> u64 { if self.inside { self.times.in_ms } else { self.times.out_ms } }
     /// Whether the line shows at time `t`. Never with the status on pointing turned off.
     pub fn at(&mut self, t: u64) -> bool {
-        if !self.times.peek { self.shown = false; return false; }
+        if !self.times.peek || self.dismissed { self.shown = false; return false; }
         if self.inside != self.shown && t.saturating_sub(self.since) >= self.need() { self.shown = self.inside; }
         self.shown
     }
     /// How long until the answer may change, if it may.
     pub fn wait_ms(&self, t: u64) -> Option<u64> {
-        (self.times.peek && self.inside != self.shown).then(|| self.need().saturating_sub(t.saturating_sub(self.since)))
+        (self.times.peek && !self.dismissed && self.inside != self.shown).then(|| self.need().saturating_sub(t.saturating_sub(self.since)))
     }
 }
 
@@ -707,7 +882,8 @@ mod tests {
             assert!(h[1] <= d.work[1] + GAP + 0.01, "{} right under the menu bar", d.id);
             assert_eq!((h[2], h[3]), (380.0, 420.0));
         }
-        assert_eq!(home_frame(&mbp14(), (380.0, 420.0)), [756.0 - 190.0, 32.0 + GAP, 380.0, 420.0]);
+        // M66: one shape with the notch, so no gap: Home's body hangs from the menu bar line.
+        assert_eq!(home_frame(&mbp14(), (380.0, 420.0)), [756.0 - 190.0, 32.0, 380.0, 420.0]);
     }
 
     // ---- F18 items 1 and 2 together: one place for Home, used to put it there and to keep the character clear of it ----
@@ -722,7 +898,7 @@ mod tests {
             // The island's display known: Home drops from the island, wherever the character lives, and no edge is read.
             let spot = card_spot(Some(&mac), home, &both, |id: &str| { asked.push(id.to_string()); Edge::Right }, (CARD.0, h)).unwrap();
             assert_eq!(spot, home_frame(&mac, (CARD.0, h)), "{h}");
-            assert!((cx(spot) - cx(frame_of(&mac, Mode::Rest, PANEL_MIN))).abs() < 0.01 && spot[1] >= 32.0 + GAP, "under the notch: {spot:?}");
+            assert!((cx(spot) - cx(frame_of(&mac, Mode::Rest, PANEL_MIN))).abs() < 0.01 && spot[1] >= 32.0, "under the notch, hanging from the menu bar line (M66): {spot:?}");
             assert!(!crate::docking::overlaps(spot, home), "never over the character");
             // On the external display when the island is there, even with the character on the laptop.
             assert_eq!(card_spot(Some(&ext), home, &both, |_: &str| Edge::Right, (CARD.0, h)), Some(home_frame(&ext, (CARD.0, h))));
@@ -770,10 +946,10 @@ mod tests {
         assert!(rc.contains("let hs = home_size();") && rc.contains("height.clamp(hs.min_h, hs.max_h)"), "Home never grows past what the character keeps clear of");
         assert!(main_body("fn card_room(").contains("card_spot(mtm, d, home_size().max_h)"), "trips keep clear of Home where card_spot says, at its tallest");
         let pc = main_body("fn place_card(");
-        assert!(pc.contains("card_spot(mtm, d, CARD_H.load(") && pc.contains("card_spot(mtm, d, home_size().max_h)"), "placed, then the visit checked against the tallest");
+        assert!(pc.contains("island::home_panel(") && pc.contains("card_spot(mtm, d, home_size().max_h)"), "placed, then the visit checked against the tallest");
         // Home is placed at its width in force, its height held inside its range, and the character keeps clear of it at
         // the same size, on its own place and when dragged.
-        assert!(spot.contains("let size = home_size();") && spot.contains("(size.w, h.clamp(size.min_h, size.max_h))"), "{spot}");
+        assert!(spot.contains("let size = home_size();") && spot.contains("(w, h.clamp(size.min_h, size.max_h))"), "{spot}");
         assert!(main_body("fn apply_dock(").contains("docking::place(&target, DOCK, edge, pct, home_size())"));
         // M47: the let go decides snap or stay (docking::Drag::release calls snap_on with the size in force).
         assert!(main_body("fn drop_dock(").contains(".release(home_size())"));
@@ -782,7 +958,7 @@ mod tests {
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
         let main = include_str!("main.rs");
         let tick = main_body("fn tick(");
-        let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "if c.isVisible() { place_card(d, c) }", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
+        let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "with_panels(|d, c| place_card(d, c));", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
         let at: Vec<usize> = order.iter().map(|p| tick.find(p).unwrap_or_else(|| panic!("tick lost {p}"))).collect();
         assert!(at.windows(2).all(|w| w[0] < w[1]), "in this order: {order:?}");
         // The character's displays carry the notch, read once the same way as the island's.
@@ -836,6 +1012,45 @@ mod tests {
         assert!(LEVEL > 25, "above the menu bar (24) and status items (25)");
         assert!(LEVEL < 101, "below pop up menus, so a menu opened from the menu bar is never covered");
     }
+    /// M66 step 6: Home above the menu bar must never hide the Show me how pointer or our own macOS dialogs.
+    #[test]
+    fn home_never_covers_the_pointer_or_our_own_dialogs() {
+        assert!(HOME_LEVEL > 25 && HOME_LEVEL < LEVEL, "above the menu bar and its icons, under the island");
+        assert!(POINTER_LEVEL > HOME_LEVEL && POINTER_LEVEL > LEVEL, "the pointer's arrow and ring draw over Home and the island");
+        assert!(POINTER_LEVEL < 101, "and below pop up menus");
+        assert_eq!(home_level(false), HOME_LEVEL);
+        assert!(home_level(true) < 8, "under the modal panel level (8) our osascript dialogs use");
+        let main = include_str!("main.rs");
+        assert!(main_body("fn make_overlay(").contains("p.setLevel(island::POINTER_LEVEL);"));
+        assert!(!main.contains("card.setLevel(island::HOME_LEVEL)"), "Home's level is always home_level, never set around it");
+        let lv = main_body("fn home_level_now(");
+        assert!(lv.contains("island::home_level(NATIVE_DIALOGS.load(Ordering::SeqCst) > 0)") && lv.contains("c.setLevel("), "{lv}");
+        // Every dialog lowers Home while it is up and raises it again after.
+        assert!(main.contains("impl NativeDialog { fn open() -> Self { NATIVE_DIALOGS.fetch_add(1, Ordering::SeqCst); home_level_now(); NativeDialog } }"));
+        assert!(main.contains("impl Drop for NativeDialog { fn drop(&mut self) { NATIVE_DIALOGS.fetch_sub(1, Ordering::SeqCst); home_level_now(); } }"));
+    }
+    /// M66 step 6: Home's clear window never eats a click meant for the menu bar or an app beside it, and never takes typing
+    /// from a press on its clear parts (rule 9).
+    #[test]
+    fn a_press_off_homes_shape_is_never_homes() {
+        assert!(home_can_key(true, false) && home_can_key(false, true));
+        assert!(!home_can_key(false, false), "a press on the clear window never makes Home key");
+        let main = include_str!("main.rs");
+        // The panel itself checks each press against the shape, at the moment of the press (not the 50 ms watch).
+        let hp = &main[main.find("mod homepanel {").unwrap()..];
+        let hp = &hp[..hp.find("\n}\n").unwrap()];
+        assert!(hp.contains("fn can_become_key(&self) -> bool { super::home_may_key() }"), "{hp}");
+        assert!(hp.contains("#[unsafe(method(sendEvent:))]") && hp.contains("if super::home_press_off_shape(self, event) { return; }"), "{hp}");
+        let off = main_body("fn home_press_off_shape(");
+        assert!(off.contains("island::inside_shape(") && off.contains("home_pass(false)"), "{off}");
+        assert!(main_body("fn home_may_key(").contains("island::home_can_key(!HOME_PASS.load(Ordering::SeqCst), HOME_KEY_BY_KEY.load(Ordering::SeqCst))"));
+        // The click through follows each mouse move at once (the monitors the ring already has), not only the 50 ms watch.
+        assert!(main.contains("let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); home_pointer_moved(); });"));
+        assert!(main.contains("let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); home_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });"));
+        assert!(main_body("fn home_pointer_moved(").contains("home_pass(on)"));
+        // Only a press on the shape makes a pointing opened Home the person's.
+        assert!(main.contains("if which == \"card\" && home_on_shape_now() { HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()).pressed_inside(); }"));
+    }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
         let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false, wing: 0 });
@@ -870,8 +1085,9 @@ mod tests {
     }
     #[test]
     fn crossing_the_notch_along_the_menu_bar_even_slowly_does_not_open_it() {
-        // From the menus on the left to the icons on the right: 185 points at a slow 500 points a second is 370 ms.
-        let crossing = (185.0 / 500.0 * 1000.0) as u64;
+        // From the menus on the left to the icons on the right: 185 points at an unhurried 700 points a second is 264 ms. (M66
+        // shortened the wait to 300 ms; a very slow pass, under about 620 points a second, can now open it: island.openDelay.)
+        let crossing = (185.0 / 700.0 * 1000.0) as u64;
         assert!(HOVER_IN_MS > crossing, "{HOVER_IN_MS} ms is shorter than a slow crossing ({crossing} ms)");
         let mut h = Hover::default();
         h.enter(0); h.exit(crossing);
@@ -996,7 +1212,7 @@ mod tests {
         for size in [HomeSize::WIDE, HomeSize::WIDE_LARGE] {
             let h = home_frame(&air, (size.w, size.max_h));
             assert_eq!((h[2], h[3]), (size.w, size.max_h), "never cut by the display: {h:?}");
-            assert!(inside(h, air.work) && h[1] >= 32.0 + GAP, "under the notch, inside the work area: {h:?}");
+            assert!(inside(h, air.work) && h[1] >= 32.0, "under the notch, inside the work area: {h:?}");
             assert!((cx(h) - 735.0).abs() < 0.01, "centred under the notch: {h:?}");
             let below = air.work[1] + air.work[3] - (h[1] + h[3]);
             assert!(below >= 240.0, "room under Home on an Air: {below}");
@@ -1024,7 +1240,7 @@ mod tests {
     }
     #[test]
     fn the_waits_before_the_status_opens_and_closes_follow_the_setting_at_both_ends() {
-        assert_eq!(HoverTimes::USUAL, HoverTimes { in_ms: 400, out_ms: 300, peek: true }, "the usual waits are today's");
+        assert_eq!(HoverTimes::USUAL, HoverTimes { in_ms: 300, out_ms: 300, peek: true }, "the usual waits (M66: 300 ms to open)");
         assert_eq!(Hover::new(), Hover::default());
         for (open, close) in [(100u64, 100u64), (1500, 1000), (HOVER_IN_MS, HOVER_OUT_MS)] {
             let mut h = Hover::new();
@@ -1144,8 +1360,9 @@ mod tests {
             // From the line under the pointer back to the wings: smaller, so it waits too.
             assert_eq!(retract_ms(frame_of(&d, Mode::WingsPeek, PANEL_MAX), frame_of(&d, Mode::Alert, PANEL_MIN), false), Some(RETRACT_MS));
         }
-        assert!((150..=400).contains(&RETRACT_MS), "a spring of 150 to 400 ms (look.md)");
-        assert!((0.15..=0.2).contains(&OPEN_SECS), "Home's drop: short, it should feel like opening, not waiting");
+        // M66 step 5: the CLOSE spring's tuck (0.45 s, no bounce), after the hover panel's words have left (80 ms).
+        assert!((150..=600).contains(&RETRACT_MS), "the CLOSE spring's tuck, after the panel's words");
+        assert_eq!(RETRACT_MS, 460 + PANEL_EXIT_MS);
     }
     #[test]
     fn a_proven_fix_widens_the_wings_a_little_then_they_tuck_back_in_place() {
@@ -1167,8 +1384,6 @@ mod tests {
     fn reduce_motion_or_less_motion_makes_it_appear_at_once() {
         let d = mbp14();
         assert_eq!(retract_ms(frame_of(&d, Mode::Alert, PANEL_MIN), frame_of(&d, Mode::Rest, PANEL_MIN), true), None);
-        let to = home_frame(&d, (380.0, 400.0));
-        assert_eq!(home_drop(to, true, true), None);
     }
     #[test]
     fn a_move_to_another_display_never_waits() {
@@ -1190,18 +1405,209 @@ mod tests {
             assert!(after.contains(want), "{want}");
         }
     }
+    // ---- M66 Part 2: Home grows out of the notch in a window that never resizes ----
+    fn panel(d: &Display) -> HomePanel { home_panel(Some(d), &[HomeSize::WIDE, with_settings(HomeSize::WIDE, true)], HomeSize::WIDE, None).unwrap() }
     #[test]
-    fn home_drops_open_from_just_under_the_island_only_when_it_opens_never_on_a_resize() {
-        for d in [mbp14(), ext(), air()] {
-            let to = home_frame(&d, (380.0, 500.0));
-            let start = home_drop(to, true, false).expect("opening");
-            assert_eq!([start[0], start[2], start[3]], [to[0], to[2], to[3]], "same place across and the same size");
-            assert!(start[1] < to[1] && to[1] - start[1] <= DROP + 0.01, "{}: a little higher, then down", d.id);
-            let rest = frame_of(&d, Mode::Rest, PANEL_MIN);
-            assert!(start[1] >= rest[1] + rest[3] - 0.01, "{}: never over the island", d.id);
-            // Home grows and shrinks as its page changes: that is never animated.
-            assert_eq!(home_drop(to, false, false), None);
+    fn the_notch_springs_match_their_response_and_damping_and_closing_never_passes_its_target() {
+        for (s, r, z) in [(NOTCH_HOVER, 0.38, 0.80), (NOTCH_OPEN_W, 0.36, 0.82), (NOTCH_OPEN_H, 0.42, 0.84), (NOTCH_CLOSE, 0.45, 1.0), (NOTCH_WORK, 0.30, 0.85)] {
+            let want = Spring::of(r, z);
+            assert!((s.k - want.k).abs() <= 1.0 && (s.c - want.c).abs() <= 0.1, "{s:?} vs {want:?}");
         }
+        // Step each spring from 0 to 1 for two seconds.
+        let peak = |s: Spring| { let (mut x, mut v, mut p) = (0.0f64, 0.0f64, 0.0f64); for _ in 0..8000 { v += (-s.k * (x - 1.0) - s.c * v) / 4000.0; x += v / 4000.0; p = p.max(x); } p };
+        assert!(peak(NOTCH_CLOSE) <= 1.0 + 1e-9, "closing never overshoots");
+        for s in [NOTCH_OPEN_W, NOTCH_OPEN_H] { let p = peak(s); assert!(p > 1.005 && p < 1.04, "a gentle settle: {p}"); }
+        assert!(NOTCH_CLOSE.damping() > 0.99 && NOTCH_OPEN_W.damping() < 0.9);
+        assert_eq!(OPEN_H_DELAY_MS, 60);
+    }
+    #[test]
+    fn homes_window_hangs_from_the_top_of_the_display_centred_on_the_notch_with_room_for_every_state() {
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            let p = panel(&d);
+            let rest = frame_of(&d, Mode::Rest, PANEL_MIN);
+            assert_eq!(p.frame[1], d.frame[1], "{}: top anchored at the display's top", d.id);
+            assert!((p.frame[0] + p.cx - cx(rest)).abs() < 0.01, "{}: the shape's centre is the notch's", d.id);
+            assert!(inside(p.frame, d.frame), "{}: on the display", d.id);
+            // At rest the shape is exactly the island, hanging from the same top.
+            assert_eq!(p.rest, (rest[2], rest[3]), "{}", d.id);
+            assert_eq!(rest[1], d.frame[1], "{}: the island hangs from the top edge too", d.id);
+            // Open: the band in the menu bar row, never wider than the notch and its wings (F18), and the body under it.
+            let open = shape_rects(&p, true, p.max_h);
+            assert_eq!(open[0][3], menu_bar(&d).unwrap(), "{}: the band is the menu bar row", d.id);
+            assert!(open[0][2] <= rest[2] + 2.0 * WING + 0.01, "{}: F18", d.id);
+            assert_eq!(open[1], home_frame(&d, (HomeSize::WIDE.w, HomeSize::WIDE.max_h)), "{}: the body is where Home is", d.id);
+            // Every state, plus the headroom each side and below, fits in the window: the overshoot is never clipped.
+            for r in open.iter().chain([rest].iter()) {
+                let grown = [r[0] - HEADROOM, r[1], r[2] + 2.0 * HEADROOM, r[3] + HEADROOM];
+                assert!(inside(*r, p.frame), "{} {r:?} in {:?}", d.id, p.frame);
+                if p.frame[2] + 0.01 < d.frame[2] && p.frame[3] + 0.01 < d.frame[3] { assert!(inside(grown, p.frame), "{} headroom {grown:?} in {:?}", d.id, p.frame); }
+            }
+        }
+    }
+    /// M66 step 5: with something running the island shows its wings, so Home grows from them and folds back into them; it
+    /// never starts from (or ends on) the bare notch while the wings show, which made the wings vanish and pop back.
+    #[test]
+    fn home_grows_from_the_wings_the_island_shows_and_folds_back_into_them() {
+        for d in [mbp14(), mbp16(), ext(), air()] {
+            let p = panel(&d);
+            assert_eq!(grown_from(p, &d, None), p, "{}: nothing running, the bare notch", d.id);
+            for asked in [0.0, WING, 70.0, WING_MAX] {
+                let g = grown_from(p, &d, Some(asked));
+                let wings = look_winged(&d, Mode::Alert, PANEL_MIN, asked).frame;
+                assert_eq!(g.rest, (wings[2], wings[3]), "{} {asked}: at rest it is the wings", d.id);
+                assert!(g.band.0 >= g.rest.0 - 0.01, "{} {asked}: the band open never narrower than the wings it grew from", d.id);
+                assert!(g.band.0 <= wings[2] + 0.01 && g.band.0 >= p.band.0, "{} {asked}: and never wider than the wings (F18)", d.id);
+                assert_eq!((g.frame, g.cx, g.body_w, g.max_h, g.body_top), (p.frame, p.cx, p.body_w, p.max_h, p.body_top), "{}: the same window", d.id);
+                // The wings and the open band fit in the window with headroom, centred on the notch.
+                assert!(g.cx - g.band.0 / 2.0 >= HEADROOM - 0.01 && g.cx + g.band.0 / 2.0 <= g.frame[2] - HEADROOM + 0.01, "{} {asked}", d.id);
+            }
+        }
+        // Free (no island): nothing to grow from.
+        let free = home_panel(None, &[HomeSize::WIDE], HomeSize::WIDE, Some([100.0, 200.0, 688.0, 480.0])).unwrap();
+        assert_eq!(grown_from(free, &mbp14(), Some(WING)), free);
+    }
+    #[test]
+    fn homes_window_never_changes_with_its_content_or_with_settings_open() {
+        let d = mbp14();
+        let tall = [HomeSize::STANDARD, with_settings(HomeSize::STANDARD, true)];
+        let p = home_panel(Some(&d), &tall, HomeSize::STANDARD, None).unwrap();
+        // The tall Home grows with what it shows and takes the Large width with Settings open: one window holds them all.
+        // The body is the width in force (M66 step 6): Standard with Settings closed, Large with it open, in the same window.
+        assert_eq!(p.body_w, HomeSize::STANDARD.w);
+        let set = home_panel(Some(&d), &tall, with_settings(HomeSize::STANDARD, true), None).unwrap();
+        assert_eq!(set.body_w, HomeSize::LARGE.w);
+        assert_eq!((set.frame, set.cx, set.body_top), (p.frame, p.cx, p.body_top), "the window and the centre never change with Settings");
+        assert!(p.frame[2] >= HomeSize::LARGE.w + 2.0 * HEADROOM, "the window holds the widest");
+        // The body the page draws is the room the character keeps clear of (card_spot, home_frame at the size in force).
+        assert_eq!(shape_rects(&p, true, 400.0)[1], home_frame(&d, (HomeSize::STANDARD.w, 400.0)));
+        assert_eq!((p.min_h, p.max_h), (HomeSize::STANDARD.min_h, HomeSize::STANDARD.max_h));
+        for h in [0.0, 300.0, 420.0, 640.0, 9999.0] { assert!(inside(shape_rects(&p, true, h)[1], p.frame), "{h}"); }
+        assert_eq!(p.body_h(9999.0), p.max_h);
+        assert_eq!(p.body_h(f64::NAN), p.min_h);
+        // The shell never makes the window from a content height (main.rs place_card reads only the sizes).
+        let main = include_str!("main.rs");
+        let pc = main_body("fn place_card(");
+        assert!(pc.contains("island::home_panel(") && !pc.contains("CARD_H"), "{pc}");
+        // A content height never places it again; only Settings opening or closing does, and that keeps the window (above).
+        assert_eq!(main_body("fn resize_card(").matches("place_card").count(), 1, "a content height never resizes the window");
+    }
+    #[test]
+    fn a_large_home_on_a_small_display_is_held_inside_it() {
+        let d = air();
+        let p = home_panel(Some(&d), &[HomeSize::LARGE, with_settings(HomeSize::LARGE, true)], HomeSize::LARGE, None).unwrap();
+        assert!(inside(p.frame, d.frame));
+        assert!(p.frame[1] + p.body_top + p.max_h <= d.work[1] + d.work[3] - GAP + 0.01, "never under the Dock");
+    }
+    #[test]
+    fn without_a_notch_the_pill_hangs_from_the_top_edge_and_home_grows_from_it_and_without_a_menu_bar_from_the_line() {
+        for d in [air(), ext()] {
+            let p = panel(&d);
+            assert_eq!(p.kind, "pill");
+            assert_eq!(p.rest, (PILL_W, 20.0));
+            assert_eq!(p.band.1, 24.0, "{}: the band fills the menu bar row", d.id);
+            assert_eq!(frame_of(&d, Mode::Rest, PANEL_MIN)[1], d.frame[1], "{}: from the top edge, never 2 pt down", d.id);
+        }
+        let mut hidden = air(); hidden.work = [0.0, 0.0, 1440.0, 830.0];
+        let p = panel(&hidden);
+        assert_eq!((p.kind, p.rest.1, p.band.1, p.body_top), ("edge", EDGE_H, EDGE_H, EDGE_H));
+    }
+    #[test]
+    fn with_the_island_off_home_sits_where_it_was_with_headroom_and_only_fades() {
+        let spot = [100.0, 200.0, 688.0, 480.0];
+        let p = home_panel(None, &[HomeSize::WIDE], HomeSize::WIDE, Some(spot)).unwrap();
+        assert_eq!(p.kind, "free");
+        assert_eq!(p.frame, [100.0 - HEADROOM, 200.0 - HEADROOM, 688.0 + 2.0 * HEADROOM, 480.0 + 2.0 * HEADROOM]);
+        assert_eq!(shape_rects(&p, true, 480.0), vec![spot]);
+        assert_eq!(home_panel(None, &[HomeSize::WIDE], HomeSize::WIDE, None), None);
+        assert_eq!(home_panel(Some(&mbp14()), &[], HomeSize::WIDE, None), None);
+        // M66 step 6: with the island off, the spot is the widest size (Settings' Large width in the tall Home) and the body
+        // is the width in force, centred in it; opening Settings never squeezes it.
+        let wide = [100.0, 200.0, HomeSize::LARGE.w, 640.0];
+        let tall = [HomeSize::STANDARD, with_settings(HomeSize::STANDARD, true)];
+        let closed = home_panel(None, &tall, HomeSize::STANDARD, Some(wide)).unwrap();
+        let open = home_panel(None, &tall, with_settings(HomeSize::STANDARD, true), Some(wide)).unwrap();
+        assert_eq!((closed.body_w, open.body_w), (HomeSize::STANDARD.w, HomeSize::LARGE.w));
+        assert_eq!(closed.frame, open.frame);
+        assert_eq!(shape_rects(&open, true, 640.0)[0], wide, "Settings gets its whole width");
+        let spot_fn = main_body("fn card_spot(");
+        assert!(spot_fn.contains("let w = if on.is_some() { size.w } else { home_sizes(&hs).iter().map(|s| s.w).fold(0.0, f64::max) };"), "{spot_fn}");
+        assert!(main_body("fn place_card(").contains("island::home_panel(on.as_ref(), &sizes, home_size(), spot)"));
+        // Settings opened or closed: placed again, so the page is told the new body width (the window stays as it is).
+        assert!(main_body("fn resize_card(").contains("if was != open { with_panels(|d, c| place_card(d, c)); }"));
+    }
+    #[test]
+    fn the_hit_test_follows_the_shape_its_round_corners_and_the_slack() {
+        let p = panel(&mbp14());
+        let r = shape_rects(&p, true, 480.0);
+        let (band, body) = (r[0], r[1]);
+        // Closed: nothing is ours; the island takes the pointer.
+        assert!(shape_rects(&p, false, 480.0).is_empty());
+        assert!(!inside_shape(&[], (756.0, 10.0), 0.0));
+        // The band in the menu bar row, and the body.
+        assert!(inside_shape(&r, (cx(band), 5.0), 0.0));
+        assert!(inside_shape(&r, (cx(body), 300.0), 0.0));
+        // The menu bar beside the band is not ours: its clicks go to the menus and icons there.
+        assert!(!inside_shape(&r, (band[0] - 1.0, 5.0), 0.0));
+        assert!(!inside_shape(&r, (band[0] + band[2] + 1.0, 5.0), 0.0));
+        // The clear corner outside the body's round foot is not ours; just inside the curve is.
+        let (bx, by) = (body[0], body[1] + body[3]);
+        assert!(!inside_shape(&r, (bx + 1.0, by - 1.0), 0.0), "the clear corner");
+        assert!(inside_shape(&r, (bx + OPEN_R, by - 1.0), 0.0), "on the foot, under the corner's middle");
+        assert!(inside_shape(&r, (bx + 1.0, by - OPEN_R), 0.0), "beside the corner's middle, on the straight side");
+        // The slack: 6 points around the notch for the nudge, 14 for a forgiving edge.
+        assert!(!inside_shape(&r, (cx(body), by + 5.0), 0.0));
+        assert!(inside_shape(&r, (cx(body), by + 5.0), 6.0));
+        assert!(!inside_shape(&r, (cx(body), by + 15.0), 14.0));
+        assert!(inside_shape(&r, (body[0] - 13.0, 300.0), 14.0));
+        // Under the band's shoulders, between the band and the wider body, the body starts at the menu bar line.
+        assert!(!inside_shape(&r, (band[0] - 20.0, band[3] - 1.0), 0.0));
+        assert!(inside_shape(&r, (band[0] - 20.0, band[3] + 1.0), 0.0));
+    }
+    #[test]
+    fn a_home_pointing_opened_folds_back_after_a_short_grace_unless_the_person_came_back_or_pressed_in_it() {
+        let g = HoverTimes::USUAL.out_ms;
+        let mut l = Leave::new(true);
+        assert!(!l.sample(true, 0, g));
+        assert!(!l.sample(false, 1000, g));
+        assert!(!l.sample(false, 1000 + g - 1, g), "the grace");
+        assert!(l.sample(false, 1000 + g, g), "then it folds");
+        // The grace is the person's: a longer close delay waits longer.
+        let mut l = Leave::new(true);
+        assert!(!l.sample(false, 0, 1000) && !l.sample(false, 999, 1000) && l.sample(false, 1000, 1000));
+        // A return inside the grace cancels it, and the grace starts again on the next leave.
+        let mut l = Leave::new(true);
+        l.sample(false, 0, g); l.sample(true, 100, g);
+        assert!(!l.sample(false, 200, g) && !l.sample(false, 200 + g - 1, g));
+        assert!(l.sample(false, 200 + g, g));
+        // Pressed in it: the person's now, it never folds on leaving.
+        let mut l = Leave::new(true);
+        l.pressed_inside();
+        assert!(!l.sample(false, 0, g) && !l.sample(false, 60_000, g));
+        // Opened by a click or a key: never on leaving.
+        let mut l = Leave::new(false);
+        assert!(!l.sample(false, 0, g) && !l.sample(false, 60_000, g));
+        // M66 step 6: the shell folds on leaving only with Close Home when I click another app on, after the close delay.
+        let w = main_body("fn watch_home(");
+        assert!(w.contains("if hs.click_away && HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()).sample(near, now() as u64, hs.hover.out_ms) {"), "{w}");
+        assert!(w.contains("if !hs.click_away { w = island::ClickAway::new(is_down); continue; }"), "{w}");
+    }
+    #[test]
+    fn after_a_dismiss_pointing_does_not_open_it_again_until_the_pointer_has_left_once() {
+        let mut h = Hover::default();
+        h.enter(0);
+        assert!(h.inside() && h.at(HOVER_IN_MS), "the nudge at once, open at the wait");
+        h.dismiss();
+        assert!(!h.inside() && !h.at(HOVER_IN_MS + 10) && !h.at(60_000), "dismissed: no nudge, no reopen");
+        assert_eq!(h.wait_ms(60_000), None);
+        h.exit(70_000); h.enter(70_001);
+        assert!(h.inside() && h.at(70_001 + HOVER_IN_MS), "left once: it opens again");
+        assert_eq!(HOVER_IN_MS, 300, "M66: 300 ms of resting opens it");
+    }
+    #[test]
+    fn home_never_drops_from_a_gap_it_grows_out_of_the_notch_in_a_window_that_never_resizes() {
+        // M66: no drop and no second clock; the old helpers are gone from the shell.
+        let main = include_str!("main.rs");
+        for gone in ["home_drop", "OPEN_SECS", "island::DROP"] { assert!(!main.contains(gone), "{gone}"); }
     }
     // Found in review (19 Oct 2026): AppKit lets a running motion finish on its old target when the frame is then set at
     // once. The island grew for the peek, the pointer left within 0.18 s, the rest frame was set at once, and the grow
@@ -1239,7 +1645,7 @@ mod tests {
         let main = include_str!("main.rs");
         let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let pc = body("fn place_card(");
-        assert!(pc.contains("set_frame_moving(c, to_appkit(cf, ph), None, None, &CARD_MOVES)"), "a resize is at once, never a motion: {pc}");
+        assert!(pc.contains("set_frame_moving(c, to_appkit(p.frame, ph), None, None, &CARD_MOVES)"), "a resize is at once, never a motion: {pc}");
         assert!(!pc.contains("setFrame_display"), "{pc}");
         let helper = body("fn set_frame_moving(");
         assert!(helper.contains("let mine = moves.lock().unwrap_or_else(|e| e.into_inner()).ask(want, secs.is_some());"), "{helper}");
@@ -1250,7 +1656,7 @@ mod tests {
         let place = body("fn place_island(");
         assert!(place.contains("None => set_island_frame(f, ph)") && place.contains("if ISLAND_GEN.load(Ordering::SeqCst) == gen { set_island_frame(f, ph) }"), "at once, or after the tuck unless a newer frame was asked");
         assert!(place.contains("island::retract_ms(from, f, reduce_motion())"));
-        assert!(body("fn open_card(").contains("&CARD_MOVES)"));
+        assert!(!body("fn open_card(").contains("set_frame_moving"), "M66: opening never moves or resizes Home's window");
     }
 
 
@@ -1540,5 +1946,25 @@ mod tests {
         }
         kinds.sort();
         assert_eq!(kinds, ["added", "deleted", "modified"]);
+    }
+    #[test]
+    fn settings_in_the_tall_home_stays_on_a_13_inch_screen() {
+        // M66 fix 14: Settings asks for its one height (settingsFit.ts SETTINGS_H). On a 13 inch MacBook Air with a notch
+        // (1470 by 956, the Dock below) and an older 13 inch (1440 by 900, no notch), and at the smallest scaled 13 inch
+        // (1280 by 800), the shape holding Settings is inside the display and above the Dock, and on the first two it is the
+        // full SETTINGS_H. Where the room is less, it is held to the room and Settings' pages scroll.
+        let air13 = Display { id: "1470x956@0,0".into(), frame: [0.0, 0.0, 1470.0, 956.0], work: [0.0, 32.0, 1470.0, 850.0], primary: true, notch: notch_from(1470.0, 32.0, 642.5, 642.5) };
+        let small = Display { id: "1280x800@0,0".into(), frame: [0.0, 0.0, 1280.0, 800.0], work: [0.0, 24.0, 1280.0, 706.0], primary: true, notch: None };
+        for (d, full) in [(air13, true), (air(), true), (small, false)] {
+            for base in [HomeSize::STANDARD, HomeSize::LARGE] {
+                let p = home_panel(Some(&d), &[base, with_settings(base, true)], with_settings(base, true), None).unwrap();
+                let body = shape_rects(&p, true, SETTINGS_H)[1];
+                assert!(inside(p.frame, d.frame), "{}", d.id);
+                assert!(inside(body, d.frame), "{}", d.id);
+                assert!(body[1] + body[3] <= d.work[1] + d.work[3] - GAP + 0.01, "{}: never under the Dock", d.id);
+                assert!(body[2] >= HomeSize::LARGE.w - 0.01, "{}: Settings' sidebar and page fit", d.id);
+                if full { assert_eq!(body[3], SETTINGS_H, "{}", d.id); } else { assert!(body[3] >= 480.0, "{}: still room to read", d.id); }
+            }
+        }
     }
 }

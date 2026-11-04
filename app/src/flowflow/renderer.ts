@@ -31,7 +31,7 @@ export class FlowflowRenderer {
   private dropPos = new Float32Array(MAX_DROPLETS * 3); private dropSize = new Float32Array(MAX_DROPLETS);
   private disposed = false;
   halfW = 1.6; halfH = FRAME_HEIGHT / 2;
-  private cssW = 0; private cssH = 0;
+  private cssW = 0; private cssH = 0; private dpr = 0;
   /** M46: Gentle draws at most at 2x, to stay inside its battery budget ([verify] on a real Mac). */
   private gentle = false;
 
@@ -81,12 +81,14 @@ export class FlowflowRenderer {
   /** M60: its soft halo on a dark page, or none (Home draws its own glow behind it). */
   setHalo(on: boolean): void { this.bodyMat.uniforms.uHaloK.value = on ? 1 : 0; }
   /** M46: the liveliness chosen (Gentle caps the pixel ratio). The caller measures again after a change. */
-  setMode(m: Liveliness): void { this.gentle = m === "gentle"; }
+  setMode(m: Liveliness): void { const g = m === "gentle"; if (g !== this.gentle) this.dpr = 0; this.gentle = g; }   // the next measure applies the cap
 
   /** The canvas's size in CSS pixels, and the screen's pixel ratio (it can change when the window moves between screens). */
   setSize(cssW: number, cssH: number, dpr: number): void {
     if (this.disposed || !(cssW > 0) || !(cssH > 0)) return;
-    this.cssW = cssW; this.cssH = cssH;
+    // M66: a size that did not change reallocates nothing (every resize and screen check used to resize the drawing buffer).
+    if (cssW === this.cssW && cssH === this.cssH && dpr === this.dpr) return;
+    this.cssW = cssW; this.cssH = cssH; this.dpr = dpr;
     this.gl.setPixelRatio(Math.min(this.gentle ? 2 : 3, Math.max(2, dpr || 1)));   // M29: always at least 2x, so the water is crisp, never soft
     this.gl.setSize(cssW, cssH, false);   // M37: this call had slipped into the comment above, so the canvas was drawn small and stretched
     this.halfH = FRAME_HEIGHT / 2; this.halfW = this.halfH * (cssW / cssH);
@@ -147,6 +149,26 @@ export class FlowflowRenderer {
     this.dropGeo.attributes.position.needsUpdate = true; this.dropGeo.attributes.aSize.needsUpdate = true;
     this.gl.render(this.scene, this.cam);
   }
+
+  /** M66 (pool.ts): compiles the water's shaders now, off the open path, in parallel where the GPU allows it
+   *  (KHR_parallel_shader_compile through compileAsync), then draws one empty frame so the programs are linked and ready. */
+  async warm(): Promise<void> {
+    if (this.disposed) return;
+    this.setSize(8, 8, 2);
+    const gl = this.gl as WebGLRenderer & { compileAsync?: (s: Scene, c: OrthographicCamera) => Promise<unknown> };
+    try { if (gl.compileAsync) await gl.compileAsync(this.scene, this.cam); else gl.compile(this.scene, this.cam); } catch { /* drawn below, compiled then */ }
+    if (this.disposed) return;
+    this.gl.render(this.scene, this.cam);
+  }
+  /** M66 (pool.ts): as new for the next character: the usual colours and halo, nothing drawn, measured again on use. */
+  reset(): void {
+    if (this.disposed) return;
+    this.setColours(`#${AQUA.getHexString()}`, `#${OCEAN.getHexString()}`);
+    this.setHalo(true); this.gentle = false; this.cssW = 0; this.cssH = 0; this.dpr = 0;
+    this.gl.clear();
+  }
+  /** Whether its GPU context is gone (it can never draw again). */
+  get lost(): boolean { return this.disposed || this.gl.getContext().isContextLost(); }
 
   /** Release the GPU and the canvas context. */
   dispose(): void {

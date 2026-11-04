@@ -1,0 +1,35 @@
+/* M66 step 3, Home and its cards: nothing jumps while things arrive. Every time and curve is a token (ui/tokens.css), and
+   only opacity, transform and clip-path move (ui/motionLint.test.ts). Reduce motion and Less motion stop every animation
+   here (style.css), so each part simply shows in its place. */
+
+/* Fix 4: Prompt help's text while it is written. A box of --stream-lines lines (card.tsx sets STREAM_LINES), the newest
+   words pinned to its bottom, the oldest fading out under its top edge. It never grows a line at a time. */
+.ph-stream { --stream-lines: 4; display: flex; flex-direction: column; justify-content: flex-end; height: calc(var(--stream-lines) * 1lh); overflow: clip; -webkit-mask-image: linear-gradient(to bottom, transparent, #000 1lh); mask-image: linear-gradient(to bottom, transparent, #000 1lh); }
+.ph-stream > p { margin: 0; overflow-wrap: anywhere; }
+
+/* Fix 13: new content on Now no longer makes the hero jump. While a job works, waits or has a result, the headline keeps
+   room for two lines (its words sit at the bottom of it), and new words cross fade in, 4 px up, instead of popping. At rest
+   and folded nothing is reserved, so the Instrument look is unchanged there. */
+.home .hero:not([data-compact]):is([data-mode="working"], [data-mode="result"], [data-mode="answer"], [data-mode="question"], [data-mode="needs"]) .headline { display: grid; align-content: end; min-height: 2lh; }
+.home .hero .hero-swap { animation: hero-swap var(--dur-2) var(--ease-out) both; }
+@keyframes hero-swap { from { opacity: 0; translate: 0 4px; } }
+
+/* Fix 17: the proven check's one landing, once per result (homeFlow.ts Landing): the tick draws in, then the card gives one
+   soft glow. The glow is a layer of its own that rests unseen and fades in and out once, by opacity only. No score, no
+   praise, nothing that loops. */
+.home .view .panel.receipt[data-landed], .home .view .panel.practice[data-landed] { position: relative; }
+.home .view .panel.receipt[data-landed]::after, .home .view .panel.practice[data-landed]::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; box-shadow: inset 0 0 0 var(--hair) var(--el-light, var(--water)), 0 0 24px color-mix(in srgb, var(--el-glow, var(--gel-glow)) 40%, transparent); opacity: 0; animation: land-glow var(--seq-glow) var(--ease-out) var(--dur-3) 1 both; }
+@keyframes land-glow { 35% { opacity: 1; } to { opacity: 0; } }
+[data-landed] .ui-verdict-mark svg, .thread[data-landed] .thread-step:last-child .thread-tick { animation: land-tick var(--dur-3) var(--ease-out) var(--dur-1) both; }
+@keyframes land-tick { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+/* In a practice, the line into its last node fills in first, from the node above it down. */
+.thread[data-landed] .thread-step[data-state="done"]:last-child::before { transform-origin: top; animation: land-line var(--dur-3) var(--ease-out) both; }
+@keyframes land-line { from { scale: 1 0; } }
+
+/* Tier 3, item 26: in the tall Home the ask box keeps room for two lines, so it never pushes the page as it wraps. */
+.home[data-layout="tall"] .ask textarea { min-height: calc(2lh + 16rem / 14); }
+
+/* The fixed chips at the end of a result (resultChips.ts): one quiet row, after everything else on the card. */
+.result-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+/* The size of a change (changeSize.ts), and its warning when a small ask changed a lot. */
+.change-size { font-variant-numeric: tabular-nums; }

@@ -176,7 +176,8 @@ describe("what it is allowed to do", () => {
     const dock = read("../dock.tsx");
     expect(dock).toContain("useFlow(");
     expect(dock).toMatch(/\{!flow\.failed && <canvas ref=\{flow\.canvasRef\} className="flow" aria-hidden="true" \/>\}/);
-    expect(dock).toMatch(/<img className=\{`pose\$\{flow\.ready \? " flow-ready" : ""\}`\} src=\{poseUrl\(pose\)\} alt=""/);
+    // M66: the pictures stay stacked and cross fade (dockStates.test.ts); the water hides the whole stack once drawn.
+    expect(dock).toContain('<span className={`pose-stack${flow.ready ? " flow-ready" : ""}`}>');
     // Less motion (the Mac's or this app's own Motion setting) reaches the water as calm.
     expect(dock).toContain("calm: reduced");
   });

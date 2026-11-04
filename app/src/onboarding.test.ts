@@ -488,7 +488,7 @@ describe("keyboard, VoiceOver and motion", () => {
     // Squibby's own Less motion turns every animation off, so the rise must not wait at its starting opacity of 0.
     expect(css).toContain(":root[data-less-motion] .fr-hello .fr-rise { opacity: 1; }");
     expect(css).toContain(":root[data-less-motion] .fr-hello .fr-drop { display: none; }");
-    expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;");
   });
 });
 

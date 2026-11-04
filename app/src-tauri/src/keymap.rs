@@ -1096,11 +1096,14 @@ mod tests {
         let closed = body("fn home_closed(");
         assert!(closed.contains("std::thread::spawn(move || arm_result_keys(&a, false))"), "home_closed gives the keys back, on its own thread: {closed}");
         let outs: Vec<usize> = main.match_indices("c.orderOut(None)").map(|(i, _)| i).collect();
-        assert_eq!(outs.len(), 3, "close_home_rolled (for close_card and toggle_home), the full screen hide and Hide in the menu bar");
+        // M66: Home's window stays ordered in while closed; it is ordered out only by the full screen hide, Hide in the menu
+        // bar, and home_fold (to give the keyboard back). Each ends Home through home_fold, which runs home_closed.
+        assert_eq!(outs.len(), 3, "home_fold (every close), the full screen hide and Hide in the menu bar");
         for f in ["fn close_card(", "fn toggle_home("] { assert!(body(f).contains("close_home_rolled("), "{f} closes through close_home_rolled"); }
+        assert!(body("fn close_home_rolled(").contains("home_fold(") && body("fn home_fold(").contains("home_closed();") && body("fn home_stop_now(").contains("home_fold("));
         for at in outs {
             let rest = &main[at..];
-            let next = rest.find("home_closed();").unwrap_or_else(|| panic!("the card is ordered out at {at} with no home_closed after it"));
+            let next = ["home_closed();", "home_stop_now("].iter().filter_map(|p| rest.find(p)).min().unwrap_or_else(|| panic!("the card is ordered out at {at} with no home_closed after it"));
             assert!(!rest[..next].contains("\nfn "), "the card is ordered out at {at} and home_closed is not in the same function");
         }
         // close_card has no second way of its own: the one in home_closed is the only one.

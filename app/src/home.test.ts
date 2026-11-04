@@ -523,8 +523,8 @@ describe("Close Home when I click another app (home.closeOnClickAway)", () => {
   test("off, a click elsewhere never closes Home; Esc, Close and the island or the character still do", () => {
     for (const m of [initial(), run(task()), run([...task(), approval()])]) expect(closesOnClickAway(m, false, false)).toBe(false);
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(nowModel\.current, onboardingNow\.current, setting\("home\.closeOnClickAway"\) === true, typingNow\(\)\)/);
-    // The shell does not even watch for clicks while it is off (main.rs open_card, homeset.rs wiring test).
-    expect(read("../src-tauri/src/main.rs")).toContain("if !was_open && home_set().click_away { watch_click_away(&a); }");
+    // The shell's watch reads the setting at each look and skips the click away while it is off (main.rs watch_home).
+    expect(read("../src-tauri/src/main.rs")).toContain("if !hs.click_away { w = island::ClickAway::new(is_down); continue; }");
   });
 });
 

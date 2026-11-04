@@ -13,7 +13,8 @@ import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const tokens = TOKENS_CSS(), css = ALL_CSS(), card = read("./card.tsx"), mod = read("./smoothMotion.ts");
-const token = (name: string) => new RegExp(`${name}: ([^;]+);`).exec(tokens)?.[1]?.trim() ?? "";
+/** A token's value, following var() to the token it names (M66: the M55 names are aliases of the four durations). */
+const token = (name: string): string => { const v = new RegExp(`${name}: ([^;]+);`).exec(tokens)?.[1]?.trim() ?? "", a = /^var\((--[\w-]+)\)$/.exec(v); return a ? token(a[1]) : v; };
 const ms = (name: string) => msOf(token(name)) ?? NaN;
 const g = globalThis as { matchMedia?: unknown };
 /** One function of the module, from its first line to its closing brace. */
@@ -22,11 +23,11 @@ const fnOf = (name: string) => { const at = mod.indexOf(`function ${name}(`); re
 describe("one set of motion tokens, in ui/tokens.css", () => {
   test("every motion the pages use has its token", () => {
     for (const name of Object.values(MOTION_TOKENS)) expect(token(name), name).not.toBe("");
-    for (const name of ["--dur-press", "--dur-release", "--dur-hover", "--ease-hover", "--dur-open", "--dur-close", "--press-row"]) expect(token(name), name).not.toBe("");
+    for (const name of ["--dur-press", "--dur-release", "--dur-hover", "--dur-open", "--dur-close", "--press-row"]) expect(token(name), name).not.toBe("");
   });
-  test("a place change is about 180 ms on an ease out", () => {
-    expect(ms("--dur-enter")).toBe(180);
-    expect(token("--ease-enter")).toMatch(/^cubic-bezier\(/);
+  test("a place change is --dur-2 (200 ms, M66) on the one ease out", () => {
+    expect(ms("--dur-enter")).toBe(200);
+    expect(token("--ease-out")).toBe("cubic-bezier(.23, 1, .32, 1)");
   });
   test("exits are faster than entrances, and a press is quicker than its let go", () => {
     expect(ms("--dur-exit")).toBeLessThan(ms("--dur-enter"));
@@ -36,10 +37,10 @@ describe("one set of motion tokens, in ui/tokens.css", () => {
   test("every UI motion stays under 300 ms", () => {
     for (const name of ["--dur-press", "--dur-release", "--dur-hover", "--dur-enter", "--dur-exit", "--dur-move", "--dur-open", "--dur-close", "--dur-count"]) expect(ms(name), name).toBeLessThanOrEqual(300);
   });
-  test("no ease in anywhere: it starts slow at the moment a person is watching", () => {
+  test("no ease in on anything that arrives: it starts slow at the moment a person is watching (an exit may: M66 --ease-exit)", () => {
     expect(tokens).not.toMatch(/--ease-in:/);
     expect(css.replace(/ease-in-out/g, "")).not.toMatch(/\bease-in\b/);
-    for (const name of ["--ease-enter", "--ease-exit", "--ease-move"]) {
+    for (const name of ["--ease-out"]) {
       const v = token(name), b = /cubic-bezier\(([^)]*)\)/.exec(v)?.[1]?.split(",").map(Number) ?? [];
       // A curve that starts fast: its first handle rises at least as steeply as it runs (or the token names one that does).
       if (b.length === 4) expect(b[1] / Math.max(b[0], 0.001), name).toBeGreaterThanOrEqual(1);
@@ -49,7 +50,7 @@ describe("one set of motion tokens, in ui/tokens.css", () => {
   test("the pages read the tokens and write no duration of their own", () => {
     const t = readTokens((n) => token(n));
     expect(t).not.toBeNull();
-    expect(t!.enter).toBe(180);
+    expect(t!.enter).toBe(200);
     expect(t!.exit).toBeLessThan(t!.enter);
     expect(t!.slide).toBeGreaterThan(0);
     // A token that cannot be read means no motion, never a guess.
@@ -189,8 +190,9 @@ describe("nothing moves with Reduce motion or Less motion", () => {
   });
   test("the stylesheets stop every animation and transition (the rule the new ones live under)", () => {
     const style = STYLE_CSS();
-    expect(style).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }");
-    expect(style).toContain(":root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }");
+    // M66: nothing moves; a plain fade of opacity and colour in --dur-1 stays (ui/motionLint.test.ts holds the whole rule).
+    expect(style).toContain("@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;");
+    expect(style).toContain(":root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition-property: opacity, color,");
   });
   test("Less motion counts as reduced for the count too", () => {
     takeSnapshot({ values: { "character.motion": "less" }, usual: {}, project: "", migrated: ["pageStorage.v1"], problems: [], changed: [] }, null);
@@ -207,7 +209,7 @@ describe("only transform and opacity move", () => {
     expect(draw.indexOf("list.map(")).toBeLessThan(draw.indexOf("ghost.offsetParent"));
   });
   test("Home's drop, its roll up, a card growing in, a menu, a toast, a sheet", () => {
-    for (const k of ["home-spring", "home-roll-up", "card-in", "ui-menu-in", "ui-toast-in", "ui-sheet-in", "ui-fade-in"]) {
+    for (const k of ["card-in", "ui-menu-in", "ui-toast-in", "ui-sheet-in", "ui-fade-in"]) {
       const body = frames(k);
       expect(body, k).not.toBe("");
       for (const p of props(body)) expect(["opacity", "transform"], `${k}: ${p}`).toContain(p);
@@ -220,7 +222,7 @@ describe("only transform and opacity move", () => {
   test("the module moves things with transform, translate and opacity only", () => {
     const sets = [...mod.matchAll(/\.animate\(\[([^\]]*)\]/g), ...mod.matchAll(/drawGhosts\(list, shift, \[([^\]]*)\]/g)];
     expect(sets.length).toBeGreaterThanOrEqual(4);
-    for (const m of sets) for (const p of props(m[1].replace(/"[^"]*"|`[^`]*`/g, "x"))) expect(["opacity", "transform", "translate"], p).toContain(p);
+    for (const m of sets) for (const p of props(m[1].replace(/"[^"]*"|`[^`]*`/g, "x"))) expect(["opacity", "transform", "translate", "scale"], p).toContain(p);
   });
 });
 
@@ -242,21 +244,22 @@ describe("nothing moves at rest", () => {
 });
 
 describe("Home drops from the notch in one smooth motion", () => {
-  test("one motion on the tokens, and its parts no longer come in one after another", () => {
-    expect(css).toMatch(/\.home\.springing \{ animation: home-spring var\(--dur-open\) var\(--ease-enter\) both; \}/);
-    expect(css).toMatch(/\.home\.closing \{ animation: home-roll-up var\(--dur-close\) var\(--ease-exit\) both; \}/);
-    expect(css).not.toMatch(/\.home\.springing \.[\w-]+ \{ animation/);
+  test("M66: it grows out of the notch as one shape on one clock, the page's (homeShape.css), never a keyframe drop", () => {
+    expect(css).not.toMatch(/home-spring|home-roll-up|\.home\.springing|\.home\.closing/);
   });
-  test("it rolls back up in the time the shell waits before hiding it", () => {
+  test("the shell waits for the page's fold, with a backstop longer than the fold itself", () => {
     const main = read("../src-tauri/src/main.rs");
-    expect(ms("--dur-close")).toBe(Number(/const HOME_CLOSE_MS: u64 = (\d+);/.exec(main)?.[1]));
+    const backstop = Number(/const HOME_FOLD_BACKSTOP_MS: u64 = (\d+);/.exec(main)?.[1]);
+    // M66 step 5: the content leaves first (--dur-exit-menu), then the shape folds on CLOSE.
+    expect(backstop).toBeGreaterThan(ms("--dur-exit-menu") + ms("--dur-notch-close") + 80);
+    expect(main).not.toContain("HOME_CLOSE_MS");
   });
 });
 
 describe("cards grow in and fold away", () => {
   test("a card grows in from a little smaller, on the entrance tokens", () => {
     expect(css).toMatch(/@keyframes card-in \{ from \{ opacity: 0; transform: translateY\(var\(--rise\)\) scale\(var\(--grow-from\)\); \} \}/);
-    expect(css).toMatch(/\.home \.view \.panel \{[^}]*animation: card-in var\(--dur-enter\) var\(--ease-enter\) both;/);
+    expect(css).toMatch(/\.home \.view \.panel \{[^}]*animation: card-in var\(--dur-enter\) var\(--ease-out\) both;/);
     expect(css).not.toMatch(/card-in var\(--dur-2\)/);
   });
   test("one that goes is drawn once more where it was, hidden from VoiceOver and the keyboard, and folds away", () => {
@@ -287,7 +290,8 @@ describe("cards grow in and fold away", () => {
   });
   test("Home follows it: places, cards and what stays", () => {
     expect(card).toMatch(/import \{ CountUp, useHomeMotion \} from "\.\/smoothMotion\.ts";/);
-    expect(card).toContain("useHomeMotion(root, work, view, home.tab, homeOpen);");
+    // M66 fix 4: a render where only streamed text changed is not measured (homeFlow.test.ts).
+    expect(card).toContain("useHomeMotion(root, work, view, home.tab, homeOpen, streamOnly);");
     expect(card).toContain('<div className="work" ref={work}>');
     expect(card).toMatch(/<div className="view" ref=\{view\}/);
   });
@@ -303,9 +307,11 @@ describe("moving between places is a short cross fade and a small slide", () => 
     const fade = fnOf("fadeAway");
     expect(fade).toContain("[{ opacity: 1 }, { opacity: 0 }], t.exit, t.easeExit");
     const enter = fnOf("enterPlace");
-    // The review, 3 Nov 2026: the old place under the new one drew text over text. The new place waits until the old one
-    // is gone (it rises only after --dur-exit), and holds its first frame (invisible) while it waits.
-    expect(enter).toContain("{ duration: t.enter, delay: t.exit, easing: t.easeEnter, fill: \"backwards\" }");
+    // The review, 3 Nov 2026: the old place under the new one drew text over text, so the new place waited for the old one
+    // to go. M66 fix 22: waiting the whole --dur-exit left Home empty for 120 ms on every switch. The new place starts
+    // halfway through the old one's leave (60 ms), and holds its first frame (invisible) until then. The two overlap for
+    // 60 ms only while the old one is fading (it has about a third gone at 60 ms) and the new one starts from nothing.
+    expect(enter).toContain("{ duration: t.enter, delay: t.exit / 2, easing: t.easeEnter, fill: \"backwards\" }");
     expect(enter).toContain("translateY(${t.slide}px)");
     expect(ms("--dur-exit")).toBeLessThan(ms("--dur-enter"));
     expect(pxOf(token("--slide-place"))).toBeLessThanOrEqual(8);
@@ -319,7 +325,8 @@ describe("buttons answer a press, and a hover is a soft change", () => {
   const parts = PARTS_CSS();
   test("a button presses in quickly and lets go a little slower; its colours change softly", () => {
     const btn = /\n\.btn \{([^}]*)\}/.exec(parts)?.[1] ?? "";
-    expect(btn).toContain("transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover), border-color var(--dur-hover) var(--ease-hover), box-shadow var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out);");
+    // M66: its shadow is never animated (only opacity, transform and colour move).
+    expect(btn).toContain("transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out);");
     expect(parts).toMatch(/\.btn:active:not\(:disabled\) \{[^}]*transform: scale\(var\(--press\)\);[^}]*transition-duration: var\(--dur-press\);/);
   });
   test("a row in a list presses in too, only a little", () => {
@@ -331,10 +338,29 @@ describe("buttons answer a press, and a hover is a soft change", () => {
   });
   test("the back arrows, a notch row and a disclosure answer the same way: soft under the pointer, quick in, slower out", () => {
     const style = STYLE_CSS();
-    expect(style).toContain(".back { transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover), opacity var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }");
-    for (const sel of ["\\.fr-back", "\\.island-panel \\.ip-job"]) expect(style, sel).toMatch(new RegExp(`\\n${sel} \\{[^}]*transition: background-color var\\(--dur-hover\\) var\\(--ease-hover\\), transform var\\(--dur-release\\) var\\(--ease-out\\); \\}`));
+    expect(style).toContain(".back { transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), opacity var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }");
+    for (const sel of ["\\.fr-back", "\\.island-panel \\.ip-job"]) expect(style, sel).toMatch(new RegExp(`\\n${sel} \\{[^}]*transition: background-color var\\(--dur-hover\\) var\\(--ease-out\\), transform var\\(--dur-release\\) var\\(--ease-out\\); \\}`));
     expect(style).toContain(":is(.back, .fr-back, .island-panel .ip-job, .island-panel .ip-answer button):not(:disabled):active { transform: scale(var(--press)); transition-duration: var(--dur-press); }");
-    expect(parts).toMatch(/\.ui-disc-head \{[^}]*transition: background-color var\(--dur-hover\) var\(--ease-hover\), transform var\(--dur-release\) var\(--ease-out\);/);
+    expect(parts).toMatch(/\.ui-disc-head \{[^}]*transition: background-color var\(--dur-hover\) var\(--ease-out\), transform var\(--dur-release\) var\(--ease-out\);/);
     expect(parts).toContain(".ui-disc-head:active { transform: scale(var(--press-row)); transition-duration: var(--dur-press); }");
+  });
+});
+
+describe("Flowflow's size eases by scale only (M66 fix 10)", () => {
+  test("the scale it starts from: its old size over its new one, and nothing for no size, a tiny change or a new layout", async () => {
+    const { sizeEaseFrom } = await import("./smoothMotion.ts");
+    expect(sizeEaseFrom(104, 136)).toBeCloseTo(104 / 136, 5);
+    expect(sizeEaseFrom(168, 104)).toBeCloseTo(168 / 104, 5);
+    expect(sizeEaseFrom(0, 104)).toBeNull();
+    expect(sizeEaseFrom(104, 0)).toBeNull();
+    expect(sizeEaseFrom(104, 105)).toBeNull();
+    expect(sizeEaseFrom(40, 168)).toBeNull();
+  });
+  test("its size is no longer transitioned or registered, so the page never lays out while it moves", () => {
+    expect(css).not.toMatch(/transition:[^;]*--char/);
+    expect(css).not.toContain("@property --char");
+    expect(fnOf("useSizeEase")).toContain("el.animate([{ scale: String(k) }, { scale: \"1\" }], { duration: DUR[3], easing: EASE_OUT_CSS });");
+    expect(fnOf("useSizeEase")).toContain("if (k === null || reducedMotion()) return;");
+    expect(read("./homeCharacter.tsx")).toContain("useSizeEase(box, !orb);");
   });
 });

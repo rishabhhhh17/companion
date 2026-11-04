@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
@@ -215,7 +215,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {claude?.state === "installing" && (() => {
           const mb = Math.round((claude.received ?? 0) / 1e6), pct = claude.total ? Math.min(100, Math.round(((claude.received ?? 0) / claude.total) * 100)) : null;
           return <div className="fr-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined} aria-valuetext={S.fr.claudeGetting(mb, pct)}>
-            <div className="fr-bar"><i style={{ width: `${pct ?? 30}%` }} data-unknown={pct === null ? "yes" : undefined} /></div><span>{S.fr.claudeGetting(mb, pct)}</span></div>;
+            <div className="fr-bar"><i style={{ "--p": `${pct ?? 30}%` } as CSSProperties} data-unknown={pct === null ? "yes" : undefined} /></div><span>{S.fr.claudeGetting(mb, pct)}</span></div>;
         })()}
         {claude?.state === "failed" && <><div className="error" role="alert">{claude.message}</div>
           <Button kind="quiet" className="fr-link" onClick={() => { setClaude({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{S.fr.claudeAgain}</Button></>}

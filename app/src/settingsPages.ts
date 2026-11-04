@@ -37,7 +37,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
-      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.showStep", "island.openDelay", "island.closeDelay", "island.followDelay", "panel.showWork", "panel.size"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.showStep", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", f("usedOften")] },
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },

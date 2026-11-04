@@ -267,7 +267,11 @@ export type CostUpdate = Envelope & {
 // ring can find it on screen.
 export type ChangeAt = { file: string; line: number; lineText: string };
 export type Receipt = Envelope & {
-  type: "receipt"; agent: string; checkpoint: string; changed: { file: string; kind: "added" | "modified" | "deleted" }[];
+  type: "receipt"; agent: string; checkpoint: string;
+  // M66: added and removed lines per file as git counts them (absent for a file that is not text); was: its length before,
+  // only for a file that lost many lines.
+  changed: { file: string; kind: "added" | "modified" | "deleted"; added?: number; removed?: number; was?: number }[];
+  askWords?: number;   // M66: how many words the ask had, for the warning on a big rewrite for a small ask
   commands: number; notUndoable: string[]; proof: "passed" | "partial" | "failed" | "skipped"; usdEstimate: number;
   picture?: boolean;   // a before and after picture is being made and will follow as receipt.visual
   inPlan?: boolean;    // one step of an approved plan (Drive); the plan as a whole ends with drive.done

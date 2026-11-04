@@ -112,11 +112,11 @@ describe("what the live part of the work card shows at each step", () => {
 describe("the work card ticks live, calm (nothing loops, every move from the tokens, none with motion reduced)", () => {
   const rule = (sel: string) => { const at = css.indexOf(`${sel} {`); expect(at, sel).toBeGreaterThan(-1); return css.slice(at, css.indexOf("}", at)); };
   test("a step's tick draws in once when the step finishes, on the entrance tokens", () => {
-    expect(rule(".job-strip li[data-state=\"done\"] .job-label .ic")).toMatch(/animation: job-tick var\(--dur-enter\) var\(--ease-enter\) both/);
+    expect(rule(".job-strip li[data-state=\"done\"] .job-label .ic")).toMatch(/animation: job-tick var\(--dur-enter\) var\(--ease-out\) both/);
     expect(css).toMatch(/@keyframes job-tick \{/);
   });
   test("a file or a check that arrives grows in once; a check's mark changes colour, never spins", () => {
-    expect(rule(".job-live li")).toMatch(/animation: job-row-in var\(--dur-enter\) var\(--ease-enter\) both/);
+    expect(rule(".job-live li")).toMatch(/animation: job-row-in var\(--dur-enter\) var\(--ease-out\) both/);
     expect(css).toMatch(/@keyframes job-row-in \{/);
     expect(rule(".job-mark")).toMatch(/transition: (background-color|color)/);
     const block = css.slice(css.indexOf("/* M55 live progress */"), css.indexOf("/* end M55 live progress */"));
@@ -124,8 +124,8 @@ describe("the work card ticks live, calm (nothing loops, every move from the tok
     expect(block).not.toMatch(/infinite/);
   });
   test("with Reduce motion or Less motion everything is simply there (the page wide rules stop every animation)", () => {
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \*, \*::before, \*::after \{ animation: none !important; transition: none !important; \} \}/);
-    expect(css).toMatch(/:root\[data-less-motion\] \*, :root\[data-less-motion\] \*::before, :root\[data-less-motion\] \*::after \{ animation: none !important; transition: none !important; \}/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \*, \*::before, \*::after \{ animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important;/);
+    expect(css).toMatch(/:root\[data-less-motion\] \*, :root\[data-less-motion\] \*::before, :root\[data-less-motion\] \*::after \{ animation: none !important; transition-property: opacity,/);
   });
 });
 

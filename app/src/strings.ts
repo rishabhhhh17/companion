@@ -254,6 +254,25 @@ export const S = {
   modified: "changed",
   /** M39 (Linear's agent results: one card of what changed): the header of the changes card. */
   changedFiles: (n: number) => `Changed ${n} ${n === 1 ? "file" : "files"}`,
+  // M66: the size of a change on the result card (changeSize.ts), from the checkpoint diff's own line counts.
+  changeSize: {
+    oneFile: (lines: number, name: string) => `Changed ${lines} ${lines === 1 ? "line" : "lines"} in ${name}`,
+    manyFiles: (lines: number, files: number) => `Changed ${lines} ${lines === 1 ? "line" : "lines"} in ${files} files`,
+    added: (name: string, lines: number) => `Added ${name}, ${lines} ${lines === 1 ? "line" : "lines"}`,
+    rewrote: (name: string, lines: number) => `Rewrote the whole of ${name}, ${lines} ${lines === 1 ? "line" : "lines"}`,
+    warn: "That was a small ask for a big change. Look it over before you keep it.",
+  },
+  // M66: the fixed chips at the end of a result card (resultChips.ts). Undo and Fix it ask first.
+  resultChips: {
+    label: "Next",
+    explain: "Explain this",
+    undo: "Undo",
+    fix: "Fix it",
+    whatChanged: "What changed",
+    fixSure: "Try to fix it again? A safety copy is kept first, and Undo puts it back.",
+    fixYes: "Fix it",
+    fixNo: "Not now",
+  },
   /** The changes card after an Undo put the files back (the audit, item 36). */
   putBackFiles: (n: number) => `Put back: ${n} ${n === 1 ? "file" : "files"}`,
   deleted: "removed",
@@ -455,6 +474,7 @@ export const S = {
     "spend.dailyLimit": `${PRODUCT} stops and asks before spending more than this in a day.`,
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
+    "island.haptics": "A light tap on the trackpad when you open the notch. Off unless you turn it on.",
     "island.pointOpens": "What opens when you point at the notch: Home, or one status line.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
@@ -1828,9 +1848,10 @@ export const S = {
     "island.pointOpens": { label: "Pointing at the notch opens", help: `Home opens all of ${PRODUCT}, the usual. Status line shows one line under the notch instead. A click always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line"], options: { home: "Home", status: "Status line" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
     "island.closeDelay": { label: "Close it after moving away for", help: "How long the status stays open after the pointer leaves the notch, so a small slip does not close it.", also: ["hover", "delay", "wait"] },
+    "island.haptics": { label: "Tap the trackpad when the notch opens", help: "A light tap you feel on the trackpad when the notch opens because you clicked it or pointed at it. Only on a Mac with a Force Touch trackpad, and only while your finger is on it. Never for anything that opens by itself.", also: ["haptic", "haptics", "vibrate", "feedback", "tap", "trackpad", "feel"] },
     "island.display": { label: "Display", help: "Follow you puts them on the display you are using. Built in keeps them on your Mac's own screen, or on the main display while the lid is closed. Main keeps them on the display with the menu bar.", also: ["Which display the notch and Home use", "monitor", "screen", "second screen", "external"], options: { follow: "Follow you", builtIn: "Built in", main: "Main" } },
     "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the notch moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
-    "home.closeOnClickAway": { label: "Close Home when I click another app", help: "Off, Home stays open until you close it, press Esc, or click the character again. It never closes by itself while you type or while something waits for you.", also: ["click away", "close", "keep open"] },
+    "home.closeOnClickAway": { label: "Close Home when I click another app", help: "On, Home closes when you click another app, and a Home that opened by resting on the notch closes after you move away from it. Off, Home stays open until you close it, press Esc, or click the character again. It never closes by itself while you type or while something waits for you.", also: ["click away", "close", "keep open"] },
     "home.stepAside": { label: "Step aside for what Home opens", help: "On, Home closes when it opens a web page, an email or the support log for you. Open it again with the notch or the character; what it said is still there. It stays open while something on it waits for you, such as a question or a lesson.", also: ["report a problem", "link", "browser", "email", "close", "out of the way"] },
     "talk.dictate": { label: "Type by voice in any app", help: `Usually off, to keep things simple at first. Turn it on and pick its keys in Keys. Hold them, speak, and let go: your words are typed where the cursor is, in any app. ${PRODUCT} turns your voice into text on this Mac and never presses Return, so nothing is sent. It never types into a password box. It needs the microphone and Accessibility, asked the first time. Off, the keys type nothing.`, also: ["mic", "dictate", "voice", "dictation", "dictate", "type", "voice typing", "speech to text", "wispr", "any app"] },
     "talk.captions": { label: "Show your words", help: "When I say something out loud, the words also show at the bottom of your screen until I stop.", also: ["Show my words while I talk", "captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },

@@ -141,6 +141,9 @@ function rules(css0: string, media = ""): Rule[] {
   return out;
 }
 const parts = (sel: string): string[] => sel.match(/\.[\w-]+|\[[\w-]+|#[\w-]+|^[a-z]+/g) ?? [];
+/** M66: under reduced motion a transition may stay as a plain fade, of opacity and colour only, never movement. */
+const FADES = ["opacity", "color", "background-color", "border-color", "outline-color", "fill", "stroke"];
+const fadesOnly = (v: string | undefined): boolean => !!v && v.replace(/\s*!important$/, "").split(",").every((p) => FADES.includes(p.trim()));
 /** Rules that move something, each with the reduced motion rule that stops it, or null. */
 function motionCover(css: string): { sel: string; prop: string; by: string | null }[] {
   const all = rules(css);
@@ -150,7 +153,8 @@ function motionCover(css: string): { sel: string; prop: string; by: string | nul
     for (const prop of ["animation", "transition"]) {
       const v = r.decl[prop] ?? r.decl[`${prop}-name`] ?? r.decl[`${prop}-property`];
       if (!v || /^none\b/.test(v)) continue;
-      const by = calm.find((c) => /^none\b/.test(c.decl[prop] ?? "") && parts(c.sel).every((p) => parts(r.sel).includes(p)));
+      const stops = (c: Rule) => /^none\b/.test(c.decl[prop] ?? "") || (prop === "transition" && fadesOnly(c.decl["transition-property"]));
+      const by = calm.find((c) => stops(c) && parts(c.sel).every((p) => parts(r.sel).includes(p)));
       out.push({ sel: r.sel, prop, by: by?.sel ?? null });
     }
   }
@@ -189,7 +193,7 @@ describe("every animation and transition in the stylesheets stops with reduced m
     // The usual look of looking is unchanged: its ring is only for reduced motion.
     expect(all.filter((r) => r.sel === '.character[data-state="checking"]' && r.media === "")).toEqual([]);
     // The rules that stop motion stop only motion, never a mark.
-    for (const r of all.filter((x) => x.sel.startsWith(":root[data-less-motion] *"))) expect(Object.keys(r.decl).sort(), r.sel).toEqual(["animation", "transition"]);
+    for (const r of all.filter((x) => x.sel.startsWith(":root[data-less-motion] *"))) expect(Object.keys(r.decl).sort(), r.sel).toEqual(["animation", "transition-delay", "transition-duration", "transition-property", "transition-timing-function"]);
     for (const r of all.filter((x) => /prefers-reduced-motion/.test(x.media) && x.sel.includes("[data-motion]"))) expect(Object.keys(r.decl).sort(), r.sel).toEqual(["animation", "transition"]);
   });
   test("the character's states, reactions and named trips are among them", () => {
@@ -226,19 +230,20 @@ describe("the shell reads the Mac's setting once, and the island never animates"
     expect(helper).toContain("if secs.is_none() { p.setFrame_display(f, true); if let Some(a) = alpha { p.setAlphaValue(a); } }");
     // Every motion passed to it comes from island.rs with the one reader of reduced motion; Home's resize is at once.
     const calls = [...main.matchAll(/set_frame_moving\(([^;]*)\)/g)].map((m) => m[1]).filter((c) => !c.startsWith("p: &NSPanel"));
-    // The island, Home's resize and Home's drop; and since peeking (27 Oct 2026) the character's own window: at once for its
+    // The island and Home's window at once (M66: Home never drops; its page draws the motion); and since peeking (27 Oct 2026) the character's own window: at once for its
     // place and its trips, and a peek's motion only as peek.rs decides it, with the one reader of reduced motion.
     const dock = calls.filter((c) => c.includes("&DOCK_MOVES")).map((c) => c.replace(/\)$/, ""));
-    expect(calls.length - dock.length).toBe(3);
+    expect(calls.length - dock.length).toBe(2);
     // M47: a drag begins by stopping any motion where the window is (at once), and a let go near an edge springs onto it
     // (docking.rs land_secs), at once with the one reader of reduced motion; its place otherwise is at once.
-    expect(dock.sort()).toEqual(["d, f, None, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(r, ph), None, None, &DOCK_MOVES"]);
+    // M66: a trip starts by stopping any peek still moving the window (at once), then moves on the display link (trip.rs).
+    expect(dock.sort()).toEqual(["d, f, None, None, &DOCK_MOVES", "d, f, None, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(f, ph), secs, None, &DOCK_MOVES", "d, to_appkit(r, ph), None, None, &DOCK_MOVES"]);
     expect(main).toContain("let secs = peek::motion(was, pose, calm, light);");
     expect(main).toContain('let secs = if reason == "drag" { docking::land_secs(&landing, reduce_motion()) } else { None };');
     expect(main).toContain("let calm = reduce_motion();");
-    expect(calls).toContain("c, to_appkit(cf, ph), None, None, &CARD_MOVES");
+    expect(calls).toContain("c, to_appkit(p.frame, ph), None, None, &CARD_MOVES");
     expect(main).toContain("island::retract_ms(from, f, reduce_motion())");
-    expect(main).toContain("island::home_drop(from_appkit(c.frame(), ph), !was_open && island::animates_open(&src), reduce_motion())");
+    expect(main).not.toContain("home_drop");
   });
 });
 
@@ -294,7 +299,8 @@ describe("Motion: Follow my Mac, or Less motion", () => {
       // The rules that stop motion (the still marks under the same attribute, such as looking's ring, are tested above).
       const calm = rules(css).filter((r) => r.sel.startsWith(":root[data-less-motion] *"));
       expect(calm.map((r) => r.sel)).toEqual(expect.arrayContaining([":root[data-less-motion] *", ":root[data-less-motion] *::before", ":root[data-less-motion] *::after"]));
-      for (const r of calm) { expect(r.decl.animation).toMatch(/^none\b/); expect(r.decl.transition).toMatch(/^none\b/); }
+      // M66: style.css keeps a plain fade of opacity and colour; the overlay (its own page) stops everything.
+      for (const r of calm) { expect(r.decl.animation).toMatch(/^none\b/); expect(/^none\b/.test(r.decl.transition ?? "") || fadesOnly(r.decl["transition-property"]), r.sel).toBe(true); }
     }
   });
   test("the overlay takes the settings sent with each pointer and each sketch before it draws", () => {

@@ -7,11 +7,12 @@
 // last one is.
 import { createElement, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { reducedMotion } from "./motion.ts";
+import { DUR, EASE_OUT_CSS } from "./motionTokens.ts";
 
 /** The tokens this file reads, by what they are for. */
 export const MOTION_TOKENS = {
   enter: "--dur-enter", exit: "--dur-exit", move: "--dur-move", count: "--dur-count",
-  easeEnter: "--ease-enter", easeExit: "--ease-exit", easeMove: "--ease-move",
+  easeEnter: "--ease-out", easeExit: "--ease-exit", easeMove: "--ease-out",
   slide: "--slide-place", growFrom: "--grow-from",
 } as const;
 export type MotionTokens = { enter: number; exit: number; move: number; count: number; easeEnter: string; easeExit: string; easeMove: string; slide: number; growFrom: number };
@@ -146,14 +147,15 @@ function measure(content: Element, boxes: HTMLElement[]): Map<HTMLElement, Seen>
   return out;
 }
 
-/** What is new in a place that came in fades in and rises a little (--dur-enter, --ease-enter), once the old place has
+/** What is new in a place that came in fades in and rises a little (--dur-enter, --ease-out), once the old place has
  *  faded out (it waits --dur-exit, unseen), so text is never drawn over text. Its cards do not grow in a second time. */
 function enterPlace(boxes: HTMLElement[], t: MotionTokens): void {
   if (reducedMotion()) return;
   for (const b of boxes) {
     if (b.matches(".bar")) continue;   // the top bar stays where it is: it is how a person knows where they are
     for (const a of b.getAnimations({ subtree: true })) if ((a as CSSAnimation).animationName === "card-in") a.finish();
-    b.animate([{ opacity: 0, transform: `translateY(${t.slide}px)` }, { opacity: 1, transform: "none" }], { duration: t.enter, delay: t.exit, easing: t.easeEnter, fill: "backwards" });
+    // M66 fix 22: it starts halfway through the old place's leave, never after a blank 120 ms.
+    b.animate([{ opacity: 0, transform: `translateY(${t.slide}px)` }, { opacity: 1, transform: "none" }], { duration: t.enter, delay: t.exit / 2, easing: t.easeEnter, fill: "backwards" });
   }
 }
 
@@ -224,7 +226,7 @@ const carriedOf = (el: HTMLElement): number => {
 /** Home's motion between renders: a new place cross fades in; within a place, a card that goes folds away; and in both,
  *  what stays slides to its new place. `scroller` is Home itself (it scrolls), `work` holds Home's parts, `view` the cards
  *  of the place open. Nothing is measured or moved while Home is away or motion is reduced. */
-export function useHomeMotion(scroller: RefObject<HTMLElement | null>, work: RefObject<HTMLElement | null>, view: RefObject<HTMLElement | null>, place: string, shown: boolean): void {
+export function useHomeMotion(scroller: RefObject<HTMLElement | null>, work: RefObject<HTMLElement | null>, view: RefObject<HTMLElement | null>, place: string, shown: boolean, skip = false): void {
   const last = useRef<{ place: string; seen: Map<HTMLElement, Seen>; content: Element } | null>(null);
   // Where Home was scrolled to, kept up as the person scrolls, so their own scrolling is never taken for a change.
   const scrolled = useRef(0);
@@ -238,6 +240,8 @@ export function useHomeMotion(scroller: RefObject<HTMLElement | null>, work: Ref
   useLayoutEffect(() => {
     const host = scroller.current, top = work.current;
     if (!shown || reducedMotion() || !host || !top) { last.current = null; return; }
+    // M66 fix 4: a render where only streamed text changed moves nothing (its box keeps its size), so nothing is measured.
+    if (skip && last.current?.place === place) return;
     const content = contentOf(top);
     if (!content || !host.contains(content)) { last.current = null; return; }
     const open = new Set<Element>(view.current ? [view.current] : []);
@@ -278,4 +282,32 @@ export function CountUp({ value, words, step = 0 }: { value: number; words: (n: 
     return () => cancelAnimationFrame(frame);
   }, [value, words, step]);
   return createElement("span", { ref: span });
+}
+
+// ---- a box that changes size, drawn as easing between its sizes (M66 fix 10) ----
+
+/** The scale a box that went from `before` to `after` points wide starts at, so it seems to grow or shrink from its old
+ *  size: null when there is nothing to ease (no size yet, a change under 2 percent, or one so big it is a different layout). */
+export function sizeEaseFrom(before: number, after: number): number | null {
+  if (!(before > 1) || !(after > 1)) return null;
+  const k = before / after;
+  return Math.abs(k - 1) < 0.02 || k < 0.4 || k > 2.5 ? null : k;
+}
+
+/** Flowflow's size in Home changes with the work (the hero's --char): the layout takes the new size at once, in one frame,
+ *  and the character itself eases from its old size by scale only (--dur-3), so nothing lays out again while it moves. */
+export function useSizeEase(box: RefObject<HTMLElement | null>, on = true): void {
+  useEffect(() => {
+    const el = box.current;
+    if (!on || !el || typeof ResizeObserver !== "function") return;
+    let width = el.offsetWidth;
+    const ro = new ResizeObserver(() => {
+      const now = el.offsetWidth, k = sizeEaseFrom(width, now);
+      width = now;
+      if (k === null || reducedMotion()) return;
+      el.animate([{ scale: String(k) }, { scale: "1" }], { duration: DUR[3], easing: EASE_OUT_CSS });
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [on]);
 }

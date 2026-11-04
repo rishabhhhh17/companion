@@ -80,6 +80,7 @@ describe("one Settings, inside Home (F28, T17)", () => {
   test("Settings asks the shell for the Large width and one fixed height while it is open", () => {
     const card = read("./card.tsx");
     expect(card).toContain('settings: tabNow.current === "settings" });');
-    expect(card).toContain('settings: home.tab === "settings" }); }, [home.tab]);');
+    // M66 fix 14: the change of place tells the shell and Home's shape together (settingsOpens.test.ts).
+    expect(card).toContain("useEffect(() => { const el = inner.current; if (el) tellHeight(el); }, [home.tab]);");
   });
 });

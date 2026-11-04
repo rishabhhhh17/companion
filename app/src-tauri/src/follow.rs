@@ -36,6 +36,54 @@ pub fn led(p: (f64, f64), v: (f64, f64)) -> (f64, f64) {
     (p.0 + dx, p.1 + dy)
 }
 
+/// M66 (the plan's fix 8): the lead used to run only when the ring first showed; every later move came from the mouse
+/// watch (main.rs follow_to_pointer) and put the ring exactly where the pointer had been, so on a fast sweep it trailed.
+/// Now each move passes through `Lead`, which knows the last place and time and so how fast the pointer goes. Any one
+/// coordinate frame works (the shell uses AppKit's, y up), since the speed is measured in the same frame as the place.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Lead { last: Option<((f64, f64), f64)>, v: (f64, f64), ahead: bool }
+/// A lead with nothing read yet (a const, for the shell's static).
+pub const LEAD_NONE: Lead = Lead { last: None, v: (0.0, 0.0), ahead: false };
+/// How much of each new reading the speed takes (the rest is the last speed), so one jittery event never throws it.
+pub const LEAD_BLEND: f64 = 0.6;
+/// A pointer that has not moved for this long (seconds) is resting: its next move starts from no speed, and a ring left
+/// ahead of it is put back exactly on it (`settle`).
+pub const LEAD_REST_S: f64 = 0.05;
+impl Lead {
+    /// Where the ring's middle goes for the pointer at `p`, read at `t` seconds.
+    pub fn place(&mut self, p: (f64, f64), t: f64) -> (f64, f64) {
+        match self.last {
+            Some((q, tq)) => {
+                let dt = t - tq;
+                if (p.0 - q.0).hypot(p.1 - q.1) > LEAP || !(dt > 0.0) || dt > LEAD_REST_S { self.v = (0.0, 0.0); }
+                else if dt > 0.0005 {
+                    let (ix, iy) = ((p.0 - q.0) / dt, (p.1 - q.1) / dt);
+                    let (mut vx, mut vy) = (self.v.0 + (ix - self.v.0) * LEAD_BLEND, self.v.1 + (iy - self.v.1) * LEAD_BLEND);
+                    let s = vx.hypot(vy);
+                    if s > MAX_SPEED { vx *= MAX_SPEED / s; vy *= MAX_SPEED / s; }
+                    self.v = (vx, vy);
+                }
+            }
+            None => self.v = (0.0, 0.0),
+        }
+        self.last = Some((p, t));
+        let out = led(p, self.v);
+        self.ahead = out != p;
+        out
+    }
+    /// Whether a ring left ahead of the pointer should now be put back exactly on it: the pointer has rested since. Once.
+    pub fn settle(&mut self, t: f64) -> bool {
+        let rested = self.ahead && self.last.is_some_and(|(_, at)| t - at >= LEAD_REST_S);
+        if rested { self.ahead = false; self.v = (0.0, 0.0); }
+        rested
+    }
+}
+/// Seconds on one clock that only goes forward, shared by the mouse watch and the ring's thread.
+pub fn clock_s() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64()
+}
+
 /// M33: how wide the window grows to say a short line beside the pointer, and how long a line stays.
 pub const SAY_W: f64 = 260.0;
 pub const SAY_MS: u64 = 3_500;
@@ -132,6 +180,42 @@ impl Drop {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn every_move_of_the_ring_leads_a_fast_pointer_and_settles_on_a_resting_one() {
+        let mut l = Lead::default();
+        // The first reading has no speed: exactly on the pointer.
+        assert_eq!(l.place((100.0, 500.0), 1.0), (100.0, 500.0));
+        // A steady sweep at 2000 points a second, read every 8 ms (AppKit's frame: y up, so up the screen is +y).
+        let (mut x, mut y, mut t) = (100.0, 500.0, 1.0);
+        let mut got = (0.0, 0.0);
+        for _ in 0..12 { x += 16.0; y += 4.0; t += 0.008; got = l.place((x, y), t); }
+        let want = led((x, y), (2000.0, 500.0));
+        assert!((got.0 - want.0).abs() < 0.5 && (got.1 - want.1).abs() < 0.5, "{got:?} {want:?}");
+        assert!(got.0 > x && got.1 > y, "ahead along the way it goes, in the same frame (no y flip to get wrong)");
+        assert!(!l.settle(t + 0.01), "still moving");
+        // It stops: once it has rested, the ring goes back exactly onto it, once.
+        assert!(l.settle(t + LEAD_REST_S));
+        assert!(!l.settle(t + 1.0));
+        // A move after a rest starts from no speed; a leap (another display) has none either.
+        assert_eq!(l.place((x + 2.0, y), t + 1.0), (x + 2.0, y));
+        assert_eq!(l.place((x + 2.0 + LEAP + 1.0, y), t + 1.008), (x + 2.0 + LEAP + 1.0, y));
+        // A reading at the same moment, or out of order, never makes a speed out of nothing.
+        let mut m = Lead::default();
+        m.place((0.0, 0.0), 2.0);
+        assert_eq!(m.place((50.0, 0.0), 2.0), (50.0, 0.0));
+    }
+
+    #[test]
+    fn the_mouse_watch_moves_the_ring_through_the_lead() {
+        let main = include_str!("main.rs");
+        let a = main.find("fn follow_to_pointer(").unwrap();
+        let body = &main[a..a + main[a..].find("\n}\n").unwrap()];
+        assert!(body.contains("let (x, y) = follow_lead().place((m.x, m.y), follow::clock_s());"), "{body}");
+        assert!(body.contains("pn.setFrameOrigin(NSPoint::new(x + follow::OFFSET.0 - follow::SIZE / 2.0, y - follow::OFFSET.1 - follow::SIZE / 2.0))"), "{body}");
+        // And the ring's thread puts it back on a pointer that stopped while it was ahead.
+        assert!(main.contains("if FOLLOW_LIVE.load(Ordering::SeqCst) && follow_lead().settle(follow::clock_s()) { let _ = app.run_on_main_thread(follow_settle); }"));
+    }
 
     #[test]
     fn only_a_drop_of_water_wants_it() {

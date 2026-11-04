@@ -22,12 +22,12 @@ html.dock-page, body.dock-page { background: transparent; }
 .character[data-state="off"] { filter: grayscale(1); opacity: .5; }
 /* M46: the state motions are for the pictures only (character.live off). The live drawing (data-live) moves itself
    (flowflow/), and holds still at rest unless Gentle or Lively is chosen. Needs you glows three times, then holds. */
-.character:not([data-live])[data-motion="breathe"] { animation: breathe 4s ease-in-out infinite; }
-.character:not([data-live])[data-motion="swirl"] { animation: swirl 2.4s linear infinite; }
-.character:not([data-live])[data-motion="busy"] { animation: busy 1s ease-in-out infinite; }
-.character:not([data-live])[data-motion="scan"] { animation: scan 1.6s ease-in-out infinite; }
-.character:not([data-live])[data-motion="glow"] { animation: glow 1.8s ease-in-out 3; }
-.character:not([data-live])[data-motion="droop"] { animation: droop 3s ease-in-out infinite; }
+.character:not([data-live])[data-motion="breathe"] { animation: breathe var(--loop-breathe) var(--ease-loop) infinite; }
+.character:not([data-live])[data-motion="swirl"] { animation: swirl var(--loop-swirl) linear infinite; }
+.character:not([data-live])[data-motion="busy"] { animation: busy var(--loop-busy) var(--ease-loop) infinite; }
+.character:not([data-live])[data-motion="scan"] { animation: scan var(--loop-scan) var(--ease-loop) infinite; }
+.character:not([data-live])[data-motion="glow"] { animation: glow var(--loop-glow) var(--ease-loop) 3; }
+.character:not([data-live])[data-motion="droop"] { animation: droop var(--loop-droop) var(--ease-loop) infinite; }
 /* The count of questions waiting: a small black pill with white words and a white rim, so it reads on any wallpaper and
    has no colour of its own. */
 .badge { position: absolute; top: -4px; right: -4px; min-width: 18px; min-height: 18px; box-sizing: border-box; padding: 0 var(--space-1); border-radius: var(--r-pill); background: var(--notch); color: var(--notch-ink); box-shadow: 0 0 0 1.5px var(--notch-ink); font-size: var(--t-caption); font-weight: 600; line-height: 1; display: grid; place-items: center; }
@@ -38,7 +38,15 @@ html.dock-page, body.dock-page { background: transparent; }
 @keyframes glow { 50% { filter: drop-shadow(0 0 10px color-mix(in srgb, var(--amber) 60%, transparent)); } }
 @keyframes droop { 50% { transform: scaleY(.86) translateY(3px); } }
 /* What it says under the character: a small pill that stays readable on any wallpaper. */
-.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--glass-ink); background: var(--glass-quiet); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 var(--hair) var(--glass-edge); }
+/* M66 (dockStates.ts): the word is always on the page under the button (94 px, centred), out of the layout, so the character
+   never moves; the poses stay stacked and cross fade; thinking is a small arc at the character, never an empty card. */
+.dock-label { max-width: 150px; box-sizing: border-box; text-align: center; padding: var(--space-1) var(--space-3); border-radius: var(--r-card); font-size: var(--t-caption); font-weight: 500; color: var(--glass-ink); background: var(--glass-quiet); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 0 0 var(--hair) var(--glass-edge); position: absolute; top: calc(50% + 94px / 2 + var(--space-2)); left: 50%; translate: -50% 0; width: max-content; pointer-events: none; opacity: 0; transform: scale(.96); transform-origin: top center; transition: opacity var(--dur-1) var(--ease-exit), transform var(--dur-1) var(--ease-exit); }
+.dock-label[data-shown] { opacity: 1; transform: none; transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-2) var(--ease-out); }
+.character .pose-stack { position: absolute; inset: 0; display: block; } .character .pose-stack.flow-ready { visibility: hidden; }
+.character .pose-stack .pose { position: absolute; inset: 0; opacity: 0; transition: opacity var(--dur-1) var(--ease-exit); } .character .pose-stack .pose[data-on] { opacity: 1; transition: opacity var(--dur-2) var(--ease-out); }
+.think-glyph { position: absolute; top: calc(var(--space-1) * -1); left: calc(var(--space-1) * -1); width: var(--space-4); height: var(--space-4); box-sizing: border-box; border-radius: var(--r-round); border: 2px solid var(--ring-working); border-right-color: transparent; pointer-events: none; opacity: 0; animation: think-turn var(--loop-spin) linear infinite; animation-play-state: paused; transition: opacity var(--dur-1) var(--ease-exit); }
+.think-glyph[data-on] { opacity: 1; animation-play-state: running; transition: opacity var(--dur-2) var(--ease-out); }
+@keyframes think-turn { to { transform: rotate(360deg); } }
 /* Flowflow (src/flow/): a canvas the size of the picture plus room to wobble in, over the same spot as the plain picture. It
    takes no clicks, so the button under it keeps the drag and the click. The plain picture hides once the first frame is drawn. */
 .character .flow { position: absolute; left: -22px; top: -16px; width: 156px; aspect-ratio: 156 / 111; display: block; pointer-events: none; }
@@ -66,14 +74,14 @@ html.home-page, body.home-page { background: transparent; }
 .back:hover { background: var(--surface-2); color: var(--fg); }
 /* Press feedback (M25, M55): every pressable thing goes in quickly the moment it is pressed and lets go a little slower,
    and its fill changes softly under the pointer, never a flash. */
-.back { transition: background-color var(--dur-hover) var(--ease-hover), color var(--dur-hover) var(--ease-hover), opacity var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.back { transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), opacity var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .back .tabdot { position: absolute; top: 0; right: 0; margin: 0; box-shadow: 0 0 0 2px var(--bg); }
 .places .tabdot { margin-left: var(--space-1); }
 .places .close { position: absolute; top: 0; right: 0; margin: 0; }
 .view-title { font-size: var(--t-display); font-weight: var(--w-bold); letter-spacing: var(--track-display); line-height: 1.2; text-wrap: balance; margin: 0 0 0 var(--space-1); }
 /* Now (F28, spec 4.1): Flowflow lives on one waterline across all of Home (the founder, 31 Oct), the status and its one
    main button in the sky beside it, never a box. --line-up: the drop's own waterline above its column's foot. */
-.hero { --char: calc(104rem / 14); --line-up: calc(var(--char) * 111 / 156 * .28 - 6px); position: relative; isolation: isolate; overflow: clip; display: grid; grid-template-columns: minmax(0, 1fr) var(--char); column-gap: var(--space-2); align-items: end; margin: 0 calc(var(--space-6) * -1) var(--space-2); padding: var(--space-4) var(--space-6) var(--space-5); transition: --char var(--dur-3) var(--ease-out); }
+.hero { --char: calc(104rem / 14); --line-up: calc(var(--char) * 111 / 156 * .28 - 6px); position: relative; isolation: isolate; overflow: clip; display: grid; grid-template-columns: minmax(0, 1fr) var(--char); column-gap: var(--space-2); align-items: end; margin: 0 calc(var(--space-6) * -1) var(--space-2); padding: var(--space-4) var(--space-6) var(--space-5); }
 .hero[hidden] { display: none; }
 .hero-words { position: relative; z-index: 1; grid-column: 1; grid-row: 1; min-width: 0; display: grid; justify-items: start; gap: var(--space-1); align-self: end; margin-bottom: calc(var(--line-up) + var(--space-3)); }
 .hero-main { margin-top: var(--space-3); }
@@ -84,14 +92,14 @@ html.home-page, body.home-page { background: transparent; }
    wave, so the box's fill starts where the drawing ends, never above a trough as a flat edge (the review, 2 Nov 2026). */
 .ch-water, .fr-tank { --wave-foot: 11px; }
 .home-pond .ch-char { position: relative; z-index: 1; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
-.home-pond .home-char { width: var(--char); margin: -8px -10px -4px; }
+.home-pond .home-char { width: var(--char); margin: -8px -10px -4px; transform-origin: 50% 100%; }
 /* Settings' preview (.companion-hero): the same water in a card, its line still with Still (M46). */
 .companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; }
 .companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot)); z-index: 0; }
 .companion-hero .waterline .sea { fill: var(--sea-tint, var(--sea)); }
 .companion-hero .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; }
 .home-pond .ch-water .waterline, .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
-.home-pond .ch-water .waterline svg, .companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.home-pond .ch-water .waterline svg, .companion-hero .ch-water .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline var(--loop-waterline) linear infinite; }
 .home-pond[data-lively="still"] .ch-water .waterline svg, .companion-hero[data-lively="still"] .ch-water .waterline svg { animation: none; }
 /* The water is drawn with room around it to wobble in, so its box reaches a little past its column on each side. */
 .home-char { position: relative; width: 180px; aspect-ratio: 156 / 111; margin: -12px -16px -8px; }
@@ -107,7 +115,7 @@ html.home-page, body.home-page { background: transparent; }
 /* The ask box: a field with the mic and the send key inside it. Its edge is a control's edge (3 to 1, a11y.test.ts); on
    focus its edge turns the water colour with a soft glow, never white (the founder, 1 Nov 2026: typing turned the whole
    box white). The field inside draws no outline of its own: the box is the one thing that shows focus. */
-.home .ask { align-items: center; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface-1); border: 1px solid var(--edge-control); border-radius: var(--r-card); transition: border-color var(--dur-2) var(--ease-out), box-shadow var(--dur-2) var(--ease-out); }
+.home .ask { align-items: center; margin: var(--space-2) 0; padding: calc(4rem / 14); background: var(--surface-1); border: 1px solid var(--edge-control); border-radius: var(--r-card); transition: border-color var(--dur-2) var(--ease-out); }
 .home .ask:focus-within { border-color: var(--water); box-shadow: 0 0 0 3px color-mix(in srgb, var(--water) 16%, transparent); }
 .home .ask textarea { outline: 0; }
 .home .ask textarea:focus-visible { outline: var(--ring) solid transparent; }   /* the box shows focus; this one shows in forced colours */
@@ -122,7 +130,7 @@ html.home-page, body.home-page { background: transparent; }
 .more-opt { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-2) 0; color: var(--fg); font-size: var(--t-small); }
 /* A result (an answer, a receipt, research, a rescue, an explanation, Second Look) is a card: one hairline, 12 point
    corners, no rim of light, no glow (the overhaul spec, 2.3 Card), and it rises in when it arrives. */
-.home .view .panel { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--space-4); margin: 0 0 var(--space-3); animation: card-in var(--dur-enter) var(--ease-enter) both; }
+.home .view .panel { background: var(--surface-1); border: 1px solid var(--line); border-radius: var(--r-card); padding: var(--space-4); margin: 0 0 var(--space-3); animation: card-in var(--dur-enter) var(--ease-out) both; }
 @keyframes card-in { from { opacity: 0; transform: translateY(var(--rise)) scale(var(--grow-from)); } }
 /* A card that goes folds away where it was, and what stays slides to its new place, never a jump (smoothMotion.ts). */
 .home .view .panel > h2 { font-size: var(--t-answer); font-weight: var(--w-bold); line-height: 1.35; letter-spacing: var(--track-title); }
@@ -133,14 +141,7 @@ html.home-page, body.home-page { background: transparent; }
 /* The folder's notes on Now (its name and menu are in the top bar), and the link field once Open from a link is chosen. */
 .foot { margin: var(--space-3) 0 0; }
 .foot:empty { display: none; }
-/* It drops out of the notch at each opening (card.tsx adds .springing) in one smooth motion (M55): from the top, a little
-   squashed and faded, on the strong ease out, with no bounce (it opens many times a day). Only transform and opacity move,
-   so the page never lays out or paints again while it opens. Closing (the shell says "closing", main.rs HOME_CLOSE_MS)
-   rolls it back up quicker than it came. None with Reduce motion or Less motion. */
-.home.springing { animation: home-spring var(--dur-open) var(--ease-enter) both; }
-.home.closing { animation: home-roll-up var(--dur-close) var(--ease-exit) both; }
-@keyframes home-spring { from { opacity: 0; transform: translateY(calc(var(--slide-place) * -2)) scale(0.98, 0.94); } to { opacity: 1; transform: none; } }
-@keyframes home-roll-up { to { opacity: 0; transform: translateY(calc(var(--slide-place) * -2)) scale(0.98, 0.94); } }
+/* Home grows out of the notch as one black shape, and its content arrives inside it: ui/homeShape.css (M66). */
 /* A finished job: the headline and its line come in again, lifted a little, as the done line replaces the working one. */
 .home[data-tone="done"] .hero-words { animation: hero-done var(--dur-3) var(--ease-out) both; }
 @keyframes hero-done { from { opacity: 0; transform: translateY(4px); } }
@@ -207,13 +208,13 @@ h2 { font-size: var(--t-answer); font-weight: var(--w-bold); line-height: 1.3; l
 .proof-chips { list-style: none; margin: var(--space-2) 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 /* Undo in the result card (4.2): after an undo, "Put back as it was" shows for two seconds while the result settles. */
-.putback-note { font-size: var(--t-small); font-weight: 500; color: var(--fg-2); animation: putback 2s var(--ease-out) both; }
+.putback-note { font-size: var(--t-small); font-weight: 500; color: var(--fg-2); animation: putback var(--seq-putback) var(--ease-out) both; }
 @keyframes putback { 0% { opacity: 0; transform: translateY(4px); } 12%, 85% { opacity: 1; transform: none; } 100% { opacity: 0; } }
 .home.putback .view .panel.receipt { animation: card-settle var(--dur-2) var(--ease-out) both; }
 @keyframes card-settle { from { opacity: .6; transform: translateY(-4px); } }
 /* The other things you can ask for, kept out of the way until wanted: a small chevron that turns when it opens (M27). */
 details.more { margin: var(--space-2) 0 var(--space-3); }
-details.more > summary { display: inline-flex; align-items: center; gap: 8px; cursor: default; color: var(--fg-2); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; transition: color var(--dur-hover) var(--ease-hover); }
+details.more > summary { display: inline-flex; align-items: center; gap: 8px; cursor: default; color: var(--fg-2); font-size: var(--t-small); font-weight: 500; padding: var(--space-1) 0; list-style: none; transition: color var(--dur-hover) var(--ease-out); }
 details.more > summary::-webkit-details-marker { display: none; }
 details.more > summary::after { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; rotate: -45deg; translate: 0 -1px; transition: rotate var(--dur-2) var(--ease-out); }
 details.more[open] > summary::after { rotate: 45deg; translate: 0 -3px; }
@@ -234,10 +235,10 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 
 /* Reactions: one off moves that play over the state's own motion, then stop. Pictures only (M46): the live drawing never
    tilts or jumps as a whole. */
-.character:not([data-live])[data-react="nod"] { animation: nod .6s ease-out 1; }
-.character:not([data-live])[data-react="wince"] { animation: wince .7s ease-out 1; }
-.character:not([data-live])[data-react="cheer"] { animation: cheer .9s ease-out 1; }
-.character:not([data-live])[data-react="party"] { animation: party 1.4s ease-out 1; }
+.character:not([data-live])[data-react="nod"] { animation: nod var(--seq-nod) var(--ease-out) 1; }
+.character:not([data-live])[data-react="wince"] { animation: wince var(--seq-wince) var(--ease-out) 1; }
+.character:not([data-live])[data-react="cheer"] { animation: cheer var(--seq-cheer) var(--ease-out) 1; }
+.character:not([data-live])[data-react="party"] { animation: party var(--seq-party) var(--ease-out) 1; }
 @keyframes nod { 30% { transform: translateY(3px); } 60% { transform: translateY(-2px); } }
 @keyframes wince { 25% { transform: scale(.9) rotate(-4deg); } 55% { transform: scale(.95) rotate(3deg); } }
 @keyframes cheer { 35% { transform: translateY(-10px) scale(1.06); } 70% { transform: translateY(0) scale(.98); } }
@@ -245,17 +246,18 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 /* Coming to what it is about (F18): the named states the app moves the character through. Placeholders for the
    founder's art (the water idea: it surfaces from its edge, travels, settles beside the window, returns). Home and
    visiting are at rest, so the state's own motion plays. */
-.character:not([data-live])[data-roam="surface"] { animation: roam-surface .16s ease-out 1; }
-.character:not([data-live])[data-roam="travel"], .character:not([data-live])[data-roam="return"] { animation: none; transform: scale(.92); transition: transform .12s ease-out; }
-.character:not([data-live])[data-roam="settle"] { animation: roam-settle .22s ease-out 1; }
+.character:not([data-live])[data-roam="surface"] { animation: roam-surface var(--seq-surface) var(--ease-out) 1; }
+.character:not([data-live])[data-roam="travel"], .character:not([data-live])[data-roam="return"] { animation: none; transform: scale(.92); transition: transform var(--dur-1) var(--ease-out); }
+.character:not([data-live])[data-roam="settle"] { animation: roam-settle var(--seq-settle) var(--ease-out) 1; }
 @keyframes roam-surface { from { transform: scale(.72); opacity: .55; } to { transform: scale(.92); opacity: 1; } }
 @keyframes roam-settle { 0% { transform: scale(1.06, .94); } 60% { transform: scale(.98, 1.02); } 100% { transform: none; } }
 @media (prefers-reduced-motion: reduce) { .character[data-react], .character[data-motion], .character[data-roam] { animation: none; transition: none; } }
-/* Everything else that moves in this file and in the parts stops with reduced motion too. */
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-/* Less motion, Companion's own Motion setting (character.motion; motion.ts marks the page): inside Companion only, nothing
-   moves, as with the Mac's own Reduce motion. */
-:root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition: none !important; }
+/* Reduced motion, everywhere (M66): nothing slides, scales, springs or loops; opacity and colour fade plainly in --dur-1. */
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important; transition-duration: var(--dur-1) !important; transition-timing-function: linear !important; transition-delay: 0s !important; } }
+/* Less motion (character.motion, motion.ts): inside Companion only, as the Mac's. */ :root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important; transition-duration: var(--dur-1) !important; transition-timing-function: linear !important; transition-delay: 0s !important; }
+/* What comes in still fades in, and the room just left still fades out (M66; the parts' own in ui/parts.css). */
+@media (prefers-reduced-motion: reduce) { :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; } .room.room-was { animation: ui-fade-out var(--dur-1) linear both !important; } }
+:root[data-less-motion] :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; } :root[data-less-motion] .room.room-was { animation: ui-fade-out var(--dur-1) linear both !important; }
 /* Looking at the screen (Show me, Point at the problem) is a light that must show first (rule 5). Its usual sign is the
    scan, which stops with reduced motion, by the Mac or by Less motion, so then a still ring shows it, as listening's does. */
 @media (prefers-reduced-motion: reduce) { .character[data-state="checking"] { filter: drop-shadow(0 0 2px var(--glow-look-edge)) drop-shadow(0 0 7px var(--glow-look)); } }
@@ -272,7 +274,7 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 .settings-side[data-searching] ul { opacity: .55; }
 .settings-content { min-width: 0; max-width: 520px; padding-bottom: var(--space-6); }
 .settings-content > p { margin: 0 0 var(--space-3); }
-[data-flash] { animation: set-flash 1200ms var(--ease-out) both; }
+[data-flash] { animation: set-flash var(--dur-flash) var(--ease-out) both; }
 @keyframes set-flash { from { background-color: var(--surface-3); } }
 .set-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .set-foot { margin-top: var(--space-6); }
@@ -315,7 +317,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: var(--notch); overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
 .island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: 22px; }
 .island.pill { --r: var(--r-pill); }
-.island.pill .island-shape { border-radius: var(--r); }
+.island.pill .island-shape { border-radius: 0 0 var(--r) var(--r); }   /* M66: it hangs from the top edge, as a notch does */
 .island.pill[data-mode="peek"], .island.pill[data-mode="wingsPeek"] { --r: var(--r-card); }
 .island.edge { --r: 3px; }
 .island.edge[data-mode="wings"], .island.edge[data-mode="peek"], .island.edge[data-mode="wingsPeek"] { --r: var(--r-card); }
@@ -340,7 +342,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .mark[data-state="error"] { background: var(--notch-bad); box-shadow: 0 0 0 2px var(--notch-bad-halo); }
 /* M46: amber pulses three times, then holds as a solid amber dot (the last keyframe). Each new question pulses again
    (island.tsx keys the mark on the count of questions). */
-.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-2) var(--ease-out) both, island-needsYou-pulse 1.6s ease-in-out 200ms 3 both; }
+.island-wing .mark[data-state="needsYou"] { animation: island-pop var(--dur-2) var(--ease-out) both, island-needsYou-pulse var(--loop-island-pulse) var(--ease-loop) var(--dur-2) 3 both; }
 @keyframes island-needsYou-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 35%, transparent); } 100% { box-shadow: 0 0 0 0 transparent; background: var(--amber); } }
 .island-wing .mark[data-mark="dots"], .island-wing .mark[data-mark="arc"], .island-wing .mark[data-mark="bars"], .island-wing .mark[data-mark="tick"], .island-wing .mark[data-mark="look"] { width: auto; height: auto; border-radius: 0; background: none; box-shadow: none; display: flex; align-items: center; gap: 2px; }
 /* M46, rule 5: looking at the screen. A white ring with a dot in the middle that holds still: a light, not a spinner. It is
@@ -349,24 +351,24 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .island-wing .mark[data-mark="look"] svg { display: block; }
 .island-wing .mark[data-mark="look"] .look-ring { fill: none; stroke: var(--notch-ink); stroke-width: 1.75; }
 .island-wing .mark[data-mark="look"] .look-dot { fill: var(--notch-ink); }
-.island-wing .mark[data-mark="dots"] i { width: 6px; height: 6px; border-radius: 50%; background: var(--notch-ink); animation: island-breathe 1.4s ease-in-out infinite; }
+.island-wing .mark[data-mark="dots"] i { width: 6px; height: 6px; border-radius: 50%; background: var(--notch-ink); animation: island-breathe var(--loop-island-breathe) var(--ease-loop) infinite; }
 @keyframes island-breathe { 0%, 100% { scale: .6; } 50% { scale: 1; } }
-.island-wing .mark[data-mark="arc"] svg { display: block; fill: none; stroke: var(--notch-ink); stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 12.25 28.6; animation: island-spin .8s cubic-bezier(.45, .05, .55, .95) infinite; }
+.island-wing .mark[data-mark="arc"] svg { display: block; fill: none; stroke: var(--notch-ink); stroke-width: 1.75; stroke-linecap: round; stroke-dasharray: 12.25 28.6; animation: island-spin var(--loop-island-spin) var(--ease-loop) infinite; }
 @keyframes island-spin { to { rotate: 1turn; } }
 /* Listening: live bars, the microphone's light (rule 5). With no level from the microphone they move on a calm loop; with
    reduced motion they stand still at different heights, still clearly bars. */
-.island-wing .mark[data-mark="bars"] i { width: 3px; height: 14px; border-radius: 2px; background: var(--notch-ink); transform-origin: center; animation: island-bar .9s ease-in-out infinite; }
-.island-wing .mark[data-mark="bars"] i:nth-child(1) { scale: 1 .45; animation-delay: -.3s; }
-.island-wing .mark[data-mark="bars"] i:nth-child(2) { scale: 1 .9; animation-delay: -.6s; }
-.island-wing .mark[data-mark="bars"] i:nth-child(3) { scale: 1 .65; animation-delay: -.15s; }
-.island-wing .mark[data-mark="bars"] i:nth-child(4) { scale: 1 .4; animation-delay: -.45s; }
+.island-wing .mark[data-mark="bars"] i { width: 3px; height: 14px; border-radius: 2px; background: var(--notch-ink); transform-origin: center; animation: island-bar var(--loop-island-bar) var(--ease-loop) infinite; }
+.island-wing .mark[data-mark="bars"] i:nth-child(1) { scale: 1 .45; animation-delay: calc(var(--loop-island-bar) / -3); }
+.island-wing .mark[data-mark="bars"] i:nth-child(2) { scale: 1 .9; animation-delay: calc(var(--loop-island-bar) * -2 / 3); }
+.island-wing .mark[data-mark="bars"] i:nth-child(3) { scale: 1 .65; animation-delay: calc(var(--loop-island-bar) / -6); }
+.island-wing .mark[data-mark="bars"] i:nth-child(4) { scale: 1 .4; animation-delay: calc(var(--loop-island-bar) / -2); }
 @keyframes island-bar { 0%, 100% { scale: 1 .3; } 50% { scale: 1 1; } }
 /* Done: a green tick that draws itself, then glows green for a moment (and the wings widen a little, island.tsx). Drawn
    in full, with no glow, when nothing moves. */
-.island-wing .mark[data-mark="tick"] svg { display: block; fill: none; stroke: var(--notch-ok); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 0; animation: island-draw var(--dur-3) var(--ease-out) 120ms both, island-glow 900ms var(--ease-out) 400ms 1; }
+.island-wing .mark[data-mark="tick"] svg { display: block; fill: none; stroke: var(--notch-ok); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 16; stroke-dashoffset: 0; animation: island-draw var(--dur-3) var(--ease-out) var(--dur-1) both, island-glow var(--seq-glow) var(--ease-out) calc(var(--dur-1) + var(--dur-3)) 1; }
 @keyframes island-draw { from { stroke-dashoffset: 16; } }
 @keyframes island-glow { 0%, 100% { filter: drop-shadow(0 0 6px var(--notch-ok-clear)); } 20% { filter: drop-shadow(0 0 6px var(--notch-ok)); } }
-@media (prefers-reduced-motion: reduce) { .island *, .island *::before, .island *::after { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .island *, .island *::before, .island *::after { animation: none !important; } }
 @media (forced-colors: active) { .island-shape { forced-color-adjust: none; border: 1px solid var(--notch-ink); border-top: 0; } .island-hit { forced-color-adjust: none; } }
 
 /* F19, drop a file on the companion: the character lights up while a file is over its window, and a ring of round
@@ -376,7 +378,6 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .character[data-drop="over"] { transform: scale(1.12); transition: transform var(--dur-1) var(--ease-out); filter: drop-shadow(0 0 7px var(--skin-glow, var(--glow-light))); }
 .character[data-drop="menu"] { transform: scale(.55); transition: transform var(--dur-1) var(--ease-out); }
 /* While the ring is open the word under the character gives way to the ring (the word for the target in aim shows in its middle). */
-.dock[data-drop="menu"] .dock-label { display: none; }
 @media (prefers-reduced-motion: reduce) { .character[data-drop] { transform: none; transition: none; } }
 :root[data-less-motion] .character[data-drop] { transform: none; transition: none; }
 /* Peeking from past the edge (peek.ts, 27 Oct 2026): while it peeks, the pictures move a touch toward the screen. M46: no
@@ -393,7 +394,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
    the pointer or the keyboard, never silver; the close button smaller and quieter. A target is a round 44 point button
    with a small drawing and no letters; its word shows in the middle of the ring (dropmenu.ts arcSpots). */
 .drop-ring { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.drop-item { position: absolute; width: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; border-radius: 50%; border: 0; background: var(--glass); color: var(--glass-ink); padding: 0; display: grid; place-items: center; cursor: default; pointer-events: auto; box-shadow: inset 0 0 0 .5px var(--glass-edge), var(--glass-shadow); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out), scale 120ms var(--ease-out); animation: ring-in var(--dur-2) var(--ease-out) both; }
+.drop-item { position: absolute; width: 44px; min-width: 44px; min-height: 44px; box-sizing: border-box; border-radius: 50%; border: 0; background: var(--glass); color: var(--glass-ink); padding: 0; display: grid; place-items: center; cursor: default; pointer-events: auto; box-shadow: inset 0 0 0 .5px var(--glass-edge), var(--glass-shadow); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out); animation: ring-in var(--dur-2) var(--ease-out) both; }
 .drop-item:hover, .drop-item:focus-visible { background: var(--glass-lit); color: var(--glass-lit-ink); scale: 1.06; }
 .drop-item:active { scale: .97; }
 .drop-item.drop-close { width: 32px; min-width: 32px; min-height: 32px; margin: 5px; color: var(--glass-ink-quiet); background: var(--glass-quiet); }
@@ -424,8 +425,8 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .character[data-pose][data-state="done"] { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--ok) 70%, transparent)); }
 /* Thinking tilts a little; the circle's full turn would stand the creature on its head. A needs you glow breathes three
    times, then holds steady (the glow above). Pictures only (M46). */
-.character:not([data-live])[data-pose][data-motion="swirl"] { animation: tilt 2.4s ease-in-out infinite; }
-.character:not([data-live])[data-pose][data-motion="glow"] { animation: pose-glow 1.8s ease-in-out 3; }
+.character:not([data-live])[data-pose][data-motion="swirl"] { animation: tilt var(--loop-tilt) var(--ease-loop) infinite; }
+.character:not([data-live])[data-pose][data-motion="glow"] { animation: pose-glow var(--loop-glow) var(--ease-loop) 3; }
 @keyframes tilt { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg); } }
 @keyframes pose-glow { 50% { filter: drop-shadow(0 0 12px color-mix(in srgb, var(--amber) 60%, transparent)); } }
 /* With the soft water drawn over the pictures (src/flow/, data-flow), the body moves itself (breathing, wobble, lag,
@@ -470,13 +471,13 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr > * { position: relative; z-index: 1; }
 /* Its line always clears the row of the main button (the review, 2 Nov 2026: on Your Claude, Continue sat on the wave, half in
    the water), so Flowflow rides on it above that row, never behind Continue. */
-.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: max(var(--level, 20%), calc(var(--h-lg) + var(--space-6) + var(--space-4))); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); opacity: .8; transition: height 900ms var(--ease-spring); }
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: max(var(--level, 20%), calc(var(--h-lg) + var(--space-6) + var(--space-4))); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); opacity: .8; transition: height var(--seq-tank) var(--ease-spring); }
 /* The first run fills Home to its foot, so its sea never stops in a hard line (31 Oct). */
 .home .inner:has(> .onboarding.fr) { flex: 1 0 auto; display: flex; flex-direction: column; } .inner > .onboarding.fr { flex: 1 0 auto; }
 .fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
-.fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline 9s linear infinite; }
+.fr-tank .waterline svg { display: block; width: calc(100% + 160px); height: 22px; animation: waterline var(--loop-waterline) linear infinite; }
 .fr-top { display: flex; align-items: center; gap: var(--space-2); min-height: 28px; color: var(--fg-2); font: 600 var(--t-caption) var(--font); }
-.fr-back { display: grid; place-items: center; width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font-size: var(--t-body); cursor: default; transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.fr-back { display: grid; place-items: center; width: 28px; min-height: 28px; padding: 0; border: 0; border-radius: var(--r-control); background: transparent; color: var(--fg); font-size: var(--t-body); cursor: default; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .fr-back:hover { background: var(--fr-hover); }
 .fr-count { margin-left: auto; color: var(--fg-2); }
 .fr-title { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 calc(28rem / 14)/1.08 var(--font); letter-spacing: -0.03em; text-wrap: balance; }
@@ -492,9 +493,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-label { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 var(--t-small) var(--font); }
 /* The hello: a drop falls into the water, a ripple spreads, and Flowflow rises out of it. */
 .fr-hello { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, var(--fr-drop-light) 0 12%, var(--water) 45%, var(--fr-drop-deep)); animation: fr-fall 900ms cubic-bezier(.55, 0, 1, .45) 200ms forwards; }
-.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid var(--water); border-radius: 50%; opacity: 0; animation: fr-ripple 1.2s ease-out 1.05s; }
-.fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise 900ms var(--ease-spring) 1.05s forwards; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); }
+.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, var(--fr-drop-light) 0 12%, var(--water) 45%, var(--fr-drop-deep)); animation: fr-fall var(--seq-fall) var(--ease-exit) var(--dur-2) forwards; }
+.fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid var(--water); border-radius: 50%; opacity: 0; animation: fr-ripple var(--seq-ripple) var(--ease-out) var(--seq-rise-at); }
+.fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise var(--seq-rise) var(--ease-spring) var(--seq-rise-at) forwards; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); }
 @keyframes fr-fall { to { top: calc(100% - var(--level) - 6px); opacity: 0; } }
 @keyframes fr-ripple { 0% { opacity: 1; } 100% { opacity: 0; transform: scale(9, 4); } }
 @keyframes fr-rise { from { opacity: 0; transform: translateY(50px) scale(.7); } to { opacity: 1; transform: none; } }
@@ -535,13 +536,12 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-folds { display: grid; gap: var(--space-2); margin-top: var(--space-4); position: relative; z-index: 1; }   /* above the water (the audit, item 52) */
 @media (prefers-reduced-motion: reduce) { .fr-hello .fr-rise { opacity: 1; } .fr-hello .fr-drop { display: none; } }
 /* The same with Squibby's own Less motion (character.motion): its animations are off, so Flowflow is simply there. */
-:root[data-less-motion] .fr-hello .fr-rise { opacity: 1; }
-:root[data-less-motion] .fr-hello .fr-drop { display: none; }
-/* The first run's download of Anthropic's Claude (M22): a water bar that fills; one that does not know the size drifts. */
+:root[data-less-motion] .fr-hello .fr-rise { opacity: 1; } :root[data-less-motion] .fr-hello .fr-drop { display: none; }
+/* The first run's download of Anthropic's Claude (M22): a water bar that fills by clip-path (M66); with no size, it drifts. */
 .fr-progress { display: grid; gap: var(--space-2); color: var(--fg-2); font-size: var(--t-small); }
 .fr-bar { min-height: 10px; border-radius: var(--r-thumb); background: var(--fr-card); overflow: clip; box-shadow: inset 0 0 0 1px var(--fr-edge); }
-.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-thumb); background: linear-gradient(90deg, var(--water-deep), var(--water)); transition: width var(--dur-3) var(--ease-out); }
-.fr-bar i[data-unknown] { animation: fr-drift 1.4s ease-in-out infinite alternate; }
+.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-thumb); background: linear-gradient(90deg, var(--water-deep), var(--water)); clip-path: inset(0 calc(100% - var(--p, 30%)) 0 0 round var(--r-thumb)); transition: clip-path var(--dur-3) var(--ease-out); }
+.fr-bar i[data-unknown] { width: 30%; clip-path: none; animation: fr-drift var(--loop-drift) var(--ease-loop) infinite alternate; }
 @keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }
 /* Fluid steps (M18): each screen of the first run slides in from the right going on and from the left going back, while
    the water rises underneath. None with reduced motion. */
@@ -550,8 +550,8 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-slide > .fr-hello { z-index: 1; }
 @keyframes fr-slide-on { from { opacity: 0; transform: translateX(24px); } }
 @keyframes fr-slide-back { from { opacity: 0; transform: translateX(-24px); } }
-.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in var(--dur-3) var(--ease-out) 30ms both; }
-.fr-slide .fr-line { animation-delay: 60ms; }
+.fr-slide .fr-title, .fr-slide .fr-line { animation: fr-rise-in var(--dur-3) var(--ease-out) calc(var(--stagger) / 3) both; }
+.fr-slide .fr-line { animation-delay: calc(var(--stagger) * 2 / 3); }
 @keyframes fr-rise-in { from { opacity: 0; transform: translateY(8px); } }
 
 /* The recorded fix (firstLook.tsx) is the first thing a new person sees: one big line per step, a small picture of the
@@ -560,11 +560,11 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .first-look { display: grid; gap: var(--space-3); }
 .fl-tagline { margin: 0; font-size: var(--t-small); font-weight: 600; color: var(--fg-2); }
 .fl-say h2 { margin: 0; font-size: calc(22rem / 14); line-height: 1.2; letter-spacing: -0.01em; text-wrap: balance; }
-.fl-say h2 > span { display: block; animation: fl-in var(--dur-slow) var(--ease); }
+.fl-say h2 > span { display: block; animation: fl-in var(--dur-3) var(--ease-out); }
 .fl-say p { margin: var(--space-1) 0 0; font-size: var(--t-body); }
 @keyframes fl-in { from { opacity: 0; transform: translateY(4px); } }
 .fl-stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: var(--space-3); align-items: start; }
-.fl-page { border-radius: 12px; background: var(--fl-page); color: var(--fl-ink); overflow-wrap: anywhere; box-shadow: 0 0 0 1px var(--fl-edge); transition: box-shadow var(--dur-slow) var(--ease); }
+.fl-page { border-radius: 12px; background: var(--fl-page); color: var(--fl-ink); overflow-wrap: anywhere; box-shadow: 0 0 0 1px var(--fl-edge); }
 .fl-page.ok { box-shadow: 0 0 0 2px var(--ok); }
 .fl-chrome { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 7px 10px; border-bottom: 1px solid var(--fl-rule); font-size: var(--t-caption); color: var(--fl-ink-2); background: var(--fl-page); border-radius: 12px 12px 0 0; }
 .fl-chrome span { width: 7px; min-height: 7px; border-radius: 50%; background: var(--fl-grey); }
@@ -574,21 +574,21 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fl-form { display: flex; flex-wrap: wrap; gap: 6px; }
 .fl-input { flex: 1; min-width: 80px; padding: 5px 8px; border: 1px solid var(--fl-grey); border-radius: 6px; color: var(--fl-ink-3); background: var(--fl-field); font-size: var(--t-caption); }
 .fl-join { padding: 5px 12px; border-radius: 6px; background: var(--fl-button); color: var(--fl-button-ink); font-size: var(--t-caption); font-weight: 600; }
-.fl-join.press { animation: fl-press 1.4s var(--ease) .4s 2; }
+.fl-join.press { animation: fl-press var(--loop-press) var(--ease-out) calc(var(--dur-2) * 2) 2; }
 @keyframes fl-press { 20% { transform: scale(.92); } 40% { transform: none; } }
 .fl-msg { font-size: var(--t-caption); font-weight: 600; }
 .fl-msg.bad { color: var(--fl-bad); background: var(--fl-page); }
-.fl-msg.ok { color: var(--fl-ok); background: var(--fl-page); animation: fl-in var(--dur-slow) var(--ease); }
+.fl-msg.ok { color: var(--fl-ok); background: var(--fl-page); animation: fl-in var(--dur-3) var(--ease-out); }
 .fl-caption { padding: 0 var(--space-3) var(--space-2); font-size: var(--t-caption); color: var(--fl-ok); background: var(--fl-page); border-radius: 0 0 12px 12px; font-weight: 600; }
 .fl-side { display: grid; gap: var(--space-2); }
-.fl-code, .fl-check, .fl-undo { opacity: .25; transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--ease); transform: translateY(4px); }
+.fl-code, .fl-check, .fl-undo { opacity: .25; transition: opacity var(--dur-3) var(--ease-out), transform var(--dur-3) var(--ease-out); transform: translateY(4px); }
 .fl-code.in, .fl-check.in, .fl-undo.in { opacity: 1; transform: none; }
 .fl-code { border-radius: var(--r-card); background: var(--surface-1); padding: var(--space-2) var(--space-3); display: grid; gap: 4px; box-shadow: inset 0 0 0 1px var(--line); }
 .fl-file { font-size: var(--t-caption); font-weight: 600; overflow-wrap: anywhere; }
 .fl-line { display: block; font: var(--t-caption) / 1.5 var(--font-code); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 .fl-line.bad { background: color-mix(in srgb, var(--bad) 18%, transparent); }
 .fl-line.gone { text-decoration: line-through; color: var(--fg); background: color-mix(in srgb, var(--bad) 12%, transparent); }
-.fl-line.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); animation: fl-in var(--dur-slow) var(--ease); }
+.fl-line.ok { background: color-mix(in srgb, var(--ok) 20%, transparent); animation: fl-in var(--dur-3) var(--ease-out); }
 .fl-n { display: inline-block; min-width: 1.6em; color: var(--fg-2); }
 .fl-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border-radius: var(--r-card); padding: var(--space-2) var(--space-3); background: var(--surface-1); box-shadow: inset 0 0 0 1px var(--line); font-size: var(--t-small); }
 .fl-check b { margin-left: auto; }
@@ -596,13 +596,13 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fl-check.ok .fl-mark, .fl-check.ok b { color: var(--ok); }
 .fl-check.ok.in { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ok) 50%, transparent); }
 .fl-undo { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-self: start; padding: 6px 12px; border-radius: var(--r-control); background: color-mix(in srgb, var(--fg) 10%, transparent); font-size: var(--t-small); font-weight: 600; }
-.fl-undo.in .fl-undo-ic { animation: fl-spin .6s var(--ease) .2s; }
+.fl-undo.in .fl-undo-ic { animation: fl-spin var(--seq-spin) var(--ease-out) var(--dur-2); }
 @keyframes fl-spin { from { transform: rotate(0); } to { transform: rotate(-360deg); } }
 .fl-dots { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 /* M26: the step playing now fills its own bar, steadily, like stories do, so the run shows where it is and what is next. */
-.fl-dot { position: relative; width: 22px; min-height: 6px; padding: 0; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 22%, transparent); cursor: default; clip-path: inset(0 round 999px); transition: background var(--dur) var(--ease); }
+.fl-dot { position: relative; width: 22px; min-height: 6px; padding: 0; border: 0; border-radius: var(--r-pill); background: color-mix(in srgb, var(--fg) 22%, transparent); cursor: default; clip-path: inset(0 round 999px); transition: background-color var(--dur-2) var(--ease-out); }
 .fl-dot.on { background: var(--fg); }
-.fl-dot.now::after { content: ""; position: absolute; inset: 0; background: var(--fg); transform-origin: 0 50%; animation: fl-fill var(--beat, 2800ms) linear both; }
+.fl-dot.now::after { content: ""; position: absolute; inset: 0; background: var(--fg); transform-origin: 0 50%; animation: fl-fill var(--beat, var(--loop-beat)) linear both; }
 @keyframes fl-fill { from { transform: scaleX(0); } }
 .fl-recorded { margin: 0; }
 @media (max-width: 520px) { .fl-stage { grid-template-columns: 1fr; } }
@@ -662,7 +662,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .panel .line.step { display: flex; align-items: center; gap: var(--space-2); }
 .panel .line.step.done { color: var(--fg-2); }
 .panel .line.step.done .ic { width: 12px; height: auto; opacity: .7; }
-.spin { flex: none; width: calc(12rem / 14); min-height: calc(12rem / 14); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--fg) 18%, transparent); border-top-color: var(--fg); animation: spin 900ms linear infinite; }
+.spin { flex: none; width: calc(12rem / 14); min-height: calc(12rem / 14); border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--fg) 18%, transparent); border-top-color: var(--fg); animation: spin var(--loop-spin) linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none; border-top-color: color-mix(in srgb, var(--fg) 60%, transparent); } }
 :root[data-less-motion] .spin { animation: none; }
@@ -671,11 +671,11 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
    black (the hardware notch) in every theme, so its colours are the notch tokens (tokens.css), which no theme changes. The main button
    ("Add your key") is the flat silver; an approval's two buttons are both quiet outlines, the same width, never silver.
    Always laid out at island.rs PANEL_W so its height is measured before it opens; shown only while the pointer rests on
-   the island. */
-.island-panel { position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: var(--notch-ink); font: 500 var(--t-small) var(--font); visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity 120ms var(--ease-out), scale 120ms var(--ease-out), visibility 0s linear 120ms; }
+   the island. M66 step 5: its words come once WORK has the shape 80 percent there, and go first, before it tucks. */
+.island-panel { position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: var(--notch-ink); font: 500 var(--t-small) var(--font); visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity var(--dur-exit-menu) linear, scale var(--dur-exit-menu) var(--ease-exit), visibility 0s linear var(--dur-exit-menu); }
 /* The notch's own black, all the way down: the panel is the notch grown, never a grey band (the founder, 31 Oct). */
 .island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: var(--notch); }
-.island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity 160ms var(--ease-out), scale 160ms var(--ease-out), visibility 0s; }
+.island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity var(--dur-2) var(--ease-out) var(--seq-island-panel-at), scale var(--dur-2) var(--ease-out) var(--seq-island-panel-at), visibility 0s var(--seq-island-panel-at); }
 .island-panel button[class^="ip-"] { all: unset; box-sizing: border-box; cursor: default; }
 .island-panel button[class^="ip-"]:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: 2px; }
 /* One live thing (F28, the overhaul spec 4.3): a job with Stop, a result with Undo and See proof, the questions, Add your
@@ -698,11 +698,11 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* The rows come with the panel itself, not one by one (M25: it opens on every hover). While the panel is hidden, nothing in
    it keeps animating. */
 .island-panel:not([data-shown]) *, .island-panel:not([data-shown]) *::after { animation-play-state: paused; }
-.island-panel .ip-job { position: relative; overflow: hidden; box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: var(--notch-card); box-shadow: inset 0 0 0 1px var(--notch-edge); transition: background-color var(--dur-hover) var(--ease-hover), transform var(--dur-release) var(--ease-out); }
+.island-panel .ip-job { position: relative; overflow: hidden; box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: var(--notch-card); box-shadow: inset 0 0 0 1px var(--notch-edge); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .island-panel .ip-job:hover, .island-panel .ip-ask:hover { background: var(--notch-card-hover); }
 .island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 0 0 1px var(--notch-edge-strong); }
 /* While it works, a thin water light runs along the card's foot ("Squibby is acting"). */
-.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--water), transparent) no-repeat; background-size: 40% 100%; animation: ip-run 1.6s linear infinite; pointer-events: none; }
+.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--water), transparent) no-repeat; background-size: 40% 100%; animation: ip-run var(--loop-run) linear infinite; pointer-events: none; }
 @keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
 /* M23: a question answered right in the notch. The buttons sit under the words and wake up once the card has been seen

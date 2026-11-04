@@ -79,7 +79,8 @@ describe("the runner program", () => {
     const types = r.events().map((e) => e.type);
     expect(types.indexOf("checkpoint.created")).toBeGreaterThan(-1);
     expect(existsSync(join(project, "new.txt"))).toBe(true);
-    expect(r.events().find((e) => e.type === "receipt").changed[0]).toEqual({ file: "new.txt", kind: "added" });
+    // M66: with its lines as git counts them (the size of the change on the result card).
+    expect(r.events().find((e) => e.type === "receipt").changed[0]).toEqual({ file: "new.txt", kind: "added", added: 1, removed: 0 });
     await r.close();
   });
 

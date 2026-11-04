@@ -5,6 +5,8 @@
 // that is not on screen, or a small mark that should not pull the eye).
 // M65 (the Instrument look): under Instrument, or with Glass orb picked, it is the faceless glass orb with its state ring
 // instead (chromeLook.ts miniShows): no face, no bubbles, no water scene.
+// M66: a small one mounts as something opens (History, the notch's wings, a panel), so it never starts or compiles a drawing
+// then: it shows its still picture until a warm drawing is ready (flowflow/pool.ts), made in an idle moment.
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { poseFor, poseUrl, ringOf, type Pose } from "./characters.ts";
 import { characterOf, flowColours, hueTurn, livelinessOf, waterOf, type CharacterLook, type Water } from "./lookfeel.ts";
@@ -42,7 +44,7 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>
-        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small reacts={false} onFallback={() => setFailed(true)} />
+        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small reacts={false} onFallback={() => setFailed(true)} waitForWarm placeholder={picture} />
       </Suspense>
     </span>
   );

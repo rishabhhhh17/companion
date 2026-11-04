@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer } from "react";
 import { initial, reduce, type Model } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import { failureDetail } from "./partBoundary.tsx";
+import { FrameBatch } from "./homeFlow.ts";
 
 /** One event that the page cannot read (a shape it never expected) keeps the page as it was, instead of ending its
  *  drawing (must fix 4). What broke is noted for a report: the event's kind, the error's own message and the functions it
@@ -29,7 +30,17 @@ export function useModel(): [Model, (e: { type: string; [k: string]: unknown }) 
   useEffect(() => {
     // A page that loads after the engine started asks for the status messages it missed.
     void invoke("replay_events").then((list) => { for (const e of (list as { type: string }[] | undefined) ?? []) dispatch(e); });
-    const off = listen("runner-event", (e) => dispatch(e.payload as { type: string }));
+    // M66 fix 4: streamed text arrives a token at a time; its deltas are joined and drawn once a frame (homeFlow.ts).
+    // A page the Mac is not drawing gets no frames, so a timer stands in after 50 ms: nothing ever waits behind a delta.
+    const batch = new FrameBatch((e) => dispatch(e as { type: string }), (f) => {
+      let ran = false;
+      const go = () => { if (!ran) { ran = true; f(); } };
+      // A frame to draw on, not a motion: nothing moves here, so the Less motion check does not apply (motion.test.ts).
+      const frame = globalThis.requestAnimationFrame;
+      if (typeof frame === "function") frame(go);
+      setTimeout(go, 50);
+    });
+    const off = listen("runner-event", (e) => batch.push(e.payload as { type: string }));
     return () => { off.then((f) => f()); };
   }, []);
   // "Done" settles back to ready after a while, long enough to notice it.

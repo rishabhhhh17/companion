@@ -34,8 +34,10 @@ export type ControllerOptions = {
   onFallback?: () => void;
   /** M46: a small Flowflow (the notch's wing): working draws at WORK_INTERVAL in every choice, Lively included. */
   small?: boolean;
-  /** Tests only: a renderer to use instead of starting WebGL. */
+  /** A renderer to use instead of starting WebGL: the page's warm pool's (pool.ts, M66), or a test's stand in. */
   renderer?: RendererLike;
+  /** M66: hands the renderer back to the pool on dispose, instead of freeing its GPU context. */
+  release?: () => void;
 };
 
 /** Frame intervals (seconds), to spend little when nothing is happening. Lively keeps today's: every refresh while awake,
@@ -293,6 +295,6 @@ export class FlowflowController {
     if (this.disposed) return; this.disposed = true; this.stop();
     for (const c of this.cleanups) c(); this.cleanups.length = 0;
     this.ro?.disconnect(); this.io?.disconnect(); this.ro = null; this.io = null;
-    this.renderer.dispose();
+    if (this.opts.release) this.opts.release(); else this.renderer.dispose();
   }
 }

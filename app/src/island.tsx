@@ -5,7 +5,7 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
-import { CHEER_AT_MS, CHEER_FOR_MS, CHEER_SPRING, ISLAND_SPRING, TUCK_MS, springStep, type Spring } from "./islandSpring.ts";
+import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -15,6 +15,7 @@ import { running } from "./dropmenu.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import "./style.css";
 import "./ui/chrome.css";
+import "./ui/homeShape.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
 // notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
@@ -41,8 +42,10 @@ const shapeFrom = (v: unknown): Shape | null => {
 
 /** Springs the black shape toward the size the app asked for, drawing straight into its style (no React render per frame).
  *  The window is centred on the notch at every size, so a shape centred in it stays put on the screen when the window
- *  changes. Size 0 (not told yet): the whole window. */
-function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
+ *  changes. Size 0 (not told yet): the whole window. The spring is chosen once for each new size (islandSpring.ts
+ *  springFor), and a shape getting smaller as the hover panel stops showing (`panelWas`, `panelNow`) waits for its words to
+ *  leave first (tuckHoldMs). */
+function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean, panelWas: boolean, panelNow: boolean) {
   const box = useRef<HTMLSpanElement>(null);
   const at = useRef<{ x: Spring; y: Spring } | null>(null);
   useEffect(() => {
@@ -53,18 +56,22 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean) {
     const draw = () => { const s = at.current; if (!s) return; el.style.width = `${Math.max(0, s.x.x)}px`; el.style.height = `${Math.max(0, s.y.x)}px`; };
     if (!w || !h) { at.current = null; el.style.removeProperty("width"); el.style.removeProperty("height"); return; }
     if (!at.current || reduced) { at.current = { x: { x: w, v: 0 }, y: { x: h, v: 0 } }; draw(); return; }
-    let raf = 0, last = performance.now();
+    // M66: growing on WORK, tucking back on CLOSE (never past the notch), the done pulse on HOVER. Chosen here, once for
+    // this target (M66 step 5: chosen on every frame, a grow switched to CLOSE the moment it first passed its target).
+    const sx = springFor(at.current.x.x, w, soft), sy = springFor(at.current.y.x, h, soft);
+    const hold = tuckHoldMs(panelWas, panelNow, w < at.current.x.x || h < at.current.y.x, reducedMotion());
+    let raf = 0, wait = 0, last = performance.now();
     const tick = (t: number) => {
-      const s = at.current!, dt = (t - last) / 1000;
+      const s = at.current!, dt = Math.max(0, t - last) / 1000;
       last = t;
-      const { k, c } = soft ? CHEER_SPRING : ISLAND_SPRING;
-      s.x = springStep(s.x, w, dt, reducedMotion(), k, c);
-      s.y = springStep(s.y, h, dt, reducedMotion(), k, c);
+      s.x = springStep(s.x, w, dt, reducedMotion(), sx.k, sx.c);
+      s.y = springStep(s.y, h, dt, reducedMotion(), sy.k, sy.c);
       draw();
       if (s.x.x !== w || s.y.x !== h || s.x.v !== 0 || s.y.v !== 0) raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    const start = () => { last = performance.now(); raf = requestAnimationFrame(tick); };
+    if (hold > 0) wait = window.setTimeout(start, hold); else start();
+    return () => { window.clearTimeout(wait); cancelAnimationFrame(raf); };
   }, [w, h, reduced, soft]);
   return box;
 }
@@ -119,15 +126,19 @@ function Island() {
   // M57 feature 5: that batch carries the instant key warning, so the quiet line says a key was written.
   const [reviewKey, setReviewKey] = useState(false);
   const [reduced, setReduced] = useState(reducedMotion);
+  // M66: Home's own shape grows out of the notch under this one; once it has, this one stops drawing (homeShape.css, a short
+  // delay so the two never leave a gap), and it draws again when Home has folded back into it.
+  const [homeUp, setHomeUp] = useState(false);
   useEffect(() => watchReducedMotion(setReduced), []);
   useEffect(() => {
-    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); setReview((v as { review?: unknown } | null)?.review === true); setReviewKey((v as { reviewKey?: unknown } | null)?.reviewKey === true); }).catch(() => {});
+    void invoke("island_state").then((v) => { const s = shapeFrom(v); if (s) setShape(s); setUpdate(readyVersion((v as { update?: unknown } | null)?.update ?? null)); setUnseen(Math.max(0, Math.min(99, Number((v as { unseen?: unknown } | null)?.unseen) || 0))); setReview((v as { review?: unknown } | null)?.review === true); setReviewKey((v as { reviewKey?: unknown } | null)?.reviewKey === true); setHomeUp((v as { home?: unknown } | null)?.home === true); }).catch(() => {});
+    const offHome = listen("home-state", (e) => setHomeUp((e.payload as { shown?: unknown } | null)?.shown === true));
     const off = listen("island-mode", (e) => { const s = shapeFrom(e.payload); if (s) setShape(s); });
     const offUp = listen("update-ready", (e) => setUpdate(readyVersion(e.payload)));
     // M34: results finished while Home was closed, counted until Home opens. M46: said on the hover panel only.
     const offSeen = listen("unseen", (e) => setUnseen(Math.max(0, Math.min(99, Number((e.payload as { n?: unknown } | null)?.n) || 0))));
     const offReview = listen("review-ready", (e) => { const p = e.payload as { on?: unknown; key?: unknown } | null; setReview(p?.on === true); setReviewKey(p?.on === true && p?.key === true); });
-    return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); offReview.then((f) => f()); };
+    return () => { off.then((f) => f()); offUp.then((f) => f()); offSeen.then((f) => f()); offReview.then((f) => f()); offHome.then((f) => f()); };
   }, []);
   // With Show the working group on the island (groups.islandName, usual on), the line starts with the name of the group at work.
   const drop = useDrop();
@@ -239,14 +250,19 @@ function Island() {
     if (selfGrown) grownRef.current = Date.now();
   }, [shape.mode, shape.hover]);
   const tap = () => { const grownAt = grownRef.current; if (!armed(grownAt, Date.now())) return; void invoke("island_click"); };
-  const box = useSpringBox(shapeW, shape.h, reduced, soft);
+  // M66 step 5: the hover panel shows only in its own modes; on the way back its words fade first and fast (style.css), and
+  // the shape waits for them (useSpringBox), so its edge never cuts them. Whether it showed is read as last drawn.
+  const panelNow = parts.panel;
+  const panelWas = useRef(panelNow);
+  useEffect(() => { panelWas.current = panelNow; });
+  const box = useSpringBox(shapeW, shape.h, reduced, soft, panelWas.current, panelNow);
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   // The wing the app drew the window for (island.rs Look.wing); the usual 40 points until it says.
   // The step is as wide as the longest of the four words, so its line keeps one length from Finding to Proven.
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px`, ...(shape.wing > 0 ? { "--wing": `${shape.wing}px` } : {}), ...(stepW > 0 ? { "--step-w": `${stepW}px` } : {}) } as CSSProperties;
   const st = wings ? step : lastStep.current;
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style={choiceOf("look.style", useSetting("look.style"))} style={vars}>
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-home={homeUp ? "" : undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style={choiceOf("look.style", useSetting("look.style"))} style={vars}>
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
@@ -257,7 +273,7 @@ function Island() {
         </button>
         {/* The four step words, laid out but never shown, so the wings are asked for once, as wide as the longest needs. */}
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel || tucking === "peek" || tucking === "wingsPeek"} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} />
       </span>
     </main>
   );

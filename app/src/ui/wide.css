@@ -19,9 +19,9 @@
    pink, green or sunset list is a pink, green or sunset row, never a blue one. */
 .home[data-side] .side { --side-row: var(--el-row); --side-text: var(--el-text); --side-glow: var(--el-glow); }
 .home[data-side] .side .sb-item { border-radius: var(--r-card); }
-.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color 280ms var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color var(--dur-3) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--side-text); }
-.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in var(--dur-enter) var(--ease-enter) both; }
+.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in var(--dur-enter) var(--ease-out) both; }
 @keyframes side-bar-in { from { transform: scaleY(.3); opacity: 0; } }
 .home[data-side] .side li[data-gem] .sb-item > .ic { display: var(--gem-icon-display); }
 .home[data-side] .side li[data-gem] .sb-item::before { content: ""; display: var(--gem-display); flex: none; width: 14px; min-height: 14px; margin: 2px; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }

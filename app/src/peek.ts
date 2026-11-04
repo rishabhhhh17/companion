@@ -8,14 +8,16 @@ import { listen } from "./tauri.ts";
 export const PEEK_POSES = ["hidden", "peek", "in"] as const;
 export type PeekPose = (typeof PEEK_POSES)[number];
 const EDGES = ["left", "right", "top", "bottom"] as const;
-export type Peek = { pose: PeekPose; edge: (typeof EDGES)[number] };
+/** `ms`: how long the shell's move takes (peek.rs IN_SECS or OUT_SECS), when it moves; none when it was at once. */
+export type Peek = { pose: PeekPose; edge: (typeof EDGES)[number]; ms?: number };
 
 /** What the shell sent, read safely: anything unknown is fully in, on the right edge. */
 export function peekFrom(v: unknown): Peek {
   const o = (typeof v === "object" && v !== null ? v : {}) as Record<string, unknown>;
   const pose = (PEEK_POSES as readonly unknown[]).includes(o.pose) ? (o.pose as PeekPose) : "in";
   const edge = (EDGES as readonly unknown[]).includes(o.edge) ? (o.edge as Peek["edge"]) : "right";
-  return { pose, edge };
+  const ms = typeof o.ms === "number" && Number.isFinite(o.ms) && o.ms > 0 && o.ms <= 2000 ? o.ms : undefined;
+  return ms === undefined ? { pose, edge } : { pose, edge, ms };
 }
 
 /** The pose the shell said last (fully in until it says otherwise). */
