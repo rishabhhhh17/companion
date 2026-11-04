@@ -12,14 +12,14 @@ const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 const stepOf = (ui: string, step: string) => { const at = ui.indexOf(`{step === "${step}" && (`); const after = ui.indexOf("{step === ", at + 10); return ui.slice(at, after < 0 ? undefined : after); };
 
 describe("the three screens and their order (M49)", () => {
-  test("Hello, Your Claude, Your project, then the first check; the ends have nowhere to go", () => {
-    expect([...STEPS]).toEqual(["hello", "claude", "project", "check"]);
-    expect(next("hello")).toBe("claude"); expect(next("claude")).toBe("project"); expect(next("project")).toBe("check"); expect(next("check")).toBeNull();
-    expect(back("check")).toBe("project"); expect(back("claude")).toBe("hello"); expect(back("hello")).toBeNull();
+  test("M69 (F29): Welcome, Pick a project, then the first check; no Your Claude step; the ends have nowhere to go", () => {
+    expect([...STEPS]).toEqual(["hello", "project", "check"]);
+    expect(next("hello")).toBe("project"); expect(next("project")).toBe("check"); expect(next("check")).toBeNull();
+    expect(back("check")).toBe("project"); expect(back("project")).toBe("hello"); expect(back("hello")).toBeNull();
   });
-  test("the count in words covers the three screens, and the first check comes after them, uncounted", () => {
-    expect([...COUNTED]).toEqual(["hello", "claude", "project"]);
-    expect(countOf("hello")).toEqual({ n: 1, of: 3 }); expect(countOf("project")).toEqual({ n: 3, of: 3 });
+  test("the count covers the two screens, and the first check comes after them, uncounted", () => {
+    expect([...COUNTED]).toEqual(["hello", "project"]);
+    expect(countOf("hello")).toEqual({ n: 1, of: 2 }); expect(countOf("project")).toEqual({ n: 2, of: 2 });
     expect(countOf("check")).toBeNull();
   });
   test("the water rises with every step after the hello, and Flowflow rides on it", () => {
@@ -30,15 +30,25 @@ describe("the three screens and their order (M49)", () => {
     expect(ui).toContain('<div className="fr-tank" aria-hidden="true"><Waterline under />{step !== "hello" && open === null && <div className="fr-float"><HomeCharacter as={look} /></div>}</div>');
     expect(read("./style.css")).toContain(".fr-tank .fr-float {");
   });
-  test("the hello says what it does, has Continue, and the recorded fix to watch again before anything is asked (F05, F17)", () => {
+  test("M69: the welcome says the promise, the three promises, and plays a short loop of a real fix with a Pause (spec 3.10)", () => {
     const hello = stepOf(read("./onboarding.tsx"), "hello");
-    expect(hello).toContain("S.fr.helloLine");
-    expect(hello).toContain("onClick={() => setWatching(true)}>{S.firstLook.watch}</Button>");
+    expect(hello).toContain("twoTone(S.screens.welcomeTitle)");
+    expect(hello).toContain("S.screens.promises.map(");
+    expect(S.screens.promises).toHaveLength(3);
+    expect(S.screens.promises[2]).toContain("Nothing is saved.");
+    expect(hello).toContain("<FirstLook loop label={S.screens.loopLabel} />");
     expect(hello).toContain("main(S.obContinue, () => go(next(step)))");
     expect(hello).not.toContain("Field");
-    const ui = read("./onboarding.tsx");
-    expect(ui).toContain("<FirstLook goLabel={S.obContinue} onGo={() => go(next(step))} />");
-    expect(ui).toContain("onClick={() => setWatching(false)}>{S.obBack}</Button>");
+    // The key named is the Fix it key in use, and nothing when it has none (F28: no new default keys).
+    expect(hello).toContain("{keys.using.problem && <p className=\"fr-key-line\">");
+    // The loop keeps its Pause in view (spec 4) and starts again by itself; never with Reduce motion.
+    const fl = read("./firstLook.tsx");
+    expect(fl).toContain("{(!done || loop) && !reduced && picked === null && <button");
+    expect(fl).toContain("if (!loop || !done || reduced || paused || picked !== null) return;");
+    expect(fl).toContain("{!loop && onGo && <button");
+    // Step chips: "01 Welcome", "02 Pick a project".
+    expect(S.screens.stepChip(1, S.screens.stepNames.hello)).toBe("01 Welcome");
+    expect(S.screens.stepChip(2, S.screens.stepNames.project)).toBe("02 Pick a project");
   });
   test("Your project offers a folder, GitHub or Lovable through the existing Open from a link, and the practice", () => {
     const proj = stepOf(read("./onboarding.tsx"), "project");
@@ -56,15 +66,14 @@ describe("the three screens and their order (M49)", () => {
 
 describe("every step can be skipped and has a way back", () => {
   test("Skip goes on to the next screen, or out of the first run where the next step needs what was skipped", () => {
-    expect(skipTo("hello")).toBe("claude");
-    expect(skipTo("claude")).toBe("project");
+    expect(skipTo("hello")).toBe("project");
     expect(skipTo("project")).toBe("done");
     expect(skipTo("check")).toBe("done");
   });
   test("each step draws its own way to skip, and Back on every step after the hello", () => {
     const ui = read("./onboarding.tsx");
     expect(stepOf(ui, "hello")).toContain("onClick={finish}>{S.fr.skipSetup}</Button>");
-    expect(stepOf(ui, "claude")).toContain("onClick={skip}>{S.fr.skipKey}</Button>");
+    expect(ui).not.toContain('step === "claude"');
     expect(stepOf(ui, "project")).toContain("onClick={skip}>{S.fr.skipProject}</Button>");
     expect(stepOf(ui, "project")).toContain("onClick={finish}>{S.fr.skipCheck}</Button>");
     // While the check runs, its one way out is Stop the check; then Go to my project (the audit, item 52: Skip the check
@@ -75,9 +84,7 @@ describe("every step can be skipped and has a way back", () => {
     // Back while the check runs stops it first, so nothing keeps running behind the first run.
     expect(ui).toContain("if (stage === \"checking\" || stage === \"asking\") stopCheck(); go(back(step));");
   });
-  test("Continue waits for a key on Your Claude and a folder on Your project; the rest never wait", () => {
-    expect(canContinue("claude", { connected: false, project: "/p" })).toBe(false);
-    expect(canContinue("claude", { connected: true, project: "" })).toBe(true);
+  test("Continue waits for a folder on Pick a project; the rest never wait, and never for a key (F29)", () => {
     expect(canContinue("project", { connected: true, project: "" })).toBe(false);
     expect(canContinue("project", { connected: false, project: "/p" })).toBe(true);
     for (const s of ["hello", "check"] as const) expect(canContinue(s, { connected: false, project: "" })).toBe(true);
@@ -157,7 +164,7 @@ describe("the first check of the real project", () => {
     expect(checkAnnounce("idle", "shop", null, "")).toBe("");
   });
   test("a fold left open on one screen does not hide Flowflow on the next", () => {
-    expect(read("./onboarding.tsx")).toContain("setWatching(false); setOpen(null); setStep(target);");
+    expect(read("./onboarding.tsx")).toContain('setDir(STEPS.indexOf(target) >= STEPS.indexOf(step) ? "on" : "back"); setOpen(null); setStep(target);');
   });
   test("where it is: not asked, running, waiting on an install question, answered, or stopped; an old answer is never this one", () => {
     expect(checkStage(false, { stage: "clear" }, false)).toBe("idle");
@@ -207,23 +214,16 @@ describe("Your Claude: the honest lines, the key field and Test, and never a log
     expect(honestLines({ limitUsd: 10, plan: planCard(free, null) }).plan).toBe(S.fr.keyPlan(S.plan.freeNew(3)));
     for (const l of Object.values(off)) { expect(l).not.toContain("\u2014"); expect(l).toMatch(/\.$/); }
   });
-  test("the page shows them in the key's fold, from the Plan card's store and the daily limit in force", () => {
-    const claude = stepOf(read("./onboarding.tsx"), "claude");
-    for (const k of ["honest.privacy", "honest.cost", "honest.plan"]) expect(claude).toContain(`<li>{${k}}</li>`);
-    // The audit, item 38: one fold holds them with the key's steps, so the step fits Home's 480 points.
-    expect(claude.indexOf("honest.plan")).toBeGreaterThan(claude.indexOf('fold("how", S.fr.keyHow,'));
+  test("M69 (F29): the first run has no key field, no password box, no cost words and never a login form (rule 2)", () => {
     const ui = read("./onboarding.tsx");
-    expect(ui).toContain("const plan = planCard(usePlan(), usage);");
-    expect(ui).toContain('const limit = Number(useSetting("spend.dailyLimit"));');
-  });
-  test("the one field is the Anthropic key, saved and tested by Continue; there is no Claude login form anywhere in the first run (rule 2)", () => {
-    const ui = read("./onboarding.tsx");
-    expect((ui.match(/type="password"/g) ?? []).length).toBe(1);
-    expect(ui).toContain('<Field type="password" wide value={key} label={S.obKeyLabel}');
-    // The audit, item 38: Continue saves and tests a typed key (onboarding.ts claudeMain), no separate Save and test.
-    expect(ui).toContain('if (claudeNext.act === "saveThenGo") { setGoOnTest(true); saveKey(); }');
+    expect(ui).not.toContain('type="password"');
+    expect(ui).not.toContain("save_api_key");
+    expect(ui).not.toContain("KEY_PAGE");
+    expect(ui).not.toContain("honest.cost");
     for (const banned of ["auth login", "auth_login", "claude.ai", 'type="email"', "plan_login", "S.obPlanLater", "oauth"]) expect(ui.toLowerCase(), banned).not.toContain(banned.toLowerCase());
     for (const t of Object.values(S.fr)) if (typeof t === "string") expect(t, t).not.toMatch(/sign in with|log ?in with|your claude password/i);
+    // What the welcome and its loop say carry no cost and no key.
+    for (const t of [...S.screens.promises, S.screens.welcomeTitle, ...Object.values(S.firstLook.more), ...Object.values(S.firstLook.beats)]) expect(t, t).not.toMatch(/cents?\b|\$\d|your key|your own Claude|API key/i);
   });
 });
 
@@ -332,20 +332,9 @@ describe("the key is checked with Anthropic when it is saved", () => {
     expect(keyCheck(100, { result: "refused", at: 120 })).toBe("refused");
     expect(keyCheck(100, { result: "works", at: 100 })).toBe("works");
   });
-  test("a refused key cannot be continued past, and every answer is in plain words", () => {
-    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    const claude = stepOf(ui, "claude");
-    // A refused key with nothing new typed keeps Continue off (onboarding.ts claudeMain, auditSecondHalf.test.ts).
-    expect(claude).toContain("claudeNext.disabled)}");
-    // The one main button of each step is the Button part's primary, large (the flat silver).
-    expect(ui).toContain('const main = (label: string, onClick: () => void, disabled = false) => <Button kind="primary" size="lg" className="fr-key" disabled={disabled} onClick={onClick}>{label}</Button>;');
+  test("every answer about a key (Settings, developer route) is in plain words", () => {
     for (const k of ["checking", "works", "refused", "no_connection", "unknown"] as const) { expect(S.obKeyCheck[k].length).toBeGreaterThan(10); expect(S.obKeyCheck[k]).not.toMatch(/40[13]|status|HTTP|models/); }
-  });
-  test("Get a key opens Anthropic's own page, only on the person's press, and a failure never shows a raw error", () => {
     expect(KEY_PAGE).toBe("https://console.anthropic.com/settings/keys");
-    const ui = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(ui).toContain('onClick={() => void invoke("open_link", { url: KEY_PAGE })');
-    expect(ui).not.toContain("String(e)");
   });
 });
 
@@ -456,11 +445,11 @@ describe("the first run offers no choice of one companion (M28, M49)", () => {
   });
 });
 
-describe("the first run has no dead end without a key (M28)", () => {
-  test("Your Claude offers Skip for now, which goes on to Your project", () => {
+describe("the first run has no dead end (M28, M69)", () => {
+  test("Welcome's Skip finishes, and Pick a project's Skip leaves the first run", () => {
     const src = readFileSync(new URL("./onboarding.tsx", import.meta.url), "utf8");
-    expect(src).toContain('<Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipKey}</Button>');
-    expect(skipTo("claude")).toBe("project");
+    expect(stepOf(src, "hello")).toContain("onClick={finish}>{S.fr.skipSetup}</Button>");
+    expect(skipTo("project")).toBe("done");
     expect(src).not.toContain("S.obPlanLater");
   });
 });

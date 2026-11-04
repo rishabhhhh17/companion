@@ -566,7 +566,7 @@ function KeysRows({ keys }: { keys: Keys }) {
       {dropped && <div className="set-pair" role="status"><Note text={dropped} /><Button size="sm" onClick={seen}>{S.keysDroppedOk}</Button></div>}
       {F28_JOBS.map(row)}
     </Group>
-    <Disclosure id="keys.others" title={S.setRows.otherJobs} count={rest.length} open={others} onToggle={setOthers}>
+    <Disclosure id="keys.others" title={S.setRows.otherJobs} open={others} onToggle={setOthers}>
       <Group>{rest.map(row)}</Group>
     </Disclosure>
     {open && <KeySheet job={open} keys={keys} onClose={(changed) => { const job = open; setOpen(null); if (changed) c.say(keyChangedLine(job, changed)); }} />}
@@ -824,14 +824,14 @@ function SetupGroup() {
   const [gone] = useState(() => stored(SETUP_DONE));
   if (gone || !c.inv) return null;
   const items = [
-    { id: "key", label: S.setRows.setupKey, done: c.inv.keySaved, button: S.setRows.setupAdd, act: () => c.go("account.claude") },
+    // M69 (F29): no key step; nobody adds a key (it stays a developer tool under Account).
     { id: "folder", label: S.setRows.setupFolder, done: !!c.project, button: S.setRows.setupPick, act: c.onPickFolder },
     { id: "stop", label: S.setRows.setupStop, done: stop, button: S.setRows.setupLearn, act: () => { store(STOP_LEARNED); setStop(true); c.go("keys.keys"); }, desc: c.keys.using.stop ? S.setRows.setupStopDesc(chordLabel(c.keys.using.stop)) : undefined },
   ];
   if (items.every((i) => i.done)) { store(SETUP_DONE); return null; }
   return (
     <Group id="general.setup" title={S.setGroupTitles["general.setup"]}>
-      {items.map((i) => <Row key={i.id} id={i.id === "key" ? fixedAnchor("setup") : undefined} label={i.label} description={i.desc}
+      {items.map((i) => <Row key={i.id} id={i.id === "folder" ? fixedAnchor("setup") : undefined} label={i.label} description={i.desc}
         control={i.done ? <span className="set-done"><Icon name="tick" size={12} />{S.setRows.setupDone}</span> : <Button size="sm" onClick={i.act}>{i.button}</Button>} />)}
     </Group>
   );
@@ -917,13 +917,15 @@ function LogsRow() {
   const c = useCtx();
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState("");
-  return (
-    <Row id={fixedAnchor("logs")} label={S.setRows.report} more={[S.reportHelp, S.exportLogsHelp]}
+  // M69 step 3: Save a log for support is a row of its own with its own button, not a stray link under Report a problem.
+  return (<>
+    <Row id={fixedAnchor("logs")} label={S.setRows.report} more={[S.reportHelp]}
       control={<Button size="sm" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("report_problem", { subject: S.reportSubject, body: S.reportBody }).then((n) => { setExported(S.reportOpened(String(n))); c.onStepAside(); }).catch((e) => setExported(failNote(e, "report"))).finally(() => setExporting(false)); }}>{S.reportButton}</Button>}>
-      <div className="set-buttons"><Button kind="quiet" size="sm" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); c.onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.exportLogs}</Button></div>
       <Note text={exported} live />
     </Row>
-  );
+    <Row label={S.exportLogs} more={[S.exportLogsHelp]}
+      control={<Button size="sm" disabled={exporting} onClick={() => { setExporting(true); setExported(""); void invoke("export_logs").then((n) => { setExported(S.exportLogsDone.replace("{name}", String(n))); c.onStepAside(); }).catch((e) => setExported(failNote(e, "logs"))).finally(() => setExporting(false)); }}>{S.setRows.saveLog}</Button>} />
+  </>);
 }
 
 function AckRow() {
@@ -1205,12 +1207,14 @@ function PageView({ page }: { page: PageId }) {
 
 /** About opens with the app's own card: its drawing, its name and its version. */
 function AboutHead() {
-  const [info, setInfo] = useState({ version: "", commit: "" });
-  useEffect(() => { void invoke("update_status").then((v) => { const o = (v ?? {}) as { version?: string; commit?: string }; setInfo({ version: String(o.version ?? ""), commit: String(o.commit ?? "") }); }).catch(() => {}); }, []);
+  const [info, setInfo] = useState({ version: "", commit: "", channel: "" });
+  useEffect(() => { void invoke("update_status").then((v) => { const o = (v ?? {}) as { version?: string; commit?: string; channel?: string }; setInfo({ version: String(o.version ?? ""), commit: String(o.commit ?? ""), channel: String(o.channel ?? "") }); }).catch(() => {}); }, []);
   return (
     <Card className="set-about">
-      <span className="set-about-icon" aria-hidden="true"><FlowMini state="idle" className="pic-flow" still /></span>
-      <span className="set-about-words"><b>{S.product}</b><span>{S.setRows.version(info.version, info.commit)}</span></span>
+      {/* M69 (spec 4): the character, slowly working, beside the version. */}
+      <span className="set-about-icon" aria-hidden="true"><HomeCharacter as="checking" /></span>
+      {/* M69 step 3: the name and version as one title, the channel under it when the shell says one. */}
+      <span className="set-about-words"><b>{info.version ? `${S.product} ${info.version}` : S.product}</b>{info.commit && info.commit !== "unknown" && <span>{S.setRows.build(info.commit)}</span>}{info.channel && <span>{S.setRows.channel(info.channel)}</span>}</span>
     </Card>
   );
 }
@@ -1261,9 +1265,9 @@ function MoreSection({ page, open, setOpen }: { page: PageId; open: ReadonlySet<
 function TopicView({ topic, open, setOpen }: { topic: Topic; open: boolean; setOpen: (on: boolean) => void }) {
   const parent = useSetting(topic.parent ?? "");
   const off = topic.parent && parent !== true ? S.setFrame.turnOnTool(wordsOf(topic.parent).label) : "";
-  const count = topic.items.filter((i) => typeof i !== "string" || (defOf(i) && !defOf(i)!.hidden)).length;
+  // M69 (spec 3.9): no counts on the folds ("More General options (56)" read as a chore); the title says what is inside.
   return (
-    <Disclosure id={topic.id} title={(S.setGroupTitles as Record<string, string>)[topic.id] ?? topic.id} count={count} open={open} onToggle={setOpen} disabledNote={off || undefined}>
+    <Disclosure id={topic.id} title={(S.setGroupTitles as Record<string, string>)[topic.id] ?? topic.id} open={open} onToggle={setOpen} disabledNote={off || undefined}>
       <Group>
         {topic.items.map((i) => <ItemRows key={typeof i === "string" ? i : `fixed:${i.fixed}`} item={i} parentOff={off} indent={false} />)}
         {topic.id === "more.privacy.calls" && <Row label={wordsOf("numbers.on").label}>{<NumbersRows />}</Row>}

@@ -72,7 +72,8 @@ function colour(v0: string, t: Record<string, string>): RGBA {
 }
 const over = (top: RGBA, under: RGBA): RGBA => [0, 1, 2].map((k) => top[k] * top[3] + under[k] * (1 - top[3])).concat(1) as RGBA;
 const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// M69: words drawn in an ink with opacity (Instrument's one ink, spec 1.2) are measured as they show, over what is under them.
+const ratio = (a0: RGBA, b: RGBA) => { const a = a0[3] < 1 && b[3] === 1 ? over(a0, b) : a0; const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const px = (v: string) => { const rem = /^calc\((\d+(?:\.\d+)?)rem \/ 14\)$/.exec(v); return rem ? Number(rem[1]) : parseFloat(v); };
 const ms = (v: string) => parseFloat(v);
 const parts = blocks(PARTS_CSS());
@@ -208,7 +209,9 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
   test("the Graphite page is the lab's #161618 family; the other themes keep their own page", () => {
     expect(ins).toMatchObject({ "--bg": "#161618", "--surface-1": "#1D1D20", "--surface-2": "#26262A" });
     expect(tokensOf("instrument", "black")["--bg"]).toBe("#000000");
-    expect(tokensOf("instrument", "paper")["--bg"]).toBe("#FFFFFF");
+    // M69 (spec 1.2, the mockups): Instrument's White is a warm off white window with white cards on it.
+    expect(tokensOf("instrument", "paper")).toMatchObject({ "--bg": "#F6F6F4", "--surface-1": "#FFFFFF" });
+    expect(tokensOf("friendly", "paper")["--bg"]).toBe("#FFFFFF");
     expect(tokensOf("instrument", "deep")["--bg"]).toBe("#0B1622");
   });
   test("buttons: the main one filled with the accent, the others a hairline edge with no gloss, in every theme", () => {
@@ -216,7 +219,9 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
       const k = tokensOf("instrument", t);
       expect(k["--main"], t).toBe("var(--acc)");
       expect(k["--main-ink"], t).toBe("var(--acc-ink)");
-      expect(k["--main-shadow"], t).toBe("none");
+      // M69 (spec 1.6): a key, a faint glass line on top and the accent's deep step as its 2 point edge; no gloss, no glow.
+      expect(k["--main-shadow"], t).toBe("inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -2px 0 var(--acc-deep)");
+      expect(k["--main-shadow-press"], t).toBe("inset 0 -1px 0 var(--acc-deep)");
       expect(k["--keycap"], t).toBe("transparent");
       expect(k["--keycap-ring"], t).toBe("var(--line-strong)");
       for (const g of ["--gel-lip", "--gel-gloss", "--gel-glow"]) expect(k[g], `${t} ${g}`).toBe("transparent");

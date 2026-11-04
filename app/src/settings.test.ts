@@ -178,7 +178,7 @@ describe("the Keys section in Settings", () => {
   test("one row for every job, in the order the hints use, with its name and the keys it uses now", () => {
     const rows = keyRows(KEYS_START);
     expect(rows.map((r) => r.job)).toEqual(["card", "problem", "showme", "read", "accept", "explain", "secondlook", "talk", "dictate", "stop"]);
-    expect(rows.map((r) => r.name)).toEqual(["Open Home", "Check my project", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Second Look", "Hold to talk", "Type by voice", "Stop everything"]);
+    expect(rows.map((r) => r.name)).toEqual(["Open Home", "Check my project", "Show me how", "Prompt help", "Use a Prompt help suggestion", "Explain an error", "Check another AI's answer", "Hold to talk", "Type by voice", "Stop everything"]);
     // F28: four jobs (and use a suggestion) have keys by usual; the others say No key yet, which is no problem.
     expect(rows[1].keys).toBe("Control, Option, Command and F");
     expect(rows[0]).toMatchObject({ keys: S.keysNoKeyYet, line: "", problem: false, none: true });

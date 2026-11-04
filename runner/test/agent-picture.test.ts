@@ -49,6 +49,17 @@ describe("the visual receipt in a task", () => {
     expect(v.file.startsWith(s.saveDir)).toBe(true);
     expect(readFileSync(v.file)).toEqual(Buffer.from(shot.jpeg, "base64"));
   });
+  test("M69: the earlier version's picture goes with it, for the before and after pair (pictures of the app, never the screen)", async () => {
+    const s = setup(passed);
+    await s.go(); await settle();
+    expect(of(s.events, "receipt.visual")[0].before).toBe(shot.jpeg);
+    const n = setup(passed, { before: async () => ({ none: "not_pictured" }) });
+    await n.go(); await settle();
+    expect(of(n.events, "receipt.visual")[0].before).toBeUndefined();
+    const c = setup(passed, { before: async () => ({ none: "crashed" }) });
+    await c.go(); await settle();
+    expect(of(c.events, "receipt.visual")[0].before).toBeUndefined();
+  });
   test("only the newest 200 pictures are kept", async () => {
     const s = setup(passed);
     require("node:fs").mkdirSync(s.saveDir, { recursive: true });

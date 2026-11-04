@@ -63,9 +63,11 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
     expect(css.replace(/\/\*[\s\S]*?\*\//g, "")).not.toMatch(/\.icon-btn/);
   });
   test("one column: Flowflow on its water with the status, then the ask field, then the recent fixes and the results", () => {
-    const hero = card.indexOf('<section className="hero" hidden={home.tab !== "now"}');
+    // M69 step 2: the hero steps aside while the review card leads Now (it carries the headline then).
+    const hero = card.indexOf('<section className="hero" hidden={home.tab !== "now" || cardLeads}');
     const ask = card.indexOf('<div className="askwrap" hidden={!show("ask")}>');
-    const recent = card.indexOf("<RecentList ");
+    // M69 step 2: at rest the Last fix and Since then cards stand where the recent list was (homeRest.tsx).
+    const recent = card.indexOf('{!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}');
     expect(hero).toBeGreaterThan(-1);
     expect(hero).toBeLessThan(ask);
     expect(ask).toBeLessThan(recent);
@@ -127,12 +129,13 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
     expect(css).toMatch(/\.home \.view \.panel > h2 \{ font-size: var\(--t-answer\);/);
     expect(css).not.toMatch(/\.panel\.amber \{[^}]*border-color/);
   });
-  test("the result card: the verdict first at verdict size, what changed, the checks as chips, then what it cost", () => {
+  test("the result card: the verdict first at verdict size, the checks as ticks, what changed, and no cost (F29)", () => {
     // M45 and the overhaul spec 4.2: the mark is the verdict's own (a tick only for a proven fix, VerdictLine).
-    expect(card).toContain('<VerdictLine verdict={v} size="card" sub={v.line || putBackShown ?');
+    expect(card).toContain('<VerdictLine verdict={v} size="card" sub={said || putBackShown ?');
     expect(card).toContain("<ChangesCard changed={m.receipt.changed} undone={undone} />");   // M39: how many files heads the changes card
-    expect(card).toContain("<ProofChips m={m} />");
-    expect(card).toContain("<li>{m.receipt.usdEstimate > 0 ? S.fixCost(formatUsd(m.receipt.usdEstimate)) : S.noCost}</li>");   // M28: what the fix cost on your own Claude (M45: No cost at zero)
+    expect(card).toContain("<ProofTicks ticks={proofTicks(m)}");
+    // M69 (F29): Squibby pays for the model, so a result never says what it cost.
+    expect(card).not.toContain("S.fixCost(formatUsd(m.receipt.usdEstimate))");
     // Each check of the proof is a row with its own tick.
     expect(card).toContain('<Icon name={s.status === "passed" ? "tick" : s.status === "failed" ? "cross" : "wait"} size={16} />');
   });
@@ -145,26 +148,29 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
     expect(card).not.toContain('<div className="strip"');
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(rules).not.toMatch(/(^|[^\w-])\.(strip|pill)\b/m);   // the island's own .island.pill (the notch's shape) is not one
-    expect(result).toContain('{undoCan(m, project) && (\n            <div className="row result-actions">\n              <Button id={undoId}');
+    // M69: Replay what Squibby did sits beside it in the same row (runListView.tsx Replay).
+    // M69 step 3: one Undo button (undoButton), at the top of a proven result, in a failed one's lead, else beside Replay.
+    expect(result).toContain("{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}");
+    expect(result).toContain("{undoCan(m, project) && undoButton(S.homeNow.undo)}");
     expect(job).toContain("{stopCan(m) && <Button kind=\"secondary\" size=\"sm\"");
   });
   test("Undo is the same flow as before: the receipt's own question, on the same button id, with the same condition", () => {
-    expect(result).toContain("id={undoId}");
-    expect(result).toContain("{m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix}");
-    expect(result).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
+    expect(card).toContain("const undoButton = (words: string) => <Button id={undoId}");
+    expect(result).toContain("undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)");
+    expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
     expect(card).toContain("label={S.undoSure} back={undoId}");
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);
   });
   test("Stop stops the agent, shows while one works, and the key that stops everything is in its name and its tooltip", () => {
-    for (const at of [job, card.slice(card.indexOf("{stopCan(m) && !jobShown &&"))]) {
+    for (const at of [job, card.slice(card.indexOf("{stopCan(m) && !jobShown && mode !== \"question\" &&"))]) {
       expect(at).toContain("onClick={() => void send(stopAgent())}");
       expect(at).toContain('label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)}');
     }
     // Where something works with no card of its own (a look, an answer being written), Stop sits beside the words.
-    expect(card).toContain("{stopCan(m) && !jobShown && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
+    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
   });
   test("after an undo, Put back as it was shows for two seconds in the card", () => {
-    expect(result).toContain('{putBackShown && <span className="putback-note" role="status">{v.line ? " " : ""}{S.look.putBack}</span>}');
+    expect(result).toContain('{putBackShown && <span className="putback-note" role="status">{said ? " " : ""}{S.look.putBack}</span>}');
     expect(card).toContain('if (m.undo?.stage !== "done") return;');
     expect(card).not.toContain("spin(e.currentTarget)");
   });

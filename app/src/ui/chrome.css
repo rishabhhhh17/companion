@@ -53,9 +53,10 @@
 /* The ask box is a quiet field. Home puts the cursor in it every time it opens, so an accent frame or a glow round it was
    the loudest thing on the page and always on. Its edge is neutral: a control's edge at rest, a little brighter on hover
    and plainly brighter while it has the cursor, each 3 to 1 or more on the page and on the field (ui/tokens.css). */
-:root[data-style="instrument"] .home .askwrap .ask { border-color: var(--ask-edge); box-shadow: none; }
+/* M69 (spec 1.6): pinned at the bottom it floats, so it has the one soft level 1 shadow, the same at rest and in focus. */
+:root[data-style="instrument"] .home .askwrap .ask { border-color: var(--ask-edge); box-shadow: var(--ask-shadow-float); }
 :root[data-style="instrument"] .home .askwrap .ask:hover { border-color: var(--ask-hover-edge); }
-:root[data-style="instrument"] .home .askwrap .ask:focus-within { border-color: var(--ask-focus-edge); box-shadow: none; }
+:root[data-style="instrument"] .home .askwrap .ask:focus-within { border-color: var(--ask-focus-edge); box-shadow: var(--ask-shadow-float); }
 
 /* One size for a screen's title: the folded hero (a card under it that needs a tap) keeps the 17 point headline, so the
    most urgent state is never the smallest. A card's own title is the card size, never a second page title. */
@@ -76,12 +77,16 @@
    marks where the work goes under the ask box. */
 :root[data-style="instrument"] .home .panel.receipt { display: flex; flex-direction: column; align-items: stretch; }
 :root[data-style="instrument"] .home .panel.receipt > .result-actions { order: 1; align-self: flex-start; margin-top: var(--space-3); }
+/* M69 step 3: a proven result's Keep and Undo lead the card, right under the hero that says it (above the fold). */
+:root[data-style="instrument"] .home .panel.receipt > .result-actions.receipt-top { order: 0; margin-top: 0; margin-bottom: var(--space-3); }
 :root[data-style="instrument"] .home .panel.receipt > .changes ~ * { order: 2; }
 :root[data-style="instrument"] .home[data-side] .work > .askwrap::before { display: none; }
 :root[data-style="instrument"] .home[data-side][data-more] .work > .askwrap::after { border-top: var(--hair) solid var(--line); }
 
-/* Both side lists mark the open place the same way, as Settings' does: a plain grey row, no stripe of light, no glow. */
-:root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"] { background: var(--surface-2); box-shadow: none; }
+/* The open place in Home's list (M69, spec 1.2 and the mockups): the accent's tint with its readable words, no stripe of
+   light, no glow. Settings' own list keeps its plain grey row. */
+:root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"] { background: var(--acc-tint); color: var(--acc-text); box-shadow: none; }
+:root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--acc-text); }
 :root[data-style="instrument"] .home[data-side] .side .sb-item[aria-current="page"]::after { display: none; }
 :root[data-style="instrument"] .home[data-side] .side .sb-item:not([aria-current="page"]):hover { background: color-mix(in srgb, var(--surface-2) 60%, transparent); }
 /* The review's row has its drawing alone, with no chip behind it like no other row; its waiting dot is a solid fill with

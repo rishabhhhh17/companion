@@ -68,7 +68,7 @@ describe("(4) cards that say nothing take no room", () => {
     expect(recapWorthACard({ lines: ["You have not run a task in this project yet.", "Nothing is unfinished."] })).toBe(false);
     expect(recapShownLines(["You were working on: Fix it. It finished.", "Nothing is unfinished."])).toEqual(["You were working on: Fix it. It finished."]);
     expect(recapWorthACard({ lines: ["Nothing is unfinished."], next: { action: "open" } })).toBe(true);
-    expect(card).toContain("recapShownLines(m.recap.lines).map(");
+    expect(card).toContain("const ls = recapShownLines(m.recap.lines);");   // M69: the first as the headline, the rest as rows
     expect(card).toContain('show("about") && aboutCard && m.about && (');
   });
 });

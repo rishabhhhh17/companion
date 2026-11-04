@@ -17,14 +17,18 @@ export function autoCheckDue(o: { configured: boolean; enabled: boolean; lastMs:
 }
 
 export function updateLine(s: UpdateState, current: string, configured: boolean): string {
-  if (!configured) return `Version ${current}. Updates are not set up in this build yet.`;
+  // M69 (spec 3.9): never "Version ." when the shell has not said its version yet. Every word is in strings.ts.
+  const w = S.updateWords, v = current.trim() ? w.version(current.trim()) : "";
+  const and = (t: string) => (v ? `${v} ${t}` : t);
+  // M69 step 3: said so the switch under it reads right: it is the daily check that starts once updates are set up.
+  if (!configured) return and(w.notSetUp);
   switch (s.stage) {
-    case "checking": return "Looking for a new version…";
-    case "none": return `Version ${current}. You have the newest version.`;
-    case "found": return `Version ${s.version} is ready. You have ${current}.`;
-    case "installing": return `Downloading and installing. ${PRODUCT} will restart in a moment.`;
+    case "checking": return w.checking;
+    case "none": return and(w.newest);
+    case "found": return w.found(s.version, current);
+    case "installing": return w.installing;
     case "failed": return s.reason;
-    default: return `Version ${current}.`;
+    default: return v;
   }
 }
 
@@ -39,7 +43,7 @@ export function afterInstallFailed(prev: UpdateState | null, reason: string): { 
 export const canInstall = (working: boolean) => !working;
 
 import { waitsForAnswer, type Model } from "./model.ts";
-import { PRODUCT } from "./strings.ts";
+import { S } from "./strings.ts";
 
 type Busy = { character?: string; task?: unknown; receipt?: unknown; agents?: unknown; plan?: unknown; paused?: unknown; agentsAsk?: unknown; drive?: unknown; stuck?: unknown; approvals?: unknown[]; install?: { stage?: string } | null; practice?: { stage?: string } | null; shipFlow?: { stage?: string } | null; diagram?: { stage?: string } | null; point?: { stage?: string } | null };
 

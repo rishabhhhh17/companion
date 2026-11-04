@@ -17,6 +17,7 @@ import "./style.css";
 import "./ui/chrome.css";
 import "./ui/homeShape.css";
 import "./ui/notch.css";
+import "./ui/fix.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
 // notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
@@ -232,6 +233,9 @@ function Island() {
   const showWork = useSetting("island.showWork") !== false;
   const peekKey = showWork ? resultPeekKey(islandJobs(m)) : "";
   const [resultPeek, setResultPeek] = useState(false);
+  // M69: Keep on the mini receipt folds the panel back at once and keeps that result out of it (islandPanel.ts panelView).
+  const [kept, setKept] = useState<string | null>(null);
+  const keep = (key: string) => { setKept(key); setResultPeek(false); };
   useEffect(() => {
     if (!peekKey) { setResultPeek(false); return; }
     setResultPeek(true);
@@ -360,7 +364,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloOn && !shape.hover ? hello : null} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloOn && !shape.hover ? hello : null} kept={kept} onKeep={keep} />
       </span>
     </main>
   );

@@ -175,8 +175,10 @@ describe("feature 5: the instant key warning", () => {
     t.change({ "src/pay.ts": `export const a = 1;\nconst stripe = "${KEY}";\n` });
     await t.until(() => t.of("review.batch").length >= 1);
     const b = t.of("review.batch").at(-1)!;
-    expect(b.keys).toEqual([{ file: "src/pay.ts", line: 2 }]);
+    // M69: with its lines around it for the pointed line, the key masked to its known prefix (excerpt.ts), never its text.
+    expect(b.keys).toEqual([{ file: "src/pay.ts", line: 2, lines: [{ n: 1, text: "export const a = 1;" }, { n: 2, text: `const stripe = "${KEY.slice(0, 8)}\u2026";` }, { n: 3, text: "" }] }]);
     expect(JSON.stringify(t.events)).not.toContain(KEY);
+    expect(JSON.stringify(t.events)).not.toContain(KEY.slice(8, 16));
     // Only the key rule: no model asked, no checks run, no review started.
     expect(t.asked).toEqual([]);
     expect(t.checks()).toBe(0);

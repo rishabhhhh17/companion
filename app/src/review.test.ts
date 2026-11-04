@@ -162,6 +162,19 @@ describe("what the person does on the card", () => {
     expect(run([{ type: "ui.reviewFixSent", batch: "rv_4f2a9c01de" }], r)!.fix).toBe("sent");
     expect(run([{ type: "ui.reviewFixSent", batch: "rv_other0000" }], r)!.fix).toBe("confirm");
   });
+  test("M69 step 3: Fix it on a key warning runs the review first, then asks the same Fix it question (never fixes unasked)", () => {
+    const B = "rv_4f2a9c01de";
+    const warned = run([batch({ keys: [{ file: "src/pay.ts", line: 12 }] }), { type: "ui.reviewAsked", batch: B, fixAfter: true }])!;
+    expect(warned.asked).toBe(true);
+    expect(warned.fix).toBeNull();
+    const started = run([{ type: "review.started", project: P, batch: B, proof: true }], warned)!;
+    expect(run([ok()], started)!.fix).toBe("confirm");
+    // A plain Review asked never jumps to the question, and a review with nothing to fix does not either.
+    expect(run([batch(), { type: "ui.reviewAsked", batch: B }, ok()])!.fix).toBeNull();
+    expect(run([ok({ rating: "safe", reasons: [] })], started)!.fix).toBeNull();
+    // Stop everything lets go of it.
+    expect(run([{ type: "app.stop_everything" }, ok()], started)!.fix).toBeNull();
+  });
   test("once Fix it's task starts, the task's own card takes over; a refusal says why on the review card", () => {
     const sent = run([batch(), ok(), { type: "ui.reviewFixAsked", batch: "rv_4f2a9c01de" }, { type: "ui.reviewFixSent", batch: "rv_4f2a9c01de" }])!;
     expect(run([{ type: "agent.state", agent: "builder-1", state: "thinking" }], sent)).toBeNull();
@@ -378,8 +391,9 @@ describe("M57: the notes, how strict, and Don't flag this kind here again", () =
 describe("the review card's words and presses (M65 step 4, the critics)", () => {
   const view = readFileSync(new URL("./reviewCard.tsx", import.meta.url), "utf8");
   test("Copy for my AI shows a copy drawing, never an arrow that reads as send", () => {
-    expect(view).toContain('<Icon name="copy" size={14} />{S.review.sendBack}');
-    expect(view).not.toContain('<Icon name="send" size={14} />{S.review.sendBack}');
+    expect(view).toContain('<Icon name="copy" size={14} />{label}');
+    expect(view).toContain('label = S.review.sendBack');
+    expect(view).not.toContain('<Icon name="send"');
   });
   test("on a stop, closing the card is Keep it anyway, a quiet text button, never an equal Looks fine", () => {
     expect(view).toContain("res?.rating === \"stop\" ? S.review.keepAnyway : S.review.looksFine");

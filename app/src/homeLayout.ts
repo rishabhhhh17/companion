@@ -8,6 +8,7 @@ import type { HistoryItem } from "./model.ts";
 import { taskName } from "./itemLook.ts";
 import type { Tab } from "./home.ts";
 import type { TextSize } from "./textsize.ts";
+import { S } from "./strings.ts";
 
 export type Layout = "wide" | "tall";
 export const LAYOUT_DEFAULT: Layout = "wide";
@@ -67,3 +68,28 @@ export function useMoreBelow(root: RefObject<HTMLElement | null>): void {
 export function seaFills(o: { side: boolean; tab: Tab; mode: string; cardsUnder: boolean }): boolean {
   return o.side && o.tab === "now" && o.mode === "rest" && !o.cardsUnder;
 }
+
+// ---------- M69, the system: one layout grammar (the YC benchmark spec 3) ----------
+// Every look and both layouts: the top bar carries the project's status dot and name, one line of context and the Fix it
+// key on the right; the ask box is pinned at the bottom of the work; Settings is the last place. The context line holds
+// what the footer line said before (Checked 2 min ago · Undo is ready), then the project's kind when the folder itself says
+// it (project.report origin), then the folder.
+
+/** The folder as a person reads it: their home folder as ~. */
+export const shortPath = (project: string): string => project.replace(/^\/Users\/[^/]+(?=\/|$)/, "~");
+
+/** The top bar's one line of context, its parts in the order they show (the line is cut at its end, so the status leads):
+ *  the footer's words, the project's kind only when it was found in this folder (never a guess, never who changed what,
+ *  M57), and the folder. Nothing without a project. */
+export function barContext(o: { project: string; foot: { start: string; end: string } | null; about?: { project: string; origin: string } | null; tall?: boolean }): string[] {
+  if (!o.project) return [];
+  const kind = o.about && o.about.project === o.project ? S.look.origin[o.about.origin] : undefined;
+  // The tall Home has room for one thing before the key: the kind when the folder says it, else the folder (never the
+  // check's time, which the hero or the card says).
+  const where = o.tall ? [kind ?? shortPath(o.project)] : [kind, shortPath(o.project)];
+  return (o.tall ? where : [o.foot?.start, o.foot?.end, ...where]).filter((x): x is string => !!x);
+}
+
+/** The key the top bar shows on its right: Fix it's, the one F28 key for being stuck, only while it is bound. No other key
+ *  is ever named there, and none is added (the founder's four keys stay the only ones). */
+export const barKeyChord = (keys: { using: Record<string, string | null> }): string | null => keys.using.problem ?? null;

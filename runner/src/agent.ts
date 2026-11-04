@@ -661,7 +661,7 @@ export class AgentRunner {
   }
   private state(agent: string, state: string) { this.agentStates.set(agent, state); this.emit({ type: "agent.state", agent, state } as never); }
   // Each rung of a check as it runs. A rung skipped only for want of the hidden browser says so, so the card can offer it.
-  private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}), ...(u.summary ? { summary: u.summary } : {}), ...(u.problem ? { problem: u.problem } : {}) } as never); }
+  private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}), ...(u.summary ? { summary: u.summary } : {}), ...(u.problem ? { problem: u.problem } : {}), ...(u.runs ? { runs: u.runs } : {}) } as never); }
   /** Something runs for this agent: a task or a plan's step, a check, an answer the loop card waits for, a paused plan. */
   private runsFor(agent: string): boolean {
     return this.sessions.has(agent) || this.driving.has(agent) || this.choices.has(agent) || this.resumers.has(agent) || [...this.finding.values()].some((f) => f.agent === agent);
@@ -1367,7 +1367,7 @@ export class AgentRunner {
         if (keep > 0) { saved = join(pics.saveDir, receiptPictureName(cmd.project, beforeId)); writeFileSync(saved, Buffer.from(pic.jpeg, "base64"), { mode: 0o600 }); }
         pruneOldest(pics.saveDir, Math.max(0, keep));
       } catch { saved = ""; }
-      this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
+      this.emit({ type: "receipt.visual", agent: cmd.agent, project: cmd.project, checkpoint: beforeId, made: true, image: pic.jpeg, ...("shot" in b && b.shot.jpeg ? { before: b.shot.jpeg } : {}), caption, circles: pic.regions.length, ...(saved ? { file: saved } : {}) } as never);
     } catch { none(); }   // a missing picture never spoils a finished task
     finally { this.picturing.delete(ac); }
   }

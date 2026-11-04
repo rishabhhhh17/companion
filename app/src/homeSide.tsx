@@ -25,17 +25,19 @@ type Props = {
   onPick: (t: Tab) => void; onSettings: () => void; onOpen: (item: HistoryItem) => void;
   /** M52: the review card when Home shows it (review.ts reviewShown), first in the recent work; its press opens Now there. */
   review?: ReviewCard | null; onReview?: () => void;
+  /** M69 step 2: how many things wait on a place (the review card's findings on Now), drawn as a small count. */
+  counts?: Partial<Record<SidePlace, number>>;
 };
 
 /** A place that is a group's own room shows that group's gem in place of a drawing (the brand language). */
 const PLACE_GEM: Partial<Record<SidePlace, ElementId>> = { now: "flow", learn: "guide" };
 
-export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview }: Props) {
+export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts }: Props) {
   return (
     <nav className="side" aria-label={S.look.placesLabel}>
       <ul className="side-list">
         {places.map((t) => (
-          <li key={t} data-gem={PLACE_GEM[t] ? "" : undefined} data-element={PLACE_GEM[t]}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} onClick={() => onPick(t)} /></li>
+          <li key={t} data-gem={PLACE_GEM[t] ? "" : undefined} data-element={PLACE_GEM[t]}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} count={counts?.[t]} onClick={() => onPick(t)} /></li>
         ))}
       </ul>
       {/* Changes waiting for a review sit under their own heading, above the recent work (the audit, item 11). */}

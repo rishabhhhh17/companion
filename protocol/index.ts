@@ -226,7 +226,10 @@ export const REVIEW_CHECKS = ["passed", "failed", "unknown", "not_run"] as const
 export type ReviewChecks = (typeof REVIEW_CHECKS)[number];
 export const REVIEW_LANES = ["cheap", "strong", "none"] as const;
 export type ReviewFile = { file: string; kind: "added" | "modified" | "deleted" };
-export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number };
+/** M69: the pointed line with the lines either side of it, masked by the engine (runner/src/review/excerpt.ts): a key keeps
+ *  only its known prefix and "…", never any of its secret part. At most three lines. */
+export type CodeLine = { n: number; text: string };
+export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string; line?: number; lines?: CodeLine[] };
 export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
 /** M57 feature 1: how the card was closed, for its row in History. looksFine: Looks fine. sentBack: Copy for my AI was
  *  pressed on this card before it was closed. Absent: closed with no review (Skip this one). */
@@ -325,7 +328,8 @@ export type Problem =
   | { kind: "message"; message: string; from: string };
 // needs: "browser" means this step was skipped only because the hidden browser is not installed, so the page can offer it.
 // summary: a failed step's one plain sentence; the detail (the check's own output) is shown behind Details.
-export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser"; summary?: string };
+// runs (M69): the commands the rung ran and their exit codes, for the receipt's proof ticks; absent from older engines.
+export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser"; summary?: string; runs?: { command: string; exit: number }[] };
 // note: one plain line about a check that could not run (the Vercel tool missing or signed out), with what to do.
 // A problem with from "deploy" is the line the last Vercel deploy failed at, confirmed in this folder.
 export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser"; note?: string };
@@ -360,7 +364,8 @@ export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_
 export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
-export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; caption: string; circles: number; file?: string };
+// before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
+export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; before?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
 // scripts, checks, proofFile and launchFile: what the Settings rows for checking this project need (its own script names,
 // the checks it has, and its own .claude/proof.json and .claude/launch.json, which win over Settings).
@@ -445,7 +450,7 @@ export const REVIEW_AWAY = ["closed", "notWatching"] as const;
 /** M57 feature 5, the instant key warning (review.keyWarning): only the key rule ran, on this Mac with no model, on the
  *  lines the batch added. Where each key is (file and line, at most 10), never its text. Absent when the setting is off or
  *  nothing like a key was added. */
-export type ReviewKeyPlace = { file: string; line: number };
+export type ReviewKeyPlace = { file: string; line: number; lines?: CodeLine[] };
 export type ReviewBatchEvent = Envelope & { type: "review.batch"; project: string; batch: string; files: ReviewFile[]; count: number; capped: boolean; secretFiles: string[]; auto: boolean; away?: (typeof REVIEW_AWAY)[number]; keys?: ReviewKeyPlace[] };
 export type ReviewStarted = Envelope & { type: "review.started"; project: string; batch: string; proof: boolean };
 /** M57 feature 4: when a newer batch was reviewed, the rules looked again at an earlier review's reasons that were still
@@ -545,10 +550,15 @@ const fileInProject = (k: string): Check => (m) => {
     ? null : `"${k}" must be a path from the project folder down`;
 };
 const isReviewFile = (f: unknown): boolean => { const o = f as Record<string, unknown> | null; return !!o && typeof o === "object" && !Array.isArray(o) && typeof o.file === "string" && o.file.length > 0 && FILE_KINDS.includes(o.kind as string); };
+// M69: the pointed line's excerpt, at most three lines, each a line number from 1 and its masked text (at most 200 characters).
+const codeLinesOk = (x: unknown): boolean => x === undefined || (Array.isArray(x) && x.length >= 1 && x.length <= 3 && x.every((l) => {
+  const o = l as Record<string, unknown> | null;
+  return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((n) => n === "n" || n === "text") && Number.isInteger(o.n) && (o.n as number) >= 1 && typeof o.text === "string" && Array.from(o.text as string).length <= 200;
+}));
 const isReviewReason = (r: unknown): boolean => {
   const o = r as Record<string, unknown> | null;
   return !!o && typeof o === "object" && !Array.isArray(o) && (REVIEW_REASONS as readonly string[]).includes(o.kind as string) && typeof o.say === "string" && o.say.length > 0
-    && (o.file === undefined || (typeof o.file === "string" && o.file.length > 0)) && (o.line === undefined || (Number.isInteger(o.line) && (o.line as number) >= 1));
+    && (o.file === undefined || (typeof o.file === "string" && o.file.length > 0)) && (o.line === undefined || (Number.isInteger(o.line) && (o.line as number) >= 1)) && codeLinesOk(o.lines);
 };
 const filesListOk = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every(isReviewFile) ? null : `"${k}" must be a list of files, each with file and kind`);
 const textList = (k: string): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).every((x) => typeof x === "string") ? null : `"${k}" must be a list of text`);
@@ -557,8 +567,8 @@ const keyPlacesOk: Check = (m) => {
   const k = m.keys;
   return Array.isArray(k) && k.length >= 1 && k.length <= 10 && k.every((x) => {
     const o = x as Record<string, unknown> | null;
-    return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((n) => n === "file" || n === "line") && fileInProject("file")(o) === null && Number.isInteger(o.line) && (o.line as number) >= 1;
-  }) ? null : '"keys" must be 1 to 10 places, each a file and a line, nothing else';
+    return !!o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).every((n) => n === "file" || n === "line" || n === "lines") && fileInProject("file")(o) === null && Number.isInteger(o.line) && (o.line as number) >= 1 && codeLinesOk(o.lines);
+  }) ? null : '"keys" must be 1 to 10 places, each a file and a line, and at most the masked lines around it';
 };
 // M57 feature 1: the review rows History shows. Names of files only (no text field of any kind besides the summary).
 const reviewRowsOk: Check = (m) => {
@@ -710,7 +720,7 @@ const EVENTS: Record<string, Check[]> = {
   "project.install": [str("project"), oneOf("stage", ["installing", "done", "failed", "cancelled"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\"")],
   "project.cloned": [str("url"), bool("ok"), str("detail")],
   "ship.card": [str("project"), str("url"), str("title"), str("image"), bool("withShot")],
-  "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), num("circles")],
+  "receipt.visual": [str("agent"), str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || (typeof m.image === "string" && m.image.length > 0) ? null : "a made picture needs \"image\""), opt("before", (m) => (typeof m.before === "string" && m.before.length > 0 ? null : '"before" must be a picture')), num("circles")],
   "problem.found": [str("project"), str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), needsOk, opt("note", str("note"))],
   "explain.ready": [str("agent"), str("checkpoint"), list("bullets"), num("usdEstimate"), opt("step", stepOk)],
   "teach.ready": [str("project"), str("checkpoint"), bool("made"), (m) => (m.made !== true || isPlace(m.target) ? null : "a made turn needs a \"target\" place")],

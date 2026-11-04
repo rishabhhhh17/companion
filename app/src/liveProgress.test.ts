@@ -95,9 +95,8 @@ describe("what the live part of the work card shows at each step", () => {
     expect(card).toMatch(/<JobLive view=\{live\} \/>/);
     // The review, 3 Nov 2026: "Changing signup.js" sat right over the list row "signup.js". While a list shows, the line
     // under way is left out, except a new try, which only that line says.
-    expect(card).toMatch(/\(live\.kind === "none" \|\| js\.retry\) && <p className="job-now"><Said \{\.\.\.jobNowSays\(jobNowWords\(m, js\.retry, lines\)\)\} \/><\/p>/);
-    // Every step's state is drawn from jobStep, the four of them done once the result is proven.
-    expect(card).toMatch(/data-state=\{i < js\.step \? "done" : i === js\.step \? "now" : undefined\}/);
+    // M69: the files sit under the change's own row of the run list; a new try is said on that row (runList.ts).
+    expect(card).toContain('under={live.kind === "files" ? <JobLive view={live} /> : null}');
   });
   test("each check row says its state in words for VoiceOver, with a mark that holds still while it runs", () => {
     expect(live).toMatch(/S\.stepRunning/);

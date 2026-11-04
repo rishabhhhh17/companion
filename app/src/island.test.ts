@@ -566,7 +566,7 @@ describe("the bare notch (M46)", () => {
   });
   test("at rest the notch says nothing; on hover the panel shows one live thing, never a greeting or a launcher (F28)", () => {
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project) });");
+    expect(panel).toContain("const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project), kept });");
     for (const gone of ["greeting(", "S.panel.go", "ip-pill", "PANEL_DO.find", "PANEL_DO.ship", "PANEL_DO.settings"]) expect(panel, gone).not.toContain(gone);
     // Opened by itself (brief), only a question or a result: never the line or Add your key.
     expect(panel).toContain('{brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}');

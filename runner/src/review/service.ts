@@ -32,6 +32,7 @@ import { limitReached } from "../spending.ts";
 import { diffForExplain, hideSecretRuns, taskHunks, teachable, type Hunk } from "../teach.ts";
 import { NO_PROJECT } from "../walk.ts";
 import { ChangeBatcher, ignoredPath, type WatchFn } from "./batcher.ts";
+import { excerpt } from "./excerpt.ts";
 import { applyStrictness, houseRuleReasons, keysInPage, lineHash, MIGRATION, openDataItems, recheckFiles, recheckHolds, ruleFilesOf, type Recheck, type RuleFile } from "./look.ts";
 import { importersOf, MAX_BATCH_FILES, needsStrongModel, rate, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
 import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
@@ -518,7 +519,11 @@ export class ReviewService {
     const [before, after] = [await store.readFiles(from, (x) => names.has(x)), await store.readFiles(to, (x) => names.has(x))];
     const added: AddedLine[] = [];
     for (const h of taskHunks(readable, before, after)) h.after.forEach((text, i) => added.push({ file: h.file, line: h.afterAt + i, text }));
-    return secretsInCode(added).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line).slice(0, KEY_PLACES).map((x) => ({ file: x.file, line: x.line }));
+    // M69: the first place carries its three lines, masked (excerpt.ts: a key keeps only its prefix), for the pointed line.
+    return secretsInCode(added).sort((x, y) => x.file.localeCompare(y.file) || x.line - y.line).slice(0, KEY_PLACES).map((x, i) => {
+      const lines = i === 0 ? excerpt(after[x.file] ?? "", x.line) : undefined;
+      return lines ? { file: x.file, line: x.line, lines } : { file: x.file, line: x.line };
+    });
   }
 
   /** M57 feature 6, for Where was I: what the review says about this project now. waiting: files changed and not reviewed
@@ -781,7 +786,7 @@ export class ReviewService {
       if (gen !== this.gen || abort.signal.aborted) throw new Error("stopped");
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
-        reasons: shown.reasons, files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
+        reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
         ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}),
       });
@@ -801,4 +806,14 @@ export class ReviewService {
       if (this.reviewing?.batch === b.id) this.reviewing = null;
     }
   }
+}
+
+/** M69: the first three reasons that name a line in a file the review read carry that line and the lines either side of
+ *  it, masked (excerpt.ts). A settings or key file is never read (teach.ts teachable), so it never has lines. */
+export function withLines<R extends { file?: string; line?: number }>(reasons: R[], files: Record<string, string>): (R & { lines?: { n: number; text: string }[] })[] {
+  return reasons.map((r, i) => {
+    if (i >= 3 || !r.file || !r.line || typeof files[r.file] !== "string") return r;
+    const lines = excerpt(files[r.file], r.line);
+    return lines ? { ...r, lines } : r;
+  });
 }

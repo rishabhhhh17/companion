@@ -122,7 +122,7 @@ describe("the chrome does not read a skin", () => {
     // not allowed, and a sidebar page that needs attention. In Settings (the spec, 3.10): the Plan card's mark when the Pro key
     // is not active (it needs you).
     const uses = css.split("\n").filter((l) => /var\(--amber(-line)?\)/.test(l) && !/^--|^:root|^@media/.test(l.trim()) && !l.trim().startsWith("/*"));
-    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|data-tone="partly"|data-tone="mixed"|data-tone="ask"|data-kind="notAllowed"|\.sb-dot|\.ui-status\[data-tone="needs"\]|\.plan-line\[data-mark="amber"\]|@keyframes (glow|pose-glow)|--amber-line: var\(--amber\)/);
+    for (const l of uses) expect(l, l).toMatch(/needsYou|\.tabdot|\.panel\.amber|data-tone="partly"|data-tone="mixed"|data-tone="ask"|data-kind="notAllowed"|\.sb-dot|\.sb-count|\.ui-status\[data-tone="needs"\]|\.plan-line\[data-mark="amber"\]|@keyframes (glow|pose-glow)|--amber-line: var\(--amber\)|\.rv-lead\[data-tone="look"\]|\.code-point\[data-tone="look"\]/);
   });
   test("the main button is flat silver: one fill, one edge of light, no band (the founder, 31 Oct: no random middle line)", () => {
     const parts = PARTS_CSS(), tokens = TOKENS_CSS();

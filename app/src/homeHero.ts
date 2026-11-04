@@ -3,12 +3,13 @@
 // how the project is, the one main button that status picks, the working card's four steps, which quiet buttons the top
 // bar has, and when Undo and Stop show. Plain code, tested in homeHero.test.ts; card.tsx only draws what this decides. Fun
 // comes from the motion, the size and the character, never from the words (rule 16).
-import { activityNow, canFollowUp, canRetry, receiptUndone, cardWorking, type About, characterWords, costWords, formatUsd, historyFacts, isFixing, receiptVerdict, type HistoryItem, type LiveFile, type Model, type ProofLine } from "./model.ts";
+import { activityNow, canFollowUp, canRetry, receiptUndone, cardWorking, type About, characterWords, historyFacts, isFixing, receiptVerdict, type HistoryItem, type LiveFile, type Model, type ProofLine } from "./model.ts";
 import { verdictOf, type Tone, type Verdict } from "./verdict.ts";
 import { need, type Need, type Tab } from "./home.ts";
 import { S } from "./strings.ts";
 import { pointFixRoute, practiceOf } from "./practice.ts";
 import { canFix, fixedSince, keyWarned, type ReviewCard } from "./review.ts";
+import { approvalWords } from "./approvals.ts";
 import type { Ring } from "./characters.ts";
 
 /** The quiet buttons with words in the top bar, in order: Learn (only until the first practice is done, or while it has
@@ -25,10 +26,7 @@ export const placeAfter = (open: Tab, pressed: Tab): Tab => (pressed === open ? 
 /** What the top of Home says: the job in big words and one short line under it. `tone` names the state for the page.
  *  detail: after a result, the verdict's own sentence (M45), drawn muted under the line. */
 export type HeroTone = "idle" | "working" | "needsYou" | "done" | "notDone" | "partly" | "plain";
-/** `count`: the line is workingLine(count), so the page can count the cost up to it (M55, smoothMotion.ts CountUp). */
-export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string; count?: number; /** Friendly's words where they differ (ReviewLead) */ friendly?: { headline: string; line: string } };
-/** The working line with what the job has cost so far ("About 12 cents so far"). */
-export const workingLine = (usd: number): string => S.look.working(formatUsd(usd));
+export type Hero = { headline: string; line: string; detail?: string; tone: HeroTone; say?: string; /** Friendly's words where they differ (ReviewLead) */ friendly?: { headline: string; line: string } };
 
 /** The verdict's tone as the page's (M45, mapped here once, never in a surface): only a proven fix is "done" (green). */
 const HERO_TONE: Record<Tone, HeroTone> = { good: "done", bad: "notDone", mixed: "partly", plain: "plain", ask: "needsYou" };
@@ -42,14 +40,16 @@ const folderLine = (project: string): string => {
 
 export function heroWords(m: Model, project: string, n: Need | null = need(m)): Hero {
   // A question waits for the person: it is the job now, and it is drawn just below.
-  if (n?.question) return { headline: n.why, line: S.look.below, tone: "needsYou" };
+  // M69 step 3: an approval's own question is the page's one title ("Squibby needs your OK to add a tool."); its card under
+  // it gives the why and the two answers, so the page asks once.
+  if (n?.question) { const a = m.approvals[0]; return a ? { headline: approvalWords(a, project).question, line: "", tone: "needsYou" } : { headline: n.why, line: S.look.below, tone: "needsYou" }; }
   // Return was just pressed and the engine has not answered yet (the audit, item 27): the words, and that it is starting.
   if (m.sending && !cardWorking(m)) return { headline: title(m.sending.words), line: S.look.starting, tone: "working" };
   if (cardWorking(m)) {
     // The job's name as an order, first letter capital ("Fix the signup button", the overhaul spec 4.2).
     const label = title(m.task?.label || characterWords(m));
     const now = activityNow(m, 1)[0]?.words;
-    if (m.task && m.task.costUsd > 0) return { headline: label, line: workingLine(m.task.costUsd), tone: "working", count: m.task.costUsd };
+    // M69 (F29): Squibby pays, so the line never counts what the job costs.
     return { headline: label, line: m.task ? S.look.workingFree : now ?? characterWords(m), tone: "working" };
   }
   // A practice open in this folder (its card is on Learn): the one next step in words, and Flowflow says the practice's own
@@ -71,11 +71,11 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
   // An answer from Look it up or Rescue: its name, and that it is just below.
   if (m.research) return { headline: m.research.title, line: S.look.answerBelow, tone: "done" };
   if (m.rescue) return { headline: S.rescueTitle, line: S.look.answerBelow, tone: "done" };
-  // A result: the verdict in big words, then what was asked and what it cost, then the verdict's own sentence (M45).
+  // A result: the verdict in big words, then what was asked (never its cost, F29), then the verdict's own sentence (M45).
   if (m.receipt && m.task) {
     const v = receiptVerdict(m)!;
     const what = title(m.task.label || characterWords(m));
-    return { headline: v.headline, line: S.look.doneLine(what, costWords(m.receipt.usdEstimate)), ...(v.line ? { detail: v.line } : {}), tone: HERO_TONE[v.tone] };
+    return { headline: v.headline, line: what, ...(v.line ? { detail: v.line } : {}), tone: HERO_TONE[v.tone] };
   }
   return { headline: S.look.idleHeadline, line: folderLine(project), tone: "idle" };
 }
@@ -126,7 +126,7 @@ export const stopCan = (m: Model): boolean => cardWorking(m);
  *  card), and Learn has the practice's own (Stop the fix, Stop the checks) while it fixes or checks, so there is one Stop,
  *  in the card (M51 review, 1 Nov). */
 export const barStopCan = (m: Model, tab: Tab): boolean =>
-  stopCan(m) && tab !== "now" && !(tab === "learn" && ["fixing", "proving"].includes(m.practice?.stage ?? ""));
+  stopCan(m) && (tab !== "now" || !!need(m)?.question) && !(tab === "learn" && ["fixing", "proving"].includes(m.practice?.stage ?? ""));
 
 // ---- the recent fixes ----
 
@@ -454,8 +454,8 @@ export function jobNowSays(words: string): { text: string; friendly?: string } {
 export type HeroStatus = keyof typeof S.ui.status;
 const RESULT_STATUS: Record<HeroTone, HeroStatus> = { done: "proven", notDone: "stop", partly: "notChecked", plain: "notChecked", needsYou: "needs", working: "working", idle: "notChecked" };
 const REST_STATUS: Record<StatusKind, HeroStatus | null> = { works: "proven", failing: "stop", changed: "notChecked", unchecked: "notChecked", noProject: null };
-export function heroStatusOf(mode: HomeMode, status: Pick<HomeStatus, "kind">, tone: HeroTone, reviewStop = false): HeroStatus | null {
-  if (mode === "working") return "working";
+export function heroStatusOf(mode: HomeMode, status: Pick<HomeStatus, "kind">, tone: HeroTone, reviewStop = false, blocker: Blocker | null = null): HeroStatus | null {
+  if (mode === "working" || (mode === "blocked" && blocker === "claudeGetting")) return "working";
   // Changes rated stop, or a key in the code (M65 step 4): red, as the card's own mark is, never amber.
   if (mode === "review" && reviewStop) return "fixFirst";
   if (mode === "question" || mode === "needs" || mode === "review" || mode === "blocked") return "needs";

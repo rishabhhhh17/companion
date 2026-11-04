@@ -30,9 +30,10 @@ describe("proof you can see under a receipt", () => {
     const odd = proofChips(withProof([line("newrung", "failed")]));
     expect(odd[0].word).toBe(S.ui.failedStep("the newrung step"));
   });
-  test("the island panel draws the same chips, so it says the same words", () => {
-    const island = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(island).toContain("<ProofChips m={m} />");
+  test("the receipt's ticks and the notch say a check in these same words (M69: ticks, runList.ts proofTicks)", async () => {
+    const { proofTicks } = await import("./runList.ts");
+    const m = withProof([line("tests", "passed"), line("browser", "failed")]);
+    expect(proofTicks(m).map((t) => t.words)).toEqual(proofChips(m).map((c) => c.word));
   });
   test("a check that was skipped or never finished is never shown as proof", () => {
     expect(proofChips(withProof([line("tests", "skipped"), line("browser", "running")]))).toEqual([]);
@@ -53,12 +54,12 @@ describe("proof you can see under a receipt", () => {
   });
   test("the receipt shows them, each with an icon as well as its colour", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    expect(card).toContain("<ProofChips m={m} />");
-    const view = readFileSync(new URL("./proofChipsView.tsx", import.meta.url), "utf8");
-    // Each is the Proof chip part: a tick for a pass, a cross for a fail (ui/parts.tsx CHIP_ICON), in their colours.
-    expect(view).toContain('<ProofChip kind={c.ok ? "pass" : "fail"} label={c.word} />');
-    const parts = readFileSync(new URL("./ui/parts.tsx", import.meta.url), "utf8");
-    expect(parts).toContain('const CHIP_ICON: Partial<Record<ChipKind, IconName>> = { pass: "tick", fail: "cross"');
+    expect(card).toContain("<ProofTicks ticks={proofTicks(m)}");
+    // M69: each is a tick row (runListView.tsx ProofTicks): a tick for a pass, a cross for a fail, in their colours, and the
+    // result said in words for VoiceOver too.
+    const view = readFileSync(new URL("./runListView.tsx", import.meta.url), "utf8");
+    expect(view).toContain('<RowMark state={t.state === "ok" ? "done" : t.state === "bad" ? "failed" : "unfinished"} />');
+    expect(view).toContain('{t.state === "ok" && <span className="sr">: {S.stepPassed}</span>}{t.state === "bad" && <span className="sr">: {S.stepFailed}</span>}');
   });
 });
 

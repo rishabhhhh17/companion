@@ -38,6 +38,8 @@ describe("About names the build (must fix 6)", () => {
     expect(S.setRows.version("0.1.0", "unknown")).toBe("Version 0.1.0");
     expect(S.setRows.version("")).toBe("");
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");
-    expect(src).toContain("S.setRows.version(info.version, info.commit)");
+    // M69 step 3: About's head names it with its version ("Squibby 0.9.2"), the build and the channel under it.
+    expect(src).toContain("{info.version ? `${S.product} ${info.version}` : S.product}");
+    expect(src).toContain("S.setRows.build(info.commit)");
   });
 });

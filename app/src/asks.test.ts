@@ -176,15 +176,15 @@ describe("Claude out of reach", () => {
 // own /login), and Try again only where it can help.
 describe("a failed request is said in plain words", () => {
   const reason = (kind: string, raw: string, ask = false) => `engine error: claude_stopped:${kind}${ask ? " (ask again)" : ""}: Claude stopped (${raw})`;
-  test("a refused key: check it in Settings; no /login, no Try again", () => {
+  test("the engine refused to start: on our side, wait and try again; never a key, a sign in or /login (F29)", () => {
     const w = plainError(reason("authentication_failed", "Invalid API key · Please run /login"));
-    expect(w).toMatch(/Settings/);
-    expect(w).not.toMatch(/\/login|Try again|Something went wrong|Invalid API key/);
+    expect(w).toMatch(/on our side/);
+    expect(w).not.toMatch(/\/login|key|sign in|Settings|Something went wrong|Invalid API key/);
   });
-  test("no credit: add some in the Anthropic Console; no Try again", () => {
+  test("no credit: paused on our side, never sent to the Anthropic Console (F29)", () => {
     const w = plainError(reason("billing_error", "Credit balance is too low"));
-    expect(w).toMatch(/console\.anthropic\.com/);
-    expect(w).not.toMatch(/Try again|Credit balance/);
+    expect(w).toMatch(/on our side/);
+    expect(w).not.toMatch(/console\.anthropic\.com|Credit balance|credit/);
   });
   test("too many requests: wait a minute, then Try again, or ask again where there is none", () => {
     expect(plainError(reason("rate_limit", "API Error: Request rejected (429)"))).toMatch(/Wait a minute, then press Try again\./);

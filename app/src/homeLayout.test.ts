@@ -77,7 +77,9 @@ describe("Home draws the wide layout", () => {
   test("the places are in the list, not twice: the top row has none while the list shows, and Now's recent fixes are not drawn twice", () => {
     expect(card).toContain("const places = side ? [] : barPlaces(");
     expect(card).toContain('{!side && home.tab === "settings" && <button className="back"');
-    expect(card).toContain('{home.tab === "now" && show("ask") && mode === "rest" && !side && <RecentList ');
+    // M69 step 2: at rest the Last fix and Since then cards take the recent list's place, once per layout.
+    expect(card).toContain('{!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}');
+    expect(card).toContain('{side && show("ask") && restBlock()}');
   });
   test("each place keeps its old id (focus.ts goes back to it), says which is open, and shows a waiting dot with words", () => {
     // Now has no id of its own, as before, so the keyboard goes back to the ask box on Now (card.tsx placeEl).

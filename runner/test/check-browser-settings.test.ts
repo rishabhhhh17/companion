@@ -102,7 +102,7 @@ describe("a picture at phone size", () => {
     const after = await browserCheck(`${s.url}b`, { shot: true, clickButtons: false, viewport: phone });
     const pic = await drawReceipt(before.shot!, after.shot!);
     expect(pic.regions.length).toBeGreaterThan(0);
-    // Where the orange ring is in the picture, found in the hidden browser.
+    // Where the green ring (M69, #1F9D55) is in the picture, found in the hidden browser.
     const b = await chromium.launch({ headless: true, executablePath: browserExecutable()! });
     try {
       const p = await b.newPage();
@@ -111,7 +111,7 @@ describe("a picture at phone size", () => {
         const c = document.createElement("canvas"); c.width = i.width; c.height = i.height; const g = c.getContext("2d")!; g.drawImage(i, 0, 0);
         const d = g.getImageData(0, 0, c.width, c.height).data;
         let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1;
-        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const k = (y * c.width + x) * 4; if (d[k] > 200 && d[k + 1] > 110 && d[k + 1] < 190 && d[k + 2] < 110) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } }
+        for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) { const k = (y * c.width + x) * 4; if (d[k] < 90 && d[k + 1] > 120 && d[k + 1] < 200 && d[k + 2] > 40 && d[k + 2] < 130 && d[k + 1] - d[k] > 70) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); } }
         return { w: c.width, h: c.height, x0, y0, x1, y1 };
       }, pic.jpeg);
       expect([box.w, box.h]).toEqual([390, 844]);

@@ -409,6 +409,11 @@ const STATUS_TONE: Record<StatusKind, string> = { needs: "needs", proven: "prove
 export function StatusLine({ kind }: { kind: StatusKind }) {
   return <p className="ui-status" data-tone={STATUS_TONE[kind]}><span className="ui-status-dot" aria-hidden="true" />{S.ui.status[kind]}</p>;
 }
+/** M69: the same status as a dot alone, before the project's name in the top bar (the YC benchmark spec 3). A picture
+ *  only: the status tag on the page says it in words. */
+export function StatusDot({ kind }: { kind: StatusKind }) {
+  return <span className="ui-dot" data-tone={STATUS_TONE[kind]} aria-hidden="true" />;
+}
 
 /** The faceless glass orb (the Instrument character): the water's glass from orbArt.ts with a thin ring whose colour says
  *  the state (characters.ts ringOf). It is a picture only: the status line beside it says the state in words. */
@@ -537,11 +542,12 @@ export function FootLine({ start, end, className }: { start?: ReactNode; end?: R
 // ---------- Settings' frame ----------
 
 /** A page in Settings' sidebar: a drawing and its name; the open page is a filled row (no stripe, no coloured dot). */
-export function SidebarItem({ icon, label, selected, attention, onClick, id }: { icon: IconName; label: string; selected: boolean; attention?: boolean; onClick: () => void; id?: string }) {
+export function SidebarItem({ icon, label, selected, attention, onClick, id, count }: { icon: IconName; label: string; selected: boolean; attention?: boolean; onClick: () => void; id?: string; count?: number }) {
   return (
     <button id={id} type="button" className="sb-item" aria-current={selected ? "page" : undefined} onClick={onClick}>
       <Icon name={icon} size={16} /><span className="sb-label">{label}</span>
-      {attention ? <span className="sb-dot" role="img" aria-label={S.ui.needsAttention} /> : null}
+      {/* M69 step 2: a count of what waits there (amber, count only), said in words for VoiceOver. */}
+      {count && count > 0 ? <span className="sb-count" role="img" aria-label={S.homeNow.nowCount(count)}>{count}</span> : attention ? <span className="sb-dot" role="img" aria-label={S.ui.needsAttention} /> : null}
     </button>
   );
 }

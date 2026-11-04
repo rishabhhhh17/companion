@@ -52,3 +52,37 @@ export function historyUndo(items: HistoryItem[], h: HistoryItem, undone: string
   if (!newest || newest.id !== h.id) return "older";
   return undone !== null && undone === h.checkpoint ? null : "undo";
 }
+
+/** M69 (spec 3.6): the list grouped by the day each task ended (or started, while it runs), newest day first, in the order
+ *  the tasks came. "Today", "Yesterday", then the short date ("Mon 2 Nov", with the year when it is not this year), all in
+ *  the Mac's own time zone. A task with no readable time goes under "Earlier", last. */
+export type HistoryDay<T> = { key: string; label: string; items: T[] };
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+export function historyDays<T extends Pick<HistoryItem, "startedAt" | "endedAt">>(items: readonly T[], now: number, words: { today: string; yesterday: string; earlier: string }): HistoryDay<T>[] {
+  const today = new Date(now), yest = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  const out: HistoryDay<T>[] = [];
+  let earlier: HistoryDay<T> | null = null;
+  for (const h of items) {
+    const t = Date.parse(h.endedAt ?? h.startedAt ?? "");
+    if (!Number.isFinite(t)) { (earlier ??= { key: "earlier", label: words.earlier, items: [] }).items.push(h); continue; }
+    const d = new Date(t), key = dayKey(d);
+    let g = out.find((x) => x.key === key);
+    if (!g) {
+      const label = key === dayKey(today) ? words.today : key === dayKey(yest) ? words.yesterday
+        : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", ...(d.getFullYear() !== today.getFullYear() ? { year: "numeric" } : {}) }).replace(/,/g, "");
+      g = { key, label, items: [] };
+      out.push(g);
+    }
+    g.items.push(h);
+  }
+  if (earlier) out.push(earlier);
+  return out;
+}
+
+/** The time of day a task ended (or started, while it runs), for the right end of its row: "2:14 pm". Null when unknown. */
+export function historyTime(h: Pick<HistoryItem, "startedAt" | "endedAt">, _now?: number): string | null {
+  const t = Date.parse(h.endedAt ?? h.startedAt ?? "");
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t), hr = d.getHours(), min = String(d.getMinutes()).padStart(2, "0");
+  return `${hr % 12 === 0 ? 12 : hr % 12}:${min} ${hr < 12 ? "am" : "pm"}`;
+}

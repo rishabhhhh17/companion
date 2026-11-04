@@ -189,7 +189,9 @@ describe("Home draws it, and starts nothing by itself", () => {
     expect(panel).not.toMatch(/setInterval|setTimeout|useEffect/);
   });
   test("Where was I is asked for only when Home opens after the break chosen in Settings, never on a timer", () => {
-    expect(card.match(/whereWasI\(/g)!.length).toBe(1);
+    // M69 step 2: and on the person's own press of Where was I? beside the hero at rest (an onClick, never a timer).
+    expect(card.match(/whereWasI\(/g)!.length).toBe(2);
+    expect(card).toContain("onClick={() => void sendQuiet(whereWasI(project))}");
     const at = card.indexOf('const off = listen("opened"');
     expect(card.slice(at, card.indexOf("}, []);", at))).toContain("recapDue(last, Date.now())");
     expect(card).not.toMatch(/setInterval\([^)]*whereWasI/);

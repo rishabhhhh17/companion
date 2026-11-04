@@ -1,0 +1,91 @@
+/* M69, the system: one layout grammar for every look and both layouts (docs/design/2026-11-04-yc-benchmark/design-spec.md
+   section 3, with the corrections in docs/milestones/M69-full-fledged.md). Loaded last on Home's page.
+   - The top bar: the project's status dot and name, one line of context (when it was checked, Undo is ready, its kind
+     when the folder says so, the folder), and the Fix it key on the right.
+   - The ask box pinned at the bottom of the work, tall and wide: the words, then a row with the project's token, up to
+     three example chips, the microphone and the round send. A floating card, one soft shadow (spec 1.6).
+   - More ways to ask opens downward inside the ask box's own column and pushes the work up; it never lies over the ask
+     box or the hero (spec 3.15). Jobs on top, this request's options under a divider.
+   - The hero's two tone headline at the display size (spec 1.1).
+   No rule reads a look attribute (data-style, data-theme): Friendly and Instrument get the same grammar, and only the
+   tokens differ (ui/tokens.css, system.test.ts). No colour and no size of its own: every value is a token. */
+
+/* ---------- The top bar ---------- */
+.home .bar { column-gap: var(--space-2); }
+.home .bar > .ui-dot { margin-inline-start: var(--hair); }
+.home .bar-meta { display: -webkit-box; flex: 1 1 0; min-width: 0; margin: 0; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; overflow-wrap: anywhere; color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.home .bar-key { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.home .bar-key .ui-key { min-width: var(--h-pill); min-height: var(--h-pill); padding: 0 var(--space-1); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); color: var(--fg-2); background: var(--surface-1); box-shadow: var(--btn-key); }
+/* The tall Home: Close sits at the top right of the bar (style.css .places .close), so the first row keeps clear of it. */
+.home:not([data-side]) .bar > .bar-key { margin-inline-end: calc(var(--h-sm) + var(--space-1)); }
+/* The wide Home: the bar's places are only Stop and Close, so the context line takes the room up to the key. */
+.home[data-side] .bar > .bar-key { order: 0; }
+
+/* ---------- The ask box, pinned at the bottom of the work ---------- */
+/* The tall Home's work is a column like the wide one's, as tall as Home, so the ask box waits at its foot and stays in
+   view while the work scrolls under it. Only once the work has its ask box (never in the first run or in Settings). */
+.home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) { display: flex; flex-direction: column; min-width: 0; min-height: calc(100vh - var(--space-3) - var(--space-5) - var(--hair)); }
+.home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) > * { flex: none; }
+.home:not([data-side]):not([data-view="settings"]) .work > .askwrap { order: 1; position: sticky; bottom: 0; z-index: 3; margin-top: auto; margin-bottom: 0; padding: var(--space-2) 0 var(--space-1); background: var(--bg); }
+.home[data-side] .work > .askwrap { margin-top: auto; }
+/* The box: a floating card (level 1), the words on top and the row of tokens and chips under a hairline. */
+.home .askwrap .ask { flex-wrap: wrap; align-items: center; row-gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); border-radius: var(--r-ask); background: var(--surface-1); box-shadow: var(--ask-shadow-float); }
+.home .askwrap .ask > textarea { flex: 1 1 calc(100% - var(--icon-md) - var(--space-4)); min-width: 0; font-size: var(--t-answer); line-height: var(--lh-answer); }
+.home .askwrap .ask > .ask-mark { margin-left: 0; }
+.home .ask-row { display: flex; flex: 1 0 100%; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; padding-top: var(--space-2); border-top: var(--hair) solid var(--line); }
+.home .ask-token, .home .ask-chip { display: inline-flex; align-items: center; gap: var(--pill-gap); min-height: var(--h-chip-ask); box-sizing: border-box; padding: 0 var(--space-3); border-radius: var(--r-pill); font: var(--t-small) / var(--lh-small) var(--font); text-align: start; }
+.home .ask-token { max-width: 40%; overflow-wrap: anywhere; background: var(--acc-tint); color: var(--acc-text); font-weight: var(--w-strong); }
+.home .ask-token-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--acc); }
+.home .ask-chip { margin: 0; border: var(--hair) solid var(--line-strong); background: var(--surface-1); color: var(--fg-2); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.home .ask-chip:hover { background: var(--surface-2); color: var(--fg); }
+.home .ask-chip:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.home .ask-chip:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); }
+.home .ask-row > .ask-mic { margin-inline-start: auto; border-radius: var(--r-pill); }
+.home .ask-row > .send { width: var(--h-send); min-height: var(--h-send); border-radius: var(--r-pill); background: var(--main); color: var(--main-ink); }
+.home .ask-row > .ask-mic + .send { margin-inline-start: 0; }
+.home .ask-row > .send:first-child, .home .ask-row > :not(.ask-mic) + .send { margin-inline-start: auto; }
+.home .ask-row > .send:hover:not(:disabled) { background: var(--main-hover); color: var(--main-ink); }
+.home .ask-row > .send:disabled { background: var(--fill-disabled); color: var(--ink-disabled); }
+.home[data-talking] .ask-row > .ask-mic { color: var(--ring-working); }
+
+/* ---------- More ways to ask: downward, in the ask box's column, never over anything ---------- */
+.home .askwrap details.more { position: static; margin: var(--space-1) 0 0; }
+.home .askwrap details.more > .more-pop { position: static; max-height: 34vh; overflow: auto; overscroll-behavior: contain; margin-top: var(--space-1); padding: var(--space-3); box-sizing: border-box; background: var(--surface-1); border: var(--hair) solid var(--line); border-radius: var(--r-card); box-shadow: none; animation: ui-menu-in var(--dur-1) var(--ease-out) both; transform-origin: top center; }
+.home .askwrap details.more > .more-pop .more-ways { margin-top: 0; }
+.home .more-rule { height: 0; margin: var(--space-2) 0; border: 0; border-top: var(--hair) solid var(--line); }
+
+/* ---------- The hero's two tone headline (spec 1.1): the outcome, then the why in the softer tone, same size ---------- */
+.home .hero .status-head .ui-verdict-words, .home .hero .hero-words > h1.headline { font-size: var(--t-hero-now); line-height: var(--lh-hero-now); font-weight: var(--w-hero); letter-spacing: var(--track-hero-now); }
+.home .hero .status-head > .status-sub, .home .hero .hero-words > h1 + .subline { color: var(--hero-soft); font-size: var(--t-hero-now); line-height: var(--lh-hero-now); font-weight: var(--w-hero); letter-spacing: var(--track-hero-now); margin-top: 0; }
+.home .hero-words > .ui-status { margin-bottom: var(--space-2); }
+.home .hero .hero-main { margin-top: var(--space-4); }
+.home { --t-hero-now: var(--t-hero); --lh-hero-now: var(--lh-hero); --track-hero-now: var(--track-hero); }
+.home:not([data-side]) { --t-hero-now: var(--t-hero-sm); --lh-hero-now: var(--lh-hero-sm); --track-hero-now: var(--track-hero-sm); }
+/* A hero folded for a card that needs a tap keeps the page's own headline size (homeHero.ts heroCompact). */
+.home[data-side] .hero[data-compact] { --t-hero-now: var(--t-display); --lh-hero-now: var(--lh-display); --track-hero-now: var(--track-display); }
+
+/* ---------- The side list (wide): a faint step of its own, the open place in the accent's tint ---------- */
+.home[data-side] .side { background: var(--side-bg); }
+.home[data-side] .side .sb-item[aria-current="page"] { background: var(--acc-tint); color: var(--acc-text); box-shadow: none; }
+.home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--acc-text); }
+.home[data-side] .side .sb-item[aria-current="page"]::after { display: none; }
+
+/* ---------- The same grammar in both looks (M69 correction 6) ----------
+   Friendly showed fewer of these parts before (ui/home.css reads Instrument only tokens); the grammar is one now: the
+   status tag over the headline in every look, the footer's words only in the top bar, no invitation line between the ask
+   box and More ways, and no mark before the headline (the tag says it in words). Flowflow's bubble is the character's own,
+   so it stays with Friendly. */
+.home .hero-words > .ui-status { display: inline-flex; }
+.home .askwrap .ask-hint { display: none; }
+.home .status-head[data-foot-says] .status-sub { display: none; }
+.home .hero .status-head .ui-verdict-mark { display: none; }
+.home .status-head:has(.ui-verdict:not([data-bare])) .status-sub { padding-left: 0; }
+.home .bar .ui-keys { gap: var(--hair); }
+/* The tall Home's bar is narrow: the key shows as its caps alone (VoiceOver and the tooltip still say what it does). */
+.home:not([data-side]) .bar-key-word { display: none; }
+.home[data-layout="tall"] .askwrap .ask > textarea { min-height: 0; }
+/* The headline keeps room for two lines while a job runs, so nothing jumps when its words change (ui/homeFlow.css, M66);
+   at the display size the spare line goes under the words, never as a gap between the status tag and them. */
+.home .hero:not([data-compact])[data-mode] .headline { align-content: start; }
+/* In the tall Home, work that scrolls under the pinned ask box fades into the page above it, never a hard cut. */
+.home:not([data-side]):not([data-view="settings"]) .work > .askwrap::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--fade); background: linear-gradient(180deg, transparent, var(--bg)); pointer-events: none; }

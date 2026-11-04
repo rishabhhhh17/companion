@@ -79,7 +79,8 @@ function colour(v0: string, t: Record<string, string>): RGBA {
 }
 const over = (top: RGBA, under: RGBA): RGBA => [0, 1, 2].map((k) => top[k] * top[3] + under[k] * (1 - top[3])).concat(1) as RGBA;
 const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// M69: words drawn in an ink with opacity (Instrument's one ink, spec 1.2) are measured as they show, over what is under them.
+const ratio = (a0: RGBA, b: RGBA) => { const a = a0[3] < 1 && b[3] === 1 ? over(a0, b) : a0; const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
 describe("the choices are real settings, with their words and one place in Settings", () => {
   test("each is in the registry with a safe usual value, live, for the pages", () => {

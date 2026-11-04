@@ -29,14 +29,12 @@ describe("which links get an Open button", () => {
 });
 
 describe("a link opens only when the person presses its button", () => {
-  test("Home asks the Mac side to open a link in exactly two places, each a button's click", () => {
+  test("Home asks the Mac side to open a link in one place, a button's click (M69: the first run has no key page)", () => {
     const dir = new URL(".", import.meta.url).pathname;
     const pages = readdirSync(dir).filter((f) => /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts"));
     const uses = pages.flatMap((f) => readFileSync(join(dir, f), "utf8").split("\n").filter((l) => l.includes('"open_link"')).map((l) => ({ f, l })));
-    expect(uses.map((u) => u.f).sort()).toEqual(["card.tsx", "onboarding.tsx"]);
+    expect(uses.map((u) => u.f).sort()).toEqual(["card.tsx"]);
     for (const u of uses) expect(u.l).toMatch(/onClick=\{\(\) => [^}]*invoke\("open_link"/);
-    // The first run's Get a key opens Anthropic's own page, a fixed address, never one from a reply.
-    expect(uses.find((u) => u.f === "onboarding.tsx")!.l).toContain('invoke("open_link", { url: KEY_PAGE })');
   });
 });
 

@@ -78,6 +78,10 @@
    full right down to the ask box. */
 .home[data-side] .work > .askwrap::before { content: ""; position: absolute; z-index: -1; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); bottom: 100%; height: calc(var(--fade) * 2); background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--band) 40%, transparent) 35%, color-mix(in srgb, var(--band) 80%, transparent) 62%, var(--band) 85%); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
 .home[data-side][data-more] .work > .askwrap::before { opacity: 1; }
+/* M69 step 3: Friendly too: nothing fades over the work above the ask box (a fade hid a card's Undo and its proof), so no
+   button ever sits under one; a hairline marks where the work goes under it, as in Instrument (ui/chrome.css). */
+.home[data-side] .work > .askwrap::before { display: none; }
+.home[data-side][data-more] .work > .askwrap::after { border-top: var(--hair) solid var(--line); }
 .home[data-side][data-more] .work > .askwrap::after { -webkit-mask-image: none; mask-image: none; }
 /* At rest the band's own top edge is soft (a mask, the band's colour unchanged), so where the room above it is a touch
    lighter (a taller ask box while a file is over Home) there is no line, only the floor deepening. With work scrolling
@@ -128,6 +132,8 @@
 .home[data-side] .hero[data-compact] { padding-bottom: var(--space-2); }
 .home[data-side] .hero[data-compact] .hero-words { padding-right: 0; margin-bottom: 0; }
 .home[data-side] .hero[data-compact] .headline, .home[data-side] .hero[data-compact] .status-head { font-size: var(--t-answer); }
+/* M69 step 3: the outcome over a result is said at the same size as every other state ("Sign up button fixed."). */
+.home[data-side] .hero[data-compact] .hero-words > h1.headline.rest-head, .home[data-side] .hero[data-compact] .hero-words > h1.rest-head + .subline { font-size: var(--t-hero); line-height: var(--lh-hero); letter-spacing: var(--track-hero); }
 .home[data-side] .hero[data-compact] .subline { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; overflow: clip; }
 /* Under a result just in, the folded hero keeps a smaller Flowflow in its water beside the status (the review, 2 Nov 2026:
    the proven moment had no Flowflow in the wide Home), at the tall Home's size, with just the height it needs, so Undo and
@@ -136,8 +142,5 @@
 .home[data-side] .hero[data-compact][data-mode="result"], .home[data-side] .hero[data-compact][data-mode="review"] { --char: calc(136rem / 14); grid-template-columns: minmax(0, 1fr) var(--char); min-height: calc(var(--char) * 111 / 156 + var(--space-6)); padding-bottom: var(--space-5); margin-bottom: var(--space-2); }
 .home[data-side] .hero[data-compact][data-mode="result"] .home-pond, .home[data-side] .hero[data-compact][data-mode="review"] .home-pond { display: block; }
 .home[data-side] .hero[data-compact][data-mode="result"] .hero-words, .home[data-side] .hero[data-compact][data-mode="review"] .hero-words { padding-right: calc(var(--char) * .72); margin-bottom: calc(var(--line-up) + var(--space-3)); }
-/* More ways in the wide Home (the audit, item 40): a popover above the line that opens it, over the work, so opening it
-   never pushes the ask box up or covers Flowflow by moving the page. */
-.home[data-side] details.more { position: relative; }
-.home[data-side] details.more > .more-pop { position: absolute; bottom: 100%; left: 0; right: 0; z-index: 8; box-sizing: border-box; padding: var(--space-3); background: var(--surface-2); border: var(--hair) solid var(--line-strong); border-radius: var(--r-card); box-shadow: var(--shadow-raised); max-height: 60vh; overflow: auto; overscroll-behavior: contain; transform-origin: bottom center; animation: ui-menu-in var(--dur-1) var(--ease-out) both; }
-.home[data-side] details.more > .more-pop .more-ways { margin-top: 0; }
+/* More ways to ask: in both layouts it opens downward in the ask box's own column (ui/system.css, M69, spec 3.15). The
+   popover over the ask box it was here (the audit, item 40) is gone: it covered the work above it. */

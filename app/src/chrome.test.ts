@@ -165,10 +165,11 @@ describe("Home in Instrument, after the critics", () => {
     expect(tokens).toMatch(/:root\[data-style="instrument"\]\[data-theme="paper"\] \.home\[data-element\] \{[^}]*--el-shadow: rgba\(0, 0, 0, \.08\)/);
   });
   test("the ask box is a quiet field: a neutral edge at rest and in focus, no accent frame and no glow (Home focuses it on every open)", () => {
-    // M65 step 6: a control's edge at rest (3 to 1 on the page and the field, measured in lookChoices.test.ts).
-    expect(decl(`${IS} .home .askwrap .ask`)).toMatchObject({ "border-color": "var(--ask-edge)", "box-shadow": "none" });
+    // M65 step 6: a control's edge at rest (3 to 1 on the page and the field, measured in lookChoices.test.ts). M69 (spec
+    // 1.6): pinned at the bottom it floats, with one soft neutral shadow, the same at rest and in focus: never a glow.
+    expect(decl(`${IS} .home .askwrap .ask`)).toMatchObject({ "border-color": "var(--ask-edge)", "box-shadow": "var(--ask-shadow-float)" });
     expect(decl(`${IS} .home .askwrap .ask:hover`)).toMatchObject({ "border-color": "var(--ask-hover-edge)" });
-    expect(decl(`${IS} .home .askwrap .ask:focus-within`)).toMatchObject({ "border-color": "var(--ask-focus-edge)", "box-shadow": "none" });
+    expect(decl(`${IS} .home .askwrap .ask:focus-within`)).toMatchObject({ "border-color": "var(--ask-focus-edge)", "box-shadow": "var(--ask-shadow-float)" });
   });
   test("a screen's title is one size: the folded hero keeps the 17 point headline", () => {
     expect(decl(`${IS} .home[data-side] .hero[data-compact] .headline`)).toMatchObject({ "font-size": "var(--t-display)", "line-height": "var(--lh-display)" });
@@ -186,8 +187,9 @@ describe("Home in Instrument, after the critics", () => {
     expect(decl(`${IS} .home .panel.receipt > .changes ~ *`).order).toBe("2");
     expect(decl(`${IS} .home[data-side] .work > .askwrap::before`).display).toBe("none");
   });
-  test("both side lists mark the open place the same way: a plain grey row, no stripe, no glow", () => {
-    expect(decl(`${IS} .home[data-side] .side .sb-item[aria-current="page"]`)).toMatchObject({ background: "var(--surface-2)", "box-shadow": "none" });
+  test("Home's list marks the open place in the accent's tint (M69, the mockups), Settings' in a plain grey row; no stripe, no glow", () => {
+    expect(decl(`${IS} .home[data-side] .side .sb-item[aria-current="page"]`)).toMatchObject({ background: "var(--acc-tint)", color: "var(--acc-text)", "box-shadow": "none" });
+    expect(decl(`${IS} .home[data-view="settings"] .settings-side .sb-item[aria-current="page"]`)).toMatchObject({ background: "var(--surface-2)", "box-shadow": "none" });
     expect(decl(`${IS} .home[data-side] .side .sb-item[aria-current="page"]::after`).display).toBe("none");
   });
   test("dividers inside a card are inset on both sides", () => {

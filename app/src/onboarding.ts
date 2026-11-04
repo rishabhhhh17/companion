@@ -15,14 +15,16 @@ import type { Verdict } from "./verdict.ts";
 // in the verdict line. Every step can be skipped and has a way back. Flowflow's choices and the optional questions (F05)
 // stay in the first run, folded on its last screen, until the founder says when they move. Permissions are asked when a
 // feature first needs one, never here. The water at the foot rises with every step (LEVEL).
-export const STEPS = ["hello", "claude", "project", "check"] as const;
+// M69 (F29, the YC benchmark spec 3.10): Squibby pays and picks the model, so there is no Your Claude step. Two counted
+// screens, Welcome and Pick a project (or the practice), then the first check, the hands on part.
+export const STEPS = ["hello", "project", "check"] as const;
 export type Step = (typeof STEPS)[number];
 /** The three screens, counted in words ("2 of 3"). The first check comes after them and is not counted. */
-export const COUNTED: readonly Step[] = ["hello", "claude", "project"];
+export const COUNTED: readonly Step[] = ["hello", "project"];
 export function countOf(step: Step): { n: number; of: number } | null { const i = COUNTED.indexOf(step); return i < 0 ? null : { n: i + 1, of: COUNTED.length }; }
 /** How high the water stands at each step, in percent of Home's height. The hello sits Flowflow in the surface; after it
  *  the water drops low, out of the way of the words, and rises with every step, Flowflow riding on it. */
-export const LEVEL: Record<Step, number> = { hello: 34, claude: 10, project: 20, check: 24 };   // Your Claude's is the lowest: it holds the most (the audit, item 38)
+export const LEVEL: Record<Step, number> = { hello: 34, project: 20, check: 24 };
 
 /** Make it yours: the name (empty keeps the character's own), how lively, and which edge it lives on. Null: not chosen here,
  *  so the setting is left as it is (the person may have moved the character already). */
@@ -68,15 +70,13 @@ export type Context = { connected: boolean; project: string; claude?: boolean };
 /// When Continue is offered: Your Claude once Claude is connected, Your project once a folder is chosen. Every step can
 /// still be skipped (skipTo), so nothing is a dead end.
 export function canContinue(step: Step, c: Context): boolean {
-  if (step === "claude") return c.connected;
   if (step === "project") return c.project.length > 0;
   return true;
 }
 /** Where Skip goes: on to the next screen, or out of the first run ("done") where the next step needs what was skipped
  *  (the first check needs a project). Home then says what is still missing, with a button straight to it. */
 export function skipTo(step: Step): Step | "done" {
-  if (step === "hello") return "claude";
-  if (step === "claude") return "project";
+  if (step === "hello") return "project";
   return "done";
 }
 

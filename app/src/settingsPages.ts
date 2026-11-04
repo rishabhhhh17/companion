@@ -23,12 +23,15 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     icon: "person",
     groups: [
       { id: "account.plan", items: [f("plan")] },
-      { id: "account.claude", items: [f("key")] },
       { id: "account.spending", items: ["spend.dailyLimit"] },
       // M68: what to call you, only for the hello in the notch (you.name).
       { id: "account.you", items: ["you.name"] },
     ],
-    more: [{ id: "more.account.spending", items: ["budget.task", "budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] }],
+    more: [
+      { id: "more.account.spending", items: ["budget.task", "budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] },
+      // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
+      { id: "more.account.developer", items: [f("key")] },
+    ],
   },
   general: {
     icon: "sliders",
@@ -115,7 +118,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   about: {
     icon: "info",
     groups: [
-      { id: "about.updates", items: ["updates.daily", f("updates")] },
+      { id: "about.updates", items: [f("updates"), "updates.daily"] },   // M69 step 3: what is true now first, then the switch
       { id: "about.help", items: [f("replay"), f("practice"), f("made"), f("logs")] },
       { id: "about.legal", items: [f("acknowledgements")] },
     ],

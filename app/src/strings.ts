@@ -105,6 +105,33 @@ export const S = {
     // What Flowflow says over the water: one short line in sentence case (M51 polish), only at a moment that matters, never a feeling (rule 16).
     say: { working: "On it.", done: "Checked. It passes.", notDone: "That did not pass.", needsYou: "Needs a tap." },
     doneLine: (proof: string, cost: string) => `${proof} · ${cost}`,
+    // M69, the system: the top bar's context line and its key hint (the YC benchmark spec 3: one layout grammar). The
+    // project's kind only when it was found in the folder itself, never a guess about who changed what (M57).
+    origin: { lovable: "Lovable project", bolt: "Bolt project", replit: "Replit project" } as Record<string, string>,
+    barKey: { before: "Press", after: "when stuck", label: "Fix it from anywhere" },
+    // The ask box (spec 3.1): the open project as a token, and the microphone, which never opens on a click (rule 5): a
+    // press says which keys to hold.
+    askAbout: (name: string) => `Asking about ${name}`,
+    micHint: (keys: string) => `Hold ${keys} to talk. The microphone only listens while you hold them.`,
+    micLabel: "How to talk instead of typing",
+    moreJobs: "Ways to ask",
+    moreOptions: "For this request",
+  },
+  // M69: the example chips in the ask box (askChips.ts), from what is known about the open project. Short questions in the
+  // person's own words; a press puts them in the box and never sends them.
+  askChips: {
+    key: "Why is this password risky?",
+    review: "What did these changes do?",
+    error: "Explain this error",
+    found: "Fix what the check found",
+    since: "Did my last changes break it?",
+    install: "Help me set this project up",
+    watch: {
+      site_up: "Is my site live?",
+      deploy_status: "Why did my deploy fail?",
+      ci_status: "Why are my GitHub checks failing?",
+      project_checks: "Why are my checks failing?",
+    },
   },
   // Home at rest, status first (F28, the overhaul spec 4.1): how the project is, in its own name, from the last check only
   // (homeHero.ts homeStatus). Then one main button chosen by that, the ask field and the recent fixes.
@@ -138,10 +165,11 @@ export const S = {
     gettingStarted: "Getting started",
     // Nothing can run (homeHero.ts blockerOf): what stops it, and the one way out as the main button.
     blocked: {
-      key: { headline: "Add your Claude key to start", line: "Nothing can run until Claude is connected.", main: "Add your key" },
+      // M69 (F29): nobody adds a key or gets Claude. These say what is true for the person: Squibby is not ready yet.
+      key: { headline: `${PRODUCT} is getting ready on this Mac`, line: "It can't fix anything until it's connected. Try again in a moment.", main: "Try again" },
       engine: { headline: `${PRODUCT} stopped working`, line: "Restart it to carry on. Your work is kept.", main: "Restart" },
-      claude: { headline: "Claude is not on this Mac yet", line: "It is needed before anything can run.", main: "Get Claude" },
-      claudeGetting: { headline: "Getting Claude", line: "This takes a minute or two.", main: "" },
+      claude: { headline: `${PRODUCT} is missing a part on this Mac`, line: "It is needed before anything can run.", main: "Get it" },
+      claudeGetting: { headline: `${PRODUCT} is getting ready on this Mac`, line: "This takes a minute or two.", main: "" },
     } as Record<"key" | "engine" | "claude" | "claudeGetting", { headline: string; line: string; main: string }>,
     // Return with no project open (the audit, item 2): the words wait for the person to pick one of these.
     noProjectAsk: "Which project is this for?",
@@ -151,7 +179,8 @@ export const S = {
     needMain: { practiceStart: "Check my project", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
     // What a practice open in this folder says under its name on Now, one line per stage (homeHero.ts heroWords).
     practiceLine: { start: "Check my project runs its checks on your practice copy.", found: "It found the problem. Fix it next.", failed: "That did not pass. Open the practice to try again.", blocked: "It could not run. Open the practice to see why.", done: "Fixed and proven. Open the practice for what is next." },
-    ask: "Or tell me what's wrong",
+    // M69 (the YC benchmark spec 3.1): the box is pinned at the bottom of Home, its own question, no longer an "Or" after a button.
+    ask: "What are you stuck on?",
     talkKeys: "Hold these keys and talk",
     // The top bar's quiet buttons, with words.
     places: { did: "History", memory: "Memory", settings: "Settings", learn: "Learn" } as Record<"did" | "memory" | "settings" | "learn", string>,
@@ -198,14 +227,14 @@ export const S = {
       irreversible: "Do something that can't be undone?",
       git: "Change your project's Git history?",
       outside_project: "Use a file outside your project?",
-      install: "Install something?",
+      install: `${PRODUCT} needs your OK to add a tool.`,
       network: "Go online?",
       settings: "Change a settings file?",
       house_rule: "Allow this? One of your house rules asks first.",
     } as Record<string, string>,
     what: "What will happen",
     why: "Why I'm asking",
-    undoYes: "Undo can take this back.",
+    undoYes: "You can undo this.",
     undoNo: "Undo can't take this back.",
   },
   dontAllow: "Don't allow",
@@ -447,7 +476,7 @@ export const S = {
   stepStoppedRestart: `Stopped when ${PRODUCT} restarted.`,
   // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
   restartedStopped: `${PRODUCT} restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.`,
-  notConnectedNotice: "Add your Claude key to start fixing things.",
+  notConnectedNotice: `${PRODUCT} is getting ready on this Mac.`,
   addYourKey: "Add your key",
   followDone: "Fixed. Checks pass.",
   // A part of a page that could not be drawn (must fix 4): the rest of the window still works.
@@ -458,7 +487,7 @@ export const S = {
   // M28: the second level of Settings.
   // Settings' pages (the overhaul spec, 3.2; settingsPages.ts): a title and one line each. Plain words, sentence case.
   pages: {
-    account: { title: "Account", sub: `Your plan, your Claude key and what ${PRODUCT} may spend.` },
+    account: { title: "Account", sub: "Your plan, the daily limit and what to call you." },
     general: { title: "General", sub: "The notch, Home, text size and which tools are on." },
     look: { title: "Look", sub: "Home's layout, theme and colour, and the small details. Pick by looking." },
     fixing: { title: "Fixing", sub: `How ${PRODUCT} fixes and checks your project.` },
@@ -555,7 +584,7 @@ export const S = {
   } as Record<string, Record<string, string>>,
   // The Groups on each page and the topics in More options (settingsPages.ts), by their anchors.
   setGroupTitles: {
-    "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending", "account.you": "You",
+    "account.plan": "Plan and billing", "account.spending": "Spending", "account.you": "You",
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
@@ -565,6 +594,7 @@ export const S = {
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.danger": "Danger zone",
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
     "more.account.spending": "Spending per job and models",
+    "more.account.developer": "For developers: your own Claude key",
     "more.general.notch": "Notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
     "more.fixing.review": "Reviews of changes", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
@@ -573,7 +603,7 @@ export const S = {
     "more.privacy.memory": "Memory", "more.privacy.calls": "Calls and counts",
   } as Record<string, string>,
   setGroupFoot: {
-    "account.plan": "You pay Anthropic directly for Claude. We never mark up your AI.",
+    "account.plan": `${PRODUCT} pays for the AI it uses. There is nothing else to set up.`,
     "general.tools": `A tool that is off keeps its settings. ${PRODUCT} always fixes; that can't be turned off here.`,
     "fixing.rules": `${PRODUCT} always asks before it sends, pays, deletes or goes live. That can't be turned off.`,
     "keys.talking": "Your voice is turned into words on this Mac. Nothing you say is kept.",
@@ -587,7 +617,7 @@ export const S = {
     kept: { title: `What ${PRODUCT} remembers`, also: ["memory", "remember", "forget", "lines", "notes"] },
     danger: { title: "Danger zone", also: ["delete", "reset", "forget", "remove", "erase", "wipe", "everything"] },
     updates: { title: "Check for updates now", also: ["update", "version", "upgrade", "install", "release notes"] },
-    replay: { title: "Replay the first run", also: ["first run", "welcome", "tour", "again", "replay", "onboarding"] },
+    replay: { title: "Replay the welcome tour", also: ["first run", "welcome", "tour", "again", "replay", "onboarding"] },
     practice: { title: "Practice projects", also: ["practice", "sample", "try", "learn", "lesson"] },
     made: { title: `What ${PRODUCT} made`, also: ["new folder", "made", "folders", "trash", "clean up", "projects"] },
     logs: { title: "Report a problem", also: ["report", "problem", "log", "support", "bug", "help"] },
@@ -650,7 +680,7 @@ export const S = {
     openMemory: "Open memory",
     updatesNow: "Check now",
     releaseNotes: "Release notes",
-    replay: "Replay the first run",
+    replay: "Replay the welcome tour",
     replayButton: "Replay",
     // M55, adapts to you: what More ways to ask learned from your presses, and Reset (usedOften.ts).
     usedOften: "Ways you use most",
@@ -664,6 +694,9 @@ export const S = {
     acknowledgements: "Acknowledgements",
     putBack: "Put back",
     /** About: the version, and the commit it was built from when the build knows it (must fix 6). */
+    build: (commit: string) => `Build ${commit}`,
+    saveLog: "Save",
+    channel: (c: string) => `${c.charAt(0).toUpperCase()}${c.slice(1)} channel`,
     version: (v: string, commit = "") => (!v ? "" : commit && commit !== "unknown" ? `Version ${v}, build ${commit}` : `Version ${v}`),
     otherJobs: "Other jobs",
     restoreKeys: "Restore usual keys",
@@ -811,7 +844,7 @@ export const S = {
       found: "The page sends new emails to /api/signup, but the server only listens at /api/register.",
       fixed: "One word changed. Nothing else was touched.",
       proven: `${PRODUCT} never says done without proof. It ran the project's check, and it passes now.`,
-      undo: "Before it changes a file, it saves a safety copy. Undo puts those files back and leaves files you changed yourself as they are. Anything sent online can't be taken back. A fix like this costs a few cents of your own Claude.",
+      undo: "Before it changes a file, it saves a safety copy. Undo puts those files back and leaves files you changed yourself as they are. Anything sent online can't be taken back.",
     },
     stepNames: { broken: "The problem", found: "Found", fixed: "Fixed", proven: "Proven", undo: "Undo" },
     stepOf: (i: number, n: number, name: string) => `Step ${i} of ${n}: ${name}`,
@@ -872,14 +905,14 @@ export const S = {
   talkKeysOff: "Another app is already using {keys}, so hold to talk is off. Press Change to pick other keys.",
   talkKeysFellBack: "Another app is already using {picked}, so hold to talk uses {using} for now. Keep them, or press Change to pick others.",
   // Keys to remember in Settings (M11 wave 4): every job's keys, each changeable from a short list (keymap.rs).
-  keyJobs: { card: "Open Home", problem: "Check my project", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Second Look", talk: "Hold to talk", dictate: "Type by voice", stop: "Stop everything" },
+  keyJobs: { card: "Open Home", problem: "Check my project", showme: "Show me how", read: "Prompt help", accept: "Use a Prompt help suggestion", explain: "Explain an error", secondlook: "Check another AI's answer", talk: "Hold to talk", dictate: "Type by voice", stop: "Stop everything" },
   // How a chord is named: the modifiers in the Mac's order, then the key (keymap.rs MODS and KEYS use the same words).
   keyWords: { control: "Control", option: "Option", shift: "Shift", command: "Command", space: "Space", return: "Return" },
   keysSettingsHelp: "Each job has its own keys. Press Change to pick others from a short list of keys that are free on this Mac, or to pick any keys you like.",
   keysNone: "No keys right now",
   // F28: four jobs have keys by usual; the others have none until the person picks some (keymap.rs DEFAULTS).
   keysNoKeyYet: "No key yet",
-  keyHintNoKey: "{job} has no key yet. Add one in Settings, Keys and voice.",
+  keyHintNoKey: "{job} has no shortcut yet. Add one in Settings, Keys and voice.",
   keysDropped: (jobs: string) => `To keep things simple, only four jobs have keys now. These no longer do: ${jobs}. Add one any time with Add a key.`,
   keysDroppedOk: "OK",
   // F28, said once after the update (settings.ts cutNoticeLine): the side tools the person had not used now start off.
@@ -910,7 +943,7 @@ export const S = {
   keysReset: "Reset to the usual keys",
   keysResetDone: "Every job is on its usual keys.",
   keysResetKept: (jobs: string) => `These could not go back to their usual keys, because another app is using them: ${jobs}.`,
-  keyHintOff: "{job}: another app is using its keys. Pick other keys in Settings, under Keys to remember.",
+  keyHintOff: "{job}: another app is using its shortcut. Pick another in Settings, under Keys to remember.",
   itsKeys: "its keys",
   // A lesson that names the keys of a job with no keys names the job instead (keys.ts keysIn).
   keysForJob: "the keys for {job}",
@@ -1120,6 +1153,15 @@ export const S = {
   voiceGone: "That voice or microphone is no longer on this Mac. Pick another.",
   notConnected: (name: string) => `${name} (not connected)`,
   notOnThisMac: (name: string) => `${name} (no longer on this Mac)`,
+  // The line under Updates in About (updates.ts updateLine).
+  updateWords: {
+    version: (v: string) => `Version ${v}.`,
+    notSetUp: "Updates are not set up in this build yet. The daily check starts once they are.",
+    checking: "Looking for a new version…",
+    newest: "You have the newest version.",
+    found: (v: string, current: string) => `Version ${v} is ready. You have ${current}.`,
+    installing: `Downloading and installing. ${PRODUCT} will restart in a moment.`,
+  },
   updatesTitle: "Updates",
   updatesHelp: `${PRODUCT} asks one web address for the newest version. Like any web request, that address sees your internet address; nothing from your projects, words or screen is sent. An update is installed only if it matches ${PRODUCT_S} own key, only when you press Install, and never while something is running.`,
   updatesCheck: "Check for updates",
@@ -1232,7 +1274,7 @@ export const S = {
   practiceSkip: "Skip the practice",
   practiceFound: "Found it:",
   practiceFix: "Fix it",
-  practiceFixing: "Fixing it with the smallest change, then checking that it really works. This takes about a minute and costs around 20 cents on your key.",
+  practiceFixing: "Fixing it with the smallest change, then checking that it really works. This takes about a minute.",
   practiceStopFix: "Stop the fix",
   practiceStopChecks: "Stop the checks",
   practiceChecksDidNotRun: "The checks could not run just now. Nothing was changed by that.",
@@ -1402,7 +1444,7 @@ export const S = {
   yourTurnSetting: "Your turn after a fix",
   yourTurnHelp: "When a fix makes the same change in two places, offer to leave the second one for you, so you learn it by doing. It is only an offer: ignore it if you like.",
   recapTitle: "Where you left off",
-  recapSource: `From your tasks with ${PRODUCT}, your watches, changes to your project and what is waiting. Nothing is sent anywhere.`,
+  recapSource: `From your fixes with ${PRODUCT} and changes to your project. Nothing is sent anywhere.`,
   // The one next step Where was I suggests. A button; nothing starts until it is pressed.
   recapNext: { fixWatch: "Fix it", findProblem: "Point at the problem", review: "Review the changes", open: "Show me what is waiting" } as Record<string, string>,
   recapClose: "Got it",
@@ -1427,7 +1469,7 @@ export const S = {
     later: (n: number) => `More changes came in since this review (${n === 1 ? "1 file" : `${n} files`}). They show here once you close this one.`,
     autoLine: "This is reviewed by itself, with your project's own checks.",
     reviewNow: "Review changes",
-    quickLook: "Quick look, no checks",
+    quickLook: "Look without testing",
     reviewing: "Looking at the changes.",
     reviewingChecks: "Looking at the changes and running your project's checks.",
     asked: "Starting the review.",
@@ -1551,7 +1593,7 @@ export const S = {
   agentsAskEnd: `May ${PRODUCT} add one clearly marked block of project facts at the end? Nothing else is changed, and you can remove the block any time. No personal details go in it.`,
   agentsYes: "Yes, add the block",
   agentsNo: "No, leave my files alone",
-  agentsRemove: `Remove ${PRODUCT_S} block from my shared files`,
+  agentsRemove: "Stop sharing these notes with my other AI tools",
   // The shared files row in the Memory tab, for a folder made for you (M14; sharedFiles.ts, sharedFilesRow.tsx). The files are
   // only added when the person presses the button.
   sharedFiles: {
@@ -1680,12 +1722,12 @@ export const S = {
   againAsk: "ask again",
   claudeStopped: (kind: string, again: string): string => {
     switch (kind) {
-      case "authentication_failed": case "cloud_credential_error": return "Claude did not accept your key or your sign in. Check it in Settings.";
-      case "billing_error": return "Your Anthropic account has no credit left. Add some at console.anthropic.com.";
+      case "authentication_failed": case "cloud_credential_error": return `${PRODUCT}'s engine could not get in just now. This is on our side. Wait a few minutes, then ${again}.`;
+      case "billing_error": return `${PRODUCT}'s engine is paused on our side. Wait a few minutes, then ${again}.`;
       case "rate_limit": return `Too many requests reached Claude at once. Wait a minute, then ${again}.`;
-      case "oauth_org_not_allowed": case "account_on_hold": case "verification_required": return "Anthropic is not letting Claude work for your account right now. Sign in at console.anthropic.com or claude.ai to see why.";
+      case "oauth_org_not_allowed": case "account_on_hold": case "verification_required": return `${PRODUCT}'s engine is not available right now. This is on our side. Wait a few minutes, then ${again}.`;
       case "invalid_request": return "Claude could not take this request, often because it is too long. Ask for a smaller part of it, or start a new task.";
-      case "model_not_found": return "The Claude model for this is not available on your account. Choose another one in Settings.";
+      case "model_not_found": return `The model ${PRODUCT} uses for this is not available right now. Wait a few minutes, then ${again}.`;
       case "max_output_tokens": return `Claude's reply got too long and was cut off. Ask for a smaller part of it, or ${again}.`;
       default: return `Claude stopped with an error before it finished. Wait a moment, then ${again}.`;
     }
@@ -1747,7 +1789,8 @@ export const S = {
   islandOpen: `Open ${PRODUCT}`,
   // Only heard (VoiceOver), never shown: idle, the notch is the bare notch with no words on it.
   islandQuiet: "Nothing needs you right now.",
-  islandNotConnected: "Not connected yet. Click to connect Claude.",
+  // M69 (F29): Squibby pays and picks the model, so the notch never asks anyone to connect or add a key.
+  islandNotConnected: `${PRODUCT} is getting ready on this Mac.`,
   islandUpdate: (version: string) => `Version ${version} is ready. Click to install it.`,
   homeUpdateReady: (version: string) => `Version ${version} of ${PRODUCT} is ready.`,
   islandOff: `${PRODUCT} is not running. Click to see why.`,
@@ -1830,7 +1873,7 @@ export const S = {
       speak: { name: "Spoken answers", invite: "Try Say answers out loud in Settings to hear short answers." },
       promptHelp: { name: "Prompt help", invite: "Try Prompt help: press its key in another app's text box." },
       errorHelp: { name: "Explain an error", invite: "Try the error explainer: select an error and press its key." },
-      secondLook: { name: "Second Look", invite: "Try Second Look: select an answer from any AI and press its key." },
+      secondLook: { name: "Check another AI's answer", invite: "Check another AI's answer: select it in any app and press its key." },
       convert: { name: "Convert a file", invite: "Try dropping a picture or a document on the character." },
       review: { name: "Review changes", invite: "Try Review changes after another AI tool edits your project." },
     },
@@ -1967,13 +2010,13 @@ export const S = {
     "memory.recallLength": { label: "How much Claude is told from memory", help: "Short tells Claude up to 500 words with each task and 100 with Prompt help. Normal is 1500 and 300, long 3000 and 600. Longer costs more on every task.", also: ["words", "length", "context", "cost", "tokens", "money"], options: { short: "Short", normal: "Normal", long: "Long" } },
     "memory.toastSeconds": { label: "How long \"Remembered\" stays, with Undo", help: `When ${PRODUCT} keeps a new line, a note says so, with Undo. Give yourself more time to read it and press Undo.`, also: ["toast", "undo", "time", "seconds", "note", "accessibility", "voiceover"], options: { "5": "5 seconds", "10": "10 seconds", "20": "20 seconds", "60": "1 minute", untilClosed: "Until I close it" } },
     "task.offRecordByDefault": { label: "Start every task off the record", help: "The Off the record box starts ticked, and is ticked again after each Start, Plan it, Rescue or Look up. Off the record keeps nothing: no memory, no Explain, no pictures, no Your turn and no notes from Look up. The conversation is not carried on.", also: ["private", "off the record", "incognito", "nothing kept", "privacy"] },
-    "where.after": { label: "Show Where was I after a break of", help: `After a break, a few lines in Home say what you were doing, what is unfinished, and one next step. They come from your tasks with ${PRODUCT}, your watches and what is waiting. Nothing is sent anywhere, and Claude is not asked.`, also: ["recap", "where you left off", "break", "away", "summary"], options: { off: "Off", "30min": "30 minutes", "2h": "2 hours", nextDay: "The next day" } },
+    "where.after": { label: "Show Where was I after a break of", help: `After a break, a few lines in Home say what you were doing, what is unfinished, and one next step. They come from your fixes with ${PRODUCT} and changes to your project. Nothing is sent anywhere, and Claude is not asked.`, also: ["recap", "where you left off", "break", "away", "summary"], options: { off: "Off", "30min": "30 minutes", "2h": "2 hours", nextDay: "The next day" } },
     "teach.startWhereYouAre": { label: "Lessons start where you are", help: `When you start a lesson, steps your project already shows are done are passed by. For steps people often have done, such as having an account, ${PRODUCT} asks Did you already do this? first. Start over always begins at step one. Off, a new lesson always begins at step one. A lesson you pick up again after a pause always carries on where you are.`, also: ["lesson", "skip", "already done", "guided setup", "start over"] },
     "teach.yourTurn": { label: "Your turn after a fix", help: "When a fix makes the same change in two places, offer to leave the second one for you.", also: ["practice", "learn", "teach"] },
     "ph.style": { label: "Prompt help rewrites", help: "A full rewrite makes your prompt clearer and more specific. A light touch only makes what you wrote clearer and adds nothing new.", also: ["prompt", "rewrite", "improve", "style"], options: { full: "Full rewrite", light: "Light touch, clarity only" } },
     "ph.useProjectInfo": { label: "Use project info in Prompt help", help: `Prompt help can send a short description of your project folder to make a prompt more specific. It sends its name, the script and package names from package.json, its top level names, and your house rules. Nothing else from your files is sent. What ${PRODUCT} remembers follows its own setting.`, also: ["project", "context", "folder"] },
     "ph.handBack": { label: "Give the suggestion back by", help: "Pasting puts the better prompt straight into the box you were in. Copying puts it on your clipboard, for you to paste yourself.", also: ["paste", "copy", "clipboard"], options: { paste: "Pasting it in", copy: "Copying it only" } },
-    "secondLook.on": { label: "Second Look", help: `Select an answer from any AI and press its key. ${PRODUCT} redoes the maths and says what looks solid, what to check, and what it cannot tell. The answer is read only when you press the key and never kept. Each check is a small cost on your Claude. Usually off, to keep things simple at first. It also needs Prompt help on, in Keys and voice, and its keys picked there. Off, the key reads nothing.`, also: ["check", "verify", "fact check", "ai answer", "chatgpt", "hallucination", "wrong", "second look"] },
+    "secondLook.on": { label: "Check another AI's answer", help: `Select an answer from any AI and press its key. ${PRODUCT} redoes the maths and says what looks solid, what to check, and what it cannot tell. The answer is read only when you press the key and never kept. Usually off, to keep things simple at first. It also needs Prompt help on, in Keys and voice, and its keys picked there. Off, the key reads nothing.`, also: ["check", "verify", "fact check", "ai answer", "chatgpt", "hallucination", "wrong", "second look"] },
     "secondLook.searches": { label: "Web searches per Second Look", help: "How many times one check may search the web for facts, quotes and citations, and show where it found them. Each search costs about 1 cent on top of the check. Some ways of connecting to Claude cannot search; Second Look then says so. At 0, it never searches.", also: ["search", "web", "sources", "citations", "cost", "second look"] },
     "ph.appAnswers": { label: "Apps Prompt help, the error explainer and Second Look may read", help: "Each app you answered for, and what you said. Change an answer, forget one, or add the app in front to the apps never to read.", also: ["permission", "consent", "allow", "never read", "privacy"], usual: `no answers yet, so ${PRODUCT} asks in each app` },
     "pointat.editor": { label: "Open files in", help: `Where Point at the problem opens the failing file. If the editor you pick is not on this Mac, ${PRODUCT} uses another one and says so.`, also: ["editor", "cursor", "vs code", "vscode", "windsurf"], options: { editorInFront: "The editor in front", cursor: "Cursor", vscode: "VS Code", windsurf: "Windsurf", macDefault: "Your Mac's default app" } },
@@ -2511,5 +2554,210 @@ export const S = {
       missing: "That file is not there any more.",
       notAbsolute: "That file could not be found.",
     },
+  },
+  // M69 step 2, Home (the YC benchmark spec 3.1 to 3.3, corrected by F29 and M57's honest words): the two tone hero at rest,
+  // the Last fix and Since then cards, the practice offer, and the review card's head. Never who changed a file (M57).
+  homeNow: {
+    pill: { passed: "Last check passed", look: "Needs a look", failed: "A check failed", new: "Not checked yet" } as Record<"passed" | "look" | "failed" | "new", string>,
+    fine: (name: string) => `${name} checked out fine.`,
+    proven: (ago: string) => `Proven ${ago}.`,
+    changedSince: "Files changed since.",
+    filesChangedSince: (n: number) => (n === 1 ? "1 file changed since." : `${n} files changed since.`),
+    problem: (name: string) => `${name} has a problem.`,
+    failedAgo: (ago: string) => `A check failed ${ago}.`,
+    foundNow: "Its own checks found it just now.",
+    checksPass: (name: string) => `${name}'s checks pass.`,
+    checksPassLine: "Its own checks ran just now. Nothing was fixed.",
+    fresh: (name: string) => `${name} needs a fresh check.`,
+    lastProven: (ago: string) => `Last proven ${ago}.`,
+    notProven: (name: string) => `${name} is not proven yet.`,
+    lastTask: (headline: string, ago: string) => `Last task: ${headline.replace(/[.!]$/, "").toLowerCase()}, ${ago}.`,
+    newFirst: (name: string) => `${name} is not checked yet.`,
+    newSecond: "Check it once to see where it stands.",
+    noProject: "No project open.",
+    noProjectLine: "Pick a folder, or practice on a sample project.",
+    checkAgain: "Check it again",
+    works: (name: string) => `${name} works`,
+    notFixedThing: (thing: string) => `The ${thing} is not fixed yet.`,
+    // A proven fix of one thing, as its title ("Sign up button fixed"): the thing with its first letter capital.
+    fixedThing: (thing: string) => `${thing.charAt(0).toUpperCase()}${thing.slice(1)} fixed`,
+    notFixed: (name: string) => `${name} is not fixed yet.`,
+    checkFailed: "A check failed.",
+    resultPill: { proven: "Proven", failed: "Not fixed yet" } as Record<"proven" | "failed", string>,
+    before: "Before",
+    after: "After",
+    keep: "Keep",
+    whereWasI: "Where was I?",
+    // The Last fix card.
+    lastFix: "Last fix",
+    tag: { proven: "Proven", undone: "Undone", failed: "Check failed", partly: "Partly checked", unchecked: "Not checked" } as Record<"proven" | "undone" | "failed" | "partly" | "unchecked", string>,
+    files: (n: number) => (n === 0 ? "No files changed" : n === 1 ? "1 file changed" : `${n} files changed`),
+    tick: { passed: "Checks passed", partly: "Some checks passed", failed: "A check failed", none: "Not checked yet", undone: "Its changes were taken back" } as Record<"passed" | "partly" | "failed" | "none" | "undone", string>,
+    picture: "The page after the fix",
+    pictureBefore: "The page before the fix",
+    undo: "Undo",
+    open: "Open",
+    // The Since then card.
+    sinceThen: "Since then",
+    sinceFiles: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
+    sinceUnchecked: "Changed since the last check",
+    leftOff: (name: string) => `Left off: ${name}`,
+    undoneTask: (name: string) => `Undone: ${name}`,
+    notFinished: (name: string) => `Didn't finish: ${name}`,
+    sinceNothing: "Nothing new since this fix.",
+    look: "Show",
+    check: "Check",
+    // A project with no fixes yet: the practice offer in the Last fix card's place.
+    practiceTitle: "Practice on a sample project",
+    practiceLine: "It can't touch anything real. Takes about a minute.",
+    practiceStart: "Start practice",
+    noFixesTitle: "No fixes here yet",
+    noFixesLine: "Your first fix shows up here with its proof.",
+    // The review card's head (spec 3.3). Fixed sentences per kind: no model writes them, and none names a value or a tool.
+    reviewTag: { stop: "Fix this first", look: "Worth a look" } as Record<"stop" | "look", string>,
+    of: (i: number, n: number) => `${i} of ${n}`,
+    reviewHead: {
+      secret_in_code: ["A secret password is written into the code.", "Anyone who sees the code can copy it and use your account."],
+      secret_in_code_pay: ["A secret password for your payments is written into the code.", "Anyone who sees the code can copy it and spend your money."],
+      key_in_page: ["A key would reach every visitor's browser.", "Anyone who opens the site can copy it."],
+      open_table: ["A table is open to anyone.", "Anyone with your site address can read or change it."],
+      signed_in_open: ["Every account can read all rows of a table.", "Anyone who signs up could see other people's data."],
+      removed_still_used: ["A file was removed, but the code still uses it.", "The pages that use it may break when you open them."],
+      checks_failed: ["Your project's checks fail after this change.", "Something that worked before may be broken now."],
+      risky_with_failing_checks: ["A risky change came with failing checks.", "It touches an important part, and the checks don't pass."],
+      secret_file_changed: ["A settings file with keys changed.", "Make sure no key ended up where it can be seen."],
+      touches_risky: ["This change touches an important part.", "Sign in, payments or data changed. Look before you share it."],
+      files_removed: ["Files were removed.", "Make sure nothing still needs them."],
+      too_many: ["A lot changed at once.", "Big changes are harder to check. Look before you go on."],
+      model_concern: ["The review found something to check.", "Read why below before you go on."],
+      house_rule: ["A file you said never to edit was changed.", "Your house rules say to leave it alone."],
+      house_rule_ask: ["A file you wanted to be asked about was changed.", "Your house rules say to ask before editing it."],
+    } as Record<string, readonly [string, string]>,
+    pointing: `${PRODUCT} is pointing here`,
+    lineNo: (n: number) => `line ${n}`,
+    reassure: `${PRODUCT} keeps a safety copy first, then checks the fix. You can undo it.`,
+    reassureLook: "Nothing changes until you press a button.",
+    whyMatters: "Why does this matter?",
+    whyTitle: "Why it matters",
+    // What Why does this matter? says first, per kind; a kind without one says its headline's second half again.
+    whyMore: {
+      secret_in_code: "If someone copies this password, they can use your account as if they were you. Keep it in a settings file that stays on your Mac, such as .env.",
+      secret_in_code_pay: "If someone copies this, they can charge cards on your account. Keep it in a settings file that stays on your Mac, such as .env.",
+      key_in_page: "Everything sent to the browser can be read by anyone who visits. A secret has to stay on the server.",
+      open_table: "Without a rule on the table, anyone can read or change what is in it, including other people's details.",
+      removed_still_used: "A page that uses the removed file stops working when someone opens it.",
+    } as Record<string, string>,
+    // Copy for my AI on a key warning, before any review: fixed words, the place only, never the code or the value.
+    keyCopy: (places: string) => `My project has a secret password written into the code: ${places}. Move it into a settings file such as .env that is not shared, read it from there, and never print it. Then run the project's build and tests and show that they pass.`,
+    reviewAll: "Review all the changes",
+    then: "Next",
+    fineTag: "OK",
+    otherFiles: (n: number) => (n === 1 ? "1 other file changed" : `${n} other files changed`),
+    see: "Show",
+    hide: "Hide",
+    nowCount: (n: number) => (n === 1 ? "1 thing waits for you" : `${n} things wait for you`),
+    askAbout: "Ask about this change",
+    tokenLine: (file: string, line: number) => `${file} line ${line}`,
+  },
+  // M69 step 2, the pages (the YC benchmark spec 3.5 to 3.12 and section 5, corrected by F29 and M57's honest words).
+  screens: {
+    // History (spec 3.6): grouped by day, one caption on top, one quiet action per row.
+    today: "Today",
+    yesterday: "Yesterday",
+    earlier: "Earlier",
+    undoCaption: "Undo is on the newest fix that changed files, so newer work is never taken back by accident.",
+    historyEmpty: "Nothing here yet. Your first fix will show up here with its proof.",
+    startPractice: "Start practice",
+    filesChanged: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
+    askFirst: "Ask for a first fix",
+    // Memory (spec 3.7).
+    aboutProject: (name: string) => `About ${name}`,
+    aboutYou: "About you",
+    eraseProject: (name: string) => `Erase ${name} notes`,
+    eraseYou: "Erase notes about you",
+    memoryEmpty: `${PRODUCT} fills this in as you work. Every line can be forgotten.`,
+    exampleTag: "Example",
+    example: { project: { text: "Uses Supabase for sign in", source: "from package.json" }, profile: { text: "Prefers short answers", source: "you told me" } },
+    // Learn (spec 3.8).
+    lessonsNone: `Lessons appear when ${PRODUCT} spots something in your project.`,
+    pathTitle: "Your practice path",
+    pathNext: "Next",
+    pathSteps: ["Find it", "Fix it", "Prove it"],
+    // The first run (spec 3.10, corrected by F29: no key step, no cost line).
+    stepNames: { hello: "Welcome", project: "Pick a project" } as Record<"hello" | "project", string>,
+    stepChip: (n: number, name: string) => `${String(n).padStart(2, "0")} ${name}`,
+    welcomeTitle: "Stuck while building with AI? Press the key.",
+    welcomeKey: "Your Fix it shortcut",
+    promisesLabel: "What you can count on",
+    promises: ["Nothing changes without your OK", "Every change can be undone", `${PRODUCT} only looks when you press the key. Nothing is saved.`],
+    loopLabel: "A short loop of a real fix on a practice project",
+    replayTour: "Replay the welcome tour",
+    // Setup problems (spec 3.11, corrected by F29: no Get Claude, no key).
+    setupTitle: "Finish setting up",
+    setupSteps: {
+      ready: { title: "Getting ready on this Mac", line: `${PRODUCT} can't fix anything until this is done.`, done: "Ready on this Mac" },
+      project: { title: "Pick a project", line: "The folder your AI tool built. Nothing in it changes without your OK.", done: "Project picked" },
+      practice: { title: "Try the practice", line: "A small broken project to fix. It can't touch anything real. Takes about a minute.", done: "Practice tried" },
+    },
+    setupStep: (n: number, of: number) => `Step ${n} of ${of}`,
+    setupDone: "Done",
+    setupGetting: "Getting it now. This takes a minute or two.",
+    setupWhy: { key: `${PRODUCT} could not connect yet. Check your internet, then press Try again.`, claude: "A part it needs is not on this Mac yet. Press Get it to download it." } as Record<"key" | "claude", string>,
+    pickFolder: "Pick a folder",
+    // Approvals (spec 3.12).
+    approvalAdd: `${PRODUCT} needs your OK to add a tool.`,
+    showCommand: "Show the command",
+    hideCommand: "Hide the command",
+    approvalUndo: "You can undo this.",
+    // Where was I (spec 3.5).
+    whereMore: (n: number) => (n === 1 ? "1 more line" : `${n} more lines`),
+  },
+  // M69 step 2, Fix it and proof (the YC benchmark spec 3.4 and 3.13): the run list while it works, the receipt's proof
+  // ticks, the failing lead, Replay what Squibby did, and the notch's mini receipt. Every number is from the engine's own
+  // events; a check that never said how long it took says no time.
+  fixRun: {
+    label: "What it is doing",
+    counter: (n: number, of: number) => `${n} of ${of}`,
+    counterSay: (n: number, of: number, step: string) => `Step ${n} of ${of}: ${step}`,
+    workRow: "Changing the code",
+    waitRow: "Checking the work",
+    planned: { checks: "Build the code", tests: "Run the tests", browser: "Try it in a browser" } as Record<"checks" | "tests" | "browser", string>,
+    safeLine: `${PRODUCT} kept a safety copy. Undo is ready.`,
+    finding: "Finding...",
+    fixing: "Fixing...",
+    running: "Running...",
+    waiting: "Waiting",
+    done: "Done",
+    failed: "Failed",
+    unfinished: "Did not finish",
+    seconds: (s: string) => `${s} s`,
+    exit: (command: string, code: number) => `${command} · exit ${code}`,
+    ticksLabel: "What was checked",
+    checkedBrowser: (time: string) => `Checked in a browser in ${time}.`,
+    checkedTests: (time: string) => `The tests passed in ${time}.`,
+    checkedBuild: (time: string) => `It built in ${time}.`,
+    shortBrowser: (s: string) => `Checked in a browser · ${s}`,
+    shortTests: (s: string) => `Tests passed · ${s}`,
+    shortBuild: (s: string) => `Built · ${s}`,
+    secondsLong: (n: number) => (n === 1 ? "1 second" : `${n} seconds`),
+    after: "After",
+    stoppedAt: (step: string) => `It stopped at: ${step.charAt(0).toLowerCase()}${step.slice(1)}`,
+    pointing: `${PRODUCT} is pointing here`,
+    tryAgain: "Try a different fix",
+    undoThis: "Undo this change",
+    copyForAi: "Copy for my AI",
+    failCopy: { head: "My project's check failed after a fix.", step: (s: string) => `Step: ${s}.`, at: (where: string) => `Where: ${where}.`, line: (t: string) => `The line: ${t}`, ask: "Please fix the real problem, without weakening the check." },
+    replay: `Replay what ${PRODUCT} did`,
+    replayHide: "Hide the replay",
+    replayLabel: `What ${PRODUCT} did, step by step`,
+    replayMore: (n: number) => (n === 1 ? "and 1 more step" : `and ${n} more steps`),
+    replayChanged: (name: string) => `Changed ${name}`,
+    replayAdded: (name: string) => `Added ${name}`,
+    replayRemoved: (name: string) => `Removed ${name}`,
+    replayBlocked: (w: string) => `Blocked: ${w}`,
+    replayDenied: (w: string) => `Not allowed: ${w}`,
+    keep: "Keep",
+    keepLabel: "Keep this fix and close",
+    thumb: "The page after the fix",
   },
 } as const;

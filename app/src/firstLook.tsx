@@ -10,8 +10,10 @@ import { S } from "./strings.ts";
 
 const W = S.firstLook;
 
-/** `goLabel`: the last button's words (the first run's Continue; Done on Learn's tour). */
-export function FirstLook({ onGo, goLabel = W.go }: { onGo: () => void; goLabel?: string }) {
+/** `goLabel`: the last button's words (the first run's Continue; Done on Learn's tour). `loop` (M69, the welcome screen):
+ *  the run alone, beside the welcome words: no head, no last button, and it starts again by itself after its last step,
+ *  with Pause always in view (spec 4: any autoplay loop has a visible Pause). */
+export function FirstLook({ onGo, goLabel = W.go, loop = false, label }: { onGo?: () => void; goLabel?: string; loop?: boolean; label?: string }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // Where the run is: a step chosen by hand, or the time since it started playing.
@@ -30,14 +32,20 @@ export function FirstLook({ onGo, goLabel = W.go }: { onGo: () => void; goLabel?
     timer.current = setTimeout(() => setNow(performance.now()), left + 5);
     return () => { if (timer.current) clearTimeout(timer.current); };
   }, [reduced, paused, picked, done, now, startedAt]);
+  // The loop starts again one step's time after its last step (never with Reduce motion: it waits for Next step).
+  useEffect(() => {
+    if (!loop || !done || reduced || paused || picked !== null) return;
+    const t = setTimeout(() => { const n = performance.now(); setStartedAt(n); setNow(n); }, BEAT_MS);
+    return () => clearTimeout(t);
+  }, [loop, done, reduced, paused, picked]);
   const again = () => { setPicked(reduced ? "broken" : null); setPaused(false); const t = performance.now(); setStartedAt(t); setNow(t); };
   const step = () => setPicked(BEATS[Math.min(BEATS.length - 1, beatIndex(beat) + 1)]);
   const i = beatIndex(beat);
   const fixed = shown(beat, "fixed"), proven = shown(beat, "proven");
 
   return (
-    <section className="first-look" aria-label={W.tagline} data-beat={beat}>
-      <div className="fl-head">
+    <section className="first-look" aria-label={label ?? W.tagline} data-beat={beat} data-loop={loop || undefined}>
+      <div className="fl-head" hidden={loop}>
         <HomeCharacter as={BEAT_STATE[beat]} />
         <div className="fl-say" aria-live="polite">
           <p className="fl-tagline">{W.tagline}</p>
@@ -79,12 +87,12 @@ export function FirstLook({ onGo, goLabel = W.go }: { onGo: () => void; goLabel?
             aria-label={W.stepOf(n + 1, BEATS.length, W.stepNames[b])} onClick={() => setPicked(b)} />
         ))}
       </div>
-      <p className="muted fl-recorded">{W.recorded}</p>
+      <p className="muted fl-recorded">{loop ? <span aria-live="polite">{W.beats[beat]}</span> : W.recorded}</p>
       <div className="row fl-actions">
         {!done && (reduced || picked !== null) && <button className="btn" type="button" onClick={step}>{W.nextStep}</button>}
-        {!done && !reduced && picked === null && <button className="btn" type="button" onClick={() => { setPaused((p) => !p); if (paused) { const t = performance.now() - (now - startedAt); setStartedAt(t); setNow(performance.now()); } }}>{paused ? W.play : W.pause}</button>}
-        {done && <button className="btn" type="button" onClick={again}>{W.again}</button>}
-        <button className="btn primary lg fl-go" type="button" onClick={onGo}>{goLabel}</button>
+        {(!done || loop) && !reduced && picked === null && <button className="btn" type="button" onClick={() => { setPaused((p) => !p); if (paused) { const t = performance.now() - (now - startedAt); setStartedAt(t); setNow(performance.now()); } }}>{paused ? W.play : W.pause}</button>}
+        {done && (!loop || reduced || picked !== null) && <button className="btn" type="button" onClick={again}>{W.again}</button>}
+        {!loop && onGo && <button className="btn primary lg fl-go" type="button" onClick={onGo}>{goLabel}</button>}
       </div>
     </section>
   );

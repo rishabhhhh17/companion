@@ -75,9 +75,11 @@ describe("(34) a failed result: one way forward, the failure said once, no raw c
 
 describe("(32) the working card's steps are told apart by more than colour", () => {
   test("a done step has a tick and says done to VoiceOver, in full ink", () => {
-    expect(card).toContain('{i < js.step && <Icon name="tick" size={12} />}{label}{i < js.step && <span className="sr">{S.home.stepDone}</span>}');
-    expect(S.home.stepDone).toBe(", done");
-    expect(css).toMatch(/\.job-strip li\[data-state="done"\] \{ color: var\(--fg\); \}/);
+    // M69: each run row has its mark (a tick when done, a cross when failed) and its status in words, never colour alone.
+    const view = read("./runListView.tsx");
+    expect(view).toContain('<span className="run-mark" aria-hidden="true"><RowMark state={r.state} /></span>');
+    expect(view).toContain("<span className=\"run-status\">{r.status}");
+    expect(css).toMatch(/\.run-row\[data-state="done"\] \.run-mark, \.tick-row\[data-state="ok"\] \.run-mark \{ color: var\(--ok\); \}/);
   });
   test("the card and its steps have different names, and no empty box holds the Stop button's place", () => {
     expect(card).toContain('<section className="panel job" aria-label={m.task.label || S.home.jobLabel}>');
@@ -109,7 +111,7 @@ describe("(36) after Undo the receipt says what Undo did", () => {
     expect(card).toContain("{receiptSaid(m) && !undone && ");
   });
   test("the put back note is in the verdict's own line, and the card settles without a stretch", () => {
-    expect(card).toMatch(/<VerdictLine verdict=\{v\} size="card" sub=\{v\.line \|\| putBackShown \?/);
+    expect(card).toMatch(/<VerdictLine verdict=\{v\} size="card" sub=\{said \|\| putBackShown \?/);
     expect(css).toContain("@keyframes card-settle { from { opacity: .6; transform: translateY(-4px); } }");
   });
 });
@@ -252,15 +254,18 @@ describe("(37) the review card is found and heard", () => {
 });
 
 describe("(51) empty History and the landmarks", () => {
-  test("History with nothing yet has Flowflow and one way to start", () => {
-    expect(card).toContain('<div className="pr-peek" aria-hidden="true"><FlowMini state="idle" className="pr-char" /></div>');
-    expect(card).toContain("{S.historyFirstFix}");
+  test("M69 (spec 3.6): History with nothing yet has the character at rest, one sentence and Start practice", () => {
+    expect(card).toContain('<div className="page-empty-char" aria-hidden="true"><HomeCharacter as="idle" rest /></div>');
+    expect(card).toContain("{S.screens.historyEmpty}");
+    expect(card).toContain("{onPractice && <Button kind=\"primary\" onClick={onPractice}>{S.screens.startPractice}</Button>}");
+    expect(S.screens.historyEmpty).toBe("Nothing here yet. Your first fix will show up here with its proof.");
   });
   test("one Places landmark in the wide Home, a region only for a place, the heading without its line, keys and Send named", () => {
     expect(card).toContain('return side ? <div className="places">{children}</div> : <nav className="places" aria-label={S.look.placesLabel}>{children}</nav>;');
     expect(card).not.toMatch(/role="region" id=\{tabPanelId\(home\.tab\)\} aria-labelledby="home-title"/);
     expect(card).not.toContain('size="headline" sub={status.sub');
-    expect(card).toContain("<KeyLabel chord={keys.using.talk} label={S.look.talk} />");
+    // M69: the hold to talk keys are named by the microphone's tooltip and its press (nodeadbuttons.test.ts).
+    expect(card).toContain('label={S.look.micLabel} title={talkKeysLine(keys)}');
     expect(S.look.send).toBe("Send");
   });
 });
@@ -279,11 +284,10 @@ describe("(38) the first run's Your Claude step fits and has one way on", () => 
     expect(goesOnAfterTest(false, true, "works")).toBe(false);
     expect(ob).not.toContain("S.fr.keyTest");
   });
-  test("the honest lines and the key's steps share one fold with one key page button; the water is lower here", () => {
-    expect(ob).toContain('fold("how", S.fr.keyHow,');
-    expect(ob.match(/open_link", \{ url: KEY_PAGE \}/g)?.length).toBe(1);
-    expect(ob).toContain("{S.fr.keyPage}</Button>");
-    expect(LEVEL.claude).toBeLessThan(16);
+  test("M69 (F29): the first run has no key step, so no key fold and no key page button", () => {
+    expect(ob).not.toContain('fold("how", S.fr.keyHow,');
+    expect(ob).not.toContain("KEY_PAGE");
+    expect((LEVEL as Record<string, number>).claude).toBeUndefined();
   });
   test("Flowflow stays on Your Claude in the 480 tall window too, riding above Continue (the review, 2 Nov 2026: it was gone)", () => {
     expect(css).not.toContain('@media (max-height: 560px) { .fr[data-step="claude"] .fr-float { display: none; } }');
@@ -328,9 +332,14 @@ describe("(40) More ways opens over the ask box, each way with a drawing and a l
     expect(more).not.toContain('buttonShown("autoSend")');
     expect(read("./settingsPages.ts")).toMatch(/"more\.keys\.talking"[^\n]*"talk\.autoSend"/);
   });
-  test("in the wide Home it is a popover above the line that opens it", () => {
+  test("it opens downward in the ask box's column and pushes the work up, never a popover over anything (M69, spec 3.15)", () => {
     expect(more).toContain('<div className="more-pop">');
-    expect(css).toMatch(/\.home\[data-side\] details\.more > \.more-pop \{ position: absolute; bottom: 100%;[^}]*background: var\(--surface-2\); border: var\(--hair\) solid var\(--line-strong\); border-radius: var\(--r-card\);[^}]*max-height: 60vh;[^}]*animation: ui-menu-in/);
+    expect(css).not.toMatch(/details\.more > \.more-pop \{[^}]*position: absolute/);
+    const system = read("./ui/system.css");
+    expect(system).toMatch(/\.home \.askwrap details\.more > \.more-pop \{ position: static;[^}]*max-height: 34vh;[^}]*overflow: auto;/);
+    // Jobs on top, this request's options under a divider.
+    expect(more.indexOf('<hr className="more-rule" />')).toBeGreaterThan(more.indexOf('className="more-ways"'));
+    expect(more.indexOf('<hr className="more-rule" />')).toBeLessThan(more.indexOf('className="more-opt"'));
   });
 });
 
@@ -462,7 +471,7 @@ describe("(53) Learn: each practice and lesson is told apart, the first practice
     expect(panel).toContain("<ItemTile label={r.title} big kind={practiceKind(r.entry)} />");
   });
   test("the first practice, not yet started, is a featured card", () => {
-    expect(panel).toContain('r.entry.id === FIRST_PRACTICE && state === "notStarted" ? " pr-feature" : ""');
+    expect(panel).toContain('r.entry.id === FIRST_PRACTICE && state === "notStarted" && lead ? " pr-feature" : ""');
     expect(css).toMatch(/\.home \.pr-item\.pr-feature \{/);
   });
   test("each lesson's Start names its lesson, and the new lesson note is said once under the list", () => {

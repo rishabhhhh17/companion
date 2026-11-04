@@ -78,7 +78,7 @@ describe("M45: the approval card never says it can and can't at once", () => {
   });
   test("the card's colour and buttons follow the words, with Allow and Don't allow of equal weight", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const ask = card.slice(card.indexOf("m.approvals.map((a) => { const w = approvalWords(a, project)"), card.indexOf("{m.stuck && ("));
+    const ask = card.slice(card.indexOf("m.approvals.map((a, i) => { const w = approvalWords(a, project)"), card.indexOf("{m.stuck && ("));
     expect(ask).toContain('className={`line ask-undo${w.canUndo ? "" : " no"}`}');
     expect(ask).not.toContain("a.undoable");
     expect(ask).not.toContain('className="btn primary"');

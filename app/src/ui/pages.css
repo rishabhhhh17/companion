@@ -1,0 +1,101 @@
+/* M69 step 2, the pages (docs/design/2026-11-04-yc-benchmark/design-spec.md 3.5 to 3.12, with the corrections in
+   docs/milestones/M69-full-fledged.md): History, Memory, Learn, the first run's welcome, the setup list and the approval
+   card. Loaded after system.css on Home's page. Like system.css, no rule reads a look attribute (Friendly and Instrument
+   share the layout; only the tokens differ) and every colour is a token (ui/tokens.css). */
+
+/* ---------- Shared: a caption, and an empty state (the character, one sentence, one button; spec 2.4) ---------- */
+.home .page-caption { margin: 0 0 var(--space-3); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); text-wrap: pretty; }
+.home .page-empty { display: grid; justify-items: center; gap: var(--space-3); padding: var(--space-6) var(--space-4); text-align: center; }
+.home .page-empty-char { width: calc(72rem / 14); }
+.home .page-empty-char .home-char { width: 100%; margin: 0; }
+.home .page-empty-line { max-width: 34ch; margin: 0; color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); text-wrap: balance; }
+.home .page-empty .row { justify-content: center; }
+
+/* ---------- History: a readable timeline (spec 3.6) ---------- */
+.home .hist-day { display: grid; gap: var(--space-1); margin-top: var(--space-4); }
+.home .hist-day:first-of-type { margin-top: var(--space-2); }
+.home .hist-day-title { margin: 0 0 var(--space-1); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: 0; }
+.home .hist-day .hist-list { margin: 0; padding: 0; border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.home .hist-day .hist-row { padding: var(--space-3) var(--space-4); }
+.home .hist-day .hist-row + .hist-row { border-top: var(--hair) solid var(--line); }
+.home .hist-end { display: inline-flex; align-items: center; gap: var(--space-2); justify-self: end; }
+.home .hist-time { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+
+/* ---------- Memory: named sections, each line with its source (spec 3.7) ---------- */
+.home .memory .mem-title { margin: var(--space-4) 0 var(--space-2); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); }
+.home .memory > [role="group"]:first-of-type .mem-title { margin-top: 0; }
+.home .note-example { border-style: dashed; }
+.home .note-example .note-text, .home .note-example .note-src { color: var(--fg-2); }
+.home .note-tag { margin-inline-start: auto; }
+/* M69 step 3: a secondary button with the danger colour on its words, so it reads as a real action that removes things. */
+.home .mem-erase { color: var(--bad); }
+
+/* ---------- Learn: a course path (spec 3.8) ---------- */
+.home .pr-path { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; padding: 0; list-style: none; }
+.home .pr-path li { display: inline-flex; align-items: center; gap: var(--space-1); padding: 0 var(--space-3); min-height: var(--h-pill); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.home .pr-path li[data-done] { background: var(--ok-tint); color: var(--ok); }
+.home .pr-path-dot { width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: currentColor; }
+.home .pr-item.pr-next .pr-head .ui-tile { transform: scale(.86); }
+.home .pr-item.pr-next { padding-block: var(--space-2); }
+
+/* ---------- The first run's welcome (spec 3.10) ---------- */
+.home .fr-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0 0 0 auto; padding: 0; list-style: none; }
+.home .fr-chip { padding: 0 var(--space-3); min-height: var(--h-pill); display: inline-flex; align-items: center; border-radius: var(--r-pill); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.home .fr-chip[aria-current="step"] { background: var(--acc-tint); color: var(--acc-text); font-weight: var(--w-strong); }
+.home .fr-chip[data-done] { color: var(--fg-2); }
+.home .fr-welcome { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-5); align-items: start; }
+@container home (width >= 44rem) { .home .fr-welcome { grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); } }
+.home .fr[data-step="hello"] .fr-welcome .fr-title { margin-top: var(--space-4); }
+.home .fr-key-line { display: flex; align-items: center; gap: var(--space-2); margin: 0 0 var(--space-4); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.home .fr-promises { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+.home .fr-promises li { display: flex; align-items: flex-start; gap: var(--space-2); color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); }
+.home .fr-tick { flex: none; display: grid; place-items: center; width: var(--h-pill); height: var(--h-pill); margin-top: var(--hair); border-radius: var(--r-round); background: var(--ok-tint); color: var(--ok); }
+.home .fr-welcome-loop { min-width: 0; padding: var(--space-3); border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.home .fr-welcome-loop .first-look { gap: var(--space-2); }
+.home .fr-welcome-loop .fl-stage { grid-template-columns: minmax(0, 1fr); }
+.home .fr-welcome-loop .fl-recorded { margin: 0; min-height: calc(var(--lh-caption) * 2); font-size: var(--t-caption); }
+.home .fr-welcome-loop .fl-actions { justify-content: flex-start; }
+
+/* ---------- The setup list (spec 3.11) ---------- */
+.home .setup { margin: var(--space-4) 0 0; padding: var(--space-4); border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.home .setup-head { display: flex; align-items: baseline; gap: var(--space-2); margin-bottom: var(--space-3); }
+.home .setup-title { margin: 0; font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); }
+.home .setup-count { margin-inline-start: auto; color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.home .setup-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.home .setup-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; }
+.home .setup-row + .setup-row { border-top: var(--hair) solid var(--line); }
+.home .setup-mark { flex: none; display: grid; place-items: center; width: var(--h-chip); height: var(--h-chip); border-radius: var(--r-round); border: var(--hair) solid var(--line-strong); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); font-variant-numeric: tabular-nums; }
+.home .setup-row[data-state="now"] .setup-mark { border-color: transparent; background: var(--acc-tint); color: var(--acc-text); }
+.home .setup-row[data-state="done"] .setup-mark { border-color: transparent; background: var(--ok-tint); color: var(--ok); }
+.home .setup-words { display: grid; flex: 1; min-width: 0; gap: var(--hair); }
+.home .setup-name { color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); }
+.home .setup-row[data-state="now"] .setup-name { font-weight: var(--w-strong); }
+.home .setup-row[data-state="done"] .setup-name { color: var(--fg-2); }
+.home .setup-line { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+
+/* ---------- The approval card (spec 3.12) ---------- */
+.home .ask-card .ask-why { margin: 0 0 var(--space-2); color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); }
+.home .ask-what-fold { margin: 0 0 var(--space-2); }
+.home .ask-what-fold > summary { width: fit-content; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); cursor: default; }
+.home .ask-what-fold[open] > summary { margin-bottom: var(--space-2); }
+
+/* ---------- Where was I (spec 3.5) ---------- */
+.home .where-card { display: grid; gap: var(--space-2); }
+.home .where-card .where-head { margin: 0; font: var(--w-hero) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-display); text-wrap: balance; }
+.home .where-rows { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.home .where-rows li { display: flex; align-items: baseline; gap: var(--space-2); color: var(--fg-2); font: var(--t-body) / var(--lh-body) var(--font); }
+.home .where-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--line-strong); translate: 0 calc(var(--dot) * -.4); }
+.home .where-source { margin: 0; }
+/* The loop beside the welcome words shows the run alone: its own head is hidden (firstLook.tsx loop). */
+.home .fr-welcome-loop .fl-head[hidden] { display: none; }
+/* Learn: a practice after the lead folds to one row, its name and time on the left, Start on the right. */
+.home .pr-item.pr-next { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); align-items: center; }
+.home .pr-item.pr-next > .pr-head { grid-column: 1; }
+.home .pr-item.pr-next > .line.muted { grid-column: 1; margin: 0; padding-inline-start: calc(var(--tile-lg) + var(--space-3)); }
+.home .pr-item.pr-next > .row { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
+.home .pr-item.pr-next > .row .btn { min-height: var(--h-sm); }
+.home .memory .mem-title { font-size: var(--t-answer); line-height: var(--lh-answer); font-weight: var(--w-strong); }
+/* The welcome's headline at the display size in every look (spec 1.1: 28/32, weight 500, -0.022em). */
+.home .fr .fr-welcome .fr-title { font: var(--w-hero) var(--t-hero) / var(--lh-hero) var(--font); letter-spacing: var(--track-display); }
+.home .where-label { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.home .note-tag { padding: 0 var(--space-2); min-height: var(--h-pill); display: inline-flex; align-items: center; border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }

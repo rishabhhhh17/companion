@@ -475,10 +475,10 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(effect).toContain('takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));');
     expect(effect).not.toContain(".focus()");
     // The safe choice of each question that holds work up: Don't allow, No (AGENTS.md), Stop here (the loop card).
-    const approval = card.slice(card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a, project); return ("), card.indexOf("{m.stuck && ("));
+    const approval = card.slice(card.indexOf("{m.approvals.map((a, i) => { const w = approvalWords(a, project); return ("), card.indexOf("{m.stuck && ("));
     expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.dontAllow\}/);
     expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.allow\}/);
-    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a) => { const w = approvalWords(a, project); return ("));
+    const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a, i) => { const w = approvalWords(a, project); return ("));
     expect(agents).toContain('data-safe onClick={() => { void send(answerAgents(project, "no"))');
     const stuck = card.slice(card.indexOf("{m.stuck && ("), card.indexOf("{m.paused && ("));
     expect(stuck).toContain('data-safe={o.id === "stop" || undefined}');
@@ -774,7 +774,8 @@ function parseColor(v0: string, tokens: Record<string, string>): RGBA {
 }
 const over = (top: RGBA, under: RGBA): RGBA => [0, 1, 2].map((k) => top[k] * top[3] + under[k] * (1 - top[3])).concat(1) as RGBA;
 const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2]); };
-const ratio = (a: RGBA, b: RGBA) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+// M69: words drawn in an ink with opacity (Instrument's one ink, spec 1.2) are measured as they show, over what is under them.
+const ratio = (a0: RGBA, b: RGBA) => { const a = a0[3] < 1 && b[3] === 1 ? over(a0, b) : a0; const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 const colourIn = (v: string) => /(var\([^)]+\)|#[0-9a-f]{3,6}\b|rgba?\([^)]+\)|color-mix\(.+\)|\btransparent\b)/i.exec(v)?.[1] ?? null;
 
 describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and Deep (part 4)", () => {

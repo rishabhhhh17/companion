@@ -162,7 +162,7 @@ describe("(11) changes waiting for review lead Home", () => {
     expect(homeMode(m, need(m), { review: reviewLead(m.review, P) })).toBe("review");
   });
   test("the review card comes before the recent list in tall, and .review-busy has its live dot", () => {
-    expect(card.indexOf("<ReviewCardView")).toBeLessThan(card.indexOf("mode === \"rest\" && !side && <RecentList"));
+    expect(card.indexOf("<ReviewCardView")).toBeLessThan(card.indexOf("{!side && show(\"ask\") && restCards(restIn)"));
     expect(css).toMatch(/\.review-busy::before/);
   });
 });
@@ -179,9 +179,9 @@ describe("(12) Home says what blocks it, with the one way out as the main button
   });
   test("each has its own words and main button", () => {
     for (const b of ["key", "engine", "claude", "claudeGetting"] as const) expect(S.home.blocked[b].headline.length).toBeGreaterThan(0);
-    expect(S.home.blocked.key.main).toBe("Add your key");
+    expect(S.home.blocked.key.main).toBe("Try again");   // M69, F29: never "Add your key"
     expect(S.home.blocked.engine.main).toBe("Restart");
-    expect(S.home.blocked.claude.main).toBe("Get Claude");
+    expect(S.home.blocked.claude.main).toBe("Get it");
   });
   test("blocked is a mode of its own, and Flowflow takes its error pose", () => {
     const m = { ...initial(), folder: P, connected: "none" } as Model;
@@ -205,7 +205,10 @@ describe("(13) in the wide Home a card that needs a tap has the room", () => {
   test("compact is only a wide rule, the ask band pads the scroll, and the receipt comes before what was checked", () => {
     expect(css).toMatch(/\.home\[data-side\] \.hero\[data-compact\]/);
     expect(css).toMatch(/scroll-padding-bottom/);
-    expect(card.indexOf('<section className="panel receipt"')).toBeLessThan(card.lastIndexOf("{m.receipt && proofPanel}"));
+    // M69: what was checked is inside the receipt, under its verdict, as ticks; never a second card after it.
+    expect(card).not.toContain("{m.receipt && proofPanel}");
+    const receipt = card.slice(card.indexOf('<section className="panel receipt"'));
+    expect(receipt.indexOf("<VerdictLine")).toBeLessThan(receipt.indexOf("<ProofTicks ticks={proofTicks(m)}"));
   });
 });
 
@@ -281,7 +284,8 @@ describe("(25) the live line under Checking says the check under way", () => {
     expect(jobNowWords(m, null, [{ words: "Changing a file" }])).toBe("Building the code");
     expect(jobNowWords(m, "Trying again (2 of 3)", [{ words: "Changing a file" }])).toBe("Trying again (2 of 3)");
     expect(jobNowWords({ ...m, task: { ...m.task!, proof: undefined } } as Model, null, [{ words: "Changing a file" }])).toBe("Changing a file");
-    expect(card).toMatch(/jobNowWords\(m, js\.retry, lines\)/);
+    // M69: the run list says the check under way on its own row (runList.ts), and what the tools do under the change's row.
+    expect(card).toContain("<RunRows rows={rl.rows} label={S.fixRun.label}");
     // Before the first step, what the character is doing (M65 step 6: Instrument says Getting started for a bare Working,
     // homeWords.test.ts).
     expect(jobNowWords({ ...m, task: { ...m.task!, proof: undefined } } as Model, null, [])).toBe(characterWords({ ...m, task: { ...m.task!, proof: undefined } } as Model));
@@ -293,11 +297,14 @@ describe("(26) the approval card leads with the plain question, the command with
     expect(whatOf("Bash: npm install zod")).toBe("npm install zod");
     expect(whatOf("Running: npm install zod")).toBe("npm install zod");
   });
-  test("the heading is the engine's plain title, the risk line comes after the command", () => {
+  test("M69 (spec 3.12): the heading names the question, then the engine's plain why, then the command behind Show the command", () => {
     const w = approvalWords({ risk: "install", title: "install the packages", action: "Bash: npm install" });
     expect(w.why).toBe("Install the packages.");
-    expect(card).toMatch(/<h2>\{w\.why\}<\/h2>/);
-    expect(card.indexOf("<code>{w.what}</code>")).toBeLessThan(card.indexOf("{w.question}</div>"));
+    expect(w.question).toBe("Squibby needs your OK to add a tool.");
+    expect(card).toMatch(/<h2>\{w\.question\}<\/h2>/);
+    expect(card).toContain('<p className="ask-why">{w.why}</p>');
+    expect(card.indexOf('<p className="ask-why">{w.why}</p>')).toBeLessThan(card.indexOf("<summary>{S.screens.showCommand}</summary>"));
+    expect(card.indexOf("<summary>{S.screens.showCommand}</summary>")).toBeLessThan(card.indexOf("<code>{w.what}</code>"));
   });
   test("Don't allow comes first on Home, as in the first run", () => {
     const at = card.indexOf("panel amber ask-card");

@@ -13,8 +13,8 @@ import { FlowMini } from "./flowflowMini.tsx";
 import { Icon } from "./icons.tsx";
 import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
-import { formatUsd, type ChangeAt, type Practice, type PracticeResult, type Problem, type ProofLine, type UndoState } from "./model.ts";
-import { costWords, FIRST_PRACTICE, practiceKind, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
+import { type ChangeAt, type Practice, type PracticeResult, type Problem, type ProofLine, type UndoState } from "./model.ts";
+import { FIRST_PRACTICE, practiceKind, practicePath, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
 import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
@@ -78,17 +78,14 @@ function Checks({ checks }: { checks: ProofLine[] }) {
   );
 }
 
-/** The fix's result where the practice is: what changed, its cost, Show me what changed, Undo (asked first) and Explain. */
+/** The fix's result where the practice is: what changed (never its cost, F29), Show me what changed, Undo (asked first) and Explain. */
 function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoState | null; explain: ReactNode; act: PanelActions }) {
   const undoId = useId();
   const mine = undo && undo.checkpoint === r.checkpoint ? undo : null;
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   return (
     <div role="group" aria-label={S.practiceChanged}>
-      {r.changed.length > 0 && <>
-        <ChangesCard changed={r.changed} />
-        <div className="line muted slip">{r.usdEstimate > 0 ? S.fixCost(formatUsd(r.usdEstimate)) : S.noCost}</div>
-      </>}
+      {r.changed.length > 0 && <ChangesCard changed={r.changed} />}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
         {r.changed.length > 0 && !mine && <button id={undoId} className="btn danger" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button>}
@@ -219,7 +216,6 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
           <button className={`btn${next ? "" : " primary"}`} type="button" onClick={act.back}>{S.practiceBack}</button>
         </div>
         {!next && <div className="line muted">{S.practiceAllDone}</div>}
-        {next && <div className="line muted">{costWords(next)}</div>}
         <CopyButtons act={act} busy={busy} title={w.title} />
         <div className="row"><button className="btn" type="button" onClick={act.close}>{S.pointClose}</button></div>
       </>}
@@ -246,7 +242,9 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
 export type ListActions = { start: (id: string) => void; open: (id: string) => void; startOver: (id: string) => void; remove: (id: string) => void };
 
 /** One practice in the list: what it is, what it teaches, about how long, the cost, and where the person is in it. */
-function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boolean; act: ListActions }) {
+// M69 (spec 3.8): `lead` is the practice to do now, open with its Find it, Fix it, Prove it path; the others fold to one
+// line with their state, and a Start that is never the main button. No cost line (F29).
+function ListItem({ r, busy, open, act, lead = true }: { r: ListRow; busy: boolean; open: boolean; act: ListActions; lead?: boolean }) {
   const [ask, setAsk] = useState<"startOver" | "remove" | null>(null);
   const overId = useId(), removeId = useId();
   const id = r.entry.id, blocked = busy || r.needsNode;
@@ -255,15 +253,16 @@ function ListItem({ r, busy, open, act }: { r: ListRow; busy: boolean; open: boo
   const state: typeof r.state = open && r.state === "notStarted" ? "inProgress" : r.state;
   return (
     // The first practice, not yet started, leads the list as a card of its own (the audit, item 53).
-    <div className={`line pr-item${r.entry.id === FIRST_PRACTICE && state === "notStarted" ? " pr-feature" : ""}`} role="group" aria-label={r.title}>
+    <div className={`line pr-item${lead ? " pr-lead" : " pr-next"}${r.entry.id === FIRST_PRACTICE && state === "notStarted" && lead ? " pr-feature" : ""}`} role="group" aria-label={r.title}>
       {/* M51 step 3: the practice's tile, its name, and a done one's Proven stamp in place of its plain state (shown again
           while stamps are off in Settings). */}
       <div className="pr-head"><ItemTile label={r.title} big kind={practiceKind(r.entry)} />
-        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(state) ? " unstamped" : ""}`} data-state={state}>{S.practiceState[state]}</span>{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}</span></div>
-      <div className="line">{r.teaches}</div>
-      <div className="line muted">{r.time} · {r.cost}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
+        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(state) ? " unstamped" : ""}`} data-state={state}>{!lead && state === "notStarted" ? S.screens.pathNext : S.practiceState[state]}</span>{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}</span></div>
+      {lead && <div className="line">{r.teaches}</div>}
+      {lead && <ol className="pr-path" aria-label={S.screens.pathTitle}>{S.screens.pathSteps.map((t) => <li key={t} data-done={state === "done" || undefined}><span className="pr-path-dot" aria-hidden="true" />{t}</li>)}</ol>}
+      <div className="line muted">{r.time}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
       {!ask && <div className="row">
-        {(state === "notStarted" || (state === "done" && !r.there)) && <button className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
+        {(state === "notStarted" || (state === "done" && !r.there)) && <button className={`btn${lead && state === "notStarted" ? " primary" : ""}`} type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
         {state === "inProgress" && !open && <button className="btn" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
         {r.there && <button id={overId} className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStartOver}: ${r.title}`} onClick={() => setAsk("startOver")}>{S.practiceStartOver}</button>}
         {r.there && <button id={removeId} className="btn" type="button" disabled={busy} aria-label={`${S.practiceRemove}: ${r.title}`} onClick={() => setAsk("remove")}>{S.practiceRemove}</button>}
@@ -293,7 +292,7 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
       {busy && <div className="line muted">{S.practiceBusy}</div>}
       {nodeFix && rows.some((r) => r.needsNode) && <div className="line">{S.practiceNodeList(nodeFix)}</div>}
       {withoutNode != null && !rows.some((r) => r.needsNode) && <div className="line muted">{S.practiceWithoutNode(withoutNode)}</div>}
-      {rows.map((r) => <ListItem key={r.entry.id} r={r} busy={busy} open={openId === r.entry.id} act={act} />)}
+      {(() => { const lead = openId ?? practicePath(rows); return rows.map((r) => <ListItem key={r.entry.id} r={r} busy={busy} open={openId === r.entry.id} act={act} lead={lead === r.entry.id} />); })()}
     </section>
   );
 }

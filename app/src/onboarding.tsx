@@ -1,9 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
-import { changeSetting, setting as getSetting, useSetting } from "./settingsStore.ts";
-import { STEPS, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, claudeMain, goesOnAfterTest, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, installAsks, keyCheck, keyShownFirst, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
+import { changeSetting, setting as getSetting } from "./settingsStore.ts";
+import { STEPS, COUNTED, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, installAsks, keyShownFirst, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
 import { livelinessOf, type Liveliness } from "./lookfeel.ts";
 import { whatOf } from "./approvals.ts";
 import { keyRows, talkSharedNote } from "./settings.ts";
@@ -18,8 +18,8 @@ import { FirstLook } from "./firstLook.tsx";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { FailingLine } from "./failingLine.tsx";
-import { usePlan } from "./usePlan.ts";
-import { planCard, type Usage } from "./plan.ts";
+import type { Usage } from "./plan.ts";
+import { Icon } from "./icons.tsx";
 import { Button, Card, Disclosure, Field, KeyLabel, Menu, Row, Segmented, Switch, VerdictLine } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
 
@@ -60,8 +60,6 @@ type Fold = "how" | "yours" | "powers" | "keys" | "questions";
 
 export function Onboarding({ doctor, connected, keyTested, project, send, pickFolder, startPractice, onDone, point, approvals, usage, firstCheck, answer, cloneLink, copying, cloneNote, why, fixFound }: Props) {
   const [step, setStep] = useState<Step>("hello");
-  // The recorded fix, watched again from the hello (firstLook.tsx). It is a picture of a run: nothing is asked or changed.
-  const [watching, setWatching] = useState(false);
   const [answers, setAnswers] = useState<Answers>(DEFAULT_ANSWERS);
   // The questions the person answered here: only their own answers are kept (rule 15), so a skip saves none of them, and
   // a pre-filled answer they never touched is never saved as theirs.
@@ -69,10 +67,6 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const [yours, setYours] = useState<Yours>(() => ({ ...DEFAULT_YOURS, ...yoursNow() }));
   // The groups switched off here (F20), starting from the values in force (F28: the non hero groups start off).
   const [groupsOff, setGroupsOff] = useState<SwitchedId[]>(() => offGroups());
-  const [key, setKey] = useState("");
-  const [keyNote, setKeyNote] = useState("");
-  // When the key was saved: setup shows Anthropic's answer for this save only (onboarding.ts keyCheck).
-  const [savedAt, setSavedAt] = useState<number | null>(null);
   const [linkOpen, setLinkOpen] = useState(false);
   const [link, setLink] = useState("");
   const [linkNote, setLinkNote] = useState("");
@@ -83,9 +77,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const [open, setOpen] = useState<Fold | null>(null);
   // The keys every job uses now (the person may have picked others, or another app may hold the usual ones).
   const keys = useKeys();
-  const plan = planCard(usePlan(), usage);
-  const limit = Number(useSetting("spend.dailyLimit"));
-  const honest = honestLines({ limitUsd: Number.isFinite(limit) ? limit : 10, plan });
+  void usage; void keyTested;
   const ok = connected === "api_key" || connected === "plan";
   // Which way the last move went, so the next screen slides in from the right going on and from the left going back.
   const [dir, setDir] = useState<"on" | "back">("on");
@@ -101,7 +93,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const go = (target: Step | null) => {
     if (!target) return;
     // A fold left open belongs to the screen it was on: the next one starts with every fold closed, and Flowflow shown.
-    setDir(STEPS.indexOf(target) >= STEPS.indexOf(step) ? "on" : "back"); setWatching(false); setOpen(null); setStep(target);
+    setDir(STEPS.indexOf(target) >= STEPS.indexOf(step) ? "on" : "back"); setOpen(null); setStep(target);
   };
   const own = NAMES.character;
   const name = yours.name.trim() || own;
@@ -120,20 +112,6 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
     onDone();
   };
   const skip = () => { const to = skipTo(step); if (to === "done") finish(); else go(to); };
-  const saveKey = () => {
-    const problem = keyLooksRight(key);
-    if (problem) { setKeyNote(problem); return; }
-    // The key goes straight to the Keychain; the box is emptied at once and nothing keeps a copy. The engine then checks it
-    // once with Anthropic (free) and says what it heard.
-    const k = key; setKey("");
-    void invoke("save_api_key", { key: k }).then(() => { setKeyNote(""); setSavedAt(Date.now()); }).catch((e) => setKeyNote(failNote(e, "key")));
-  };
-  const check = keyCheck(savedAt, keyTested);
-  // Continue saved a key (the audit, item 38): carry on by itself once Anthropic says it works.
-  const [goOnTest, setGoOnTest] = useState(false);
-  const claudeNext = claudeMain(ok, key, check);
-  useEffect(() => { if (step === "claude" && goesOnAfterTest(goOnTest, ok, check)) { setGoOnTest(false); go(next(step)); } }, [goOnTest, ok, check, step]);
-  useEffect(() => { if (check === "refused" || check === "no_connection" || check === "unknown") setGoOnTest(false); }, [check]);
   // The first check: on the person's press only (Check <name>), never by itself. The engine saves a safety copy before
   // anything runs and asks before installing anything (runner/test/first-check.test.ts).
   const startCheck = () => { setAsked(true); setStoppedByMe(false); firstCheck(); go("check"); };
@@ -161,7 +139,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const first = practiceOf(FIRST_PRACTICE)!, noNode = nodeMissing(doctor);
   // After Continue, Back or Skip (the person's own press; nothing else changes the step) the keyboard goes to the new step's
   // heading, so VoiceOver reads where they are. By the rule a question follows: Home has the keyboard, nobody is typing.
-  const view = watching ? "look" : step;
+  const view = step;
   const box = useRef<HTMLElement>(null), shown = useRef<string>(view);
   useLayoutEffect(() => {
     if (shown.current === view) return;   // the first run just opened: nothing was pressed yet
@@ -172,14 +150,6 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   }, [view]);
   const count = countOf(step);
   const level = { "--level": `${LEVEL[step]}%` } as React.CSSProperties;
-
-  // The recorded fix, from the hello: Back returns to the hello, and its last button carries on to Your Claude.
-  if (watching) return (
-    <section className="panel onboarding look" aria-label={S.obTitle} ref={box}>
-      <div className="fr-top"><Button kind="quiet" size="sm" onClick={() => setWatching(false)}>{S.obBack}</Button></div>
-      <FirstLook goLabel={S.obContinue} onGo={() => go(next(step))} />
-    </section>
-  );
 
   // The one main button (the flat silver, ui/parts.css), always at the bottom in the same place.
   const main = (label: string, onClick: () => void, disabled = false) => <Button kind="primary" size="lg" className="fr-key" disabled={disabled} onClick={onClick}>{label}</Button>;
@@ -194,57 +164,26 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
       <div className="fr-top">
         {back(step) && <button className="fr-back" type="button" aria-label={S.obBack} onClick={() => { if (stage === "checking" || stage === "asking") stopCheck(); go(back(step)); }}>&#8592;</button>}
         {/* Where the person is: a short bar per step, the ones reached in the water, then the words (M51 polish). */}
-        {count && <span className="fr-count"><span className="fr-dots" aria-hidden="true">{Array.from({ length: count.of }, (_, i) => <i key={i} data-on={i < count.n || undefined} />)}</span>{S.fr.count(count.n, count.of)}</span>}
+        {/* M69 (Willow's step chips): "01 Welcome · 02 Pick a project", the one you are on in the accent tint. */}
+        {count && <ol className="fr-chips" aria-label={S.fr.count(count.n, count.of)}>{COUNTED.map((c, i) => <li key={c} className="fr-chip" aria-current={i + 1 === count.n ? "step" : undefined} data-done={i + 1 < count.n || undefined}>{S.screens.stepChip(i + 1, S.screens.stepNames[c as "hello" | "project"])}</li>)}</ol>}
       </div>
 
       <div className="fr-slide" key={step} data-dir={dir}>
       {step === "hello" && (<>
-        <div className="fr-hello" aria-hidden="true"><span className="fr-drop" /><span className="fr-ripple" /><div className="fr-rise"><HomeCharacter as="idle" /></div></div>
-        {/* M41 (Supabase's two tone headlines): the statement bright, its answer in grey on the line below. */}
-        <h2 className="fr-title">{twoTone(S.fr.helloTitle)[0]}<span className="fr-title-2">{twoTone(S.fr.helloTitle)[1]}</span></h2>
-        <p className="fr-line">{S.fr.helloLine}</p>
-        <Button kind="secondary" className="fr-watch" onClick={() => setWatching(true)}>{S.firstLook.watch}</Button>
+        {/* M69 (the YC benchmark spec 3.10, corrected by F29): the welcome words and the three promises on the left, a short
+            loop of a real fix on the right (or under them in tall), with a visible Pause. The key named is the Fix it key in
+            use, only when it has one (F28). */}
+        <div className="fr-welcome">
+          <div className="fr-welcome-words">
+            <h2 className="fr-title">{twoTone(S.screens.welcomeTitle)[0]}<span className="fr-title-2">{twoTone(S.screens.welcomeTitle)[1]}</span></h2>
+            {keys.using.problem && <p className="fr-key-line"><span className="fr-key-name">{S.screens.welcomeKey}</span><KeyLabel chord={keys.using.problem} /></p>}
+            <ul className="fr-promises" aria-label={S.screens.promisesLabel}>{S.screens.promises.map((t) => <li key={t}><span className="fr-tick" aria-hidden="true"><Icon name="tick" size={12} /></span>{t}</li>)}</ul>
+          </div>
+          <div className="fr-welcome-loop"><FirstLook loop label={S.screens.loopLabel} /></div>
+        </div>
         <div className="fr-grow" />
         <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.skipSetup}</Button>
         {main(S.obContinue, () => go(next(step)))}
-      </>)}
-
-      {step === "claude" && (<>
-        <h2 className="fr-title">{S.fr.claudeTitle}</h2>
-        <p className="fr-line">{S.fr.claudeLine}</p>
-        {claude?.state === "installing" && (() => {
-          const mb = Math.round((claude.received ?? 0) / 1e6), pct = claude.total ? Math.min(100, Math.round(((claude.received ?? 0) / claude.total) * 100)) : null;
-          return <div className="fr-progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct ?? undefined} aria-valuetext={S.fr.claudeGetting(mb, pct)}>
-            <div className="fr-bar"><i style={{ "--p": `${pct ?? 30}%` } as CSSProperties} data-unknown={pct === null ? "yes" : undefined} /></div><span>{S.fr.claudeGetting(mb, pct)}</span></div>;
-        })()}
-        {claude?.state === "failed" && <><div className="error" role="alert">{claude.message}</div>
-          <Button kind="quiet" className="fr-link" onClick={() => { setClaude({ state: "installing", received: 0 }); void invoke("claude_install_now").catch(() => {}); }}>{S.fr.claudeAgain}</Button></>}
-        {claude?.state === "missing" && <><p className="fr-small">{S.fr.claudeMissing}</p><Button kind="quiet" className="fr-link" onClick={() => void invoke("claude_install_now").catch(() => {})}>{S.fr.claudeInstall}</Button></>}
-        {ok && check !== "refused" ? <p className="fr-ok" role="status">{check ? S.obKeyCheck[check] : S.obConnected}</p> : (<>
-          <div className="fr-keyrow">
-            <Field type="password" wide value={key} label={S.obKeyLabel} placeholder="sk-ant-..." error={keyNote || (check === "refused" ? S.obKeyCheck.refused : undefined)} onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing && key.trim()) { setGoOnTest(true); saveKey(); } }} />
-          </div>
-          {check === "checking" && <p className="fr-small" role="status">{S.obKeyCheck.checking}</p>}
-          {/* One fold for everything about the key (the audit, item 38): the honest lines, each true now (where the key goes,
-              what it costs, the plan from the Plan card's own state), the steps, and Anthropic's own key page on a press. No
-              Claude login form here, ever (rule 2). */}
-          {fold("how", S.fr.keyHow, (<>
-            <ul className="fr-honest">
-              <li>{honest.privacy}</li>
-              <li>{honest.cost}</li>
-              <li>{honest.plan}</li>
-            </ul>
-            <ol className="fr-steps">{S.obKeySteps.map((t) => <li key={t}>{t}</li>)}</ol>
-            <Button kind="secondary" onClick={() => void invoke("open_link", { url: KEY_PAGE }).catch(() => setKeyNote(S.obLinkFailed))}>{S.fr.keyPage}</Button>
-          </>))}
-        </>)}
-        {/* Why Continue waits, in words beside it (the review, 2 Nov 2026: a dim Continue gave no reason). */}
-        {claudeNext.disabled && !(ok && check !== "refused") && <p className="fr-small fr-need" id="fr-need">{S.fr.keyNeeded}</p>}
-        <div className="fr-grow" />
-        {/* M28: no dead end without a key. Home then says "Add your Claude key" with a button that goes straight there. On the
-            row of the main button, as Skip setup is on the hello. */}
-        {!(ok && check !== "refused") && <Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipKey}</Button>}
-        {main(S.obContinue, () => { if (claudeNext.act === "saveThenGo") { setGoOnTest(true); saveKey(); } else if (claudeNext.act === "continue" && canContinue(step, ctx)) go(next(step)); }, claudeNext.disabled)}
       </>)}
 
       {step === "project" && (<>

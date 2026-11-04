@@ -9,6 +9,7 @@ import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
 import { agoWords, barPlaces, bringBackCan, clockWords, heroWords, homeMode, homeStatus, jobStep, lastResult, mainFor, notchStatusLine, placeAfter, recentOf, stopCan, undoCan, type HomeMode } from "./homeHero.ts";
 import { arrivalFrom } from "./home.ts";
 import { S } from "./strings.ts";
+import { approvalWords } from "./approvals.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const card = read("./card.tsx"), css = ALL_CSS(), tokens = TOKENS_CSS(), html = read("../card.html");
@@ -107,12 +108,13 @@ describe("the top says the job in big words", () => {
     expect(h.tone).toBe("working");
     expect(h.line, "never \"free so far so far\"").toBe(S.look.workingFree);
   });
-  test("a question to answer comes first, and points below", () => {
-    const h = heroWords(run([...task(), approval]), P);
-    expect(h).toEqual({ headline: S.needsYouTitle, line: S.look.below, tone: "needsYou" });
+  test("a question to answer comes first: the approval's own question is the title (M69 step 3), asked once", () => {
+    const m = run([...task(), approval]);
+    const h = heroWords(m, P);
+    expect(h).toEqual({ headline: approvalWords(m.approvals[0], P).question, line: "", tone: "needsYou" });
   });
-  test("done: whether it was proven in big words, then what was asked and the cost (M45)", () => {
-    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: S.look.doneLine("Add a sign up page", "5 cents"), tone: "done" });
+  test("done: whether it was proven in big words, then what was asked, never its cost (M45, F29)", () => {
+    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: "Add a sign up page", tone: "done" });
     expect(heroWords(done({ proof: "failed" }), P).tone).toBe("notDone");
   });
   test("an answer from Look it up: its name, and that it is just below", () => {
@@ -127,8 +129,8 @@ describe("the top says the job in big words", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
     // M66 fix 13: new words cross fade in by their key (homeFlow.test.ts).
     expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline hero-swap" key={`h:${heroShown.headline}`}><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>');
-    // M55: while a job costs something, the line counts its cost up to the new number (smoothMotion.ts CountUp).
-    expect(card).toContain('<p className="subline hero-swap" key={heroShown.count != null ? "count" : `l:${heroShown.line}`}>{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
+    // M69 (F29): the line under it never counts a cost; Squibby pays.
+    expect(card).toContain('<p className={`subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -151,8 +153,10 @@ describe("Undo and Stop show only when they can act", () => {
   });
   test("the page draws Undo in the result card and Stop in the working card only then, and names the key that stops everything", () => {
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
-    expect(result).toContain('{undoCan(m, project) && (\n            <div className="row result-actions">\n              <Button id={undoId}');
-    expect(result).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
+    // M69: Replay what Squibby did sits beside it in the same row (runListView.tsx Replay).
+    // M69 step 3: one Undo button (undoButton) wherever the result puts it.
+    expect(result).toContain("{undoCan(m, project) && !failLead && undoButton(");
+    expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
     expect(job).toContain("{stopCan(m) && <Button");
     expect(job).toContain("onClick={() => void send(stopAgent())}");
@@ -164,8 +168,9 @@ describe("Undo and Stop show only when they can act", () => {
 describe("one ask field, and the main button does what the existing paths do", () => {
   const more = card.slice(card.indexOf('<details className="more">'), card.indexOf("</details>", card.indexOf('<details className="more">')));
   test("the ask field keeps its id and its keys; its placeholder is the spec's; Start is a quiet drawing, never a second silver", () => {
-    expect(card).toContain("placeholder={S.home.ask} aria-label={S.home.ask}");
-    expect(S.home.ask).toBe("Or tell me what's wrong");
+    // M69 step 2: while the review card leads Now, the box asks about that change (spec 3.3).
+    expect(card).toContain("placeholder={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-label={cardLeads ? S.homeNow.askAbout : S.home.ask}");
+    expect(S.home.ask).toBe("What are you stuck on?");
     expect(card).toContain('<Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}>');
     expect(card).toMatch(/<textarea ref=\{box\} id=\{askId\}/);
   });
@@ -237,7 +242,8 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // frame, no loop) while Home is closed or another place is open.
     // Its error pose while something blocks every job (the audit, item 12).
     // M55 (the character reacts): it also gets the ask box, and the review card while changes wait (characterReacts.test.ts).
-    expect(card).toContain('<div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}');
+    // M69 step 2: while the review card leads Now the character is drawn in that card instead (one at a time).
+    expect(card).toContain('<div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}');
     expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
     expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");
@@ -256,8 +262,8 @@ describe("M45: Home's big words tell the truth", () => {
     expect(JSON.stringify(h)).not.toMatch(/proven/i);
     expect(undoCan(m, P)).toBe(false);
   });
-  test("a proven fix: the verdict in big words, then what it was and what it cost", () => {
-    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: S.look.doneLine("Add a sign up page", "5 cents"), tone: "done" });
+  test("a proven fix: the verdict in big words, then what it was (never what it cost, F29)", () => {
+    expect(heroWords(done(), P)).toEqual({ headline: S.verdict.proven, line: "Add a sign up page", tone: "done" });
   });
   test("a stopped task's hero is plain", () => {
     const h = heroWords(done({ ended: "stopped", proof: "skipped" }), P);
@@ -280,10 +286,12 @@ describe("M45: Home's big words tell the truth", () => {
     expect(h.detail).not.toContain("install");
     expect(h.tone).toBe("partly");
   });
-  test("zero cost says No cost", () => {
-    const h = heroWords(done({ usdEstimate: 0 }), P);
-    expect(h.line.endsWith(`· ${S.noCost}`)).toBe(true);
-    expect(h.line).not.toContain("free so far");
+  test("no cost is said either way (F29: Squibby pays)", () => {
+    for (const usd of [0, 0.05]) {
+      const h = heroWords(done({ usdEstimate: usd }), P);
+      expect(h.line).not.toContain(S.noCost);
+      expect(h.line).not.toMatch(/cents?|\$|free so far/);
+    }
   });
   test("Undo hides after a bisect undo", () => {
     const m: Model = { ...done(), undo: null, receipt: { ...done().receipt!, undone: true, undoSafety: "cp_9" } };
@@ -410,7 +418,7 @@ describe("one main button per state", () => {
     // Now: in the hero, or in the working card. Every other place (Settings, History, Memory, Learn): in the top bar, except
     // Learn while its practice fixes or checks, where the practice card's own Stop is the one Stop (M51 review; barStopCan,
     // lookFixes.test.ts).
-    expect(card).toContain("{stopCan(m) && !jobShown && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
+    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
     expect(bar).toContain('{barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
     expect(bar).toContain("onClick={() => void send(stopAgent())}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
@@ -427,12 +435,18 @@ describe("one main button per state", () => {
     expect(now.match(/kind="primary"/g)?.length).toBe(1);
     // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
     // 2 Nov 2026 (the ranked UI audit): or the way out of a block, or Review the changes; still one button (heroMain).
-    expect(now).toContain('{heroMain && <div className="hero-main"><Button kind="primary" size="lg" onClick={heroMain.go}>{heroMain.label}</Button></div>}');
+    // M69 step 2: at rest its words may be Check it again (homeRest.ts restMainLabel), with Where was I? as a secondary beside it.
+    expect(now).toContain('{heroMain && <Button kind="primary" size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}');
+    expect(now).toContain('{whereOn && <Button kind="secondary" size="lg"');
     expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
     expect(now).not.toMatch(/btn primary/);
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
-    for (const part of [result, job]) { expect(part).not.toContain('kind="primary"'); expect(part).not.toContain("btn primary"); }
+    for (const part of [job]) { expect(part).not.toContain('kind="primary"'); expect(part).not.toContain("btn primary"); }
+    // M69 step 3: over a proven result the hero has no button and the receipt's Keep is the one main button.
+    expect(result.match(/kind="primary"/g)?.length).toBe(1);
+    expect(result).toContain('{resHero?.pill === "proven" && (');
+    expect(now).toContain("{(heroMain || whereOn) && !resHero && <div className=\"hero-main\">");
   });
   test("what can show beside the hero is never silver too: the update notice, Try again, a watch's Fix it, Learn's rows (review, 31 Oct)", () => {
     const silver = /kind="primary"|btn primary|btnClass\("primary"/;
@@ -480,11 +494,14 @@ describe("the working card's four steps read only the runner's real states (4.2)
     expect(clockWords(3_725_000)).toBe("1:02:05");
     expect(clockWords(-5)).toBe("0:00");
   });
-  test("the card says the safety copy only when there is one, and Stop is a secondary button in it", () => {
+  test("the safety copy is said once, under the title, only when there is one; Stop is a secondary button in the card", () => {
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
-    expect(job).toContain("{m.task.checkpoint && <p className=\"job-safe\">");
-    expect(job).toContain('<ol className="job-strip" aria-label={S.home.stepsLabel}>');
-    expect(job).toContain('aria-current={i === js.step ? "step" : undefined}');
+    // M69 step 3: under the title (the hero's line), never in the card's header as well.
+    expect(job).not.toContain("job-safe");
+    expect(card).toContain('const safeSaid = jobShown && m.task?.checkpoint ? S.fixRun.safeLine : "";');
+    // M69 (spec 3.4): the four steps are the counter now ("2 of 4"), and the run list says each step (runList.test.ts).
+    expect(job).toContain('<p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]} · {rl.counter}</span></p>');
+    expect(job).toContain("<RunRows rows={rl.rows} label={S.fixRun.label}");
     expect(S.home.steps).toEqual(["Finding", "Fixing", "Checking", "Proven"]);
   });
 });

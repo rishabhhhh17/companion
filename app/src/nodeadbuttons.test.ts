@@ -37,12 +37,13 @@ describe("the buttons under the ask box", () => {
     expect(typed).toContain("errorsel::command(&req, errorsel::ASK_BOX, &t, &crate::current_project())");
     for (const read of ["ax::", "read_selection", "focused"]) expect(typed).not.toContain(read);
   });
-  test("the hold to talk keys sit inside the ask field, shown only; a click never opens the microphone (rule 5)", () => {
-    // F28, the overhaul spec 4.1: the keys' labels inside the field on the right, with what they do in the tooltip. Not a
-    // button at all: no press, no microphone drawing, nothing sent.
-    const keysAt = card.split("\n").find((l) => l.includes('className="ask-keys"'))!;
-    expect(keysAt).toContain('{groups.on("talk") && keys.using.talk && <span className="ask-keys" title={talkKeysLine(keys)}><KeyLabel chord={keys.using.talk} label={S.look.talk} /></span>}');
-    for (const no of ["<button", "<Button", "onClick", 'Icon name="mic"', "send(", "invoke("]) expect(keysAt).not.toContain(no);
+  test("the microphone in the ask box says how to talk; a click never opens the microphone (rule 5)", () => {
+    // M69 (the YC benchmark spec 3.1): a microphone in the ask box's row. Its press only puts the hold to talk keys in words
+    // under the box (and its tooltip says them too): nothing is sent, nothing is invoked, the microphone stays shut.
+    const micAt = card.split("\n").find((l) => l.includes('className="ask-mic"'))!;
+    expect(micAt).toContain('{groups.on("talk") && keys.using.talk && <Button kind="icon" className="ask-mic" label={S.look.micLabel} title={talkKeysLine(keys)} onClick={() => setAskHint(S.look.micHint(chordLabel(keys.using.talk!)))}><Icon name="mic" size={16} /></Button>}');
+    for (const no of ["send(", "invoke(", "voice", "listen"]) expect(micAt).not.toContain(no);
+    expect(S.look.micHint("Option Space")).toBe("Hold Option Space to talk. The microphone only listens while you hold them.");
     expect(card).not.toContain("S.look.howToTalk");
   });
 });

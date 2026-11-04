@@ -28,7 +28,9 @@ export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "revie
 // summary: for a failed step, one plain sentence for the person; the detail (the check's own output) goes behind Details.
 // forModel: when the model must be told something else than the person (a weakened check), what it is told instead of the
 // detail. Neither is ever shown raw.
-export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser"; summary?: string; problem?: Problem };
+/** M69: a command a rung ran, with its exit code, for the receipt's proof ticks ("npm run build · exit 0"). Secrets hidden. */
+export type RunCommand = { command: string; exit: number };
+export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser"; summary?: string; problem?: Problem; runs?: RunCommand[] };
 // A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
 export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem; forModel?: string };
 
@@ -341,9 +343,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     return words;
   };
   const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
-  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser", more: { summary?: string; forModel?: string } = {}): Step => {
-    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}) };
-    steps.push(s); o.onStep?.({ rung, label: LABELS[rung], status, detail: s.detail, ms: s.ms, ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(problem ? { problem } : {}) });
+  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser", more: { summary?: string; forModel?: string; runs?: RunCommand[] } = {}): Step => {
+    const runs = more.runs?.length ? more.runs.map((r) => ({ command: redact(r.command), exit: r.exit })) : null;
+    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}), ...(runs ? { runs } : {}) };
+    steps.push(s); o.onStep?.({ rung, label: LABELS[rung], status, detail: s.detail, ms: s.ms, ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(problem ? { problem } : {}), ...(runs ? { runs } : {}) });
     return s;
   };
   const unclear: Unclear[] = [], tried: CheckOutcome[] = [];
@@ -482,7 +485,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
   if (!weakened.ok) return result("failed", finish("checks", "failed", `${WEAKENED_SUMMARY} ${weakened.problems.join(". ")}.`, t0, null, undefined, { summary: WEAKENED_SUMMARY, forModel: weakened.problems.join(". ") + ". Please fix the real problem instead of weakening the check." }));
   if (det.checks.length && noRun) finish("checks", "skipped", runShort, t0);
   else if (det.checks.length) {
-    const ran: string[] = [], missed: string[] = [], skipped: string[] = [];
+    const ran: string[] = [], missed: string[] = [], skipped: string[] = [], runs: RunCommand[] = [];
     for (const c of det.checks) {
       if (skip.has(c.name)) { const w = leftOut(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
       if (screened(c.command)) { const w = changesDataGap(c.name); skipped.push(w); if (!left.includes(w)) left.push(w); continue; }
@@ -506,12 +509,13 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
         const stopped = r.timedOut ? null : offline ?? boxGap(r.stdout + "\n" + r.stderr, what, online ? "open" : "local");
         if (stopped) { missed.push(stopped); tried.push({ name: c.name, status: "not_started" }); continue; }
         tried.push({ name: c.name, status: "failed" });
-        return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks"), undefined, { summary: checkFailedSummary(c.name) }));
+        return result("failed", finish("checks", "failed", `${c.name} failed. ${gist(r, limits.checkMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "checks"), undefined, { summary: checkFailedSummary(c.name), runs: r.timedOut || r.code === null ? runs : [...runs, { command: c.command, exit: r.code }] }));
       }
       tried.push({ name: c.name, status: "passed" });
       ran.push(c.name);
+      runs.push({ command: c.command, exit: 0 });
     }
-    if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}${skipped.length ? ` ${skipped.join(" ")}` : ""}`, t0);
+    if (ran.length) finish("checks", "passed", `${ran.join(", ")} passed.${missed.length ? ` ${missed.join(" ")}` : ""}${skipped.length ? ` ${skipped.join(" ")}` : ""}`, t0, null, undefined, { runs });
     else finish("checks", "skipped", [...missed, ...skipped].join(" "), t0);
   } else finish("checks", "skipped", (nat && (nat.missing ?? nat.gaps[0])) || "This project has no build or lint steps to run.", t0);
 
@@ -549,8 +553,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (!left.includes(w)) left.push(w);
       finish("tests", "skipped", w, t0);
     }
-    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests"), undefined, { summary: TESTS_FAILED_SUMMARY }));
-    else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0);
+    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests"), undefined, { summary: TESTS_FAILED_SUMMARY, ...(r.timedOut || r.code === null ? {} : { runs: [{ command: det.tests.command, exit: r.code }] }) }));
+    else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0, null, undefined, { runs: [{ command: det.tests.command, exit: 0 }] });
   } else finish("tests", "skipped", (nat && nat.missing) || "This project has no tests to run.", t0);
 
   // --- 4 and 5. start it, open it

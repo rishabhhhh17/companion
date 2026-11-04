@@ -2,6 +2,31 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Clearer screens after a fix and a review: 4 Nov 2026
+
+- **No key, no cost.** Squibby pays for the AI it uses, so nothing asks you to connect Claude or add a key: the notch says "Squibby is getting ready on this Mac" instead, and an engine problem says it is on our side. Home, the notch and the practice no longer show what a job cost. Your own Claude key is still there for developers, under Settings, Account, Show all options.
+- **The payments warning only when it is true.** "Anyone who sees the code can spend your money" now shows only for a live payments secret on the exact line Squibby points at, not for a public or test key or a key on the line next to it.
+- **No made up address on the before and after pictures.** The little browser bar no longer shows your folder's name as if it were a web address.
+- **Squibby points at the real code.** When a review finds a secret password in your code, the card shows the line before, the line itself and the line after, with line numbers, instead of just "line 12". The password itself is never shown: only how it starts, such as `sk_live_…`.
+- **Plain words for secrets.** "A key is written into the code" now reads "A secret password is written into the code", and for a payments key "Anyone who sees the code can copy it and spend your money". Your Fix it keys are called your Fix it shortcut, so the two are never mixed up.
+- **The same buttons for the same problem.** A secret password found before any review now has Fix it, Copy for my AI and Keep it anyway, like a review that found it. Fix it runs the review first and then asks before changing anything. Keep it anyway still never stops Squibby from warning about a password.
+- **A proven fix says what got fixed.** "Sign up button fixed. Checked in a browser in 6 seconds." at the top, then Keep and Undo right under it, then the page before and after the fix side by side. Keep closes the result; the fix stays in History and in the Last fix card.
+- **A fix that did not work says so once.** "The sign up button is not fixed yet." with the reason under it, then where it stopped, the line, and Try a different fix, Copy for my AI and Undo this change.
+- **Only the checks that really run.** While a fix runs, the list shows Changing the code and then Checking the work. Each check (the build, the tests, the browser) appears once Squibby starts it, so a project with no tests never shows a tests step that was never going to happen.
+- **The Last fix card tells the story.** Its title is the outcome, it has a one line why, the before and after pictures and the checks that passed. With nothing new since, it takes the whole width instead of an empty Since then card.
+- **An approval asks once.** "Squibby needs your OK to add a tool." is the title; Stop moves to the top bar. Allow and Don't allow keep equal weight on purpose.
+- **Friendly looks like the rest.** No wave band across the top, main buttons and the send arrow in the accent colour, and nothing fades over a card's buttons in any look.
+- **Small fixes:** About shows "Squibby 0.9.2" and its channel; Save a log for support is its own row; the erase buttons in Memory look like buttons; the setup step says what went wrong and what to do; the top bar no longer repeats when it was checked; buttons in a row are all the same height; the change in a proof picture is marked in green.
+
+## Fix it shows its work, and proves it: 4 Nov 2026
+
+- **While it fixes, you see a list of steps.** The change itself in your words, then each check as it runs (Building and checking the code, Running the tests, Opening it in a browser), each with Done, Running or Failed on the right and how long it took. "2 of 4" says how far along it is, the same as the notch. What it is doing right now ("Changing signup.js") sits under the first row.
+- **The result takes the list's place.** A proven fix says how it was proven, for example "Checked in a browser in 5 seconds." Under it, each check that ran, with the command it ran and its exit code ("npm run build · exit 0"), and the picture of the page after the fix in a small browser frame. The separate "What was checked" card under a result is gone, so a stale "Checking the work" can never sit next to a finished fix.
+- **When a check fails, it leads with what failed.** "It stopped at: running the tests", the reason in one sentence, and the line it points at ("Squibby is pointing here"). Then Try again and Copy for my AI, which copies the step, the reason and the line for your other AI tool.
+- **Replay what Squibby did.** A button beside Undo plays the steps of the fix back, one row at a time, from what the app already kept.
+- **The notch shows a small receipt.** After a proven fix it drops down with the fix, how it was proven, the picture, and Keep, Undo and See proof. Keep folds it away.
+- **No cost line under a result any more.** Squibby pays for the model.
+
 ## The Visor, the new character: 4 Nov 2026
 
 - **Meet the Visor.** In the Instrument look the character is now a glass orb with a dark band across it and light behind the band. At rest two small lights blink every few seconds. While it works one bar of light scans side to side. While you hold to talk it shows a small pulsing meter. When it needs you the lights turn amber and it leans in a little. When it stops on something the lights go red. When a fix is proven the light curves into a smile and it gives one small hop.

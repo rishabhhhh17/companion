@@ -366,7 +366,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 
 /* Buttons are pills (the brand language: round, lit, slightly swollen): a secondary button is a neutral key, graphite a
    step up with a white line on top and a dark one under it; the colour stays on the one gel pill. */
-.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border-color: transparent; border-radius: var(--r-main); background: var(--keycap); box-shadow: inset 0 0 0 var(--hair) var(--keycap-ring), inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
+.home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn) { border: var(--hair) solid var(--keycap-ring); border-radius: var(--r-main); background: var(--keycap); box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under), 0 1px 2px var(--sheen-drop); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):hover:not(:disabled) { background: var(--keycap-hover); }
 .home .btn:not(.primary, .quiet, .icon, .danger, .ui-menu-btn):disabled { background: var(--fill-disabled); box-shadow: none; }
 .home .bar .ui-menu-btn, .home .hist .ui-menu-btn { border-radius: var(--r-main); background: var(--keycap); border-color: transparent; box-shadow: inset 0 var(--hair) 0 var(--keycap-lip), inset 0 calc(var(--hair) * -1) 0 var(--keycap-under); }

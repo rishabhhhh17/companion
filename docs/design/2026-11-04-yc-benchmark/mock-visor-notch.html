@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Visor and notch</title><link rel="stylesheet" href="mock-base.css">
+<style>
+html,body{background:#101114}body{color:#E9EBDF;width:948px}
+.sheet{width:900px;padding:22px 24px;border-radius:12px;background:#151515;box-shadow:0 0 0 1px rgb(255 255 255/.06)}
+h3{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:rgb(233 235 223/.45);font-weight:600;margin-bottom:12px}
+.states{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
+.st{background:rgb(255 255 255/.03);border:1px solid rgb(255 255 255/.06);border-radius:12px;padding:14px 8px 10px;display:flex;flex-direction:column;align-items:center;gap:8px}
+.st b{font-size:13px;font-weight:600}
+.st span{font-size:11px;color:rgb(233 235 223/.5);text-align:center;line-height:1.35}
+.notches{margin-top:22px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.desk{height:200px;border-radius:12px;background:linear-gradient(160deg,#2a3140,#171b23);position:relative;overflow:hidden}
+.mb{height:22px;background:rgb(0 0 0/.25);display:flex;align-items:center;padding:0 10px;font-size:11px;color:rgb(255 255 255/.7)}
+.notch{position:absolute;left:50%;top:0;transform:translateX(-50%);background:#000;border-radius:0 0 14px 14px;display:flex;align-items:center;gap:8px;padding:0 10px;height:30px}
+.notch .scan{width:120px;height:3px;border-radius:2px;background:linear-gradient(90deg,transparent,#7FB2FF 45%,#7FB2FF 55%,transparent);opacity:.9}
+.panel{position:absolute;left:50%;top:0;transform:translateX(-50%);width:330px;background:#000;border-radius:0 0 20px 20px;padding:34px 14px 12px}
+.panel .t{font-size:13px;font-weight:600;color:#fff}
+.panel .s{font-size:12px;color:rgb(255 255 255/.55);margin-top:2px}
+.panel .acts{display:flex;gap:6px;margin-top:10px}
+.pbtn{height:26px;padding:0 10px;border-radius:6px;font-size:12px;font-weight:600;display:inline-flex;align-items:center;gap:6px;background:rgb(255 255 255/.12);color:#fff}
+.pbtn.p{background:#2F6BFF}
+.thumb{width:64px;height:42px;border-radius:6px;background:#1c2230;border:1px solid rgb(255 255 255/.1);position:relative}
+.thumb:after{content:"";position:absolute;left:8px;bottom:8px;width:26px;height:7px;border-radius:2px;background:#1F8A5B88;outline:1px solid #5BE3A1}
+.cap{position:absolute;bottom:10px;left:12px;font-size:11px;color:rgb(255 255 255/.5)}
+.dock{margin-top:22px;display:flex;gap:14px;align-items:flex-end}
+.edge{background:rgb(255 255 255/.04);border:1px solid rgb(255 255 255/.06);border-radius:12px;padding:12px;display:flex;gap:18px;align-items:center}
+.lbl{font-size:11px;color:rgb(233 235 223/.5);text-align:center;margin-top:4px}
+</style></head><body>
+<div class="sheet">
+ <h3>Visor states · the lights carry the mood, nothing else moves</h3>
+ <div class="states">
+  <div class="st"><div data-visor="idle" data-size="64"></div><b>Ready</b><span>Two soft lights. Blinks every 6 to 9 s.</span></div>
+  <div class="st"><div data-visor="working" data-size="64"></div><b>Working</b><span>One light sweeps left to right, 900 ms.</span></div>
+  <div class="st"><div data-visor="needs" data-size="64"></div><b>Needs you</b><span>Amber, taller lights, leans 4° toward you.</span></div>
+  <div class="st"><div data-visor="proven" data-size="64"></div><b>Proven</b><span>Green smile arc, 200 ms, once.</span></div>
+  <div class="st"><div data-visor="error" data-size="64"></div><b>Problem</b><span>Flat red bar. No face, no drama.</span></div>
+  <div class="st"><div data-visor="asleep" data-size="64"></div><b>Stopped</b><span>Lights dim to 30%. Stop key does this.</span></div>
+ </div>
+ <h3 style="margin-top:22px">Notch · working, then proven</h3>
+ <div class="notches">
+  <div class="desk"><div class="mb"> Lovable&nbsp;&nbsp;File&nbsp;&nbsp;Edit</div>
+   <div class="notch"><div data-visor="working" data-size="20" data-shadow="no"></div><div class="scan"></div><span style="font-size:11px;color:rgb(255 255 255/.75);font-variant-numeric:tabular-nums">2 of 4</span></div>
+   <div class="cap">The visor band becomes the notch status. Hover to peek.</div></div>
+  <div class="desk"><div class="mb"> Lovable&nbsp;&nbsp;File&nbsp;&nbsp;Edit</div>
+   <div class="panel"><div style="display:flex;gap:10px;align-items:center"><div data-visor="proven" data-size="34" data-shadow="no"></div><div style="flex:1"><div class="t">Sign up button fixed</div><div class="s">Checked in a browser · 4 s</div></div><div class="thumb"></div></div>
+   <div class="acts"><span class="pbtn p">Keep <span style="opacity:.6;font-family:var(--mono);font-weight:400">↵</span></span><span class="pbtn">Undo <span style="opacity:.6;font-family:var(--mono);font-weight:400">⌘Z</span></span><span class="pbtn" style="background:none;color:rgb(255 255 255/.6)">See proof</span></div></div>
+   <div class="cap">A mini receipt, not a toast. Folds back into the notch in 240 ms.</div></div>
+ </div>
+ <h3 style="margin-top:22px">Screen edge dock · readable without the label</h3>
+ <div class="edge">
+  <div><div data-visor="idle" data-size="44"></div><div class="lbl">Ready</div></div>
+  <div><div data-visor="working" data-size="44"></div><div class="lbl">Working</div></div>
+  <div style="position:relative"><div data-visor="needs" data-size="44" style="transform:rotate(-4deg)"></div><span style="position:absolute;top:-2px;right:-4px;background:#FFB547;color:#1a1200;font-size:10px;font-weight:700;border-radius:999px;padding:0 5px">1</span><div class="lbl">Needs you</div></div>
+  <div><div data-visor="proven" data-size="44"></div><div class="lbl">Proven</div></div>
+  <div><div data-visor="error" data-size="44"></div><div class="lbl">Problem</div></div>
+  <div style="opacity:.55"><div data-visor="asleep" data-size="44"></div><div class="lbl">Stopped</div></div>
+ </div>
+</div>
+<script src="mock-visor.js"></script>
+</body></html>

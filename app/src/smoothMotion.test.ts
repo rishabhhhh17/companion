@@ -6,9 +6,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { ALL_CSS, PARTS_CSS, STYLE_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
+import { S } from "./strings.ts";
 import { MOTION_TOKENS, MAX_FADES, MAX_SLIDE, countAt, counts, gone, msOf, onScreen, pxOf, readTokens, slides, translateYOf, type Spot } from "./smoothMotion.ts";
 import { initial, reduce, type Model } from "./model.ts";
-import { heroWords, timeLine, workingLine } from "./homeHero.ts";
+import { heroWords, timeLine } from "./homeHero.ts";
 import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -163,16 +164,15 @@ describe("numbers count up rather than jumping", () => {
     expect(counts(0.1, 0.3, true), "Reduce motion or Less motion: the number is simply there").toBe(false);
     expect(counts(Number.NaN, 0.3, false)).toBe(false);
   });
-  test("the working line's cost is what counts; its words are the same as before", () => {
+  test("the working line never counts a cost (M69, F29: Squibby pays)", () => {
     const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
     const m = [ev({ type: "checkpoint.created", agent: "a", checkpoint: "cp_1", label: "Before: fix it", files: 1, skipped: [] }), ev({ type: "agent.state", agent: "a", state: "working" }), ev({ type: "cost.update", agent: "a", usdEstimate: 0.12 })]
       .reduce<Model>((s, e) => reduce(s, e as never), initial());
     const h = heroWords(m, "/p");
     expect(m.task?.costUsd).toBe(0.12);
-    expect(h.count).toBe(0.12);
-    expect(h.line).toBe(workingLine(0.12));
-    expect(heroWords(initial(), "/p").count).toBeUndefined();
-    expect(card).toContain("{heroShown.count != null ? <CountUp value={heroShown.count} words={workingLine} /> : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}");
+    expect(h.line).toBe(S.look.workingFree);
+    expect(card).toContain("{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}");
+    expect(card).not.toContain("words={workingLine}");
   });
 });
 

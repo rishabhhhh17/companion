@@ -1,0 +1,78 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Home with a review</title><link rel="stylesheet" href="mock-base.css">
+<style>
+.rv{padding:18px 20px;border-top:3px solid var(--danger)}
+.rvhead{display:grid;grid-template-columns:1fr auto;gap:16px}
+.rv .display{font-size:22px}
+.meaning{margin-top:14px;background:var(--danger-tint);border-radius:var(--r-chip);padding:10px 12px;font-size:13px;color:var(--t1)}
+.meaning b{font-weight:600}
+.code{margin-top:12px;border:1px solid var(--hair);border-radius:var(--r-chip);overflow:hidden}
+.code .h{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--sunken);font-family:var(--mono);font-size:11px;color:var(--t2)}
+.code pre{font-family:var(--mono);font-size:12px;line-height:20px;padding:6px 0;color:var(--t2);background:#fff}
+.code pre div{padding:0 10px;white-space:pre}
+.code pre .n{display:inline-block;width:22px;color:var(--t3)}
+.code pre .bad{background:var(--danger-tint);color:var(--t1);box-shadow:inset 3px 0 0 var(--danger)}
+.pointer{color:var(--danger);font-family:-apple-system,sans-serif;font-size:11px;font-weight:600;margin-left:10px}
+.acts{display:flex;align-items:center;gap:8px;margin-top:16px}
+.reassure{font-size:12px;color:var(--t3);margin-top:8px}
+.more{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap}
+.other{margin-top:12px;display:flex;align-items:center;gap:10px;padding:10px 14px}
+.other .t{font-size:13px}.other .s{color:var(--t3);font-size:12px}
+</style></head><body>
+<div class="win">
+ <aside class="side">
+  <div class="lights"><i></i><i></i><i></i></div>
+  <div class="nav on"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"/><circle cx="8" cy="8" r="2"/></svg>Now<span class="badge">2</span></div>
+  <div class="nav"><svg viewBox="0 0 16 16"><path d="M3 4h10M3 8h10M3 12h6"/></svg>History</div>
+  <div class="nav"><svg viewBox="0 0 16 16"><path d="M4 2h8v12l-4-3-4 3z"/></svg>Memory</div>
+  <div class="nav"><svg viewBox="0 0 16 16"><path d="M2 6l6-3 6 3-6 3z M4 7v4c2 2 6 2 8 0V7"/></svg>Learn</div>
+  <div class="grow"></div>
+  <div class="nav"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2"/></svg>Settings</div>
+ </aside>
+ <section class="main">
+  <div class="top">
+   <div class="projpick"><span class="dot" style="background:var(--danger)"></span>my-shop <span style="color:var(--t3);font-weight:400">⌄</span></div>
+   <span class="meta">4 files changed by Lovable · 2 min ago</span>
+   <div class="right">Press <span class="kbd">⌥</span><span class="kbd">Space</span> anywhere</div>
+  </div>
+  <div class="scroll">
+   <div class="card rv">
+    <div class="rvhead">
+     <div>
+      <span class="pill danger">Fix this first · 1 of 2</span>
+      <div class="display" style="margin-top:10px">Your payment key is written into the code.<br><span class="soft">Anyone who sees the code can copy it and spend your money.</span></div>
+     </div>
+     <div data-visor="needs" data-size="64"></div>
+    </div>
+    <div class="code">
+     <div class="h">src/pay.ts <span style="margin-left:auto">changed 2 min ago</span></div>
+     <pre><div><span class="n">11</span>export async function pay(cart) {</div><div class="bad"><span class="n">12</span>  const key = "sk_live_51H…Xq"<span class="pointer">← Squibby is pointing here</span></div><div><span class="n">13</span>  return stripe(key).charge(cart.total)</div></pre>
+    </div>
+    <div class="acts">
+     <span class="btn primary">Fix it <span class="k">↵</span></span>
+     <span class="btn">Copy for my AI</span>
+     <span class="btn">Keep it anyway</span>
+     <span class="btn ghost" style="margin-left:auto">Why does this matter?</span>
+    </div>
+    <div class="reassure">Squibby moves the key to a safe settings file and checks the site still works. You can undo it.</div>
+   </div>
+
+   <div class="card other">
+    <span class="pill warn">Then</span>
+    <div><div class="t">A helper file was deleted, but the cart still uses it</div><div class="s">The cart page may break when you open it.</div></div>
+    <span class="btn ghost" style="margin-left:auto">Look</span>
+   </div>
+   <div class="card other">
+    <span class="pill ok">Fine</span>
+    <div><div class="t">2 other files changed</div><div class="s">Text and colour changes on the home page. Tests passed on a copy.</div></div>
+    <span class="btn ghost" style="margin-left:auto">See</span>
+   </div>
+  </div>
+  <div class="ask">
+   <div class="q"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 2l1.5 4.5L14 8l-4.5 1.5L8 14l-1.5-4.5L2 8l4.5-1.5z"/></svg>Ask about this change</div>
+   <div class="row"><span class="chip tok">● src/pay.ts line 12</span><span class="chip">What is a key?</span><span class="chip">Is my site live?</span>
+    <span class="send"><svg viewBox="0 0 14 14"><path d="M7 11V3M3.5 6.5L7 3l3.5 3.5"/></svg></span></div>
+  </div>
+ </section>
+</div>
+<script src="mock-visor.js"></script>
+</body></html>

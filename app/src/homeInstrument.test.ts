@@ -25,10 +25,13 @@ describe("the status line says the state in words", () => {
   });
   test("changes rated stop (or a key in the code) say Fix this first in red, with a red ring, never amber (M65 step 4)", () => {
     expect(heroStatusOf("review", st("works"), "needsYou", true)).toBe("fixFirst");
+    // M69 step 3: while the parts download there is nothing for the person to do yet: Working, not Needs you.
+    expect(heroStatusOf("blocked", st("works"), "needsYou", false, "claudeGetting")).toBe("working");
+    expect(heroStatusOf("blocked", st("works"), "needsYou", false, "key")).toBe("needs");
     expect(heroStatusOf("needs", st("works"), "needsYou", true)).toBe("needs");   // only the review's own stop
     expect(S.ui.status.fixFirst).toBe("Fix this first");
     expect(heroRingOf("review", "fixFirst")).toBe("stop");
-    expect(card).toContain("heroStatusOf(mode, status, hero.tone, !!rlead?.stop)");
+    expect(card).toContain("heroStatusOf(mode, status, hero.tone, !!rlead?.stop, blocker)");
     expect(read("./ui/parts.tsx")).toMatch(/fixFirst: "stop"/);
   });
   test("a result says its verdict: only a proven fix is Proven", () => {
@@ -49,7 +52,7 @@ describe("the status line says the state in words", () => {
     expect(lineSaidByStatus("working", S.look.workingFree)).toBe(true);
     expect(lineSaidByStatus("working", S.look.working("12 cents"))).toBe(false);
     expect(lineSaidByStatus(null, "Working")).toBe(false);
-    expect(card).toContain("data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroShown.line)");
+    expect(card).toContain("data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine)");
   });
   test("it steps aside when the headline already says the same words", () => {
     expect(statusLineShown("notChecked", S.home.notChecked)).toBe(false);
@@ -99,12 +102,14 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(card).not.toContain("instrument &&");
   });
   test("the status line, the footer line and the ring come from homeHero.ts", () => {
-    expect(card).toContain("{statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}");
-    expect(card).toContain('{foot && home.tab === "now" && side && <FootLine start={foot.start} end={foot.end} />}');
-    // M65 step 4: in the tall Home the ask box sits near the top, so the footer line is the page's last line, not mid page.
-    expect(card).toContain('{foot && home.tab === "now" && !side && <FootLine className="home-foot-end" start={foot.start} end={foot.end} />}');
-    expect(card.indexOf('className="home-foot-end"')).toBeGreaterThan(card.indexOf('{show("folder") && <div className="foot">'));
-    expect(home).toMatch(/\.home \.home-foot-end \{[^}]*display: var\(--home-foot-show, none\)/);
+    // M69 step 2: at rest the tag is homeRest.ts's (never Not checked yet next to a proven run); otherwise homeHero.ts's.
+    expect(card).toContain(": statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}");
+    expect(card).toContain("restWords.pill && <p className=\"ui-status\" data-tone={PILL_TONE[restWords.pill]}>");
+    // M69 (one layout grammar, the YC benchmark spec 3): the footer line's words moved into the top bar's context line in
+    // every look and both layouts (homeLayout.ts barContext), so no FootLine is drawn on Home any more.
+    expect(card).not.toContain("<FootLine");
+    // M69 step 3: only while the hero does not already say when it was checked (at rest and over a result it does).
+    expect(card).toContain("const barLine = barContext({ project, foot: atRest || resHero ? null : foot, about: m.about, tall: !side });");
     expect(card).toContain("ring={heroRingOf(mode, heroStatus)}");
     expect(card).toContain('data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}');
   });

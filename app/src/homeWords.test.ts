@@ -74,7 +74,6 @@ describe("the working card's line before its first step says what is going on, n
     expect(S.home.gettingStarted).toBe("Getting started");
     expect(jobNowSays("Listening")).toEqual({ text: "Listening" });
     expect(jobNowSays("Building the code")).toEqual({ text: "Building the code" });
-    const card = read("./card.tsx");
-    expect(card).toContain("<p className=\"job-now\"><Said {...jobNowSays(jobNowWords(m, js.retry, lines))} /></p>");
+    // M69: the work card's run list says each step on its own row (runList.ts), so this line is no longer drawn there.
   });
 });

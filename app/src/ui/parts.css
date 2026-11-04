@@ -14,10 +14,13 @@ button, select, input, textarea { font: inherit; }
    A button is as wide as its words (flex: none) and never breaks inside a word. Its words go to a second line only when
    the panel itself is narrower than they are (the biggest text sizes), never a single line that runs off the panel
    (a11y.test.ts, reflow). A row hands a control that does not fit a line of its own first (Row, below). */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-md); margin: 0; padding: 0 var(--space-btn2-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: center; overflow-wrap: normal; cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+/* M69 (spec 1.6): a button with an edge is a key, its bottom edge 2 points at rest and 1 when pressed, drawn inside it
+   (an inset line under the 1 point border) so nothing around it moves. Quiet and icon buttons have no edge to press. */
+.btn { box-shadow: var(--btn-key); display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); flex: none; max-width: 100%; box-sizing: border-box; min-height: var(--h-md); margin: 0; padding: 0 var(--space-btn2-x); border: var(--hair) solid var(--line-strong); border-radius: var(--r-control); background: transparent; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); text-align: center; overflow-wrap: normal; cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .btn:hover:not(:disabled) { background: var(--surface-2); }
 /* M55: it goes in quickly under the pointer and comes back out a little slower, on the same curve. */
-.btn:active:not(:disabled) { background: var(--surface-3); transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.btn:active:not(:disabled) { background: var(--surface-3); box-shadow: var(--btn-key-press); transform: scale(var(--press)); transition-duration: var(--dur-press); }
+
 .btn:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); }
 .btn:disabled { border-color: transparent; background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; cursor: not-allowed; }
 .btn.sm { min-height: var(--h-sm); padding: 0 var(--space-3); font-size: var(--t-small); line-height: var(--lh-small); }
@@ -33,7 +36,7 @@ button, select, input, textarea { font: inherit; }
 /* Any button that stays pressed (a chosen key in Change keys): filled, with a full --fg edge, so the choice in use shows by
    shape and not by a tint alone. A quiet one keeps its own look below. */
 .btn[aria-pressed="true"] { background: var(--surface-3); border-color: var(--fg); }
-.btn.quiet { padding: 0 var(--space-2); border-color: transparent; color: var(--fg-2); }
+.btn.quiet { padding: 0 var(--space-2); border-color: transparent; box-shadow: none; color: var(--fg-2); }
 .btn.quiet:hover:not(:disabled), .btn.quiet:active:not(:disabled) { background: transparent; color: var(--fg); }
 .btn.quiet:disabled { background: transparent; color: var(--ink-disabled); }
 /* A quiet button that opens a place (Home's top bar): the open one is filled, a change of fill and not of colour alone. */
@@ -42,7 +45,7 @@ button, select, input, textarea { font: inherit; }
 .btn.danger:hover:not(:disabled) { background: var(--bad-hover); }
 .btn.danger:active:not(:disabled) { background: var(--bad-press); }
 .btn.icon { width: var(--h-sm); min-height: var(--h-sm); padding: 0; }
-.btn.icon:not(.primary) { border-color: transparent; color: var(--fg-2); }
+.btn.icon:not(.primary) { border-color: transparent; box-shadow: none; color: var(--fg-2); }
 .btn.icon:not(.primary):hover:not(:disabled) { color: var(--fg); }
 .btn.icon:not(.primary):disabled { background: transparent; color: var(--ink-disabled); }
 .btn .ic { flex: none; width: var(--icon-md); height: var(--icon-md); }
@@ -305,13 +308,22 @@ button, select, input, textarea { font: inherit; }
    A tag that says stop; the status line, a small dot and its words in their meaning's colour; a file row with its folder,
    a short tag and its added and removed lines; the footer line; and the faceless glass orb with its state ring. */
 .ui-tag[data-tone="stop"] { border-color: transparent; background: var(--tag-stop-bg); color: var(--bad); }
-.ui-status { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+/* M69 (spec 1.2, 1.7): the status is a short tag, a pill with its dot and its word in the meaning's colour on a faint tint
+   of it, uppercase and a little open. The only uppercase words in the app (rule 16, M69 correction 5). */
+.ui-status { display: inline-flex; align-items: center; gap: var(--pill-gap); justify-self: start; width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--pill-x); border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
 .ui-status-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: currentColor; }
-.ui-status[data-tone="needs"] { color: var(--amber); }
-.ui-status[data-tone="proven"] { color: var(--ok); }
-.ui-status[data-tone="stop"] { color: var(--bad); }
-.ui-status[data-tone="working"] { color: var(--status-working); }
+.ui-status[data-tone="needs"] { background: var(--warn-tint); color: var(--amber); }
+.ui-status[data-tone="proven"] { background: var(--ok-tint); color: var(--ok); }
+.ui-status[data-tone="stop"] { background: var(--danger-tint); color: var(--bad); }
+/* A section's short label over a card (LAST FIX, SINCE THEN): the same tag's type, in the second words, no pill. */
+.ui-eyebrow { margin: 0; color: var(--fg-2); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+.ui-status[data-tone="working"] { background: var(--acc-tint); color: var(--status-working); }
 .ui-status[data-tone="working"] .ui-status-dot { background: var(--ring-working); }
+.ui-dot { display: inline-block; flex: none; width: var(--dot-bar); height: var(--dot-bar); border-radius: var(--r-round); background: var(--fg-2); }
+.ui-dot[data-tone="needs"] { background: var(--ring-needs); }
+.ui-dot[data-tone="proven"] { background: var(--ring-proven); }
+.ui-dot[data-tone="stop"] { background: var(--ring-stop); }
+.ui-dot[data-tone="working"] { background: var(--ring-working); }
 .ui-files { margin: 0; padding: 0; list-style: none; }
 .ui-file { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--space-3); align-items: center; padding: var(--space-row-y) var(--space-4); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); }
 .ui-file-name { min-width: 0; overflow-wrap: anywhere; }
@@ -367,3 +379,6 @@ button, select, input, textarea { font: inherit; }
 /* ---------- Reduced motion (M66): a part that comes in still fades in, plainly; it leaves at once (parts.tsx exitMs) ---------- */
 @media (prefers-reduced-motion: reduce) { :is(.ui-menu-list, .ui-pop, .ui-scrim, .ui-sheet, .ui-toast) { animation: ui-fade-in var(--dur-1) linear both !important; } }
 :root[data-less-motion] .ui-menu-list, :root[data-less-motion] .ui-pop, :root[data-less-motion] .ui-scrim, :root[data-less-motion] .ui-sheet, :root[data-less-motion] .ui-toast { animation: ui-fade-in var(--dur-1) linear both !important; }
+
+/* ---------- M69 step 2: a count of what waits on a place in the side list (amber, count only; homeSide.tsx) ---------- */
+.sb-count { flex: none; display: inline-grid; place-items: center; min-width: var(--h-pill); min-height: var(--h-pill); box-sizing: border-box; margin-left: auto; padding: 0 var(--space-1); border-radius: var(--r-pill); background: var(--warn-tint); color: var(--amber); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); font-variant-numeric: tabular-nums; }

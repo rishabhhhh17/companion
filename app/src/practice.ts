@@ -92,6 +92,12 @@ export function listRows(rec: PracticeRecord, doctor: DoctorItem[] | null): List
     return { entry: e, state: rowState(r), there: !!r?.there, title: S.practices[e.id].title, teaches: S.practices[e.id].teaches, time: timeWords(e), cost: costWords(e), needsNode: e.needsNode && noNode };
   });
 }
+/** M69 (the YC benchmark spec 3.8): Learn as a course path. The practice to do now leads, open: the first in catalog order
+ *  under way, else the first not done. The others are folded to one line each ("Next" for the ones not done). Null lead when
+ *  every practice is done. */
+export function practicePath(rows: readonly Pick<ListRow, "entry" | "state">[]): string | null {
+  return (rows.find((r) => r.state === "inProgress") ?? rows.find((r) => r.state !== "done"))?.entry.id ?? null;
+}
 /** After a practice: the next one in catalog order that is not done yet (the one just finished counts as done). */
 export function nextPractice(rec: PracticeRecord, justDone: string): PracticeEntry | null {
   const done = new Set([...rec.rows.filter((r) => r.done).map((r) => r.id), justDone]);

@@ -507,6 +507,9 @@
   --orb-edge: 56px;
   --orb-notch: 16px;
   --orb-panel: 24px;
+  /* M69 step 2: the character beside Home's hero at rest (spec 2.2: 96 wide, 64 tall, ring and gap inside) and at the top
+     right of the review card that leads Now (64). */
+  --orb-hero: 84px; --orb-hero-sm: 56px; --orb-card: 56px;
   /* The Visor (M68, ui/parts.css .ui-visor, the founder's pick from the characters lab, option B): the dark band and the
      light behind it, copied from the lab. Fixed in every theme, like the glass it sits on (visorArt.ts). Amber when it
      needs you and red when it stopped, the lab's own lights; the ring outside keeps its meaning colours. The glow is a
@@ -526,6 +529,48 @@
   --visor-hop-up: -5.3%;               /* the lab's 4 of its 76 units, so the hop scales with each size */
   --visor-hop-origin: 50% 100%;        /* it squashes on its foot */
   --visor-notch: 34px;                 /* the band alone in the notch's wing: 34 across, 10 tall, inside a 20 px pill row and a 32 px notch row */
+
+  /* ---------- M69, the system (docs/design/2026-11-04-yc-benchmark/design-spec.md section 1), both looks ----------
+     One layout grammar and one set of parts for Instrument and Friendly (M69 correction 6): only the colours and the
+     character differ. The type scale's display steps, the short status tag, the key style buttons, the floating ask box
+     and the tints a status or the accent sits on. The colours here are each look's own tokens mixed, so every theme and
+     every water gets its own (system.test.ts measures them). */
+  /* Type (spec 1.1): the hero is 28 on 32 at weight 500 with tight tracking, 22 on 27 in the tall Home and on a review;
+     the status tag 11 on 14, weight 600, uppercase, a little open. Numbers that change keep their width. */
+  --t-hero: calc(28rem / 14);   --lh-hero: calc(32rem / 14);   --track-hero: -0.022em;
+  --t-hero-sm: calc(22rem / 14); --lh-hero-sm: calc(27rem / 14); --track-hero-sm: -0.02em;
+  --w-hero: 500;
+  --t-eyebrow: calc(11rem / 14); --lh-eyebrow: calc(14rem / 14); --track-eyebrow: .06em; --w-eyebrow: 600;
+  /* The second tone of a two tone headline (the why, after the outcome): the second words in Friendly, Instrument's third
+     step of its ink. Only ever on the hero's 22 or 28 point words, so 3 to 1 is its floor (large text). */
+  --hero-soft: var(--fg-2);
+  /* The status tag (spec 1.2, 1.7): a pill with a word, the meaning's colour on a faint tint of it. Never an icon alone. */
+  --h-pill: calc(20rem / 14);
+  --pill-x: calc(8rem / 14);
+  --pill-gap: calc(6rem / 14);
+  --dot-bar: calc(8rem / 14);          /* the status dot before the project's name in the top bar */
+  --ok-tint: color-mix(in srgb, var(--ok) 14%, var(--surface-1));
+  --warn-tint: color-mix(in srgb, var(--amber) 14%, var(--surface-1));
+  --danger-tint: color-mix(in srgb, var(--bad) 14%, var(--surface-1));
+  --neutral-tint: var(--surface-2);
+  /* The accent's tint (spec 1.2): the open place in the list and the project's token in the ask box, with the accent's
+     readable step for their words. */
+  --acc-tint: color-mix(in srgb, var(--acc) 22%, var(--surface-1));
+  --acc-text: color-mix(in srgb, var(--acc) 45%, #FFFFFF);
+  --acc-deep: var(--acc-press);
+  /* A sunken strip (a code block's header, a picture's browser bar) and the side list's own faint step. */
+  --sunken: var(--surface-2);
+  --side-bg: color-mix(in srgb, var(--fg) 3%, var(--bg));
+  /* Key style buttons (spec 1.6, PostHog): a darker bottom edge, 2 points at rest and 1 when pressed, drawn inside the
+     button so nothing moves around it. */
+  --btn-key: inset 0 -1px 0 var(--line-strong);
+  --btn-key-press: none;
+  /* Elevation (spec 1.6): hairlines first; the floating ask box and toasts get one soft shadow. */
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, .1), 0 4px 14px rgba(0, 0, 0, .18);
+  --r-ask: calc(16rem / 14);
+  --h-chip-ask: calc(24rem / 14);      /* the ask box's token and example chips */
+  --h-send: calc(30rem / 14);          /* the round send (24 points or more to press) */
+  --ask-shadow-float: var(--shadow-float);
 
   font: 14px var(--font);
 }
@@ -550,11 +595,15 @@
   --surface-2: #26262A;
   --surface-3: #2E2E33;
   --inset: #1D1D20;
-  --fg: #EDEDEF;
-  --fg-2: #A1A1A8;                     /* 5 to 1 or more on every step */
+  /* M69 (spec 1.2): every grey is one warm off white ink at a step of opacity, so the words, the lines and the second
+     words always agree. t1 .92, t2 .62, hair .09, hair2 .14; the hero's soft words the faintest step at 4.5 to 1. */
+  --fg: rgba(233, 235, 223, .92);
+  --fg-2: rgba(233, 235, 223, .62);    /* 5 to 1 or more on every step (system.test.ts) */
   --fg-3: #85858D;
-  --line: rgba(255, 255, 255, .07);
-  --line-strong: rgba(255, 255, 255, .12);
+  --line: rgba(233, 235, 223, .09);
+  --line-strong: rgba(233, 235, 223, .14);
+  --hero-soft: rgba(233, 235, 223, .52);
+  --ink-solid: #E9EBDF;                /* the ink at full strength, for an edge that must stand out (the ask box in focus) */   /* the spec's t3 .42 reads 3.6 to 1; .52 is the faintest at 4.5 to 1 */
   --ok: #3DD68C;
   --bad: #F2655F;
   --bad-edge: rgba(242, 101, 95, .45);
@@ -566,7 +615,7 @@
   --key-down: color-mix(in srgb, var(--water) 14%, #26262A);
   --bubble: rgba(38, 38, 42, .92);
   --room-base: #131315;
-  --fg-2-room: #A1A1A8;
+  --fg-2-room: rgba(233, 235, 223, .62);
   --shadow-raised: 0 12px 28px rgba(0, 0, 0, .45), 0 0 0 1px rgba(255, 255, 255, .06);
 
   /* Type: 13 px body, a 17 px semibold headline. */
@@ -737,6 +786,13 @@
   --keycap-lip: #FFFFFF;
   --keycap-under: rgba(0, 0, 0, .1);
   --keycap-ring: #E0E0E0;
+  /* M69: the accent's words on its tint are its deep step on white; the floating shadow is lighter on a light page. */
+  --acc-text: var(--acc-press);
+  --acc-tint: color-mix(in srgb, var(--acc) 12%, var(--surface-1));
+  --ok-tint: color-mix(in srgb, var(--ok) 7%, var(--surface-1));
+  --warn-tint: color-mix(in srgb, var(--amber) 8%, var(--surface-1));
+  --danger-tint: color-mix(in srgb, var(--bad) 7%, var(--surface-1));
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .06);
 }
 
 /* ---------- Colour, Deep (look.theme = deep, M51): a dark sea blue, the same steps as Graphite with a cool cast ----------
@@ -1064,7 +1120,7 @@
   --sw-sky-a: 0%;
   --sea-fill-a: 0;
   --sea-fill-show: none;
-  --ask-push: 0;
+  --ask-push: auto;                    /* M69 (one layout grammar): the ask box is pinned at the bottom in every look */
   --sea-tail-a: 0%;
   --sea-see-a: .34;                    /* Flowflow's water stays, lighter, on the plain graphite */
   --room-play: paused;                 /* M55: a light that is not drawn does not keep moving either */
@@ -1089,8 +1145,10 @@
   --main-hover: var(--acc-hover);
   --main-press: var(--acc-press);
   --main-ink: var(--acc-ink);
-  --main-shadow: none;
-  --main-shadow-press: none;
+  /* M69 (spec 1.6): the main button is a key, a faint glass line on top and its accent's deep step as a 2 point edge
+     under it, 1 point when pressed. No gloss, no glow. */
+  --main-shadow: inset 0 1px 0 rgba(255, 255, 255, .22), inset 0 -2px 0 var(--acc-deep);
+  --main-shadow-press: inset 0 -1px 0 var(--acc-deep);
   --keycap: transparent;
   --keycap-hover: var(--surface-2);
   --keycap-lip: transparent;
@@ -1112,7 +1170,7 @@
      at least twice the contrast it has at rest, so focus shows without the cursor. */
   --ask-edge: var(--edge-control);
   --ask-hover-edge: var(--edge-control-hover);
-  --ask-focus-edge: var(--fg);
+  --ask-focus-edge: var(--ink-solid);
 }
 /* A shadow under a card is neutral in Instrument, never the room's blue (the room's element sets its own, so this is set
    on Home's element too). */
@@ -1120,6 +1178,29 @@
 :root[data-style="instrument"][data-theme="paper"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .08); }
 :root[data-style="instrument"][data-theme="paper"] {
   --card-flat: inset 0 0 0 var(--hair) var(--line), 0 1px 2px rgba(0, 0, 0, .04);
+  /* M69 (spec 1.2, the mockups): White in Instrument is a warm off white window with white cards on it, and every grey is
+     one deep ink (rgb 11 18 32) at a step of opacity. Friendly's White keeps its own block above. */
+  --bg: #F6F6F4;
+  --surface-1: #FFFFFF;
+  --surface-2: #EEEEEB;
+  --surface-3: #E6E6E2;
+  --inset: #F6F6F4;
+  --fg: rgba(11, 18, 32, .92);
+  --fg-2: rgba(11, 18, 32, .62);
+  --fg-2-room: rgba(11, 18, 32, .62);
+  --line: rgba(11, 18, 32, .09);
+  --line-strong: rgba(11, 18, 32, .14);
+  --ink-solid: #0B1220;
+  --ok: #0C7548;                       /* White's green one step deeper, so a proven stamp reads 4.5 to 1 on the off white steps */
+  --hero-soft: rgba(11, 18, 32, .6);       /* the spec's t3 .42 reads 2.7 to 1; .6 is the faintest at 4.5 to 1 on the page */
+  --room-base: #F6F6F4;
+  --acc-tint: color-mix(in srgb, var(--acc) 12%, var(--surface-1));
+  --acc-text: var(--acc-press);
+  --ok-tint: color-mix(in srgb, var(--ok) 7%, var(--surface-1));
+  --warn-tint: color-mix(in srgb, var(--amber) 8%, var(--surface-1));
+  --danger-tint: color-mix(in srgb, var(--bad) 7%, var(--surface-1));
+  --side-bg: color-mix(in srgb, #0B1220 3%, var(--bg));
+  --shadow-float: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .06);
 }
 :root[data-style="instrument"][data-theme="deep"] { --fg-2-room: #A9BACB; }
 :root[data-style="instrument"][data-density="compact"] {
@@ -1148,3 +1229,9 @@
   --gel-ink: var(--acc-ink); --gel-shine: transparent; --gel-shade: transparent;
   --fg-2: var(--fg-2-room);
 }
+
+/* M69 step 3: the notch's Keep is the accent, as Home's main button is in Instrument, in every look (a white pill read as
+   a second, different kind of button). */
+.island-panel { --main: var(--acc); --main-hover: var(--acc-hover); --main-press: var(--acc-press); --main-ink: var(--acc-ink); }
+/* M69 step 3: Friendly's main buttons and send arrow in Home are the same accent key as Instrument's, never a white pill. */
+:root:not([data-style="instrument"]) .home { --main: var(--acc); --main-hover: var(--acc-hover); --main-press: var(--acc-press); --main-ink: var(--acc-ink); }

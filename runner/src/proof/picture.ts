@@ -46,13 +46,14 @@ async function diffCells({ a, b, w = 1280 }: { a: string; b: string; w?: number 
   return out;
 }
 
-// The page picture with an orange ring around each changed place.
+// The page picture with a green ring around each changed place.
 async function ring({ a, boxes, w = 1280 }: { a: string; boxes: Box[]; w?: number }): Promise<string> {
   const i = new Image(); i.src = `data:image/jpeg;base64,${a}`; await i.decode();
   const c = document.createElement("canvas"); c.width = i.width; c.height = i.height;
   const g = c.getContext("2d")!; g.drawImage(i, 0, 0);
   const k = i.width / w;
-  g.lineWidth = 4 * k; g.strokeStyle = "#ff9a2e";
+  // M69 step 3: the change is marked in the proven green, a thin rounded box (an orange or red ring read as an error).
+  g.lineWidth = 3 * k; g.strokeStyle = "#1F9D55";
   // A rounded box a little bigger than the change, kept inside the picture so a full width change is still fully ringed.
   const pad = 7 * k, half = g.lineWidth / 2;
   for (const r of boxes) {

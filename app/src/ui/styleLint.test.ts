@@ -4,7 +4,7 @@
 // has seven sizes; and no rule outside tokens.css is gated on the theme.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { ALL_CSS, PARTS_CSS, STYLE_CSS, TOKENS_CSS } from "./cssFiles.ts";
+import { ALL_CSS, FIX_CSS, HOME_NOW_CSS, PAGES_CSS, PARTS_CSS, STYLE_CSS, SYSTEM_CSS, TOKENS_CSS } from "./cssFiles.ts";
 
 type Rule = { sel: string; body: string; decl: [string, string][]; at: string | null };
 /** Every rule of a stylesheet, with the at-rule it sits in ("@media (...)", "@container ...", "@keyframes x"). */
@@ -30,10 +30,15 @@ function parse(css0: string, at: string | null = null): Rule[] {
 /** A stylesheet without its comments (a comment may name what is gone). */
 const code = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "");
 const sels = (r: Rule) => r.sel.split(",").map((s) => s.trim());
-const parts = parse(PARTS_CSS()), style = parse(STYLE_CSS()), tokens = parse(TOKENS_CSS()), all = [...tokens, ...parts, ...style];
+const parts = parse(PARTS_CSS()), style = parse(STYLE_CSS()), tokens = parse(TOKENS_CSS()), system = parse(SYSTEM_CSS());
+// M69 step 4: the M69 stylesheets (the pages, Fix it and proof, Home now) are held to the same rules as the system.
+const m69 = [...parse(PAGES_CSS()), ...parse(FIX_CSS()), ...parse(HOME_NOW_CSS())];
+const all = [...tokens, ...parts, ...style, ...system, ...m69];
 const PART_CLASS = /\.(btn|ui-[\w-]+|sb-[\w-]+)\b/;
 const SYSTEM_COLOURS = /^(transparent|currentColor|CanvasText|Canvas|Highlight|HighlightText|ButtonText|ButtonFace)$/;
-const TYPE_SCALE = ["--t-caption", "--t-small", "--t-label", "--t-body", "--t-answer", "--t-display", "--t-verdict"];
+// M69 (the YC benchmark spec 1.1) adds three: the hero's display size, its smaller step (tall Home, review) and the short
+// status tag's size. Ten names, and still no other.
+const TYPE_SCALE = ["--t-caption", "--t-small", "--t-label", "--t-body", "--t-answer", "--t-display", "--t-verdict", "--t-hero", "--t-hero-sm", "--t-eyebrow"];
 
 describe("parts.css reads every value from tokens.css", () => {
   test("no colour literal: no hex, rgb, hsl or named colour", () => {
@@ -49,8 +54,8 @@ describe("parts.css reads every value from tokens.css", () => {
     const defined = new Set([...TOKENS_CSS().matchAll(/(--[\w-]+):/g)].map((m) => m[1]));
     for (const m of PARTS_CSS().matchAll(/var\((--[\w-]+)/g)) if (!["--n", "--i"].includes(m[1])) expect(defined.has(m[1]), m[1]).toBe(true);
   });
-  test("the type scale has seven sizes, and parts.css uses no other", () => {
-    // A style may set the sizes again (M65, Instrument), never add one: the names are still seven.
+  test("the type scale has ten sizes, and parts.css uses no other", () => {
+    // A style may set the sizes again (M65, Instrument), never add one: the names are still ten.
     const scale = [...new Set([...TOKENS_CSS().matchAll(/(--t-[\w-]+):/g)].map((m) => m[1]))];
     expect(scale.sort()).toEqual([...TYPE_SCALE].sort());
     for (const m of PARTS_CSS().matchAll(/var\((--t-[\w-]+)\)/g)) expect(TYPE_SCALE, m[1]).toContain(m[1]);
@@ -66,7 +71,7 @@ const literalIn = (v: string) => COLOUR_LITERAL.test(v) || v.split(/[\s,()/]+/).
 describe("no colour literal anywhere outside tokens.css (Hallmark rule 48)", () => {
   test("style.css and parts.css write no colour: every rule, keyframe, custom property and fallback reads a token", () => {
     const bad: string[] = [];
-    for (const [file, rules] of [["parts.css", parts], ["style.css", style]] as const) {
+    for (const [file, rules] of [["parts.css", parts], ["style.css", style], ["pages.css, fix.css, homeNow.css", m69]] as const) {
       for (const r of rules) for (const [k, v] of r.decl) if (literalIn(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
     }
     expect(bad).toEqual([]);
@@ -178,9 +183,11 @@ describe("flat silver, plain titles (the overhaul spec, 2.2; the founder, 31 Oct
     for (const r of style) if (/var\(--(main|silver)|#E9ECF1/i.test(r.body)) for (const s of sels(r)) expect(s, s).toMatch(/^\.island-panel(\[data-size="compact"\])? \.ip-go\b/);
     expect(code(ALL_CSS())).not.toMatch(/--lime/);
   });
-  test("headers are sentence case: nothing is made upper case, and no sidebar or nav item has a stripe on its edge", () => {
+  test("headers are sentence case: nothing is made upper case but the short status tag, and no sidebar or nav item has a stripe on its edge", () => {
+    // M69 correction 5 (rule 16): upper case only on the spec's short status tags (PROVEN, FIX THIS FIRST) and a card's
+    // short label (LAST FIX), never on a header, a button or a sentence.
     for (const r of all) {
-      expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
+      if (!/^\.ui-(status|eyebrow)$/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
       if (/\.sb-|nav|side/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/border-left/);
     }
   });
@@ -188,7 +195,7 @@ describe("flat silver, plain titles (the overhaul spec, 2.2; the founder, 31 Oct
 
 describe("one look, one face", () => {
   test("no rule outside tokens.css is gated on the theme, and none follows the Mac's light or dark", () => {
-    for (const r of [...parts, ...style]) expect(r.sel, r.sel).not.toContain("data-theme");
+    for (const r of [...parts, ...style, ...m69]) expect(r.sel, r.sel).not.toContain("data-theme");
     for (const r of all) expect(r.at ?? "", r.sel).not.toMatch(/prefers-color-scheme/);
   });
   test("one type face: -apple-system, and the code face for commands and paths", () => {

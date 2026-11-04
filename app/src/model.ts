@@ -22,7 +22,8 @@ export type ToolLine = { id: string; text: string; tool: string; words: string; 
 export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string; action?: string; undoable?: boolean };
 // summary: a failed step's one plain sentence from the engine; problem: where it failed. The detail (the check's own
 // output) is shown behind Details (checkDetail.tsx).
-export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem };
+/** ms and runs (M69): how long the check took and the commands it ran with their exit codes, for the receipt's proof ticks. */
+export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[] };
 export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
 // changedAt: the first changed line ("Show me what changed"). repeat: the same small change made in two places (your turn).
 export type ChangeAt = { file: string; line: number; lineText: string };
@@ -37,7 +38,7 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // as the person changed them after the Undo. fixKept: the last restore was "Put my fix back" on a turn, which puts the fix
 // itself back, so the files are as checked (undone stays true for the same reason). earlierUndone: "Which task broke it"
 // undid an earlier task after this one: this task's files stay, but the engine no longer follows its conversation up.
-export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string; added?: number; removed?: number; was?: number }[]; askWords?: number; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
+export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string; added?: number; removed?: number; was?: number }[]; askWords?: number; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; before?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
   undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
   // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
@@ -354,9 +355,13 @@ export function plainError(reason: string): string {
 
 type Ev = Record<string, any> & { type?: string };
 // A step's plain summary and its place, when the engine sent them whole.
-const stepExtras = (s: any): { summary?: string; problem?: Problem } => ({
+const runOk = (r: any): r is { command: string; exit: number } => !!r && typeof r.command === "string" && r.command.length > 0 && Number.isInteger(r.exit);
+const stepExtras = (s: any): { summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[] } => ({
   ...(typeof s?.summary === "string" && s.summary ? { summary: s.summary } : {}),
   ...(s?.problem && typeof s.problem === "object" && typeof s.problem.kind === "string" ? { problem: s.problem as Problem } : {}),
+  ...(typeof s?.ms === "number" && Number.isFinite(s.ms) && s.ms > 0 ? { ms: s.ms } : {}),
+  // Secrets are hidden again here, as on every line the card shows (the engine already does).
+  ...(Array.isArray(s?.runs) && s.runs.some(runOk) ? { runs: s.runs.filter(runOk).slice(0, 6).map((r: { command: string; exit: number }) => ({ command: redact(String(r.command)).slice(0, 120), exit: r.exit })) } : {}),
 });
 
 // A place from the engine is used only when it is whole: a file, a line number from 1, and the line's text.
@@ -956,7 +961,10 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...m, plan: null, stuck: null, paused: null, receipt: wholePlanReceipt(m.receipt, m.drive?.whole, e.usdEstimate), drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total }, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
     case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
-    case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, caption: String(e.caption ?? "") } : { caption: "" } } } : m;
+    case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, ...(typeof e.before === "string" && e.before ? { before: e.before } : {}), caption: String(e.caption ?? "") } : { caption: "" } } } : m;
+    // M69 step 3: Keep on a result closes it (Home goes back to rest, where the Last fix card shows it). Never while an Undo
+    // runs, and never while there is no result (work going on).
+    case "ui.resultKept": return m.receipt && m.undo?.stage !== "working" && m.undo?.stage !== "confirm" ? { ...m, task: null, receipt: null, explain: null, followUp: "idle", undo: null } : m;
     // A single task's loop card is answered before its receipt (Stop answers it too), so the receipt clears it. A Drive step's
     // card always comes after the step's receipt.
     case "receipt": {

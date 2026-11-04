@@ -1,0 +1,81 @@
+/* M69 step 2, Fix it and proof (the YC benchmark spec 3.4 and 3.13; runList.ts decides, runListView.tsx draws). The same
+   rules in every look: only the tokens differ (ui/tokens.css), so Friendly gets the same run list, ticks and receipt with
+   its own colours. Loaded last on Home (card.tsx) and on the island (island.tsx). Motion: one row entrance on the shared
+   keyframes, transform and opacity only (ui/motionLint.test.ts). */
+
+/* The work card: the step under way of four, on the right of its top line, before Stop. */
+.job-top > .run-count { margin: 0 0 0 auto; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); font-variant-numeric: tabular-nums; }
+.job-top > .run-count ~ button { margin-left: 0; }
+/* The safety line gives way first on a narrow Home, so the counter and Stop stay on its line. */
+.job-top > .job-safe:has(~ .run-count) { flex: 1 1 0; min-width: 0; }
+
+/* The run list: one row per step, a mark, the step verb first, its status and time on the right. Hairlines between, no boxes. */
+.run-list { list-style: none; display: grid; margin: var(--space-3) 0 var(--space-2); padding: 0; border-top: var(--hair) solid var(--line); }
+.run-row { display: grid; grid-template-columns: 1em minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--space-3); min-width: 0; padding: var(--space-2) 0; border-bottom: var(--hair) solid var(--line); color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.run-words { min-width: 0; overflow-wrap: anywhere; }
+.run-row[data-state="now"] .run-words { font-weight: var(--w-strong); }
+.run-detail { display: block; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+.run-row[data-state="waiting"] .run-words { color: var(--fg-2); }
+.run-mark { display: inline-grid; place-items: center; width: 1em; align-self: center; }
+.run-row[data-state="done"] .run-mark, .tick-row[data-state="ok"] .run-mark { color: var(--ok); }
+.run-row[data-state="failed"] .run-mark, .tick-row[data-state="bad"] .run-mark, .fail-step .run-mark { color: var(--bad); }
+/* Under way: a still dot in the accent (it never spins: the status words say it is running). Waiting, or a check that did not
+   finish: an empty ring. */
+.run-row[data-state="now"] .run-mark::before { content: ""; width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--acc); }
+.run-row[data-state="waiting"] .run-mark::before, .tick-row[data-state="unfinished"] .run-mark::before { content: ""; width: var(--dot); height: var(--dot); border-radius: var(--r-round); box-shadow: inset 0 0 0 var(--hair) var(--fg-2); }
+.run-status { display: inline-flex; align-items: baseline; gap: var(--space-2); color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.run-row[data-state="failed"] .run-status { color: var(--bad); }
+.run-time { color: var(--fg-2); font-variant-numeric: tabular-nums; }
+.run-more { grid-template-columns: minmax(0, 1fr); padding-left: calc(1em + var(--space-3)); color: var(--fg-2); }
+/* The files changed so far sit under the change's own row, on the words' column. */
+.run-under { padding: 0 0 var(--space-2) calc(1em + var(--space-3)); border-bottom: var(--hair) solid var(--line); }
+.run-under .job-live { margin: 0; }
+/* Replay: each row arrives a beat after the one before (Reduce Motion: the shared rule keeps a plain fade). */
+.run-list[data-replay] { margin-top: var(--space-2); }
+.run-list[data-replay] .run-row { animation: job-row-in var(--dur-enter) var(--ease-out) both; animation-delay: calc(var(--i, 0) * var(--stagger) * 4); }
+.result-actions { flex-wrap: wrap; }
+.result-actions > .replay-list { flex: 1 0 100%; }
+.home .panel.receipt > .result-actions:has(> .replay-list) { align-self: stretch; }
+
+/* The receipt's proof: a tick per check, the commands it ran with their exit codes in mono, its time on the right. */
+.proof-ticks { margin: var(--space-3) 0; }
+.proof-ticks-title { margin: 0 0 var(--space-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.proof-ticks ul { list-style: none; display: grid; gap: var(--space-2); margin: 0; padding: 0; }
+.tick-row { display: grid; grid-template-columns: 1em minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--space-3); color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.tick-words { min-width: 0; overflow-wrap: anywhere; }
+.tick-run { display: inline-block; margin-left: var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); }
+.tick-note { margin-left: var(--space-2); color: var(--fg-2); }
+.tick-row .check-detail { display: block; }
+
+/* The after picture in a small browser frame (spec 3.4): a sunken bar with three dots and its name, then the picture. */
+.receipt-proof { display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: var(--space-5); margin: var(--space-3) 0; }
+.receipt-proof > .proof-ticks { flex: 1 1 calc(3 * var(--w-pic)); min-width: 0; margin: 0; }
+.receipt-shot.framed { flex: 0 1 calc(3 * var(--w-pic)); display: grid; margin: var(--space-3) 0 0; overflow: clip; border: var(--hair) solid var(--line); border-radius: var(--r-card); background: var(--surface-1); }
+.receipt-shot.framed .shot-bar { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-bottom: var(--hair) solid var(--line); background: var(--sunken); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+.receipt-shot.framed .shot-dots { width: var(--dot); height: var(--dot); border-radius: var(--r-round); background: var(--fg-3); box-shadow: calc(var(--dot) + var(--space-1)) 0 0 var(--fg-3), calc(2 * (var(--dot) + var(--space-1))) 0 0 var(--fg-3); margin-right: calc(2 * (var(--dot) + var(--space-1))); }
+.receipt-shot.framed img { display: block; width: 100%; height: auto; max-height: calc(var(--orb-hero) * 2); object-fit: cover; object-position: top; border: 0; border-radius: 0; }
+.receipt-shot.framed figcaption { margin: 0; padding: var(--space-2) var(--space-3); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+
+/* Failing leads with what failed: the step named, why, the line pointed at, then Try again and Copy for my AI. */
+.fail-lead { display: grid; gap: var(--space-2); margin: var(--space-3) 0 var(--space-2); }
+.fail-step { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; color: var(--fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); }
+.fail-why { margin: 0; padding-left: calc(1em + var(--space-2)); color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.fail-actions { margin-top: var(--space-1); }
+/* The pointed line (as the review card's, spec 3.3): the file in a sunken header, then the line with its number, a bar at
+   its left edge on the danger tint, and "Squibby is pointing here" after it. */
+.failing.pointed { justify-items: stretch; gap: 0; margin: var(--space-1) 0 0; padding: 0; overflow: clip; border-radius: var(--r-control); background: var(--surface-1); }
+.failing.pointed .failing-at { display: block; padding: var(--space-2) var(--space-3); border-bottom: var(--hair) solid var(--line); background: var(--sunken); }
+.failing-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--space-3); row-gap: var(--space-1); padding: var(--space-2) var(--space-3); background: var(--danger-tint); box-shadow: inset calc(2 * var(--hair-2)) 0 0 var(--bad); }
+.failing-row .failing-n { color: var(--fg-2); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font-code); font-variant-numeric: tabular-nums; }
+.failing-row .failing-code { flex: 0 1 auto; min-width: 0; }
+.failing-arrow { color: var(--bad); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+
+/* The notch's mini receipt (spec 3.13): the character, the fix and how it was proven, the after picture, then Keep, Undo and
+   See proof. On the notch's own ink tokens; the picture is a small framed thumbnail. */
+.island-panel .ip-receipt { gap: var(--space-3); }
+.island-panel .ip-receipt-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-3); }
+.island-panel .ip-receipt .ip-text b { font-size: var(--t-body); line-height: var(--lh-body); }
+.island-panel .ip-receipt .ip-text span { font-size: var(--t-small); line-height: var(--lh-small); }
+.island-panel .ip-receipt[data-tone="failed"] .ip-text span { color: var(--notch-bad); }
+.island-panel .ip-thumb { display: block; width: calc(2 * var(--w-pic) / 3); height: auto; max-height: var(--h-pic); object-fit: cover; object-position: top left; border: var(--hair) solid var(--notch-edge); border-radius: var(--r-control); }
+.run-under .job-file b { font-weight: var(--w-regular); font-size: var(--t-caption); }

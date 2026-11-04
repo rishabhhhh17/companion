@@ -22,6 +22,9 @@ describe("update words", () => {
     expect(updateLine({ stage: "none" }, "0.1.0", true)).toContain("newest");
     expect(updateLine({ stage: "found", version: "0.2.0", notes: "" }, "0.1.0", true)).toBe("Version 0.2.0 is ready. You have 0.1.0.");
     expect(updateLine({ stage: "failed", reason: "No internet." }, "0.1.0", true)).toBe("No internet.");
+    // M69: no empty "Version ." while the version is not known yet.
+    expect(updateLine({ stage: "idle" }, "", false)).toBe("Updates are not set up in this build yet. The daily check starts once they are.");
+    expect(updateLine({ stage: "none" }, "", true)).toBe("You have the newest version.");
   });
   test("it never installs while something is running", () => {
     expect(canInstall(true)).toBe(false); expect(canInstall(false)).toBe(true);
