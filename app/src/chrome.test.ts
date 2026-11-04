@@ -48,8 +48,9 @@ describe("the orb's words on the edge agree with its ring (M65 step 4)", () => {
 
 describe("which character a small place and the edge show", () => {
   test("the orb with Instrument (or picked), the friendly one with Friendly (or picked)", () => {
-    expect(miniShows(characterOf("instrument", "match"), { live: true, failed: false })).toBe("orb");
-    expect(miniShows(characterOf(undefined, undefined), { live: true, failed: false })).toBe("orb");   // a store from before M65
+    expect(miniShows(characterOf("instrument", "match"), { live: true, failed: false })).toBe("visor");   // M68
+    expect(miniShows(characterOf(undefined, undefined), { live: true, failed: false })).toBe("visor");   // a store from before M65
+    expect(miniShows(characterOf("instrument", "orb"), { live: true, failed: false })).toBe("orb");
     expect(miniShows(characterOf("friendly", "match"), { live: true, failed: false })).toBe("live");
     expect(miniShows(characterOf("friendly", "orb"), { live: true, failed: false })).toBe("orb");
     expect(miniShows(characterOf("instrument", "friendly"), { live: false, failed: false })).toBe("picture");
@@ -102,7 +103,7 @@ describe("chrome.css", () => {
   const rules = parse(CHROME());
   test("every rule is gated on Instrument or the orb, so Friendly is exactly as it was", () => {
     expect(rules.length).toBeGreaterThan(5);
-    for (const r of rules) for (const s of r.sel.split(",")) expect(s, s).toMatch(/data-style="instrument"|data-character="orb"/);
+    for (const r of rules) for (const s of r.sel.split(",")) expect(s, s).toMatch(/data-style="instrument"|data-character="(orb|visor)"/);
   });
   test("it writes no colour: every one is a token", () => {
     const LIT = /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(|\b(white|black|red|blue|green|gray|grey)\b/i;
@@ -135,7 +136,8 @@ describe("chrome.css", () => {
     expect(code(CHROME())).toMatch(/\.character\[data-character="orb"\][^{]*\{[^}]*--orb:\s*var\(--orb-edge\)/);
   });
   test("the count waiting on the orb is amber with dark words, like the ring it sits on (M65 step 4)", () => {
-    const badge = rules.find((r) => r.sel === '.character[data-character="orb"] .badge')!;
+    const badge = rules.find((r) => r.sel.split(",").map((x) => x.trim()).includes('.character[data-character="orb"] .badge'))!;
+    expect(badge.sel).toContain('.character[data-character="visor"] .badge');   // M68: the Visor's too
     const d = Object.fromEntries(badge.decl);
     expect(d.background).toBe("var(--amber)");
     expect(d.color).toBe("var(--amber-ink)");
@@ -206,5 +208,16 @@ describe("fixes for every look (M65 step 4)", () => {
   });
   test("History's file names use the one code face, never the browser's own monospace", () => {
     expect(look).toMatch(/\.hist-files \{[^}]*font-family: var\(--font-code\);/);
+  });
+});
+
+describe("the faceless characters have no listening halo (M68 step 3)", () => {
+  test("the friendly character's listening glow is turned off on the orb and the Visor, which say it with their ring", () => {
+    const rules = parse(CHROME());
+    for (const c of ["orb", "visor"]) {
+      const r = rules.find((x) => x.sel.split(",").some((s) => s.trim() === `.character[data-character="${c}"][data-state="listening"]`));
+      expect(r, c).toBeDefined();
+      expect(r!.decl).toContainEqual(["filter", "none"]);
+    }
   });
 });

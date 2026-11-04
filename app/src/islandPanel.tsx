@@ -24,11 +24,13 @@ import { Icon } from "./icons.tsx";
  *  same line, as quietly. */
 type Props = { m: Model; line: string; shown: boolean; brief?: boolean; unseen?: number; review?: boolean;
   /** M57 feature 5: the changes waiting carry the instant key warning. Said on the same quiet line instead, never as an alert. */
-  reviewKey?: boolean };
+  reviewKey?: boolean;
+  /** M68: the hello (notchHello.ts helloLine): while it shows, the panel is the Visor and that one line, nothing else. */
+  hello?: { greet: string; fact: string | null; say: string } | null };
 
 void invoke("key_map").then((v) => setKeysNow(keysFrom(v))).catch(() => {});
 
-export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0, review = false, reviewKey = false }, ref) {
+export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPanel({ m, line, shown, brief, unseen = 0, review = false, reviewKey = false, hello = null }, ref) {
   // What the panel shows and its size (M19, Look and feel): the work and its results, usual or compact.
   const showWork = useSetting("panel.showWork") !== false;
   const compact = useSetting("panel.size") === "compact";
@@ -117,10 +119,15 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     : <p className="ip-status" role="status">{view.line || S.home.notchNothing}</p>;
   return (
     <div className="island-panel" ref={ref} data-shown={shown ? "yes" : undefined} data-size={compact ? "compact" : undefined} data-brief={brief ? "yes" : undefined} data-armed={ready() ? "yes" : undefined} aria-hidden={!shown} role="group" aria-label={S.panel.label}>
+      {hello ? <div className="ip-hello" role="status" aria-label={hello.say}>
+        <FlowMini className="ip-agent" state="idle" still={!shown} />
+        <p className="ip-hello-line" aria-hidden="true"><b>{hello.greet}</b>{hello.fact && <span>{hello.fact}</span>}</p>
+      </div> : <>
       {!brief && unseen > 0 && <p className="ip-new">{S.panel.newCount(unseen)}</p>}
       {!brief && review && <p className="ip-new">{reviewKey ? S.panel.reviewKey : S.panel.reviewReady}</p>}
       {/* Opened by itself, only a question or a result that matters (island.tsx); never the line or the key. */}
       {brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}
+      </>}
     </div>
   );
 });

@@ -51,9 +51,9 @@ type Props = {
 const EDGES: Edge[] = ["left", "right", "top", "bottom"];
 const LIVELY: Liveliness[] = ["still", "gentle", "lively"];
 /** The choices in force for Make it yours, so a first run shown again starts from them and writes only what is changed. */
-const yoursNow = (): Pick<Yours, "name" | "lively" | "edge"> => {
-  const name = getSetting("character.name"), edge = getSetting("character.edge");
-  return { name: typeof name === "string" ? name : "", lively: livelinessOf(getSetting("character.lively")), edge: EDGES.includes(edge as Edge) ? (edge as Edge) : null };
+const yoursNow = (): Pick<Yours, "name" | "lively" | "edge"> & { you: string } => {
+  const name = getSetting("character.name"), edge = getSetting("character.edge"), you = getSetting("you.name");
+  return { name: typeof name === "string" ? name : "", lively: livelinessOf(getSetting("character.lively")), edge: EDGES.includes(edge as Edge) ? (edge as Edge) : null, you: typeof you === "string" ? you : "" };
 };
 const folderName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
 type Fold = "how" | "yours" | "powers" | "keys" | "questions";
@@ -304,6 +304,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {(stage === "done" || stage === "stopped") && (<div className="fr-folds">
           {fold("yours", S.fr.yoursTitle(own), (<>
             <Row label={S.fr.nameLabel} control={<Field value={yours.name} label={S.fr.nameLabel} placeholder={own} maxLength={NAME_MAX} onChange={(v) => setYours({ ...yours, name: v })} />} />
+            {/* M68: optional, only for the hello in the notch (you.name). */}
+            <Row label={S.fr.youLabel} description={S.fr.youHint} control={<Field value={yours.you ?? ""} label={S.fr.youLabel} placeholder={S.set["you.name"].placeholder} maxLength={NAME_MAX} onChange={(v) => setYours({ ...yours, you: v })} />} />
             <Row label={S.fr.livelyLabel} description={S.fr.livelyLine[yours.lively ?? "still"]} control={<Segmented label={S.fr.livelyLabel} value={yours.lively ?? "still"} options={LIVELY.map((l) => ({ id: l, label: S.fr.lively[l] }))} onChange={(l) => setYours({ ...yours, lively: l })} />} />
             <Row label={S.fr.edgeLabel} control={<Menu label={S.fr.edgeLabel} value={yours.edge ?? "right"} options={EDGES.map((e) => ({ id: e, label: S.fr.edges[e] }))} onChange={(e) => setYours({ ...yours, edge: e })} />} />
           </>))}

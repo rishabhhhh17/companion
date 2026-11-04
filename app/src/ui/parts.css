@@ -327,6 +327,43 @@ button, select, input, textarea { font: inherit; }
 .ui-orb[data-ring="proven"] { outline-color: var(--ring-proven); }
 .ui-orb[data-ring="working"] { outline-color: var(--ring-working); }
 
+/* ---------- M68, the Visor (the founder's pick on 4 Nov 2026, the characters lab's option B) ----------
+   The glass orb with a dark band and light behind it, inside the same ring span as the orb. Every pose is always drawn and
+   the one in force fades in (characters.ts visorPose), so a change is a cross fade. Its moves are transform only: a blink
+   at rest (three, then still until something new), a glance toward something new, a scan while it works, a pulse or a
+   level while it listens, a lean when it needs you (twice, on arriving, then still), one hop when proven. The lean and the
+   hop move the whole span, so the ring rides with the glass as one piece, as in the lab (M68 step 3). The glow is a still shadow. A hidden page pauses them; still (rest, a panel not on screen)
+   stops them; Reduce motion and Less motion stop them all (style.css), leaving the still pose. */
+.ui-visor svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ui-visor .visor-band { fill: var(--visor-band); }
+.ui-visor[data-band] { width: var(--visor-notch); height: calc(var(--visor-notch) * .3); border-radius: var(--r-pill); }
+.ui-visor[data-band] .visor-glass { display: none; }
+.ui-visor .visor-lights rect { fill: var(--visor-light); filter: drop-shadow(0 0 var(--visor-glow-blur) var(--visor-glow)); transition: fill var(--dur-2) var(--ease-out); }
+.ui-visor[data-tone="needs"] .visor-lights rect { fill: var(--visor-needs); filter: drop-shadow(0 0 var(--visor-glow-blur) var(--visor-needs-glow)); }
+.ui-visor[data-tone="stop"] .visor-lights rect { fill: var(--visor-stop); }
+.ui-visor .visor-scan, .ui-visor .visor-meter, .ui-visor .visor-needs { opacity: 0; transition: opacity var(--dur-2) var(--ease-out); }
+.ui-visor .visor-rest { opacity: 0; transition: opacity var(--dur-2) var(--ease-out); transform-box: fill-box; transform-origin: center; }
+.ui-visor .visor-smile { opacity: 0; transition: opacity var(--dur-2) var(--ease-out); fill: none; stroke: var(--visor-light); filter: drop-shadow(0 0 var(--visor-glow-blur) var(--visor-glow)); }
+.ui-visor[data-pose="rest"] .visor-rest, .ui-visor[data-pose="scan"] .visor-scan, .ui-visor[data-pose="meter"] .visor-meter, .ui-visor[data-pose="needs"] .visor-needs, .ui-visor[data-pose="smile"] .visor-smile { opacity: 1; }
+.ui-visor .visor-meter rect { transform-box: fill-box; transform-origin: center; transform: scaleY(.5); }
+.ui-visor[data-level] .visor-meter rect { transition: transform var(--dur-1) linear; }
+.ui-visor[data-blink] .visor-rest { animation: visor-blink var(--loop-visor-blink) var(--ease-loop) 3; }
+.ui-visor[data-glance] .visor-lights { animation: visor-glance var(--dur-visor-glance) var(--ease-loop) 1 both; }
+.ui-visor[data-scan] .visor-scan { animation: visor-scan var(--loop-visor-scan) var(--ease-loop) infinite alternate; }
+.ui-visor[data-meter]:not([data-level]) .visor-meter rect { animation: visor-pulse var(--loop-visor-pulse) var(--ease-loop) infinite alternate; }
+.ui-visor[data-meter]:not([data-level]) .visor-meter rect:nth-child(2) { animation-delay: calc(var(--loop-visor-pulse) * -.5); }
+.ui-visor[data-meter]:not([data-level]) .visor-meter rect:nth-child(3) { animation-delay: calc(var(--loop-visor-pulse) * -.25); }
+.ui-visor[data-lean] { transform-origin: var(--visor-lean-origin); animation: visor-lean var(--loop-visor-lean) var(--ease-loop) 2 both; }
+.ui-visor[data-hop] { transform-origin: var(--visor-hop-origin); animation: visor-hop var(--dur-visor-hop) var(--ease-loop) 1 both; }
+.ui-visor[data-paused] *, .ui-visor[data-paused] { animation-play-state: paused !important; }
+.ui-visor[data-still] *, .ui-visor[data-still] { animation: none !important; }
+@keyframes visor-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(.1); } }
+@keyframes visor-glance { 0%, 100% { transform: translate(0, 0); } 25%, 75% { transform: translate(calc(var(--visor-glance-x) * var(--visor-dir)), var(--visor-glance-y)); } }
+@keyframes visor-scan { from { transform: translateX(calc(var(--visor-scan) * -1)); } to { transform: translateX(var(--visor-scan)); } }
+@keyframes visor-pulse { from { transform: scaleY(.4); } to { transform: scaleY(1); } }
+@keyframes visor-lean { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(var(--visor-lean)) translateY(var(--visor-lean-up)); } }
+@keyframes visor-hop { 0%, 100% { transform: translateY(0); } 26.67% { transform: translateY(var(--visor-hop-up)) scale(1.02, .98); } 53.33% { transform: translateY(0) scale(.98, 1.02); } }
+
 /* ---------- Reduced motion (M66): a part that comes in still fades in, plainly; it leaves at once (parts.tsx exitMs) ---------- */
 @media (prefers-reduced-motion: reduce) { :is(.ui-menu-list, .ui-pop, .ui-scrim, .ui-sheet, .ui-toast) { animation: ui-fade-in var(--dur-1) linear both !important; } }
 :root[data-less-motion] .ui-menu-list, :root[data-less-motion] .ui-pop, :root[data-less-motion] .ui-scrim, :root[data-less-motion] .ui-sheet, :root[data-less-motion] .ui-toast { animation: ui-fade-in var(--dur-1) linear both !important; }

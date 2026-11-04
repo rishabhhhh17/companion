@@ -5,6 +5,8 @@
 // that is not on screen, or a small mark that should not pull the eye).
 // M65 (the Instrument look): under Instrument, or with Glass orb picked, it is the faceless glass orb with its state ring
 // instead (chromeLook.ts miniShows): no face, no bubbles, no water scene.
+// M68: with the Visor (the usual under Instrument) it is the Visor: the full one in the notch's panel and the practice peek,
+// the band alone in the notch's wing (`band`), its lights and the scan only. The notch stays quiet: no glance and no hop.
 // M66: a small one mounts as something opens (History, the notch's wings, a panel), so it never starts or compiles a drawing
 // then: it shows its still picture until a warm drawing is ready (flowflow/pool.ts), made in an idle moment.
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
@@ -12,7 +14,7 @@ import { poseFor, poseUrl, ringOf, type Pose } from "./characters.ts";
 import { characterOf, flowColours, hueTurn, livelinessOf, waterOf, type CharacterLook, type Water } from "./lookfeel.ts";
 import { miniShows } from "./chromeLook.ts";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
-import { Orb } from "./ui/parts.tsx";
+import { Orb, Visor } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
 import { useSetting } from "./settingsStore.ts";
@@ -24,7 +26,9 @@ const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ def
 /** `pose`: always the still picture in that pose, never a live drawing. Rows of choices (Settings' water and how lively)
  *  use it, so a page never holds a live drawing per tile: Macs cap how many a page may hold, and past the cap the tiles
  *  went blank (31 Oct). */
-export function FlowMini({ state, className, still, water, pose }: { state: CharacterState; className: string; still?: boolean; water?: Water; pose?: Pose }) {
+export function FlowMini({ state, className, still, water, pose, band, glance }: { state: CharacterState; className: string; still?: boolean; water?: Water; pose?: Pose; band?: boolean;
+  /** M68: the Visor's lights glance once toward the right when this changes (the notch's word at rest). */
+  glance?: string | null }) {
   const liveOn = useSetting("character.live") === true;
   const chosen = waterOf(useSetting("look.water"));
   const colours = flowColours(water ?? chosen);
@@ -35,9 +39,11 @@ export function FlowMini({ state, className, still, water, pose }: { state: Char
   // notch stays quiet, so the small one makes none of the character's small moves (reacts={false}); its states still show.
   const mode = livelinessOf(useSetting("character.lively"));
   const resting = useRest();
+  const reactsOn = useSetting("character.reacts") !== false;   // read every render: a hook is never skipped
   const look = useCharacterLook();
   const orbSrc = useMemo(() => svgUrl(glassOrbSvg(water ?? chosen)), [water, chosen]);
   const shows = miniShows(look, { live: liveOn, failed, pose: !!pose });
+  if (shows === "visor") return <span className={`${className} ff-orb`} data-character="visor" aria-hidden="true"><Visor state={state} ring={ringOf(state)} band={band} still={!!still || resting} lively={mode} reacts={glance !== undefined && reactsOn} glance={glance} toward={1} /></span>;
   if (shows === "orb") return <span className={`${className} ff-orb`} data-character="orb" aria-hidden="true"><Orb src={orbSrc} ring={ringOf(state)} /></span>;
   const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
   if (shows === "picture") return picture;

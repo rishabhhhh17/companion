@@ -8,10 +8,12 @@ import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
 import type { Verdict } from "../verdict.ts";
-import type { Ring } from "../characters.ts";
+import { glanceDue, visorMotion, visorPose, type Ring } from "../characters.ts";
+import type { CharacterState } from "../model.ts";
+import { meterScales, VISOR_BAND, VISOR_BAND_VIEWBOX, VISOR_GLASS, VISOR_GLASS_GRADIENT, VISOR_METER, VISOR_NEEDS, VISOR_REST, VISOR_SCAN, VISOR_SMILE, VISOR_VIEWBOX, type Box } from "../visorArt.ts";
 import { clampTo, commitText, leaveThen, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
-import { EXIT_MS, type ExitKind } from "../motionTokens.ts";
-import { reducedMotion } from "../motion.ts";
+import { EXIT_MS, VISOR_MS, type ExitKind } from "../motionTokens.ts";
+import { reducedMotion, watchReducedMotion } from "../motion.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
 
@@ -412,6 +414,96 @@ export function StatusLine({ kind }: { kind: StatusKind }) {
  *  the state (characters.ts ringOf). It is a picture only: the status line beside it says the state in words. */
 export function Orb({ src, ring }: { src: string; ring: Ring | null }) {
   return <span className="ui-orb" data-ring={ring ?? undefined} aria-hidden="true"><img src={src} alt="" draggable={false} /></span>;
+}
+
+/** A rounded box of the Visor's drawing (visorArt.ts), as an SVG rect. */
+const VisorRect = ({ b, style, className }: { b: Box; style?: CSSProperties; className?: string }) => <rect className={className} x={b.x} y={b.y} width={b.w} height={b.h} rx={b.rx} style={style} />;
+
+/** The Visor (M68, the founder's pick on 4 Nov 2026): a glass orb with a dark band across the middle and light behind it.
+ *  It sits in the same ring span as the orb, so the M65 ring is untouched. Its lights follow the ring (characters.ts
+ *  visorPose); every pose is always in the page and the one in force fades in over the last, so a state change is a cross
+ *  fade and never a new node. Its moves (characters.ts visorMotion) are CSS on transform and opacity only, paused while the
+ *  page is hidden and stopped with Reduce motion, Less motion, rest or `still`. `band`: the band alone (the notch's wing).
+ *  `level`: a voice level (0 to 1) when one reaches the page; until then the meter is a gentle pulse. The page never reads
+ *  audio. `glance`: changes when something new appears, and the lights glance once toward `toward` (-1 left, 1 right). It
+ *  is a picture only: the status line beside it says the state in words. */
+export function Visor({ state, ring, band, level, still, lively = "lively", reacts = true, glance, toward = 1 }: {
+  state: CharacterState; ring: Ring | null; band?: boolean; level?: number | null; still?: boolean;
+  lively?: "still" | "gentle" | "lively"; reacts?: boolean; glance?: number | string | null; toward?: -1 | 1;
+}) {
+  const gid = `visor${useId().replace(/[^\w-]/g, "")}`;
+  const [reduced, setReduced] = useState(reducedMotion);
+  useEffect(() => watchReducedMotion(setReduced), []);
+  // A hidden page (a closed window, another Space) holds every loop on its pose, and plays no glance or hop.
+  const [hidden, setHidden] = useState(() => typeof document !== "undefined" && document.hidden);
+  useEffect(() => {
+    const h = () => setHidden(document.hidden);
+    document.addEventListener("visibilitychange", h);
+    return () => document.removeEventListener("visibilitychange", h);
+  }, []);
+  const pose = visorPose(state, ring);
+  const moves = visorMotion(pose, { reduced, still: !!still, lively, reacts, band: !!band });
+  // The hop: once, on arriving at proven, never on a loop and never on opening at proven.
+  const [hop, setHop] = useState(false);
+  const was = useRef(pose.lights);
+  useEffect(() => {
+    if (pose.lights === "smile" && was.current !== "smile" && moves.hop && !hidden) setHop(true);
+    if (pose.lights !== "smile") setHop(false);
+    was.current = pose.lights;
+  }, [pose.lights]);
+  // The glance: once toward something new, at most once every few seconds.
+  const [glancing, setGlancing] = useState(false);
+  const lastGlance = useRef<number | null>(null);
+  const firstGlance = useRef(glance);
+  useEffect(() => {
+    if (glance === firstGlance.current || glance == null || !moves.glance) return;
+    const now = Date.now();
+    if (!glanceDue(now, lastGlance.current, hidden, VISOR_MS.glanceGap)) return;
+    lastGlance.current = now;
+    setGlancing(true);
+  }, [glance]);
+  // The blink rests: three blinks, then still, until something new (a glance, or coming back to rest) arms three more.
+  // It is cleared when the three end, so the next arming always starts afresh.
+  const [blinking, setBlinking] = useState(true);
+  const restKey = `${pose.lights}:${pose.tone}`;
+  const firstRest = useRef(restKey);
+  useEffect(() => { if (restKey !== firstRest.current) setBlinking(true); }, [restKey]);
+  useEffect(() => { if (glance !== firstGlance.current && glance != null) setBlinking(true); }, [glance]);
+  // Heard on the span: the hop and the lean run on it, and the blink and the glance bubble up to it.
+  const ended = (e: { animationName: string }) => {
+    if (e.animationName === "visor-hop") setHop(false);
+    if (e.animationName === "visor-glance") setGlancing(false);
+    if (e.animationName === "visor-blink") setBlinking(false);
+  };
+  const levelOn = moves.meter && typeof level === "number" && Number.isFinite(level);
+  const bars = levelOn ? meterScales(level as number) : null;
+  const glassStops = VISOR_GLASS_GRADIENT.stops;
+  return (
+    <span className="ui-orb ui-visor" data-ring={ring ?? undefined} data-pose={pose.lights} data-tone={pose.tone} data-band={band ? "" : undefined}
+      data-blink={moves.blink && blinking ? "" : undefined} data-scan={moves.scan ? "" : undefined} data-meter={moves.meter ? "" : undefined}
+      data-lean={moves.lean ? "" : undefined} data-hop={hop && moves.hop ? "" : undefined} data-glance={glancing && moves.glance ? "" : undefined}
+      data-level={levelOn ? "" : undefined} data-paused={hidden ? "" : undefined} data-still={still ? "" : undefined}
+      style={toward === -1 ? ({ "--visor-dir": "-1" } as CSSProperties) : undefined} aria-hidden="true" onAnimationEnd={ended}>
+      <svg viewBox={band ? VISOR_BAND_VIEWBOX : VISOR_VIEWBOX} focusable="false">
+        <defs>
+          <radialGradient id={gid} cx={VISOR_GLASS_GRADIENT.cx} cy={VISOR_GLASS_GRADIENT.cy} r={VISOR_GLASS_GRADIENT.r}>
+            {glassStops.map(([o, c]) => <stop key={o} offset={o} stopColor={c} />)}
+          </radialGradient>
+        </defs>
+        <g className="visor-body">
+          <circle className="visor-glass" cx={VISOR_GLASS.cx} cy={VISOR_GLASS.cy} r={VISOR_GLASS.r} fill={`url(#${gid})`} />
+          <VisorRect className="visor-band" b={VISOR_BAND} />
+          <g className="visor-lights">
+            <g className="visor-rest">{VISOR_REST.map((b) => <VisorRect key={b.x} b={b} />)}</g>
+            <g className="visor-scan"><VisorRect b={VISOR_SCAN} /></g>
+            <g className="visor-meter">{VISOR_METER.map((b, i) => <VisorRect key={b.x} b={b} style={bars ? { transform: `scaleY(${bars[i]})` } : undefined} />)}</g>
+            <g className="visor-needs">{VISOR_NEEDS.map((b) => <VisorRect key={b.x} b={b} />)}</g>
+            <path className="visor-smile" d={VISOR_SMILE.d} strokeWidth={VISOR_SMILE.width} strokeLinecap="round" />
+          </g>
+        </g>
+      </svg>
+    </span>
+  );
 }
 
 /** One changed file: its name, its folder in quiet words, a short tag, and the lines added and taken away. */

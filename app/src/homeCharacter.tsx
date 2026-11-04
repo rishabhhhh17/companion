@@ -5,8 +5,10 @@
 // M65 (the Instrument look, 4 Nov 2026): when the look's character is the orb (lookfeel.ts characterOf), Home shows the small
 // faceless glass orb instead, with a thin ring whose colour says the state (characters.ts ringOf, or the ring Home passes so
 // it agrees with its status line). No face, no bubbles, no water: those are the friendly character's only.
+// M68 (the founder's pick, 4 Nov 2026): with the Visor, the usual under Instrument, it is the Visor in the same place and the
+// same ring (ui/parts.tsx Visor): its lights blink, scan, glance toward a card waiting for a review, and smile when proven.
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
-import { poseFor, poseUrl, ringOf, type Ring } from "./characters.ts";
+import { homeRingShown, poseFor, poseUrl, type Ring } from "./characters.ts";
 import { useFlow } from "./flow/useFlow.ts";
 import { lookState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -14,7 +16,7 @@ import { reactionsOn } from "./reactions.ts";
 import { useSetting } from "./settingsStore.ts";
 import { characterOf, flowColours, livelinessOf, waterOf, type Liveliness } from "./lookfeel.ts";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
-import { Orb } from "./ui/parts.tsx";
+import { Orb, Visor } from "./ui/parts.tsx";
 import { useRest } from "./useRest.ts";
 import { useSizeEase } from "./smoothMotion.ts";
 
@@ -43,8 +45,9 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   // The water's colour chosen in Settings (look.water).
   const water = useSetting("look.water");
   const colours = flowColours(waterOf(water));
-  // M65: the faceless orb in the chosen water, drawn once per water.
-  const orb = characterOf(useSetting("look.style"), useSetting("look.character")) === "orb";
+  // M65: the faceless orb in the chosen water, drawn once per water. M68: or the Visor; both faceless, neither runs water.
+  const look = characterOf(useSetting("look.style"), useSetting("look.character"));
+  const orb = look !== "friendly";
   const orbSrc = useMemo(() => svgUrl(glassOrbSvg(waterOf(water))), [water]);
   const [liveFailed, setLiveFailed] = useState(false);
   const live = liveOn && !liveFailed && !orb;
@@ -55,6 +58,16 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   const reacts = useSetting("character.reacts") !== false;
   const flow = useFlow({ pose, state, calm: reduced, off: live || orb });
   const box = useRef<HTMLDivElement>(null);
+  // M68: something new for the Visor to glance at: the ask box being typed in (an input event on that one box, which
+  // carries no text), or a card starting to wait for a review. The part plays at most one glance every few seconds.
+  const [news, setNews] = useState(0);
+  useEffect(() => {
+    if (look !== "visor" || !askId) return;
+    const onInput = (e: Event) => { if ((e.target as Element | null)?.id === askId) setNews((n) => n + 1); };
+    document.addEventListener("input", onInput, { passive: true });
+    return () => document.removeEventListener("input", onInput);
+  }, [look, askId]);
+  useEffect(() => { if (leanTo) setNews((n) => n + 1); }, [leanTo]);
   // M66 fix 10: its size follows the hero's at once; the drawing eases between the two by scale only.
   useSizeEase(box, !orb);
   // A task that just finished: a ripple and droplets from the middle of the water, once.
@@ -67,7 +80,10 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
     }
     wasDone.current = now;
   }, [state]);
-  if (orb) return <div className="home-orb" data-state={state} aria-hidden="true"><Orb src={orbSrc} ring={ring === undefined ? ringOf(state) : ring} /></div>;
+  const shownRing = homeRingShown(state, ring);
+  // M68: the Visor glances toward the ask box or the card (both below and to the left of it in Home).
+  if (look === "visor") return <div className="home-orb" data-state={state} aria-hidden="true"><Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} /></div>;
+  if (orb) return <div className="home-orb" data-state={state} aria-hidden="true"><Orb src={orbSrc} ring={shownRing} /></div>;
   return (
     <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>

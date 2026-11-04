@@ -85,19 +85,20 @@ describe("the style and the character are real settings, and a store from before
     expect(def("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: [...CHARACTER_CHOICES], applies: ["pages"], store: "settings", live: true });
     expect(LOOK_CHOICES["look.style"]).toEqual({ attr: "data-style", values: ["instrument", "friendly"], usual: "instrument" });
   });
-  test("a store saved before M65 (no style, no character) reads Instrument with the orb, and keeps every value it saved", () => {
+  test("a store saved before M65 (no style, no character) reads Instrument with the Visor (M68), and keeps every value it saved", () => {
     const before = { "look.theme": "night", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid" };
-    expect(lookAttrs(before)).toEqual({ "data-theme": "graphite", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "instrument", "data-character": "orb" });
+    expect(lookAttrs(before)).toEqual({ "data-theme": "graphite", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "instrument", "data-character": "visor" });
     for (const junk of [undefined, null, "", "Friendly", "childish", 3]) expect(choiceOf("look.style", junk), String(junk)).toBe("instrument");
   });
   test("the character matches the style unless one is picked, and the face, bubbles and water are the friendly one's only", () => {
-    expect(characterOf(undefined, undefined)).toBe("orb");
-    expect(characterOf("instrument", "match")).toBe("orb");
+    expect(characterOf(undefined, undefined)).toBe("visor");   // M68: the Visor is Instrument's character
+    expect(characterOf("instrument", "match")).toBe("visor");
     expect(characterOf("friendly", "match")).toBe("friendly");
     expect(characterOf("friendly", undefined)).toBe("friendly");
     expect(characterOf("instrument", "friendly")).toBe("friendly");
     expect(characterOf("friendly", "orb")).toBe("orb");
-    expect(characterOf("instrument", "nonsense")).toBe("orb");
+    expect(characterOf("instrument", "nonsense")).toBe("visor");
+    expect(characterOf("instrument", "orb")).toBe("orb");   // a store that picked the orb keeps it
     // The orb is the lab's quiet glass (M65 step 4, the critics: the reused friendly body read as a candy marble): one
     // round body lit from the top left, a shade at its foot and a fine dark rim. No face, no bubbles, no light ring inside
     // the rim, no crescent, no sparkles, no big white glint.
@@ -126,7 +127,7 @@ describe("the style and the character are real settings, and a store from before
       for (const sentence of w.help.split(/(?<=[.!?:])\s+/)) expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(25);
     }
     expect(S.set["look.style"].options).toEqual({ instrument: "Instrument", friendly: "Friendly" });
-    expect(S.set["look.character"].options).toEqual({ match: "Match look", orb: "Glass orb", friendly: "Friendly" });
+    expect(S.set["look.character"].options).toEqual({ match: "Match look", visor: "Visor", orb: "Glass orb", friendly: "Friendly" });
     expect(PAGES.look.groups.flatMap((g) => g.items)).toHaveLength(10);
   });
   test("Home and Settings set both on their root; the notch keeps its own look", () => {

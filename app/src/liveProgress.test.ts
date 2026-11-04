@@ -154,7 +154,7 @@ describe("the notch says the step in a word, with a thin line of the four steps,
   });
   test("the island draws it only with Show the step on the notch on, and asks the app for wings wide enough for the longest word", () => {
     expect(island).toMatch(/useSetting\("island\.showStep"\) !== false/);
-    expect(island).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask, wing \}\)/);
+    expect(island).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW \}\)/);
     // The wings are as wide as the longest of the four words needs, so they grow once when work starts, never at each step.
     expect(island).toMatch(/S\.home\.steps\.map/);
   });

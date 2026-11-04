@@ -1,21 +1,26 @@
 /* M65 step 2, the chrome in the Instrument look: everything around Home. Every rule here is gated on the Instrument style
-   (data-style) or on the orb character (data-character), so Friendly is exactly as it was (chrome.test.ts). It writes no
+   (data-style) or on a faceless character, the orb or the Visor (data-character), so Friendly is exactly as it was (chrome.test.ts). It writes no
    colour and no size of its own: each value is a token from ui/tokens.css. Loaded by the pages it styles (dock.tsx,
    island.tsx, settingsPage.tsx, practicePanel.tsx), after style.css.
 
    The faceless glass orb in the small places (flowflowMini.tsx): the notch's wing, its panel, the practice panel and
    Settings' About. Its own drawing carries the water's colour, so the hue turn the friendly pictures take is off. */
-.ff-orb[data-character="orb"] { display: grid; place-items: center; filter: none; }
+.ff-orb[data-character="orb"], .ff-orb[data-character="visor"] { display: grid; place-items: center; filter: none; }
 .island-wing .ff-orb[data-character="orb"] { --orb: var(--orb-notch); --orb-gap: var(--hair); width: var(--orb-notch); }
-.island-panel .ff-orb[data-character="orb"] { --orb: var(--orb-panel); --orb-gap: var(--hair); height: auto; }
+/* M68: the Visor takes each of the orb's places at the orb's size; in the notch's wing it is the band alone, --visor-notch across. */
+.island-wing .ff-orb[data-character="visor"] { --orb-gap: var(--hair); width: var(--visor-notch); }
+.island-panel .ff-orb[data-character="orb"], .island-panel .ff-orb[data-character="visor"] { --orb: var(--orb-panel); --orb-gap: var(--hair); height: auto; }
 
 /* The orb on the screen's edge (dock.tsx): the same orb, a little bigger, in the middle of the character's button. The
    window keeps its size (island.rs is unchanged). The word under it takes the style's small corners. */
-.character[data-character="orb"] { --orb: var(--orb-edge); display: grid; place-items: center; }
-.dock[data-character="orb"] .dock-label { border-radius: var(--r-key); }
+.character[data-character="orb"], .character[data-character="visor"] { --orb: var(--orb-edge); display: grid; place-items: center; }
+.dock[data-character="orb"] .dock-label, .dock[data-character="visor"] .dock-label { border-radius: var(--r-key); }
+/* Listening is said by the ring (the light that shows first, rule 5), the same ring as on Home and in the notch. The
+   friendly character's soft halo (style.css) is its own, never around the faceless orb or the Visor (M68 step 3). */
+.character[data-character="orb"][data-state="listening"], .character[data-character="visor"][data-state="listening"] { filter: none; }
 /* The count of questions waiting sits on the orb's own shoulder, not on the far corner of the button. It is amber with dark
    words, like the ring it sits on (needs you), never the notch's black. */
-.character[data-character="orb"] .badge { top: calc(50% - var(--orb) / 2 - var(--space-1)); right: calc(50% - var(--orb) / 2 - var(--space-1)); background: var(--amber); color: var(--amber-ink); box-shadow: none; }
+.character[data-character="orb"] .badge, .character[data-character="visor"] .badge { top: calc(50% - var(--orb) / 2 - var(--space-1)); right: calc(50% - var(--orb) / 2 - var(--space-1)); background: var(--amber); color: var(--amber-ink); box-shadow: none; }
 
 /* The island stays the notch's black (keepNight; no colour is set here). Under Instrument its panel takes the style's
    small corners: 6 on a button, 10 on the shape and its cards. The pill in the menu bar stays a pill. */
@@ -31,7 +36,7 @@
 :root[data-style="instrument"] .home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):active { background: var(--surface-2); }
 
 /* The practice panel: the orb at Home's size beside the line, and the line in plain quiet words, not a speech bubble. */
-:root[data-character="orb"] .pr-peek:has(+ .practice) { --peek: var(--orb); }
+:root[data-character="orb"] .pr-peek:has(+ .practice), :root[data-character="visor"] .pr-peek:has(+ .practice) { --peek: var(--orb); }
 :root[data-style="instrument"] .pr-peek:has(+ .practice) .say { padding: 0; border: 0; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; color: var(--fg-2); }
 :root[data-style="instrument"] .pr-peek:has(+ .practice) .say::after { display: none; }
 

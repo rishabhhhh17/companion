@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
-import { startSettings, useSetting } from "./settingsStore.ts";
+import { setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
@@ -16,6 +16,7 @@ import { PartBoundary } from "./partBoundary.tsx";
 import "./style.css";
 import "./ui/chrome.css";
 import "./ui/homeShape.css";
+import "./ui/notch.css";
 
 // The island in the notch (F18, made fun on 27 Oct 2026). The app decides its size and what it sits on (island.rs): the
 // notch itself, a small pill in the middle of the menu bar, or a thin line on the top edge where no menu bar shows. Idle it
@@ -30,6 +31,7 @@ import { choiceOf } from "./lookfeel.ts";
 import { IslandPanel } from "./islandPanel.tsx";
 import { armed, islandJobs, notchStep, resultPeekKey, RESULT_PEEK_MS, type NotchStep } from "./islandPanel.ts";
 import { FlowMini } from "./flowflowMini.tsx";
+import { HELLO_SHOW_MS, LAST_HELLO_KEY, WAKE_TICK_MS, cleanName, helloFact, helloGate, helloLine, lastHelloFrom, restWings, restWingState, wokeAfter, type HelloWhy, type RestWings } from "./notchHello.ts";
 type Kind = "notch" | "pill" | "edge";
 const KINDS: readonly Kind[] = ["notch", "pill", "edge"];
 type Shape = { mode: IslandMode; kind: Kind; w: number; h: number; core: number; row: number; wing: number; hover: boolean };
@@ -95,6 +97,15 @@ function Mark({ w, count, reduced }: { w: Wings; count: number; reduced?: boolea
 const WING_USUAL = 40;
 /** The room in a wing beside the word: the mark (20), the gap before it (6), and the space at each end (10 and 6). */
 const STEP_ROOM = 42;
+
+/** M68: the room in the right wing beside a word at rest: the space at each end (10 and 6). */
+const REST_ROOM = 16;
+/** M68: how long after the page starts the first hello may come, so the settings and the engine's state have arrived. */
+const HELLO_START_MS = 1500;
+
+/** The time the last hello showed, kept in this page's own storage (a number only). */
+const lastHello = (): number | null => { try { return lastHelloFrom(localStorage.getItem(LAST_HELLO_KEY)); } catch { return null; } };
+const keepHello = (t: number) => { try { localStorage.setItem(LAST_HELLO_KEY, String(t)); } catch { /* not kept: at worst a second hello within the hour */ } };
 
 /** M55: the step in a word, with a thin line of the four steps under it (done, now, ahead). Drawn only: the island's name
  *  says what is happening in words. It changes only when a step changes, by colour, and never loops. */
@@ -179,6 +190,17 @@ function Island() {
     return () => ro.disconnect();
   }, []);
   const wing = step && stepW > 0 ? stepW + STEP_ROOM : 0;
+  // M68 step 2b, the notch has presence: at rest, on a real notch, small wings with the Visor's lights on the left and one
+  // short word or a tick on the right (notchHello.ts restWings); the live wings take over while something happens. Off
+  // with Show wings at rest (island.wings): then the notch looks like the hardware again.
+  const wingsAtRest = useSetting("island.wings") !== false;
+  const restAt = restWings(m, now, { on: wingsAtRest, kind: shape.kind });
+  const rest = wings ? null : restAt;
+  // The word's own width, measured, so the right wing is as wide as it needs (island.rs keeps it within WING_MAX).
+  const restMeasure = useRef<HTMLSpanElement>(null);
+  const [restW, setRestW] = useState(0);
+  useLayoutEffect(() => { setRestW(rest?.word && restMeasure.current ? Math.ceil(restMeasure.current.offsetWidth) : 0); }, [rest?.word]);
+  const wingW = Math.max(wing, restW > 0 ? restW + REST_ROOM : 0);
   // The app sizes the window: wings out or not, and whether a peek has a line to show.
   const out = wings !== null;
   // The panel that hangs from it: always laid out (hidden until the pointer rests on the island), so its height is known and
@@ -218,10 +240,67 @@ function Island() {
   }, [peekKey]);
   const questionsOpen = useSetting("island.openForQuestions") !== false;   // read every render: a hook is never skipped
   const ask = out && ((questionsOpen && m.approvals.length > 0) || resultPeek);
-  useEffect(() => { void invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing }).catch(() => {}); }, [out, panelH, cheering, ask, wing]);
+  // M68: the hello. When the app starts, when the Mac wakes (a timer that fired far too late: the Mac slept), or when this
+  // page comes back after more than an hour hidden (the screen locked or asleep), the notch widens for about 3 seconds with
+  // the Visor and one line (notchHello.ts). Only on a real notch, at most once an hour, never while a call app is in front
+  // (the shell's presentation check, rule 7, asked at that moment), never while this page is hidden, never over Home or a
+  // question. One gate (notchHello.ts helloGate): one try at a time, and the time kept in memory too. It is the panel under the wings,
+  // which the app never opens by itself while quiet or hidden (island.rs mode). No sound, no focus (the island is a
+  // borderless panel that never takes the keyboard). Only the time of the last hello is kept.
+  const [hello, setHello] = useState<ReturnType<typeof helloLine> | null>(null);
+  const helloOn = hello !== null;
+  const helloNow = useRef({ m, homeUp, ask });
+  helloNow.current = { m, homeUp, ask };
+  const shapeKind = useRef(shape.kind);
+  shapeKind.current = shape.kind;
+  const gate = useRef(helloGate({ read: lastHello, write: keepHello })).current;
+  const tryHello = useRef(async (why: HelloWhy, awayMs?: number) => {
+    const ok = await gate.attempt((last) => {
+      const r = helloNow.current;
+      return { why, now: Date.now(), last, on: setting("island.hello") !== false, quiet: false, homeOpen: r.homeUp, asking: r.ask, kind: shapeKind.current, hidden: document.hidden, awayMs };
+    }, () => invoke("quiet_now").then((q) => q === true).catch(() => true));   // not known: stay quiet
+    if (ok) setHello(helloLine(cleanName(setting("you.name")), helloFact(helloNow.current.m, Date.now())));
+  }).current;
+  useEffect(() => {
+    let away: number | null = typeof document !== "undefined" && document.hidden ? Date.now() : null;
+    let prev = Date.now();
+    let start = 0;
+    void settingsReady().then(() => { start = window.setTimeout(() => void tryHello("start"), HELLO_START_MS); });
+    // A hidden page's timers are slowed (WebKit), so a late tick there is no wake: skip it, and start the clock again on
+    // coming back, so the first tick after is not taken for one either.
+    const tick = window.setInterval(() => {
+      const t = Date.now();
+      if (document.hidden) { prev = t; return; }
+      if (wokeAfter(prev, t, WAKE_TICK_MS) > 0) void tryHello("wake");
+      prev = t;
+    }, WAKE_TICK_MS);
+    const vis = () => {
+      if (document.hidden) { away = Date.now(); return; }
+      prev = Date.now();
+      if (away !== null) { const was = Date.now() - away; away = null; void tryHello("back", was); }
+    };
+    document.addEventListener("visibilitychange", vis);
+    return () => { window.clearTimeout(start); window.clearInterval(tick); document.removeEventListener("visibilitychange", vis); };
+  }, []);
+  useEffect(() => {
+    if (!hello) return;
+    // The time is kept once the panel has opened (the hello is on screen), not when it was decided.
+    gate.shown(Date.now());
+    const id = window.setTimeout(() => setHello(null), HELLO_SHOW_MS);
+    return () => window.clearTimeout(id);
+  }, [hello]);
+  // Home opening or a question arriving puts the hello away at once.
+  useEffect(() => { if (homeUp || ask) setHello(null); }, [homeUp, ask]);
+  const wingsOut = out || rest !== null || helloOn;
+  useEffect(() => { void invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW }).catch(() => {}); }, [wingsOut, panelH, cheering, ask, helloOn, wingW]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;
+  // M68: which of the two was out last, the live wings or the wings at rest, so the right one tucks back.
+  const lastRest = useRef<RestWings | null>(null);
+  const lastWasRest = useRef(false);
+  if (wings) lastWasRest.current = false;
+  else if (rest) { lastRest.current = rest; lastWasRest.current = true; }
   const lastStep = useRef<NotchStep | null>(null);
   if (wings) lastStep.current = step;
   const lastOut = useRef<IslandMode>("rest");
@@ -235,7 +314,8 @@ function Island() {
   const tucking = shape.mode === "rest" && !restSettled ? lastOut.current : null;
   const parts = islandParts(shape.mode);
   const showWings = parts.wings || tucking === "wings" || tucking === "wingsPeek";
-  const w = wings ?? lastWings.current;
+  const w = wings ?? (rest || lastWasRest.current ? null : lastWings.current);
+  const r = wings ? null : rest ?? (lastWasRest.current ? lastRest.current : null);
   const [soft, setSoft] = useState(false);
   useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
   // M46 (F28, F18): at rest on a notch the window is exactly the notch (island.rs), bare black, with no sun and no count.
@@ -267,13 +347,20 @@ function Island() {
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
-            <span className="island-wing left"><FlowMini className="island-flow" state={w.state} /></span>
+            <span className="island-wing left"><FlowMini className="island-flow" state={w.state} band /></span>
             <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}<Mark w={w} count={m.approvals.length} reduced={reduced} /></span>
+          </span>}
+          {/* M68: the wings at rest. The lights glance once toward a new word on the right. */}
+          {showWings && !w && r && <span aria-hidden="true" data-rest="">
+            <span className="island-wing left"><FlowMini className="island-flow" state={restWingState(r)} band glance={r.word ?? (r.tick ? "tick" : null)} /></span>
+            <span className="island-wing right">{r.word ? <span className="island-rest-word">{r.word}</span> : r.tick ? <span className="mark" data-state="done" data-mark="tick"><svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg></span> : null}</span>
           </span>}
         </button>
         {/* The four step words, laid out but never shown, so the wings are asked for once, as wide as the longest needs. */}
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} />
+        {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
+        <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
+        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloOn && !shape.hover ? hello : null} />
       </span>
     </main>
   );

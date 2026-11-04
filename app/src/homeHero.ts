@@ -465,6 +465,10 @@ export function heroStatusOf(mode: HomeMode, status: Pick<HomeStatus, "kind">, t
 }
 /** The line under the headline says only what the status line says ("Working" under "Working"): Instrument leaves it out. */
 export const lineSaidByStatus = (kind: HeroStatus | null, line: string): boolean => kind !== null && S.ui.status[kind].trim().toLowerCase() === line.trim().toLowerCase();
+/** The line under the headline steps aside when the status line or the headline already says it ("Working" under
+ *  "Working"), whether or not the status line shows (M68 step 3). */
+export const heroLineSaid = (kind: HeroStatus | null, headline: string, line: string): boolean =>
+  lineSaidByStatus(kind, line) || line.trim().toLowerCase() === headline.trim().toLowerCase();
 /** The status line steps aside when the headline already says the same words ("Not checked yet" twice, one over the other). */
 export const statusLineShown = (kind: HeroStatus | null, headline: string): kind is HeroStatus =>
   kind !== null && S.ui.status[kind].trim().toLowerCase() !== headline.trim().toLowerCase();

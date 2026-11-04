@@ -69,19 +69,22 @@ export function choiceOf(key: LookChoice, v: unknown): string {
   return typeof v === "string" && (values as readonly string[]).includes(v) ? v : LOOK_CHOICES[key].usual;
 }
 export type Style = (typeof LOOK_CHOICES)["look.style"]["values"][number];
-/** The character in the look (look.character, M65): Match, the usual, takes the one that goes with the style: the faceless
- *  glass orb with Instrument, the friendly one with Friendly. Orb or Friendly pick one whatever the style. The friendly
- *  character is the only one with a face, bubbles and the water scene; the orb never has them. */
-export const CHARACTER_CHOICES = ["match", "orb", "friendly"] as const;
+/** The character in the look (look.character, M65; M68 the Visor): Match, the usual, takes the one that goes with the style:
+ *  the Visor (a glass orb with a band of light, the founder's pick on 4 Nov 2026) with Instrument, the friendly one with
+ *  Friendly. Visor, Glass orb or Friendly pick one whatever the style; a store that saved the orb keeps the orb. The friendly
+ *  character is the only one with a face, bubbles and the water scene; the Visor's personality is its lights only. */
+export const CHARACTER_CHOICES = ["match", "visor", "orb", "friendly"] as const;
 export type CharacterChoice = (typeof CHARACTER_CHOICES)[number];
-export type CharacterLook = "orb" | "friendly";
+export type CharacterLook = "visor" | "orb" | "friendly";
 export function characterOf(style: unknown, character: unknown): CharacterLook {
-  if (character === "orb" || character === "friendly") return character;
-  return choiceOf("look.style", style) === "friendly" ? "friendly" : "orb";
+  if (character === "visor" || character === "orb" || character === "friendly") return character;
+  return choiceOf("look.style", style) === "friendly" ? "friendly" : "visor";
 }
+/** The faceless characters (the Visor and the glass orb): the ring says the state, never the friendly one's moves. */
+export const faceless = (look: CharacterLook): boolean => look !== "friendly";
 /** Every look attribute for the saved values: the theme, whether it is dark or light, the choices, and the character the
  *  look shows (data-character). A store saved before M65 has no look.style or look.character: it reads Instrument with the
- *  orb, and every value it did save reads as before. */
+ *  Visor (M68), and every value it did save reads as before. */
 export function lookAttrs(values: Partial<Record<"look.theme" | "look.character" | LookChoice, unknown>>): Record<string, string> {
   const theme = themeOf(values["look.theme"]);
   const out: Record<string, string> = { "data-theme": theme, "data-tone": THEME_TONE[theme] };

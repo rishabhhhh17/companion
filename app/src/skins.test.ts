@@ -102,7 +102,9 @@ describe("the chrome does not read a skin", () => {
       // 2 Nov 2026, the review of the founder's midnight water: the accent is the water chosen, so its palette is named once
       // (Ocean's on :root, each other water's in its own block) and the rooms read it by name. Marks and light, never chrome.
       "--flow-base", "--flow-light", "--flow-deep", "--flow-glow", "--flow-tint", "--flow-grad-1", "--flow-grad-2", "--flow-grad-3",
-      "--flow-sky", "--flow-foot", "--flow-lit", "--flow-card", "--flow-focus"];
+      "--flow-sky", "--flow-foot", "--flow-lit", "--flow-card", "--flow-focus",
+      // M68, the Visor (the founder's pick, 4 Nov 2026): the light behind its band, fixed art in every theme, never chrome.
+      "--visor-light", "--visor-glow", "--visor-needs", "--visor-needs-glow", "--visor-stop"];
     for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

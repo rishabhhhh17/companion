@@ -115,6 +115,9 @@ describe("the shipped list of settings", () => {
       "look.style": "instrument", "look.character": "match",
       // M66: a light tap on the trackpad as the notch opens under your own click or pointing. Off, like sounds (rule 16).
       "island.haptics": false,
+      // M68 step 2b (the founder, 4 Nov 2026: "no notch like how HeyClicky has, like hey Rishabh"): small wings at rest and a
+      // short hello in the notch, both on; the name for the hello is only what the person types, empty by default.
+      "island.wings": true, "island.hello": true, "you.name": "",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -124,6 +127,16 @@ describe("the shipped list of settings", () => {
     expect(defOf("review.quietSeconds")).toMatchObject({ section: "watch", kind: "number", default: 20, min: 5, max: 120, step: 5, unit: "seconds", scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(validate(defOf("review.quietSeconds")!, 3).ok).toBe(false);
     expect(validate(defOf("review.mode")!, "always").ok).toBe(false);
+  });
+  test("M68: the notch's wings at rest and its hello are switches on by default; the name for the hello is short text the person types", () => {
+    expect(defOf("island.wings")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("island.hello")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("you.name")).toMatchObject({ section: "home", kind: "text", default: "", maxLength: 24, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("you.name")!, "Rishabh").ok).toBe(true);
+    expect(validate(defOf("you.name")!, "x".repeat(25)).ok).toBe(false);
+    expect(validate(defOf("island.hello")!, "yes").ok).toBe(false);
+    // The hidden hello of the old panel stays as it was.
+    expect(defOf("panel.showHello")).toMatchObject({ default: false, hidden: true });
   });
   test("M57: how long Automatic waits, and how strict a review is", () => {
     expect(defOf("review.autoQuietSeconds")).toMatchObject({ section: "watch", kind: "number", default: 60, min: 20, max: 600, step: 10, unit: "seconds", scope: "app", applies: ["runner"], store: "settings", live: true });
@@ -169,9 +182,10 @@ describe("the shipped list of settings", () => {
     // M65: the look's style (Instrument, the usual, or Friendly, today's look) and the character in it, for the pages only.
     // A store saved before has neither key, so it reads the usual: Instrument, with the character matching it.
     expect(defOf("look.style")).toMatchObject({ section: "look", kind: "choice", default: "instrument", options: ["instrument", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
-    expect(defOf("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: ["match", "orb", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: ["match", "visor", "orb", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(validate(defOf("look.style")!, "childish").ok).toBe(false);
     expect(validate(defOf("look.character")!, "friendly").ok).toBe(true);
+    expect(validate(defOf("look.character")!, "visor").ok).toBe(true);
     expect(defOf("look.style")!.from).toBeUndefined();
     expect(defOf("character.edge")!.options).toEqual(["left", "right", "top", "bottom"]);
     expect(defOf("character.motion")!.options).toEqual(["followMac", "less"]);

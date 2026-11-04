@@ -2,6 +2,8 @@
 
 Since 4 Nov 2026 the usual look is Instrument, and the look below is the Friendly choice. What Instrument is and what was built is in `docs/milestones/M65-grown-up-look.md`.
 
+The founder's character (4 Nov 2026, option B in the characters lab): the Visor, the character that goes with Instrument. A glass orb with a dark band across the middle and light behind it. Two small lights that blink at rest, one bar that scans while it works, a small level meter while it listens, two taller amber lights and a slight lean when it needs you, red lights when it stops, and a smile with one small hop when a fix is proven. No mouth, no bubbles, no water. The M65 ring outside it stays. The glass orb and the friendly character stay as choices. The plan is `docs/milestones/M68-visor.md`.
+
 Written after the first hands on Mac session (26 Oct 2026), where the founder said the app looked bad, the card was complicated, replies were in a small box, and Flowflow was "a photo in a square box". These are the rules the real app follows now. They are not a brand: no colour, font or shape has been chosen. The founder has not picked a visual direction, so the app is calm, neutral and simple, and the motion carries the personality. Everything here is in `app/src/style.css` as tokens, `app/src/skins.ts`, `app/src/flow/` (the pictures' motion) and `app/src/flowflow/` (the founder's live drawing, off by default).
 
 ## 1. Black and white base

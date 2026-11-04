@@ -4,9 +4,10 @@
 // line. Friendly keeps today's Home whole. The logic is plain code (homeHero.ts); the page is read as text.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { heroRingOf, heroStatusOf, homeFoot, lineSaidByStatus, statusLineShown, statusSubShown, type HomeMode, type HeroTone, type HomeStatus } from "./homeHero.ts";
+import { heroLineSaid, heroRingOf, heroStatusOf, homeFoot, lineSaidByStatus, statusLineShown, statusSubShown, type HomeMode, type HeroTone, type HomeStatus } from "./homeHero.ts";
 import { ALL_CSS } from "./ui/cssFiles.ts";
 import { S } from "./strings.ts";
+import { homeRingShown, ringOf } from "./characters.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const card = read("./card.tsx"), homeChar = read("./homeCharacter.tsx"), onboarding = read("./onboarding.tsx"), home = read("./ui/home.css"), css = ALL_CSS();
@@ -48,7 +49,7 @@ describe("the status line says the state in words", () => {
     expect(lineSaidByStatus("working", S.look.workingFree)).toBe(true);
     expect(lineSaidByStatus("working", S.look.working("12 cents"))).toBe(false);
     expect(lineSaidByStatus(null, "Working")).toBe(false);
-    expect(card).toContain("data-line-said={!statusFirst && statusLineShown(heroStatus, heroShown.headline) && lineSaidByStatus(heroStatus, heroShown.line)");
+    expect(card).toContain("data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroShown.line)");
   });
   test("it steps aside when the headline already says the same words", () => {
     expect(statusLineShown("notChecked", S.home.notChecked)).toBe(false);
@@ -112,9 +113,13 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(css).toContain(home);
   });
   test("Home's character is the faceless orb when the look's character is the orb, with no live water running under it", () => {
-    expect(homeChar).toContain("characterOf(useSetting(\"look.style\"), useSetting(\"look.character\")) === \"orb\"");
+    expect(homeChar).toContain("const look = characterOf(useSetting(\"look.style\"), useSetting(\"look.character\"));");
+    expect(homeChar).toContain("const orb = look !== \"friendly\";");
     expect(homeChar).toContain("off: live || orb");
-    expect(homeChar).toContain("<Orb src={orbSrc} ring={ring === undefined ? ringOf(state) : ring} />");
+    expect(homeChar).toContain("const shownRing = homeRingShown(state, ring);");
+    expect(homeChar).toContain("<Orb src={orbSrc} ring={shownRing} />");
+    // M68: the Visor, the usual under Instrument, in the same place with the same ring.
+    expect(homeChar).toContain("<Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} />");
     expect(homeChar).not.toMatch(/home-orb[^\n]*(eye|face|bubble)/);
   });
 });
@@ -178,5 +183,27 @@ describe("the review card leads with its one line when Home's top says the ratin
     expect(reviewHeroSays("review", reviewLead(plain, P), plain)).toBe(false);
     expect(reviewHeroSays("rest", reviewLead(rc, P), rc)).toBe(false);
     expect(card.match(/heroSays=\{reviewHeroSays\(mode, rlead, m\.review\)\}/g)?.length).toBe(2);
+  });
+});
+
+describe("Working is said once (M68 step 3)", () => {
+  test("the line under the headline steps aside when the headline already says it, with or without the status line", () => {
+    // The headline says Working, so the status line hides; the line under it said Working too and stayed (the review).
+    expect(heroLineSaid("working", "Working", "Working")).toBe(true);
+    expect(heroLineSaid("working", "Fix the header", S.look.workingFree)).toBe(true);
+    expect(heroLineSaid(null, "Working", " working ")).toBe(true);
+    expect(heroLineSaid("working", "Fix the header", S.look.working("12 cents"))).toBe(false);
+    expect(heroLineSaid(null, "Fix the header", "Reading the files")).toBe(false);
+  });
+});
+
+describe("listening shows one ring everywhere (M68 step 3)", () => {
+  test("Home shows the same ring for hold to talk as the edge and the notch, even at rest", () => {
+    expect(homeRingShown("listening", null)).toBe(ringOf("listening"));
+    expect(homeRingShown("listening", undefined)).toBe(ringOf("listening"));
+    expect(homeRingShown("idle", null)).toBe(null);
+    expect(homeRingShown("working", "needs")).toBe("needs");
+    expect(homeRingShown("done", undefined)).toBe(ringOf("done"));
+    expect(homeChar).toContain("homeRingShown(state, ring)");
   });
 });

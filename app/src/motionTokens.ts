@@ -25,6 +25,12 @@ export const PEN_CSS = "cubic-bezier(.33, 0, .2, 1)";
 export const EXIT_MS = { menu: 100, toast: 140, sheet: 180, scrim: DUR[1] } as const;
 export type ExitKind = keyof typeof EXIT_MS;
 
+/** The Visor's moves (M68, copied from the characters lab), in ms; tokens.css has the same as --loop-visor-* and
+ *  --dur-visor-*. A blink every 4.6 s, the scan 1.3 s each way, the needs you lean over 2.6 s, the meter's gentle pulse
+ *  1.2 s each way, the proven hop once over 840 ms, a glance of 0.6 s there, 1.2 s held and 0.6 s back, and at most one
+ *  glance every 8 s. */
+export const VISOR_MS = { blink: 4600, scan: 1300, lean: 2600, pulse: 1200, hop: 840, glance: 2400, glanceGap: 8000 } as const;
+
 /** The two curves (cubic-bezier control points). Ease out for every enter, move, land and grow; exit for leaving only. */
 export const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 export const EASE_EXIT = [0.4, 0, 1, 1] as const;

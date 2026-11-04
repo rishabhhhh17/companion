@@ -34,7 +34,7 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(MAIN.size).toBeLessThanOrEqual(48);
   });
   test("the main levels are the ones the spec names", () => {
-    expect(mainKeys("account")).toEqual(["spend.dailyLimit"]);
+    expect(mainKeys("account")).toEqual(["spend.dailyLimit", "you.name"]);   // M68: what to call you, for the hello in the notch
     expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
     expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");

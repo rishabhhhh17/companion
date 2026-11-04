@@ -29,7 +29,7 @@ import { HomeStage, useHomeStage } from "./homeStage.tsx";
 import { CountUp, useHomeMotion } from "./smoothMotion.ts";
 import { JobLive } from "./jobLive.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { reviewHeroSays, jobNowSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, jobNowWords, workingLine, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroStatusOf, homeFoot, lineSaidByStatus, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { reviewHeroSays, jobNowSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, jobNowWords, workingLine, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, jobStep, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
@@ -2038,7 +2038,7 @@ function Card() {
           <div className="ch-char"><HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
             ring={heroRingOf(mode, heroStatus)} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} /></div>
         </div>
-        <div className="hero-words" data-line-said={!statusFirst && statusLineShown(heroStatus, heroShown.headline) && lineSaidByStatus(heroStatus, heroShown.line) ? "" : undefined}>
+        <div className="hero-words" data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroShown.line) ? "" : undefined}>
           {statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}
           {/* data-foot-says: the footer line already says this line (Checked 4 min ago), so Instrument shows it once. */}
           {statusFirst

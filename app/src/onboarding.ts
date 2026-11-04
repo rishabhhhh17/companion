@@ -6,6 +6,7 @@ import { setting } from "./settingsStore.ts";
 import type { Liveliness } from "./lookfeel.ts";
 import { numberWords } from "./settingsRows.ts";
 import { S } from "./strings.ts";
+import { cleanName } from "./notchHello.ts";
 import type { Verdict } from "./verdict.ts";
 
 // The first run (M49, three screens): Hello (the water and Flowflow, one line on what it does, and the recorded fix to
@@ -28,18 +29,22 @@ export const LEVEL: Record<Step, number> = { hello: 34, claude: 10, project: 20,
 export type Edge = "left" | "right" | "top" | "bottom";
 export type Follow = "eyes" | "drop" | "off";
 /** `follow`: no longer asked in the first run (M46); kept so an old answer still reads, and null writes nothing. */
-export type Yours = { name: string; lively: Liveliness | null; edge: Edge | null; follow?: Follow | null };
+export type Yours = { name: string; lively: Liveliness | null; edge: Edge | null; follow?: Follow | null;
+  /** M68: what to call the person, only for the hello in the notch (you.name). Optional; never read from the Mac. */
+  you?: string };
 export const DEFAULT_YOURS: Yours = { name: "", lively: null, edge: null, follow: null };
 export const NAME_MAX = 24;
 /** What Make it yours changes in Settings: its name (its own name, or nothing typed, is stored as empty), how lively
  *  (character.lively, M46), and the edge. Only what differs from `now`, the choices in force when the screen opened, so
  *  reading it again writes nothing until a choice is touched. Without `now` nothing is in force yet. */
-export function yoursSettings(y: Yours, ownName: string, now: Pick<Yours, "name" | "lively" | "edge"> = { name: "", lively: null, edge: null }): [string, unknown][] {
+export function yoursSettings(y: Yours, ownName: string, now: Pick<Yours, "name" | "lively" | "edge" | "you"> = { name: "", lively: null, edge: null }): [string, unknown][] {
   const out: [string, unknown][] = [];
   const typed = y.name.trim().slice(0, NAME_MAX), name = typed === ownName ? "" : typed;
   if (name !== now.name.trim()) out.push(["character.name", name]);
   if (y.lively && y.lively !== now.lively) out.push(["character.lively", y.lively]);
   if (y.edge && y.edge !== now.edge) out.push(["character.edge", y.edge]);
+  // M68: the person's own name for the hello, written only when typed or changed.
+  if (y.you !== undefined) { const you = cleanName(y.you); if (you !== cleanName(now.you ?? "")) out.push(["you.name", you]); }
   // Follow my pointer (M20): its eyes, a drop of water, or off; the person's choice.
   if (y.follow) out.push(["character.follow", y.follow]);
   return out;

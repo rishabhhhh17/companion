@@ -1,0 +1,11 @@
+/* M68 step 2b, the notch has presence (notchHello.ts): the island page's own rules for the wings at rest and the hello.
+   Loaded by island.tsx after style.css. No colour of its own: the notch's ink tokens from ui/tokens.css. No motion of its
+   own: the wings grow on the notch springs (island.tsx) and the panel fades as it always does (style.css). */
+/* The wings at rest (restWings): one short word on the right, as quiet as the step word. */
+.island-rest-word { flex: none; color: var(--notch-fg-2); font: 600 var(--t-caption) / 1 var(--font); white-space: nowrap; }
+/* The hello under the notch (islandPanel.tsx): the Visor and one line, for about 3 seconds. Black like the notch. */
+.island-panel .ip-hello { display: flex; align-items: center; justify-content: center; gap: var(--space-2); padding: 2px 2px 0; }
+.island-panel .ip-hello .ip-agent { flex: none; }
+.island-panel .ip-hello-line { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: var(--space-2); color: var(--notch-fg); font: 500 var(--t-small) / var(--lh-small) var(--font); }
+.island-panel .ip-hello-line b { color: var(--notch-ink); font-weight: 600; }
+.island-panel .ip-hello-line span { color: var(--notch-fg-2); }

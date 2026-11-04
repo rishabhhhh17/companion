@@ -2,6 +2,20 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The Visor, the new character: 4 Nov 2026
+
+- **Meet the Visor.** In the Instrument look the character is now a glass orb with a dark band across it and light behind the band. At rest two small lights blink every few seconds. While it works one bar of light scans side to side. While you hold to talk it shows a small pulsing meter. When it needs you the lights turn amber and it leans in a little. When it stops on something the lights go red. When a fix is proven the light curves into a smile and it gives one small hop.
+- **It shows everywhere the orb did:** Home, the character on the edge of the screen, the notch (just the band, with its lights), the questions under the notch, the practice panel and the first run. The ring round it still shows the state.
+- **It stays calm when you ask.** With Reduce motion or Less motion it holds a still pose for each state. Set How lively to Still and it stops blinking. It never moves while its window is hidden.
+- **The other characters stay.** Settings, Look, Character now offers Match look, Visor, Glass orb and Friendly. If you picked Glass orb before, you keep it.
+- **The notch is never empty now.** Small black wings sit beside the notch even when nothing runs. The left one shows the Visor's lights, blinking. The right one shows one short count, such as 3 changes, or a green tick after a proof, and nothing when there is nothing. Settings, General, More options, Notch, Show wings at rest turns them off.
+- **A short hello in the notch.** When you start the app, wake your Mac or come back after more than an hour, the notch widens for about 3 seconds: "Hey Sam" and one plain fact, such as "my-shop has 3 changes to review" or "Everything checked is fine". Only on a Mac with a notch, at most once an hour, never while a call app such as Zoom is in front, and never with a sound. It checks only which app is in front, so Hide from screen sharing is what keeps it out of a share. Turn it off with Say hello in the notch.
+- **Tell it your name if you like.** The first run's Make it yours screen and Settings, Account, Your name ask what to call you. It is only used for the hello. Leave it empty and the hello says Hi there. The app never reads your Mac's account name.
+- **The Visor moves as one piece, and then rests.** When it leans or hops, the coloured ring now moves with it, so it never looks loose inside its own ring. At rest it blinks three times and then holds still until something new happens. When it needs you it leans in twice and then waits upright, so a question that waits for minutes does not keep rocking at the edge of your screen.
+- **The notch smiles after a proof.** Beside the green tick, the band's light now curves into the same smile you see on Home.
+- **Hold to talk looks the same everywhere.** Home shows the same blue ring as the edge and the notch while you talk, and the soft glow that only the friendly character used is gone from the orb and the Visor.
+- **Home says Working once.** The grey line under the Working headline no longer repeats it.
+
 ## Smooth and flowy, Home grows out of the notch: 4 Nov 2026
 
 - **Home now grows out of the notch as one black shape.** The notch stretches sideways in the menu bar, then drops down into Home, and Home's words arrive once the shape is mostly there. Closing folds it back into the notch with no bounce. Home is the same black as the notch, with no line or gap where they meet.

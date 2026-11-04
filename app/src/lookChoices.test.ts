@@ -156,7 +156,7 @@ describe("the choices are real settings, with their words and one place in Setti
 
 describe("each choice is a data attribute on the root, never a branch in the code", () => {
   test("the usual values give the usual attributes, and odd values read as the usual", () => {
-    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "orb" });
+    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "visor" });
     expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid", "look.style": "friendly" }))
       .toEqual({ "data-theme": "deep", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "friendly", "data-character": "friendly" });
     expect(lookAttrs({ "look.theme": "paper" })["data-tone"]).toBe("light");
@@ -171,7 +171,7 @@ describe("each choice is a data attribute on the root, never a branch in the cod
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
     applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.corners": "crisp" });
-    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "orb" });
+    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "visor" });
     const theme: Record<string, string> = {};
     applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } }, "ocean", "night");
     expect(theme["data-theme"]).toBe("graphite");

@@ -124,7 +124,7 @@ describe("the island", () => {
   test("the island page draws it from the same model and adds no new command", () => {
     const page = read("./island.tsx");
     expect(page).toContain("islandWings(m");
-    expect([...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]).sort()).toEqual(["get_project", "island_alert", "island_click", "island_state"]);   // F28 (4.3): get_project names the project in the hover panel's one true line
+    expect([...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]).sort()).toEqual(["get_project", "island_alert", "island_click", "island_state", "quiet_now"]);   // M68: quiet_now before a hello (rule 7). F28 (4.3): get_project names the project in the hover panel's one true line
     expect(page).not.toMatch(/\bfocus\(|keydown|keyup/);
   });
 });

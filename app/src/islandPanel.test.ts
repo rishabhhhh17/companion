@@ -52,7 +52,8 @@ describe("the panel under the notch shows the work, not a character", () => {
     const page = read("./island.tsx");
     expect(page).not.toContain("FlowflowView");
     expect(page).toContain("<IslandPanel");
-    expect(page).toMatch(/invoke\("island_alert", \{ on: out, panel: panelH, cheer: cheering, ask, wing \}\)/);
+    // M68: the wings also stay out at rest (island.wings) and for the hello, which asks for the panel under them.
+    expect(page).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW \}\)/);
   });
 });
 
@@ -94,7 +95,11 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
   });
   test("no greeting, no launcher buttons, no Settings or Open Home button: a click on the notch opens Home", () => {
     const view = read("./islandPanel.tsx");
-    for (const gone of ["greeting(", "ip-hello", "ip-hi", "ip-go", "ip-pill", "ip-open", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello", "panel.showButtons"]) expect(view, gone).not.toContain(gone);
+    // M68 (the founder, 4 Nov 2026: "like hey Rishabh"): the old big hello and its launcher stay gone; the short hello in the
+    // notch (ip-hello, notchHello.ts) is the only greeting, for about 3 seconds, at most once an hour, with no buttons.
+    expect(view).toContain('hello ? <div className="ip-hello"');
+    expect(view.slice(view.indexOf('hello ? <div className="ip-hello"'), view.indexOf("</div> : <>"))).not.toContain("<Button");
+    for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-open", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello", "panel.showButtons"]) expect(view, gone).not.toContain(gone);
     const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const gone of [".ip-hello", ".ip-hi", ".ip-go", ".ip-pill", ".ip-open", ".ip-row", ".ip-plus"]) expect(css, gone).not.toContain(gone);
     // Their settings are kept in the registry, hidden, so a value already set does nothing and nothing offers it.

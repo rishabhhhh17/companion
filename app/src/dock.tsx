@@ -14,7 +14,7 @@ import { poseFor, poseUrl, ringFor } from "./characters.ts";
 import { dockShows, dockWords, orbMotion } from "./chromeLook.ts";
 import { useCharacterLook } from "./flowflowMini.tsx";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
-import { Orb } from "./ui/parts.tsx";
+import { Orb, Visor } from "./ui/parts.tsx";
 import { useModel } from "./useModel.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { usePeek } from "./peek.ts";
@@ -132,7 +132,11 @@ function Dock() {
   // as in the notch and in Home (chromeLook.ts dockShows): no live water, no soft water, no pictures, no cartoon moves.
   const charLook = useCharacterLook();
   const shows = dockShows(charLook, liveOn, liveFailed);
-  const orb = shows === "orb";
+  // M68: or the Visor, the usual under Instrument, in the same place with the same ring; both are faceless.
+  const orb = shows === "orb" || shows === "visor";
+  // Its lights glance once toward the screen (where the card opens) when something happens (a reaction's event).
+  const edgeSet = useSetting("character.edge");
+  const toward: -1 | 1 = (peek.edge ?? edgeSet) === "left" ? 1 : -1;
   // The word under it agrees with the orb's ring (chromeLook.ts dockWords): Needs you while something waits.
   const label = dockWords(charLook, state, waiting, characterWords(m));
   const spoken = `${characterName(nameSet)}: ${label}${waiting ? `, ${waiting} ${S.waitingForYou}` : ""}`;
@@ -263,7 +267,8 @@ function Dock() {
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={lost} onLostPointerCapture={lost}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        {orb ? <Orb src={orbSrc} ring={ringFor(state, waiting)} />
+        {shows === "visor" ? <Visor state={state} ring={ringFor(state, waiting)} lively={liveliness} reacts={reacts} still={shellRest || peek.pose === "hidden"} glance={react?.id ?? null} toward={toward} />
+          : orb ? <Orb src={orbSrc} ring={ringFor(state, waiting)} />
           : live
           ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>

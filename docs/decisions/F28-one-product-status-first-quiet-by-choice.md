@@ -38,3 +38,11 @@ The executive review found the product trying to be many products at once (F16 s
 
 ## Revisit only if
 Real users on real Macs show that a switched off group is what they came for, or that Still reads as broken.
+
+## Update, 4 Nov 2026 (founder)
+
+The founder asked for the notch to have presence: "there is still no notch like how HeyClicky has, like hey Rishabh or something". So two things change from the rule above:
+- The notch at rest shows small black wings with the Visor's lights and, when there is something, one short status word. A switch (island.wings, on by default) brings back the bare notch.
+- A short hello (about 3 seconds, no buttons, never takes focus) shows on start, on wake, or after more than an hour away. It shows at most once an hour, only on a real notch, and never while a call app is in front. A switch (island.hello, on by default) turns it off. The name is one the person types (you.name), never the Mac account name.
+
+Everything else in this record stands. Built in M68 (docs/milestones/M68-visor.md).

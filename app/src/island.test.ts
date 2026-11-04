@@ -28,7 +28,7 @@ describe("the island page", () => {
     expect(page).toContain('invoke("island_click")');
     expect(page).toContain('listen("island-mode"');
     const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((m) => m[1]);
-    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project"]));   // F28 (4.3): the open project's name, for the hover panel's one true line
+    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project", "quiet_now"]));   // F28 (4.3): the open project's name, for the hover panel's one true line; M68: quiet_now, the shell's presentation check before a hello (rule 7)
     expect(page).not.toMatch(/send_command|keydown|onKey/i);
   });
   test("is told what the island sits on: the notch, a pill in the menu bar, or the thin line on the top edge", () => {
@@ -224,7 +224,7 @@ describe("the island says what is next", () => {
     expect(page).toContain('listen("update-ready"');
     expect(page).toContain("islandLine(m, { update, group:");
     const calls = [...page.matchAll(/invoke\("(\w+)"/g)].map((x) => x[1]);
-    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project"]));   // F28 (4.3): the open project's name, for the hover panel's one true line
+    expect(new Set(calls)).toEqual(new Set(["island_alert", "island_click", "island_state", "get_project", "quiet_now"]));   // F28 (4.3): the open project's name, for the hover panel's one true line; M68: quiet_now, the shell's presentation check before a hello (rule 7)
     // The shell tells every window when a check finds (or no longer has) an update, and the island can ask on load.
     const check = fnBody("check_update");
     expect(check).toContain('app.emit("update-ready", json!({ "version": u.version }))');
@@ -385,7 +385,7 @@ describe("the fun island", () => {
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
     expect(page).toContain("const out = wings !== null;");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -411,7 +411,7 @@ describe("the fun island", () => {
   test("the island page draws Flowflow from the character's poses, never from a skin directly", () => {
     const page = read("./island.tsx");
     // M24: one Flowflow everywhere, the live water, with the character's pose as its picture fallback.
-    expect(page).toContain('<FlowMini className="island-flow" state={w.state} />');   // the working agent in the wings; nothing peeks on hover
+    expect(page).toContain('<FlowMini className="island-flow" state={w.state} band />');   // the working agent in the wings (M68: the Visor's band alone); nothing peeks on hover
     expect(read("./flowflowMini.tsx")).toContain("poseUrl(poseFor(state))");
     expect(read("./flowflowMini.tsx")).not.toContain("skins.ts");
     expect(page).not.toContain("skins.ts");
@@ -452,7 +452,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(CHEER_FOR_MS).toBeLessThan(1000);
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
-    expect(page).toContain('invoke("island_alert", { on: out, panel: panelH, cheer: cheering, ask, wing })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW })');
     const main = read("../src-tauri/src/main.rs");
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });

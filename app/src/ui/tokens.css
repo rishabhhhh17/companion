@@ -262,6 +262,8 @@
   --loop-rim: 2.4s; --loop-stamp: 1.4s; --loop-icon-spin: 1.2s; --loop-spin: 900ms;
   --loop-waterline: 9s;
   --loop-island-pulse: 1.6s; --loop-island-breathe: 1.4s; --loop-island-spin: .8s; --loop-island-bar: .9s;
+  --loop-visor-blink: 4.6s; --loop-visor-scan: 1.3s; --loop-visor-lean: 2.6s; --loop-visor-pulse: 1.2s;   /* the Visor (motionTokens.ts VISOR_MS) */
+  --dur-visor-hop: 840ms; --dur-visor-glance: 2.4s;   /* the Visor's two moves that play once */
   --loop-tilt: 2.4s; --loop-drift: 1.4s; --loop-press: 1.4s; --loop-beat: 2800ms; --loop-run: 1.6s;
   --slide-place: 6px;                  /* how far a place rises as it comes in */
   --grow-from: .97;                    /* how small a card starts as it grows in, and ends as it folds away */
@@ -505,6 +507,25 @@
   --orb-edge: 56px;
   --orb-notch: 16px;
   --orb-panel: 24px;
+  /* The Visor (M68, ui/parts.css .ui-visor, the founder's pick from the characters lab, option B): the dark band and the
+     light behind it, copied from the lab. Fixed in every theme, like the glass it sits on (visorArt.ts). Amber when it
+     needs you and red when it stopped, the lab's own lights; the ring outside keeps its meaning colours. The glow is a
+     still shadow, never animated. Sizes in the drawing's own units (its box is 76 across). */
+  --visor-band: rgba(6, 10, 24, .78);
+  --visor-light: #9CC8FF;
+  --visor-glow: rgba(130, 190, 255, .9);
+  --visor-needs: #FFD27A;
+  --visor-needs-glow: rgba(255, 190, 80, .9);
+  --visor-stop: #FF8C86;
+  --visor-glow-blur: 3px;
+  --visor-scan: 14px;                  /* how far the bar scans each way (visorArt.ts VISOR_SCAN_TRAVEL) */
+  --visor-glance-x: 3px; --visor-glance-y: -1px;
+  --visor-dir: 1;                      /* which way a glance goes: 1 right, -1 left (the part sets it) */
+  --visor-lean: -5deg; --visor-lean-up: -1px;
+  --visor-lean-origin: 50% 90%;        /* the foot of the orb (the lab's 50, 90), so the ring leans with the glass */
+  --visor-hop-up: -5.3%;               /* the lab's 4 of its 76 units, so the hop scales with each size */
+  --visor-hop-origin: 50% 100%;        /* it squashes on its foot */
+  --visor-notch: 34px;                 /* the band alone in the notch's wing: 34 across, 10 tall, inside a 20 px pill row and a 32 px notch row */
 
   font: 14px var(--font);
 }

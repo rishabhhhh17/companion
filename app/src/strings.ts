@@ -475,6 +475,9 @@ export const S = {
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
     "island.haptics": "A light tap on the trackpad when you open the notch. Off unless you turn it on.",
+    "island.wings": "Small wings beside the notch show the lights and one short count. Off, the notch looks like the hardware.",
+    "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour.",
+    "you.name": "Used only for the hello in the notch. Empty says Hi there.",
     "island.pointOpens": "What opens when you point at the notch: Home, or one status line.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
@@ -505,7 +508,7 @@ export const S = {
     "look.colour": "Calm, the usual, is one blue accent. Vivid adds colour.",
     "look.corners": "Soft rounds the corners of cards and buttons. Crisp keeps them tight.",
     "look.style": "Instrument is calm and compact, the usual. The other is the playful look with water.",
-    "look.character": "A glass orb whose ring shows its state, or the one with a face and bubbles.",
+    "look.character": "A glass orb with a band of light, a plain glass orb, or the one with a face and bubbles.",
     "character.name": `What ${PRODUCT_S} character is called.`,
     "character.follow": "Still only follows while listening or pointing.",
     "character.dockWhen": "Pushed in hard, thrown at it, or held there two seconds. Playing near it leaves it where it is.",
@@ -552,7 +555,7 @@ export const S = {
   } as Record<string, Record<string, string>>,
   // The Groups on each page and the topics in More options (settingsPages.ts), by their anchors.
   setGroupTitles: {
-    "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending",
+    "account.plan": "Plan and billing", "account.claude": "Your Claude", "account.spending": "Spending", "account.you": "You",
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
@@ -744,6 +747,9 @@ export const S = {
     // Folded on the last screen, all optional (F05; their timing waits on the founder).
     yoursTitle: (name: string) => `Make ${name} yours (optional)`,
     nameLabel: "Its name",
+    // M68: the person's own name, only for the hello in the notch (you.name). Optional; the Mac's account name is never read.
+    youLabel: "What should I call you?",
+    youHint: "Optional. Used only for the hello in the notch.",
     livelyLabel: "How lively?",
     lively: { still: "Still", gentle: "Gentle", lively: "Lively" } as Record<string, string>,
     livelyLine: { still: "Moves only when it has news", gentle: "A slow sway at rest", lively: "Sways and follows your pointer" } as Record<string, string>,
@@ -755,6 +761,17 @@ export const S = {
     howYouLike: "Tell it how you like things (optional)",
   },
   // The panel under the notch (islandPanel.ts): the work, never a character.
+  // M68 step 2b: the notch's hello and its wings at rest (notchHello.ts). A productivity tool's words (rule 16): a greeting
+  // and one plain fact, never a mood, never "missed you", never a streak.
+  hello: {
+    hey: (name: string) => `Hey ${name}`,
+    hiThere: "Hi there",
+    questions: (n: number) => (n === 1 ? "1 question is waiting for you" : `${n} questions are waiting for you`),
+    changes: (project: string, n: number) => `${project} has ${n} ${n === 1 ? "change" : "changes"} to review`,
+    allFine: "Everything checked is fine",
+    changesShort: (n: number) => `${n} ${n === 1 ? "change" : "changes"}`,
+    proven: "Proven",
+  },
   panel: {
     unseen: (n: number) => (n === 1 ? "1 new result" : `${n} new results`),
     // M46: the count of new results, on the hover panel's top line only (the bare notch shows nothing at rest).
@@ -1856,6 +1873,9 @@ export const S = {
     "talk.dictate": { label: "Type by voice in any app", help: `Usually off, to keep things simple at first. Turn it on and pick its keys in Keys. Hold them, speak, and let go: your words are typed where the cursor is, in any app. ${PRODUCT} turns your voice into text on this Mac and never presses Return, so nothing is sent. It never types into a password box. It needs the microphone and Accessibility, asked the first time. Off, the keys type nothing.`, also: ["mic", "dictate", "voice", "dictation", "dictate", "type", "voice typing", "speech to text", "wispr", "any app"] },
     "talk.captions": { label: "Show your words", help: "When I say something out loud, the words also show at the bottom of your screen until I stop.", also: ["Show my words while I talk", "captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
     "home.escStops": { label: "Esc clears the screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["Esc stops what I show on screen", "escape", "esc", "stop", "cancel", "take back", "control"] },
+    "island.wings": { label: "Show wings at rest", help: "Small black wings beside the notch, even when nothing runs. The left one shows the character's lights. The right one shows one short count, such as 3 changes, or a tick after a proof, and nothing when there is nothing. Off, the notch looks like the hardware until something happens.", also: ["wings", "notch", "presence", "lights", "count", "tick", "rest", "idle", "hardware", "always"] },
+    "island.hello": { label: "Say hello in the notch", help: "A short hello when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
+    "you.name": { label: "Your name", help: "What to call you in the hello in the notch, such as Hey Sam. Only what you type here is used. Empty, the hello says Hi there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
     "island.showStep": { label: "Show the step on the notch", help: "While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
@@ -1886,7 +1906,7 @@ export const S = {
     "look.light": { label: "Light behind Home", help: "Off, the usual, keeps Home a plain page: no coloured sky, no rays, no drifting light and no water. Still lights Home from behind in water blue, as one picture. Moving lets that light drift slowly while you use Home. It holds still after 10 quiet seconds, or when Home is closed. Colour sets how strong it is. Reduce motion holds it still.", also: ["light", "glow", "background", "colour", "color", "room", "ambient", "battery", "motion", "plain", "colourful"], options: { off: "Off", still: "Still", moving: "Moving" } },
     "look.colour": { label: "Colour", help: "How much colour Home has. Calm, the usual, keeps one colour, water blue, for the main button, focus, the place you are on and progress. Green, red and amber only mark proven, failed and needs you. Vivid gives each part of Home its own colour, such as gold for Learn. It tints the cards and makes the light stronger. Words read the same in both.", also: ["colour", "color", "colourful", "colorful", "vivid", "bright", "calm", "quiet", "muted", "saturation", "intensity", "tone down"], options: { calm: "Calm", vivid: "Vivid" } },
     "look.style": { label: "Style", help: "Instrument, the usual, is calm and compact. It has a graphite page, small corners and rectangle buttons, with colour only where it means something. Friendly is the playful look from before, with round buttons, big headlines and water across Home. Every other look choice works in both.", also: ["style", "look", "instrument", "friendly", "playful", "grown up", "serious", "professional", "childish", "cartoon", "minimal", "compact"], options: { instrument: "Instrument", friendly: "Friendly" } },
-    "look.character": { label: "Character", help: `Which character shows in Home and on the edge of the screen. Match the look, the usual, picks the one that goes with the style. Glass orb is a small round orb with no face. A thin ring round it shows its state: red when it stopped, amber when it needs you, green when a fix is proven. Friendly has a face, two bubbles that follow it and its water.`, also: ["character", "orb", "glass orb", "face", "eyes", "bubbles", "mascot", "friendly", "ring", "water"], options: { match: "Match look", orb: "Glass orb", friendly: "Friendly" } },
+    "look.character": { label: "Character", help: `Which character shows in Home and on the edge of the screen. Match the look, the usual, picks the one that goes with the style. Visor is a glass orb with a band of light. The light blinks, scans while it works, turns amber when it needs you and smiles when a fix is proven. Glass orb is a small round orb with no face. On both, a thin ring round it shows the state: red when it stopped, amber when it needs you, green when a fix is proven. Friendly has a face, two bubbles that follow it and its water.`, also: ["character", "visor", "orb", "glass orb", "face", "eyes", "bubbles", "mascot", "friendly", "ring", "water", "light"], options: { match: "Match look", visor: "Visor", orb: "Glass orb", friendly: "Friendly" } },
     "look.corners": { label: "Corners", help: "Soft, the usual, rounds the corners of cards, buttons and fields. Crisp makes them tighter, for a sharper look. The notch keeps its own shape.", also: ["corners", "rounded", "round", "radius", "sharp", "square", "crisp", "soft"], options: { soft: "Soft", crisp: "Crisp" } },
     "character.follow": { label: "Follow your pointer", help: "What follows your pointer when How lively is Lively. Its eyes: its eyes and body lean toward your pointer. A water ring: its eyes, plus a small ring of water around your pointer's tip. In Still and Gentle its eyes stay ahead, and the ring shows only while it is listening. Off: nothing follows, not even while it listens. Only where the pointer is, never what you type or what is on the screen, and never kept.", also: ["Follow my pointer", "pointer", "cursor", "mouse", "eyes", "follow", "drop", "ring", "water ring", "buddy"], options: { eyes: "Its eyes", drop: "A water ring", off: "Off" } },
     "look.size": { label: "Size", help: "How big the character is on the edge of the screen. Large is as big as it can be and still have room to move.", also: ["Character size", "size", "bigger", "smaller", "large", "small", "character"], options: { small: "Small", usual: "Usual", large: "Large" } },
