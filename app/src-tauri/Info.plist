@@ -8,5 +8,11 @@
   <!-- Shown by macOS the first time the talk keys are used. -->
   <key>NSMicrophoneUsageDescription</key>
   <string>Squibby listens only while you hold its talk keys. Your voice is turned into words on this Mac and is never sent anywhere or saved.</string>
+  <!-- 5 Nov 2026: Squibby has no ordinary window, so macOS may otherwise quit it by itself to free memory. It stays on
+       until the person quits it (main.rs keep_running_until_quit says the same at launch). -->
+  <key>NSSupportsAutomaticTermination</key>
+  <false/>
+  <key>NSSupportsSuddenTermination</key>
+  <false/>
 </dict>
 </plist>

@@ -24,6 +24,10 @@ pub const MENU: &str = "menu";
 pub const UPDATE: &str = "update";
 pub const WIPE: &str = "wipe";
 pub const SYSTEM: &str = "system";
+/// 5 Nov 2026: a problem in the app's own code ended the event loop (main.rs ended_by_problem).
+pub const PROBLEM: &str = "problem";
+/// 5 Nov 2026: a TERM, HUP or INT signal (main.rs watch_signals).
+pub const SIGNAL: &str = "signal";
 static FROM: Mutex<Option<&'static str>> = Mutex::new(None);
 pub fn mark(from: &'static str) { let mut g = FROM.lock().unwrap_or_else(|e| e.into_inner()); if g.is_none() { *g = Some(from); } }
 /// The quit's source: named by the menu, an update or Delete everything; anything else (logging out, shutting down, a

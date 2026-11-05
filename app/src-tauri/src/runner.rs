@@ -523,6 +523,8 @@ impl Runner {
         // A failure's raw detail is for the log only: taken off before any page sees the event (or a late page replays it).
         if let Some(d) = take_detail(&mut v) { crate::log("failure_detail", detail_line(v["type"].as_str().unwrap_or(""), v.get("failed").and_then(Value::as_str), &d)); }
         if let Some(x) = take_exit(&mut v) { crate::log("runner_exit", x); }   // must fix 15: every time the engine ends
+        // 5 Nov 2026: the supervisor gave up after the engine stopped again and again (it waits for Restart).
+        if v.get("type").and_then(Value::as_str) == Some("app.runner_down") && v.get("reason").and_then(Value::as_str) == Some(KEEPS_STOPPING) { crate::log("engine_gave_up", serde_json::json!({})); }
         remember(&mut lock(&app.state::<Runner>().sticky), &v);
         crate::voicewords::note_report(&v);   // a project check's setting names, for hold to talk (names only)
         crate::updates::note_running(&v);     // what runs now, so an update never restarts under a task (ids only)

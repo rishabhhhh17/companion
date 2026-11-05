@@ -81,6 +81,7 @@ mod houserules;
 
 mod runner;
 mod instance;
+mod exitlog;
 
 use objc2::rc::Retained;
 use objc2::MainThreadMarker;
@@ -198,6 +199,8 @@ static VERBOSE: OnceLock<bool> = OnceLock::new();
 /// Writes one line to the small local log. By default only a few important events are written, never which apps you are
 /// using. A developer can turn full detail on (the file `debug` in the app's folder, or COMPANION_DEBUG_LOG=1). It stays under 512 KB.
 pub(crate) fn log(ev: &str, extra: Value) {
+    // 5 Nov 2026: every ending also gets one plain line in ~/Library/Logs/Squibby/exits.log (exitlog.rs).
+    if exitlog::mirrored(ev) { exitlog::note(ev, &extra); }
     let dir = app_folder();
     let verbose = *VERBOSE.get_or_init(|| logfile::verbose_enabled(&dir, std::env::var("COMPANION_DEBUG_LOG").ok().as_deref()));
     if !logfile::should_log(ev, verbose) { return; }
@@ -799,6 +802,8 @@ fn reset_hover() {
     let times = home_set().hover;
     *ISLAND_HOVER.lock().unwrap_or_else(|e| e.into_inner()) = { let mut h = island::Hover::new(); h.set_times(times); h };
     ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()).hover = false;
+    // Home's page drops its hover nudge too: a hidden or moved island sends no mouseExited (bug bash 5 Nov).
+    if let Some(a) = APP.get() { let _ = a.emit_to("card", "home-hover", json!({ "on": false })); }
 }
 
 /// Home went away (Esc, Close, a click elsewhere, the island or the character clicked again, a full screen app, Hide): the
@@ -5149,7 +5154,10 @@ fn main() {
     let _ = RUN.set(format!("{}-{}", now(), std::process::id()));
     // One copy at a time: a second copy would own the same hotkeys and start a second engine. It leaves quietly before it
     // shows anything. It waits a few seconds first, because an update starts the new copy just before the old one ends.
-    let instance = instance::take_waiting(&data_dir().join("instance.lock"), Duration::from_secs(5), Duration::from_millis(100));
+    // 5 Nov 2026: a problem or a signal that ends the app leaves a line in the exits log too (exitlog.rs).
+    install_panic_note();
+    watch_signals();
+    let instance = instance::take_waiting(&data_dir().join("instance.lock"), instance::START_WAIT, Duration::from_millis(100));
     if instance::should_leave(&instance) { log("second_copy_left", json!({})); return; }
     if let instance::Taken::CouldNotCheck(why) = &instance { log("instance_not_checked", json!({ "why": why })); }
     // F19: work folders a Companion ended mid job left behind. Only when this copy surely is the one that runs, so no other
@@ -5242,6 +5250,10 @@ fn main() {
         })
         .setup(move |app| {
             log("launch", json!({ "commit": logexport::BUILD_COMMIT }));   // must fix 6: which build this is
+            // 5 Nov 2026: Squibby has no ordinary window, so macOS counted it as an app it may quit by itself to free memory
+            // ("automatic termination", seen in the system log as _kLSApplicationWouldBeTerminatedByTALKey=1). It stays on
+            // until the person quits it.
+            keep_running_until_quit();
             let _ = speak::WORD_HOOK.set(speech_word);   // M38: drawing keeps pace with the voice
             let mtm = MainThreadMarker::new().unwrap();
             let dock_frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(DOCK.0, DOCK.1));
@@ -5395,6 +5407,8 @@ fn main() {
             let hotkey_notice = keymap::launch_notice(&launch.started, launch.damaged);
             let wipe_note = std::fs::read_to_string(data_dir().join("wipe-note.txt")).ok();
             if wipe_note.is_some() { let _ = std::fs::remove_file(data_dir().join("wipe-note.txt")); }
+            // A copy started again after a problem ended the last one says so, once.
+            let wipe_note = join_notes(wipe_note, problem_note_now());
             if let Some(message) = runner::join_launch_notices(hotkey_notice, wipe_note) {
                 runner::Runner::publish(app.handle(), json!({ "v": 1, "id": "app-launch-notice", "type": "app.notice", "message": message }));
             }
@@ -5439,11 +5453,21 @@ fn main() {
         .expect("build");
     let mut app = app;
     app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-    app.run(|app, ev| match ev {
+    let handle = app.handle().clone();
+    // 5 Nov 2026: a panic on the main thread stops macOS's event loop and ends the app with no crash report. It is caught
+    // here instead: the quit's steps run (the engine shuts down), the app opens again once (never in a loop), and the new
+    // copy says why.
+    let ended = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || app.run(|app, ev| match ev {
+        // The last window closing never ends Squibby (its windows live inside panels, so this should never happen, but a
+        // quiet quit is the worst way to find out). Only a quit someone asked for does: the menu, an update, Delete
+        // everything, macOS, or a signal.
+        RunEvent::ExitRequested { code: None, api, .. } => { log("exit_prevented", json!({})); api.prevent_exit(); }
         // Must fixes 1 and 15: the speech models go first, the quit is written down with where it came from, then the
         // engine shuts down. A speech model that may still be loaded never reaches the clean up at exit (the crash on
         // quit): the process ends at once instead, after the engine has shut down.
         RunEvent::Exit => {
+            // 5 Nov 2026: a quit another program asked for (an Apple Event) names that program and macOS's reason.
+            if let Some((by, why)) = exitlog::quit_sender() { log("quit_asked", json!({ "by": by, "why": why, "uptime_s": (now() - T0.get().copied().unwrap_or(0)) / 1000 })); }
             quit_now(app, quit::from(), quit::VOICE_WAIT);
             match quit::ending(quit::hard(), quit::restarting()) {
                 quit::Ending::Usual => {}
@@ -5454,6 +5478,87 @@ fn main() {
         // Companion opened again while it runs (Finder, Spotlight, Launchpad): macOS asks this copy to reopen.
         RunEvent::Reopen { .. } => reopened(app),
         _ => {}
+    })));
+    if ended.is_err() { ended_by_problem(&handle); }
+}
+
+/// The note for a copy started again after a problem (exitlog.rs), read once.
+fn problem_note_now() -> Option<String> {
+    let p = data_dir().join("problem-restart-note");
+    let at = exitlog::read_secs(std::fs::read_to_string(&p).ok());
+    if at.is_some() { let _ = std::fs::remove_file(&p); }
+    exitlog::note_is_fresh(at, (now() / 1000) as u64).then(|| exitlog::RESTARTED_WORDS.to_string())
+}
+fn join_notes(a: Option<String>, b: Option<String>) -> Option<String> {
+    match (a, b) { (Some(a), Some(b)) => Some(format!("{} {}", a.trim_end(), b)), (a, b) => a.or(b) }
+}
+
+/// A panic anywhere leaves one line in the exits log: where it happened (file and line) and on which thread, nothing else.
+/// Rust's usual message still goes to the error output.
+fn install_panic_note() {
+    let before = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let at = info.location().map(|l| exitlog::short_location(l.file(), l.line())).unwrap_or_else(|| "unknown".into());
+        let main = std::thread::current().name() == Some("main");
+        exitlog::note("app_panic", &json!({ "at": at, "thread": if main { "main" } else { "other" } }));
+        before(info);
+    }));
+}
+
+/// The main thread's event loop ended with a panic. The quit's steps run (so the engine and anything it runs end), then the
+/// app opens again, at most once in ten minutes, and the new copy tells the person. The process ends at once afterwards.
+fn ended_by_problem(app: &AppHandle) -> ! {
+    quit::mark(quit::PROBLEM);
+    quit_now(app, quit::PROBLEM, quit::VOICE_WAIT);
+    let guard = data_dir().join("problem-restart");
+    let now_s = (now() / 1000) as u64;
+    if exitlog::may_restart(exitlog::read_secs(std::fs::read_to_string(&guard).ok()), now_s) {
+        let _ = std::fs::write(&guard, now_s.to_string());
+        let _ = std::fs::write(data_dir().join("problem-restart-note"), now_s.to_string());
+        let started = start_new_copy(app);
+        log("app_problem_restart", json!({ "started": started }));
+    } else {
+        log("app_problem_no_restart", json!({}));
+    }
+    unsafe { libc::_exit(1) }
+}
+
+/// Automatic and sudden termination off: macOS may never quit Squibby by itself, only when someone asks.
+fn keep_running_until_quit() {
+    let p = objc2_foundation::NSProcessInfo::processInfo();
+    p.disableAutomaticTermination(&NSString::from_str("Squibby stays on until the person quits it"));
+    p.disableSuddenTermination();
+}
+
+/// The write end of the pipe the signal handler writes to (a signal handler may only do the simplest things).
+static SIGNAL_PIPE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(-1);
+extern "C" fn on_signal(sig: libc::c_int) {
+    let fd = SIGNAL_PIPE.load(Ordering::Relaxed);
+    if fd >= 0 { let b = sig as u8; unsafe { libc::write(fd, (&b as *const u8).cast(), 1); } }
+}
+/// 5 Nov 2026: a TERM, HUP or INT signal (`kill`, `pkill`, a terminal closing) used to end the app at once with no word.
+/// Now it is a quit like any other: written down, the engine shut down, and the app ends. If that quit has not ended the
+/// app within ten seconds, it ends at once.
+fn watch_signals() {
+    let mut fds = [0 as libc::c_int; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 { return; }
+    for fd in fds { unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC); } }   // never handed to the engine
+    SIGNAL_PIPE.store(fds[1], Ordering::SeqCst);
+    for sig in [libc::SIGTERM, libc::SIGHUP, libc::SIGINT] { unsafe { libc::signal(sig, on_signal as *const () as libc::sighandler_t); } }
+    let read_fd = fds[0];
+    std::thread::spawn(move || {
+        let mut b = [0u8; 1];
+        loop {
+            let n = unsafe { libc::read(read_fd, b.as_mut_ptr().cast(), 1) };
+            if n == 1 { break; }
+            if n == 0 { return; }
+        }
+        let name = match b[0] as libc::c_int { libc::SIGTERM => "term", libc::SIGHUP => "hup", libc::SIGINT => "int", _ => "other" };
+        log("app_signal", json!({ "signal": name }));
+        quit::mark(quit::SIGNAL);
+        match APP.get() { Some(a) => a.exit(0), None => unsafe { libc::_exit(0) } }
+        std::thread::sleep(Duration::from_secs(10));
+        unsafe { libc::_exit(0) }
     });
 }
 
@@ -5463,15 +5568,19 @@ fn main() {
 /// Must fix 22: starts the updated copy before this one ends at once. Waits up to two seconds for `open` to hand the
 /// launch to macOS, so the request is not lost when this process ends.
 fn relaunch_now(app: &AppHandle) {
-    let Ok(binary) = tauri::process::current_binary(&app.env()) else { log("update_relaunch_failed", json!({ "why": "binary" })); return };
+    if start_new_copy(app) { log("update_relaunched", json!({})); } else { log("update_relaunch_failed", json!({})); }
+}
+/// Starts a fresh copy of the app (quit.rs relaunch_command) and waits up to two seconds for `open` to hand it to macOS.
+fn start_new_copy(app: &AppHandle) -> bool {
+    let Ok(binary) = tauri::process::current_binary(&app.env()) else { return false };
     let (prog, args) = quit::relaunch_command(&binary);
     match std::process::Command::new(prog).args(args).spawn() {
         Ok(mut child) => {
             let until = std::time::Instant::now() + Duration::from_secs(2);
             while std::time::Instant::now() < until { if let Ok(Some(_)) = child.try_wait() { break } std::thread::sleep(Duration::from_millis(50)); }
-            log("update_relaunched", json!({}));
+            true
         }
-        Err(_) => log("update_relaunch_failed", json!({ "why": "spawn" })),
+        Err(_) => false,
     }
 }
 fn reopened(app: &AppHandle) {

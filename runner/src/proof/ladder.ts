@@ -5,7 +5,7 @@ import { redact } from "../redact.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
-import { browserCheck, type BrowserOptions, type BrowserResult } from "./browser.ts";
+import { browserCheck, knownSignIn, type BrowserOptions, type BrowserResult } from "./browser.ts";
 import { changesData, detectProject, withStartScript, type Detected } from "./detect.ts";
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
@@ -671,7 +671,10 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     t0 = Date.now(); emit("browser", "running");
     // check.pageSize: desktop (today's 1280 by 800), phone (390 by 844), or both, one after the other. The picture for the
     // visual receipt comes from the first.
-    const hints = hintsFor(o.project, o.check);
+    // Being sent to a login page is always a gap. A 401 or a 403 is a gap in a project known to have a sign in, or when the
+    // page itself asks for one (browser.ts); a bare error page anywhere else is a problem.
+    // Said only when true, so a project with no sign in asks the browser exactly as before (check-ladder-settings.test.ts).
+    const hints = { ...hintsFor(o.project, o.check), ...(knownSignIn(o.project) ? { signInExpected: true } : {}) };
     const sizes = o.check?.pageSize === "both" ? ["desktop", "phone"] as const : o.check?.pageSize === "phone" ? ["phone"] as const : ["desktop"] as const;
     const two = sizes.length > 1;
     let shot: import("./browser.ts").PageShot | undefined;

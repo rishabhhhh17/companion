@@ -155,7 +155,7 @@ describe("a task that changed the project's scripts asks before the check runs t
   test("no yes: the changed script is not run, and the receipt does not say proven", async () => {
     const r = await go("deny");
     const ask = of(r.events, "approval.request")[0];
-    expect(ask).toMatchObject({ risk: "install" });
+    expect(ask).toMatchObject({ risk: "scripts" });
     expect(ask.title).toMatch(/changed the project's scripts or packages/);
     // The card's code line says what runs, never the bare word the check asked with ("task", "since", "unboxed").
     expect(ask.action).toBe("Running: install, build, tests and server");

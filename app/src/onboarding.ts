@@ -181,7 +181,7 @@ export function honestLines(o: { limitUsd: number; plan: { line: string; facts: 
 // ---------- the first check ----------
 
 /** The check as the first run sees it: the point state the engine's answer fills (model.ts point). */
-export type PointNow = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: { message?: string } & Record<string, unknown> } | null;
+export type PointNow = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; note?: string; problem?: { message?: string } & Record<string, unknown> } | null;
 /** Where the first check is: not asked yet, running, waiting on an install question, answered, or ended with no answer
  *  (Stop, or refused). An answer from before this press is never this check's: the press sets the point to checking. */
 export type CheckStage = "idle" | "checking" | "asking" | "done" | "stopped";
@@ -206,10 +206,12 @@ export function checkAnnounce(stage: CheckStage, name: string, result: Verdict |
   if (stage === "stopped") return S.verdict.say(S.home.notChecked, endLine);
   return "";
 }
-/** The questions this check is waiting on, for the agent it runs on: an install card (risk "install") and a build's
- *  "Go online?" card (risk "network", a build that needs the internet, runner/src/proof/ladder.ts INTERNET_ASK). */
-export function installAsks<T extends { risk: string; agent: string }>(approvals: readonly T[], agent: string): T[] {
-  return approvals.filter((a) => (a.risk === "install" || a.risk === "network") && a.agent === agent);
+/** The questions this check is waiting on, for the agent it runs on: an install card (risk "install"), a build's
+ *  "Go online?" card (risk "network", a build that needs the internet, runner/src/proof/ladder.ts INTERNET_ASK), and any
+ *  other question the check itself asks (check: true), such as running the project's scripts without the safety box
+ *  (M67 review: the first run screen covers Home, so a question it left out waited unseen until it ran out). */
+export function installAsks<T extends { risk: string; agent: string; check?: boolean }>(approvals: readonly T[], agent: string): T[] {
+  return approvals.filter((a) => (a.risk === "install" || a.risk === "network" || a.check === true) && a.agent === agent);
 }
 /** The first check's result in the verdict line (ui/parts.tsx VerdictLine): the project's own checks, never a fix, so it is
  *  never "proven" (M45: only a fix's verdict can be). A tick only when every check that ran passed and nothing was left. */
@@ -218,8 +220,13 @@ export function firstCheckVerdict(point: Exclude<PointNow, null>, name: string):
     ({ kind, headline, line, say: S.verdict.say(headline, line), tone, icon, offer: null, proven: false });
   switch (point.stage) {
     case "clear": return v("noChange", S.fr.checkClear(name), S.fr.checkClearLine, "good", "tick");
-    case "gaps": return v("partial", S.fr.checkGaps(name), S.fr.checkGapsLine, "mixed", "wait");
-    case "nothing": return v("noChange", S.fr.checkNothing(name), S.fr.checkNothingLine, "plain", "wait");
+    // What could not run and how to fix it, from the engine's note, as Home's point card shows it (card.tsx point note).
+    case "gaps": return v("partial", S.fr.checkGaps(name), [S.fr.checkGapsLine, point.note?.trim()].filter(Boolean).join(" "), "mixed", "wait");
+    // m67 bug 28: checks the project has that could not run (packages not installed, pytest missing) come with the
+    // engine's note: then it is partly checked, with the reason and the command, never "no build, tests or page".
+    case "nothing": return point.note?.trim()
+      ? v("partial", S.fr.checkPartly(name), `${S.fr.checkPartlyLine} ${point.note.trim()}`, "mixed", "wait")
+      : v("noChange", S.fr.checkNothing(name), S.fr.checkNothingLine, "plain", "wait");
     // What broke in the check's own words (the audit, item 8), else the check that did not pass, by name.
     case "found": return v("failed", S.home.failing(name), point.problem?.message?.trim() || point.message?.trim() || (point.label ? S.fr.checkFoundAt(point.label) : S.fr.checkFoundLine), "bad", "cross");
     default: return null;

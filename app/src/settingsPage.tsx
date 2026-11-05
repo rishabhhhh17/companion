@@ -16,7 +16,7 @@ import { LIVELINESS, livelinessOf, waterOf, WATERS, type Liveliness } from "./lo
 import type { Pose } from "./characters.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { takeIfLost } from "./focus.ts";
-import { cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
@@ -980,10 +980,29 @@ function DangerZone() {
   const deleting = useRef(false);   // a second click while macOS is asking must not start a second delete
   const close = () => { if (busy) return; setStep(""); setTyped(""); setProblem(""); };
   const open = (s: typeof step) => { setTyped(""); setProblem(""); setStep(s); };
+  // Forgotten is said only once the engine has answered both erases (settings.ts forgetOutcome); a refusal shows its reason
+  // here instead, and no answer at all says so. The answers come as runner events, so the page listens until both are in.
+  const forgetting = useRef<(() => void) | null>(null);
+  useEffect(() => () => forgetting.current?.(), []);
   const forget = () => {
+    if (forgetting.current) return;
     const p = c.project || NO_PROJECT;
-    void send(eraseMemory(p, "project")); void send(eraseMemory(p, "profile"));
-    setStep(""); c.say(S.danger.forgetDone);
+    setBusy(true); setProblem("");
+    // Each erase's answer names its command, so a listing or another page's erase is never taken for it.
+    const erases = [eraseMemory(p, "project"), eraseMemory(p, "profile")];
+    let tally = forgetStart(erases.map((x) => x.id));
+    let ended = false;
+    const end = (o: { ok: true } | { ok: false; reason: string }) => {
+      if (ended) return;
+      ended = true; forgetting.current?.(); forgetting.current = null; setBusy(false);
+      if (o.ok) { setStep(""); c.say(S.danger.forgetDone); } else setProblem(o.reason);
+    };
+    const off = listen("runner-event", (e) => { tally = forgetStep(tally, e.payload); const o = forgetOutcome(tally); if (o) end(o); });
+    const timer = window.setTimeout(() => end({ ok: false, reason: S.danger.forgetNoAnswer }), FORGET_WAIT_MS);
+    forgetting.current = () => { window.clearTimeout(timer); void off.then((f) => f()); };
+    // The page listens before it sends, so no answer is missed.
+    void off.then(() => Promise.all(erases.map((x) => send(x))))
+      .catch(() => end({ ok: false, reason: S.danger.forgetNoAnswer }));
   };
   const removeKey = () => {
     setProblem(""); setBusy(true);
@@ -1021,7 +1040,8 @@ function DangerZone() {
       {row(forgetId, S.danger.forgetLabel, S.danger.forgetDesc, S.danger.forgetButton, "forget", (
         <ConfirmStep className="set-confirm" label={S.danger.forgetSure} back={forgetId} onCancel={close}>
           <p>{S.danger.forgetSure}</p>
-          <div className="set-buttons"><Button kind="danger" onClick={forget}>{S.danger.forgetYes}</Button><CancelButton onClick={close} /></div>
+          <div className="set-buttons"><Button kind="danger" disabled={busy} onClick={forget}>{S.danger.forgetYes}</Button><CancelButton onClick={close} /></div>
+          <Problem text={problem} />
         </ConfirmStep>
       ))}
       {keySaved && row(keyId, S.danger.removeKeyLabel, S.danger.removeKeyDesc, S.danger.removeKeyButton, "key", (

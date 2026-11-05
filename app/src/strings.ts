@@ -231,6 +231,7 @@ export const S = {
       network: "Go online?",
       settings: "Change a settings file?",
       house_rule: "Allow this? One of your house rules asks first.",
+      scripts: "Run this project's own scripts to check the work?",
     } as Record<string, string>,
     what: "What will happen",
     why: "Why I'm asking",
@@ -772,6 +773,8 @@ export const S = {
     checkGapsLine: "The checks that could run passed, but some could not run.",
     checkNothing: (name: string) => `Nothing to check in ${name} yet`,
     checkNothingLine: "It has no build, tests or page I can run. Tell me on Home what looks wrong.",
+    checkPartly: (name: string) => `${name} could only be partly checked`,
+    checkPartlyLine: "Its checks could not run yet.",
     // What broke, in the check's own words (the audit, item 8); the check's name only when nothing better was said.
     checkFoundAt: (label: string) => `${label} did not pass.`,
     checkFoundLine: "A check did not pass.",
@@ -1072,6 +1075,11 @@ export const S = {
   permRestrictedTodo: "A Screen Time or management setting blocks it, so only whoever manages this Mac can turn it on.",
   permUnknown: "Not checked yet",
   typeFirst: "Type what you want done first.",
+  // Return or auto send while a job works here (homeHero.ts askRoute busy): nothing is sent, the words stay.
+  askBusy: "Something is still working here. Let it finish, or press Stop, then send again. Your words are still in the box.",
+  // Plan it and Look up pressed with the box empty (card.tsx plan, research).
+  planHint: "Type what you want made or changed, then press Plan it.",
+  researchHint: "Type what you want to find out, then press Look up.",
   somethingWrong: `Something went wrong inside ${PRODUCT}. Try again, and if it keeps happening, report a problem from Settings.`,
   // A failure from Squibby's own machinery on a press in a page, by what was being done (failwords.ts). The raw words go to
   // the log, never here.
@@ -2236,6 +2244,8 @@ export const S = {
     forgetSure: `Forget everything ${PRODUCT} remembers about you and this project? Receipts stay. This can't be undone.`,
     forgetYes: "Forget it all",
     forgetDone: "Forgotten.",
+    // No answer from the engine for both erases (settingsPage.tsx DangerZone forget), so nothing is said to be forgotten.
+    forgetNoAnswer: "No answer came back, so it is not certain anything was forgotten. Try again.",
     removeKeyLabel: "Remove your Claude key",
     removeKeyDesc: `Deletes the key from the Keychain. ${PRODUCT} can't fix anything until you add one.`,
     removeKeyButton: "Remove",

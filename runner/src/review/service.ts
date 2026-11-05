@@ -114,6 +114,20 @@ const KEY_PLACES = 10;           // places the instant key warning names (M57 fe
 const READ_FILES = 60;           // files whose text the rules and the model look at
 const DIFF_CHARS = 12_000;       // the most of the change a model is shown
 const KEEP_REVIEWED = 5;         // reviews kept for Fix it until the card is closed
+const KEEP_WARNED = 30;          // ...but one that found something (its card may still be open) goes only past this many
+/** The store's note (checkpoints.ts note) of where changes said but not reviewed or closed yet begin, so a restart, a
+ *  project switch or reviews turned off and on offer them again as changed while away, instead of starting after them. */
+const PENDING = "review.pending";
+/** M67 review: Squibby's own work since the pending note's version, kept beside it as JSON { from, after, files }: from is the
+ *  pending version it belongs to, after the version the newest own work left, files the other tool's files changed from
+ *  the pending version up to then. A restart offers only those files, plus whatever changed after `after`, so Squibby's
+ *  own receipted work is never offered as changed while it was closed. */
+const PENDING_OWN = "review.pendingOwn";
+type PendingOwn = { from: string; after: string; files: string[] };
+const pendingOwn = (store: CheckpointStore, from: string | null): PendingOwn | null => {
+  if (!from) return null;
+  try { const j = JSON.parse(store.note(PENDING_OWN) ?? "null"); return j && j.from === from && typeof j.after === "string" && Array.isArray(j.files) ? { from, after: j.after, files: j.files.map(String) } : null; } catch { return null; }
+};
 const LABEL_START = "Review: the starting point";
 const LABEL_BATCH = "Review: the changes to look at";
 const LABEL_AFTER = `Review: after ${PRODUCT_S} own work`;
@@ -236,6 +250,7 @@ export class ReviewService {
   /** What the store must keep for the review: the open batch, the reviewed ones (Review again), and its newest versions. */
   private inUse(): string[] {
     const out = [...this.made];
+    if (this.watching) { try { const st = this.deps.store(this.watching), n = st.note(PENDING); if (n) out.push(n); const own = pendingOwn(st, n); if (own) out.push(own.after); } catch { /* none */ } }
     for (const b of [this.open, ...[...this.reviewed.values()].map((r) => r.batch)]) if (b) out.push(b.from, b.to);
     return out;
   }
@@ -295,9 +310,22 @@ export class ReviewService {
     const away: Away = this.watchedBefore.has(p) ? "notWatching" : "closed";
     this.watchedBefore.add(p);
     this.baseline = this.serial(async () => {
-      const earlier = await store.list().then((l) => l.at(-1) ?? null, () => null);
+      // Changes said but never reviewed or closed start at the pending note's version, when it is still kept.
+      const pending = store.note(PENDING);
+      const list = await store.list().catch(() => []);
+      const kept = pending ? list.find((c) => c.id === pending) : undefined;
+      const earlier = kept ?? list.at(-1) ?? null;
       const start = await this.snap(store, LABEL_START);
-      if (earlier && gen === this.gen && !store.full) await this.announce(store, earlier.id, start.id, false, false, null, null, away).catch(() => null);
+      // Squibby's own work since the pending version is left out: only the other tool's files from before it, and anything
+      // changed after it (M67 review).
+      const own = kept ? pendingOwn(store, kept.id) : null;
+      let only: Set<string> | null = null;
+      if (own && list.some((c) => c.id === own.after)) {
+        const since = await store.diff(own.after, start.id).then((d) => d.map((c) => c.file), () => null);
+        const env = await store.envChanged(own.after, start.id).catch(() => null);
+        if (since && env) only = new Set([...own.files, ...since, ...env]);
+      }
+      if (earlier && gen === this.gen && !store.full) await this.announce(store, earlier.id, start.id, false, false, null, only, away).catch(() => null);
       return start.id;
     }).catch((e: unknown) => {
       if (gen === this.gen) this.startProblem = String((e as Error)?.message ?? e) === NEEDS_GIT ? NEEDS_GIT : NO_COPY;
@@ -416,10 +444,15 @@ export class ReviewService {
     this.dirty.clear(); this.dirtyCapped = false;
     // While the store is full nothing is saved; a fresh starting point is taken once there is room (measure).
     if (store.full) this.paused = true;
-    const next = this.paused ? Promise.resolve(null) : this.serial(async () => (gen === this.gen ? (await this.snap(store, LABEL_AFTER)).id : null)).catch(() => null);
-    this.baseline = next.then(async (id) => id ?? null);
     // Work that never edits code: what else changed meanwhile is the other tool's.
     const during = w && !w.heavy ? seen.paths.filter((x) => !LIGHT_OWN_FILE.test(x)) : [];
+    const next = this.paused ? Promise.resolve(null) : this.serial(async () => {
+      if (gen !== this.gen) return null;
+      const after = (await this.snap(store, LABEL_AFTER)).id;
+      if (w) await this.noteOwn(store, w.pre, after, during).catch(() => undefined);
+      return after;
+    }).catch(() => null);
+    this.baseline = next.then(async (id) => id ?? null);
     const duringCapped = !!w && !w.heavy && seen.capped;
     const h = this.held;
     if (h && h.to === null) {
@@ -432,6 +465,19 @@ export class ReviewService {
     }
     if (!this.held) return;
     if (this.held.quiet) this.batcher.poke(); else this.tryRelease();
+  }
+  /** M67 review: Squibby's own work ended while changes said but not reviewed are waiting (the pending note). What the
+   *  other tool changed from there up to the start of this work (pre) is noted, with the version the work left, so a
+   *  restart offers those files and what changed after it, never the work's own files. during: files the other tool
+   *  changed while work that never edits code ran. */
+  private async noteOwn(store: CheckpointStore, pre: Promise<string | null>, after: string, during: string[]): Promise<void> {
+    const from = store.note(PENDING);
+    if (!from) return;
+    const prev = pendingOwn(store, from);
+    const base = prev ? prev.after : from;
+    const p = await pre;
+    const before = p && p !== base ? [...(await store.diff(base, p)).map((c) => c.file), ...(await store.envChanged(base, p))] : [];
+    store.setNote(PENDING_OWN, JSON.stringify({ from, after, files: [...new Set([...(prev?.files ?? []), ...before, ...during])].sort() }));
   }
   private filesBetween(store: CheckpointStore, a: Promise<string | null>, b: Promise<string | null> | null): Promise<string[]> {
     return Promise.all([a, b]).then(async ([x, y]) => (x && y ? (await store.diff(x, y)).map((c) => c.file) : []), () => []);
@@ -491,6 +537,8 @@ export class ReviewService {
     const old = this.open;
     if (!files.length) {
       this.open = null;
+      // Nothing differs any more (the changes were put back): nothing is waiting to be reviewed.
+      if (!this.held) { store.setNote(PENDING, null); store.setNote(PENDING_OWN, null); }
       if (!frozen) this.baseline = Promise.resolve(to);
       if (old) this.deps.emit({ type: "review.batch", project: p, batch: old.id, files: [], count: 0, capped: false, secretFiles: [], auto: this.auto() });
       return null;
@@ -499,6 +547,9 @@ export class ReviewService {
     // with a later save (which used to drop its mark and, in Automatic, review the evening's changes by themselves).
     const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > MAX_BATCH_FILES, secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}) };
     this.open = b;
+    if (!store.note(PENDING)) { store.setNote(PENDING, from); store.setNote(PENDING_OWN, null); }
+    // A safe review whose card this newer batch replaces on the page can never be closed there: its History row says so.
+    for (const rec of [...this.reviewed.values()]) if (rec.words.rating === "safe") { this.reviewed.delete(rec.batch.id); this.said(rec.batch, "no_longer_applies"); }
     // M57 feature 5: the instant key warning, before the batch is said. Only when review.keyWarning is on: it is off by
     // usual until the founder says yes, because it reads the changed files without a press. The batch is open first, so
     // the engine's own work that begins meanwhile still freezes it.
@@ -548,6 +599,8 @@ export class ReviewService {
     if (this.open?.id === b.id) {
       if (!this.open.frozen) this.baseline = Promise.resolve(this.open.to);
       this.open = null;
+      // Reviewed or closed: a restart starts after it. Changes set aside meanwhile begin where it ended.
+      try { const st = this.deps.store(b.project); st.setNote(PENDING, this.held ? b.to : null); st.setNote(PENDING_OWN, null); } catch { /* a nicety */ }
     }
     if (this.tryRelease()) return;
     if (this.dirty.size || this.dirtyCapped) void this.measure(this.gen).catch(() => undefined);
@@ -794,7 +847,15 @@ export class ReviewService {
       try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400) }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
       this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set() });
-      while (this.reviewed.size > KEEP_REVIEWED) this.reviewed.delete(this.reviewed.keys().next().value as string);
+      // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind
+      // it), so its Fix it and Looks fine keep working: safe ones go before it, and it goes only past KEEP_WARNED.
+      while (this.reviewed.size > KEEP_REVIEWED) {
+        const all = [...this.reviewed.values()];
+        const drop = all.find((r) => r.words.rating === "safe" && r.batch.id !== b.id) ?? (all.length > KEEP_WARNED ? all[0] : undefined);
+        if (!drop) break;
+        this.reviewed.delete(drop.batch.id);
+        this.said(drop.batch, "no_longer_applies");
+      }
       // M57 feature 4: the reasons of earlier reviews still open are checked again by the rules against this newer version.
       await this.recheck(b).catch(() => undefined);
       this.reviewing = null;

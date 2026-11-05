@@ -135,9 +135,12 @@ const warns = (r: ReviewCard | null): r is ReviewCard => !!r && r.stage === "rev
 export function reviewReduce(r: ReviewCard | null, e: Ev): ReviewCard | null {
   if (warns(r) && isProject(e.project) && isBatch(e.batch) && e.batch !== r.batch) {
     // The newer batch is said first; its review's start and result follow it. Anything else for another batch is late.
-    const ours = e.type === "review.batch" || ((e.type === "review.started" || e.type === "review.result") && r.later?.batch === e.batch);
-    if (!ours) return e.type === "review.batch" || e.type === "review.started" || e.type === "review.result" ? r : reduceOne(r, e);
-    const later = reduceOne(r.later ?? null, e);
+    // The waiting card goes through this same rule, so a waiting review that found something keeps its own place too:
+    // a still newer batch waits behind it, never takes it (m67 bug 11).
+    const review = e.type === "review.batch" || e.type === "review.started" || e.type === "review.result";
+    if (!review) return reduceOne(r, e);
+    if (e.type !== "review.batch" && !r.later) return r;
+    const later = reviewReduce(r.later ?? null, e);
     return later === (r.later ?? null) ? r : { ...r, later };
   }
   return reduceOne(r, e);
@@ -296,7 +299,8 @@ export function fixedSince(r: ReviewCard | null | undefined, i: number): boolean
  *  that no longer holds, and once pressed, not again. */
 export function silenceOffered(r: ReviewCard | null | undefined, i: number): boolean {
   const x = r?.result?.reasons[i];
-  return !!x && r!.stage === "reviewed" && !!REVIEW_SILENCE_LINES[x.kind] && !fixedSince(r, i) && !(r!.silenced ?? []).includes(x.kind);
+  // M67: a Fix this first card offers it on none of its reasons, not even a kind that could be silenced elsewhere.
+  return !!x && r!.stage === "reviewed" && r!.result!.rating !== "stop" && !!REVIEW_SILENCE_LINES[x.kind] && !fixedSince(r, i) && !(r!.silenced ?? []).includes(x.kind);
 }
 
 /** The memory line that silences a kind in this project, with its source (What I remember shows both and can forget it).

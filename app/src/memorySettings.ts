@@ -43,7 +43,11 @@ export function recapDue(last: number, now: number, choice: unknown = setting("w
 /** A note's date in words ("2 Nov 2026"), never raw ISO (the audit, item 50). Anything that is not a date stays as it came. */
 export function memoryDate(raw: string): string {
   if (!raw) return "";
-  const t = Date.parse(raw);
+  // A date only ("2026-10-09", the engine saves the Mac's own day) is that day on this Mac's clock, not UTC midnight,
+  // which shows the day before west of UTC (m67 bug 33). A full time is read as it says.
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  const t = day ? new Date(Number(day[1]), Number(day[2]) - 1, Number(day[3])).getTime() : Date.parse(raw);
   if (!/^\d{4}-\d{2}-\d{2}/.test(raw) || !Number.isFinite(t)) return raw;
+  if (day && new Date(t).getDate() !== Number(day[3])) return raw;
   try { return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" }).format(new Date(t)); } catch { return raw; }
 }

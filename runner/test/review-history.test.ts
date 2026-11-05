@@ -282,3 +282,41 @@ describe("features 1 and 6 through the engine's own commands", () => {
     every(events);
   });
 });
+
+// M67 bug 15: a review whose card can never be closed any more (replaced by a newer batch, or dropped past the kept
+// limit) says so in its History row, never 'open' ('Not closed') forever.
+describe("M67: rows of reviews that can no longer be closed", () => {
+  test("a safe review left open, then a newer batch replaces its card: the row says no_longer_applies", async () => {
+    const t = setup();
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hello there';\n" });
+    const r = await t.review(1);
+    expect(r.rating).toBe("safe");
+    const first = r.batch as string;
+    expect(t.log.reviews(t.project).map((x) => x.did)).toEqual(["open"]);
+    t.change({ "src/App.tsx": "export const title = 'Hello again';\n" });
+    await t.until(() => t.of("review.batch").length >= 2 && t.of("review.batch").at(-1)!.batch !== first);
+    // The rows are newest first; the newer batch is not reviewed yet, so the only row is the safe review's.
+    await t.until(() => t.log.reviews(t.project).at(-1)!.did === "no_longer_applies");
+    expect(t.log.reviews(t.project)).toHaveLength(1);
+    every(t.events);
+  });
+  test("past the kept limit, the oldest review that found something is dropped and its row says no_longer_applies", async () => {
+    const t = setup();
+    await started(t);
+    const batches: string[] = [];
+    for (let i = 0; i < 31; i++) {
+      t.change({ [`src/k${i}.ts`]: `export const k${i} = "${KEY}";\n` });
+      await t.until(() => t.of("review.batch").filter((e) => e.count > 0).length > i);
+      const b = t.of("review.batch").filter((e) => e.count > 0).at(-1)!.batch as string;
+      await t.svc.handle(t.cmd("review.now", { batch: b }) as never);
+      const r = t.of("review.result").at(-1)!;
+      expect(r.rating).toBe("stop");
+      batches.push(r.batch);
+    }
+    const rows = t.log.reviews(t.project);   // newest first
+    expect(rows).toHaveLength(31);
+    expect(rows.at(-1)!.did).toBe("no_longer_applies");
+    expect(rows.slice(0, 30).every((x) => x.did === "open")).toBe(true);
+  }, 60000);
+});

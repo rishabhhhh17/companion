@@ -179,10 +179,14 @@ export class SdkEngine implements Engine {
     const replies = new Map<string, { in: number; out: number; cacheRead: number; cacheWrite: number }>();
     let unnamed = 0;
     const unbilled = () => [...replies.values()].reduce((sum, u) => sum + estimateUsd(opts.model, { input_tokens: u.in, output_tokens: u.out, cache_read_input_tokens: u.cacheRead, cache_creation_input_tokens: u.cacheWrite }), 0);
+    // Whether the stream has said anything since its last result. A stream that ends with words and no result after them was
+    // cut off (or ended on a failed request): that is a failure, never a finished turn (shortlist item 6).
+    let open = false;
     try {
     for await (const m of q as AsyncIterable<any>) {
       if (m.session_id) sessionId = String(m.session_id);
       if (m.type === "assistant") {
+        open = true;
         // An assistant message's own usage is not booked: the result holds it. It is only kept for the estimate above.
         const u = m.message?.usage;
         if (u && typeof u === "object") {
@@ -200,6 +204,7 @@ export class SdkEngine implements Engine {
         // A tool call: whatever the agent said before it is not what it ended on (asks.ts reads the last words).
         if (content.some((b: any) => b.type === "tool_use")) yield { costUsd: 0, sessionId, usedTool: true };
       } else if (m.type === "result") {
+        open = false;
         const total = count(Number(m.total_cost_usd ?? 0));
         // Below what was already counted: the saved conversation held no total, so this one started from nothing.
         const delta = round(total >= lastTotal ? total - lastTotal : Math.max(0, total));
@@ -217,6 +222,10 @@ export class SdkEngine implements Engine {
         const usage = turnTokens(m.usage);
         yield { costUsd: delta, sessionId, ...(usage ? { usage } : {}) };
       }
+    }
+    if ((open || apiError) && !opts.signal.aborted) {
+      // Named as a failed request would be (reach.ts): Claude out of reach when the note says so, else stopped part way.
+      throw new EngineStop(turnStop({ subtype: "", is_error: true, result: "" }, apiError ?? { kind: "unknown", text: "The answer stopped before it finished, with no result." }) ?? "claude_stopped:unknown: the answer stopped before it finished");
     }
     } finally {
       // However the turns end (the round finished, Claude Code was stopped and threw or just ended, it crashed, or the

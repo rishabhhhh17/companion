@@ -89,6 +89,15 @@ export function heardKind(text: string, language = "auto"): HeardKind {
   if (SCREEN_QUESTION.test(all.join(" "))) return "screenQuestion";
   return all.length >= 3 ? "work" : "short";
 }
+/** m67 bug 17: where spoken words go in a box that may already hold typed words. They are added after the typed words
+ *  (with one space), never over them. joined: typed words were there, so the box is not sent by itself (the person
+ *  presses Start for the whole of it). */
+export function heardInto(typed: string, heard: string): { text: string; joined: boolean } {
+  const t = String(typed ?? ""), h = String(heard ?? "").trim();
+  if (!t.trim()) return { text: h, joined: false };
+  if (!h) return { text: t, joined: false };
+  return { text: `${t.replace(/\s+$/, "")} ${h}`, joined: true };
+}
 /** May words from hold to talk send themselves (with talk.autoSend on)? Only a clear request for work. */
 export const sendsItself = (text: string, language = "auto") => heardKind(text, language) === "work";
 

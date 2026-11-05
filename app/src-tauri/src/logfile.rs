@@ -14,7 +14,7 @@ pub const MAX_BYTES: u64 = 512 * 1024;
 /// here for a report).
 /// Must fix 15: and every time the engine ended (its code or signal, how long it ran, how many starts) and every quit (where
 /// it came from: the menu, an update, Delete everything or the system).
-const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail", "runner_exit", "app_quit"];
+const QUIET: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "second_copy_left", "approval_asked", "approval_answered", "failure_detail", "runner_exit", "app_quit", "quit_asked", "exit_prevented", "app_signal", "app_problem_restart", "app_problem_no_restart", "engine_gave_up"];
 
 pub fn should_log(ev: &str, verbose: bool) -> bool { verbose || QUIET.contains(&ev) }
 

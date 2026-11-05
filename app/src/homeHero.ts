@@ -120,8 +120,9 @@ const broughtBackIdle = (m: Model): boolean => !!m.undo && m.undo.back === true 
 export const bringBackCan = (m: Model, project: string): boolean =>
   receiptVerdict(m)?.offer === "bringBack" && (!m.undo || (m.undo.stage === "done" && !m.undo.back && m.undo.putBack !== "confirm" && m.undo.putBack !== "working")) && !!project && !cardWorking(m);
 
-/** Stop shows only while something works (not while a finished task waits for an answer: nothing runs then). */
-export const stopCan = (m: Model): boolean => cardWorking(m);
+/** Stop shows only while something works (not while a finished task waits for an answer: nothing runs then). That starts
+ *  at Return: while Starting… shows, the engine already takes Stop (m67 bug 21). */
+export const stopCan = (m: Model): boolean => cardWorking(m) || (!!m.sending && m.runnerUp);
 /** Stop in the top row of a place: only where the open place has no Stop of its own. Now has one (the hero or the working
  *  card), and Learn has the practice's own (Stop the fix, Stop the checks) while it fixes or checks, so there is one Stop,
  *  in the card (M51 review, 1 Nov). */
@@ -362,11 +363,14 @@ export function homeFixRoute(m: Pick<Model, "point" | "practice" | "receipt">, s
 
 /** Where Return sends the words (item 2): a new folder only when Make it in a new folder is ticked; with no project open
  *  the words wait while the person picks their project or starts a new one from them; never a silent new project. */
-export type AskRoute = "newFolder" | "chooseProject" | "needWords" | "here";
-export function askRoute(o: { prompt: string; project: string; newFolder: boolean }): AskRoute {
+export type AskRoute = "newFolder" | "chooseProject" | "needWords" | "busy" | "here";
+/** busy: a job works here, so Return and auto send do what the greyed send arrow does: nothing is sent and the words stay
+ *  (a new folder keeps its own busy check, card.tsx startNew). */
+export function askRoute(o: { prompt: string; project: string; newFolder: boolean; working?: boolean }): AskRoute {
   if (!o.prompt.trim()) return "needWords";
   if (o.newFolder) return "newFolder";
-  return o.project ? "here" : "chooseProject";
+  if (!o.project) return "chooseProject";
+  return o.working ? "busy" : "here";
 }
 
 /** What stops any work right now (item 12): no Claude key or plan, the engine stopped, or Anthropic's Claude missing or
@@ -402,7 +406,7 @@ export function reviewLead(r: ReviewCard | null | undefined, project: string): R
   // red; the headline names the file and the line under it says how much changed, once.
   if (r.stage === "ready" && keyWarned(r)) {
     const files = [...new Set(r.keys!.map((k) => k.file))];
-    return { headline: S.review.keyHeadline(files), line: S.review.riskyLine(r.count, files.length), main: r.asked ? null : "review", stop: true,
+    return { headline: S.review.keyHeadline(files), line: r.away ? S.review.away[r.away] : S.review.riskyLine(r.count, files.length), main: r.asked ? null : "review", stop: true,
       friendly: { headline: S.review.rating.stop, line: S.review.keyWarning } };
   }
   if (r.stage === "ready") return { headline: S.review.lead(r.count), line: r.away ? S.review.away[r.away] : S.review.heroLine(r.count), main: r.asked ? null : "review", stop: false };

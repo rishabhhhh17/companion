@@ -88,8 +88,12 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
             and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
         {head.pointed && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
+        {/* m67 bug 14: a key warning before any review says when the changes were made, as the plain card does. */}
+        {!res && r.away && <div className="line muted">{S.review.away[r.away]}</div>}
         {r.note && <div className="line" role="status">{r.note}</div>}
         {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
+        {/* m67 bug 12: Fix it on a key warning runs the review first; the card says it is running, as the plain card does. */}
+        {r.stage === "reviewing" && <div className="line review-busy" role="status">{r.proof ? S.review.reviewingChecks : S.review.reviewing}</div>}
         {r.stage === "ready" && r.asked && <div className="line review-busy" role="status">{S.review.asked}</div>}
         {r.fix === "sent" && <div className="line review-busy" role="status">{S.review.fixSent}</div>}
         {/* M69 step 3: a key warning has the same three presses as the review that found a key (Fix it, Copy for my AI,
@@ -129,7 +133,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             </div>
           </ConfirmStep>
         )}
-        <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>
+        {/* While the review runs, nothing waits on a press, so "Nothing changes until you press a button" is not said. */}
+        {r.stage !== "reviewing" && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
         {/* Why does this matter: the review's own words, its reasons (with Don't flag this kind here again only where
             review.ts silenceOffered allows it: never for a key, correction 4), and what it touches. */}
         <div id={whyId} className="rv-more" hidden={open !== "why"}>

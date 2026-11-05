@@ -40,10 +40,12 @@ import { readDeployFailure } from "./ship/buildlog.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
-import { browserCheck } from "./proof/browser.ts";
+import { browserCheck, SIGN_IN_GAP } from "./proof/browser.ts";
+import { headMovedLine, headOf } from "./githead.ts";
+import { sqliteFiles } from "./dbsafety.ts";
 import { applyRules, loadRules, withHouseRule } from "./rules.ts";
 import { companionDirUsable } from "./companionfile.ts";
-import { buildChildEnv, evaluate, evaluateReadOnly, leadsHome, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
+import { buildChildEnv, commandsWithFolder, evaluate, evaluateReadOnly, leadsHome, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
 import { runLadder, scaleLimits, type LadderResult, type Limits, type Step, type StepUpdate } from "./proof/ladder.ts";
 import { fileApprovals, readRunFiles, runPrint, withInstallConfig, type RunApprovals } from "./proof/approvedruns.ts";
@@ -169,6 +171,14 @@ export type RunnerOptions = {
 
 /** How long one snapshot may take (checkpoints.ts), doubled by "my internet is slow". */
 const SNAPSHOT_LIMIT_MS = 5 * 60_000;
+// How long a new Check waits for a check that was just stopped to finish ending its commands.
+const STOPPING_WAIT_MS = 10_000;
+/** Why a check that found nothing to check could not run what the project has: the skipped step of a rung the ladder could not
+ *  tell about (its tests need packages that are not installed, pytest is missing), else the first gap. */
+function cannotRun(res: LadderResult): string | undefined {
+  for (const u of res.unclear ?? []) { const st = res.steps.find((x) => x.rung === u.rung && x.status === "skipped" && x.detail); if (st) return st.detail; }
+  return res.gaps?.[0];
+}
 
 /** A private copy made for checking an earlier version starts with this; anything left by a run that was cut off is swept. */
 const BISECT_PREFIX = "bisect-";
@@ -298,7 +308,12 @@ export class AgentRunner {
   private picturing = new Set<AbortController>();   // visual receipts being drawn, so Stop everything can end them
   private backgroundJobs = new Set<Promise<void>>();   // pictures and cards; the runner waits for them before it exits
   private projectTurn = new Map<string, Promise<unknown>>();   // a proof check and a picture never run a server at the same time
-  private finding = new Map<string, { abort: AbortController; agent: string; flow?: boolean }>();   // point at the problem: one check per project at a time
+  // ended: settles when that check has fully stopped. superseded: a newer press waits for this stopped one, so its late
+  // "cancelled" is not said (the page would take it as the answer to the newer press).
+  /** Point at the problem presses waiting for a stopped check to end (problemFind): Stop, Stop everything and a group going
+   *  off reach them here, before they have started. */
+  private findWaits = new Set<{ agent: string; abort: AbortController }>();
+  private finding = new Map<string, { abort: AbortController; agent: string; flow?: boolean; ended?: Promise<void>; superseded?: boolean }>();   // point at the problem: one check per project at a time
   private driveStop = new Set<string>();
   private planAllowed = new Map<string, Set<string>>();   // agent -> what was allowed "for the rest of this task" in its running Drive plan
   private choices = new Map<string, (c: string) => void>();
@@ -505,17 +520,21 @@ export class AgentRunner {
       } finally { clearTimeout(timer); signal.removeEventListener("abort", stop); }
     } catch (e) { if (process.env.COMPANION_DEBUG_LOG === "1") console.error("explain failed:", (e as Error).message); /* no explanation is better than a broken task */ }
   }
-  private memoryState(project: string) {
+  /** answers: the command this state answers; refused: why that command could not do what it was asked (the page that
+   *  sent it reads its own outcome from here, whatever order the events come in). */
+  private memoryState(project: string, answers?: { id: string; refused?: string }) {
     const m = this.memoryFor(project);
     if (!m) return;
     const p = m.list("project"), u = m.list("profile");
     this.emit({ type: "explain.state", project, enabled: m.explainEnabled(), mode: m.explainMode() } as never);
-    this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems] } as never);
+    this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems], ...(answers?.id ? { answers: answers.id } : {}), ...(answers?.refused ? { refused: answers.refused } : {}) } as never);
   }
   private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
     const m = this.memoryFor(cmd.project);
     if (!m) { this.fail("Memory is not available.", undefined); return; }
-    const refuse = (reason: string) => this.emit({ type: "memory.refused", project: cmd.project, reason } as never);
+    // A refusal is said after the fresh memory.state, which clears any older note on the page, so its reason stays shown.
+    let refused: string | undefined;
+    const refuse = (reason: string) => { refused = reason; };
     switch (cmd.type) {
       case "memory.list": break;
       case "memory.forget": { const r = m.forget(cmd.scope, cmd.line); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
@@ -531,7 +550,8 @@ export class AgentRunner {
       case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
       case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: m.exportText() } as never); return;
     }
-    this.memoryState(cmd.project);
+    this.memoryState(cmd.project, { id: cmd.id, ...(refused !== undefined ? { refused } : {}) });
+    if (refused !== undefined) this.emit({ type: "memory.refused", project: cmd.project, reason: refused } as never);
   }
 
   // What this project may still spend today.
@@ -607,7 +627,9 @@ export class AgentRunner {
       ? "The safety box for checks is not working on this Mac. Run the project's install, build, tests and server without it to check the work? Without the box they can reach your files and the internet. Without a yes, the work is not checked."
       : `${why === "task" ? "This task changed the project's scripts or packages." : "The project's scripts or packages changed since you last said yes to running them."} Run its install, build, tests and server to check the work? They run on this Mac in a safety box that keeps them to this project. Without a yes, the work is not checked.`,
       // The code line on the card says what would run, not the word the check asked with ("task", "since", "unboxed").
-      { action: (why) => why === "unboxed" ? "install, build, tests and server, without the safety box" : "install, build, tests and server" });
+      // Its own kind of card (M67): it runs the project's scripts, it adds no tool. Without the safety box nothing keeps them
+      // to the project, so that one is the card for something that cannot be undone. Neither is answered in the notch.
+      { risk: (why) => why === "unboxed" ? "irreversible" : "scripts", action: (why) => why === "unboxed" ? "install, build, tests and server, without the safety box" : "install, build, tests and server" });
     return (byTask, unboxed) => ask(unboxed ? "unboxed" : byTask ? "task" : "since");
   }
   private checkAsker(s: Session | undefined, agent: string, checkpoint: string, title: (command: string) => string, o: { risk?: (command: string) => string; action?: (command: string) => string } = {}): (command: string) => Promise<boolean> {
@@ -619,7 +641,7 @@ export class AgentRunner {
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       // It waits as long as any other question (approval.waitMinutes, usual 30), read as it is asked.
       const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes") * 60_000;
-      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: o.risk?.(command) ?? "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString(), action: `Running: ${clip(redact(o.action?.(command) ?? command), 200)}` } as never);
+      this.emit({ type: "approval.request", approval, agent, checkpoint, toolUseId: `toolu_${randomBytes(4).toString("hex")}`, risk: o.risk?.(command) ?? "install", title: title(command), expiresAt: new Date(this.now().getTime() + timeout).toISOString(), action: `Running: ${clip(redact(o.action?.(command) ?? command), 200)}`, check: true } as never);
       this.state(agent, "needsYou");
       let how: "allowed" | "denied" | "expired" | "cancelled" = "denied";
       const yes = await new Promise<boolean>((res) => {
@@ -664,7 +686,7 @@ export class AgentRunner {
   private stepTeller(agent: string) { return (u: StepUpdate) => this.emit({ type: "proof.step", agent, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}), ...(u.summary ? { summary: u.summary } : {}), ...(u.problem ? { problem: u.problem } : {}), ...(u.runs ? { runs: u.runs } : {}) } as never); }
   /** Something runs for this agent: a task or a plan's step, a check, an answer the loop card waits for, a paused plan. */
   private runsFor(agent: string): boolean {
-    return this.sessions.has(agent) || this.driving.has(agent) || this.choices.has(agent) || this.resumers.has(agent) || [...this.finding.values()].some((f) => f.agent === agent);
+    return this.sessions.has(agent) || this.driving.has(agent) || this.choices.has(agent) || this.resumers.has(agent) || [...this.finding.values()].some((f) => f.agent === agent) || [...this.findWaits].some((w) => w.agent === agent);
   }
   /** Nothing runs for the agent, and the person put aside what it waited on them for (a plan, a problem shown, a failed
    *  check of their turn): a plan still waiting for approval is dropped, and an agent left on needs you rests again, so
@@ -686,6 +708,7 @@ export class AgentRunner {
     for (const p of this.picturing) if (ends(this.owner.get(p))) p.abort();
     if (group !== "flow") return;
     for (const f of this.finding.values()) if (f.flow) f.abort.abort();
+    for (const w of this.findWaits) w.abort.abort();
     for (const w of this.watchRuns.values()) w.abort.abort();
     const modes = agentModesOf("flow");
     for (const a of new Set([...this.sessions.keys(), ...this.driving])) if (modes.has(this.modes.get(a) ?? "")) await this.handle({ v: PROTOCOL_VERSION, id: "group-off", type: "agent.interrupt", agent: a });
@@ -741,12 +764,12 @@ export class AgentRunner {
         const running = this.runsFor(cmd.agent);
         // Put aside, never stopped: only an agent with nothing running rests again.
         if (cmd.release === true) { if (!running) this.release(cmd.agent); return; }
-        for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); this.driveStop.add(cmd.agent); this.answerChoice(cmd.agent, "interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent);
+        for (const f of this.finding.values()) if (f.agent === cmd.agent) f.abort.abort(); for (const w of this.findWaits) if (w.agent === cmd.agent) w.abort.abort(); this.driveStop.add(cmd.agent); this.answerChoice(cmd.agent, "interrupt"); this.resumers.get(cmd.agent)?.("interrupt"); this.sessions.get(cmd.agent)?.abort.abort(); this.cancelPending(cmd.agent);
         // Stop with nothing running (a plan waiting, a problem shown): it rests again, so Stop never does nothing.
         if (!running) this.release(cmd.agent);
         return;
       }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const w of this.watchRuns.values()) w.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const w of this.findWaits) w.abort.abort(); for (const w of this.watchRuns.values()) w.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
@@ -1109,6 +1132,9 @@ export class AgentRunner {
     // Off the record, the engine saves no conversation, so nothing can be continued later: each round starts afresh.
     const offRecord = !!cmd.offTheRecord;
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
+    // Where the person's git is now, read from its files only (githead.ts): a commit an agent's command makes is told on the
+    // receipt with the command that takes it back (F13). Companion never runs it.
+    const headBefore = headOf(cmd.project);
     const exec = this.o.executor ?? defaultExecutor;
     let sessionId: string | undefined = opts.resumeSession;
     let said = "";
@@ -1302,6 +1328,8 @@ export class AgentRunner {
     // The agent's last words reach the card (secrets hidden, clipped), and whether they ask the person something: only for a
     // task that ended as needs you or done, never one that stopped or failed (that is tried again, not answered).
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
+    const moved = headMovedLine(headBefore, headOf(cmd.project));
+    if (moved) notUndoable.push(moved);
     this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
@@ -1647,11 +1675,13 @@ export class AgentRunner {
       // Time allowed for checks covers this one too (today's 15 seconds, times the factor).
       const f = TIME_FACTOR[this.checkFor(cmd.project).check.time];
       // The stop signal goes with it, so Stop everything closes the hidden browser at once.
-      const b = await (this.o.browser ?? browserCheck)(r.url, { ...(f === 1 ? {} : { timeoutMs: 15_000 * f }), signal: ac.signal });
+      const b = await (this.o.browser ?? browserCheck)(r.url, { ...(f === 1 ? {} : { timeoutMs: 15_000 * f }), signal: ac.signal, signInExpected: true });   // Vercel's own login can sit in front of any preview
       if (ac.signal.aborted) { this.shipSay(cmd.project, "failed", "Stopped. Nothing went live.", { previewUrl: r.url, canGoLive: false }); return; }
       if (b.skipped) { this.shipSay(cmd.project, "failed", `The preview could not be checked: ${b.skipped} It cannot go live until it has been checked.`, { previewUrl: r.url, canGoLive: false, ...(b.notInstalled ? { needs: "browser" } : {}) }); return; }
-      if (!b.ok) {
-        const blocked = b.problems.some((p) => /\((401|403)\)/.test(p));
+      // Behind a sign in (now a gap in the browser check, not a problem): the preview was not seen, so it cannot go live.
+      const walled = (b.gaps ?? []).includes(SIGN_IN_GAP);
+      if (!b.ok || walled) {
+        const blocked = walled || b.problems.some((p) => /\((401|403)\)/.test(p));
         this.shipSay(cmd.project, "failed", blocked ? "The preview is behind Vercel's own login, so I could not open it. Turn off protection for previews in your Vercel project settings, then try again." : `The preview has a problem: ${b.problems.slice(0, 2).join(". ")}`, { previewUrl: r.url, canGoLive: false });
         return;
       }
@@ -1816,11 +1846,28 @@ export class AgentRunner {
   private async problemFind(cmd: Extract<Command, { type: "problem.find" }>): Promise<void> {
     // Every press ends with problem.found, so the card never stays on "Checking".
     // note: one plain line about something that could not be checked (the Vercel tool missing, say), with what to do.
-    const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never);
+    let mine: { superseded?: boolean } | undefined;
+    const found = (verdict: string, fl?: Pick<Step, "label" | "detail" | "problem">, needs?: "browser", note?: string) => { if (mine?.superseded) return; this.emit({ type: "problem.found", project: cmd.project, agent: cmd.agent, verdict, ...(fl ? { label: fl.label, detail: fl.detail } : {}), ...(fl?.problem ? { problem: fl.problem } : {}), ...(needs ? { needs } : {}), ...(note ? { note } : {}) } as never); };
+    // A check that was just stopped (Back, then Check again) may still be ending its commands (a test runner that cleans up
+    // on SIGTERM): the new press waits for it, a little, instead of being told Squibby is busy.
+    const prev = this.finding.get(cmd.project);
+    if (prev?.abort.signal.aborted && prev.ended) {
+      prev.superseded = true;
+      // The wait itself can be stopped (rule 11): a press waiting here is in no other map yet.
+      const wait = { agent: cmd.agent, abort: new AbortController() };
+      this.findWaits.add(wait);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try { await Promise.race([prev.ended, new Promise((r) => { timer = setTimeout(r, STOPPING_WAIT_MS); }), new Promise((r) => wait.abort.signal.addEventListener("abort", r, { once: true }))]); }
+      finally { clearTimeout(timer); this.findWaits.delete(wait); }
+      if (wait.abort.signal.aborted) { found("cancelled"); this.state(cmd.agent, "idle"); return; }
+    }
     // An install the person started, a copy or a ship step counts too: a check on half installed packages points at nothing real.
     if (this.finding.has(cmd.project) || this.sessions.has(cmd.agent) || this.driving.has(cmd.agent) || this.projectInUse(cmd.project)) { this.fail(`${PRODUCT} is already working on this project. Wait for it to finish, or press Stop.`, cmd.agent); found("cancelled"); return; }
     const abort = new AbortController();
-    this.finding.set(cmd.project, { abort, agent: cmd.agent, flow: true });
+    let ended!: () => void;
+    const entry = { abort, agent: cmd.agent, flow: true, ended: new Promise<void>((r) => { ended = r; }), superseded: false };
+    mine = entry;
+    this.finding.set(cmd.project, entry);
     // The first run's first check (M49): its install question needs a stand in session to wait in, as Ship's checks do,
     // so approval.resolve, Stop and Stop everything reach it. Removed when the check ends.
     const first = cmd.first === true, standIn = first ? `first:${++this.firstChecks}` : null;
@@ -1849,6 +1896,9 @@ export class AgentRunner {
       // A Python check that could not run because a package is not installed: the first thing to install, with the
       // command (Point at the problem never installs anything).
       const notes: string[] = res.verdict === "passed_with_gaps" && res.gaps?.length ? [res.gaps[0]] : [];
+      // Nothing could be checked, but the project does have tests or checks that could not run (packages not installed after
+      // a no, pytest missing): say why, with the command, never "it has no tests".
+      if (res.verdict === "nothing_to_check") { const why = cannotRun(res); if (why) notes.push(why); }
       // Off in Settings (rescue.readDeployLog), it looks only at the project.
       if (this.o.deployLogs && this.setting<boolean>("rescue.readDeployLog") !== false && (res.verdict === "passed" || res.verdict === "passed_with_gaps" || res.verdict === "nothing_to_check")) {
         const d = await readDeployFailure(cmd.project, this.o.deployLogs, abort.signal);
@@ -1863,7 +1913,7 @@ export class AgentRunner {
       this.fail(isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project. Try again.`, cmd.agent);
       found("cancelled");
       this.state(cmd.agent, "idle");
-    } finally { this.finding.delete(cmd.project); if (standIn) this.sessions.delete(standIn); }
+    } finally { if (this.finding.get(cmd.project) === entry) this.finding.delete(cmd.project); if (standIn) this.sessions.delete(standIn); ended(); }
   }
 
   // ---------- Which task broke it (snapshot bisect) ----------
@@ -2434,6 +2484,15 @@ export class AgentRunner {
     if (verdict.decision === "allow") tell("ran");
     // Launch check: a file git ignores is in no snapshot, so it is kept just before it is edited, and Undo puts it back.
     const wid = sdkId ?? toolUseId;
+    // A SQLite file a command works on is often ignored by git: it is kept first too, so Undo can put its tables back.
+    if (tool.name === "Bash" && typeof tool.input.command === "string") {
+      // In the folder each command runs in, after any cd (M67 review: `cd prisma && sqlite3 dev.db` works on prisma/dev.db).
+      for (const f of commandsWithFolder(tool.input.command, cmd.project).flatMap((c) => sqliteFiles(c.words, c.cwd))) {
+        if (!inProject(cmd.project, f)) continue;
+        const kept = await this.store(cmd.project).keepIgnored(checkpoint, f).catch(() => null);
+        if (kept === "too_big") notUndoable.push(`${clip(redact(f), 200)}: over 2 MiB and ignored by git, so Undo cannot put it back`);
+      }
+    }
     if (EDIT_TOOLS.has(tool.name)) {
       const path = String(tool.input.file_path ?? tool.input.notebook_path ?? "");
       if (path) { const kept = await this.store(cmd.project).keepIgnored(checkpoint, path); if (kept === "too_big") notUndoable.push(`${clip(redact(path), 200)}: over 2 MiB and ignored by git, so Undo cannot put it back`); }

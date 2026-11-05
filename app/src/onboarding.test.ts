@@ -182,6 +182,13 @@ describe("the first check of the real project", () => {
     expect(chk.slice(chk.indexOf("asks.map"), yes + 60)).not.toContain('kind="primary"');
     expect(read("./card.tsx")).toContain('const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };');
   });
+  test("M67 review: the first check's other questions (run the scripts, with or without the safety box) are shown there too", () => {
+    const asks = installAsks([{ id: "s", risk: "scripts", agent: "builder-1", check: true }, { id: "u", risk: "irreversible", agent: "builder-1", check: true }, { id: "t", risk: "irreversible", agent: "builder-1" }, { id: "o", risk: "scripts", agent: "other", check: true }], "builder-1");
+    expect(asks.map((a) => a.id)).toEqual(["s", "u"]);
+    // The engine's mark is kept on the card, so the screen can find it.
+    const m = reduce(initial(), { v: 1, id: "e", ts: "", type: "approval.request", approval: "u", agent: "builder-1", checkpoint: "cp", toolUseId: "t", risk: "irreversible", title: "The safety box for checks is not working on this Mac.", expiresAt: "2999-01-01T00:00:00Z", check: true } as never);
+    expect(installAsks(m.approvals, "builder-1").map((a) => a.id)).toEqual(["u"]);
+  });
   test("the result is shown with the verdict line, and a project check is never called proven (M45)", () => {
     for (const p of [{ stage: "clear" }, { stage: "gaps" }, { stage: "nothing" }, found] as const) {
       const v = firstCheckVerdict(p, "shop")!;

@@ -206,6 +206,8 @@ describe.skipIf(!MAC)("the review's watcher on this Mac (real folder events)", (
     expect(await until(() => batches(ev1).length >= 1)).toBe(true);
     expect(batches(ev1)[0]).toMatchObject({ files: [{ file: "src/app.ts", kind: "modified" }], count: 1 });
     expect(batches(ev1)[0].away).toBeUndefined();
+    // Closed with Looks fine before quitting (M67: a batch never closed is offered again after a reopen).
+    await s1.handle({ v: 1, id: "d1", type: "review.dismiss", project: dir, batch: batches(ev1)[0].batch } as never);
     s1.stop();
     // Closed: a file is added. Opened again: the comparison offers it, marked as from while closed.
     writeFileSync(join(dir, "src/late.ts"), "export const late = 1;\n");

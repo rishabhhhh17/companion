@@ -156,9 +156,11 @@ describe("following up by voice", () => {
     expect(card).toContain('else if (ev.type === "app.voice" && ev.stage !== "listening" && ev.stage !== "transcribing" && ev.stage !== "heard") keysDown.current = null;');
     expect(heard).toContain("keysDown.current = null;");
     const into = heard.slice(heard.indexOf('if (to === "followUp")'), heard.indexOf("} else {", heard.indexOf('if (to === "followUp")')));
-    expect(into).toContain("setFollowText(ev.text)");
-    // Sent by itself only with auto send on, and then only a clear request for work.
-    expect(into).toContain("if (autoSend && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);");
+    // m67 bug 17: added after anything typed in the follow up box (askbox.ts heardInto), never over it.
+    expect(into).toContain("const into = heardInto(followTextNow.current, ev.text);");
+    expect(into).toContain("setFollowText(into.text)");
+    // Sent by itself only with auto send on, and then only a clear request for work, and never joined to typed words.
+    expect(into).toContain("if (autoSend && !into.joined && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);");
     expect(into).not.toContain("setBox(");
   });
   test("the pointer is noticed only on the receipt, inside Home's own window, and forgotten when Home opens or closes", () => {

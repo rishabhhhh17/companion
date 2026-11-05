@@ -23,6 +23,10 @@ const HEAD: Record<Scope, string> = {
 const LINE = /^- (.+?) — (.+?), (\d{4}-\d{2}-\d{2})(?: \{(m_[a-z0-9]{6,})\})?\s*$/;
 const oneLine = (s: string) => s.replace(/[\r\n\u2028\u2029]+/g, " ").replace(/\s+/g, " ").trim();
 const idFor = (text: string) => "m_" + createHash("sha256").update(text.toLowerCase()).digest("hex").slice(0, 8);
+// The day on this Mac's own clock, never the UTC day: a line saved at 8 pm in Los Angeles is dated that day.
+const localDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Text that would read back as a different line (it holds the store's own " — source, date" or {id} form).
+const ownFormat = (t: string) => / — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ");
 
 // explain is the switch before Explain after a task had three choices (explainMode); both are written, so going back a
 // version keeps Explain on or off.
@@ -50,11 +54,15 @@ export class MemoryStore {
       if (!existsSync(f)) return { raw: [] };
       try { text = readFileSync(f, "utf8"); } catch (e) { return { raw: [], problem: `The memory file could not be read (${(e as NodeJS.ErrnoException).code ?? "error"}), so it was left alone.` }; }
     }
+    // Every line keeps its own id: two lines with the same words (written twice by hand) get a second id, so Edit and Forget
+    // act on the one pressed, never on both or on the other.
+    const seen = new Set<string>();
+    const own = (id: string, text: string) => { let out = id, n = 1; while (seen.has(out)) out = idFor(`${text}#${++n}`); seen.add(out); return out; };
     const raw: Raw[] = text.split("\n").map((line): Raw => {
       const m = LINE.exec(line);
-      if (m) return { kind: "entry", entry: { id: m[4] ?? idFor(m[1]), text: m[1], source: m[2], date: m[3] }, hand: false };
+      if (m) return { kind: "entry", entry: { id: own(m[4] ?? idFor(m[1]), m[1]), text: m[1], source: m[2], date: m[3] }, hand: false };
       const bullet = /^- (.+?)\s*$/.exec(line);
-      if (bullet) return { kind: "entry", entry: { id: idFor(bullet[1]), text: bullet[1], source: "you wrote it", date: "" }, hand: true };
+      if (bullet) return { kind: "entry", entry: { id: own(idFor(bullet[1]), bullet[1]), text: bullet[1], source: "you wrote it", date: "" }, hand: true };
       return { kind: "other", text: line };
     });
     while (raw.length && raw[raw.length - 1].kind === "other" && (raw[raw.length - 1] as { text: string }).text === "") raw.pop();
@@ -63,6 +71,8 @@ export class MemoryStore {
 
   private write(scope: Scope, raw: Raw[]) {
     const f = this.file(scope);
+    // No project chosen: there is no project file, and an empty project would be a path in whatever folder the engine runs in.
+    if (scope === "project" && !this.o.project) throw new Error("No project is chosen, so nothing was written.");
     if (scope === "project" && !companionDirUsable(this.o.project)) throw new Error("The project's .companion folder is a link, so nothing was written there.");
     const body = raw.map((r) => (r.kind === "other" ? r.text : r.hand ? `- ${r.entry.text}` : `- ${r.entry.text} — ${r.entry.source}, ${r.entry.date} {${r.entry.id}}`)).join("\n");
     const hasHead = raw.some((r) => r.kind === "other" && r.text.startsWith("# "));
@@ -122,13 +132,14 @@ export class MemoryStore {
     const t = oneLine(text), src = oneLine(source).replace(/[,{}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || PRODUCT;
     const s = screenLine(t);
     if (!s.ok) return s;
-    if (/ — .+, \d{4}-\d{2}-\d{2}|\{m_[a-z0-9]+\}/.test(t) || t.startsWith("- ")) return { ok: false, reason: `That text has a format ${PRODUCT} uses itself.` };
+    if (scope === "project" && !this.o.project) return { ok: false, reason: "Choose a project first." };
+    if (ownFormat(t)) return { ok: false, reason: `That text has a format ${PRODUCT} uses itself.` };
     const { raw, problem } = this.read(scope);
     if (problem) return { ok: false, reason: problem };
     if ((this.prefs().forgotten[this.key(scope)] ?? []).includes(idFor(t))) return { ok: false, reason: "You asked me to forget that." };
     const dup = raw.find((r) => r.kind === "entry" && r.entry.text.toLowerCase() === t.toLowerCase());
     if (dup && dup.kind === "entry") return { ok: true, entry: dup.entry };
-    const entry: Entry = { id: idFor(t), text: t, source: src, date: now.toISOString().slice(0, 10) };
+    const entry: Entry = { id: idFor(t), text: t, source: src, date: localDay(now) };
     raw.push({ kind: "entry", entry, hand: false });
     this.write(scope, scope === "profile" ? trim(raw, PROFILE_CAP) : raw);
     return { ok: true, entry };
@@ -150,17 +161,23 @@ export class MemoryStore {
   edit(scope: Scope, id: string, text: string, now: Date = new Date()): Plain {
     const t = oneLine(text), s = screenLine(t);
     if (!s.ok) return s;
+    if (ownFormat(t)) return { ok: false, reason: `That text has a format ${PRODUCT} uses itself.` };
     const { raw, problem } = this.read(scope);
     if (problem) return { ok: false, reason: problem };
     const at = raw.findIndex((r) => r.kind === "entry" && r.entry.id === id);
     if (at < 0) return { ok: false, reason: "That line is not in memory." };
-    raw[at] = { kind: "entry", hand: false, entry: { id: idFor(t), text: t, source: "you edited it", date: now.toISOString().slice(0, 10) } };
+    // The same words as another line: the two are one line now, so the edited one goes and the other stays with its id.
+    const twin = raw.findIndex((r, i) => i !== at && r.kind === "entry" && r.entry.text.toLowerCase() === t.toLowerCase());
+    if (twin >= 0) raw.splice(at, 1);
+    else raw[at] = { kind: "entry", hand: false, entry: { id: idFor(t), text: t, source: "you edited it", date: localDay(now) } };
     this.write(scope, raw);
     return { ok: true };
   }
 
   eraseAll(scope: Scope): Plain {
-    if (scope === "project" && this.o.project && !companionDirUsable(this.o.project)) return { ok: false, reason: "The project's .companion folder is a link, so nothing was erased there." };
+    // No project chosen: there is no project memory to erase. Never a relative path in the engine's own folder.
+    if (scope === "project" && !this.o.project) return { ok: true };
+    if (scope === "project" && !companionDirUsable(this.o.project)) return { ok: false, reason: "The project's .companion folder is a link, so nothing was erased there." };
     try {
       rmSync(this.file(scope), { force: true });
       const p = this.prefs(), k = this.key(scope);

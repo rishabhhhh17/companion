@@ -192,3 +192,34 @@ export function submitKey(raw: string): { clear: true; send: string | null; prob
  *  and 10). On, the same press looks at every display, with the light on first and secrets covered on each. */
 // showme.allScreens in the registry (T16), read through settingsStore.ts.
 export const allScreensOn = (): boolean => setting("showme.allScreens") === true;
+
+// ---- Forget everything (the danger zone) ----
+/** The two erases Forget everything sends (project, then profile), by command id, and what the engine has answered so
+ *  far. The runner answers each command with a memory.state that names it ("answers") and carries its refusal ("refused"),
+ *  before the separate memory.refused the Memory page shows (runner/src/agent.ts memoryCommand). An erase can also be
+ *  answered by a protocol.error when the erase itself failed. Any other memory.state (a listing, a line an agent saved) is
+ *  not an answer. Forgotten is said only once both are answered and none was refused. */
+export type ForgetTally = { waiting: string[]; refused: string[] };
+export const forgetStart = (ids: string[]): ForgetTally => ({ waiting: [...ids], refused: [] });
+/** How long the page waits for both answers before it says none came. */
+export const FORGET_WAIT_MS = 10_000;
+export function forgetStep(t: ForgetTally, ev: unknown): ForgetTally {
+  const e = (ev ?? {}) as { type?: unknown; reason?: unknown; failed?: unknown; answers?: unknown; refused?: unknown };
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "");
+  if (e.type === "memory.state") {
+    if (typeof e.answers !== "string" || !t.waiting.includes(e.answers)) return t;
+    const why = text(e.refused);
+    return { waiting: t.waiting.filter((w) => w !== e.answers), refused: why ? [...t.refused, why] : t.refused };
+  }
+  // A protocol.error names the command's type, not its id: it answers the first erase still waiting.
+  if (e.type === "protocol.error" && e.failed === "memory.erase" && t.waiting.length) {
+    const why = text(e.reason);
+    return { waiting: t.waiting.slice(1), refused: why ? [...t.refused, why] : t.refused };
+  }
+  return t;
+}
+/** null while an erase is still unanswered; then done, or why not (each reason once). */
+export function forgetOutcome(t: ForgetTally): null | { ok: true } | { ok: false; reason: string } {
+  if (t.waiting.length) return null;
+  return t.refused.length ? { ok: false, reason: [...new Set(t.refused)].join(" ") } : { ok: true };
+}

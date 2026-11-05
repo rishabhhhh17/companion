@@ -8,7 +8,7 @@
 // the check's own. A page on the internet (a preview) is blocked from this Mac's and the home network's addresses: by name
 // on every request, and by a proxy of the check's own that every connection goes through, which looks each name up itself
 // and connects only to a public address (publicProxy.ts), so a name that answers with a home address is never reached.
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { chromium } from "playwright-core";
@@ -114,6 +114,10 @@ export type BrowserResult = { ok: boolean; skipped?: string; notInstalled?: true
 // button chosen in Settings, found by its label and pressed only when it is a plain button, link or tab whose words do not
 // sound risky, checked again on the real element. viewport: the page size (today's 1280 by 800 when not given).
 export type BrowserOptions = { expectText?: string[]; click?: string; expectAfterClick?: string; press?: string; expectAfterPress?: string; timeoutMs?: number; clickButtons?: boolean; shot?: boolean; signal?: AbortSignal; viewport?: { width: number; height: number };
+  /** The project is known to have a sign in (knownSignIn), or the page is a Vercel preview: any 401 or 403 is then a gap.
+   *  Otherwise only one that asks for a sign in is (a WWW-Authenticate header, a password field, sign in words), so a
+   *  change that put the whole app behind a bare error is told and fixed. A redirect to a login page is always a gap. */
+  signInExpected?: boolean;
   /** Tests only: names the hidden browser maps to addresses (host resolver rules), and the lookup and address test of the
    *  internet preview's proxy, so a rebinding name can be played on this Mac. Never set by the app. */
   _testNet?: { mapHosts?: Record<string, string>; lookup?: Lookup; isAllowed?: (ip: string, host: string) => boolean } };
@@ -269,15 +273,24 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
     page.on("console", (m) => { if (m.type() === "error" && !/^Failed to load resource/.test(m.text()) && !fromGuard()) result.consoleErrors.push(m.text() + after()); });
     page.on("pageerror", (e) => { if (!fromGuard()) result.problems.push(`The page crashed with: ${e.message}${after()}`); });
     page.on("requestfailed", (r) => { const why = r.failure()?.errorText ?? "failed"; if (!ignorable(r.url()) && !blockedByUs.has(r.url()) && !refusedByProxy(r.url()) && !/ERR_ABORTED/.test(why)) result.failedRequests.push(`${r.url()} (${why})`); });
-    let mainStatus = 0;
+    let mainStatus = 0, mainAsksSignIn = false;
     page.on("response", (r) => {
-      if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && !mainStatus) mainStatus = r.status();
+      if (r.request().isNavigationRequest() && r.frame() === page.mainFrame() && !mainStatus) { mainStatus = r.status(); mainAsksSignIn = !!r.headers()["www-authenticate"]; }
       if (r.status() >= 400 && !ignorable(r.url()) && !r.request().isNavigationRequest() && !refusedByProxy(r.url())) result.failedRequests.push(`${r.url()} (${r.status()})`);
     });
     try { await page.goto(url, { waitUntil: "domcontentloaded", timeout }); await page.waitForLoadState("load", { timeout: Math.min(timeout, 5000) }).catch(() => {}); }
     catch (e) { result.problems.push(`The page could not be reached: ${(e as Error).message.split("\n")[0]}`); return finish(result, t0); }
+    // A page behind a sign in (401 or 403) is not the code failing: it is a gap, and the check stops there. Claude is never
+    // asked to "fix" it (it could take the sign in out). It is a sign in when the project is known to have one, or when the
+    // answer itself says so (M67 review): a WWW-Authenticate header (HTTP Basic auth, a staging password), or a page with a
+    // password field or sign in words. A bare 401 or 403 error page in a project with no sign in is still a problem.
+    if ((mainStatus === 401 || mainStatus === 403) && (o.signInExpected || mainAsksSignIn || await asksSignIn(page))) { (result.gaps ??= []).push(SIGN_IN_GAP); return finish(result, t0); }
     if (mainStatus >= 400) result.problems.push(`The page answered with an error (${mainStatus})`);
     await page.waitForTimeout(500);
+    // Sent on to a different page that asks for a password (a login page): only the sign in was seen, so what is behind it
+    // was not checked. Always a gap, so the result is never "proven", and never a problem: the fix loop would ask Claude to
+    // take the redirect or the sign in out (M67 review), and knownSignIn cannot find every sign in.
+    if (mainStatus < 400 && await signInPage(page, url)) { (result.gaps ??= []).push(SIGN_IN_GAP); return finish(result, t0); }
 
     if (o.shot) result.shot = await pageShot(page, view).catch(() => undefined);
     const text = async () => (await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "";
@@ -372,6 +385,60 @@ async function pressByLabel(page: import("playwright-core").Page, wanted: string
     return { pressed: want };
   }
   return { problem: `Could not find a button or link called "${want}" on the page` };
+}
+
+export const SIGN_IN_GAP = "The page needs a sign in, so what is behind it was not checked.";
+
+// Packages that put pages behind a sign in (JavaScript and Python), and file or folder names of a project's own login page.
+// M67 review: also firebase and @supabase/supabase-js (their sign in is the usual one), and the basic auth packages.
+const AUTH_PACKAGES = /^(next-auth|@auth\/.+|@clerk\/.+|@supabase\/(ssr|supabase-js|auth-js|auth-helpers.*|auth-ui-react)|@auth0\/.+|auth0|passport|passport-.+|lucia|better-auth|@kinde-oss\/.+|@workos-inc\/.+|iron-session|@stackframe\/.+|express-openid-connect|firebase|firebaseui|@firebase\/auth|react-firebase-hooks|basic-auth|express-basic-auth|http-auth|koa-basic-auth|@fastify\/basic-auth|flask[-_]login|flask[-_]httpauth|django[-_]allauth|flask[-_]security.*|fastapi[-_]users|authlib)$/i;
+// A name with login, log in, sign in or auth as a word of its own: login.html, LoginPage.tsx, SignInForm.tsx, sign-in-page.vue,
+// (auth), [...nextauth]; never author.ts or designinfo.ts. CamelCase is split first.
+const loginName = (name: string): boolean => name === "[...nextauth]" ||
+  /(^|[^a-z])(log[-_ ]?in|sign[-_ ]?in|auth)([^a-z]|$)/.test(name.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase());
+// Words on a 401 or 403 page that ask for a sign in.
+const SIGN_IN_WORDS = /\b(sign|log)[- ]?in\b|\bpassword\b|\bauthenticat|\bunauthori[sz]ed\b/i;
+const SKIP_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".venv", "venv", "__pycache__", ".companion", "coverage", "out"]);
+
+/** Whether the project is known to have a sign in: a sign in package, a login page of its own (login.html, app/login/,
+ *  pages/signin.tsx, templates/login.html and the like), or "signIn": true in its .claude/proof.json. Read only. */
+export function knownSignIn(dir: string): boolean {
+  try { const j = JSON.parse(readFileSync(join(dir, ".claude", "proof.json"), "utf8")); if (j?.signIn === true) return true; } catch { /* none */ }
+  try {
+    const p = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
+    for (const k of ["dependencies", "devDependencies"]) if (p?.[k] && Object.keys(p[k]).some((n) => AUTH_PACKAGES.test(n))) return true;
+  } catch { /* none */ }
+  for (const f of ["requirements.txt", "pyproject.toml", "Pipfile"]) {
+    try { for (const line of readFileSync(join(dir, f), "utf8").split("\n")) { const n = /^\s*"?([A-Za-z0-9_.-]+)/.exec(line)?.[1]; if (n && AUTH_PACKAGES.test(n)) return true; } } catch { /* none */ }
+  }
+  // A login page of its own, a few folders deep at most, a bounded number of entries.
+  let seen = 0;
+  const walk = (d: string, depth: number): boolean => {
+    let names: import("node:fs").Dirent[];
+    try { names = readdirSync(d, { withFileTypes: true }); } catch { return false; }
+    for (const e of names) {
+      if (++seen > 3000) return false;
+      if (loginName(e.name)) return true;
+      if (e.isDirectory() && depth < 4 && !SKIP_DIRS.has(e.name) && !e.name.startsWith(".")) { if (walk(join(d, e.name), depth + 1)) return true; }
+    }
+    return false;
+  };
+  return walk(dir, 0);
+}
+/** A 401 or 403 page that asks for a sign in: a password field, or sign in words in its text. */
+async function asksSignIn(page: import("playwright-core").Page): Promise<boolean> {
+  try {
+    if ((await page.locator('input[type="password"]').count()) > 0) return true;
+    return SIGN_IN_WORDS.test((await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "");
+  } catch { return false; }
+}
+/** Landed on another page than the one asked for, and it has a password field: a sign in page. */
+async function signInPage(page: import("playwright-core").Page, asked: string): Promise<boolean> {
+  try {
+    const a = new URL(asked), now = new URL(page.url());
+    if (a.host === now.host && a.pathname.replace(/\/+$/, "") === now.pathname.replace(/\/+$/, "")) return false;
+    return (await page.locator('input[type="password"]').count()) > 0;
+  } catch { return false; }
 }
 
 function finish(r: BrowserResult, t0: number): BrowserResult {

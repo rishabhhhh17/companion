@@ -17,8 +17,8 @@ const CRASH_DAYS: u64 = 14;
 /// The only events and fields the activity log may contribute. Detailed (developer) logging adds app names and window
 /// shapes; none of that is ever exported.
 /// Must fix 15: how the engine ended each time (runner_exit) and how the app quit (app_quit) are in it too.
-const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "approval_asked", "approval_answered", "runner_exit", "app_quit"];
-const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason", "approval", "risk", "tool", "outcome", "code", "signal", "uptime_ms", "starts", "quitting", "from", "voice", "commit"];
+const SAFE_EVENTS: &[&str] = &["launch", "runner_started", "runner_failed", "hotkey", "take_the_wheel", "menu_stop_everything", "menu_hide", "approval_asked", "approval_answered", "runner_exit", "app_quit", "quit_asked", "exit_prevented", "app_signal", "app_problem_restart", "app_problem_no_restart", "engine_gave_up"];
+const SAFE_FIELDS: &[&str] = &["run", "seq", "ev", "t", "ms", "id", "down", "stop_everything", "sent", "reason", "approval", "risk", "tool", "outcome", "code", "signal", "uptime_ms", "starts", "quitting", "from", "voice", "commit", "by", "why", "uptime_s", "started"];
 /// Must fix 15: the last lines of the engine's own error output (engine.log, already scrubbed when written, scrubbed again
 /// here with the rest of the file), each cut short.
 const ENGINE_LINES: usize = 60;

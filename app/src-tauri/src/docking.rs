@@ -358,6 +358,8 @@ pub struct Drag {
     /// `REST_MS` (at the last move).
     near_since: Option<u64>, rested: bool,
     when: DockWhen,
+    /// A move was followed. A drag the shell never followed (a right button drag, bug bash 5 Nov) decides nothing at the let go.
+    moved: bool,
 }
 
 impl Drag {
@@ -366,7 +368,7 @@ impl Drag {
     pub fn begin(pointer: (f64, f64), window: Rect, screens: Vec<Screen>) -> Drag {
         let ok = |v: f64| if v.is_finite() { v } else { 0.0 };
         let offset = (ok(pointer.0 - window[0]), ok(pointer.1 - window[1]));
-        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed }
+        Drag { offset, size: (window[2], window[3]), screens, pointer, frame: window, last_press: None, done: false, trail: vec![(pointer.0, pointer.1, mono_ms())], near_since: None, rested: false, when: DockWhen::Pushed, moved: false }
     }
     /// Letting go near an edge sticks only when pushed, thrown or kept there (`Pushed`, the usual), or always (`Near`).
     pub fn set_dock_when(&mut self, when: DockWhen) { self.when = when; }
@@ -382,6 +384,7 @@ impl Drag {
         let f = match screen_near(&self.screens, p) { Some(s) => keep_in(want, s.work), None => want };
         self.pointer = p;
         self.frame = f;
+        self.moved = true;
         // Only samples from before now and from the last 400 ms (a sample timed after `t` came from another clock).
         self.trail.retain(|s| s.2 <= t && t - s.2 <= 400);
         self.trail.push((p.0, p.1, t));
@@ -439,6 +442,7 @@ impl Drag {
     pub fn release_at(&mut self, home: island::HomeSize, t: u64) -> Option<Let> {
         if self.done { return None; }
         self.done = true;
+        if !self.moved { return None; }
         let s = screen_near(&self.screens, self.pointer)?.clone();
         let (x, y) = self.pointer;
         let near = free_on(&s, self.size, x, y).is_none();
@@ -1010,6 +1014,20 @@ mod tests {
         assert_eq!(d.frame(), [270.5, 550.25, 160.0, 160.0]);
         // Onto the second display: the same offset there.
         assert_eq!(d.follow((2000.0, 500.0)), Some([1970.0, 450.0, 160.0, 160.0]));
+    }
+    #[test]
+    fn a_let_go_with_no_move_followed_decides_nothing() {
+        // Bug bash (5 Nov): a right button drag starts a drag the shell never follows (only LeftMouseDragged moves it). Let
+        // go, it must not save the window's spot as a free place, which would pull a docked or peeking character off its edge.
+        let mut d = Drag::begin((80.0, 105.0), [0.0, 25.0, 160.0, 160.0], vec![wide()]);
+        assert_eq!(d.release(island::HomeSize::STANDARD), None);
+        let mut d = Drag::begin((80.0, 105.0), [0.0, 25.0, 160.0, 160.0], vec![wide()]);
+        assert_eq!(d.follow((f64::NAN, 1.0)), Some([0.0, 25.0, 160.0, 160.0]));
+        assert_eq!(d.release(island::HomeSize::STANDARD), None, "a pointer that is not a number is no move");
+        // One real move is enough for the let go to decide, as before.
+        let mut d = Drag::begin((630.0, 350.0), [600.0, 300.0, 160.0, 160.0], vec![wide()]);
+        d.follow((640.0, 360.0));
+        assert!(d.release(island::HomeSize::STANDARD).is_some());
     }
     #[test]
     fn a_drag_stays_inside_the_work_area_of_the_display_under_the_pointer() {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type TransitionEvent } from "react";
 import { invoke, listen } from "./tauri.ts";
 import { reducedMotion } from "./motion.ts";
-import { bodyHeight, foldMs, geomFrom, homeNext, pieceSizes, shapeTransforms, type FromRect, type HomeGeom, type HomePhase } from "./homeShape.ts";
+import { bodyHeight, foldMs, geomFrom, growMs, homeNext, pieceSizes, shapeTransforms, type FromRect, type HomeGeom, type HomePhase } from "./homeShape.ts";
 import "./ui/homeShape.css";
 
 // Home's stage (M66 Part 2 step 1): the black shape that grows out of the notch, and Home's content inside it. The window
@@ -33,12 +33,18 @@ export function useHomeStage() {
     setPhase("closed");
     void invoke("home_folded").catch(() => {});
   };
+  // The opening ends on the body's transitionend (onEnd), and on this timer when none comes (growMs): a keyboard opening,
+  // Reduce motion or Less motion, a shape that does not change ("free"), or a hidden page. A close or a stop clears it.
+  const grownLater = (now: boolean) => {
+    window.clearTimeout(backstop.current);
+    backstop.current = window.setTimeout(() => setPhase((p) => homeNext(p, "shown")), growMs(now, reducedMotion()));
+  };
   useEffect(() => {
     void invoke("home_geom").then((v) => {
       const o = v as { geom?: unknown; shown?: unknown } | null;
       const g = geomFrom(o?.geom);
       if (g) setGeom(g);
-      if (o?.shown === true) setPhase((p) => homeNext(p, "open"));
+      if (o?.shown === true) { setPhase((p) => homeNext(p, "open")); grownLater(false); }
     }).catch(() => {});
     const offGeom = listen("home-geom", (e) => { const g = geomFrom(e.payload); if (g) setGeom(g); });
     const offHover = listen("home-hover", (e) => setHover((e.payload as { on?: unknown } | null)?.on === true));
@@ -51,7 +57,7 @@ export function useHomeStage() {
       backstop.current = window.setTimeout(folded, foldMs(reducedMotion()));
     });
     // Closed by the shell itself (Stop everything, Hide, a display change, or after the fold): closed at once.
-    const offClosed = listen("closed", () => { tok.current++; setFrom(null); setSnap(false); window.clearTimeout(backstop.current); setPhase((p) => homeNext(p, "stop")); });
+    const offClosed = listen("closed", () => { tok.current++; setFrom(null); setSnap(false); setHover(false); window.clearTimeout(backstop.current); setPhase((p) => homeNext(p, "stop")); });
     return () => { for (const o of [offGeom, offHover, offClosing, offClosed]) o.then((f) => f()); window.clearTimeout(backstop.current); };
   }, []);
   const open = (now = false, f: FromRect | null = null) => {
@@ -59,11 +65,11 @@ export function useHomeStage() {
     const t = ++tok.current;
     if (f && !now && phaseRef.current === "closed" && !reducedMotion()) {
       setFrom(f); setSnap(true);
-      requestAnimationFrame(() => requestAnimationFrame(() => { if (tok.current !== t) return; setSnap(false); setPhase((p) => homeNext(p, "open")); }));
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (tok.current !== t) return; setSnap(false); setPhase((p) => homeNext(p, "open")); grownLater(false); }));
       return;
     }
     setFrom(null); setSnap(false);
-    setPhase((p) => homeNext(p, "open"));
+    setPhase((p) => homeNext(p, "open")); grownLater(now);
   };
   return { geom, phase, hover, instant, contentH, setContentH, open, folded, setPhase, from, snap };
 }

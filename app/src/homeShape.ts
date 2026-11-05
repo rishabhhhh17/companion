@@ -108,6 +108,11 @@ export const islandHideAtMs = (): number => Math.round(reachMs(NOTCH.OPEN_W, 0.9
 /** How long the page waits for a close to end before it says folded anyway (a hidden page sends no transitionend): the
  *  content leaves first (EXIT_MS.menu), then the shape folds on CLOSE. With reduced motion only the --dur-1 fade. */
 export const foldMs = (reduced: boolean): number => (reduced ? DUR[1] : EXIT_MS.menu + springMs(NOTCH.CLOSE)) + 80;
+/** How long the page waits for an opening to end before it says shown anyway: no transitionend comes for an opening by a
+ *  keyboard shortcut (no growing, so at once), with Reduce motion or Less motion (only the --dur-1 fade), or for a shape that
+ *  does not change as it opens (no island, "free"). Otherwise the width spring, or the height spring after its delay. */
+export const growMs = (instant: boolean, reduced: boolean): number =>
+  instant ? 0 : (reduced ? DUR[1] : Math.max(springMs(NOTCH.OPEN_W), OPEN_H_DELAY_MS + springMs(NOTCH.OPEN_H))) + 80;
 
 // ---- the shape ----
 

@@ -8,7 +8,7 @@ import { S } from "./strings.ts";
 // canUndo: the one fact the card's words and its colour follow (M45).
 export type ApprovalWords = { question: string; what: string | null; why: string; undo: string | null; canUndo: boolean };
 /** The kinds of question the card knows. Anything else reads as one that cannot be undone. */
-const KNOWN: readonly string[] = ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule"];
+const KNOWN: readonly string[] = ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"];
 
 /** "Running: npm install zod" (or "Bash: npm install zod") reads "npm install zod"; "Write: /a/b.ts" reads "/a/b.ts"; anything else as it is. With the
  *  project, a path inside it is shown from the project folder down (M45). */

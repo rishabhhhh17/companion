@@ -2,7 +2,7 @@
 // makes is judged before it runs: allow, ask the user (an approval card), or deny.
 // Conservative on purpose: when unsure, ask.
 
-import { lstatSync, readdirSync, readlinkSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { commandsOf, hasAnsiQuote, hasDynamic, inputTargets, nestedStrings, parseShell, redirectTargets, unwrap } from "./shell.ts";
@@ -12,9 +12,11 @@ import { isIP } from "node:net";
 import { privateReason } from "./watchaddress.ts";
 import { isEnvFile } from "./diagram.ts";
 import { PRODUCT, PRODUCT_S } from "./names.ts";
+import { databaseProgram, databaseScript, databaseSetting, databaseTool, type DbAsk } from "./dbsafety.ts";
 
 export type Risk = "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule";
-export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean };
+// data: the ask is about a database (dbsafety.ts), so a package script that leads to it asks too.
+export type Verdict = { decision: "allow" | "ask" | "deny"; risk?: Risk; reason: string; undoable: boolean; data?: true };
 export type ToolCall = { tool: string; input: Record<string, unknown> };
 // started: the ids of the background commands this task's own shell commands reported starting.
 export type Started = { shells: ReadonlySet<string> };
@@ -376,7 +378,7 @@ const INLINE_CODE: Record<string, RegExp> = {
 // Also here: looking at the screen (rule 5: only on the person's own key press), searching the whole Mac, timers that run
 // later, disk tools. None of these is needed to build a project.
 const SYSTEM_TOOLS = new Set(["screencapture", "mdfind", "mdls", "tmutil", "crontab", "at", "atq", "atrm", "hdiutil", "dtrace", "fs_usage", "newfs_hfs", "newfs_apfs", "newfs_msdos", "security", "launchctl", "csrutil", "spctl", "tccutil", "dscl", "sysadminctl", "systemsetup", "networksetup", "pmset", "nvram", "diskutil", "kextload", "kextunload", "dseditgroup"]);
-const ACCOUNT_AND_NETWORK_TOOLS = new Set(["aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste", "pbcopy", "afplay", "ping", "nslookup", "dig", "host", "traceroute", "whois"]);
+const ACCOUNT_AND_NETWORK_TOOLS = new Set(["turso", "neonctl", "pscale", "aws", "gcloud", "gsutil", "az", "terraform", "tofu", "pulumi", "kubectl", "helm", "doctl", "stripe", "eas", "ibmcloud", "oci", "ansible", "vagrant", "mysql", "mariadb", "mysqldump", "pg_dump", "pg_restore", "pg_dumpall", "redis-cli", "mongosh", "mongo", "mongodump", "mongorestore", "psql", "ssh", "scp", "sftp", "rsync", "nc", "ncat", "netcat", "telnet", "ftp", "tailscale", "ngrok", "open", "say", "pbpaste", "pbcopy", "afplay", "ping", "nslookup", "dig", "host", "traceroute", "whois"]);
 const DOCKER_READ = new Set(["ps", "images", "logs", "inspect", "version", "info", "stats", "top", "port", "history", "search", "ls", "--version", "-v"]);
 // Words that make a command with dynamic parts (like $(...)) too risky to guess.
 const DANGEROUS_WORDS = new Set(["rm", "rmdir", "mv", "cp", "ln", "tee", "dd", "chmod", "chown", "chgrp", "truncate", "find", "xargs", "rsync", "git", "curl", "wget", "sh", "bash", "zsh", "dash", "ksh", "eval", "python", "python3", "node", "perl", "ruby", "php", "security", "osascript", "open", "npm", "npx", "pnpm", "yarn", "bun", "vercel", "wrangler", "gh", "docker", "kubectl", "aws", "gcloud", "terraform", "psql", "mysql", "ssh", "scp", "sudo", "su", "install", "touch", "mkdir", "tar", "unzip", "sed", "launchctl", "defaults"]);
@@ -428,6 +430,27 @@ function globMayMatchSettings(arg: string): boolean {
   return names.some((n) => re.test(n));
 }
 
+/** Each command of a Bash line with the folder it runs in, following `cd` and `pushd` the way evaluateBash does (M67 review:
+ *  so the SQLite file Undo keeps is the one `cd prisma && sqlite3 dev.db` really changes). A cd that leaves the project, or
+ *  that cannot be read, ends the list: evaluateBash refuses such a line anyway. */
+export function commandsWithFolder(cmd: string, project: string): { words: string[]; cwd: string }[] {
+  const out: { words: string[]; cwd: string }[] = [];
+  let cwd = project;
+  for (const words of commandsOf(cmd)) {
+    const name = basename(words[0] ?? "");
+    if (name === "cd" || name === "pushd") {
+      const target = words.slice(1).find((a) => !a.startsWith("-"));
+      if (!target || target === "-" || target.startsWith("~") || target.includes("$")) break;
+      const w = whereIs(project, target, cwd);
+      if (!w.inside && w.abs !== resolveLinks(project)) break;
+      cwd = w.abs;
+      continue;
+    }
+    out.push({ words, cwd });
+  }
+  return out;
+}
+
 function evaluateBash(cmd: string, ctx: Context): Verdict {
   // $'...' quoting is read the way the shell reads it (shell.ts), so what it would hide is judged below. Its escapes can still
   // spell a word no reader sees ($'\x63at'), so such a line never runs without a tap, here or inside sh -c, eval or env -S.
@@ -452,6 +475,8 @@ function evaluateBash(cmd: string, ctx: Context): Verdict {
   }
   const gitEnv = gitEnvVerdict(cmd, ctx);
   if (gitEnv) out = worst(out, gitEnv);
+  // A connection string to a database on another computer, handed to the command as a setting (DATABASE_URL=... npm run x).
+  for (const text of [cmd, ...nestedStrings(cmd)]) for (const w of parseShell(text)) { const d = databaseSetting(w); if (d) { out = worst(out, dbVerdict(d)); break; } }
   // Where input is read from with <: reading outside the project asks, whatever the command (the Read tool always did).
   for (const t of inputTargets(cmd)) {
     if (t.includes("$") || t.includes("`")) { out = worst(out, ask("outside_project", "This command decides while it runs which files to read, so it can't be checked first.", true)); continue; }
@@ -483,7 +508,46 @@ function evaluateCommand(words: string[], ctx: Context, cwd: string): Verdict {
   const v = evaluateCommandBody(words, ctx, cwd);
   return secretRead ? worst(v, secretRead) : v;
 }
+const dbVerdict = (d: DbAsk): Verdict => ({ ...ask(d.risk, d.reason, false), data: true });
+// Shortlist item 7: whatever else a command is, one that deletes data in a database or reaches one on another computer asks
+// with a card that names the database (dbsafety.ts). Its words lead, so the card says that first.
 function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdict {
+  const v = commandBody(words, ctx, cwd);
+  const name = basename(words[0] ?? "");
+  const d = words.length ? databaseProgram(name, words.slice(1), ctx.project, cwd) ?? databaseTool(words, ctx.project) ?? databaseScript(name, words.slice(1), ctx.project, cwd) : null;
+  const g = words.length ? gitScript(name, words.slice(1), ctx.project, cwd) : null;
+  const out = g ? worst(v, g) : v;
+  return d ? worst(dbVerdict(d), out) : out;
+}
+// Rule 10 for a project script file run by its language (python3 scripts/commit.py, node push.js): its code is read, and one
+// that runs a git command that writes (commit, add, push, config, update-ref and the like) asks as git. A comment that only
+// names one asks too, which is the safe side.
+const SCRIPT_RUNNERS = new Set(["node", "nodejs", "bun", "deno", "tsx", "ts-node", "ts-node-esm", "esno", "python", "python2", "python3", "ruby", "php", "perl"]);
+const GIT_SCRIPT_FILE = /\.(c?js|mjs|tsx?|mts|cts|py|rb|php|pl)$/i;
+const GIT_WRITE_IN_CODE = /\bgit["'`]?\s*,?\s*["'`]?\s*(?:-C\s*["'`]?\s*,?\s*["'`]?[^\s"'`,]+["'`]?\s*,?\s*["'`]?\s*)?(commit|add|push|config|update-ref|tag|reset|rebase|merge|cherry-pick|revert|am|stash|checkout|switch|branch|rm|mv|restore|symbolic-ref|notes|filter-branch|gc|prune)\b/;
+function gitScript(name: string, args: string[], project: string, cwd: string): Verdict | null {
+  if (!SCRIPT_RUNNERS.has(name)) return null;
+  const rest = (name === "deno" || name === "bun") && args[0] === "run" ? args.slice(1) : args;
+  const file = rest.find((a) => !a.startsWith("-") && GIT_SCRIPT_FILE.test(a));
+  if (!file) return null;
+  const abs = isAbsolute(file) ? file : resolve(cwd, file);
+  const rel = relative(project, abs);
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return null;
+  let text: string;
+  try { if (statSync(abs).size > 512 * 1024) return null; text = readFileSync(abs, "utf8"); } catch { return null; }
+  const m = GIT_WRITE_IN_CODE.exec(text);
+  return m ? ask("git", `This runs ${rel}, which runs git ${m[1]} and changes your project's Git.`, false) : null;
+}
+// Project tools that write the person's git (rule 10): a commit, a tag or release, git hooks, or the staging area.
+const GIT_TOOLS: Record<string, (sub: string) => string | null> = {
+  "git-cz": () => "This makes a Git commit in your project.", cz: () => "This makes a Git commit in your project.", commitizen: () => "This makes a Git commit in your project.",
+  "simple-git-hooks": () => "This changes your project's Git hooks.", husky: () => "This changes your project's Git settings and hooks.",
+  "lint-staged": () => "This changes what is staged in your project's Git.", "standard-version": () => "This makes a Git commit and a tag in your project.",
+  "release-it": () => "This makes a Git commit and a tag, and can publish a release.", "semantic-release": () => "This makes a Git tag and publishes a release.",
+  np: () => "This makes a Git commit and a tag, and publishes the package.", bumpp: () => "This makes a Git commit and a tag in your project.",
+  changeset: (sub) => (["version", "tag", "publish"].includes(sub) ? "This changes your project's versions and Git history." : null),
+};
+function commandBody(words: string[], ctx: Context, cwd: string): Verdict {
   const name = basename(words[0]);
   const args = words.slice(1);
   if (words[0].includes("$") || words[0].startsWith("`")) return ask("irreversible", "This command's name is decided while it runs, so it can't be checked first.", false);
@@ -506,6 +570,10 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
   }
   if (name === "find") return evaluateFind(args, ctx, cwd);
   if (name === "git") return evaluateGit(args, ctx, cwd);
+  const gitTool = GIT_TOOLS[name.replace(/(.)@[^/@]*$/, "$1")]?.(args.find((a) => !a.startsWith("-")) ?? "");
+  if (gitTool) return ask("git", gitTool, false);
+  // bundle exec rails ...: judge the program it runs.
+  if (name === "bundle" && args[0] === "exec" && args.length > 1) return evaluateCommand(args.slice(1), ctx, cwd);
   if (name === "mv" || name === "rm" || name === "rmdir" || name === "unlink" || name === "shred") { const r = evaluateRm(args, ctx, cwd); if (r.decision !== "allow") return r; }
   // npx, bunx, pnpx, "npm exec" and "pnpm dlx" run another program: judge that program.
   if (["npx", "bunx", "pnpx"].includes(name) || (["npm", "pnpm", "yarn", "bun"].includes(name) && ["exec", "dlx", "x"].includes(args[0] ?? ""))) {
@@ -517,7 +585,7 @@ function evaluateCommandBody(words: string[], ctx: Context, cwd: string): Verdic
   if (name === "bun" && args.some((a) => /^(-e|--eval|-p|--print)$/.test(a))) return ask("irreversible", INLINE, false);
   // node with no file to run reads its code from the input (a here document, a pipe): code nobody can check here. node --test and --version are fine.
   if ((name === "node" || name === "nodejs") && !args.some((a) => !a.startsWith("-") && !a.startsWith("<") && !a.startsWith(">")) && !args.some((a) => /^(-v|--version|-h|--help|-c|--check|--test.*)$/.test(a))) return ask("irreversible", INLINE, false);
-  if (["npm", "pnpm", "yarn", "bun"].includes(name)) return evaluatePackageManager(name, args);
+  if (["npm", "pnpm", "yarn", "bun"].includes(name)) return worst(evaluatePackageManager(name, packageTarget(name, args, cwd).args), packageScripts(name, args, ctx, cwd));
   if (["brew", "port", "apt", "apt-get", "gem", "pip", "pip3", "cargo"].includes(name)) {
     // Outside the project, so Undo cannot take these back (technical_research section 6). These tools take flags before the
     // subcommand (brew --verbose install, apt -y install, cargo -q install), so the subcommand is looked for among all the
@@ -771,6 +839,105 @@ function evaluatePackageManager(name: string, args: string[]): Verdict {
   }
   if (bumps && tags) return ask("git", `${name} version makes a git commit and a tag in your project`, false);
   return allow();
+}
+
+// The package scripts a package manager command runs: npm run x (with prex and postx), npm test and start, yarn x, and on an
+// install the project's own install and prepare scripts. Only their git writes and their database asks are carried over
+// (a script that, say, steps into another folder still runs as before): those must never happen without a tap (rule 10,
+// shortlist item 7). A script that runs another script is followed a few steps deep, never in a loop.
+let scriptDepth = 0;
+const NPM_ALIAS: Record<string, string> = { t: "test", tst: "test", test: "test", start: "start", stop: "stop", restart: "restart" };
+const INSTALLS = new Set(["install", "i", "ci", "add", "isntall", "in"]);
+// M67 review: the package a command runs in is not always the folder it is typed in. npm --prefix, -C and --workspace (-w),
+// pnpm -C, --dir and --filter (-F), yarn --cwd and `yarn workspace <name>`, bun --cwd and --filter name another package;
+// -ws, --workspaces, -r and --recursive mean every package. A workspace or filter is matched against every package in the
+// project (a few folders deep), so a script that writes git anywhere it could run is asked about.
+const PM_DIR = new Set(["--prefix", "-C", "--dir", "--cwd"]);
+const PM_PICK = new Set(["-w", "--workspace", "--filter", "-F", "--filter-prod"]);
+const PM_ALL = new Set(["-ws", "--workspaces", "-r", "--recursive"]);
+// Other flags that take a value, so the value is not read as the script's name.
+const PM_VALUE = new Set(["--loglevel", "--registry", "--cache", "--userconfig", "--tag", "--reporter", "--workspace-concurrency", "--include", "--omit", "--script-shell"]);
+type PmTarget = { dirs: string[] | "all" | "unknown"; args: string[] };
+function packageTarget(name: string, args: string[], cwd: string): PmTarget {
+  let dirs: string[] | "all" | "unknown" = [cwd];
+  const rest: string[] = [];
+  let a = [...args];
+  // yarn workspace <name> <command...>; yarn workspaces foreach [flags] <command...>
+  if (name === "yarn") {
+    const first = a.findIndex((x) => !x.startsWith("-"));
+    if (a[first] === "workspace") { dirs = "all"; a = [...a.slice(0, first), ...a.slice(first + 2)]; }
+    else if (a[first] === "workspaces" && a[first + 1] === "foreach") { dirs = "all"; a = [...a.slice(0, first), ...a.slice(first + 2)].filter((x) => !/^-/.test(x) || PM_VALUE.has(x)); }
+  }
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const eq = x.indexOf("=");
+    const flag = x.startsWith("-") && eq > 0 ? x.slice(0, eq) : x;
+    const inline = x.startsWith("-") && eq > 0 ? x.slice(eq + 1) : null;
+    const value = (): string | null => inline ?? (i + 1 < a.length ? a[++i] : null);
+    if (PM_DIR.has(flag)) {
+      const v = value();
+      if (v === null || v.includes("$") || v.includes("`") || v.startsWith("~")) { dirs = "unknown"; continue; }
+      if (Array.isArray(dirs)) dirs = [resolve(cwd, v)];
+    } else if (PM_PICK.has(flag)) {
+      const v = value();
+      if (v === null || v.includes("$") || v.includes("`")) { dirs = "unknown"; continue; }
+      if (dirs !== "unknown") dirs = "all";
+    } else if (PM_ALL.has(flag)) {
+      if (dirs !== "unknown") dirs = "all";
+    } else if (PM_VALUE.has(flag) && inline === null) {
+      i++;
+    } else rest.push(x);
+  }
+  return { dirs, args: rest };
+}
+/** The project's package folders (each with a package.json), a few folders deep and a bounded number, never node_modules. */
+function packageFolders(project: string): string[] {
+  const out: string[] = [];
+  let seen = 0;
+  const walk = (d: string, depth: number) => {
+    let names: import("node:fs").Dirent[];
+    try { names = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    if (names.some((e) => e.name === "package.json" && e.isFile())) out.push(d);
+    for (const e of names) {
+      if (++seen > 4000 || out.length > 200) return;
+      if (e.isDirectory() && depth < 4 && e.name !== "node_modules" && !e.name.startsWith(".")) walk(join(d, e.name), depth + 1);
+    }
+  };
+  walk(project, 0);
+  return out;
+}
+function packageScripts(name: string, args: string[], ctx: Context, cwd: string): Verdict {
+  if (scriptDepth > 3) return allow();
+  const t = packageTarget(name, args, cwd);
+  if (t.dirs === "unknown") return ask("irreversible", "This command decides while it runs which package's scripts to run, so they can't be checked first.", false);
+  const dirs = t.dirs === "all" ? packageFolders(ctx.project) : t.dirs;
+  let out = allow();
+  for (const d of dirs) out = worst(out, scriptsIn(name, t.args, ctx, d));
+  return out;
+}
+function scriptsIn(name: string, args: string[], ctx: Context, dir: string): Verdict {
+  let scripts: Record<string, unknown>;
+  try { const j = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")); scripts = j && typeof j.scripts === "object" && j.scripts ? j.scripts : {}; } catch { return allow(); }
+  const pos = args.filter((a) => !a.startsWith("-"));
+  const sub = pos[0] ?? "";
+  let names: string[] = [];
+  if (sub === "run" || sub === "run-script" || sub === "rum" || sub === "urn") names = pos[1] ? [pos[1]] : [];
+  else if (NPM_ALIAS[sub] && (name === "npm" || typeof scripts[NPM_ALIAS[sub]] === "string")) names = [NPM_ALIAS[sub]];
+  else if (INSTALLS.has(sub) || (name === "yarn" && sub === "") || (name !== "npm" && sub === "install")) names = ["preinstall", "install", "postinstall", "prepare"];
+  else if (name !== "npm" && sub && typeof scripts[sub] === "string") names = [sub];
+  if (names.length === 1 && !names[0].startsWith("pre") && !["preinstall", "install"].includes(names[0])) names = [`pre${names[0]}`, names[0], `post${names[0]}`];
+  let out = allow();
+  for (const n of names) {
+    const body = scripts[n];
+    if (typeof body !== "string" || !body.trim()) continue;
+    scriptDepth++;
+    let v: Verdict;
+    try { v = evaluateBash(body, ctx); } catch { v = allow(); } finally { scriptDepth--; }
+    if (v.decision === "allow" || (v.risk !== "git" && !v.data)) continue;
+    const label = `The script ${n} runs "${body.length > 80 ? `${body.slice(0, 77)}...` : body}"`;
+    out = worst(out, v.risk === "git" ? ask("git", `${label}, which changes your project's Git history.`, false) : { ...ask(v.risk ?? "irreversible", `${label}. ${v.reason}`, false), data: true });
+  }
+  return out;
 }
 
 function evaluateService(name: string, args: string[]): Verdict {

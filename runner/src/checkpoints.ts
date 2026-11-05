@@ -159,6 +159,18 @@ export class CheckpointStore {
   /** Keep these checkpoints whatever their age, for as long as the guard is in place: it is asked at every prune, and when
    *  it cannot answer nothing is removed. Gives back the way to take the guard away. */
   guard(fn: () => Iterable<string>): () => void { this.guards.add(fn); return () => { this.guards.delete(fn); }; }
+  /** A short value the engine keeps beside this store, in its own folder and never in the project, so it outlasts a restart
+   *  (the review's start of changes said but not reviewed yet). Null when there is none or it cannot be read. */
+  note(name: string): string | null {
+    try { const j = JSON.parse(readFileSync(join(this.shadowDir, "companion-notes.json"), "utf8")); const v = j?.[name]; return typeof v === "string" ? v : null; } catch { return null; }
+  }
+  setNote(name: string, value: string | null): void {
+    const f = join(this.shadowDir, "companion-notes.json");
+    let j: Record<string, string> = {};
+    try { const r = JSON.parse(readFileSync(f, "utf8")); if (r && typeof r === "object" && !Array.isArray(r)) j = r; } catch { /* a new one */ }
+    if (value === null) delete j[name]; else j[name] = value;
+    try { mkdirSync(this.shadowDir, { recursive: true }); const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`; writeFileSync(tmp, JSON.stringify(j), { mode: 0o600 }); renameSync(tmp, f); } catch { /* a nicety: the review then starts from the newest version, as before */ }
+  }
   /** Over the size cap, even after pruning down to the newest few and gc: the review of changes pauses for this project. */
   get full(): boolean { return this.fullNow; }
   /** Nothing is waiting in the store (for tests): every step done, the backup flag set. */

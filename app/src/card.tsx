@@ -14,7 +14,7 @@ import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
 import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
-import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -76,7 +76,7 @@ import { shapeAsk } from "./settingsFit.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
 import { memoryDate, offBoxAfter, offRecordAtStart, recapDue, toastMs } from "./memorySettings.ts";
 import { webLink } from "./links.ts";
-import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
+import { DRAFT_KEY, askKey, boxTakesKeyboard, draftToKeep, heardGoesTo, heardInto, heardKind, putBack, sendsItself, sentOutcome, type FollowAim, type HeardKind, type Sent } from "./askbox.ts";
 import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyDays, historyFiltering, historyTime, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
@@ -1250,6 +1250,7 @@ function Card() {
   // A place made by the card itself (what changed, your turn): pointed at the same way, through pointProblem.
   const pointAt = (x: { project: string; problem: Problem }) => { if (pointsOnScreen(x.problem)) pointProblem(x.project, x.problem); };
   const projectRef = useRef(project); projectRef.current = project;
+  const firstRunRef = useRef(!onboarded); firstRunRef.current = !onboarded;
   useEffect(() => {
     // The key and the Find the problem chip on Home take one path (latest.current.find).
     const offKey = listen("find-problem", (e) => latest.current.find(e.payload));
@@ -1261,7 +1262,8 @@ function Card() {
       // A practice copy opened again runs Find by itself (resume): that answer is shown on the card, never pointed at on the
       // screen, since nobody pressed anything (rule 5). Show me where points at it on a press.
       if (ev.type === "problem.found" && quietFind.current === ev.project) { quietFind.current = ""; return; }
-      if (ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === projectRef.current) pointProblem(ev.project, ev.problem);
+      // The first run's own check shows its verdict on the first run only (m67 bug 27).
+      if (pointsOnFound(ev, { project: projectRef.current, firstRun: firstRunRef.current }) && pointsOnScreen(ev.problem) && ev.project) pointProblem(ev.project, ev.problem);
     });
     return () => { offKey.then((f) => f()); offDropFind.then((f) => f()); offFound.then((f) => f()); };
   }, []);
@@ -1309,21 +1311,30 @@ function Card() {
         keysDown.current = null;
         if (to === "followUp") {
           // Never sent by itself unless auto send is on, and then only a clear request for work.
-          setFollowText(ev.text); followFromVoice.current = true;
-          if (autoSend && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);
+          // m67 bug 17: added after anything typed there, never over it; joined words wait for the person's press.
+          const into = heardInto(followTextNow.current, ev.text);
+          setFollowText(into.text); followFromVoice.current = true;
+          if (autoSend && !into.joined && sendsItself(ev.text, lang)) setTimeout(() => sendFollowNow.current(), 0);
         } else {
           homeDispatch({ type: "pick", tab: "now" });   // the box is on Now
-          setBox(ev.text);
-          fromVoice.current = true;
+          const typed = box.current?.value ?? "";
           const kind = heardKind(ev.text, lang);
-          setVoiceHint(autoSend && kind !== "work" && kind !== "short" ? kind : null);
           // After the Show me key the words are a question about the screen; "wait" or "never mind" waits in the box instead.
-          if (to === "showme" && kind !== "holdOff") { sentFromBox("showme"); showMeRef.current(ev.text, ev.text, []); setAskMode("task"); clearBox(); setVoiceHint(null); }
-          else if (to === "showme") setVoiceHint("holdOff");
-          // With files added, the words wait in the box for Start: they never go with files by themselves. Words that mean
-          // wait or stop, or ask about the screen, wait too (askbox.ts sendsItself).
-          else if (autoSend && attachedNow.current.length === 0 && sendsItself(ev.text, lang)) setTimeout(() => submitNow.current(), 0);
-          else setTimeout(() => box.current?.focus(), 30);
+          // Words typed in the box stay there (m67 bug 17).
+          if (to === "showme" && kind !== "holdOff") { fromVoice.current = true; sentFromBox("showme"); showMeRef.current(ev.text, ev.text, []); setAskMode("task"); if (!typed.trim()) clearBox(); setVoiceHint(null); }
+          else {
+            // m67 bug 17: spoken words are added after the typed words, never over them (or the saved draft). With typed
+            // words there the box waits for Start: auto send never sends only the spoken part, nor the whole unasked.
+            const into = heardInto(typed, ev.text);
+            setBox(into.text);
+            fromVoice.current = true;
+            setVoiceHint(autoSend && !into.joined && kind !== "work" && kind !== "short" ? kind : null);
+            if (to === "showme") setVoiceHint("holdOff");
+            // With files added, the words wait in the box for Start: they never go with files by themselves. Words that mean
+            // wait or stop, or ask about the screen, wait too (askbox.ts sendsItself).
+            else if (autoSend && attachedNow.current.length === 0 && !into.joined && sendsItself(ev.text, lang)) setTimeout(() => submitNow.current(), 0);
+            else setTimeout(() => box.current?.focus(), 30);
+          }
         }
         dispatch({ type: "ui.voiceClosed" });
       }
@@ -1626,10 +1637,11 @@ function Card() {
   };
   const submit = () => {
     const prompt = box.current?.value.trim() ?? "";
-    const route = askRoute({ prompt, project, newFolder });
+    const route = askRoute({ prompt, project, newFolder, working });
     if (route === "newFolder") { startNew("build"); return; }
     if (route === "needWords") { needWords(S.typeFirst); return; }
     if (route === "chooseProject") { setNoProjectFor("build"); return; }
+    if (route === "busy") { needWords(S.askBusy); return; }
     // A task is Flow's. With Flow off the words stay in the box and the box says why, instead of bouncing silently (the ask
     // box is core, so it stays; Enter and hold to talk both come through here).
     if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
@@ -1709,6 +1721,8 @@ function Card() {
   const research = () => {
     if (inNewFolder) { startNew("research"); return; }
     if (!project && (box.current?.value.trim() ?? "")) { setNoProjectFor("research"); return; }
+    // With the box empty it says what to type, as Show me and Explain an error do.
+    if (!(box.current?.value.trim() ?? "")) { pressed(); needWords(S.researchHint); return; }
     const c = askResearch(project, box.current?.value ?? "", off);
     if (!c || !project) return;
     sentFromBox("research");
@@ -1720,6 +1734,7 @@ function Card() {
     const goal = box.current?.value.trim() ?? "";
     if (goal && inNewFolder) { startNew("build"); return; }
     if (goal && !project) { setNoProjectFor("build"); return; }
+    if (!goal) { pressed(); needWords(S.planHint); return; }
     if (!goal || !project) return;
     // At the free fix limit a plan starts nothing: the limit card shows, and the goal stays in the box and the result stays.
     if (atFreeLimit(planNow(), m.proUsage ?? null)) { dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: m.proUsage?.resetsOn }); return; }

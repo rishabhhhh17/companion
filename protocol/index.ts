@@ -256,12 +256,15 @@ export type AgentTool = Envelope & { type: "agent.tool"; agent: string; tool: st
 export type AgentFile = Envelope & { type: "agent.file"; agent: string; file: string; kind: "added" | "modified" | "deleted" };
 export type ApprovalRequest = Envelope & {
   type: "approval.request"; approval: string; agent: string; checkpoint: string; toolUseId: string;
-  risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule"; title: string; expiresAt: string;
+  risk: "irreversible" | "git" | "outside_project" | "install" | "network" | "settings" | "house_rule" | "scripts"; title: string; expiresAt: string;
   /** M28: what will happen, in plain words: the command (secrets covered) or the file. Shown on the card so nobody answers
    *  a question they cannot read. Absent from older engines. */
   action?: string;
   /** M28: whether Undo can take it back. Absent from older engines (the card then says nothing either way). */
   undoable?: boolean;
+  /** M67: true when a check asks it (install the packages, go online, run the scripts), not a tool Claude wants to use.
+   *  The first run screen shows these, since it covers Home while the first check runs. */
+  check?: boolean;
 };
 export type CostUpdate = Envelope & {
   type: "cost.update"; agent: string; usdEstimate: number; basis: string; tokens: { in: number; cacheRead: number; out: number };
@@ -687,7 +690,8 @@ const EVENTS: Record<string, Check[]> = {
   "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk)],
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
-  "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems")],
+  // answers: the id of the command this state answers; refused: why that command could not do what it asked.
+  "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems"), opt("answers", str("answers")), opt("refused", str("refused"))],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],
   "doctor.report": [list("items")],
@@ -750,7 +754,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
-  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable"))],
+  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],

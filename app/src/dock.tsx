@@ -157,7 +157,9 @@ function Dock() {
   // keeps up with the pointer; the page only feels the speed: the top of the body trails behind it.
   const press = useRef<{ x: number; y: number; dragging: boolean; at: number } | null>(null);
   const still = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const down = (e: React.PointerEvent) => { press.current = { x: e.screenX, y: e.screenY, dragging: false, at: e.timeStamp }; (e.target as HTMLElement).setPointerCapture(e.pointerId); flow.api.poke(e.clientX, e.clientY); void invoke("char_click"); };
+  // Only a primary press (bug bash 5 Nov): a right click or Control click neither opens Home nor starts a drag the shell
+  // would not follow.
+  const down = (e: React.PointerEvent) => { if (e.button !== 0 || e.ctrlKey) return; press.current = { x: e.screenX, y: e.screenY, dragging: false, at: e.timeStamp }; (e.target as HTMLElement).setPointerCapture(e.pointerId); flow.api.poke(e.clientX, e.clientY); void invoke("char_click"); };
   const move = (e: React.PointerEvent) => {
     const p = press.current;
     if (!p) return;

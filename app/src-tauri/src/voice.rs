@@ -127,7 +127,8 @@ pub fn why_silent(allowed: bool, lid: bool) -> Silence {
     if !allowed { Silence::Permission } else if lid { Silence::Lid } else { Silence::Device }
 }
 
-/// Speech engines sometimes write sound markers instead of words. Those are not words.
+/// Speech engines sometimes write sound markers instead of words. Those are not words. Nor is punctuation alone (a lone full
+/// stop from a near silent hold, bug bash 5 Nov): with no letter or digit left, it is silence.
 pub fn clean_transcript(raw: &str) -> String {
     let mut out = String::new();
     let mut depth = 0u32;
@@ -140,6 +141,7 @@ pub fn clean_transcript(raw: &str) -> String {
             _ => {}
         }
     }
+    if !out.chars().any(char::is_alphanumeric) { return String::new(); }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -431,6 +433,15 @@ mod tests {
         assert_eq!(clean_transcript("how do I  deploy [music] this   site"), "how do I deploy this site");
         assert_eq!(clean_transcript("♪ la la ♪ hello"), "la la hello"); assert_eq!(clean_transcript("*coughs* hello"), "coughs hello");
         assert_eq!(clean_transcript("what is (the) plan"), "what is plan");
+    }
+    #[test]
+    fn a_transcript_with_no_letters_or_digits_is_silence() {
+        // Bug bash (5 Nov): a near silent hold must leave nothing in the ask box, not a lone full stop saved as a draft.
+        for raw in [".", " . ", "...", "?!", ", .", "- -", "\u{2026}", "\u{2014}", "'\"", "[music] ."] { assert_eq!(clean_transcript(raw), "", "{raw:?}"); }
+        assert_eq!(clean_transcript("2"), "2", "a digit is something said");
+        assert_eq!(clean_transcript("ok."), "ok.");
+        assert_eq!(clean_transcript("caf\u{e9}"), "caf\u{e9}");
+        assert_eq!(clean_transcript("\u{4f60}\u{597d}"), "\u{4f60}\u{597d}", "letters of any script count");
     }
     #[test]
     fn auto_send_needs_the_setting_and_at_least_three_words() {

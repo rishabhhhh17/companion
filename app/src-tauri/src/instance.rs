@@ -49,6 +49,11 @@ pub fn take_waiting(path: &Path, wait: Duration, poll: Duration) -> Taken {
     }
 }
 
+/// How long a new copy waits for the one before it to end. Longer than the slowest quit (the speech models' wait on an
+/// update, then the engine's grace), so a copy opened while the last one is still quitting never leaves by mistake and
+/// leaves the person with nothing running (5 Nov 2026: it was 5 seconds, about what a slow quit can take).
+pub const START_WAIT: Duration = Duration::from_secs(15);
+
 /// Only a copy that is sure another one runs leaves.
 pub fn should_leave(t: &Taken) -> bool { matches!(t, Taken::Elsewhere) }
 

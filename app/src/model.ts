@@ -19,7 +19,7 @@ import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
 export type ToolLine = { id: string; text: string; tool: string; words: string; outcome: "ran" | "blocked" | "needs_approval" | "denied" | "" };
-export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string; action?: string; undoable?: boolean };
+export type ApprovalCard = { id: string; agent: string; title: string; risk: string; checkpoint: string; expiresAt: string; action?: string; undoable?: boolean; check?: boolean };
 // summary: a failed step's one plain sentence from the engine; problem: where it failed. The detail (the check's own
 // output) is shown behind Details (checkDetail.tsx).
 /** ms and runs (M69): how long the check took and the commands it ran with their exit codes, for the receipt's proof ticks. */
@@ -102,6 +102,12 @@ export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "noth
 /** Is there anything to point at on the screen? A deploy problem with no line in this folder (a setting Vercel lacks,
  *  say) is Companion's own sentence, never on screen, so the card says it in words and the screen is not looked at. */
 export const pointsOnScreen = (p: Problem | null | undefined): p is Problem => !!p && !(p.kind === "message" && p.from === "deploy");
+/** m67 bug 27: whether a Find answer is pointed at on the screen (point_problem opens the editor and may look at the
+ *  screen). Only a failed answer with a place, for the project on screen, and never on the first run: its first check is
+ *  not a press of Point at the problem, and the first run must not take focus or ask for Screen Recording (rules 5, 8, 9). */
+export function pointsOnFound(ev: { type?: string; verdict?: string; problem?: Problem | null; project?: string }, at: { project: string; firstRun: boolean }): boolean {
+  return ev.type === "problem.found" && ev.verdict === "failed" && pointsOnScreen(ev.problem) && ev.project === at.project && !at.firstRun;
+}
 export type About = { project: string; about: string; origin: string; needsInstall: boolean; installCommand: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[] };
 // A practice project (app/src/practice.ts; the catalog is app/sample/practices.json). kind: its id in the catalog. stage:
 // lesson and proving are the setting practice's fix (the lesson is open, then the checks run again); proving is also the
@@ -824,7 +830,7 @@ function reduceRest(m: Model, e: Ev): Model {
     case "cost.update": return m.task && m.away[e.agent] === undefined ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;
-      return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt, action: e.action, undoable: e.undoable }] };
+      return { ...m, approvals: [...m.approvals, { id: e.approval, agent: e.agent, title: e.title, risk: e.risk, checkpoint: e.checkpoint, expiresAt: e.expiresAt, action: e.action, undoable: e.undoable, ...(e.check === true ? { check: true } : {}) }] };
     case "proof.step": {
       // The first run's check (and Point at the problem) says which step it is on while it runs (the audit, item 52).
       if (m.point?.stage === "checking" && e.status === "running") m = { ...m, point: { ...m.point, label: String(e.label ?? e.rung) } };
@@ -1071,7 +1077,16 @@ export function activityNow(m: Model, n = 2): ToolLine[] {
 const BUSY: CharacterState[] = ["thinking", "working", "checking", "needsYou"];
 /** Is the card busy with work (Stop shows; the Start row, the off the record switch and the follow up box do not)? Not for
  *  a task that has ended on a question: nothing runs, and the follow up box is where the answer goes. */
-export const cardWorking = (m: Model): boolean => BUSY.includes(m.character) && !waitsForAnswer(m);
+export const cardWorking = (m: Model): boolean => BUSY.includes(m.character) && !waitsForAnswer(m) && !foundWaits(m);
+/** m67 bug 22: Check my project found a problem and its agent waits on the person (the engine says needsYou after
+ *  problem.found): nothing runs, so Home shows the finding and Fix it, not Working and Stop. Not while an approval, the loop
+ *  card, a pause, a plan or a question waits, or another agent still works. */
+export function foundWaits(m: Model): boolean {
+  const a = m.point?.stage === "found" ? m.point.agent : undefined;
+  if (!a || m.agents[a] !== "needsYou") return false;
+  if (m.approvals.length || m.stuck || m.paused || m.plan || m.agentsAsk) return false;
+  return Object.entries(m.agents).every(([x, s]) => x === a || !BUSY.includes(s));
+}
 // A task that ended on a question waits for nothing once an undo has put its files back (the engine sends no new state for
 // it): its agent is ready again, unless something else waits for it (an approval card, the loop card, a pause, a plan).
 function answerGone(m: Model): Model {

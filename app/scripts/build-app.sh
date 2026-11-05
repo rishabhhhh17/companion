@@ -33,6 +33,7 @@ fi
 echo "no Claude binary inside the app (Anthropic's build is installed at first run)"
 codesign --verify --deep --strict "$APP" && echo "signature verifies"
 if [ "$(plutil -extract LSUIElement raw "$APP/Contents/Info.plist" 2>/dev/null)" = "true" ]; then echo "LSUIElement true (no Dock icon)"; else echo "FAIL: the app would show a Dock icon (LSUIElement is missing)"; exit 1; fi
+[ "$(plutil -extract NSSupportsAutomaticTermination raw "$APP/Contents/Info.plist" 2>/dev/null)" = "false" ] || { echo "FAIL: macOS could quit the app by itself (NSSupportsAutomaticTermination is not false)"; exit 1; }
 plutil -extract NSMicrophoneUsageDescription raw "$APP/Contents/Info.plist" >/dev/null 2>&1 || { echo "FAIL: the microphone sentence is missing"; exit 1; }
 # Info.plist promises a clean Mac relies on: macOS 14 or newer.
 [ "$(plutil -extract LSMinimumSystemVersion raw "$APP/Contents/Info.plist" 2>/dev/null)" = "14.0" ] || { echo "FAIL: the minimum macOS version is not 14.0"; exit 1; }
