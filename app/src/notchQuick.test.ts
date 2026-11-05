@@ -49,7 +49,8 @@ describe("the one fact (M70)", () => {
     expect(quickFact(m({ review: review(3), history: [row()] }), NOW)).toBe("my-shop: 3 changes to review");
     expect(quickFact(m({ review: review(1) }), NOW)).toBe("my-shop: 1 change to review");
     expect(quickFact(m({ review: review(3, "reviewed"), history: [row()] }), NOW)).toBe("my-shop: last check passed 2 hours ago");
-    expect(quickFact(m({ history: [row({ proof: "failed", status: "error" })] }), NOW)).toMatch(/^my-shop has a problem/);
+    // M71: the short form, so the name moves up beside the greeting and the fact is never cut (factLines).
+    expect(quickFact(m({ history: [row({ proof: "failed", status: "error" })] }), NOW)).toMatch(/^my-shop: a check failed /);
     // M70 step 4 (the review): never the filler "Ready when you are" for a project. A project never checked says so, as
     // Home's own headline does, which is the reason its Check my project button is there.
     expect(quickFact(m(), NOW)).toBe("my-shop: not checked yet");
@@ -163,7 +164,7 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
     expect(panel).toContain('const greet = quickGreeting(useSetting("you.name"));');
-    expect(panel).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}>{lines.fact}</b></span>');
+    expect(panel).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}><Dot colour={dot} />{lines.fact}</b></span>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.
     expect(read("./style.css")).toMatch(/\.island-panel \{[^}]*display: grid; grid-template-columns: minmax\(0, 1fr\);/);
   });
@@ -265,8 +266,9 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
     expect(view.match(/<FlowMini /g)?.length).toBe(1);
     expect(view).toContain('<FlowMini className="ip-agent" state="idle" still={!shown} />');
   });
-  test("every action looks like a button; Review, when offered, is the main one", () => {
-    expect(view).toContain('kind={id === "review" ? "primary" : "secondary"}');
+  test("every action looks like a button, each with its colour tile (M71: the mock's raised pills, no blue main one)", () => {
+    expect(view).toContain('kind="secondary" size="sm" className="ip-act"');
+    expect(view).toContain('<Tile colour={look.colour} icon={look.icon} size="btn" />');
     expect(view).not.toContain('kind={i === 0 ? "secondary" : "quiet"}');
     expect(view).toContain("{quickLabel(id, m, now)}");
   });
@@ -370,5 +372,24 @@ describe("the fact never loses its words to a long project name", () => {
     const css = read("./ui/notch.css");
     expect(css).toMatch(/\.island-shape \{[^}]*box-shadow:[^}]*var\(--notch-edge-open\)[^}]*var\(--open\)/);
     expect(read("./ui/tokens.css")).toContain("--notch-edge-open:");
+  });
+});
+
+// M71, black with colour: the fact's dot and each button's tile take the same meaning colours as Home (meaning.ts).
+import { factColour, quickFactKind, quickLook, QUICK_LOOK } from "./notchQuick.ts";
+describe("M71: the hover panel's colours mean what Home's mean", () => {
+  test("the fact's dot: changes orange, a problem red, a passed check green, not checked grey", () => {
+    expect(factColour("changes")).toBe("orange");
+    expect(factColour("failing")).toBe("red");
+    expect(factColour("passed")).toBe("green");
+    expect(factColour("notChecked")).toBe("grey");
+    expect(factColour("working")).toBe("blue");
+    expect(quickFactKind(m({ history: [row({ proof: "failed", status: "error" })] }), NOW)).toBe("failing");
+  });
+  test("each button's tile: Ask blue, Review changes orange, Check green; Check after a failed check is red", () => {
+    expect(QUICK_LOOK.ask.colour).toBe("blue");
+    expect(QUICK_LOOK.review.colour).toBe("orange");
+    expect(QUICK_LOOK.check.colour).toBe("green");
+    expect(quickLook("check", m({ history: [row({ proof: "failed", status: "error" })] }), NOW).colour).toBe("red");
   });
 });

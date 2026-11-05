@@ -50,7 +50,7 @@
 /* The line Flowflow found, drawn as a code review draws a failing line: a quiet red wash with a red rule at its left edge,
    in the page's own words (M51 polish: the solid highlighter yellow was the loudest thing on the screen and read as a
    worksheet). The wash wipes in left to right once. */
-.found-line { padding: 1px var(--space-1); border-radius: var(--r-key); background: linear-gradient(var(--removed), var(--removed)) no-repeat left / 100% 100%; box-shadow: inset var(--hair-2) 0 0 var(--bad); color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; animation: marker-in var(--dur-3) var(--ease-out) var(--dur-1) both; }
+.found-line { padding: 1px var(--space-1); border-radius: var(--r-key); background: var(--removed); box-shadow: inset var(--hair-2) 0 0 var(--bad); color: var(--fg); -webkit-box-decoration-break: clone; box-decoration-break: clone; animation: marker-in var(--dur-3) var(--ease-out) var(--dur-1) both; }
 @keyframes marker-in { from { background-size: 0 100%; } }
 
 /* The checks that ran, one tick each, 90 ms apart; the tick draws itself. Detail in the code face. */
@@ -89,15 +89,8 @@
 .note-btn { min-height: 24px; margin: 0; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--fg-2); font: inherit; cursor: default; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
 .note-btn:hover { background: var(--surface-3); color: var(--fg); }
 
-/* ---------- The one glossy thing: the water gel pill (the final "do it" or "prove it" of a flow), once per view ---------- */
-button.gel.primary, .hero-main button.primary { position: relative; overflow: clip; border-color: var(--gel-edge); background: linear-gradient(180deg, var(--gel-hi) 0, var(--gel-mid) 50%, var(--gel-lo) 100%); color: var(--gel-ink); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), 0 2px 8px var(--gel-glow); }
-button.gel.primary::before, .hero-main button.primary::before { content: ""; position: absolute; left: 4px; right: 4px; top: 1px; height: 46%; border-radius: 999px 999px 50% 50% / 999px 999px 40% 40%; background: linear-gradient(180deg, var(--gel-gloss), transparent); pointer-events: none; }
-button.gel.primary:hover:not(:disabled), .hero-main button.primary:hover:not(:disabled) { filter: brightness(1.05); }
-button.gel.primary:active:not(:disabled), .hero-main button.primary:active:not(:disabled) { filter: brightness(.95); box-shadow: inset 0 var(--hair) 1px var(--gel-lip); }
-button.gel.primary:disabled::before, .hero-main button.primary:disabled::before { display: none; }
 /* The gel keeps its own colour under the pointer and when pressed: parts.css's main button fills (.btn.primary:hover and
    :active) would turn it white, grey or a dark slab (the audit, item 3). Only its light changes. */
-.home .hero-main .btn.primary:not(:disabled):is(:hover, :active), .home .btn.gel.primary:not(:disabled):is(:hover, :active), .home .fr .fr-key.primary:not(:disabled):is(:hover, :active) { background: linear-gradient(180deg, var(--gel-top) 0, var(--gel-mid) 48%, var(--gel-body) 100%); color: var(--gel-ink); }
 
 /* ---------- An item's tile (M51 step 3, after HeyClicky): a soft coloured square with a simple drawing, one per item in the
    side list, History and Learn (itemMarks.tsx). Five fixed tints (ui/tokens.css), picked by data-tint; Plain icons turns
@@ -171,15 +164,10 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* Tall: one column, the places along its top. */
 .sw-win[data-sw="tall"] { flex-direction: column; width: 46%; aspect-ratio: 4 / 5; }
 .sw-win[data-sw="tall"] .sw-side { flex: 0 0 16%; }
-/* The layout pictures are lit like Home: the room's sky at the top, only while the light behind Home is on and the theme is
-   dark (--sw-sky-a is 0 on Black and White and with the light off, the usual). The theme pictures keep their own plain page. */
-.home .sw-win:is([data-sw="wide"], [data-sw="tall"]) { background: radial-gradient(110% 80% at 78% -20%, color-mix(in srgb, var(--el-sky) var(--sw-sky-a), transparent), transparent 75%), var(--sw-bg); }
-/* Colour: the window as Home is in each. Vivid: a full saturated sky, rays through it, the colour all the way down and a deep
-   lit floor. Calm, the usual: a plain window with the one blue pill. Different at a glance. */
-.sw-room[data-sw="vivid"] { background: repeating-conic-gradient(from 168deg at 70% -40%, transparent 0deg, color-mix(in srgb, var(--el-light) 22%, transparent) 2deg, transparent 4.5deg, transparent 8deg), radial-gradient(120% 95% at 75% -15%, var(--el-sky), transparent 80%), linear-gradient(180deg, color-mix(in srgb, var(--el-sky) 30%, transparent), color-mix(in srgb, var(--el-foot) 85%, transparent)), var(--room-base); }
+
 .sw-room[data-sw="calm"] { background: var(--bg); }
 .sw-room .sw-side { background: color-mix(in srgb, var(--sw-card) 70%, transparent); }
-.sw-room .sw-main b { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base) 60%); }
+
 .sw-room[data-sw="calm"] .sw-main b { background: var(--el-base); }
 /* Flowflow, the orb and its bubbles, in a water's colours (waterDrop.tsx, orbArt.ts), on the Water choices. */
 .pic-drop { display: block; width: 64px; height: auto; pointer-events: none; user-select: none; -webkit-user-select: none; }
@@ -188,7 +176,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .pic-flow.pic-lively { width: 84px; }
 /* The main button, glossy or flat. */
 .sw-pill { display: block; width: 70%; min-height: 18px; border: var(--hair) solid var(--el-deep); border-radius: var(--r-pill); background: var(--el-base); }
-.sw-pill[data-sw="on"] { background: linear-gradient(180deg, var(--el-grad-1) 0, var(--el-base) 58%, var(--el-lift) 100%); box-shadow: inset 0 var(--hair) 0 var(--sw-gel-lip), inset 0 -5px 3px -4px var(--sheen-shine), 0 4px 10px -3px var(--el-shadow); }
+.sw-pill[data-sw="on"] { box-shadow: inset 0 var(--hair) 0 var(--sw-gel-lip), inset 0 -5px 3px -4px var(--sheen-shine), 0 4px 10px -3px var(--el-shadow); }
 /* Corners: a card with two lines, its corners soft or crisp. */
 .sw-corner { display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); width: 64%; aspect-ratio: 3 / 2; box-sizing: border-box; padding: var(--space-2); border: var(--hair) solid var(--line-strong); background: var(--surface-3); }
 .sw-corner[data-sw="soft"] { border-radius: var(--sw-r-soft); }
@@ -233,106 +221,27 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
   .home[data-layout="wide"][data-view="settings"] .settings-content { grid-column: 2; grid-row: 2; max-width: none; margin-inline: 0; padding: 0 var(--space-6) var(--fade); }
 }
 
-/* ------------------------------------------------------------------------------------------------------------------ */
-/* The room (the brand language, 1 Nov 2026). Home is a place lit from inside by the group at work (data-element on .home,
-   element.ts roomElement): Flow's water on Now and History, in the water chosen in Settings; Guide's sunset on Learn;
-   Voice's bloom while you talk; Files' green while a file is over Home. Three layers, back to front: the light, out of
-   focus, behind everything; the work on lit glass; and Flowflow in its water. Chrome stays neutral glass; the light, the
-   gems, the one main button and the cards carry the colour, one element per room. Every colour is a token (tokens.css). */
-
-/* 1. The light. A layer pinned to the window (sticky, as tall as Home, taking no room), under the work. Its patches are out of
-   focus by construction (gradients), so nothing here blurs. From the top: the element's sky, strongest and most saturated
-   along the top edge, above the words; a wash that carries the element down the whole room, so there is never a dark gap
-   between the sky and the floor; a glow rising behind the work on the right; light rays falling through it; soft motes of
-   light drifting in the water; and a floor of the element's foot colour, flat along the bottom third so the band under the
-   ask box can be the same colour and hide work scrolling under it with no seam. Only the floor reaches that bottom third:
-   the wash, the glow and the rays all end above it, so the band's top edge is never seen. The glow, the rays and the motes move slowly
-   (transform only) only while Home is open, seen and in use: data-still (element.ts) pauses them after 10 seconds without a
-   touch, when Home closes or is hidden, and Reduce motion or Less motion stops them outright (style.css). Changing room
-   fades the light in about half a second. look.colour sets how strong each layer is. */
-.room { position: sticky; top: 0; z-index: 0; flex: none; height: calc(100vh - var(--hair)); margin-bottom: calc(var(--hair) - 100vh); overflow: clip; pointer-events: none; background: var(--room-base); opacity: var(--room-show); }
 .home > .inner { position: relative; z-index: 1; }
-.room > * { position: absolute; display: block; animation-play-state: var(--room-play); }
-/* A room change (M66 fix 11): the room's colours change at once, everywhere, in one frame; nothing recolours the page frame
-   by frame. Only the light of the room just left stays a moment on top (roomLight.tsx, .room-was) and fades by opacity, so
-   the new light shows through it. */
-.room.room-was { z-index: 0; animation: room-was-out var(--dur-3) var(--ease-out) both; }
-@keyframes room-was-out { from { opacity: var(--room-show); } to { opacity: 0; } }
-/* The sky is brightest where no words sit: the top right corner, above Flowflow. Over the words (the status, a page's
-   title and its list) it stays a deep saturated colour, so white words read at 4.5 to 1 and the second line at 4.5 to 1
-   too (measured on the screens, not only on the tokens). */
-.room-sky { inset: 0 0 40% 0; background: radial-gradient(40% 62% at 92% 0%, color-mix(in srgb, var(--sky-c) var(--room-sky-a), transparent), transparent 78%), radial-gradient(80% 42% at 52% 0%, color-mix(in srgb, var(--sky-c) calc(var(--room-sky-a) * .5), transparent), transparent 80%), linear-gradient(180deg, color-mix(in srgb, var(--sky-c) var(--room-wash-a), transparent) 0, transparent 75%); }
-/* The wash ends above the floor's flat part, so along the bottom only the floor shows and the band under the ask box
-   (wide.css) stays exactly its colour. */
-.room-mid { inset: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--el-sky) var(--room-mid-a), transparent) 0, color-mix(in srgb, color-mix(in srgb, var(--el-sky) 50%, var(--el-foot)) var(--room-mid-a), transparent) 42%, transparent 72%); }
-.room-glow { inset: 12% -18% 26% 30%; background: radial-gradient(55% 55% at 62% 58%, color-mix(in srgb, color-mix(in srgb, var(--el-sky) 55%, var(--el-glow)) var(--room-glow-a), transparent), transparent 72%); transform-origin: 70% 60%; animation: room-breathe var(--loop-room) var(--ease-loop) infinite alternate; }
-@keyframes room-breathe { from { transform: translate(0, 0) scale(1); } to { transform: translate(-6%, -5%) scale(1.08); } }
-.room-floor { inset: 0; background: linear-gradient(180deg, transparent 30%, color-mix(in srgb, var(--el-foot) var(--room-floor-a), transparent) 64%, color-mix(in srgb, var(--el-foot) var(--room-floor-a), transparent) 100%); }
-/* Grain over the light, about 5 percent, so the light never bands and the glass never looks like plastic. */
-.room-grain { inset: 0; width: 100%; height: 100%; opacity: var(--grain-a); }
-/* Rays of light through the water, in every room: Flow's fall from the upper right and sway slowly, brighter while Flow
-   works (--rays-work-a); Guide's are the sunbeam, in its gold, from the upper left. Calm has none at rest (--rays-a 0). One gradient,
-   moved by transform only. */
-.room-rays { --rays-now: var(--rays-a); inset: -30% -20% 10% -20%; -webkit-mask-image: linear-gradient(180deg, #000 0, #000 30%, transparent 82%); mask-image: linear-gradient(180deg, #000 0, #000 30%, transparent 82%); transform-origin: 64% -30%; animation: rays-sway var(--loop-rays) var(--ease-loop) infinite alternate; transition: opacity var(--seq-rays) var(--ease-out); }
-/* M66 fix 19: the rays keep one loop always (a new length mid run jumped them). Working brings in a second, brighter layer
-   of the same rays, on them and swaying with them, by opacity only. */
-.room-rays, .room-rays::after { background: repeating-conic-gradient(from 168deg at 64% -30%, transparent 0deg, color-mix(in srgb, var(--el-light) var(--rays-now), transparent) 1.6deg, transparent 3.4deg, transparent 5.6deg); }
-.room-rays::after { --rays-now: var(--rays-work-a); content: ""; position: absolute; inset: 0; opacity: 0; transition: opacity var(--seq-rays) var(--ease-out); }
-.home[data-tone="working"] .room-rays::after { opacity: 1; }
-/* Guide is a sunbeam: its room always has the beams, in its gold, still unless the light may drift. This is where the gold
-   lives, as bright thin light; the wide dim parts of the room fall from coral to rose to violet, never olive or brown. */
-.home[data-element="guide"] .room-rays { opacity: 1; background: repeating-conic-gradient(from 150deg at 18% -24%, transparent 0deg, color-mix(in srgb, var(--el-grad-1) calc(var(--rays-a) * 1.2 + 3%), transparent) 2deg, transparent 4.4deg, transparent 7deg); transform-origin: 18% -24%; animation: rays-sway var(--loop-rays-guide) var(--ease-loop) infinite alternate; }
-.home[data-element="guide"] .room-rays::after { display: none; }
-@keyframes rays-sway { from { transform: rotate(-2deg); } to { transform: rotate(2.5deg); } }
-/* Motes: a few soft points of the element's light, out of focus, drifting up through the water beside and below the
-   words, never in the bottom third where the band is. Gradients only, so they are light, not drawn bubbles; Calm has
-   none. */
-.room-motes { inset: 30% 0 30% 32%; opacity: var(--motes-a); background: radial-gradient(circle 7px at 14% 78%, color-mix(in srgb, var(--el-light) 40%, transparent), transparent), radial-gradient(circle 4px at 31% 58%, color-mix(in srgb, var(--el-light) 55%, transparent), transparent), radial-gradient(circle 10px at 48% 88%, color-mix(in srgb, var(--el-light) 26%, transparent), transparent), radial-gradient(circle 5px at 63% 46%, color-mix(in srgb, var(--el-light) 46%, transparent), transparent), radial-gradient(circle 8px at 79% 72%, color-mix(in srgb, var(--el-light) 32%, transparent), transparent), radial-gradient(circle 3px at 88% 38%, color-mix(in srgb, var(--el-light) 60%, transparent), transparent), radial-gradient(circle 6px at 94% 90%, color-mix(in srgb, var(--el-light) 30%, transparent), transparent), radial-gradient(circle 4px at 6% 44%, color-mix(in srgb, var(--el-light) 42%, transparent), transparent); animation: motes-rise var(--loop-motes) var(--ease-loop) infinite alternate; }
-@keyframes motes-rise { from { transform: translateY(0); } to { transform: translateY(-28px); } }
-/* A finished job floods the light with the element for one beat, then settles: 300 ms up, 400 held, 900 down. */
-.home[data-tone="done"] .room-glow { animation: room-breathe var(--loop-room) var(--ease-loop) infinite alternate, room-flood var(--seq-flood) var(--ease-out) 1; }
-@keyframes room-flood { 19%, 44% { filter: brightness(1.7) saturate(1.15); } }
-/* M55: the light's own setting holds its drift (--room-play: Still, and Off, the usual, whose room is not drawn, so it makes
-   no frames while Home sits open). Here, after every rule that starts the drift (an animation shorthand sets the play state
-   back to running) and before How lively's Still, which stays the stronger. */
-:root .home .room > * { animation-play-state: var(--room-play); }
-.home[data-still] .room > * { animation-play-state: paused; }
-.home[data-still][data-tone="done"] .room-glow { animation-play-state: paused, running; }
-/* Pages of words (History, Memory, Learn) are quieter rooms: the glow behind the words is about half as strong, so a second
-   line over the brightest of it still reads at 4.5 to 1 (measured on the screens, not only on the tokens). The sky stays:
-   it is above the words. Settings is the same room as Home, a little quieter. */
-.home:is([data-view="did"], [data-view="memory"], [data-view="learn"], [data-view="settings"]) .room-glow { opacity: .25; }
-.home:is([data-view="did"], [data-view="memory"], [data-view="learn"], [data-view="settings"]) .room-mid { opacity: .35; }
-.home:is([data-view="did"], [data-view="memory"], [data-view="learn"], [data-view="settings"]) .room-motes { opacity: calc(var(--motes-a) * .4); }
-.home[data-view="settings"] .room { opacity: calc(var(--room-show) * .85); }
 
 /* 2. The work on lit glass. A raised surface is graphite with 4 percent of the room's hue, a top highlight, a hairline and a
    shadow in the room's deep tint, so the light seems to come from behind and below. Only the ask box's band blurs. */
-.home .view .panel:not(.bare) { border: 0; border-radius: var(--r-glass); background: linear-gradient(180deg, color-mix(in srgb, var(--el-card) var(--card-tint-a), transparent) 0, transparent 55%), var(--raise-glass); box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) color-mix(in srgb, var(--el-light) calc(var(--card-tint-a) * 1.4), var(--sheen-line)), 0 18px 36px -18px var(--el-shadow); }
+.home .view .panel:not(.bare) { border: 0; border-radius: var(--r-glass); box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) color-mix(in srgb, var(--el-light) calc(var(--card-tint-a) * 1.4), var(--sheen-line)), 0 18px 36px -18px var(--el-shadow); }
 /* A group's own card (the job at work, the practice, a lesson): the same frame, lit from its upper centre by the element and
    glowing faintly around it in its own colour. Proof, receipts and problems stay plain glass so evidence reads clearly. */
-.home .view .panel.job, .home .view .panel.practice { position: relative; background: radial-gradient(100% 80% at 50% -14%, color-mix(in srgb, var(--el-lit) var(--card-lit-a), transparent), transparent 66%), var(--raise-glass); box-shadow: inset 0 var(--hair) 0 color-mix(in srgb, var(--el-light) 45%, transparent), inset 0 0 0 var(--hair) color-mix(in srgb, var(--el-light) 14%, transparent), 0 0 20px 3px color-mix(in srgb, var(--el-base) var(--card-halo-a), transparent), 0 0 44px 18px color-mix(in srgb, var(--el-base) calc(var(--card-halo-a) * .5), transparent), 0 18px 36px -18px var(--el-shadow); }
+.home .view .panel.job, .home .view .panel.practice { position: relative; }
 /* While it works, a soft rim breathes round the card in the element (opacity only, on its own layer). */
-.home .view .panel.job::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 var(--hair) color-mix(in srgb, var(--el-light) 55%, transparent), 0 0 16px color-mix(in srgb, var(--el-glow) 30%, transparent); opacity: .25; pointer-events: none; animation: rim-breathe var(--loop-rim) var(--ease-loop) infinite alternate; }
+.home .view .panel.job::after { content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: .25; pointer-events: none; animation: rim-breathe var(--loop-rim) var(--ease-loop) infinite alternate; }
 @keyframes rim-breathe { to { opacity: .9; } }
 .home .view .panel.amber { box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) color-mix(in srgb, var(--amber) 40%, transparent), 0 18px 36px -18px var(--el-shadow); }
 /* The steps of a job and of a practice fill with the element; the step under way glows. */
 .home .job-strip li[data-state="done"] .job-bar, .home .job-strip li[data-state="now"] .job-bar { background: var(--mark-line); }
-.home .job-strip li[data-state="now"] .job-bar { box-shadow: 0 0 8px color-mix(in srgb, var(--el-glow) 70%, transparent); }
+
 .home .thread-step[data-state="done"]::before, .home .thread-step[data-state="now"]::before { background: var(--mark-line); }
 .home .thread-step[data-state="now"] .thread-node, .home .thread-step[data-state="done"] .thread-node { border-color: var(--mark-line); }
 .home .thread-step[data-state="now"] .thread-node { box-shadow: 0 0 0 3px var(--el-wash); }
-.home .thread-tick { background: linear-gradient(180deg, var(--el-grad-1), var(--el-base)); color: var(--el-ink); }
-.home .thread .live { background: var(--mark-line); box-shadow: 0 0 6px var(--el-glow); }
+.home .thread .live { background: var(--mark-line); }
 /* A proven fix lands once in the room's light: ui/homeFlow.css (M66 fix 17). */
 
-/* Flowflow's water in Home: the chosen water's sea, lit by the room it is in (tokens.css --sea-room), deep and full just under
-   its surface and fading into the room's light below, so the pond is part of the room and never a painted band. The
-   surface, the water under it and the sea that goes on to the ask box are one colour seen through at --sea-see, so where
-   they overlap there is no seam. Flowflow's own halo is the water's colour. The fade starts where the solid water ends and
-   runs to the foot with no stop in between (the review, 2 Nov 2026: a middle stop at 55 percent fell above the solid
-   part's end in the short pond, so the water stepped down in a hard line 12 points under the surface). */
-.home .home-pond > .ch-water { background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), var(--sea-tint) calc(var(--wave-foot) + 12px), transparent 100%); }
 .home .home-pond .waterline .sea { fill: var(--sea-tint); }
 .home .home-pond .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; stroke-width: 2; }
 .home .home-pond .ch-char { isolation: isolate; }
@@ -340,29 +249,13 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
    waterline (style.css) never clips the tip of the drop when Flowflow is big; the fade stops are moved down to match. Its
    halo stays inside the box, so no edge of it shows. */
 .home .home-pond .ch-char { --ch-up: 32px; padding-top: var(--ch-up); margin-top: calc(var(--ch-up) * -1); -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) calc(var(--ch-up) + (100% - var(--ch-up)) * .62), var(--mask-fade) calc(var(--ch-up) + (100% - var(--ch-up)) * .74)); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) calc(var(--ch-up) + (100% - var(--ch-up)) * .62), var(--mask-fade) calc(var(--ch-up) + (100% - var(--ch-up)) * .74)); }
-.home .home-pond .ch-char::before { content: ""; position: absolute; z-index: -1; inset: calc(var(--ch-up) * .5) 2% 34%; border-radius: var(--r-round); background: radial-gradient(closest-side, color-mix(in srgb, var(--water) var(--char-glow-a), transparent), transparent); }
 /* The glow of a state (needs you amber, done green): a soft circle behind the drop, in the pond and outside the masked box,
    so it is never cut flat (the audit, item 28). It fades in and out. */
-.home .home-pond::after { content: ""; position: absolute; z-index: 0; right: calc(var(--space-6) - var(--char) * .05); bottom: calc(var(--space-5) - var(--char) * .2); width: calc(var(--char) * 1.1); aspect-ratio: 1; border-radius: var(--r-round); background: radial-gradient(closest-side, var(--glow-c, transparent), transparent); opacity: 0; transition: opacity var(--dur-3) var(--ease-out); pointer-events: none; }
-.home .home-pond[data-glow="needsYou"]::after { --glow-c: color-mix(in srgb, var(--amber) 34%, transparent); opacity: 1; }
-.home .home-pond[data-glow="done"]::after { --glow-c: color-mix(in srgb, var(--ok) 34%, transparent); opacity: 1; }
 /* The tall Home gives Flowflow room too (the founder, 2 Nov 2026: "a tiny Flowflow" in a corner): bigger than before, growing
    up beside the words, the words running on under the empty left part of its box. */
 .home:not([data-side]) .hero[data-mode] { --char: calc(136rem / 14); }
 .home:not([data-side]) .hero-words { grid-column: 1 / -1; padding-right: calc(var(--char) * .72); }
 .home:not([data-side]) .home-pond .home-char { margin-top: calc((var(--char) - 104rem / 14) * -111 / 156 - 8px); }
-
-/* The one main button, lit from inside: the element's colour, a soft light falling from its top edge, a fuller colour at
-   its foot, a single line of light along its top and a glow in the element under it. No glossy cap and no candy stripes:
-   it is a lit pill, not a sweet. Pressed, it sinks a little. */
-.home button.gel.primary, .home .hero-main button.primary { border: var(--hair) solid color-mix(in srgb, var(--gel-edge) 60%, transparent); background: linear-gradient(180deg, var(--gel-top) 0, var(--gel-mid) 48%, var(--gel-body) 100%); color: var(--gel-ink); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), inset 0 12px 14px -12px var(--gel-gloss), 0 10px 24px -12px var(--gel-glow), 0 1px 2px var(--el-shadow); transition: transform var(--dur-1) var(--ease-spring); }
-.home button.gel.primary::before, .home .hero-main button.primary::before { display: none; }
-.home button.gel.primary:active:not(:disabled), .home .hero-main button.primary:active:not(:disabled) { transform: scale(var(--press)); filter: brightness(.96); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), 0 3px 8px -4px var(--gel-glow); }
-
-/* A gem: a small round drop of the element, its gradient, a white specular dot at the upper left and a hairline rim. A gem
-   sets data-element on itself, so it shows its own element in any room. Decoration only. */
-.gem { display: inline-block; flex: none; width: 14px; aspect-ratio: 1; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }
-.gem[data-off] { filter: grayscale(1); opacity: .45; }
 
 /* Buttons are pills (the brand language: round, lit, slightly swollen): a secondary button is a neutral key, graphite a
    step up with a white line on top and a dark one under it; the colour stays on the one gel pill. */
@@ -399,13 +292,12 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 /* The first run is the same room: the light behind it, the rising water in the room's own colours, and its one main
    button the gel pill. Its cards keep their solid backs, so the light never runs through words. */
 .home .fr { background: transparent; }
-.home .fr > .fr-tank { opacity: 1; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), color-mix(in srgb, var(--sea-tint) 45%, transparent) 100%); }
+.home .fr > .fr-tank { opacity: 1; }
 /* The headline's second line is the water's light, a deliberate second colour, not grey words that look switched off. */
 .home .fr .fr-title-2 { color: var(--el-text); }
 .home .fr-tank .waterline .sea { fill: var(--sea-tint); }
 .home .fr-tank .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; stroke-width: 2; }
-.home .fr-dots i[data-on] { background: var(--el-base); box-shadow: 0 0 6px color-mix(in srgb, var(--el-glow) 60%, transparent); }
-.home .fr .fr-key.primary { position: relative; overflow: clip; border: var(--hair) solid color-mix(in srgb, var(--gel-edge) 60%, transparent); background: linear-gradient(180deg, var(--gel-top) 0, var(--gel-mid) 48%, var(--gel-body) 100%); color: var(--gel-ink); box-shadow: inset 0 var(--hair) 0 var(--gel-lip), inset 0 12px 14px -12px var(--gel-gloss), 0 10px 24px -12px var(--gel-glow), 0 1px 2px var(--el-shadow); }
+.home .fr-dots i[data-on] { background: var(--el-base); }
 .home .fr .fr-key.primary:hover:not(:disabled) { filter: brightness(1.05); }
 .home .fr .fr-key.primary:disabled { border: var(--hair) solid var(--line-strong); background: var(--bg); color: var(--ink-disabled); box-shadow: none; }
 /* Skip is a quiet way out in the page's second words, not a thin underlined link on the water (the review, 2 Nov 2026). */
@@ -418,7 +310,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .home[data-view="settings"] .settings-side .sb-item { border-radius: var(--r-card); }
 .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] { position: relative; background: var(--el-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); }
 .home[data-view="settings"] .settings-side .sb-item[aria-current="page"] .ic { color: var(--el-text); }
-.home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--el-text); box-shadow: 0 0 8px var(--el-glow); }
+.home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--el-text); }
 .home .ui-group-card { border: 0; border-radius: var(--r-glass); background: var(--raise-glass); box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) var(--sheen-line), 0 18px 36px -18px var(--el-shadow); }
 .home .ui-group[data-tone="danger"] .ui-group-card { box-shadow: inset 0 var(--hair) 0 var(--sheen-top), inset 0 0 0 var(--hair) var(--bad-edge); }
 @container home (width >= 44rem) {
@@ -430,9 +322,9 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 
 /* A file over Home (Files' room): the whole window becomes the place to drop it, a rounded dashed edge of Files' light with a
    faint wash inside, drawn over everything; the line under the ask box says what dropping does, in the room's light. */
-.home.dropping::after { content: ""; position: fixed; z-index: 6; inset: var(--space-2); border: var(--hair-2) dashed color-mix(in srgb, var(--el-light) 75%, transparent); border-radius: var(--r-glass); background: color-mix(in srgb, var(--el-base) 7%, transparent); box-shadow: inset 0 0 40px color-mix(in srgb, var(--el-glow) 18%, transparent); pointer-events: none; animation: say-in var(--dur-2) var(--ease-out) both; }
+.home.dropping::after { content: ""; position: fixed; z-index: 6; inset: var(--space-2); border: var(--hair-2) dashed color-mix(in srgb, var(--el-light) 75%, transparent); border-radius: var(--r-glass); background: color-mix(in srgb, var(--el-base) 7%, transparent); pointer-events: none; animation: say-in var(--dur-2) var(--ease-out) both; }
 .home .askwrap .drop-line { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); color: var(--el-text); font-weight: var(--w-strong); }
-.home .askwrap .drop-line::before { content: ""; flex: none; width: 8px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--el-base); box-shadow: 0 0 8px var(--el-glow); }
+.home .askwrap .drop-line::before { content: ""; flex: none; width: 8px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--el-base); }
 /* The changed dot is the page's second grey, not the accent (the review, 2 Nov 2026: a small glowing blue dot read as a
    notification). The page says what it means once (settingsPage.tsx, S.setFrame.changedLegend). */
 .home .ui-row-dot::before { background: var(--fg-2); }
@@ -460,7 +352,7 @@ button.gel.primary:disabled::before, .hero-main button.primary:disabled::before 
 .home .btn.danger { color: var(--bad-room); border-color: color-mix(in srgb, var(--bad-room) 45%, transparent); }
 /* Item 11: a review at work has the live dot, as a job's thread does. */
 .review-busy { display: flex; align-items: center; gap: var(--space-2); }
-.review-busy::before { content: ""; flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); box-shadow: 0 0 6px var(--el-glow); animation: live-dot var(--loop-live) var(--ease-loop) infinite; }
+.review-busy::before { content: ""; flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); animation: live-dot var(--loop-live) var(--ease-loop) infinite; }
 /* Item 21: the folder menu in the top bar opens to the right (in the tall Home it ran past the window's left edge), and a
    long folder name is cut with an ellipsis before Close (its whole path is the tooltip). */
 .home .bar .ui-menu { flex: 0 1 auto; min-width: 0; max-width: calc(100% - var(--h-sm) - var(--space-3)); }

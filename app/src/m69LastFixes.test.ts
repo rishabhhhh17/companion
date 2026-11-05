@@ -12,7 +12,7 @@ import { heroWords } from "./homeHero.ts";
 import { PAGES } from "./settingsPages.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { outcomeTitle, resultHero } from "./homeRest.ts";
-import { LastFixCard, ShotPair } from "./homeRest.tsx";
+import { ShotPair } from "./homeRest.tsx";
 import { updateLine } from "./updates.ts";
 import { runList } from "./runList.ts";
 import { ALL_CSS, FIX_CSS, HOME_NOW_CSS, PAGES_CSS } from "./ui/cssFiles.ts";
@@ -132,11 +132,6 @@ describe("the proof picture never shows a made up address", () => {
   test("no address in the bar unless one is given", () => {
     const html = renderToStaticMarkup(createElement(ShotPair, { after: "AAAA" }));
     expect(html).not.toContain("<code>");
-  });
-  test("the Last fix card never puts the folder's name in the bar", () => {
-    const fix = { item: {} as never, title: "Sign up button fixed", tag: "proven" as const, meta: "", ticks: [] };
-    const html = renderToStaticMarkup(createElement(LastFixCard, { fix, project: "/Users/x/Projects/my-shop", picture: { image: "AAAA", caption: "" }, onOpen: () => {} }));
-    expect(html).not.toContain("my-shop");
   });
 });
 

@@ -15,10 +15,8 @@
 .home:has(.hero .home-orb) .hero[data-mode] .hero-words > h1 { margin-right: 0; }
 .home:has(.hero .home-orb) .hero[data-mode] .home-pond { display: block; grid-column: 2; align-self: start; padding-top: var(--space-1); }
 .home:has(.hero .home-orb) .home-pond > .ch-water { display: none; }
-.home:has(.hero .home-orb) .home-pond::after { display: none; }
 .home:has(.hero .home-orb) .home-pond .ch-char { padding: 0; margin: 0; -webkit-mask-image: none; mask-image: none; }
 .home:has(.hero .home-orb) .home-pond .ch-char::before { display: none; }
-.home:has(.hero .home-orb) .sea-fill { display: none; }
 .home-orb { display: grid; place-items: center; padding: calc(var(--orb-ring) + var(--orb-gap)); }
 
 /* ---------- The orb in the first run ----------

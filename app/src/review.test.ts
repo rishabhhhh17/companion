@@ -312,9 +312,10 @@ describe("the card on Home", () => {
     expect(view).toContain("sendBackCopy(r)");
     expect(S.review.copied).toMatch(/Copied/);
   });
-  test("the list on the left has a review item with its stamp, which opens Now", () => {
+  test("the list on the left has a review item, its stamp said in its label (M71: its orange tile shows it, no stray mark), which opens Now", () => {
     expect(side).toContain("S.review.sideItem");
-    expect(side).toContain("<Stamp kind={reviewStamp(review)} dot />");
+    expect(side).toContain("aria-label={S.review.sideLabel(S.look.stamp[reviewStamp(review)])}");
+    expect(side).not.toContain("<Stamp kind={reviewStamp(review)} dot />");
   });
   test("files in mono, through the changes card", () => {
     expect(view).toContain("<ChangesCard");

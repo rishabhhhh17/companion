@@ -187,7 +187,7 @@ describe("flat silver, plain titles (the overhaul spec, 2.2; the founder, 31 Oct
     // M69 correction 5 (rule 16): upper case only on the spec's short status tags (PROVEN, FIX THIS FIRST) and a card's
     // short label (LAST FIX), never on a header, a button or a sentence.
     for (const r of all) {
-      if (!/^\.ui-(status|eyebrow)$/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
+      if (!/^\.ui-(status|eyebrow|mtag)$/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/text-transform:\s*uppercase/);
       if (/\.sb-|nav|side/.test(r.sel)) expect(r.body, r.sel).not.toMatch(/border-left/);
     }
   });
@@ -217,5 +217,82 @@ describe("style.css only shrinks", () => {
   test("under 750 lines, and every remaining layer imports the design system first", () => {
     expect(STYLE_CSS().split("\n").length).toBeLessThan(750);
     expect(STYLE_CSS().startsWith('@import "./ui/tokens.css";\n@import "./ui/parts.css";\n')).toBe(true);
+  });
+});
+
+// ---------- M71, black with colour (docs/milestones/M71-black-with-colour.md): the lint on every stylesheet ----------
+// M71 part 2 (the clean up) widened M71_FILES from the files M71 touched to every stylesheet the app loads. Colour marks
+// meaning on a tile, a dot, a tag or a button, never a surface; no gradient but the character's own art; no glow or halo;
+// never a card inside a card; no colour value outside tokens.css (tokens.css is where the colours are, so it is only held
+// to the room rule).
+import { BLACK_CSS, NOTCH_CSS, LOOK_CSS, WIDE_CSS, HOME_CSS, HOME_FLOW_CSS } from "./cssFiles.ts";
+const sheet = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+describe("M71: one black look, colour for meaning only", () => {
+  const M71_FILES: [string, Rule[]][] = [["parts.css", parts], ["black.css", parse(BLACK_CSS())], ["notch.css", parse(NOTCH_CSS())],
+    ["style.css", style], ["look.css", parse(LOOK_CSS())], ["wide.css", parse(WIDE_CSS())], ["home.css", parse(HOME_CSS())], ["homeFlow.css", parse(HOME_FLOW_CSS())],
+    ["system.css", system], ["pages.css", parse(PAGES_CSS())], ["fix.css", parse(FIX_CSS())], ["homeNow.css", parse(HOME_NOW_CSS())],
+    ["chrome.css", parse(sheet("./chrome.css"))], ["homeShape.css", parse(sheet("./homeShape.css"))]];
+  test("the lint covers every stylesheet in the app", () => {
+    const all = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".css")).filter((f) => f !== "tokens.css");
+    const covered = new Set(M71_FILES.map(([f]) => f));
+    for (const f of all) expect(covered.has(f), f).toBe(true);
+    expect(covered.has("style.css")).toBe(true);
+  });
+  /** What may keep its gradients and its light: the character's own art (the Visor, the glass orb, the water character
+   *  and its waterline, Settings' preview of it), and the notch itself (the island and its marks, the shape that grows
+   *  out of it), and their own keyframes. */
+  const CHARACTER_ART = /\.ui-visor|\.ui-orb|\.home-orb|\.home-char|\.character|visor|flowflow|\.fl-|\.ch-water|\.waterline|companion-hero|\.mark\b|island|\.hs\b|@keyframes (glow|pose-glow|island-)/;
+  test("no gradient outside the character's own art", () => {
+    const bad: string[] = [];
+    // A mask that fades a scrolling strip's edge is no colour: it is left to the clean up, which decides about it.
+    for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) if (!CHARACTER_ART.test(r.sel) && !CHARACTER_ART.test(r.at ?? "") && !/mask-image$/.test(k) && /gradient\(/.test(v)) bad.push(`${file}: ${r.sel} { ${k} }`);
+    expect(bad).toEqual([]);
+  });
+  test("no glow or halo: no drop shadow, no glow or halo token, no blurred coloured shadow, outside the character's art", () => {
+    const bad: string[] = [];
+    for (const [file, rules] of M71_FILES) for (const r of rules) {
+      if (CHARACTER_ART.test(r.sel) || CHARACTER_ART.test(r.at ?? "")) continue;
+      for (const [k, v] of r.decl) {
+        if (/drop-shadow\(|--[\w-]*(glow|halo)/.test(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
+        // A shadow with a blur in a colour of meaning is a glow (a neutral float shadow token is not).
+        if (/shadow/.test(k) && /var\(--(c|mc)-/.test(v) && !/^inset 0 (var\(--hair\)|0) 0 /.test(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+  test("no colour value outside tokens.css, and no rule keyed on the old rooms ([data-element]) in any stylesheet", () => {
+    const bad: string[] = [];
+    for (const r of parse(TOKENS_CSS())) if (/\[data-element/.test(r.sel)) bad.push(`tokens.css: ${r.sel}`);
+    for (const [file, rules] of M71_FILES) for (const r of rules) {
+      if (/\[data-element/.test(r.sel)) bad.push(`${file}: ${r.sel}`);
+      for (const [k, v] of r.decl) if (literalIn(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
+    }
+    expect(bad).toEqual([]);
+  });
+  test("colour paints no surface bigger than a tile, a tag, a button or a featured card: a meaning colour only fills the M71 parts", () => {
+    // (.sw-*: Settings' small pictures of the look itself.)
+    const FILLS_OK = /\.ui-feature|\.ui-mtile|\.ui-mtag|\.ui-mdot|\.ui-mtag-dot|\.ui-place|\.ui-mrow-act|\.sb-item\[data-c\]|\.send|\.ask-token-dot|\.ui-place-dot|ip-act|\.sw-/;
+    const bad: string[] = [];
+    for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) {
+      if (/^background(-color)?$/.test(k) && /var\(--(c-(?!mark)|mc)/.test(v) && !FILLS_OK.test(r.sel)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
+    }
+    expect(bad).toEqual([]);
+  });
+  test("never a card inside a card: the grouped list is never inside another card, and a card inside a card loses its fill", () => {
+    const card = readFileSync(new URL("../card.tsx", import.meta.url), "utf8"), tsx = readFileSync(new URL("./parts.tsx", import.meta.url), "utf8");
+    // Now's one list sits in the page, not in a panel or a card, and holds no list of its own. (M71 part 2: found by its
+    // label, now that Learn, History and Memory have lists too; their sections are bare, never a card.)
+    const at = card.indexOf("<ListGroup label={S.homeNow.listLabel}>"), end = card.indexOf("</ListGroup>", at);
+    expect(at).toBeGreaterThan(-1);
+    const inner = card.slice(at + 1, end);
+    expect(inner).not.toMatch(/<ListGroup|className="panel|ui-card|now-card/);
+    const before = card.slice(card.lastIndexOf("return (", at), at);
+    expect(before).not.toMatch(/className="panel|ui-card/);
+    // The parts themselves: a row is never a list, and no M71 rule styles a list inside a list.
+    const row = tsx.slice(tsx.indexOf("export function ListRow("), tsx.indexOf("\n}\n", tsx.indexOf("export function ListRow(")));
+    expect(row).not.toContain("<ListGroup");
+    for (const [file, rules] of M71_FILES) for (const r of rules) expect(r.sel, file).not.toMatch(/\.ui-mlist\s+[^,]*\.ui-mlist|\.ui-mlist\s+[^,]*\.panel/);
+    const nested = parse(BLACK_CSS()).find((r) => r.sel.startsWith(".home .view .panel .panel"))!;
+    expect(nested.body).toMatch(/background: transparent/);
   });
 });

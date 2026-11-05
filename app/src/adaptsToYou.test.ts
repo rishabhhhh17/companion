@@ -59,7 +59,8 @@ describe("the main action for each app and project state", () => {
   test("changes waiting lead Home in every app, with Review the changes (the review card's own main button)", () => {
     // homeMode "review" has no status main button: the hero's reviewMain is the one, whatever app is in front.
     for (const front of COLS) expect(mainFor("review", st(unchecked), () => true, { front })).toBeNull();
-    expect(card).toContain(": reviewMain ? { label: S.home.reviewMain, go: () => openReview(), status: false }");
+    // M71: the review card under the lead has its own Review changes, so the lead has none then (one main button).
+    expect(card).toContain(': reviewMain ? (show("review") && reviewOn && home.tab === "now" ? null : { label: S.home.reviewMain, go: () => openReview(), status: false })');
     expect(S.home.reviewMain).toBe("Review the changes");
   });
   test("nothing else gets a main button: a job at work, a question, a card that needs a look, an answer", () => {

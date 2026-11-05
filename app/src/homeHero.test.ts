@@ -56,10 +56,10 @@ describe("no side list, no title bar: quiet buttons with words at the top (F28, 
     expect(barPlaces({ practiceDone: false, learnOn: false })).toEqual(["did", "memory", "settings"]);
     expect([S.home.places.did, S.home.places.memory, S.home.places.settings]).toEqual(["History", "Memory", "Settings"]);
   });
-  test("each place is a quiet Button with its word, its old id (focus.ts goes back to it) and whether it is open", () => {
+  test("each place is a PlaceButton with its colour tile, its word, its old id (focus.ts goes back to it) and whether it is open", () => {
     expect(card).toContain("places.map((t) =>");
-    expect(card).toMatch(/<Button key=\{t\} id=\{tabId\(t\)\} kind="quiet" size="sm" pressed=\{t === home\.tab\}/);
-    expect(card).toContain("{S.home.places[t]}");
+    // M71: each place has its colour tile (meaning.ts PLACE_COLOUR); the open one is pressed.
+    expect(card).toContain("<PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab}");
     // A view open inside Home has a back arrow to Now.
     expect(card).toMatch(/className="back"[^>]*onClick=\{\(\) => pickTab\("now"\)\}/);
   });
@@ -91,7 +91,7 @@ describe("the gear opens Settings inside Home, the one Settings (F28, T17: the s
     expect(card).toContain('const gear = () => pickTab("settings");');
     expect(card).not.toContain("openSettings(invoke");
     expect(card).toContain('pickTab(t.place === "settings" ? "settings" : "learn")');
-    expect(card).toContain('onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}');
+    expect(card).toContain('label={S.home.places[t]} title={S.home.places[t]} onClick={gear}');   // M71: the grey gear
   });
 });
 
@@ -128,9 +128,10 @@ describe("the top says the job in big words", () => {
   test("the headline is Home's heading, large, with one short line under it", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
     // M66 fix 13: new words cross fade in by their key (homeFlow.test.ts).
-    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="headline hero-swap" key={`h:${heroShown.headline}`}><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>');
+    // M71: the Lead's title; a practice's headline drops its "Practice:" (its tag says it).
+    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline hero-swap" key={`h:${leadHeadline}`}><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1>');
     // M69 (F29): the line under it never counts a cost; Squibby pays.
-    expect(card).toContain('<p className={`subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
+    expect(card).toContain('<p className={`ui-lead-line subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");
@@ -371,7 +372,7 @@ describe("the status headline (F28, 4.1)", () => {
   });
   test("the page draws the status as a Verdict line at display size, as Home's heading, at rest and under a result", () => {
     // The heading is the verdict alone; its quiet line follows it, outside the heading (the audit, item 51).
-    expect(card).toContain('role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}');
+    expect(card).toContain('role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="ui-lead-line subline status-sub">{status.sub}</p>}');
     // Under a result just in the status leads in both layouts; the result card says the verdict once (the review, 2 Nov 2026).
     expect(card).toContain('const statusFirst = mode === "rest" || mode === "result";');
   });
@@ -418,7 +419,7 @@ describe("one main button per state", () => {
     // Now: in the hero, or in the working card. Every other place (Settings, History, Memory, Learn): in the top bar, except
     // Learn while its practice fixes or checks, where the practice card's own Stop is the one Stop (M51 review; barStopCan,
     // lookFixes.test.ts).
-    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
+    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main ui-lead-acts\"><Button kind=\"secondary\" size=\"sm\"");
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
     expect(bar).toContain('{barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
     expect(bar).toContain("onClick={() => void stopNow()}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
@@ -431,7 +432,7 @@ describe("one main button per state", () => {
     expect(mainFor("rest", homeStatus(initial(), "", NOW))).toBe("folder");
   });
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
-    const now = card.slice(card.indexOf('<section className="hero"'), card.indexOf('{show("notes") && <>'));
+    const now = card.slice(card.indexOf('<Lead className="hero"'), card.indexOf('{show("notes") && <>'));
     // The hero's main button is primary except after Stop with Undo ready, where Undo what it did is the main one (5 Nov review).
     expect(now.match(/kind="primary"|\? "secondary" : "primary"/g)?.length).toBe(1);
     // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
@@ -447,7 +448,7 @@ describe("one main button per state", () => {
     // M69 step 3: over a proven result the hero has no button and the receipt's Keep is the one main button.
     expect(result.match(/kind="primary"/g)?.length).toBe(1);
     expect(result).toContain('{resHero?.pill === "proven" && (');
-    expect(now).toContain("{(heroMain || whereOn) && !resHero && <div className=\"hero-main\">");
+    expect(now).toContain("{(heroMain || whereOn || practiceSkip) && !resHero && <div className=\"hero-main ui-lead-acts\">");   // M71: a practice's Skip
   });
   test("what can show beside the hero is never silver too: the update notice, Try again, a watch's Fix it, Learn's rows (review, 31 Oct)", () => {
     const silver = /kind="primary"|btn primary|btnClass\("primary"/;
@@ -463,11 +464,10 @@ describe("one main button per state", () => {
     // Learn: each lesson's and each practice's Start or Continue (the spec, 2.2: "Learn's Start buttons" are never silver).
     expect(between(card, "lessonsShown(m.lessons ?? [], project, practiceRec, VERCEL_LESSON_ID).map((l) => (", "))}")).not.toMatch(silver);
     const practice = readFileSync(new URL("./practicePanel.tsx", import.meta.url), "utf8");
-    for (const w of ["S.practiceStart}: ${r.title}", "S.practiceContinue}: ${r.title}"]) {
-      const at = practice.indexOf(w);
-      expect(at, w).toBeGreaterThan(-1);
-      expect(practice.slice(practice.lastIndexOf("<button", at), at)).not.toMatch(silver);
-    }
+    // M71: each practice is a row of the list, never a button of its own: no main button among them.
+    const rows = practice.slice(practice.indexOf("<ListGroup label={S.practiceListTitle} shown>"), practice.indexOf("</ListGroup>"));
+    expect(rows).toContain("openLabel={`${goWord}: ${r.title}`}");
+    expect(rows).not.toMatch(silver);
   });
 });
 
@@ -526,7 +526,8 @@ describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follow
     // Home: one line across the whole width (the founder, 31 Oct, as in M41), the sea fading out under it, never a box.
     expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("overflow: clip;");
     expect(/\.hero \{([^}]*)\}/.exec(css)?.[1]).toContain("margin: 0 calc(var(--space-6) * -1) var(--space-2);");
-    expect(/\.home-pond \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea) var(--wave-foot), transparent 100%);");
+    // M71: Home is black, so the band of sea under Home's line is retired (no gradient outside the character's art).
+    expect(/\.home-pond \.ch-water \{([^}]*)\}/.exec(css)?.[1]).not.toContain("gradient");
     expect(/\.home-pond \{([^}]*)\}/.exec(css)?.[1]).not.toMatch(/box-shadow|border-radius|background/);
     // The preview keeps a flat sea in its own card.
     expect(/\.companion-hero \.ch-water \{([^}]*)\}/.exec(css)?.[1]).toContain("background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot));");

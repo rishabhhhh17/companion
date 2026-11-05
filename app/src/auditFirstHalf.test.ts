@@ -248,7 +248,8 @@ describe("(18, 19) placeholders follow the theme, and the ask box shows focus an
 
 describe("(20) Settings search finds dark mode and light mode, and keeps typo hits few", () => {
   test("the theme comes first for each", () => {
-    for (const q of ["dark mode", "light mode", "appearance", "night", "white", "pure black"]) expect("key" in searchSettingsFor(q)[0].hit && (searchSettingsFor(q)[0].hit as { key: string }).key).toBe("look.theme");
+    // M71: one black look; the Colour row says Home is black like the notch.
+    for (const q of ["dark mode", "light mode", "appearance", "night", "white", "pure black"]) expect("key" in searchSettingsFor(q)[0].hit && (searchSettingsFor(q)[0].hit as { key: string }).key, q).toBe("look.colour");
   });
   test("an exact hit keeps typo matches to three", () => {
     expect(searchSettingsFor("night").length).toBeLessThanOrEqual(8);

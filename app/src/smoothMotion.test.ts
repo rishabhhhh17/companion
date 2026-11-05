@@ -227,16 +227,8 @@ describe("only transform and opacity move", () => {
 });
 
 describe("nothing moves at rest", () => {
-  test("with the light off (the usual), the room it would draw is paused as well as hidden, so it makes no frames", () => {
-    const off = /:root\[data-light="off"\] \{([^}]*)\}/.exec(tokens)?.[1] ?? "";
-    expect(off).toContain("--room-show: 0;");
-    expect(off).toContain("--room-play: paused;");
-    // Read after every rule that starts the room's drift (a shorthand animation sets the play state back to running), as
-    // specific as the most specific of them (three classes), and before How lively's Still, which stays the stronger.
-    const hold = ":root .home .room > * { animation-play-state: var(--room-play); }";
-    for (const start of ["animation: room-breathe", "animation: rays-sway", "animation: motes-rise"]) expect(css.indexOf(hold), start).toBeGreaterThan(css.lastIndexOf(start));
-    expect(css.indexOf(hold)).toBeLessThan(css.indexOf(".home[data-still] .room > * { animation-play-state: paused; }"));
-    expect(css.indexOf(hold)).toBeLessThan(css.indexOf('.home[data-still][data-tone="done"] .room-glow { animation-play-state: paused, running; }'));
+  test("M71: Home draws no room at all (its light, rays and motes are retired), so nothing of it can make frames at rest", () => {
+    for (const k of ["room-breathe", "rays-sway", "motes-rise", "room-flood", ".room-glow", ".room-rays", ".room-motes"]) expect(css, k).not.toContain(k);
   });
   test("the module's moves all end: none of them repeats", () => {
     expect(mod).not.toMatch(/iterations|Infinity|infinite/);

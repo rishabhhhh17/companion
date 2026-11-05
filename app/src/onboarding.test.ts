@@ -52,11 +52,12 @@ describe("the three screens and their order (M49)", () => {
   });
   test("Your project offers a folder, GitHub or Lovable through the existing Open from a link, and the practice", () => {
     const proj = stepOf(read("./onboarding.tsx"), "project");
-    expect(proj).toContain("onClick={pickFolder}><b>{S.fr.pickFolder}</b>");
+    // M71: the three ways to start are rows of one grouped list (ui/parts.tsx ListRow), each opening its way.
+    expect(proj).toContain("title={S.fr.pickFolder} line={S.fr.pickFolderLine} onOpen={pickFolder}");
     expect(proj).toContain("{S.fr.pickLink}");
     expect(proj).toContain("S.fr.linkLovable");
     expect(read("./onboarding.tsx")).toContain("void cloneLink(u).then(() => setLink(\"\")).catch((e) => { if (e !== \"\") setLinkNote(failNote(e, \"folder\")); });");
-    expect(proj).toContain("onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}><b>{S.fr.pickPractice}</b>");
+    expect(proj).toContain("onOpen={first.needsNode && !!noNode ? undefined : () => { keepChoices(); onDone(); startPractice(first.id); }}");
     const card = read("./card.tsx");
     expect(card).toContain('const cloneLink = (u: string) => { dispatch({ type: "ui.cloneNoteClosed" }); return invoke("clone_project", { url: u })');
     for (const t of [S.fr.pickFolder, S.fr.pickLink, S.fr.pickPractice]) expect(t).toMatch(/^[A-Z][^.]*[a-z]$/);

@@ -65,6 +65,45 @@ const lum = (c: RGBA) => { const f = (x: number) => { const s = x / 255; return 
 /** Words over what is under them, as they show (an ink with opacity is laid over first). */
 const ratio = (words: RGBA, under: RGBA) => { const a = over(words, under); const [x, y] = [lum(a), lum(under)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
+// ---------- M71, black with colour: every colour's forms, measured (docs/milestones/M71-black-with-colour.md) ----------
+/** A colour at a percent over what is under it, as color-mix(in srgb, c p%, transparent) shows over a surface. */
+const softOver = (c: RGBA, p: number, under: RGBA): RGBA => over([c[0], c[1], c[2], p], under);
+const M71_COLOURS = ["blue", "purple", "orange", "pink", "green", "red", "teal", "grey"] as const;
+describe("M71: each meaning colour reads on black, as words, as a tag and under a white mark", () => {
+  const t = tokensOf("instrument", "black");
+  const s0 = colour("var(--surface-0)", t), s1 = colour("var(--surface-1)", t), s2 = colour("var(--surface-2)", t);
+  test("the surfaces and the words are the plan's: pure black, #121214, #1A1A1D; the second words 7 to 1 on a card", () => {
+    expect(t["--surface-0"]).toBe("#000000");
+    expect(t["--surface-1"]).toBe("#121214");
+    expect(t["--surface-2"]).toBe("#1A1A1D");
+    expect(t["--bg"]).toBe("var(--surface-0)");
+    expect(ratio(colour("var(--fg)", t), s1)).toBeGreaterThanOrEqual(15);
+    expect(ratio(colour("var(--fg-2)", t), s1)).toBeGreaterThanOrEqual(7);
+    for (const under of [s0, s1, s2]) expect(ratio(colour("var(--fg-3)", t), under)).toBeGreaterThanOrEqual(4.5);
+  });
+  for (const c of M71_COLOURS) test(`${c}: its text form 4.5 to 1 on surface 0, surface 1 and its own soft fill; a white mark 3 to 1 on its tile`, () => {
+    const solid = colour(`var(--c-${c})`, t), text = colour(`var(--c-${c}-text)`, t), tile = colour(`var(--c-${c}-tile)`, t), mark = colour("var(--c-mark)", t);
+    for (const [name, under] of [["surface 0", s0], ["surface 1", s1], ["soft on surface 0", softOver(solid, 0.18, s0)], ["soft on surface 1", softOver(solid, 0.18, s1)]] as const) {
+      expect(ratio(text, under), `${c} text on ${name}`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(ratio(mark, tile), `white on the ${c} tile`).toBeGreaterThanOrEqual(3);
+    // A dot or a tile is found on black and on a card (a mark, 3 to 1, WCAG 1.4.11).
+    for (const under of [s0, s1]) expect(ratio(tile, under), `${c} tile`).toBeGreaterThanOrEqual(3);
+    // Each form is the colour's own: soft and text are mixed from the solid in tokens.css, never a second hue.
+    expect(t[`--c-${c}-soft`]).toBe(`color-mix(in srgb, var(--c-${c}) 18%, transparent)`);
+    expect(t[`--c-${c}-text`]).toBe(`color-mix(in srgb, var(--c-${c}) 70%, #FFFFFF)`);
+  });
+  test("the main button's white words read at 4.5 to 1 on the M71 blue, and it is the accent", () => {
+    expect(ratio(colour("#FFFFFF", t), colour("var(--c-blue-strong)", t))).toBeGreaterThanOrEqual(4.5);
+    expect(t["--acc"]).toBe("var(--c-blue-strong)");
+    expect(ratio(colour("var(--acc-ink)", t), colour("var(--acc)", t))).toBeGreaterThanOrEqual(4.5);
+  });
+  test("the plan's values, Apple's dark mode set", () => {
+    expect([t["--c-blue"], t["--c-purple"], t["--c-orange"], t["--c-pink"], t["--c-green"], t["--c-red"], t["--c-teal"], t["--c-grey"]])
+      .toEqual(["#0A84FF", "#BF5AF2", "#FF9F0A", "#FF375F", "#30D158", "#FF453A", "#64D2FF", "#8E8E93"]);
+  });
+});
+
 const LOOKS: [string, "instrument" | "friendly", string][] = [
   ["Instrument, Graphite", "instrument", "graphite"], ["Instrument, White", "instrument", "paper"], ["Instrument, Black", "instrument", "black"], ["Instrument, Deep", "instrument", "deep"],
   ["Friendly, Night", "friendly", "graphite"], ["Friendly, White", "friendly", "paper"], ["Friendly, Black", "friendly", "black"], ["Friendly, Deep", "friendly", "deep"],
@@ -130,7 +169,8 @@ describe("type, tags, keys and elevation (spec 1.1, 1.6, 1.7)", () => {
       expect(parts.find((b) => b.sel === `.ui-status[data-tone="${tone}"]`)!.decl.background, tone).toBe(`var(${tint})`);
     }
     const upper = blocks(ALL_CSS()).filter((b) => /text-transform:\s*uppercase/.test(Object.entries(b.decl).map(([k, v]) => `${k}: ${v}`).join(";")));
-    expect(upper.map((b) => b.sel).sort()).toEqual([".ui-eyebrow", ".ui-status"]);
+    // M71: the meaning tag (ui/parts.tsx Tag) is the same short status tag, in its meaning's colour.
+    expect(upper.map((b) => b.sel).sort()).toEqual([".ui-eyebrow", ".ui-mtag", ".ui-status"]);
     // The words in a tag are short: the status words are one to three words.
     for (const w of Object.values(S.ui.status)) expect(w.split(" ").length, w).toBeLessThanOrEqual(3);
   });
@@ -173,8 +213,9 @@ describe("one layout grammar (spec 3)", () => {
   test("the top bar: the status dot, the project's name, one line of context, then the Fix it key", () => {
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>"));
     const at = (s: string) => bar.indexOf(s);
-    expect(at("<StatusDot kind={heroStatus")).toBeGreaterThan(0);
-    expect(at("<StatusDot")).toBeLessThan(at("<Menu id={linkId}"));
+    // M71: the project chip, its dot the project's own state (meaning.ts statusDot), then the folder menu inside it.
+    expect(at("<Dot colour={statusDot(status.kind)} />")).toBeGreaterThan(0);
+    expect(at("<Dot colour={statusDot(status.kind)} />")).toBeLessThan(at("<Menu id={linkId}"));
     expect(at("<Menu id={linkId}")).toBeLessThan(at('className="bar-meta"'));
     expect(at('className="bar-meta"')).toBeLessThan(at('className="bar-key"'));
     expect(at('className="bar-key"')).toBeLessThan(at("<PlacesBox"));

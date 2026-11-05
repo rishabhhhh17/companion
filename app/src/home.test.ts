@@ -239,7 +239,7 @@ describe("the tabs from the keyboard", () => {
   test("the places are quiet buttons with words in the Tab order, the open one marked, and a back arrow to Now (F28)", () => {
     // No tab list any more: each place is a quiet Button with its name, reached with Tab, that says whether it is open.
     expect(card).not.toContain('role="tablist"');
-    expect(card).toMatch(/<Button key=\{t\} id=\{tabId\(t\)\} kind="quiet" size="sm" pressed=\{t === home\.tab\}/);
+    expect(card).toContain("<PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab}");   // M71: aria-pressed on its colour tile button
     expect(card).toContain('className="back" type="button" aria-label={S.look.back}');
     // A place's panel is a region named by the place; Now is the page itself (the audit, item 51).
     expect(card).toContain('role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}');

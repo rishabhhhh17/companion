@@ -97,7 +97,6 @@ const MAY_MOVE = new Set(["opacity", "transform", "translate", "scale", "rotate"
 const STILL_MOVING_PAINT: Record<string, string> = {
   "style.css: .fr > .fr-tank transition height": "the first run's water rising: one absolute layer, nothing else lays out (Tier 3)",
   "ui/look.css: @keyframes marker-in background-size": "the marker drawing under words (Tier 3, item 18)",
-  "ui/look.css: @keyframes room-flood filter": "the room's done flood, to an opacity layer (Tier 3, item 19)",
   "style.css: @keyframes glow filter": "the pictures' needs you glow, Friendly only (Tier 3, item 18)",
   "style.css: @keyframes pose-glow filter": "the pictures' needs you glow, Friendly only (Tier 3, item 18)",
   "style.css: @keyframes island-glow filter": "the notch's done tick, redrawn with the notch shape (Part 2)",

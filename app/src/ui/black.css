@@ -1,0 +1,202 @@
+/* M71, black with colour (docs/milestones/M71-black-with-colour.md; the mock in docs/design/2026-11-05-black-with-colour/).
+   Home is the notch grown down: one continuous black surface, no seam, an edge hairline only. Every place is built from the
+   same parts (ui/parts.tsx: the bar, the places, Lead, ListGroup, the ask box) in this order, and this sheet only places
+   them on Home. It is loaded last on Home's page (card.tsx), so it wins over the older layers until the clean up removes
+   them. Every colour, size and duration is a token (ui/tokens.css); no gradient, no glow, no halo, never a card in a card
+   (ui/styleLint.test.ts). */
+
+/* ---------- One black surface ----------
+   The shape (ui/homeShape.css) draws the black; nothing inside paints a square block over it, and the frame clips to the
+   shape's own round foot, so the bottom corners are always round. */
+.home, .home .side { background: transparent; }
+.home-stage[data-told] .home-frame { border-radius: 0 0 var(--r-open) var(--r-open); }
+/* Its edge is one hairline on the sides and the foot (never the top, which is the notch grown down), so Home reads on a
+   black wallpaper as the notch's own panel does (M70). Drawn over the content, never in the way of a press. */
+.home-stage[data-told] .home-frame::after { content: ""; position: absolute; inset: 0; z-index: 10; border-radius: inherit; pointer-events: none; box-shadow: inset var(--hair) 0 0 var(--edge), inset calc(var(--hair) * -1) 0 0 var(--edge), inset 0 calc(var(--hair) * -1) 0 var(--edge); }
+
+/* ---------- The bar: the project chip, one line of context, the key hint in words, the gear and Close ---------- */
+.home .bar { position: relative; align-items: center; gap: var(--space-2); min-height: var(--h-place); margin-bottom: 0; padding-bottom: 0; border-bottom: 0; box-shadow: none; }
+.home .bar-chip { display: inline-flex; flex: none; align-items: center; gap: var(--pill-gap); max-width: 50%; min-height: var(--h-place); box-sizing: border-box; padding: 0 var(--space-1) 0 var(--space-3); border-radius: var(--r-pill); background: var(--surface-2); }
+.home .bar-chip .ui-menu { min-width: 0; }
+.home .bar-chip .ui-menu-btn { min-height: var(--h-place); max-width: none; padding: 0 var(--space-2) 0 0; border: 0; background: transparent; box-shadow: none; color: var(--fg); font-weight: var(--w-strong); }
+.home .bar-chip .ui-menu-btn:hover:not(:disabled) { background: transparent; }
+.home .bar-meta { color: var(--fg-2); font: var(--t-label) / var(--lh-label) var(--font); }
+/* The key hint always has its words ("Press ⌃⌥⌘F when stuck"), the keys as plain marks, never bare caps; hidden when there
+   is no room for the words. */
+.home .bar-key { margin-inline-start: auto; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.home:not([data-side]) .bar-key-word { display: inline; }
+.home .bar-key .ui-keys { display: inline-flex; gap: 0; }
+.home .bar-key .ui-key { min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; box-shadow: none; color: var(--fg); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+@container home (width < 42rem) { .home .bar-key { display: none; } }
+/* The wide Home's work column has room for the chip and one line of context, not the key hint as well: the context wins,
+   whole (never cut with an ellipsis); at rest, with no context line, the key hint shows. */
+.home[data-side] .bar:has(> .bar-meta) > .bar-key { display: none; }
+.home .bar > .bar-meta { flex: 1 1 auto; min-width: 0; }
+
+/* The tall Home: the places on a row of their own under the chip, the gear and Close at the top right. */
+.home:not([data-side]):not([data-view="settings"]) .bar { flex-wrap: wrap; padding-inline-end: calc(var(--h-sm) * 2 + var(--space-2)); row-gap: var(--space-3); }
+.home:not([data-side]):not([data-view="settings"]) .bar > .places { flex: 1 0 100%; order: 2; gap: var(--space-1); margin: 0; }
+.home:not([data-side]):not([data-view="settings"]) .bar > .bar-key { margin-inline-end: 0; }
+.home:not([data-side]) .bar .bar-gear, .home:not([data-side]) .bar .close { position: absolute; top: 0; }
+.home:not([data-side]) .bar .close { inset-inline-end: 0; }
+.home:not([data-side]) .bar .bar-gear { inset-inline-end: calc(var(--h-sm) + var(--space-2)); }
+.home .bar .bar-gear, .home .bar .close { color: var(--fg-2); }
+.home .bar .bar-gear:hover, .home .bar .close:hover { color: var(--fg); }
+
+/* ---------- The lead ---------- */
+.home .hero.ui-lead.hero[data-mode] { margin: var(--space-4) 0; padding: 0; }
+.home .hero.ui-lead[data-mode] { --orb: calc(var(--lead-char) - (var(--orb-ring) + var(--orb-gap)) * 2); padding: 0; min-height: 0; }
+.home .hero.ui-lead { display: grid; grid-template-columns: minmax(0, 1fr) var(--lead-char); column-gap: var(--space-4); align-items: start; padding: 0; }
+.home .hero.ui-lead[hidden] { display: none; }
+.home .hero .ui-lead-words { display: grid; justify-items: start; align-content: start; gap: var(--space-2); min-width: 0; order: 0; }
+.home .hero .ui-lead-char { order: 1; position: relative; width: var(--lead-char); height: var(--lead-char); min-height: 0; }
+.home .hero .ui-lead-char .home-pond { position: absolute; inset: 0; width: auto; height: auto; margin: 0; --orb-hero: var(--lead-char); --orb-hero-sm: var(--lead-char); }
+.home .hero .ui-lead-char .ch-water, .home .hero .ui-lead-char .say { display: none; }
+.home .hero .ui-lead-char .ch-char { position: absolute; inset: 0; display: grid; place-items: center; }
+.home .hero .hero-words > h1.ui-lead-title.headline { display: block; min-height: 0; margin: var(--space-1) 0 0; color: var(--fg); font: var(--w-bold) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); text-wrap: balance; }
+.home .hero .ui-lead-title .rest-first { color: var(--fg); }
+.home .hero .hero-words > p.ui-lead-line.subline, .home .hero .status-head > p.ui-lead-line.subline { margin: 0; max-width: 34rem; color: var(--fg-2); font: var(--w-regular) var(--t-answer) / var(--lh-answer) var(--font); letter-spacing: 0; text-wrap: pretty; }
+.home .hero .status-head { display: grid; gap: var(--space-1); }
+.home .hero .hero-main.ui-lead-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0 0; }
+.home .hero .hero-main .btn { min-height: var(--h-btn); padding: 0 var(--space-4); border-radius: var(--r-btn); font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
+.home .hero .hero-main .btn.primary { font-weight: var(--w-bold); }
+.home .hero .hero-main .btn.secondary { border-color: transparent; background: var(--surface-2); box-shadow: none; }
+.home .hero .hero-main .btn.secondary:hover:not(:disabled) { background: var(--surface-3); }
+.home .hero .ui-mtag { margin: 0; }
+/* While a card that needs a tap shows in the wide Home (homeHero.ts heroCompact), the lead keeps its one line and gives
+   the card the room: no line under the headline (the card says it). */
+.home .hero[data-tight] .hero-words > .ui-lead-line.subline:not(.rest-second) { display: none; }
+
+/* The proven moment (a little fun, never a praise loop): the tag's green tick is drawn in once (ui/parts.css Tag tick), and
+   the character smiles (the Visor's done pose). Reduce motion shows the tick already drawn. */
+
+/* ---------- The cards on Now (a result, the work in progress, the review): one card each, never a card in a card ---------- */
+.home .view .panel, .home .view .panel:not(.bare), .home .view .panel.job, .home .view .panel.practice, .home .view .panel.amber { border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+.home .view .panel.job::after { display: none; }
+/* The M66 landing keeps its moment as a hairline that comes and goes, never a glow. */
+.home .view .panel.receipt[data-landed]::after, .home .view .panel.practice[data-landed]::after { box-shadow: inset 0 0 0 var(--hair) var(--line-strong); }
+.home .view .panel .panel, .home .view .panel .panel:not(.bare) { border-radius: 0; background: transparent; box-shadow: none; }
+/* The fade over work that scrolls under the ask box was a gradient: the ask box's own black covers it now. */
+.home .work > .askwrap::before { display: none; }
+/* A card's other buttons: a raised step of black, no edge (the mock's quiet button). */
+.home .view .btn:not(.primary):not(.quiet):not(.danger):not(.icon) { border-color: transparent; background: var(--surface-2); box-shadow: none; }
+.home .view .btn:not(.primary):not(.quiet):not(.danger):not(.icon):hover:not(:disabled) { background: var(--surface-3); }
+
+/* ---------- The list ---------- */
+.home .now-list { display: grid; gap: var(--space-2); margin: 0; }
+.home .view.view-lead:has(> .now-list) { margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.home .now-list .now-undo { margin: 0; }
+
+/* ---------- The ask box, pinned at the bottom of Now ---------- */
+/* The tall Home is as tall as what it holds (never a big empty gap): the ask box follows the list, and stays pinned at
+   the foot while a long page scrolls. */
+.home:not([data-side]):not([data-view="settings"]) .work:has(> .askwrap) { min-height: 0; }
+.home:not([data-side]):not([data-view="settings"]) .work > .askwrap { margin-top: var(--space-4); background: var(--surface-0); }
+.home .askwrap { background: var(--surface-0); }
+.home .askwrap .ask { padding: var(--space-3) var(--space-3) var(--space-2); border: 0; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge); }
+.home .askwrap .ask:focus-within { box-shadow: inset 0 0 0 var(--hair) var(--line-strong); }
+.home .askwrap .ask > .ask-mark { display: none; }
+.home .askwrap .ask > textarea { padding: var(--space-1) var(--space-1) var(--space-2); color: var(--fg); font: var(--t-answer) / var(--lh-answer) var(--font); }
+.home .ask-row { padding-top: 0; border-top: 0; }
+.home .ask-token { max-width: 50%; min-height: var(--h-place); padding: 0 var(--space-3); background: var(--surface-2); color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
+.home .ask-token .ask-token-dot { width: var(--dot-m); height: var(--dot-m); background: var(--mc); }
+.home .ask-chip { min-height: var(--h-place); border-color: transparent; background: var(--surface-2); color: var(--fg-2); }
+.home .askwrap .ask .send:not(:disabled) { background: var(--c-blue); color: var(--c-mark); }
+.home .more > summary { color: var(--fg-2); }
+
+/* ---------- The wide Home: the side list with its colour tiles, the work beside it ---------- */
+.home[data-side] .side { border-inline-end: var(--hair) solid var(--edge); --acc-text: var(--fg); --side-text: var(--c-mark); }
+.home[data-side] .side .sb-item { min-height: var(--h-place); gap: var(--space-2); padding-inline: var(--space-1) var(--space-2); border-radius: var(--r-control); color: var(--fg-2); }
+.home[data-side] .side .sb-item[aria-current="page"] { color: var(--fg); font-weight: var(--w-strong); }
+.home[data-side] .side-foot { border-top: 0; }
+/* A recent task's tile already says how it ended, in its colour, so the mark at the row's end steps aside. */
+.home[data-side] .side .side-work .side-mark { display: none; }
+
+/* ---------- Settings, Look: the Colour choice's two pictures (ui/look.css .sw-room): Colourful shows the colour tiles,
+   Calm the same window with blue only. ---------- */
+.sw-room:is([data-sw="colourful"], [data-sw="calm"]) { background: var(--surface-0); }
+.sw-room:is([data-sw="colourful"], [data-sw="calm"]) .sw-main i { opacity: 1; }
+.sw-room[data-sw="colourful"] .sw-main i { background: var(--c-purple); }
+.sw-room[data-sw="colourful"] .sw-main i + i { background: var(--c-orange); }
+.sw-room[data-sw="calm"] .sw-main i { background: var(--c-blue); }
+.sw-room[data-sw="calm"] .sw-main i + i { background: var(--c-grey); }
+.sw-room:is([data-sw="colourful"], [data-sw="calm"]) .sw-main b { background: var(--c-blue); }
+
+/* ---------- Learn, History, Memory: the lead, then the one grouped list (M71 part 2) ---------- */
+.home .learn, .home .hist, .home .memory, :root:not(.x) .home .view .panel.hist:not(.amber):not(.x), :root:not(.x) .home .view .panel.memory:not(.bare):not(.amber) { display: grid; gap: var(--space-4); margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.home .learn > .ui-mlist-title, .home .hist .ui-mlist-title, .home .memory .ui-mlist-title { margin-bottom: calc(var(--space-2) - var(--space-4)); }
+.home .learn-lead .ui-lead-acts { margin-top: var(--space-1); }
+.home .learn-lead-fact { margin: 0; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
+.home .learn-ask, .home .mem-ask { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--r-list); background: var(--surface-1); }
+.home .learn-ask-line { margin: 0; color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); }
+.home .hist-lead .ui-lead-title { margin: 0; }
+.home .hist-search { display: flex; gap: var(--space-2); margin: 0; }
+.home .hist-search input[type="search"] { flex: 1; min-width: 0; min-height: var(--h-btn); border: 0; border-radius: var(--r-btn); background: var(--surface-1); color: var(--fg); }
+.home .hist .ui-mrow-title .hist-marks { display: inline-flex; gap: var(--space-1); margin-inline-start: var(--space-2); vertical-align: middle; }
+.home .hist .hist-mark { padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--surface-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.home .hist .hist-hint { display: none; }
+.home .hist .hist-files { display: block; color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font-code); overflow-wrap: anywhere; }
+.home .hist-extra { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--r-list); background: var(--surface-1); }
+.home .hist-extra-title { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-label) var(--font); }
+.home .hist-extra .row { margin: 0; }
+.home .mem-lead .ui-lead-title { margin: 0; }
+.home .mem-section { display: grid; gap: var(--space-2); }
+.home .mem-section .ui-mlist-title { margin-bottom: 0; }
+.home .mem-section .note-example { color: var(--fg-2); }
+.home .mem-section .page-caption { margin: 0 var(--space-4); }
+.home .mem-erase-row { margin: 0; }
+.home .mem-erase.btn { color: var(--bad); }
+.home .mem-editing { gap: var(--space-2); padding: var(--space-2) var(--space-4); }
+.home .mem-editing input { flex: 1; min-width: 0; }
+.home .memory .ui-group-title { margin-inline-start: var(--space-4); }
+
+/* ---------- Settings: the Mac's own Settings layout (M71 part 2) ----------
+   A side list with a tile per section (settingsPages.ts PAGE_COLOUR: a colour or grey), the open one on its tile's soft
+   fill; on the right, the page's groups, each row with one control. A switch or a small button stays on the right of its
+   words even in the narrow column, as on the Mac; a row of choices (Segmented, pictures) keeps its own line. */
+.home[data-view="settings"] .settings-side { background: transparent; }
+.home[data-view="settings"] .settings-side .sb-item { min-height: var(--h-place); gap: var(--space-2); padding-inline: var(--space-1) var(--space-2); border-radius: var(--r-control); color: var(--fg-2); box-shadow: none; }
+.home[data-view="settings"] .settings-side .sb-item::after, .home[data-view="settings"] .settings-side .sb-item[aria-current="page"]::after { display: none; }
+.home[data-view="settings"] .settings-side .sb-item[aria-current="page"] { background: var(--surface-2); color: var(--fg); font-weight: var(--w-strong); box-shadow: none; }
+.home[data-view="settings"] .settings-side .sb-item:not([aria-current="page"]):hover { background: var(--surface-1); }
+.home[data-view="settings"] .settings-side .sb-item .ui-mtile .ic { color: var(--c-mark); }
+.home[data-view="settings"] .settings-search input { border: 0; background: var(--surface-1); }
+.home .ui-group-card { border: 0; border-radius: var(--r-list); background: var(--surface-1); }
+.home .ui-row + .ui-row::before { background: var(--edge); }
+.home .ui-row:has(> .ui-row-control > :is(.ui-switch, .btn, .ui-menu)) > .ui-row-text { flex: 1 1 0; }
+.home .ui-row:has(> .ui-row-control > :is(.ui-switch, .btn, .ui-menu)) > .ui-row-control { justify-content: flex-end; margin-inline-start: auto; }
+
+/* A primary or secondary button anywhere on Home is the lead's own: flat, no gloss, no edge. */
+.home .ui-lead-acts .btn, .home .learn-ask .btn, .home .hist-extra .btn, .home .mem-ask .btn { min-height: var(--h-btn); padding: 0 var(--space-4); border-radius: var(--r-btn); box-shadow: none; font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
+.home .ui-lead-acts .btn.primary { border-color: transparent; background-image: none; font-weight: var(--w-bold); }
+.home .ui-lead-acts .btn.secondary { border-color: transparent; background: var(--surface-2); }
+.home .ui-feature .ui-lead-acts .btn.secondary { background: color-mix(in srgb, var(--fg) 10%, transparent); }
+/* In the wide Home the side list names the open place, and the lead says what it holds, so the place's name in the bar is
+   for VoiceOver only on Learn, History and Memory (Settings keeps its own title). */
+.home[data-side]:is([data-view="learn"], [data-view="did"], [data-view="memory"]) .bar > .view-title { position: absolute; width: 1px; overflow: clip; clip-path: inset(50%); }
+.home[data-side]:is([data-view="learn"], [data-view="did"], [data-view="memory"]) .bar { justify-content: flex-end; }
+
+/* ---------- The first run (M71 part 2): the same black, the same list and tiles ---------- */
+.home .fr { background: transparent; box-shadow: none; }
+.home .fr .ui-mlist { margin: var(--space-2) 0 0; }
+.home .fr .fr-promises li { display: flex; align-items: center; gap: var(--space-2); }
+.home .fr .fr-small { color: var(--fg-2); }
+.home .fr .fr-folds { overflow: clip; border-radius: var(--r-list); background: var(--surface-1); }
+.home .fr .fr-folds .ui-disc + .ui-disc { margin-top: 0; box-shadow: inset 0 var(--hair) 0 var(--edge); }
+.home .fr .fr-folds .ui-disc:last-child .ui-disc-head { border-bottom: 0; }
+/* Learn, History and Memory open with their lead a step under the places, as Now does. */
+:root:not(.x) .home:not([data-side]) .view :is(.learn, .panel.hist:not(.amber):not(.x), .panel.memory:not(.bare):not(.amber)) { margin-top: var(--space-4); }
+/* The open place in the wide Home's side list is on its own colour's soft fill (History orange, Memory pink), never the
+   older accent tint. */
+:root:not(.x) .home[data-side] .side .sb-item[data-c][aria-current="page"] { background: var(--mc-soft); }
+.home .fr .fr-links { display: grid; justify-items: start; gap: var(--space-1); margin-top: var(--space-4); }
+.home[data-side] .fr[data-step="hello"] .fr-welcome .fr-title, .home[data-layout="wide"] .fr[data-step="hello"] .fr-welcome .fr-title { margin-top: 0; }
+/* The welcome's headline is the lead's own size (22 points), as every other place's lead; its one main button is flat. */
+.home .fr .fr-welcome .fr-title { font: var(--w-bold) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); }
+.home .fr .fr-key.btn.primary { border-color: transparent; border-radius: var(--r-btn); box-shadow: none; }
+.home .fr .fr-welcome-loop { border: 0; border-radius: var(--r-list); }
+.home .fr .fr-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.home .fr .fr-foot > .fr-key { flex: none; width: auto; min-width: calc(180rem / 14); margin-inline-start: auto; }
+.home .fr .fr-welcome-loop .fl-recorded { min-height: 0; }
+.home .fr .fr-welcome-loop .first-look { gap: var(--space-2); }
+.home .fr .fr-welcome-loop .fl-actions { margin: 0; }

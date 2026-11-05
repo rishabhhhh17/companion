@@ -88,4 +88,4 @@
    at the display size the spare line goes under the words, never as a gap between the status tag and them. */
 .home .hero:not([data-compact])[data-mode] .headline { align-content: start; }
 /* In the tall Home, work that scrolls under the pinned ask box fades into the page above it, never a hard cut. */
-.home:not([data-side]):not([data-view="settings"]) .work > .askwrap::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--fade); background: linear-gradient(180deg, transparent, var(--bg)); pointer-events: none; }
+.home:not([data-side]):not([data-view="settings"]) .work > .askwrap::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--fade); pointer-events: none; }

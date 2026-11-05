@@ -42,11 +42,11 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   const state = as ?? (m ? lookState(m) : "idle");
   const pose = poseFor(state);
   const liveOn = useSetting("character.live") === true;
-  // The water's colour chosen in Settings (look.water).
-  const water = useSetting("look.water");
+  // The water's colour: the usual ocean (look.water is retired in M71).
+  const water = "ocean";
   const colours = flowColours(waterOf(water));
   // M65: the faceless orb in the chosen water, drawn once per water. M68: or the Visor; both faceless, neither runs water.
-  const look = characterOf(useSetting("look.style"), useSetting("look.character"));
+  const look = characterOf(useSetting("look.character"), useSetting("look.style"));
   const orb = look !== "friendly";
   const orbSrc = useMemo(() => svgUrl(glassOrbSvg(waterOf(water))), [water]);
   const [liveFailed, setLiveFailed] = useState(false);

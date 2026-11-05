@@ -2,8 +2,6 @@
 // the result, Undo and Explain right here), and the list of every practice in catalog order. What each shows is decided in
 // practice.ts and model.ts; card.tsx wires the buttons. Every control has words VoiceOver reads (a11y.test.ts), and every
 // confirm step takes the keyboard to its safe choice (confirm.tsx). A plain Done, never a score or praise (rule 16).
-import { practiceStamp } from "./itemLook.ts";
-import { ItemTile, Stamp } from "./itemMarks.tsx";
 import { useId, useRef, useState, type ReactNode } from "react";
 import { threadLands } from "./homeFlow.ts";
 import { ChangesCard } from "./changesCard.tsx";
@@ -14,12 +12,14 @@ import { Icon } from "./icons.tsx";
 import { buttonShown } from "./groups.ts";
 import { keyHint, type Keys } from "./keys.ts";
 import { type ChangeAt, type Practice, type PracticeResult, type Problem, type ProofLine, type UndoState } from "./model.ts";
-import { FIRST_PRACTICE, practiceKind, practicePath, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
+import { practicePath, threadOf, timeWords, type ListRow, type PracticeEntry, type Thread as ThreadState } from "./practice.ts";
 import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
 import "./ui/chrome.css";
 import { SendBack } from "./reviewCard.tsx";
+import { Button, Lead, ListGroup, ListRow as Row, Tag } from "./ui/parts.tsx";
+import type { Colour } from "./meaning.ts";
 
 const placeLine = (w?: { file?: string; line?: number; message?: string }) => `${w?.file ? `${w.file}, line ${w.line}: ` : ""}${w?.message ?? ""}`;
 
@@ -190,7 +190,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
           {p.problem && <button className="btn" type="button" onClick={() => act.where(p.problem!)}>{S.pointWhere}</button>}
           {p.problem && canWhy && <button className="btn" type="button" disabled={drawing} onClick={() => act.why(p.problem!)}>{S.drawWhy}</button>}
           {task || fixed
-            ? canFix && <button className="btn primary gel" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
+            ? canFix && <button className="btn primary" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
             : <button className="btn primary" type="button" onClick={act.lesson}>{S.practiceSettingFix}</button>}
           {/* M58: Copy for my AI, the review's own words for the AI tool (secrets hidden again by the engine). */}
           {review && sendBack && <SendBack text={sendBack} label={S.fixRun.copyForAi} />}
@@ -262,58 +262,79 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
 
 export type ListActions = { start: (id: string) => void; open: (id: string) => void; startOver: (id: string) => void; remove: (id: string) => void };
 
-/** One practice in the list: what it is, what it teaches, about how long, the cost, and where the person is in it. */
-// M69 (spec 3.8): `lead` is the practice to do now, open with its Find it, Fix it, Prove it path; the others fold to one
-// line with their state, and a Start that is never the main button. No cost line (F29).
-function ListItem({ r, busy, open, act, lead = true }: { r: ListRow; busy: boolean; open: boolean; act: ListActions; lead?: boolean }) {
-  const [ask, setAsk] = useState<"startOver" | "remove" | null>(null);
-  const overId = useId(), removeId = useId();
-  const id = r.entry.id, blocked = busy || r.needsNode;
+/** M71: each practice's own tile colour, in catalog order (the mock: a Join button purple, the key teal, the page pink). */
+const PRACTICE_COLOURS: readonly Colour[] = ["purple", "teal", "pink", "orange", "green", "blue"];
+export const practiceColour = (i: number): Colour => PRACTICE_COLOURS[i % PRACTICE_COLOURS.length];
+
+/** The practice list on Learn (M71, one structure): the next practice leads as the one featured card, in a faint purple,
+ *  with its Start; then every practice as a row of the one grouped list, each with its own tile colour and number, its
+ *  one line and its time (Done, in green, once proven). A row opens its practice: Start, Continue, or Start over (asked
+ *  first). A practice with a copy on this Mac has Remove my copy on the right, asked first. It never brings Learn
+ *  forward by itself (home.ts). No cost line (F29). */
+export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, act, onTour }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null; act: ListActions;
+  /** The recorded first run again (firstLook.ts), the featured card's quiet button. */
+  onTour?: () => void }) {
+  const [ask, setAsk] = useState<{ id: string; what: "startOver" | "remove" } | null>(null);
+  const base = useId(), rowId = (id: string, what: string) => `${base}-${what}-${id}`;
   // The practice open on Now is under way even before its copy is recorded, so the list never says Not started beside the
   // practice card's Find it: Now (the review, 2 Nov 2026).
-  const state: typeof r.state = open && r.state === "notStarted" ? "inProgress" : r.state;
+  const stateOf = (r: ListRow): ListRow["state"] => (openId === r.entry.id && r.state === "notStarted" ? "inProgress" : r.state);
+  // The featured card: the practice to do now (practice.ts practicePath), unless it is already open in its own card above.
+  const leadId = openId ? null : practicePath(rows);
+  const lead = rows.find((r) => r.entry.id === leadId) ?? null;
+  const allDone = rows.length > 0 && rows.every((r) => r.state === "done");
+  const askRow = ask ? rows.find((r) => r.entry.id === ask.id) ?? null : null;
+  // The press that opened a question gets the keyboard back when it closes: the row (Start over) or its Remove.
+  const overId = ask ? rowId(ask.id, "row") : "", removeId = ask ? rowId(ask.id, "remove") : "";
   return (
-    // The first practice, not yet started, leads the list as a card of its own (the audit, item 53).
-    <div className={`line pr-item${lead ? " pr-lead" : " pr-next"}${r.entry.id === FIRST_PRACTICE && state === "notStarted" && lead ? " pr-feature" : ""}`} role="group" aria-label={r.title}>
-      {/* M51 step 3: the practice's tile, its name, and a done one's Proven stamp in place of its plain state (shown again
-          while stamps are off in Settings). */}
-      <div className="pr-head"><ItemTile label={r.title} big kind={practiceKind(r.entry)} />
-        <span className="pr-head-text"><b className="pr-name">{r.title}</b><span className={`pr-state${practiceStamp(state) ? " unstamped" : ""}`} data-state={state}>{!lead && state === "notStarted" ? S.screens.pathNext : S.practiceState[state]}</span>{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}</span></div>
-      {lead && <div className="line">{r.teaches}</div>}
-      {lead && <ol className="pr-path" aria-label={S.screens.pathTitle}>{S.screens.pathSteps.map((t) => <li key={t} data-done={state === "done" || undefined}><span className="pr-path-dot" aria-hidden="true" />{t}</li>)}</ol>}
-      <div className="line muted">{r.time}{r.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</div>
-      {!ask && <div className="row">
-        {(state === "notStarted" || (state === "done" && !r.there)) && <button className={`btn${lead && state === "notStarted" ? " primary" : ""}`} type="button" disabled={blocked} aria-label={`${S.practiceStart}: ${r.title}`} onClick={() => act.start(id)}>{S.practiceStart}</button>}
-        {state === "inProgress" && !open && <button className="btn" type="button" disabled={busy} aria-label={`${S.practiceContinue}: ${r.title}`} onClick={() => act.open(id)}>{S.practiceContinue}</button>}
-        {r.there && <button id={overId} className="btn" type="button" disabled={blocked} aria-label={`${S.practiceStartOver}: ${r.title}`} onClick={() => setAsk("startOver")}>{S.practiceStartOver}</button>}
-        {r.there && <button id={removeId} className="btn" type="button" disabled={busy} aria-label={`${S.practiceRemove}: ${r.title}`} onClick={() => setAsk("remove")}>{S.practiceRemove}</button>}
-      </div>}
-      {ask === "startOver" && (
-        <ConfirmStep className="line" label={S.practiceStartOverSure} back={overId} onCancel={() => setAsk(null)}><div>{S.practiceStartOverSure}</div>
-          <div className="row"><button className="btn primary" type="button" onClick={() => { setAsk(null); act.startOver(id); }}>{S.practiceStartOverYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
+    <section className="learn" aria-label={S.practiceListTitle}>
+      {lead ? (
+        <Lead className="ui-feature learn-lead" meaning="practice" labelledBy={`${base}-lead`}
+          tag={<Tag meaning="practice" words={lead.state === "inProgress" ? S.practiceState.inProgress : undefined} />}
+          title={<h2 className="ui-lead-title" id={`${base}-lead`}>{lead.title}</h2>}
+          line={<><p className="ui-lead-line">{lead.teaches}</p><p className="learn-lead-fact">{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</p></>}
+          actions={<>
+            <Button kind="primary" disabled={busy || lead.needsNode} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
+              onClick={() => (lead.state === "inProgress" && lead.there ? act.open(lead.entry.id) : act.start(lead.entry.id))}>{lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}</Button>
+            {onTour && <Button kind="secondary" onClick={onTour}>{S.firstLook.watch}</Button>}
+          </>} />
+      ) : allDone ? (
+        <Lead className="ui-feature learn-lead" meaning="proven" labelledBy={`${base}-lead`} tag={<Tag meaning="proven" />}
+          title={<h2 className="ui-lead-title" id={`${base}-lead`}>{S.practiceAllDoneTitle}</h2>} line={<p className="ui-lead-line">{S.practiceAllDone}</p>} />
+      ) : null}
+      {damaged && <p className="page-caption">{S.practiceRecordDamaged}</p>}
+      {note && <p className="page-caption" role="status">{note}</p>}
+      {busy && <p className="page-caption">{S.practiceBusy}</p>}
+      {nodeFix && rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceNodeList(nodeFix)}</p>}
+      {withoutNode != null && !rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceWithoutNode(withoutNode)}</p>}
+      <ListGroup label={S.practiceListTitle} shown>
+        {rows.map((r, i) => {
+          const id = r.entry.id, state = stateOf(r), open = openId === id, blocked = busy || r.needsNode;
+          const rowOver = rowId(id, "row"), rowRemove = rowId(id, "remove");
+          const short = (S.practices[id as keyof typeof S.practices] as { short?: string } | undefined)?.short ?? r.teaches;
+          // What a press on the row does: start it, carry on with it, or (done, with its copy here) start over, asked first.
+          const go = state === "done" && r.there ? () => setAsk({ id, what: "startOver" })
+            : state === "inProgress" && !open ? () => act.open(id)
+            : state === "notStarted" || (state === "done" && !r.there) ? () => act.start(id) : undefined;
+          const goWord = state === "done" && r.there ? S.practiceStartOver : state === "inProgress" ? S.practiceContinue : S.practiceStart;
+          return <Row key={id} id={rowOver} colour={state === "done" ? "green" : practiceColour(i)} icon={state === "done" ? "tick" : undefined} mark={state === "done" ? undefined : String(i + 1)}
+            title={r.title} line={state === "inProgress" ? S.practiceState.inProgress : short}
+            fact={state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes)} factColour={state === "done" ? "green" : undefined}
+            onOpen={go && !blocked ? go : undefined} openLabel={`${goWord}: ${r.title}`}
+            action={r.there && !busy ? { id: rowRemove, label: S.practiceRemove, colour: "grey", onClick: () => setAsk({ id, what: "remove" }) } : null} />;
+        })}
+        {!lead && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} onOpen={onTour} openLabel={S.firstLook.watch} />}
+      </ListGroup>
+      {ask && askRow && ask.what === "startOver" && (
+        <ConfirmStep className="learn-ask" label={S.practiceStartOverSure} back={overId} onCancel={() => setAsk(null)}><p className="learn-ask-line">{askRow.title}. {S.practiceStartOverSure}</p>
+          <div className="row"><Button kind="primary" onClick={() => { setAsk(null); act.startOver(ask.id); }}>{S.practiceStartOverYes}</Button><button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
         </ConfirmStep>
       )}
-      {ask === "remove" && (
-        <ConfirmStep className="line" label={S.practiceRemoveSure} back={removeId} onCancel={() => setAsk(null)}><div>{S.practiceRemoveSure}</div>
-          <div className="row"><button className="btn danger" type="button" onClick={() => { setAsk(null); act.remove(id); }}>{S.practiceRemoveYes}</button><button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
+      {ask && askRow && ask.what === "remove" && (
+        <ConfirmStep className="learn-ask" label={S.practiceRemoveSure} back={removeId} onCancel={() => setAsk(null)}><p className="learn-ask-line">{askRow.title}. {S.practiceRemoveSure}</p>
+          <div className="row"><Button kind="danger" onClick={() => { setAsk(null); act.remove(ask.id); }}>{S.practiceRemoveYes}</Button><button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
         </ConfirmStep>
       )}
-    </div>
-  );
-}
-
-/** The practice list on Learn, above the lessons. It never brings Learn forward by itself (home.ts). */
-export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, act }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null; act: ListActions }) {
-  return (
-    <section className="panel" aria-label={S.practiceListTitle}>
-      <h2>{S.practiceListTitle}</h2>
-      <div className="line muted">{S.practiceListHelp}</div>
-      {damaged && <div className="line">{S.practiceRecordDamaged}</div>}
-      {note && <div className="line" role="status">{note}</div>}
-      {busy && <div className="line muted">{S.practiceBusy}</div>}
-      {nodeFix && rows.some((r) => r.needsNode) && <div className="line">{S.practiceNodeList(nodeFix)}</div>}
-      {withoutNode != null && !rows.some((r) => r.needsNode) && <div className="line muted">{S.practiceWithoutNode(withoutNode)}</div>}
-      {(() => { const lead = openId ?? practicePath(rows); return rows.map((r) => <ListItem key={r.entry.id} r={r} busy={busy} open={openId === r.entry.id} act={act} lead={lead === r.entry.id} />); })()}
     </section>
   );
 }

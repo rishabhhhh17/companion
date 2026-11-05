@@ -59,3 +59,14 @@ The founder supplies or picks other character art.
   - Out, the spring takes it back to its shape with a wobble.
   - Dragged, the press from `press_of` decides how flat it is.
 - **Placed free,** it now keeps clear of the notch only; Home may drop over it.
+
+## Update, 5 Nov 2026 (founder)
+
+Looking at Home opened from the notch in their own look (Friendly, Vivid, Deep), the founder: "the notch looks so bad", "these colors don't look good, it feels so random", "I need it to be black with accents of different color", and on approving the plan: "Just make it simple, good, and useful, with a little bit of fun here and there, and immersive. I don't want to do this again and again."
+
+- The looks are now one look: black, like the notch, with colours that mark meaning (blue for actions and Now, purple for Learn and practice, orange for History and changes to look at, pink for Memory, green for proven, red for a real problem, teal for listening, grey for neutral). Colour never paints a surface.
+- The Look page offers Colour (Colourful, the usual, or Calm with blue only), Character (Visor, Glass orb, Water), Layout and Text size.
+- The water character from this record stays as a Character choice ("Water"), with its face, bubbles and water. The water room behind Home (the sea, the waves, the glows of the Friendly style) is retired, and so is the water colour choice (look.water): the water is the usual ocean.
+- Stored values of the retired keys still load and are ignored.
+
+Plan: docs/milestones/M71-black-with-colour.md.

@@ -14,6 +14,7 @@ import { meterScales, VISOR_BAND, VISOR_BAND_VIEWBOX, VISOR_GLASS, VISOR_GLASS_G
 import { clampTo, commitText, leaveThen, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
 import { EXIT_MS, VISOR_MS, type ExitKind } from "../motionTokens.ts";
 import { reducedMotion, watchReducedMotion } from "../motion.ts";
+import { colourOf, PLACE_COLOUR, PLACE_ICON, type Colour, type Meaning, type Place } from "../meaning.ts";
 
 export type Option<T extends string = string> = { id: T; label: string };
 
@@ -542,10 +543,12 @@ export function FootLine({ start, end, className }: { start?: ReactNode; end?: R
 // ---------- Settings' frame ----------
 
 /** A page in Settings' sidebar: a drawing and its name; the open page is a filled row (no stripe, no coloured dot). */
-export function SidebarItem({ icon, label, selected, attention, onClick, id, count }: { icon: IconName; label: string; selected: boolean; attention?: boolean; onClick: () => void; id?: string; count?: number }) {
+export function SidebarItem({ icon, label, selected, attention, onClick, id, count, colour }: { icon: IconName; label: string; selected: boolean; attention?: boolean; onClick: () => void; id?: string; count?: number;
+  /** M71: the item's colour tile (a place's own colour, Settings grey), the Mac's own Settings style; its soft fill when open. */
+  colour?: Colour }) {
   return (
-    <button id={id} type="button" className="sb-item" aria-current={selected ? "page" : undefined} onClick={onClick}>
-      <Icon name={icon} size={16} /><span className="sb-label">{label}</span>
+    <button id={id} type="button" className="sb-item" data-c={colour} aria-current={selected ? "page" : undefined} onClick={onClick}>
+      {colour ? <Tile colour={colour} icon={icon} size="place" /> : <Icon name={icon} size={16} />}<span className="sb-label">{label}</span>
       {/* M69 step 2: a count of what waits there (amber, count only), said in words for VoiceOver. */}
       {count && count > 0 ? <span className="sb-count" role="img" aria-label={S.homeNow.nowCount(count)}>{count}</span> : attention ? <span className="sb-dot" role="img" aria-label={S.ui.needsAttention} /> : null}
     </button>
@@ -618,5 +621,102 @@ export function Toast({ text, action, onAction, onDone, ms = TOAST_MS }: { text:
       <span className="ui-toast-text">{text}</span>
       {action && onAction ? <Button kind="quiet" size="sm" onClick={onAction}>{action}</Button> : null}
     </div>
+  );
+}
+
+// ---------- M71, black with colour: the parts every page is made from (docs/milestones/M71-black-with-colour.md) ----------
+// Tile, Tag, ListGroup and ListRow (the grouped list, the Mac's own Settings style), Lead and EmptyRow, and PlaceButton for
+// the places. A colour is always a meaning's (meaning.ts): a part takes the colour's name and ui/tokens.css gives its forms
+// ([data-c] sets --mc, --mc-tile, --mc-soft and --mc-text), so no page ever writes a colour.
+
+/** A small square of one colour with a white mark: an icon (icons.tsx, never an emoji) or a short number. `size`: row (28
+ *  points, in a list), place (20, the places) or btn (18, on a small button). A picture: the words beside it say it. */
+export function Tile({ colour, icon, size = "row", children }: { colour: Colour; icon?: IconName; size?: "row" | "place" | "btn"; children?: ReactNode }) {
+  const px = size === "row" ? 16 : size === "place" ? 12 : 11;
+  return <span className="ui-mtile" data-c={colour} data-size={size} aria-hidden="true">{children ?? (icon ? <Icon name={icon} size={px} /> : null)}</span>;
+}
+
+/** A dot of one colour (the project's state before its name, a fact's meaning). A picture only. */
+export function Dot({ colour }: { colour: Colour }) {
+  return <span className="ui-mdot" data-c={colour} aria-hidden="true" />;
+}
+
+/** A meaning's short tag: a dot and its words, in its colour on its soft fill ("Practice ready", purple). `words`: other
+ *  words in the same colour, for a meaning said more exactly (a result's own verdict). */
+export function Tag({ meaning, words, id, tick }: { meaning: Meaning; words?: string; id?: string;
+  /** M71, the proven moment: a small tick drawn in, once, in place of the dot (a fix just proven). Reduce motion shows it drawn. */
+  tick?: boolean }) {
+  return <p className="ui-mtag" id={id} data-c={colourOf(meaning)} data-meaning={meaning}>
+    {tick ? <span className="ui-mtag-tick" aria-hidden="true"><Icon name="tick" size={12} /></span> : <span className="ui-mtag-dot" aria-hidden="true" />}{words ?? S.meaning.tag[meaning]}</p>;
+}
+
+/** The grouped list: rows on one card, hairlines between them (the Mac's own Settings). Never more than one per screen,
+ *  never a card inside it. `label` names it for VoiceOver (Since then). */
+export function ListGroup({ label, id, shown, children }: { label: string; id?: string;
+  /** The label shown over the list as its small heading (Learn's "Practice projects", Memory's "About my-shop"). */
+  shown?: boolean; children?: ReactNode }) {
+  const hid = useId();
+  if (!shown) return <ul className="ui-mlist" id={id} aria-label={label}>{children}</ul>;
+  return <><h3 className="ui-mlist-title" id={hid}>{label}</h3><ul className="ui-mlist" id={id} aria-labelledby={hid}>{children}</ul></>;
+}
+
+export type RowAction = { label: string; onClick: () => void; colour?: Colour; id?: string; describedBy?: string };
+/** One row of the grouped list: a colour tile, a title, one line, and one fact or one action on the right. `onOpen`: the row
+ *  opens what it is about (its tile and words are one button). `action`: one press on the right in the row's colour
+ *  (Review, Fix it). `fact`: a short fact on the right (2 h ago, 3 min). */
+export function ListRow({ colour, icon, mark, title, line, fact, factColour, onOpen, openLabel, action, id }: {
+  colour: Colour; icon?: IconName; mark?: ReactNode; title: ReactNode; line?: ReactNode; fact?: ReactNode; factColour?: Colour;
+  onOpen?: () => void; openLabel?: string; action?: RowAction | null; id?: string;
+}) {
+  const body = <>
+    <Tile colour={colour} icon={icon}>{mark}</Tile>
+    <span className="ui-mrow-words"><span className="ui-mrow-title">{title}</span>{line ? <span className="ui-mrow-line">{line}</span> : null}</span>
+    {fact != null && fact !== "" && !action ? <span className="ui-mrow-fact" data-c={factColour}>{fact}</span> : null}
+  </>;
+  return (
+    <li className="ui-mrow" id={id} data-open={onOpen ? "" : undefined}>
+      {onOpen ? <button type="button" className="ui-mrow-main" title={openLabel} onClick={onOpen}>{body}</button> : <div className="ui-mrow-main">{body}</div>}
+      {action ? <button type="button" className="ui-mrow-act" id={action.id} data-c={action.colour ?? colour} aria-describedby={action.describedBy} onClick={action.onClick}>{action.label}</button> : null}
+    </li>
+  );
+}
+
+/** A list with nothing in it yet: what will appear there, and one action. */
+export function EmptyRow({ icon = "dash", title, line, action }: { icon?: IconName; title: ReactNode; line?: ReactNode; action?: RowAction | null }) {
+  return <ListRow colour="grey" icon={icon} title={title} line={line} action={action} />;
+}
+
+/** The lead: one status tag, one headline (22 points, tight), one line under it, then one main button and at most one
+ *  quiet one. The character sits on the right in its own column, so it never covers a word. The caller passes its own
+ *  heading (it carries the page's id and its swap key) and its buttons (Button primary, then secondary): as tag, title,
+ *  line and actions, or as children in that order when the page picks between several. */
+export function Lead({ tag, title, line, actions, character, meaning, id, className, wordsClass, labelledBy, hidden, data, wordsData, children }: {
+  tag?: ReactNode; title?: ReactNode; line?: ReactNode; actions?: ReactNode; character?: ReactNode; meaning?: Meaning | null; id?: string; className?: string; wordsClass?: string; labelledBy?: string; hidden?: boolean;
+  /** Extra data attributes for the page's own states (data-mode, data-rest), on the lead and on its words. */
+  data?: Record<`data-${string}`, string | undefined>; wordsData?: Record<`data-${string}`, string | undefined>; children?: ReactNode;
+}) {
+  return (
+    <section className={className ? `ui-lead ${className}` : "ui-lead"} id={id} hidden={hidden} aria-labelledby={labelledBy} data-meaning={meaning ?? undefined} data-c={meaning ? colourOf(meaning) : undefined} {...data}>
+      <div className={wordsClass ? `ui-lead-words ${wordsClass}` : "ui-lead-words"} {...wordsData}>
+        {tag}
+        {title}
+        {line}
+        {actions ? <div className="ui-lead-acts">{actions}</div> : null}
+        {children}
+      </div>
+      {character ? <div className="ui-lead-char">{character}</div> : null}
+    </section>
+  );
+}
+
+/** One of the places (Now, Learn, History, Memory): its colour tile and its name; the one open is on its soft fill. A
+ *  place that waits has a small dot (said in words for VoiceOver). */
+export function PlaceButton({ place, label, on, waits, waitsWord, onClick, id }: { place: Place; label: string; on: boolean; waits?: boolean; waitsWord?: string; onClick: () => void; id?: string }) {
+  return (
+    <button type="button" className="ui-place" id={id} data-c={PLACE_COLOUR[place]} aria-pressed={on} onClick={onClick}>
+      <Tile colour={PLACE_COLOUR[place]} icon={PLACE_ICON[place]} size="place" />
+      <span>{label}</span>
+      {waits ? <><span className="ui-place-dot" aria-hidden="true" /><span className="sr">, {waitsWord}</span></> : null}
+    </button>
   );
 }

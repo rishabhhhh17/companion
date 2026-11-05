@@ -30,7 +30,8 @@ describe("(2, 3) a practice open on Now: one next step above the fold, and Flowf
     expect(homeMode(m, n)).toBe("needs");
     expect(needMainFor(m, n, P)).toBe("practiceStart");
     const h = heroWords(m, P, n);
-    expect(h.line).toBe(S.home.practiceLine.start);
+    // M71: the practice in its own words (the mock), not what the button does.
+    expect(h.line).toBe(S.home.practiceOn(S.practices[m.practice!.kind as keyof typeof S.practices].title));
     expect(h.line).not.toBe("Ready");
     // The bubble says the practice's own word for the moment, never "Needs a tap." over a line that says Ready.
     expect(sayFor(m, h)).toBe(S.practiceSay.start);
@@ -43,9 +44,9 @@ describe("(2, 3) a practice open on Now: one next step above the fold, and Flowf
     const failed = { ...m, practice: { ...m.practice!, stage: "failed" } } as Model;
     expect(needMainFor(failed, need(failed), P)).toBe("openLearn");
   });
-  test("a practice in another folder, or a question, never gets this button", () => {
+  test("a practice in another folder opens it on Learn (M71: the founder's screenshot had no button); a question never gets this button", () => {
     const m = practice();
-    expect(needMainFor(m, need(m), "/Users/me/other")).toBe(null);
+    expect(needMainFor(m, need(m), "/Users/me/other")).toBe("openLearn");
     expect(needMainFor(initial(), null, P)).toBe(null);
   });
   test("the page draws it as the gel main button, with words from the strings", () => {
@@ -74,22 +75,13 @@ describe("(4) cards that say nothing take no room", () => {
 });
 
 describe("(1) Flowflow's glow is never cut by a box, and its water has no step", () => {
-  test("the glow is a soft circle behind Flowflow in its pond, outside the masked box, and no drop shadow filter is left", () => {
+  // M71: Home is black; the soft glow circle behind the character and the band of water under it are retired (no glow or
+  // halo, no gradient outside the character's own art). The character's art keeps its own light.
+  test("M71: no glow behind the character and no band of water under it, and still no drop shadow filter on it", () => {
     expect(css).not.toMatch(/\.home-char\[data-state="(needsYou|done)"\] \{ filter: drop-shadow/);
-    expect(css).toMatch(/\.home-pond::after \{[^}]*radial-gradient/);
-    expect(css).toMatch(/\.home-pond\[data-glow="needsYou"\]::after \{[^}]*var\(--amber\)/);
-    expect(css).toMatch(/\.home-pond\[data-glow="done"\]::after \{[^}]*var\(--ok\)/);
-    expect(card).toContain("data-glow={");
-  });
-  test("the water under the line is solid for 12 px before it fades, in both layouts, and starts under the wave, never as a flat edge above a trough", () => {
-    // It started at the box's top, 11 points above the wave's foot, so a flat edge showed over every trough (the review, 2 Nov
-    // 2026). The wave's own path fills down to its foot; the box's fill starts there, as a colour (no layer opacity), so the
-    // line over it keeps its strength.
-    expect(css).toMatch(/\.home \.home-pond > \.ch-water \{[^}]*transparent var\(--wave-foot\), var\(--sea-tint\) var\(--wave-foot\), var\(--sea-tint\) calc\(var\(--wave-foot\) \+ 12px\),/);
-    expect(css).not.toMatch(/\.home \.home-pond > \.ch-water \{[^}]*opacity/);
-    expect(css).toContain(".ch-water, .fr-tank { --wave-foot: 11px; }");
+    expect(css).not.toMatch(/\.home-pond::after \{[^}]*gradient/);
+    expect(css).not.toMatch(/\.home \.home-pond > \.ch-water \{[^}]*gradient/);
     expect(css).toContain(".home-pond .ch-water .waterline, .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px;");
-    expect(tokens).toContain("--sea-tint: color-mix(in srgb, var(--sea-room) calc(var(--sea-see) * 100%), transparent);");
   });
   test("Flowflow is bigger in the tall Home, so it is not a tiny mark in a corner", () => {
     expect(css).toMatch(/\.home:not\(\[data-side\]\) \.hero\[data-mode\] \{ --char: calc\(1[2-9]\drem \/ 14\); \}/);
@@ -97,14 +89,11 @@ describe("(1) Flowflow's glow is never cut by a box, and its water has no step",
 });
 
 describe("(5) calm and grown up: the usual Home is a plain page with one blue accent", () => {
-  test("the sea fills the work only with nothing under the status, and with the light off (the usual) it is drawn at no strength", () => {
+  test("M71: the sea that filled the work is retired: Home draws no sea fill", () => {
     const base = { side: true, tab: "now" as const, mode: "rest", cardsUnder: false };
-    expect(seaFills(base)).toBe(true);
-    expect(seaFills({ ...base, cardsUnder: true })).toBe(false);
-    expect(seaFills({ ...base, side: false })).toBe(false);
-    expect(seaFills({ ...base, mode: "working" })).toBe(false);
-    expect(tokens).toMatch(/:root\[data-light="off"\] \{[^}]*--room-show: 0;[^}]*--sea-fill-a: 0;[^}]*--sea-tail-a: 0%;/);
-    expect(css).toMatch(/\.sea-fill \{[^}]*opacity: var\(--sea-fill-a\); background: linear-gradient\(180deg, color-mix\(in srgb, var\(--sea-tint\) 80%/);
+    expect(seaFills(base)).toBe(true);   // the rule itself is kept in homeLayout.ts for the record; Home no longer draws it
+    expect(card).not.toContain('className="sea-fill"');
+    expect(css).not.toMatch(/\.sea-fill \{/);
   });
   test("Calm keeps Home in Flow's blue whatever group is at work, by tokens only; Vivid gives each group its room", () => {
     const calm = /\n:root\[data-colour="calm"\] \.home\[data-element\] \{([^}]*)\}/.exec(tokens.replace(/\/\*[\s\S]*?\*\//g, ""))?.[1] ?? "";

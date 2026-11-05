@@ -65,7 +65,9 @@ describe("one Settings, inside Home (F28, T17)", () => {
     expect(read("../src-tauri/src/main.rs")).toContain('"settings" => open_card_then(app, "menu", true, Some(arrival::menu_settings())),');
     // In Settings the top bar is Back, its name and Close: the place buttons (Settings among them) step back.
     expect(card).toContain('{home.tab !== "settings" && places.map((t) => {');
-    expect(card).toContain('onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}');
+    // M71: Settings is the grey gear at the end of the places; the others open their place.
+    expect(card).toContain('label={S.home.places[t]} title={S.home.places[t]} onClick={gear}');
+    expect(card).toContain('onClick={() => pickTab(placeAfter(home.tab, t))}');
   });
   test("Command F searches, Esc clears the search first, Command [ goes back to Now, and the arrows move through the sidebar", () => {
     const view = page.slice(page.indexOf("export function SettingsView("));

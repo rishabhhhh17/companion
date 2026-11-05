@@ -47,13 +47,12 @@ describe("the orb's words on the edge agree with its ring (M65 step 4)", () => {
 });
 
 describe("which character a small place and the edge show", () => {
-  test("the orb with Instrument (or picked), the friendly one with Friendly (or picked)", () => {
-    expect(miniShows(characterOf("instrument", "match"), { live: true, failed: false })).toBe("visor");   // M68
-    expect(miniShows(characterOf(undefined, undefined), { live: true, failed: false })).toBe("visor");   // a store from before M65
-    expect(miniShows(characterOf("instrument", "orb"), { live: true, failed: false })).toBe("orb");
-    expect(miniShows(characterOf("friendly", "match"), { live: true, failed: false })).toBe("live");
-    expect(miniShows(characterOf("friendly", "orb"), { live: true, failed: false })).toBe("orb");
-    expect(miniShows(characterOf("instrument", "friendly"), { live: false, failed: false })).toBe("picture");
+  test("the Visor unless another is picked (M71: the style no longer picks it), the water one only when picked", () => {
+    expect(miniShows(characterOf("match"), { live: true, failed: false })).toBe("visor");   // M68; a stored match is the Visor
+    expect(miniShows(characterOf(undefined), { live: true, failed: false })).toBe("visor");   // a store from before M65
+    expect(miniShows(characterOf("orb"), { live: true, failed: false })).toBe("orb");
+    expect(miniShows(characterOf("friendly"), { live: true, failed: false })).toBe("live");
+    expect(miniShows(characterOf("friendly"), { live: false, failed: false })).toBe("picture");
     expect(miniShows("friendly", { live: true, failed: true })).toBe("picture");
   });
   test("a picture of a friendly pose asked for by name (Settings' How lively tiles) stays that picture", () => {
@@ -89,9 +88,9 @@ describe("the pages use it", () => {
     expect(dock).toContain("orbMotion(charLook, stateMotion(s, r))");   // the state's motion goes through the orb's rule
     expect(dock).toContain("data-character={charLook}");
   });
-  test("the island keeps the notch's black (keepNight) and takes only the style's corners", () => {
+  test("the island keeps the notch's black (keepNight) and the one look's style (M71: the style is retired)", () => {
     expect(island).toContain("useLook({ keepNight: true })");
-    expect(island).toMatch(/data-style=\{choiceOf\("look\.style", useSetting\("look\.style"\)\)\}/);
+    expect(island).toContain('data-style="instrument"');
     for (const r of parse(CHROME())) if (/\.island/.test(r.sel)) for (const [k] of r.decl) expect(k, r.sel).not.toMatch(/^(--notch|background|color)/);
   });
   test("chrome.css is loaded by every page it styles", () => {
@@ -161,8 +160,8 @@ describe("Home in Instrument, after the critics", () => {
     }
     expect(decl(`${IS} .home .view .panel.job::after`).display).toBe("none");   // no breathing blue rim
     expect(tokens).toMatch(/:root\[data-style="instrument"\]\[data-tone\] \{[^}]*--card-halo-a: 0%;[^}]*--card-tint-a: 0%;[^}]*--card-lit-a: 0%;/);
-    expect(tokens).toMatch(/:root\[data-style="instrument"\] \.home\[data-element\] \{[^}]*--el-shadow: rgba\(0, 0, 0, \.35\)/);
-    expect(tokens).toMatch(/:root\[data-style="instrument"\]\[data-theme="paper"\] \.home\[data-element\] \{[^}]*--el-shadow: rgba\(0, 0, 0, \.08\)/);
+    // M71: the rooms are retired, so no room shadow is set for Instrument either.
+    expect(tokens).not.toContain(".home[data-element]");
   });
   test("the ask box is a quiet field: a neutral edge at rest and in focus, no accent frame and no glow (Home focuses it on every open)", () => {
     // M65 step 6: a control's edge at rest (3 to 1 on the page and the field, measured in lookChoices.test.ts). M69 (spec

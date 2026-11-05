@@ -188,6 +188,8 @@ export const S = {
     // Something waits on another place (homeHero.ts needMainFor): its next step as the main button on Now.
     needMain: { practiceStart: "Check my project", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
     // What a practice open in this folder says under its name on Now, one line per stage (homeHero.ts heroWords).
+    // M71: a practice ready on Now, said as the practice itself, from its own title.
+    practiceOn: (title: string) => `${title}, on a practice copy.`,
     practiceLine: { start: "Check my project runs its checks on your practice copy.", found: "It found the problem. Fix it next.", failed: "That did not pass. Open the practice to try again.", blocked: "It could not run. Open the practice to see why.", done: "Fixed and proven. Open the practice for what is next." },
     // M69 (the YC benchmark spec 3.1): the box is pinned at the bottom of Home, its own question, no longer an "Or" after a button.
     ask: "What are you stuck on?",
@@ -501,7 +503,7 @@ export const S = {
   pages: {
     account: { title: "Account", sub: "Your plan, the daily limit and what to call you." },
     general: { title: "General", sub: "The notch, Home, text size and which tools are on." },
-    look: { title: "Look", sub: "Home's layout, theme and colour, and the small details. Pick by looking." },
+    look: { title: "Look", sub: "Home is black like the notch. Pick its colour, character, layout and text size." },
     fixing: { title: "Fixing", sub: `How ${PRODUCT} fixes and checks your project.` },
     flowflow: { title: "Character", sub: `${NAMES.character}, the water on your screen: how much it moves and where it lives.` },
     keys: { title: "Keys and voice", sub: `The keys for each job, and talking to ${PRODUCT}.` },
@@ -547,10 +549,10 @@ export const S = {
     "look.water": "Flowflow's colour and its water. Home stays water blue.",
     "look.gloss": "The one main button in each view: shiny, or flat.",
     "look.light": "A coloured light behind Home: off, the usual, still or drifting.",
-    "look.colour": "Calm, the usual, is one blue accent. Vivid adds colour.",
+    "look.colour": "Colourful gives each place and kind of news its colour. Calm uses blue only.",
     "look.corners": "Soft rounds the corners of cards and buttons. Crisp keeps them tight.",
     "look.style": "Instrument is calm and compact, the usual. The other is the playful look with water.",
-    "look.character": "A glass orb with a band of light, a plain glass orb, or the one with a face and bubbles.",
+    "look.character": "A glass orb with a band of light, a plain glass orb, or water with a face.",
     "character.name": `What ${PRODUCT_S} character is called.`,
     "character.follow": "Still only follows while listening or pointing.",
     "character.dockWhen": "Pushed in hard, thrown at it, or held there two seconds. Playing near it leaves it where it is.",
@@ -861,6 +863,9 @@ export const S = {
     passed: (project: string, ago: string) => `${project}: last check passed ${ago}`,
     // M70 step 4: the fact for a project never checked, as Home's headline says it.
     notChecked: (project: string) => `${project}: not checked yet`,
+    // M71: the panel's fact in its short form, so the project moves beside the greeting and the fact is never cut.
+    failed: (project: string, ago: string) => `${project}: a check failed ${ago}`,
+    changedSince: (project: string) => `${project}: changed since its last check`,
     open: `Open ${PRODUCT}`,
     // The visible word on Open (its name for VoiceOver stays `open`): a bare chevron read as "next".
     openShort: "Open",
@@ -1306,6 +1311,7 @@ export const S = {
   // teaches, what is wrong in it, and what the found and done steps add. Times and costs are estimates until measured.
   practices: {
     signup: {
+      short: `Find it, fix it, prove it`,
       title: "A Join button that fails",
       teaches: `${PRODUCT} finds it, fixes it, proves the fix, and Undo is there.`,
       start: "Its signup page has a Join button that says “Something went wrong”, and one thing is wrong on purpose.",
@@ -1313,6 +1319,7 @@ export const S = {
       doneMore: `That is the whole loop: found, fixed with one small change, and proven by the checks. ${PRODUCT} never says done without proof.`,
     },
     setting: {
+      short: `You type it, ${PRODUCT} checks it`,
       title: "A setting only you can add",
       teaches: `Settings go in .env.local, typed by you. ${PRODUCT} shows where, checks it and never sees the value.`,
       start: "It is a small shop page that will not start: it needs a setting that is not set.",
@@ -1320,6 +1327,7 @@ export const S = {
       doneMore: `That is the whole loop: found, set by you, proven. ${PRODUCT} never asks for a setting's value.`,
     },
     route: {
+      short: `Make the link and the page match`,
       title: "A link to a missing page",
       teaches: "An address must match on both sides: the link, and the page it opens.",
       start: `Its home page links to the prices twice, from the menu and from a button, and both open a page that is not there. ${PRODUCT} fixes one; the second is your turn.`,
@@ -1327,6 +1335,7 @@ export const S = {
       doneMore: "That is the whole loop: the link and the page now have the same address, and the checks prove it.",
     },
     import: {
+      short: `What Cannot find module means`,
       title: "A file that was renamed",
       teaches: "What Cannot find module means after an AI tool moves or renames a file.",
       start: "Its price list will not start, because a file it uses was renamed and one line still uses the old name.",
@@ -1334,6 +1343,7 @@ export const S = {
       doneMore: "That is the whole loop: the line now uses the file's new name, and the checks prove it.",
     },
     "open-table": {
+      short: `Caught before you go live`,
       title: "A database table anyone can read",
       teaches: `${PRODUCT} checks before you go live, and points at a table anyone could read.`,
       start: "Its notes are kept in a database table that anyone with the site's address could read. Nothing on the page shows it; the check before going live does.",
@@ -1342,6 +1352,7 @@ export const S = {
     },
     // M58 (feature 9): the sixth practice. The practice's pretend AI writes a made up key into the code, and the review stops it.
     key: {
+      short: `Watch the review catch it`,
       title: "A key written into the code",
       teaches: `${PRODUCT} looks over every change your AI makes, and stops a key written into the code.`,
       start: "Its checkout needs a payments key. When you press the button, the practice's pretend AI changes one file, the way AI tools sometimes do. The key is made up.",
@@ -1420,6 +1431,11 @@ export const S = {
   // The practice list on Learn.
   practiceListTitle: "Practice projects",
   practiceListHelp: `Small projects with one thing wrong on purpose, so you can see how ${PRODUCT} helps before you are stuck. Each one is copied into a new folder in your home folder; your own projects are never touched.`,
+  // M71, Learn: a practice's time as a short fact on its row ("3 min"), and the featured card's state words.
+  practiceMin: (n: number) => `${n} min`,
+  practiceAllDoneTitle: "Every practice is done",
+  practiceTourRow: "A 15 second tour",
+  practiceTourLine: "A recorded run. Nothing on your Mac changes.",
   practiceMinutes: (n: number) => `About ${n} ${n === 1 ? "minute" : "minutes"}`,
   practiceCostKey: (cents: number) => `About ${cents} ${cents === 1 ? "cent" : "cents"}`,
   practiceFree: "Free, no Claude",
@@ -2115,9 +2131,9 @@ export const S = {
     "look.stamps": { label: "Status labels", help: "Small labels at the end of items in your lists: Working, New, Proven, Not fixed yet and Needs you. In the wide Home's list on the left each is a small dot with its own drawing. Point at a task to read it. Off shows the same in plain words or a small mark.", also: ["stamps", "status labels", "labels", "tags", "working", "proven", "new", "needs you", "marks"] },
     "look.gloss": { label: "Glossy button", help: "The one main button in each view, in the Friendly style, in the water's colour. Flat, the usual, is its plain colour. On gives it a soft shine and glow. The Instrument style keeps its main button flat.", also: ["glossy", "gloss", "shine", "shiny", "flat", "main button", "pill"], options: { on: "On", flat: "Flat" } },
     "look.light": { label: "Light behind Home", help: "Off, the usual, keeps Home a plain page: no coloured sky, no rays, no drifting light and no water. Still lights Home from behind in water blue, as one picture. Moving lets that light drift slowly while you use Home. It holds still after 10 quiet seconds, or when Home is closed. Colour sets how strong it is. Reduce motion holds it still.", also: ["light", "glow", "background", "colour", "color", "room", "ambient", "battery", "motion", "plain", "colourful"], options: { off: "Off", still: "Still", moving: "Moving" } },
-    "look.colour": { label: "Colour", help: "How much colour Home has. Calm, the usual, keeps one colour, water blue, for the main button, focus, the place you are on and progress. Green, red and amber only mark proven, failed and needs you. Vivid gives each part of Home its own colour, such as gold for Learn. It tints the cards and makes the light stronger. Words read the same in both.", also: ["colour", "color", "colourful", "colorful", "vivid", "bright", "calm", "quiet", "muted", "saturation", "intensity", "tone down"], options: { calm: "Calm", vivid: "Vivid" } },
+    "look.colour": { label: "Colour", help: "Home is black like the notch, and colour only marks what something means. Colourful, the usual, gives each place and each kind of news its own colour. Blue is for Now and actions, purple for Learn, orange for History and changes to look at. Pink is for Memory, green for proven and red for a real problem. Calm keeps the same layout with blue as the only colour. Words read the same in both.", also: ["colour", "color", "colourful", "colorful", "vivid", "bright", "calm", "muted", "blue", "accent", "tone down", "theme", "dark mode", "light mode", "appearance", "night", "white", "pure black", "black"], options: { colourful: "Colourful", calm: "Calm", vivid: "Colourful" } },
     "look.style": { label: "Style", help: "Instrument, the usual, is calm and compact. It has a graphite page, small corners and rectangle buttons, with colour only where it means something. Friendly is the playful look from before, with round buttons, big headlines and water across Home. Every other look choice works in both.", also: ["style", "look", "instrument", "friendly", "playful", "grown up", "serious", "professional", "childish", "cartoon", "minimal", "compact"], options: { instrument: "Instrument", friendly: "Friendly" } },
-    "look.character": { label: "Character", help: `Which character shows in Home and on the edge of the screen. Match the look, the usual, picks the one that goes with the style. Visor is a glass orb with a band of light. The light blinks, scans while it works, turns amber when it needs you and smiles when a fix is proven. Glass orb is a small round orb with no face. On both, a thin ring round it shows the state: red when it stopped, amber when it needs you, green when a fix is proven. Friendly has a face, two bubbles that follow it and its water.`, also: ["character", "visor", "orb", "glass orb", "face", "eyes", "bubbles", "mascot", "friendly", "ring", "water", "light"], options: { match: "Match look", visor: "Visor", orb: "Glass orb", friendly: "Friendly" } },
+    "look.character": { label: "Character", help: `Which character shows in Home and on the edge of the screen. Visor, the usual, is a glass orb with a band of light. It blinks, scans while it works, turns amber when it needs you and smiles when a fix is proven. Glass orb is a small round orb with no face. On both, a thin ring round it shows the state: red when it stopped, amber when it needs you, green when a fix is proven. Water has a face, two bubbles that follow it and its water.`, also: ["character", "visor", "orb", "glass orb", "face", "eyes", "bubbles", "mascot", "friendly", "ring", "water", "light"], options: { visor: "Visor", orb: "Glass orb", friendly: "Water", match: "Visor" } },
     "look.corners": { label: "Corners", help: "Soft, the usual, rounds the corners of cards, buttons and fields. Crisp makes them tighter, for a sharper look. The notch keeps its own shape.", also: ["corners", "rounded", "round", "radius", "sharp", "square", "crisp", "soft"], options: { soft: "Soft", crisp: "Crisp" } },
     "character.follow": { label: "Follow your pointer", help: "What follows your pointer when How lively is Lively. Its eyes: its eyes and body lean toward your pointer. A water ring: its eyes, plus a small ring of water around your pointer's tip. In Still and Gentle its eyes stay ahead, and the ring shows only while it is listening. Off: nothing follows, not even while it listens. Only where the pointer is, never what you type or what is on the screen, and never kept.", also: ["Follow my pointer", "pointer", "cursor", "mouse", "eyes", "follow", "drop", "ring", "water ring", "buddy"], options: { eyes: "Its eyes", drop: "A water ring", off: "Off" } },
     "look.size": { label: "Size", help: "How big the character is on the edge of the screen. Large is as big as it can be and still have room to move.", also: ["Character size", "size", "bigger", "smaller", "large", "small", "character"], options: { small: "Small", usual: "Usual", large: "Large" } },
@@ -2727,6 +2743,11 @@ export const S = {
   },
   // M69 step 2, Home (the YC benchmark spec 3.1 to 3.3, corrected by F29 and M57's honest words): the two tone hero at rest,
   // the Last fix and Since then cards, the practice offer, and the review card's head. Never who changed a file (M57).
+  // M71: the short tag each meaning shows, in its colour (meaning.ts). A practice that waits is "Practice ready", never
+  // "Needs you"; "Needs your OK" is only for a real question.
+  meaning: {
+    tag: { proven: "Proven", problem: "A problem", review: "Take a look", question: "Needs your OK", practice: "Practice ready", working: "Working", listening: "Listening", stopped: "Stopped", undone: "Undone", notChecked: "Not checked yet", ready: "Ready" } as Record<"proven" | "problem" | "review" | "question" | "practice" | "working" | "listening" | "stopped" | "undone" | "notChecked" | "ready", string>,
+  },
   homeNow: {
     pill: { passed: "Last check passed", look: "Needs a look", failed: "A check failed", new: "Not checked yet" } as Record<"passed" | "look" | "failed" | "new", string>,
     fine: (name: string) => `${name} checked out fine.`,
@@ -2775,6 +2796,13 @@ export const S = {
     undoneTask: (name: string) => `Undone: ${name}`,
     notFinished: (name: string) => `Didn't finish: ${name}`,
     sinceNothing: "Nothing new since this fix.",
+    // M71: the second line of a row in Now's list.
+    sinceLine: "Since your last fix",
+    // M71: a practice not started yet, on Now's lead.
+    skip: "Skip",
+    taskLine: "Open it to see where it stopped",
+    // M71: the list's name for VoiceOver, and the action on a row of files changed.
+    listLabel: "Since then",
     look: "Show",
     check: "Check",
     // A project with no fixes yet: the practice offer in the Last fix card's place.
@@ -2837,6 +2865,12 @@ export const S = {
     earlier: "Earlier",
     undoCaption: "Undo is on the newest fix that changed files, so newer work is never taken back by accident.",
     historyEmpty: "Nothing here yet. Your first fix will show up here with its proof.",
+    // M71: History's lead, with its count, and its empty row (what will appear there, and one action).
+    historyLead: `What ${PRODUCT} did`,
+    historyCount: (n: number, name: string) => (n === 1 ? `1 task in ${name}, newest first.` : `${n} tasks in ${name}, newest first.`),
+    historyNone: (name: string) => `Nothing done in ${name} yet.`,
+    historyEmptyTitle: "Your first fix",
+    historyEmptyLine: "It shows up here with its proof.",
     startPractice: "Start practice",
     filesChanged: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
     askFirst: "Ask for a first fix",
@@ -2845,6 +2879,7 @@ export const S = {
     aboutYou: "About you",
     eraseProject: (name: string) => `Erase ${name} notes`,
     eraseYou: "Erase notes about you",
+    memoryLead: `What ${PRODUCT} knows about this project`,
     memoryEmpty: `${PRODUCT} fills this in as you work. Every line can be forgotten.`,
     exampleTag: "Example",
     example: { project: { text: "Uses Supabase for sign in", source: "from package.json" }, profile: { text: "Prefers short answers", source: "you told me" } },

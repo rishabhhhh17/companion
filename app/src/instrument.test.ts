@@ -4,7 +4,7 @@
 // corners, motion and colour, with their contrast), the new parts, and the faceless orb's state ring.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { characterOf, CHARACTER_CHOICES, choiceOf, LOOK_CHOICES, lookAttrs, THEMES, WATERS, type Water } from "./lookfeel.ts";
+import { characterOf, CHARACTER_CHOICES, FIXED_LOOK, lookAttrs, THEMES, WATERS, type Water } from "./lookfeel.ts";
 import { ringFor, ringOf, type Ring } from "./characters.ts";
 import { glassOrbSvg, ORB_STOPS, paletteOf, poseSvg } from "./orbArt.ts";
 import type { CharacterState } from "./model.ts";
@@ -81,25 +81,22 @@ const part = (sel: string) => parts.find((b) => b.sel === sel && !b.media)?.decl
 const ALL_THEMES = ["graphite", "paper", "deep", "black"] as const;
 
 describe("the style and the character are real settings, and a store from before still loads", () => {
-  test("both are in the registry for the pages, live, with Instrument and Match the look the usual", () => {
-    expect(def("look.style")).toMatchObject({ section: "look", kind: "choice", default: "instrument", options: ["instrument", "friendly"], applies: ["pages"], store: "settings", live: true });
-    expect(def("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: [...CHARACTER_CHOICES], applies: ["pages"], store: "settings", live: true });
-    expect(LOOK_CHOICES["look.style"]).toEqual({ attr: "data-style", values: ["instrument", "friendly"], usual: "instrument" });
+  test("both stay in the registry for the pages, live; M71 retires the style (hidden) and makes the Visor the usual", () => {
+    expect(def("look.style")).toMatchObject({ section: "look", kind: "choice", default: "instrument", options: ["instrument", "friendly"], applies: ["pages"], store: "settings", live: true, hidden: true });
+    expect(def("look.character")).toMatchObject({ section: "look", kind: "choice", default: "visor", options: [...CHARACTER_CHOICES, "match"], applies: ["pages"], store: "settings", live: true });
+    expect(FIXED_LOOK["data-style"]).toBe("instrument");
   });
-  test("a store saved before M65 (no style, no character) reads Instrument with the Visor (M68), and keeps every value it saved", () => {
-    const before = { "look.theme": "night", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid" };
-    expect(lookAttrs(before)).toEqual({ "data-theme": "graphite", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "instrument", "data-character": "visor" });
-    for (const junk of [undefined, null, "", "Friendly", "childish", 3]) expect(choiceOf("look.style", junk), String(junk)).toBe("instrument");
+  test("a store saved before M65 or M71 reads the one black look, whatever it saved; a Friendly store keeps its water character", () => {
+    const before = { "look.theme": "night", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid", "look.style": "friendly" };
+    expect(lookAttrs(before)).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "friendly" });   // M71: the founder was told the water stays
+    expect(lookAttrs({ ...before, "look.style": "instrument" })).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor" });
   });
-  test("the character matches the style unless one is picked, and the face, bubbles and water are the friendly one's only", () => {
-    expect(characterOf(undefined, undefined)).toBe("visor");   // M68: the Visor is Instrument's character
-    expect(characterOf("instrument", "match")).toBe("visor");
-    expect(characterOf("friendly", "match")).toBe("friendly");
-    expect(characterOf("friendly", undefined)).toBe("friendly");
-    expect(characterOf("instrument", "friendly")).toBe("friendly");
-    expect(characterOf("friendly", "orb")).toBe("orb");
-    expect(characterOf("instrument", "nonsense")).toBe("visor");
-    expect(characterOf("instrument", "orb")).toBe("orb");   // a store that picked the orb keeps it
+  test("the Visor unless another is picked, and the face, bubbles and water are the water character's only", () => {
+    expect(characterOf(undefined)).toBe("visor");   // M68: the Visor; M71: the usual whatever the retired style says
+    expect(characterOf("match")).toBe("visor");
+    expect(characterOf("friendly")).toBe("friendly");
+    expect(characterOf("nonsense")).toBe("visor");
+    expect(characterOf("orb")).toBe("orb");   // a store that picked the orb keeps it
     // The orb is the lab's quiet glass (M65 step 4, the critics: the reused friendly body read as a candy marble): one
     // round body lit from the top left, a shade at its foot and a fine dark rim. No face, no bubbles, no light ring inside
     // the rim, no crescent, no sparkles, no big white glint.
@@ -119,8 +116,10 @@ describe("the style and the character are real settings, and a store from before
     expect(poseSvg("look")).toMatch(/class="eye"/);
   });
   test("both sit first on the Look page, with their words, and the Look page stays at ten", () => {
-    expect(PAGES.look.groups[0].items.slice(0, 2)).toEqual(["look.style", "look.character"]);
-    for (const k of ["look.style", "look.character"] as const) {
+    // M71: Colour and Character lead the Look page; the style is retired (hidden, still loads).
+    expect(PAGES.look.groups[0].items.slice(0, 2)).toEqual(["look.colour", "look.character"]);
+    expect(placeOf("look.style")).toBeNull();
+    for (const k of ["look.character"] as const) {
       expect(placeOf(k), k).toMatchObject({ page: "look", more: false });
       const w = S.set[k] as { label: string; help: string; also: readonly string[]; options: Record<string, string> };
       for (const o of def(k)!.options!) expect(w.options[o], `${k} ${o}`).toBeTruthy();
@@ -128,13 +127,13 @@ describe("the style and the character are real settings, and a store from before
       for (const sentence of w.help.split(/(?<=[.!?:])\s+/)) expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(25);
     }
     expect(S.set["look.style"].options).toEqual({ instrument: "Instrument", friendly: "Friendly" });
-    expect(S.set["look.character"].options).toEqual({ match: "Match look", visor: "Visor", orb: "Glass orb", friendly: "Friendly" });
-    expect(PAGES.look.groups.flatMap((g) => g.items)).toHaveLength(10);
+    expect(S.set["look.character"].options).toEqual({ visor: "Visor", orb: "Glass orb", friendly: "Water", match: "Visor" });
+    expect(PAGES.look.groups.flatMap((g) => g.items)).toHaveLength(4);
   });
   test("Home and Settings set both on their root; the notch keeps its own look", () => {
     const hook = read("./useLook.ts");
-    expect(hook).toContain('const style = useSetting("look.style"), character = useSetting("look.character");');
-    expect(hook).toContain('"look.style": style, "look.character": character');
+    expect(hook).toContain('const colour = useSetting("look.colour"), character = useSetting("look.character");');
+    expect(hook).toContain('{ "look.colour": colour, "look.character": character }');
     expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
   });
 });
@@ -208,7 +207,8 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
   });
   test("the Graphite page is the lab's #161618 family; the other themes keep their own page", () => {
     expect(ins).toMatchObject({ "--bg": "#161618", "--surface-1": "#1D1D20", "--surface-2": "#26262A" });
-    expect(tokensOf("instrument", "black")["--bg"]).toBe("#000000");
+    expect(tokensOf("instrument", "black")["--bg"]).toBe("var(--surface-0)");   // M71: the black look's surface 0
+    expect(tokensOf("instrument", "black")["--surface-0"]).toBe("#000000");
     // M69 (spec 1.2, the mockups): Instrument's White is a warm off white window with white cards on it.
     expect(tokensOf("instrument", "paper")).toMatchObject({ "--bg": "#F6F6F4", "--surface-1": "#FFFFFF" });
     expect(tokensOf("friendly", "paper")["--bg"]).toBe("#FFFFFF");
@@ -226,8 +226,8 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
       expect(k["--keycap-ring"], t).toBe("var(--line-strong)");
       for (const g of ["--gel-lip", "--gel-gloss", "--gel-glow"]) expect(k[g], `${t} ${g}`).toBe("transparent");
     }
-    const room = block(`${IS} [data-element]`);
-    expect(room).toMatchObject({ "--gel-mid": "var(--acc)", "--gel-ink": "var(--acc-ink)", "--gel-glow": "transparent", "--fg-2": "var(--fg-2-room)" });
+    // M71: the rooms are retired, so Instrument keeps no [data-element] block for the gel.
+    expect(TOKENS_CSS()).not.toContain(`${IS} [data-element]`);
   });
 });
 

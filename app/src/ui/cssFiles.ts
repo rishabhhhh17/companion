@@ -23,6 +23,10 @@ export const FIX_CSS = (): string => read("./fix.css");
 export const HOME_NOW_CSS = (): string => read("./homeNow.css");
 /** M69 step 2, the pages (History, Memory, Learn, the welcome, the setup list, approvals), loaded after system.css. */
 export const PAGES_CSS = (): string => read("./pages.css");
+/** M71, black with colour: Home's one black look, placing the parts on Home; loaded last (after homeNow.css). */
+export const BLACK_CSS = (): string => read("./black.css");
+/** The notch's own sheet (the hover panel under the notch), on the island page. */
+export const NOTCH_CSS = (): string => read("./notch.css");
 /** Every rule a page gets, as one text, in the order card.tsx loads them (style.css's own @import lines taken out: they are
  *  tokens and parts, first). M69 step 4: every stylesheet Home loads is here, so every lint over ALL_CSS covers it. */
-export const ALL_CSS = (): string => [TOKENS_CSS(), PARTS_CSS(), STYLE_CSS().replace(/^@import [^;]+;\n/gm, ""), LOOK_CSS(), WIDE_CSS(), HOME_CSS(), HOME_FLOW_CSS(), SYSTEM_CSS(), PAGES_CSS(), FIX_CSS(), HOME_NOW_CSS()].join("\n");
+export const ALL_CSS = (): string => [TOKENS_CSS(), PARTS_CSS(), STYLE_CSS().replace(/^@import [^;]+;\n/gm, ""), LOOK_CSS(), WIDE_CSS(), HOME_CSS(), HOME_FLOW_CSS(), SYSTEM_CSS(), PAGES_CSS(), FIX_CSS(), HOME_NOW_CSS(), BLACK_CSS()].join("\n");

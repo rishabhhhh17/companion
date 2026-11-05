@@ -16,9 +16,9 @@ import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { clockWords, homeStatus, jobStep, notchStatusLine } from "./homeHero.ts";
-import { GEAR_DO, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel, factLines } from "./notchQuick.ts";
+import { factColour, GEAR_DO, panelLayout, quickActions, quickFact, quickFactKind, quickGo, quickGreeting, quickLabel, quickLook, factLines } from "./notchQuick.ts";
 import { useGroups } from "./groups.ts";
-import { Button } from "./ui/parts.tsx";
+import { Button, Dot, Tile } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
@@ -99,6 +99,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const fact0 = reviewKey ? S.panel.reviewKey : view.kind === "job" ? view.job.title : quickFact(m, now, note);
   const fact = fact0 === S.notch.ready && unseen > 0 ? S.panel.unseen(unseen) : fact0;
   const lines = factLines(greet, fact, project);
+  // M71: the fact's dot in its meaning's colour (a key in the code red, the job at work blue, the rest by quickFact's rule).
+  const dot = factColour(reviewKey ? "failing" : view.kind === "job" ? "working" : fact !== fact0 ? "ready" : quickFactKind(m, now, note));
   const actions = showButtons ? quickActions(m, { now, layout, on: groups.on }) : [];
   const questions = jobs.filter((j) => j.approval);
   const list = questions.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
@@ -157,7 +159,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       {/* M70: a small greeting over the one fact (the founder asked for it by name), with Settings (Home on Settings) and Open (Home on
           Now) in words. Both grow the same shape into Home. While a job runs, the fact is the job's name. */}
       <div className="ip-head">
-        <span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}>{lines.fact}</b></span>
+        <span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}><Dot colour={dot} />{lines.fact}</b></span>
         <span className="ip-tools">
           <button className="ip-word" type="button" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", { then: GEAR_DO }).catch(() => {}); }}>{S.notch.settings}</button>
           <button className="ip-word" type="button" tabIndex={tab} aria-label={S.notch.open} onClick={() => { if (ready()) void invoke("island_go", {}).catch(() => {}); }}>{S.notch.openShort}</button>
@@ -165,7 +167,8 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       </div>
       {layout !== "quick" && live}
       {layout === "quick" && actions.length > 0 && <nav className="ip-quick" aria-label={S.notch.actions}>
-        {actions.map((id) => <Button key={id} kind={id === "review" ? "primary" : "secondary"} size="sm" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", quickGo(id)).catch(() => {}); }}>{quickLabel(id, m, now)}</Button>)}
+        {/* M71: each with its colour tile (notchQuick.ts quickLook), the same colours as Home's, so it reads as one product. */}
+        {actions.map((id) => { const look = quickLook(id, m, now); return <Button key={id} kind="secondary" size="sm" className="ip-act" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", quickGo(id)).catch(() => {}); }}><Tile colour={look.colour} icon={look.icon} size="btn" />{quickLabel(id, m, now)}</Button>; })}
       </nav>}
       </>}
     </div>

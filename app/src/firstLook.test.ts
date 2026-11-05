@@ -63,7 +63,9 @@ describe("the recorded first run", () => {
 describe("the tour can be watched again", () => {
   test("Learn offers it on a press, whatever groups are on, and it plays nothing until pressed", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    expect(card).toContain("onClick={() => setTour(true)}>{S.firstLook.watch}</button>");
+    // M71: the tour is the quiet button of Learn's featured practice card (practicePanel.tsx), or a row once all are done.
+    expect(card).toContain('onTour={home.tab === "learn" && !tour ? () => setTour(true) : undefined}');
+    expect(readFileSync(new URL("./practicePanel.tsx", import.meta.url), "utf8")).toContain("{onTour && <Button kind=\"secondary\" onClick={onTour}>{S.firstLook.watch}</Button>}");
     expect(card).toContain("const [tour, setTour] = useState(false);");
     expect(card).toContain("<FirstLook onGo={() => setTour(false)} />");
   });

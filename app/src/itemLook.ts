@@ -6,6 +6,7 @@
 import { historyFacts, type HistoryItem } from "./model.ts";
 import type { IconName } from "./icons.tsx";
 import { verdictOf, type VerdictKind } from "./verdict.ts";
+import { VERDICT_MEANING, type Meaning } from "./meaning.ts";
 
 /** The five tints, each meaning one kind of work (KIND_TINT), the same with every water. Graphite and Deep draw them as deep
  *  washes with a light ink, Paper as pastels with a dark ink (ui/tokens.css). */
@@ -72,4 +73,10 @@ export const sideStamp = (s: Stamp | null): Stamp | null => (s && SIDE_STAMPS.in
 /** A practice's stamp: Proven once it was fixed and proven. */
 export function practiceStamp(state: "notStarted" | "inProgress" | "done"): Stamp | null {
   return state === "done" ? "proven" : null;
+}
+
+/** M71: how a task ended, as its meaning (meaning.ts), for its tile in History and in the wide Home's list: green proven,
+ *  red failed, grey stopped, orange undone, grey not checked, blue while it runs. */
+export function historyMeaning(i: Pick<HistoryItem, "status" | "proof"> & Partial<Pick<HistoryItem, "changed" | "undone" | "back">>): Meaning {
+  return i.status === "running" ? "working" : VERDICT_MEANING[verdictOf(historyFacts(i as HistoryItem)).kind];
 }

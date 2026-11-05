@@ -101,3 +101,19 @@ export function checksOnOpen(o: { practice: { project: string; stage: string; re
   const p = o.practice;
   return !!p && p.stage === "start" && p.project === o.project && !o.busy && o.switched && o.seen !== p.project;
 }
+
+/** M71 part 2 (the wide review state cut its tag and character off the top): a card that waits comes into view only when
+ *  its start is not already on screen. When its top is in view (with room for its first line), Home stays where it is, so
+ *  the lead above it is never scrolled off; a tall card is read by scrolling down, from the top the person already sees. */
+export function waitNeedsScroll(o: { cardTop: number; viewTop: number; viewBottom: number; firstLine?: number }): boolean {
+  const line = o.firstLine ?? 48;
+  return !(o.cardTop >= o.viewTop && o.cardTop <= o.viewBottom - line);
+}
+/** The element that scrolls a card: its nearest ancestor that can scroll, else the page's own scroller. */
+export function scrollerOf(el: HTMLElement): HTMLElement {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const y = getComputedStyle(p).overflowY;
+    if ((y === "auto" || y === "scroll") && p.scrollHeight > p.clientHeight) return p;
+  }
+  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
+}

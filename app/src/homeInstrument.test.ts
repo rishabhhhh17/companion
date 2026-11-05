@@ -52,7 +52,7 @@ describe("the status line says the state in words", () => {
     expect(lineSaidByStatus("working", S.look.workingFree)).toBe(true);
     expect(lineSaidByStatus("working", S.look.working("12 cents"))).toBe(false);
     expect(lineSaidByStatus(null, "Working")).toBe(false);
-    expect(card).toContain("data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine)");
+    expect(card).toContain('"data-line-said": !statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine)');   // M71: on the Lead's words
   });
   test("it steps aside when the headline already says the same words", () => {
     expect(statusLineShown("notChecked", S.home.notChecked)).toBe(false);
@@ -103,8 +103,9 @@ describe("Home draws them for every style and the tokens show them only in Instr
   });
   test("the status line, the footer line and the ring come from homeHero.ts", () => {
     // M69 step 2: at rest the tag is homeRest.ts's (never Not checked yet next to a proven run); otherwise homeHero.ts's.
-    expect(card).toContain(": statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}");
-    expect(card).toContain("restWords.pill && <p className=\"ui-status\" data-tone={PILL_TONE[restWords.pill]}>");
+    // M71: the tag is the meaning's (meaning.ts), in its colour; a waiting practice says Practice ready, never needs you.
+    expect(card).toContain(": statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning}");
+    expect(card).toContain("restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={S.homeNow.pill[restWords.pill]} />");
     // M69 (one layout grammar, the YC benchmark spec 3): the footer line's words moved into the top bar's context line in
     // every look and both layouts (homeLayout.ts barContext), so no FootLine is drawn on Home any more.
     expect(card).not.toContain("<FootLine");
@@ -118,7 +119,7 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(css).toContain(home);
   });
   test("Home's character is the faceless orb when the look's character is the orb, with no live water running under it", () => {
-    expect(homeChar).toContain("const look = characterOf(useSetting(\"look.style\"), useSetting(\"look.character\"));");
+    expect(homeChar).toContain("const look = characterOf(useSetting(\"look.character\"), useSetting(\"look.style\"));");   // M71: the style is retired
     expect(homeChar).toContain("const orb = look !== \"friendly\";");
     expect(homeChar).toContain("off: live || orb");
     expect(homeChar).toContain("const shownRing = homeRingShown(state, ring);");
@@ -155,9 +156,10 @@ describe("home.css", () => {
   });
   test("with the orb there is no water band, no sea under it, no glow and no fade", () => {
     expect(rule(".home:has(.hero .home-orb) .home-pond > .ch-water")).toContain("display: none");
-    expect(rule(".home:has(.hero .home-orb) .home-pond::after")).toContain("display: none");
     expect(rule(".home:has(.hero .home-orb) .home-pond .ch-char")).toContain("mask-image: none");
-    expect(rule(".home:has(.hero .home-orb) .sea-fill")).toContain("display: none");
+    // M71: the pond's glow and the sea fill are gone for every character, so they need no rule to hide them.
+    expect(rule(".home .home-pond::after")).toBe("");
+    expect(rule(".home[data-side] .sea-fill")).toBe("");
   });
   test("the orb is about 40 points at the right of the words, and the words keep their own column", () => {
     expect(rule(".home:has(.hero .home-orb) .hero[data-mode]")).toContain("--char: var(--orb);");

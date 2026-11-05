@@ -46,3 +46,13 @@
    faint edge on the sides and the bottom (never the top, which meets the screen's edge), growing with the shape's own
    openness (--open), so the bare notch at rest has none. A file dragged over keeps its own ring. */
 .island:not([data-drop="over"]) .island-shape { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset -1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset 0 -1px 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent); }
+
+/* ---------- M71, black with colour: the hover panel in the same parts as Home, small (docs/design/2026-11-05-black-with-colour)
+   The greeting and the project on one quiet line, the one fact with its meaning's dot, and up to three buttons, each a
+   raised pill with its colour tile. No gradient, no glow; the colours are the tokens' (ui/tokens.css [data-c]). */
+.island-panel .ip-greet { color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.island-panel .ip-fact { display: flex; align-items: center; gap: var(--space-2); color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
+.island-panel .ip-fact .ui-mdot { flex: none; }
+.island-panel .ip-quick { gap: var(--space-2); }
+.island-panel .ip-quick > .btn.ip-act { gap: var(--pill-gap); min-height: var(--h-place); padding: 0 var(--space-3) 0 var(--space-2); border: 0; border-radius: var(--r-btn); background: var(--surface-2); box-shadow: none; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
+.island-panel .ip-quick > .btn.ip-act:hover:not(:disabled) { background: var(--surface-3); }

@@ -87,15 +87,16 @@ html.home-page, body.home-page { background: transparent; }
 .hero-main { margin-top: var(--space-3); }
 .status-head { min-width: 0; }
 .home-pond { position: static; display: block; grid-column: 2; grid-row: 1; }
-.home-pond .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--line-up) + var(--space-5)); background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea) var(--wave-foot), transparent 100%); z-index: 0; }
+/* M71: the band of water under Home's character is retired (Home is black); the line itself is hidden on Home (ui/black.css). */
+.home-pond .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--line-up) + var(--space-5)); z-index: 0; }
 /* The wave is drawn 11 points above and below the water's top edge (waterline.tsx, 22 tall): its own sea path fills under the
    wave, so the box's fill starts where the drawing ends, never above a trough as a flat edge (the review, 2 Nov 2026). */
 .ch-water, .fr-tank { --wave-foot: 11px; }
 .home-pond .ch-char { position: relative; z-index: 1; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade) 74%); }
 .home-pond .home-char { width: var(--char); margin: -8px -10px -4px; transform-origin: 50% 100%; }
 /* Settings' preview (.companion-hero): the same water in a card, its line still with Still (M46). */
-.companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; }
-.companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot)); z-index: 0; }
+.companion-hero { background: var(--pond); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; isolation: isolate; --sea-room: color-mix(in srgb, var(--w-foot) 80%, var(--w-sea)); --sea-see: var(--sea-see-a); --sea-tint: color-mix(in srgb, var(--sea-room) calc(var(--sea-see) * 100%), transparent); }
+:root[data-tone="light"] .companion-hero { --sea-room: color-mix(in srgb, var(--water) 55%, var(--water-hi)); } .companion-hero .ch-water { position: absolute; left: 0; right: 0; bottom: 0; height: 38%; background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint, var(--sea)) var(--wave-foot)); z-index: 0; }
 .companion-hero .waterline .sea { fill: var(--sea-tint, var(--sea)); }
 .companion-hero .waterline .line { stroke: var(--wl-line); stroke-opacity: .85; }
 .home-pond .ch-water .waterline, .companion-hero .ch-water .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; }
@@ -255,9 +256,9 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
 /* Reduced motion, everywhere (M66): nothing slides, scales, springs or loops; opacity and colour fade plainly in --dur-1. */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important; transition-duration: var(--dur-1) !important; transition-timing-function: linear !important; transition-delay: 0s !important; } }
 /* Less motion (character.motion, motion.ts): inside Companion only, as the Mac's. */ :root[data-less-motion] *, :root[data-less-motion] *::before, :root[data-less-motion] *::after { animation: none !important; transition-property: opacity, color, background-color, border-color, outline-color, fill, stroke !important; transition-duration: var(--dur-1) !important; transition-timing-function: linear !important; transition-delay: 0s !important; }
-/* What comes in still fades in, and the room just left still fades out (M66; the parts' own in ui/parts.css). */
-@media (prefers-reduced-motion: reduce) { :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; } .room.room-was { animation: ui-fade-out var(--dur-1) linear both !important; } }
-:root[data-less-motion] :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; } :root[data-less-motion] .room.room-was { animation: ui-fade-out var(--dur-1) linear both !important; }
+/* What comes in still fades in (M66; the parts' own in ui/parts.css). */
+@media (prefers-reduced-motion: reduce) { :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; } }
+:root[data-less-motion] :is(.home .view .panel) { animation: ui-fade-in var(--dur-1) linear both !important; }
 /* Looking at the screen (Show me, Point at the problem) is a light that must show first (rule 5). Its usual sign is the
    scan, which stops with reduced motion, by the Mac or by Less motion, so then a still ring shows it, as listening's does. */
 @media (prefers-reduced-motion: reduce) { .character[data-state="checking"] { filter: drop-shadow(0 0 2px var(--glow-look-edge)) drop-shadow(0 0 7px var(--glow-look)); } }
@@ -458,7 +459,6 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .waterline .line { stroke: var(--water); stroke-opacity: .6; }
 @keyframes waterline { to { translate: -160px 0; } }
 
-
 /* ------------------------------------------------------------------------------------------------------------------ */
 /* The first run (onboarding.tsx): the Night black with water at the foot that rises with every step (--level, set by the
    step; onboarding.ts LEVEL), the hello where a drop falls in and Flowflow rises out of it, and the one main button
@@ -471,7 +471,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr > * { position: relative; z-index: 1; }
 /* Its line always clears the row of the main button (the review, 2 Nov 2026: on Your Claude, Continue sat on the wave, half in
    the water), so Flowflow rides on it above that row, never behind Continue. */
-.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: max(var(--level, 20%), calc(var(--h-lg) + var(--space-6) + var(--space-4))); z-index: 0; background: linear-gradient(180deg, var(--sea), var(--sea-deep)); opacity: .8; transition: height var(--seq-tank) var(--ease-spring); }
+.fr > .fr-tank { position: absolute; left: 0; right: 0; bottom: 0; height: max(var(--level, 20%), calc(var(--h-lg) + var(--space-6) + var(--space-4))); z-index: 0; opacity: .8; transition: height var(--seq-tank) var(--ease-spring); }
 /* The first run fills Home to its foot, so its sea never stops in a hard line (31 Oct). */
 .home .inner:has(> .onboarding.fr) { flex: 1 0 auto; display: flex; flex-direction: column; } .inner > .onboarding.fr { flex: 1 0 auto; }
 .fr-tank .waterline { position: absolute; left: 0; right: 0; top: -11px; height: 22px; overflow: clip; pointer-events: none; }
@@ -493,7 +493,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .fr-label { margin: var(--space-5) 0 var(--space-2); color: var(--fg); font: 600 var(--t-small) var(--font); }
 /* The hello: a drop falls into the water, a ripple spreads, and Flowflow rises out of it. */
 .fr-hello { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
-.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; background: radial-gradient(circle at 40% 35%, var(--fr-drop-light) 0 12%, var(--water) 45%, var(--fr-drop-deep)); animation: fr-fall var(--seq-fall) var(--ease-exit) var(--dur-2) forwards; }
+.fr-hello .fr-drop { position: absolute; left: 50%; top: -30px; width: 16px; height: 22px; margin-left: -8px; border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%; animation: fr-fall var(--seq-fall) var(--ease-exit) var(--dur-2) forwards; }
 .fr-hello .fr-ripple { position: absolute; left: 50%; bottom: calc(var(--level) - 4px); width: 20px; height: 6px; margin-left: -10px; border: 2px solid var(--water); border-radius: 50%; opacity: 0; animation: fr-ripple var(--seq-ripple) var(--ease-out) var(--seq-rise-at); }
 .fr-hello .fr-rise { position: absolute; left: 50%; bottom: calc(var(--level) - 54px); translate: -50% 0; opacity: 0; animation: fr-rise var(--seq-rise) var(--ease-spring) var(--seq-rise-at) forwards; -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); mask-image: linear-gradient(180deg, var(--mask-solid) 0, var(--mask-solid) 62%, var(--mask-fade-rise) 74%); }
 @keyframes fr-fall { to { top: calc(100% - var(--level) - 6px); opacity: 0; } }
@@ -540,7 +540,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* The first run's download of Anthropic's Claude (M22): a water bar that fills by clip-path (M66); with no size, it drifts. */
 .fr-progress { display: grid; gap: var(--space-2); color: var(--fg-2); font-size: var(--t-small); }
 .fr-bar { min-height: 10px; border-radius: var(--r-thumb); background: var(--fr-card); overflow: clip; box-shadow: inset 0 0 0 1px var(--fr-edge); }
-.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-thumb); background: linear-gradient(90deg, var(--water-deep), var(--water)); clip-path: inset(0 calc(100% - var(--p, 30%)) 0 0 round var(--r-thumb)); transition: clip-path var(--dur-3) var(--ease-out); }
+.fr-bar i { display: block; min-height: 10px; border-radius: var(--r-thumb); clip-path: inset(0 calc(100% - var(--p, 30%)) 0 0 round var(--r-thumb)); transition: clip-path var(--dur-3) var(--ease-out); }
 .fr-bar i[data-unknown] { width: 30%; clip-path: none; animation: fr-drift var(--loop-drift) var(--ease-loop) infinite alternate; }
 @keyframes fr-drift { from { translate: -60% 0; } to { translate: 260% 0; } }
 /* Fluid steps (M18): each screen of the first run slides in from the right going on and from the left going back, while

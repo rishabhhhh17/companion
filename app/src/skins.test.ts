@@ -96,6 +96,9 @@ describe("the chrome does not read a skin", () => {
       // 2 Nov 2026 (the founder: one accent, water blue, used sparingly): focus is the accent; the water's foot under
       // Flowflow's pond; the blue pill in each theme picture.
       "--focus", "--w-foot", "--sw-blue",
+      // M71 (5 Nov 2026, the founder: "black with accents of different color"): the eight meaning colours, each with its tile
+      // and its main button's deeper blue. They mark meaning on a tile, a dot or a tag, never a surface (meaning.ts).
+      "--c-blue", "--c-purple", "--c-orange", "--c-pink", "--c-green", "--c-red", "--c-teal", "--c-blue-strong",
       // The ranked UI audit (2 Nov 2026): the lighter red of the danger button on a lit card (item 15), and the deep accent
       // of a switch that is on (item 24) are marks, never the chrome.
       "--bad-room", "--switch-on",

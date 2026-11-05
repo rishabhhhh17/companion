@@ -108,11 +108,13 @@ describe("the shipped list of settings", () => {
       // theme, the list icons are plain, there is no light behind Home, and Calm is the usual colour. One blue accent.
       "look.density": "comfortable", "look.icons": "plain", "look.stamps": true, "look.gloss": "flat", "look.corners": "soft",
       "look.light": "off",
-      "look.colour": "calm",
+      // M71 (5 Nov 2026, the founder: "black with accents of different color"): Colourful is the usual colour.
+      "look.colour": "colourful",
       // M65 (4 Nov 2026, the founder: the look is "too childish"): Instrument, the grown up look, is the usual; Friendly is
       // today's look, kept as a choice. The character matches the look unless one is picked: the faceless glass orb, or the
       // friendly one with its face, its bubbles and its water.
-      "look.style": "instrument", "look.character": "match",
+      // M71: the style is retired (hidden, still loads); the Visor is the usual character.
+      "look.style": "instrument", "look.character": "visor",
       // M66: a light tap on the trackpad as the notch opens under your own click or pointing. Off, like sounds (rule 16).
       "island.haptics": false,
       // M68 step 2b (the founder, 4 Nov 2026: "no notch like how HeyClicky has, like hey Rishabh"): small wings at rest and a
@@ -183,14 +185,26 @@ describe("the shipped list of settings", () => {
     // Black is the usual theme and White keeps the stored value "paper"; plain icons, no light behind Home and Calm are the
     // usual look, each the first of its options.
     expect(defOf("look.theme")).toMatchObject({ section: "look", kind: "choice", default: "black", options: ["black", "paper", "graphite", "deep", "night"], applies: ["pages"], store: "settings", live: true });
-    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["plain", "colour"]], ["look.gloss", ["flat", "on"]], ["look.corners", ["soft", "crisp"]], ["look.light", ["off", "still", "moving"]], ["look.colour", ["calm", "vivid"]]] as const) {
+    for (const [k, options] of [["look.density", ["comfortable", "compact"]], ["look.icons", ["plain", "colour"]], ["look.gloss", ["flat", "on"]], ["look.corners", ["soft", "crisp"]], ["look.light", ["off", "still", "moving"]]] as const) {
       expect(defOf(k), k).toMatchObject({ section: "look", kind: "choice", default: options[0], options: [...options], scope: "app", applies: ["pages"], store: "settings", live: true });
     }
     expect(defOf("look.stamps")).toMatchObject({ section: "look", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    // M71 (5 Nov 2026, the founder: "I need it to be black with accents of different color"): one black look. Colour is
+    // Colourful (the usual) or Calm; a stored Vivid still checks out (it reads as Colourful on the pages).
+    expect(defOf("look.colour")).toMatchObject({ section: "look", kind: "choice", default: "colourful", options: ["colourful", "calm", "vivid"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("look.colour")!, "vivid").ok).toBe(true);
+    expect(validate(defOf("look.colour")!, "calm").ok).toBe(true);
+    // The retired look keys stay, hidden, so every stored value still loads; no page offers them.
+    for (const k of ["look.theme", "look.water", "look.gloss", "look.light", "look.corners", "look.icons", "look.stamps", "look.style", "look.density"]) expect(defOf(k)!.hidden, k).toBe(true);
+    for (const k of ["look.colour", "look.character", "look.layout", "display.textSize"]) expect(defOf(k)!.hidden, k).toBeUndefined();
+    for (const [k, v] of [["look.theme", "deep"], ["look.style", "friendly"], ["look.water", "berry"], ["look.gloss", "on"], ["look.light", "moving"], ["look.corners", "crisp"], ["look.icons", "colour"], ["look.density", "compact"]] as const) expect(validate(defOf(k)!, v).ok, `${k}=${v}`).toBe(true);
+    expect(validate(defOf("look.stamps")!, false).ok).toBe(true);
     // M65: the look's style (Instrument, the usual, or Friendly, today's look) and the character in it, for the pages only.
     // A store saved before has neither key, so it reads the usual: Instrument, with the character matching it.
     expect(defOf("look.style")).toMatchObject({ section: "look", kind: "choice", default: "instrument", options: ["instrument", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
-    expect(defOf("look.character")).toMatchObject({ section: "look", kind: "choice", default: "match", options: ["match", "visor", "orb", "friendly"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    // M71: the Visor is the usual character; a stored "match" (the style it matched is retired) still checks out.
+    expect(defOf("look.character")).toMatchObject({ section: "look", kind: "choice", default: "visor", options: ["visor", "orb", "friendly", "match"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("look.character")!, "match").ok).toBe(true);
     expect(validate(defOf("look.style")!, "childish").ok).toBe(false);
     expect(validate(defOf("look.character")!, "friendly").ok).toBe(true);
     expect(validate(defOf("look.character")!, "visor").ok).toBe(true);

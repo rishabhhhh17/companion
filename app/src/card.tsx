@@ -19,7 +19,7 @@ import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
 import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
-import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
+import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
@@ -49,10 +49,11 @@ import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
-import { barContext, barKeyChord, layoutOf, seaFills, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
+import { barContext, barKeyChord, layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { askChips, firstWayTip } from "./askChips.ts";
-import { checkedAgo, firstSentence, fixPicture, lastFix, PILL_TONE, restCards, restHero, restMainLabel, resultHero, sinceRows, type FixProof } from "./homeRest.ts";
-import { LastFixCard, PracticeCard, SinceCard, ShotPair } from "./homeRest.tsx";
+import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows } from "./homeRest.ts";
+import { ShotPair } from "./homeRest.tsx";
+import { heroMeaning, MEANING_COLOUR, PILL_MEANING, statusDot } from "./meaning.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
@@ -65,10 +66,9 @@ import type { ShipFlow } from "./model.ts";
 import { changesWait, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
 import { sendBackCopy } from "./review.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
-import { roomElement, useRoomStill } from "./element.ts";
-import { RoomLight } from "./roomLight.tsx";
-import { historyStamp, taskName } from "./itemLook.ts";
-import { ItemTile, Stamp } from "./itemMarks.tsx";
+import { historyMeaning, taskName } from "./itemLook.ts";
+import { verdictOf } from "./verdict.ts";
+import { verdictMark } from "./ui/partsLogic.ts";
 
 /** M40: an action's keys, as Key labels at the end of its row (only to see; the row's own name is what is read out). */
 import { FirstLook } from "./firstLook.tsx";
@@ -95,7 +95,7 @@ import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
 import { FailingLine, lineOf } from "./failingLine.tsx";
-import { Button, Group, KeyLabel, Menu, ProofChip, Row, Said, StatusDot, StatusLine, Switch, VerdictLine } from "./ui/parts.tsx";
+import { Button, Dot, EmptyRow, Group, KeyLabel, Lead, ListGroup, ListRow, Menu, PlaceButton, ProofChip, Row, Said, Switch, Tag, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
@@ -109,7 +109,8 @@ import "./ui/system.css";
 import "./ui/pages.css";
 import "./ui/fix.css";
 import "./ui/homeNow.css";
-import { checksOnOpen, Landing, onlyStreamChanged, revealTo, STREAM_LINES, waitScroll } from "./homeFlow.ts";
+import "./ui/black.css";
+import { checksOnOpen, Landing, onlyStreamChanged, revealTo, scrollerOf, STREAM_LINES, waitNeedsScroll, waitScroll } from "./homeFlow.ts";
 import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
 import { resultChips, type ChipId } from "./resultChips.ts";
@@ -247,6 +248,9 @@ function PlacesBox({ side, children }: { side: boolean; children: ReactNode }) {
   return side ? <div className="places">{children}</div> : <nav className="places" aria-label={S.look.placesLabel}>{children}</nav>;
 }
 
+/** The first letter capital (a headline that lost its "Practice:" in front). */
+const capFirst = (t: string): string => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
 function LinkLine({ label, url, strong }: { label: string; url: string; strong?: boolean }) {
   const [note, setNote] = useState("");
   return (
@@ -311,9 +315,11 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { 
 // Undo (finding H): on the newest task that changed files only (history.ts historyUndo), with the same yes / keep question and
 // the same words as the receipt's Undo. The state is the page's one undo (m.undo), so the receipt on Now shows the same step.
 // focus: the task a recent fix on Now opened (F28): its row is scrolled to and flashes once, as a Settings search hit does.
-// M69 (the YC benchmark spec 3.6): a readable timeline. The Undo order is one caption at the top, the tasks are grouped by
-// day ("Today", "Yesterday", "Mon 2 Nov"), each row has its pill and the time on the right in tabular numbers, and no
-// cost (F29). Empty: the character at rest, one sentence and Start practice.
+// M71 (one structure): the lead ("What Squibby did", with its count), then the one grouped list: a row per task, its tile
+// in the colour of how it ended (meaning.ts: green proven, red failed, grey stopped, orange undone), its name, how it ended
+// and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
+// newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
+// cost (F29). Empty: one row that says what will appear, with one action.
 function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   const filtering = historyFiltering(q);
@@ -321,24 +327,20 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
   const undoId = useId();
   const offers = project ? shown.map((h) => historyUndo(items, h, u?.stage === "done" ? u.checkpoint : null)) : [];
   const explainWhy = offers.includes("older");
+  // The task whose marks are open under the list (a press on its row), or the one an Undo is being asked about.
+  const [sel, setSel] = useState<number | null>(null);
+  const picked = shown.find((h) => h.id === sel) ?? null;
+  const asking = u && project ? shown.find((h) => h.checkpoint && h.checkpoint === u.checkpoint) ?? null : null;
+  const name = project.split("/").filter(Boolean).at(-1) ?? project;
+  // When: the time today, else the day (historyDays), so one list holds every day.
+  const when = (h: HistoryItem) => { const day = historyDays([h], now, S.screens)[0]; return day && day.label !== S.screens.today ? day.label : historyTime(h, now) ?? agoWords(h.endedAt ?? h.startedAt, now); };
   return (
-    // M51 polish: no card around the list (the page is the list), its heading for VoiceOver only (the page is titled History).
     <section className="panel bare hist" aria-label={S.recentTitle}>
       <h2 className="sr">{S.recentTitle}</h2>
-      {/* Nothing yet: the character at rest, one sentence and one way to start (spec 2.4), never a lone grey sentence. */}
-      {items.length === 0 && (
-        <div className="page-empty hist-empty">
-          <div className="page-empty-char" aria-hidden="true"><HomeCharacter as="idle" rest /></div>
-          <p className="page-empty-line">{S.screens.historyEmpty}</p>
-          <div className="row">
-            {onPractice && <Button kind="primary" onClick={onPractice}>{S.screens.startPractice}</Button>}
-            {onAsk && <Button kind="quiet" onClick={onAsk}>{S.screens.askFirst}</Button>}
-          </div>
-        </div>
-      )}
-      {explainWhy && <p className="page-caption">{S.screens.undoCaption}</p>}
+      <Lead className="hist-lead" title={<p className="ui-lead-title" role="heading" aria-level={2}>{S.screens.historyLead}</p>}
+        line={<p className="ui-lead-line">{items.length ? S.screens.historyCount(items.length, name) : S.screens.historyNone(name)}{explainWhy ? ` ${S.screens.undoCaption}` : ""}</p>} />
       {items.length > 0 && (
-        <div className="row" role="search">
+        <div className="row hist-search" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
             onChange={(e) => setQ({ ...q, words: e.target.value })}
             onKeyDown={(e) => { if (e.key === "Escape" && !composing(e) && q.words) { e.preventDefault(); e.stopPropagation(); setQ({ ...q, words: "" }); } }} />
@@ -348,54 +350,55 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
       )}
       {items.length > 0 && <div className={filtering ? "line muted" : "sr"} role="status" aria-live="polite">{filtering ? (shown.length ? S.historyMatches(shown.length, items.length) : S.historyNoMatch) : ""}</div>}
       {filtering && items.length >= 50 && <div className="line muted">{S.historyRecent}</div>}
-      {/* M51 polish: one grid per task, the same in both layouts: the tile, the name over one quiet line (how it ended, when,
-          what it cost), the badge at the row's end. How it ended is said once: the badge says it when there is one (and is
-          read out), else the quiet line does. The name is the words asked, never the safety copy's "Before:". */}
-      {shown.length > 0 && historyDays(shown, now, S.screens).map((day) => (<div className="hist-day" key={day.key} role="group" aria-labelledby={`${undoId}-day-${day.key}`}><h3 className="hist-day-title" id={`${undoId}-day-${day.key}`}>{day.label}</h3><ul className="hist-list">{day.items.map((h) => { const i = shown.indexOf(h); const backId = `${undoId}-${h.id}`; const name = taskName(h.label); const stamp = historyStamp(h, now); return (
-        <li className="hist-row" key={h.id} id={`history-${h.id}`} data-flash={focus === h.id || undefined}>
-          <ItemTile label={name} big />
-          <div className="hist-main">
-            <span className="hist-name">{name}</span>
-            <span className="hist-meta"><span className={stamp ? "unstamped" : undefined}>{historyWords(h)}</span>{(h.changed ?? 0) > 0 && <span>{stamp ? "" : "\u00a0·\u00a0"}{S.screens.filesChanged(h.changed ?? 0)}</span>}</span>
-            <SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} />
-          </div>
-          <span className="hist-end">{stamp && <Stamp kind={stamp} spoken />}<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{historyTime(h, now) ?? agoWords(h.endedAt ?? h.startedAt, now)}</time></span>
-          <div className="hist-extra">
-          {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
-          {/* M58: star or name this save point (the store's own notes; a starred or named save is never pruned). */}
-          {h.checkpoint && project && !u && <SaveMarksActions star={h.star} name={h.name} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />}
-          {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
-            {u.stage === "confirm" && (
-              <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
-                <div className="row">
-                  <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
-                  <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
-                </div></ConfirmStep>
-            )}
-            {u.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
-            {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
-            {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}{u.recovered ? ` ${S.undoRecovered}` : ""}{u.large ? ` ${S.undoLarge}` : ""}</div>}
-          </>)}
-          </div>
-        </li>
-      ); })}</ul></div>))}
-      {/* M57 feature 1: the reviews of changes to this project, each with its own mark (Review), the rating in words and
-          with its drawing, what was done with it, and the files by name only. Not searched with the tasks: their own list. */}
-      {reviews.length > 0 && !filtering && (
-        <div className="hist-reviews" role="group" aria-labelledby={`${undoId}-reviews`}>
-          <h3 id={`${undoId}-reviews`} className="review-label">{S.history.reviewsTitle}</h3>
-          <ul className="hist-list">{reviews.map((x) => { const l = reviewRowLook(x, now); return (
-            <li className="hist-row hist-review" key={`review-${x.id}`} data-rating={x.rating}>
-              <span className="ui-verdict-mark hist-review-mark" data-tone={l.tone} aria-hidden="true"><Icon name={l.icon} size={18} /></span>
-              <div className="hist-main">
-                <span className="hist-name">{l.name}</span>
-                <span className="hist-meta">{l.meta}</span>
-                <code className="hist-files">{l.files}</code>
-              </div>
-              <span className="ui-stamp hist-review-stamp">{l.mark}</span>
-            </li>
-          ); })}</ul>
+      {/* Nothing yet: what will appear here, and one way to start (spec 2.4), never a lone grey sentence. */}
+      {items.length === 0 && (
+        <ListGroup label={S.recentTitle}>
+          <EmptyRow icon="undo" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}
+            action={onPractice ? { label: S.screens.startPractice, colour: "purple", onClick: onPractice } : onAsk ? { label: S.screens.askFirst, onClick: onAsk, colour: "blue" } : null} />
+        </ListGroup>
+      )}
+      {shown.length > 0 && (
+        <ListGroup label={S.recentTitle}>
+          {shown.map((h, i) => {
+            const backId = `${undoId}-${h.id}`, task = taskName(h.label), meaning = historyMeaning(h);
+            const v = h.status === "running" ? null : verdictOf(historyFacts(h));
+            const lineWords = [historyWords(h), (h.changed ?? 0) > 0 ? S.screens.filesChanged(h.changed ?? 0) : ""].filter(Boolean).join(" · ");
+            return <ListRow key={h.id} id={`history-${h.id}`} colour={MEANING_COLOUR[meaning]} icon={v ? verdictMark(v).mark : "spin"}
+              title={<>{task}<SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} /></>}
+              line={lineWords} fact={<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time>}
+              onOpen={h.checkpoint && project ? () => setSel(sel === h.id ? null : h.id) : undefined} openLabel={h.checkpoint ? `${S.fix.star}, ${S.fix.nameIt}: ${task}` : undefined}
+              action={offers[i] === "undo" && !u ? { id: backId, label: S.historyUndo, colour: "orange", onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null} />;
+          })}
+        </ListGroup>
+      )}
+      {/* The Undo question for the newest task, under the list (the same words as the receipt's). */}
+      {asking && asking.checkpoint && (() => { const h = asking, backId = `${undoId}-${h.id}`; return (<div className="hist-extra" data-flash={focus === h.id || undefined}>
+        {u!.stage === "confirm" && (
+          <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
+            <div className="row">
+              <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
+              <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+            </div></ConfirmStep>
+        )}
+        {u!.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+        {u!.stage === "failed" && <div className="line" role="alert">{u!.note}</div>}
+        {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? undoneExcept(u!.yours) : S.undone}{u!.recovered ? ` ${S.undoRecovered}` : ""}{u!.large ? ` ${S.undoLarge}` : ""}</div>}
+      </div>); })()}
+      {/* M58: star or name this save point (the store's own notes; a starred or named save is never pruned). */}
+      {picked && picked.checkpoint && project && !u && (
+        <div className="hist-extra" role="group" aria-label={taskName(picked.label)}>
+          <p className="hist-extra-title">{taskName(picked.label)}</p>
+          <SaveMarksActions star={picked.star} name={picked.name} onMark={(mk) => void send(markSave(project, picked.checkpoint!, mk))} />
         </div>
+      )}
+      {/* M57 feature 1: the reviews of changes to this project, each with its rating's colour, the rating in words, what was
+          done with it, and the files by name only. Not searched with the tasks: their own titled list. */}
+      {reviews.length > 0 && !filtering && (
+        <ListGroup label={S.history.reviewsTitle} shown>
+          {reviews.map((x) => { const l = reviewRowLook(x, now); return (
+            <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
+          ); })}
+        </ListGroup>
       )}
     </section>
   );
@@ -404,48 +407,39 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
 // M69 (the YC benchmark spec 3.7): each section named for what it is about ("About my-shop", "About you"), each line with
 // its source, Edit and Forget; the erase button says its subject. Empty: one greyed example line with its source, marked as
 // an example, and the one sentence on how the list fills in. Nothing in the example is stored.
+// M71 (one structure): each section is a titled grouped list, one row per note: its pink tile, the note, where it came
+// from, and Forget on the right. A press on the note edits it in place.
 function MemoryList({ title, scope, lines, project, eraseLabel }: { title: string; scope: "project" | "profile"; lines: MemoryLine[]; project: string; eraseLabel: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [sure, setSure] = useState(false);
-  // Each line's Edit button, so the keyboard goes back to it after the line is saved or Esc puts the box away.
+  // Each line's own row button, so the keyboard goes back to it after the line is saved or Esc puts the box away.
   const base = useId(), editId = (line: string) => `${base}-edit-${line}`, eraseId = `${base}-erase`;
   const save = (id: string) => { void send(editLine(project, scope, id, text)); setEditing(null); focusBack(editId(id)); };
+  const icon = scope === "project" ? "memory" : "person";
   return (
-    <div role="group" aria-label={title}>
-      <h2 className="mem-title">{title}</h2>
-      {lines.length === 0 && (<>
-        <div className="note note-example" role="group" aria-label={`${S.screens.exampleTag}: ${S.screens.example[scope].text}`}>
-          <p className="note-text">{S.screens.example[scope].text}</p>
-          <div className="note-src"><span>{S.screens.example[scope].source}</span><span className="note-tag">{S.screens.exampleTag}</span></div>
-        </div>
-        <p className="page-caption">{S.screens.memoryEmpty}</p>
-      </>)}
-      {lines.map((l) => (
-        <div className="note" key={l.id} role="group" aria-label={l.text}>
-          {editing === l.id ? (
-            <div className="row">
-              <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
-              <button className="btn" type="button" onClick={() => save(l.id)}>{S.memorySave}</button>
-            </div>
-          ) : (
-            <>
-              {/* A note is a flat card: the fact in plain words, then its source and what to do with it, so every line can be forgotten. */}
-              <p className="note-text">{l.text}</p>
-              <div className="note-src">
-                <span>{S.memoryFrom} {l.source}{l.date ? `, ${memoryDate(l.date)}` : ""}</span>
-                <span className="note-acts">
-                  <button id={editId(l.id)} className="note-btn" type="button" aria-label={`${S.memoryEdit}: ${l.text}`} onClick={() => { setEditing(l.id); setText(l.text); }}>{S.memoryEdit}</button>
-                  <button className="note-btn" type="button" aria-label={`${S.memoryForget}: ${l.text}`} onClick={() => void send(forgetLine(project, scope, l.id))}>{S.memoryForget}</button>
-                </span>
-              </div>
-            </>
-          )}
-        </div>
-      ))}
-      {lines.length > 0 && !sure && <div className="row"><Button id={eraseId} kind="secondary" className="mem-erase" onClick={() => setSure(true)}>{eraseLabel}</Button></div>}
+    <div className="mem-section" role="group" aria-label={title}>
+      <ListGroup label={title} shown>
+        {lines.length === 0 && (
+          <ListRow colour="grey" icon={icon} title={<span className="note-example">{S.screens.example[scope].text}</span>}
+            line={<>{S.screens.example[scope].source} · {S.screens.exampleTag}</>} />
+        )}
+        {lines.map((l) => editing === l.id ? (
+          <li className="ui-mrow mem-editing" key={l.id}>
+            <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
+            <button className="ui-mrow-act" data-c="blue" type="button" onClick={() => save(l.id)}>{S.memorySave}</button>
+          </li>
+        ) : (
+          // A note is one row: the fact in plain words, then its source, so every line can be forgotten.
+          <ListRow key={l.id} id={editId(l.id)} colour="pink" icon={icon} title={l.text} line={`${S.memoryFrom} ${l.source}${l.date ? `, ${memoryDate(l.date)}` : ""}`}
+            onOpen={() => { setEditing(l.id); setText(l.text); }} openLabel={`${S.memoryEdit}: ${l.text}`}
+            action={{ label: S.memoryForget, colour: "grey", describedBy: undefined, onClick: () => void send(forgetLine(project, scope, l.id)) }} />
+        ))}
+      </ListGroup>
+      {lines.length === 0 && <p className="page-caption">{S.screens.memoryEmpty}</p>}
+      {lines.length > 0 && !sure && <div className="row mem-erase-row"><Button id={eraseId} kind="quiet" className="mem-erase" onClick={() => setSure(true)}>{eraseLabel}</Button></div>}
       {sure && (
-        <ConfirmStep className="row" label={S.memoryEraseSure} back={eraseId} onCancel={() => setSure(false)}>
+        <ConfirmStep className="row mem-ask" label={S.memoryEraseSure} back={eraseId} onCancel={() => setSure(false)}>
           <span className="line">{S.memoryEraseSure}</span>
           <button className="btn danger" type="button" onClick={() => { void send(eraseMemory(project, scope)); setSure(false); }}>{S.memoryEraseYes}</button>
           <button className="btn" type="button" data-cancel onClick={() => setSure(false)}>{S.planCancel}</button>
@@ -1919,7 +1913,9 @@ function Card() {
   const heroMain: { label: string; go: () => void; status: boolean } | null = compact || setup ? null
     : retryOwnsMain(m, project) ? null
     : blockMain ? { label: S.home.blocked[blockMain].main, go: () => doBlockMain(), status: false }
-    : reviewMain ? { label: S.home.reviewMain, go: () => openReview(), status: false }
+    // M71: one main button per screen. When the review card is right under the lead with its own Review changes, the lead
+    // has none of its own (two blue buttons said the same thing).
+    : reviewMain ? (show("review") && reviewOn && home.tab === "now" ? null : { label: S.home.reviewMain, go: () => openReview(), status: false })
     : main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;
   // M69 step 2, Home at rest is never empty (homeRest.ts): the two tone hero from the latest real state, the Last fix and
   // Since then cards (or the practice offer for a project with no fixes yet), and Check it again once it was checked.
@@ -1931,19 +1927,6 @@ function Card() {
   const restShow = restCards(restIn);
   const restMain = heroMain && atRest && main && heroMain.status ? restMainLabel(main, heroMain.label, restIn) : heroMain?.label ?? "";
   const whereOn = atRest && !!project && toolOn("whereWasI") && restIn.history.length > 0;
-  // The proof picture of the last result, kept in memory only (never written anywhere) so the Last fix card still shows it
-  // once the result card is gone; it belongs to its own task only (homeRest.ts fixPicture), and to this folder.
-  // M69 step 3: with the earlier version's picture, the receipt's own why (its first sentence) and the checks that passed.
-  const [lastPic, setLastPic] = useState<FixProof | null>(null);
-  useEffect(() => {
-    const r = m.receipt, v = r?.visual;
-    if (!r || !v?.image) return;
-    const why = firstSentence(r.said ?? "");
-    const ticks = proofTicks(m).filter((t) => t.state === "ok").map((t) => t.words);
-    setLastPic({ checkpoint: r.wholePlan?.last ?? r.checkpoint, image: v.image, caption: v.caption, ...(v.before ? { before: v.before } : {}), ...(why ? { why } : {}), ...(ticks.length ? { ticks } : {}) });
-  }, [m.receipt?.visual]);
-  useEffect(() => setLastPic(null), [project]);
-  const fixPic = fixPicture(restFix, lastPic);
   const fixUndo = restFix && project ? historyUndo(m.history, restFix.item, m.undo?.stage === "done" ? m.undo.checkpoint : null) : null;
   // M69 step 2, the review card leads Now when changes found something (reviewHead.ts): Home's own hero steps aside, and the
   // card carries the tag, the two tone headline and the character. The count of what waits shows on Now in the side list.
@@ -1974,6 +1957,12 @@ function Card() {
   // M69 step 3: while a fix works with its safety copy kept, the line under the title says so, in place of a line the
   // status already says ("Working" under WORKING).
   const heroLine = safeSaid && (!heroShown.line || heroLineSaid(heroStatus, heroShown.headline, heroShown.line)) ? safeSaid : heroShown.line;
+  // M71 (meaning.ts): the lead's meaning, so its tag, its colour and the list's agree. A practice that waits on the person is
+  // "Practice ready" in purple, never needs you (the founder, 5 Nov 2026).
+  const practiceLead = !!m.practice && !!needNow && needNow.key.startsWith("practice:") && !atRest;
+  const leadMeaning = heroMeaning({ mode, tone: hero.tone, status: status.kind, practice: practiceLead ? m.practice!.stage : null, reviewStop: !!rlead?.stop, atRest, restPill: atRest ? restWords.pill : null });
+  const leadHeadline = leadMeaning === "practice" ? capFirst(heroShown.headline.replace(/^practice:\s*/i, "")) : heroShown.headline;
+  const practiceSkip = practiceLead && m.practice?.stage === "start" && !!m.practice && !workingOn(m);
   // The project menu in the top bar: change the folder, open one from a link, or one used before.
   const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },
     ...recent.filter((r) => r !== project).map((r) => ({ id: `r:${r}`, label: r.split("/").filter(Boolean).slice(-2).join("/") }))];
@@ -1995,14 +1984,10 @@ function Card() {
     const id = setTimeout(() => setPutBackShown(false), 2000);
     return () => { clearTimeout(settle); clearTimeout(id); el?.classList.remove("putback"); };
   }, [m.undo?.stage]);
-  const roomIsStill = useRoomStill(homeOpen);
   // About this project shows as a card only when it says something to act on (homeHero.ts aboutWorthACard).
   const aboutCard = aboutWorthACard(m.about, project);
   // The fade above the ask box shows only while there is more work below to scroll to (homeLayout.ts, ui/wide.css).
   useMoreBelow(root);
-  // The room (the brand language): the element of the group at work lights Home (element.ts); talking and a file dragged
-  // over Home take the room for as long as they last.
-  const room = roomElement({ tab: home.tab, active: activeGroup(m, dragging) });
   const viewTitle = tabName(home.tab);   // M30: Settings is titled Settings; each page carries its own title
   // The result card's landing, the size of its change and its fixed chips (M66; homeFlow.ts, changeSize.ts, resultChips.ts).
   const rcpt = m.receipt;
@@ -2048,7 +2033,14 @@ function Card() {
     if (!homeOpen || home.tab !== "now" || waitKey === "||||") return;
     // M66 fix 15: scrolled to, never jumped to; while Home opens it is placed before its content shows (homeFlow.ts).
     const opening = openedAt.current > 0 && performance.now() - openedAt.current < contentAtMs();
-    const id = setTimeout(() => root.current?.querySelector<HTMLElement>(".ask-card, #home-review, .panel.amber")?.scrollIntoView?.({ block: "nearest", behavior: waitScroll({ opening, reduced: reducedMotion() }) }), 0);
+    // M71 part 2: only when the card's start is not already in view, so the lead above it never scrolls off (homeFlow.ts).
+    const id = setTimeout(() => {
+      const el = root.current?.querySelector<HTMLElement>(".ask-card, #home-review, .panel.amber");
+      if (!el) return;
+      const view = scrollerOf(el).getBoundingClientRect(), at = el.getBoundingClientRect();
+      if (!waitNeedsScroll({ cardTop: at.top, viewTop: Math.max(view.top, 0), viewBottom: Math.min(view.bottom, window.innerHeight) })) return;
+      el.scrollIntoView?.({ block: "nearest", behavior: waitScroll({ opening, reduced: reducedMotion() }) });
+    }, 0);
     return () => clearTimeout(id);
   }, [waitKey, homeOpen, home.tab]);
   // What was checked (M45): while a job works the run list says each check, a failed one too (M69, spec 3.4), so this card
@@ -2082,13 +2074,13 @@ function Card() {
   // on the Last fix is History's own (history.ts historyUndo), with the same question and words.
   const restBlock = () => {
     if (!atRest || home.tab !== "now" || !restShow) return null;
-    if (restShow === "practice") return groups.groupOn("guide") && !m.practice ? <div className="now-cards" data-one=""><PracticeCard busy={workingOn(m)} onStart={() => beginPractice(FIRST_PRACTICE)} /></div> : null;
-    if (!restFix) return null;
-    const cp = restFix.item.checkpoint;
+    const practiceRow = restShow === "practice" && groups.groupOn("guide") && !m.practice;
+    if (!restFix && !practiceRow) return null;
+    const cp = restFix?.item.checkpoint;
     const u = m.undo;
-    const fixUndoId = `now-fix-undo-${restFix.item.id}`;
-    const undoPart = (fixUndo === "undo" && !u) ? <Button id={fixUndoId} kind="quiet" size="sm" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: cp })}>{S.homeNow.undo}</Button>
-      : cp && u?.checkpoint === cp ? (<>
+    const fixUndoId = restFix ? `now-fix-undo-${restFix.item.id}` : "";
+    // Undo on the last fix is History's own (history.ts historyUndo), with the same question and words, under the list.
+    const undoAsk = restFix && cp && u?.checkpoint === cp ? (<>
         {u.stage === "confirm" && (
           <ConfirmStep className="line now-undo" label={S.undoSure} back={fixUndoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
             <div className="row">
@@ -2100,11 +2092,26 @@ function Card() {
         {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
         {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}</div>}
       </>) : null;
+    // M71: Now's one list (homeRest.ts nowRows): the last fix and how its check went, then what happened since, at most
+    // three rows, each in its meaning's colour. It fills the room under the lead, so Now never has a big empty gap.
+    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !u, now: clock });
+    const act = (r: (typeof rows)[number]) => {
+      if (r.act === "practice") beginPractice(FIRST_PRACTICE);
+      else if (r.act === "open" && r.item) openRecent(r.item);
+      else if (r.act === "look") { setHistoryQ(NO_FILTER); pickTab("did"); }
+    };
     return (
-      // M69 step 3: with nothing new since the fix, Since then folds away and the Last fix card takes the whole width.
-      <div className="now-cards" data-one={restSince.length === 0 ? "" : undefined}>
-        <LastFixCard fix={restFix} project={project} picture={fixPic} onOpen={() => openRecent(restFix.item)} undo={undoPart} />
-        {restSince.length > 0 && <SinceCard rows={restSince} onAct={(r) => { if (r.act === "check") findFromHome(); else if (r.act === "open" && r.item) openRecent(r.item); else { setHistoryQ(NO_FILTER); pickTab("did"); } }} />}
+      <div className="now-list">
+        <ListGroup label={S.homeNow.listLabel}>
+          {rows.map((r) => r.id === "empty"
+            ? <EmptyRow key={r.id} title={r.title} line={r.line} />
+            : <ListRow key={r.id} colour={MEANING_COLOUR[r.meaning]} icon={r.icon} title={r.title} line={r.line}
+              fact={r.fact} factColour={MEANING_COLOUR[r.meaning]} onOpen={r.act === "practice" ? undefined : () => act(r)} openLabel={r.act === "look" ? S.homeNow.look : S.homeNow.open}
+              action={r.action === "undo" && cp ? { id: fixUndoId, label: S.homeNow.undo, colour: "orange", onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: cp }) }
+                : r.action === "show" ? { label: S.homeNow.look, onClick: () => act(r) }
+                : r.action === "start" ? { label: S.homeNow.practiceStart, onClick: () => act(r) } : null} />)}
+        </ListGroup>
+        {undoAsk}
       </div>
     );
   };
@@ -2208,14 +2215,12 @@ function Card() {
   return (
     <HomeStage stage={homeStage}>
     <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
-      data-element={room} data-still={roomIsStill ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
       onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
-      {/* The room's light (the brand language): out of focus, behind the work, in the element of the group at work. */}
-      <RoomLight element={room} />
+      {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
@@ -2234,8 +2239,9 @@ function Card() {
           {/* M69, one layout grammar (the YC benchmark spec 3): the project's status dot before its name, one line of context
               after it (when it was checked, whether Undo is ready, its kind when the folder says so, the folder), and the
               Fix it key on the right, in every look and both layouts (homeLayout.ts barContext, barKeyChord). */}
-          {home.tab === "now" && project && <StatusDot kind={heroStatus ?? "notChecked"} />}
-          {home.tab === "now" && <Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} />}
+          {/* M71: the project chip, its dot the project's own state (green works, orange changed, red failing, grey not
+              checked; meaning.ts statusDot), with the folder menu inside it. */}
+          {home.tab === "now" && <span className="bar-chip">{project && <Dot colour={statusDot(status.kind)} />}<Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} /></span>}
           {home.tab === "now" && barLine.length > 0 && <p className="bar-meta" title={barLine.join(" · ")}>{barLine.join(" · ")}</p>}
           {home.tab === "now" && barKey && <span className="bar-key"><span className="bar-key-word">{S.look.barKey.before}</span><KeyLabel chord={barKey} label={S.look.barKey.label} /><span className="bar-key-word">{S.look.barKey.after}</span></span>}
           {home.tab !== "now" && <>
@@ -2252,15 +2258,14 @@ function Card() {
             {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
             {/* In Settings the sidebar is the only way around: the place buttons step back (the spec, 3.1). */}
             {/* The tall Home (M51 polish): Now is a place in the row too, so the open place always shows which it is. */}
-            {home.tab !== "settings" && !side && <Button kind="quiet" size="sm" pressed={home.tab === "now"} onClick={() => pickTab("now")}>{S.look.now}</Button>}
+            {/* M71: each place with its own colour tile (Now blue, Learn purple, History orange, Memory pink), the open one on
+                its soft fill; Settings is a grey gear at the end. */}
+            {home.tab !== "settings" && !side && <PlaceButton place="now" label={S.look.now} on={home.tab === "now"} onClick={() => pickTab("now")} />}
             {home.tab !== "settings" && places.map((t) => {
               const waits = waitsOn === t && t !== home.tab;
-              return (
-                <Button key={t} id={tabId(t)} kind="quiet" size="sm" pressed={t === home.tab} onClick={t === "settings" ? gear : () => pickTab(placeAfter(home.tab, t))}>
-                  {S.home.places[t]}
-                  {waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}
-                </Button>
-              );
+              return t === "settings"
+                ? <Button key={t} id={tabId(t)} kind="icon" className="bar-gear" label={S.home.places[t]} title={S.home.places[t]} onClick={gear}><Icon name="gear" size={16} />{waits && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</Button>
+                : <PlaceButton key={t} id={tabId(t)} place={t} label={S.home.places[t]} on={t === home.tab} waits={waits} waitsWord={S.homeTabWaiting} onClick={() => pickTab(placeAfter(home.tab, t))} />;
             })}
             <Button kind="icon" className="close" label={S.look.close} title={S.look.close} onClick={() => { player.current.hush(); void invoke("close_card"); }}><Icon name="close" size={14} /></Button>
           </PlacesBox>
@@ -2272,59 +2277,65 @@ function Card() {
       {/* Now, status first in one column (F28, the overhaul spec 4.1), with Flowflow living on its water beside the words (the
           founder, 31 Oct). At rest and under a result: how the project is, from its last check, and the one main button
           that status picks. While a job works, a question waits or an answer is in: that job's own words. */}
-      <section className="hero" hidden={home.tab !== "now" || cardLeads} data-mode={mode} data-rest={atRest ? "" : undefined} data-compact={compact ? "" : undefined} aria-labelledby={home.tab === "now" && !cardLeads ? "home-title" : undefined}>
-        {/* Flowflow's glow (needs you, done) is a soft circle in its pond, outside the masked box, so no edge of it shows
-            (the audit, item 28). */}
-        <div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">
-          <div className="ch-water"><Waterline under /></div>
-          {(() => { const say = blocker ? "" : sayFor(m, hero); return say ? <span className="say" key={say}>{say}</span> : null; })()}
-          {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
-              while changes wait for it (only while that card is on Now). */}
-          {/* M69: while the review card leads Now, the character is drawn in that card instead (one at a time). */}
-          <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
-            ring={heroRingOf(mode, heroStatus)} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
-        </div>
-        <div className="hero-words" data-line-said={!statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine) ? "" : undefined}>
+      {/* M71: the lead (ui/parts.tsx Lead): one tag in its meaning's colour (meaning.ts heroMeaning), one headline, one line,
+          one main button and at most one quiet one, and the character in its own column on the right, never over a word. */}
+      <Lead className="hero" wordsClass="hero-words" hidden={home.tab !== "now" || cardLeads} meaning={leadMeaning} labelledBy={home.tab === "now" && !cardLeads ? "home-title" : undefined}
+        data={{ "data-mode": mode, "data-rest": atRest ? "" : undefined, "data-tight": compact ? "" : undefined }}
+        wordsData={{ "data-line-said": !statusFirst && heroLineSaid(heroStatus, heroShown.headline, heroLine) ? "" : undefined }}
+        character={
+          // Flowflow's glow (needs you, done) is a soft circle in its pond, outside the masked box, so no edge of it shows
+          // (the audit, item 28).
+          <div className="home-pond" data-lively={lively} data-glow={glow} aria-hidden="true">
+            <div className="ch-water"><Waterline under /></div>
+            {(() => { const say = blocker ? "" : sayFor(m, hero); return say ? <span className="say" key={say}>{say}</span> : null; })()}
+            {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
+                while changes wait for it (only while that card is on Now). */}
+            {/* M69: while the review card leads Now, the character is drawn in that card instead (one at a time). */}
+            <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
+              ring={leadMeaning === "practice" ? null : heroRingOf(mode, heroStatus)} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
+          </div>
+        }>
           {atRest
-            ? restWords.pill && <p className="ui-status" data-tone={PILL_TONE[restWords.pill]}><span className="ui-status-dot" aria-hidden="true" />{S.homeNow.pill[restWords.pill]}</p>
-            : resHero ? <p className="ui-status" data-tone={resHero.pill === "proven" ? "proven" : "stop"}><span className="ui-status-dot" aria-hidden="true" />{S.homeNow.resultPill[resHero.pill]}</p>
-            : statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <StatusLine kind={heroStatus} />}
+            ? restWords.pill && <Tag meaning={PILL_MEANING[restWords.pill]} words={S.homeNow.pill[restWords.pill]} />
+            : resHero ? <Tag meaning={resHero.pill === "proven" ? "proven" : "problem"} words={S.homeNow.resultPill[resHero.pill]} tick={resHero.pill === "proven"} />
+            : statusLineShown(heroStatus, statusFirst ? status.verdict.headline : heroShown.headline) && <Tag meaning={leadMeaning} words={heroStatus === "needs" && leadMeaning !== "question" ? undefined : S.ui.status[heroStatus]} />}
           {/* data-foot-says: the footer line already says this line (Checked 4 min ago), so Instrument shows it once. */}
-          {/* M69 step 2: at rest, the two tone headline (homeRest.ts restHero): the outcome, then the why in the softer tone. */}
+          {/* M71: at rest and over a result, the outcome is the headline and the why the one line under it (homeRest.ts). */}
           {atRest
-            ? <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline rest-head hero-swap" key={`r:${restWords.first}`}><span className="rest-first">{restWords.first}</span> <span className="rest-second">{restWords.second}</span></h1>
+            ? <><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline rest-head hero-swap" key={`r:${restWords.first}`}><span className="rest-first">{restWords.first}</span></h1>
+              {restWords.second && <p className="ui-lead-line subline rest-second hero-swap" key={`r2:${restWords.second}`}>{restWords.second}</p>}</>
             : resHero
-            ? <h1 id="home-title" className="headline rest-head hero-swap" key={`x:${resHero.first}`}><span className="rest-first">{resHero.first}</span>{resHero.second && <> <span className="rest-second">{resHero.second}</span></>}</h1>
+            ? <><h1 id="home-title" className="ui-lead-title headline rest-head hero-swap" key={`x:${resHero.first}`}><span className="rest-first">{resHero.first}</span></h1>
+              {resHero.second && <p className="ui-lead-line subline rest-second hero-swap" key={`x2:${resHero.second}`}>{resHero.second}</p>}</>
             : statusFirst
-            ? <div className="status-head" data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="subline status-sub">{status.sub}</p>}</div>
+            ? <div className="status-head" data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="ui-lead-line subline status-sub">{status.sub}</p>}</div>
             : <>
-              {/* The tag only when the headline does not already say it is a practice (the review, 2 Nov 2026: "Practice" over
-                  "Practice: find it, fix it, prove it"). */}
-              {practiceNow && !heroShown.headline.startsWith(S.look.practiceTag) && <span className="hero-tag">{S.look.practiceTag}</span>}
               {/* M66 fix 13: new words cross fade in by their key (ui/homeFlow.css hero-swap), the counting cost keeps its own. */}
-              <h1 id={home.tab === "now" ? "home-title" : undefined} className="headline hero-swap" key={`h:${heroShown.headline}`}><Said text={heroShown.headline} friendly={heroShown.friendly?.headline} /></h1>
+              {/* M71: a practice's tag says Practice ready, so its headline drops the "Practice:" in front of it. */}
+              <h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline hero-swap" key={`h:${leadHeadline}`}><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1>
               {/* M69 (F29): no cost counts up here any more; Squibby pays. */}
               {/* M69 step 3: while a fix works with its safety copy kept, that is said once, under the title (not in the card). */}
-              <p className={`subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
+              <p className={`ui-lead-line subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
               while the hero is folded for a card that needs a tap (item 13): that card's own buttons are the ones. */}
           {/* M69 step 3: over a proven or failed result the receipt's own buttons lead (Keep, or Try a different fix). */}
-          {(heroMain || whereOn) && !resHero && <div className="hero-main">
+          {(heroMain || whereOn || practiceSkip) && !resHero && <div className="hero-main ui-lead-acts">
             {/* After Stop with changes, Undo what it did is the one main button; Carry on steps back to secondary (the review of 5 Nov). */}
             {heroMain && <Button kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}
             {/* M69 step 2: Where was I? beside it at rest, once the project has a log (F21, Flow's own; nothing in the background). */}
             {whereOn && <Button kind="secondary" size="lg" onClick={() => void sendQuiet(whereWasI(project))}>{S.homeNow.whereWasI}</Button>}
+            {/* M71: a practice not started yet can be skipped (the same as closing it on Learn); nothing runs yet. */}
+            {practiceSkip && !whereOn && <Button kind="secondary" size="lg" onClick={() => dispatch({ type: "ui.practiceClosed" })}>{S.homeNow.skip}</Button>}
           </div>}
           {lastFree && <p className="subline muted pro-last">{lastFree}</p>}
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
-          {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
-        </div>
-      </section>
+          {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main ui-lead-acts"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
+      </Lead>
       {setup && home.tab === "now" && <SetupList rows={setup} blocker={blocker} onAct={setupAct} />}
       {/* The wide Home at rest (M51 polish): the sea goes on down to the ask box, so there is no dead band under the status. */}
-      {seaFills({ side, tab: home.tab, mode, cardsUnder: reviewOn || !!m.recap || !!m.toast || !!m.notice || !!m.error || aboutCard || !!restShow }) && <div className="sea-fill" aria-hidden="true" />}
+      {/* M71: the sea that filled the work under the status is retired (Home is black). */}
           {/* The one ask field, under the status (27 Oct 2026, F28). Only hidden on the other places, never taken away: a draft,
               and the words from hold to talk, stay in it. Return starts; the hold to talk keys sit inside it on the right. */}
       {!side && urgentCards && <div className="view view-lead">{urgentCards}</div>}
@@ -2347,7 +2358,7 @@ function Card() {
               {/* M69 step 2: while the review card leads, the token is the place it points at (file and line, never its text). */}
               {project && (cardLeads && rvHead?.pointed
                 ? <span className="ask-token" title={S.review.at(rvHead.pointed.file, rvHead.pointed.line)} role="note" aria-label={S.look.askAbout(S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line))}><span className="ask-token-dot" aria-hidden="true" />{S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line)}</span>
-                : <span className="ask-token" title={project} role="note" aria-label={S.look.askAbout(projectName)}><span className="ask-token-dot" aria-hidden="true" />{projectName}</span>)}
+                : <span className="ask-token" data-c={statusDot(status.kind)} title={project} role="note" aria-label={S.look.askAbout(projectName)}><span className="ask-token-dot" aria-hidden="true" />{projectName}</span>)}
               {askChipList.map((c) => <button type="button" className="ask-chip" key={c.id} onClick={() => fillBox(c.words)}>{c.words}</button>)}
               {/* A click may never open the microphone (rule 5): the press says which keys to hold, and the tooltip too. */}
               {groups.on("talk") && keys.using.talk && <Button kind="icon" className="ask-mic" label={S.look.micLabel} title={talkKeysLine(keys)} onClick={() => setAskHint(S.look.micHint(chordLabel(keys.using.talk!)))}><Icon name="mic" size={16} /></Button>}
@@ -2425,7 +2436,7 @@ function Card() {
       {/* The recent fixes, newest first: each opens its own receipt (the one on Now, or its row in History). At rest they come
           right under the ask field; while a result or an answer is on Now, under it (below, before the folder's notes). */}
       {/* In the tall Home, changes to review come before the recent list (item 11); in the wide one they lead the work below. */}
-      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} titleId={cardLeads ? "home-title" : undefined}
+      {!side && show("review") && reviewOn && <div className="view view-lead"><ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined}
         mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} /></div>}
       {/* M69 step 2: at rest the Last fix and Since then cards take the recent list's place (homeRest.tsx). */}
       {!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}
@@ -2495,14 +2506,13 @@ function Card() {
           }} />;
       })()}
       {/* The recorded first run, again on a press (it costs nothing and changes nothing; firstLook.ts). */}
-      {home.tab === "learn" && (tour
-        ? <section className="panel onboarding look" aria-label={S.firstLook.watch}><FirstLook onGo={() => setTour(false)} /></section>
-        : <section className="panel bare" aria-label={S.firstLook.watch}><div className="row"><button className="btn" type="button" onClick={() => setTour(true)}>{S.firstLook.watch}</button></div></section>)}
+      {/* M71: the tour is the featured practice card's quiet button (or a row of the list once every practice is done). */}
+      {home.tab === "learn" && tour && <section className="panel onboarding look" aria-label={S.firstLook.watch}><FirstLook onGo={() => setTour(false)} /></section>}
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
       {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? "")} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
           openId={m.practice && m.practice.project === project ? m.practice.kind : null}
-          act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} />
+          act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} onTour={home.tab === "learn" && !tour ? () => setTour(true) : undefined} />
       )}
       {groups.groupOn("guide") && show("lessons") && !m.walk && (
         <section className="panel" role="status" aria-label={S.lessonsTitle}>
@@ -2637,7 +2647,7 @@ function Card() {
         </section>
       )}
 
-      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} titleId={cardLeads ? "home-title" : undefined}
+      {side && show("review") && reviewOn && <ReviewCardView r={m.review!} {...reviewHandlers} heroSays={reviewHeroSays(mode, rlead, m.review)} heroHeadline={mode === "review" && !cardLeads ? rlead?.headline : undefined} titleId={cardLeads ? "home-title" : undefined}
         mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} />}
 
       {show("drive") && m.drive && (
@@ -3109,7 +3119,8 @@ function Card() {
       {show("memory") && m.memory && (
         <section className="panel memory" aria-label={S.memoryTitle}>
           <h2 className="sr">{S.memoryTitle}</h2>
-          <p className="page-caption">{S.memoryNever}</p>
+          {/* M71: the lead, then a row per note with its source. */}
+          <Lead className="mem-lead" title={<p className="ui-lead-title" role="heading" aria-level={2}>{S.screens.memoryLead}</p>} line={<p className="ui-lead-line">{S.memoryNever}</p>} />
           {m.memory.paused && <div className="line"><b>{S.memoryPaused}</b></div>}
           {m.memory.problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
           {m.memoryNote && <div className="line blocked" role="alert">{m.memoryNote}</div>}

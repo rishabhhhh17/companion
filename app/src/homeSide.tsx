@@ -13,12 +13,13 @@ import { verdictOf } from "./verdict.ts";
 import { tabId, type Tab } from "./home.ts";
 import type { SidePlace } from "./homeLayout.ts";
 import { Icon } from "./icons.tsx";
-import { SidebarItem } from "./ui/parts.tsx";
+import { SidebarItem, Tile } from "./ui/parts.tsx";
 import { historyStamp, sideStamp, taskName } from "./itemLook.ts";
-import { ItemTile, Stamp } from "./itemMarks.tsx";
+import { Stamp } from "./itemMarks.tsx";
 import { verdictMark } from "./ui/partsLogic.ts";
-import type { ElementId } from "./element.ts";
 import { reviewStamp, type ReviewCard } from "./review.ts";
+import { MEANING_COLOUR, PLACE_COLOUR, PLACE_ICON, VERDICT_MEANING } from "./meaning.ts";
+import type { VerdictKind } from "./verdict.ts";
 
 type Props = {
   places: SidePlace[]; tab: Tab; waits: Tab | null; recent: HistoryItem[]; now: number;
@@ -29,15 +30,14 @@ type Props = {
   counts?: Partial<Record<SidePlace, number>>;
 };
 
-/** A place that is a group's own room shows that group's gem in place of a drawing (the brand language). */
-const PLACE_GEM: Partial<Record<SidePlace, ElementId>> = { now: "flow", learn: "guide" };
+// M71: each place has its own colour tile (meaning.ts PLACE_COLOUR), so the gems of the old rooms are gone.
 
 export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts }: Props) {
   return (
     <nav className="side" aria-label={S.look.placesLabel}>
       <ul className="side-list">
         {places.map((t) => (
-          <li key={t} data-gem={PLACE_GEM[t] ? "" : undefined} data-element={PLACE_GEM[t]}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={t} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} count={counts?.[t]} onClick={() => onPick(t)} /></li>
+          <li key={t}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={PLACE_ICON[t]} colour={PLACE_COLOUR[t]} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} count={counts?.[t]} onClick={() => onPick(t)} /></li>
         ))}
       </ul>
       {/* Changes waiting for a review sit under their own heading, above the recent work (the audit, item 11). */}
@@ -47,9 +47,9 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
           <ul className="side-list">
             <li key="review">
               <button type="button" className="sb-item side-work side-review" title={`${S.review.sideItem}. ${S.look.stamp[reviewStamp(review)]}`} aria-label={S.review.sideLabel(S.look.stamp[reviewStamp(review)])} onClick={() => onReview?.()}>
-                <span className="tile" data-tint="sky" aria-hidden="true"><Icon name="eye" size={12} /></span>
+                <Tile colour={MEANING_COLOUR.review} icon="eye" size="place" />
+                {/* M71: the tile already says take a look (orange), and the label says the rest: no second mark at the end. */}
                 <span className="side-name" aria-hidden="true">{S.review.sideItem}</span>
-                <Stamp kind={reviewStamp(review)} dot />
               </button>
             </li>
           </ul>
@@ -69,7 +69,8 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
               return (
                 <li key={i.id}>
                   <button type="button" className="sb-item side-work" data-tone={tone} title={stamp ? `${name}. ${S.look.stamp[stamp]}` : name} aria-label={`${S.ui.openReceipt(name)}. ${v.headline}`} onClick={() => onOpen(i)}>
-                    <ItemTile label={name} />
+                    {/* M71: the tile says how it ended, in its meaning's colour (green proven, red failed, grey stopped, orange undone). */}
+                    <Tile colour={MEANING_COLOUR[i.status === "running" ? "working" : VERDICT_MEANING[(v as { kind: VerdictKind }).kind]]} icon={mark} size="place" />
                     <span className="side-name" aria-hidden="true">{name}</span>
                     {stamp && <Stamp kind={stamp} dot />}
                     <span className={`side-mark${stamp ? " unstamped" : ""}`} aria-hidden="true"><Icon name={mark} size={12} /></span>
@@ -81,7 +82,7 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
         </section>
       )}
       <div className="side-foot">
-        <SidebarItem id={tabId("settings")} icon="settings" label={S.homeTabs.settings} selected={false} attention={waits === "settings"} onClick={onSettings} />
+        <SidebarItem id={tabId("settings")} icon="gear" colour="grey" label={S.homeTabs.settings} selected={false} attention={waits === "settings"} onClick={onSettings} />
       </div>
     </nav>
   );

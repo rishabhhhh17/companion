@@ -32,7 +32,7 @@ describe("Friendly keeps Fix this first as Home's headline on a stop", () => {
   });
   test("the page puts both on Home and a token shows one: Friendly's by default, Instrument's in Instrument", () => {
     const card = read("./card.tsx"), home = read("./ui/home.css"), tokens = read("./ui/tokens.css");
-    expect(card).toContain("<Said text={heroShown.headline} friendly={heroShown.friendly?.headline} />");
+    expect(card).toContain("<Said text={leadHeadline} friendly={heroShown.friendly?.headline} />");   // M71: a practice's headline without "Practice:"
     expect(card).toContain("<Said text={heroShown.line} friendly={heroShown.friendly?.line} />");
     expect(home).toContain(".say-friendly { display: var(--say-friendly-show, inline); }");
     expect(home).toContain(".say-instrument { display: var(--say-instrument-show, none); }");

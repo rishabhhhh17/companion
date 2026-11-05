@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { glanceDue, ringFor, ringOf, visorMotion, visorPose, type VisorPose } from "./characters.ts";
 import { characterOf, CHARACTER_CHOICES, lookAttrs } from "./lookfeel.ts";
+import { shownValue } from "./settingsPages.ts";
 import { dockShows, dockWords, miniShows, orbMotion } from "./chromeLook.ts";
 import type { CharacterState } from "./model.ts";
 import { VISOR_MS } from "./motionTokens.ts";
@@ -20,29 +21,26 @@ const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const STATES: CharacterState[] = ["off", "idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"];
 
 describe("which character: the setting (look.character)", () => {
-  test("Match under Instrument is the Visor; Friendly under Friendly; a pick stays a pick", () => {
-    expect(CHARACTER_CHOICES).toEqual(["match", "visor", "orb", "friendly"]);
-    expect(characterOf("instrument", "match")).toBe("visor");
-    expect(characterOf("friendly", "match")).toBe("friendly");
-    expect(characterOf("instrument", "visor")).toBe("visor");
-    expect(characterOf("friendly", "visor")).toBe("visor");
-    expect(characterOf("instrument", "orb")).toBe("orb");
-    expect(characterOf("instrument", "friendly")).toBe("friendly");
+  test("the Visor is the usual; a pick stays a pick (M71: the retired style no longer picks it)", () => {
+    expect(CHARACTER_CHOICES).toEqual(["visor", "orb", "friendly"]);
+    expect(characterOf("match")).toBe("visor");
+    expect(characterOf("visor")).toBe("visor");
+    expect(characterOf("orb")).toBe("orb");
+    expect(characterOf("friendly")).toBe("friendly");
   });
   test("a store from before still loads: a saved orb stays the orb, an empty or odd store reads the usual", () => {
-    expect(characterOf("friendly", "orb")).toBe("orb");
-    expect(characterOf(undefined, undefined)).toBe("visor");
-    expect(characterOf(undefined, "orb")).toBe("orb");
-    for (const junk of [null, "", "Visor", "nonsense", 3, true]) expect(characterOf("instrument", junk), String(junk)).toBe("visor");
+    expect(characterOf(undefined)).toBe("visor");
+    for (const junk of [null, "", "Visor", "nonsense", 3, true]) expect(characterOf(junk), String(junk)).toBe("visor");
+    expect(lookAttrs({ "look.style": "friendly" })["data-character"]).toBe("friendly");   // M71: a Friendly store keeps its water character
     expect(lookAttrs({})["data-character"]).toBe("visor");
   });
   test("the setting, its words and its help", () => {
     const reg = JSON.parse(read("../../protocol/settings.json")) as { settings: { key: string; options?: string[]; default?: unknown }[] };
     const def = reg.settings.find((s) => s.key === "look.character")!;
-    expect(def.options).toEqual(["match", "visor", "orb", "friendly"]);
-    expect(def.default).toBe("match");
+    expect(def.options).toEqual(["visor", "orb", "friendly", "match"]);
+    expect(def.default).toBe("visor");
     const help = S.set["look.character"];
-    expect(help.options).toEqual({ match: "Match look", visor: "Visor", orb: "Glass orb", friendly: "Friendly" });
+    expect(help.options).toEqual({ visor: "Visor", orb: "Glass orb", friendly: "Water", match: "Visor" });
     expect(help.help).toContain("Visor");
     expect(help.help).not.toMatch(/\u2014/);
   });
@@ -261,5 +259,29 @@ describe("no WebGL on the visor's path", () => {
     walk(new URL("./ui/parts.tsx", import.meta.url));
     walk(new URL("./visorArt.ts", import.meta.url));
     expect(seen.size).toBeGreaterThan(3);
+  });
+});
+
+// M71 (5 Nov 2026): the style is retired, but a store that had the Friendly style with "match" had the water character, and
+// the founder was told it stays. So "match" (or nothing chosen) reads the retired style once: Friendly keeps the water.
+describe("a stored Friendly look keeps its water character", () => {
+  test("match or nothing chosen, with the retired Friendly style, is the water character", () => {
+    expect(characterOf("match", "friendly")).toBe("friendly");
+    expect(characterOf(undefined, "friendly")).toBe("friendly");
+    expect(characterOf("match", "instrument")).toBe("visor");
+    expect(characterOf("match")).toBe("visor");
+  });
+  test("an explicit choice always wins over the retired style", () => {
+    expect(characterOf("visor", "friendly")).toBe("visor");
+    expect(characterOf("orb", "friendly")).toBe("orb");
+    expect(characterOf("friendly", "instrument")).toBe("friendly");
+  });
+  test("every place that draws the character, and Settings, read the retired style the same way", () => {
+    const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+    expect(read("./homeCharacter.tsx")).toContain('characterOf(useSetting("look.character"), useSetting("look.style"))');
+    expect(read("./flowflowMini.tsx")).toContain('characterOf(useSetting("look.character"), useSetting("look.style"))');
+    expect(read("./lookfeel.ts")).toContain('characterOf(values["look.character"], values["look.style"])');
+    expect(shownValue("look.character", "match", "friendly")).toBe("friendly");
+    expect(shownValue("look.character", "match")).toBe("visor");
   });
 });

@@ -224,7 +224,7 @@ describe("(49) a room change runs at one speed", () => {
   test("M66 fix 11: every colour of the room changes at once, together; only the old light fades out on top, by opacity", () => {
     expect(css).not.toMatch(/\.home\[data-element\] \{ transition:/);
     expect(css).not.toMatch(/transition:[^;]*--el-/);
-    expect(css).toContain(".room.room-was { z-index: 0; animation: room-was-out var(--dur-3) var(--ease-out) both; }");
+    expect(css).not.toContain(".room.room-was");   // M71: the rooms are retired
     expect(css).not.toMatch(/520ms/);
     expect(css).toMatch(/\.home\[data-side\] \.side \.sb-item\[aria-current="page"\] \{[^}]*transition: background-color var\(--dur-3\) var\(--ease-out\)/);
   });
@@ -255,9 +255,9 @@ describe("(37) the review card is found and heard", () => {
 
 describe("(51) empty History and the landmarks", () => {
   test("M69 (spec 3.6): History with nothing yet has the character at rest, one sentence and Start practice", () => {
-    expect(card).toContain('<div className="page-empty-char" aria-hidden="true"><HomeCharacter as="idle" rest /></div>');
-    expect(card).toContain("{S.screens.historyEmpty}");
-    expect(card).toContain("{onPractice && <Button kind=\"primary\" onClick={onPractice}>{S.screens.startPractice}</Button>}");
+    // M71 (one structure): the empty list is one row that says what will appear, with one action (Start practice).
+    expect(card).toContain("<EmptyRow icon=\"undo\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
+    expect(card).toContain("{ label: S.screens.startPractice, colour: \"purple\", onClick: onPractice }");
     expect(S.screens.historyEmpty).toBe("Nothing here yet. Your first fix will show up here with its proof.");
   });
   test("one Places landmark in the wide Home, a region only for a place, the heading without its line, keys and Send named", () => {
@@ -436,7 +436,7 @@ describe("(53) copy that says each thing once", () => {
   });
   test("the ask box has a chat drawing, not a search glass; the review row an eye", () => {
     expect(card).toContain('<span className="ask-mark" aria-hidden="true"><Icon name="sparkle" size={16} /></span>');
-    expect(read("./homeSide.tsx")).toContain('<Icon name="eye" size={12} />');
+    expect(read("./homeSide.tsx")).toContain('<Tile colour={MEANING_COLOUR.review} icon="eye" size="place" />');   // M71: its orange tile
     expect(read("./icons.tsx")).toMatch(/^  eye: /m);
   });
   test("Settings help: no sentence runs past 25 words (writing.test.ts holds it there)", () => {
@@ -469,11 +469,12 @@ describe("(53) Learn: each practice and lesson is told apart, the first practice
     expect(practiceKind({ fix: "task", prove: "checks" } as never)).toBe("fix");
     expect(practiceKind({ fix: "task", prove: "gate" } as never)).toBe("live");
     expect(practiceKind({ fix: "lesson", prove: "checks" } as never)).toBe("explain");
-    expect(panel).toContain("<ItemTile label={r.title} big kind={practiceKind(r.entry)} />");
+    // M71: a practice's tile is its own colour and number in the one list (ui/parts.tsx ListRow), the kind kept in its words.
+    expect(panel).toContain("colour={state === \"done\" ? \"green\" : practiceColour(i)}");
   });
-  test("the first practice, not yet started, is a featured card", () => {
-    expect(panel).toContain('r.entry.id === FIRST_PRACTICE && state === "notStarted" && lead ? " pr-feature" : ""');
-    expect(css).toMatch(/\.home \.pr-item\.pr-feature \{/);
+  test("the practice to do now is a featured card (M71: a faint tint of purple, ui/parts.css .ui-feature)", () => {
+    expect(panel).toContain('<Lead className="ui-feature learn-lead" meaning="practice"');
+    expect(css).toMatch(/\.ui-lead\.ui-feature \{[^}]*var\(--feature-a\)/);
   });
   test("each lesson's Start names its lesson, and the new lesson note is said once under the list", () => {
     expect(card).toContain("aria-label={`${l.saved ? S.lessonContinue : S.lessonStart}: ${l.title}`}");

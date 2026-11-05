@@ -64,7 +64,7 @@ describe("Home is one calm column, status first (F28, the overhaul spec 4.1)", (
   });
   test("one column: Flowflow on its water with the status, then the ask field, then the recent fixes and the results", () => {
     // M69 step 2: the hero steps aside while the review card leads Now (it carries the headline then).
-    const hero = card.indexOf('<section className="hero" hidden={home.tab !== "now" || cardLeads}');
+    const hero = card.indexOf('<Lead className="hero" wordsClass="hero-words" hidden={home.tab !== "now" || cardLeads}');   // M71: the Lead part
     const ask = card.indexOf('<div className="askwrap" hidden={!show("ask")}>');
     // M69 step 2: at rest the Last fix and Since then cards stand where the recent list was (homeRest.tsx).
     const recent = card.indexOf('{!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}');
@@ -167,7 +167,7 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
       expect(at).toContain('label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)}');
     }
     // Where something works with no card of its own (a look, an answer being written), Stop sits beside the words.
-    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
+    expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main ui-lead-acts\"><Button kind=\"secondary\" size=\"sm\"");
   });
   test("after an undo, Put back as it was shows for two seconds in the card", () => {
     expect(result).toContain('{putBackShown && <span className="putback-note" role="status">{said ? " " : ""}{S.look.putBack}</span>}');

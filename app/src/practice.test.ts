@@ -446,7 +446,7 @@ describe("the record and the list on Learn", () => {
     expect(S.practiceWithoutNode("Install it from nodejs.org.")).toBe("Node is not on this Mac. The practices run without it, but most of your own web projects need it. Install it from nodejs.org.");
     expect(S.practiceWithoutNode("")).not.toMatch(/\s$/);
     const panel = readFileSync(join(import.meta.dir, "./practicePanel.tsx"), "utf8"), card = readFileSync(join(import.meta.dir, "./card.tsx"), "utf8");
-    expect(panel).toContain('{withoutNode != null && !rows.some((r) => r.needsNode) && <div className="line muted">{S.practiceWithoutNode(withoutNode)}</div>}');
+    expect(panel).toContain('{withoutNode != null && !rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceWithoutNode(withoutNode)}</p>}');
     expect(card).toContain("withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? \"\")}");
   });
   test("after a practice: the next one not done in catalog order, then round to the start, and none when all are done", () => {
@@ -694,7 +694,9 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
   });
   test("a practice is never started while something works on the project, and Start waits for Node when it is missing", () => {
     expect(card).toContain("if (!canStart(workingOn(nowModel.current), e, nowModel.current.doctor))");
-    expect(panel).toMatch(/disabled=\{blocked\}[^\n]*act\.start\(id\)/);
+    // M71: a row opens its practice only when nothing blocks it (busy, or Node missing).
+    expect(panel).toContain("onOpen={go && !blocked ? go : undefined}");
+    expect(panel).toContain("disabled={busy || lead.needsNode}");
     // Start over and Remove my copy tell the shell the same (it refuses the open copy while something works on it).
     expect(card.match(/busy: isBusy\(nowModel\.current\)/g)).toBeNull();
     expect(card.match(/busy: workingOn\(nowModel\.current\)/g)?.length).toBe(2);

@@ -250,7 +250,8 @@
   --seq-surface: 160ms; --seq-settle: 220ms;   /* the character surfacing on a trip, and settling where it lands */
   --seq-putback: 2000ms;               /* "put back" shown, held and gone */
   --seq-flood: 1600ms;                 /* a finished job floods the room's light for one beat */
-  --seq-glow: 900ms;                   /* the notch's done tick glowing once */
+  --seq-glow: 900ms;
+  --seq-land: var(--seq-glow);   /* M71: the landing's hairline comes and goes on the same time, never a glow */                   /* the notch's done tick glowing once */
   --seq-fall: 900ms; --seq-ripple: 1200ms; --seq-rise: 900ms; --seq-rise-at: 1050ms;   /* the first run's drop falling into the water */
   --seq-tank: 900ms;                   /* the first run's water rising to its level */
   --seq-spin: 600ms;                   /* a step's arrow turning once */
@@ -287,7 +288,7 @@
 
   /* ---------- The elements (the brand language, 1 Nov 2026): Home is a dark room lit from inside by the group at work ----------
      Each group of tools brings its own coloured light: Flow is water, Guide is a sunbeam, Voice is a bloom, Files is moss.
-     Components only ask for these slot names; [data-element] (below) swaps them, the way one class swaps an accent. These
+     Components only ask for these slot names; [data-element] swapped them before M71, the way one class swaps an accent. These
      are Flow's, the usual room. light is the only one that may be words (at least 9.8 to 1 on graphite); ink reads on base
      and on the gradient's top (7 to 1 or more); white reads only on deep. glow is blurred light, never words or a fill.
      Flow is the water chosen in Settings: each water has its own block (below), so Berry makes the whole room pink, not
@@ -565,6 +566,8 @@
   /* Key style buttons (spec 1.6, PostHog): a darker bottom edge, 2 points at rest and 1 when pressed, drawn inside the
      button so nothing moves around it. */
   --btn-key: inset 0 -1px 0 var(--line-strong);
+  --btn2-bg: transparent;              /* a secondary button's fill and edge (M71 Black: a raised fill, no edge) */
+  --btn2-edge: var(--line-strong);
   --btn-key-press: none;
   /* Elevation (spec 1.6): hairlines first; the floating ask box and toasts get one soft shadow. */
   --shadow-float: 0 1px 2px rgba(0, 0, 0, .1), 0 4px 14px rgba(0, 0, 0, .18);
@@ -573,7 +576,63 @@
   --h-send: calc(30rem / 14);          /* the round send (24 points or more to press) */
   --ask-shadow-float: var(--shadow-float);
 
+  /* ---------- M71, black with colour (docs/milestones/M71-black-with-colour.md; the founder, 5 Nov 2026: "I need it to
+     be black with accents of different color") ----------
+     One look for Home and the notch's panel: pure black like the notch, three surfaces, and eight colours from Apple's dark
+     mode set, one job each (meaning.ts maps every state to one). Colour never paints a surface: it marks meaning on a tile,
+     a dot, a tag, the main button, or a featured card's faint tint. Each colour has its forms here and nowhere else:
+       solid  the colour itself: dots, and the tiles of the colours white reads on;
+       tile   a tile's fill, with a white mark at 3 to 1 or more (the light colours a step deeper);
+       soft   the colour at 18 percent on black: the place you are on, and a tag's fill;
+       text   the colour mixed with white, for small words on black (4.5 to 1 on every surface and on its soft fill).
+     The contrast of every form is measured in system.test.ts. */
+  --surface-0: #000000;                /* Home, the hover panel, the notch */
+  --edge: rgba(255, 255, 255, .09);    /* hairlines between rows, the panel's edge */
+  --c-blue: #0A84FF;   --c-purple: #BF5AF2; --c-orange: #FF9F0A; --c-pink: #FF375F;
+  --c-green: #30D158;  --c-red: #FF453A;    --c-teal: #64D2FF;   --c-grey: #8E8E93;
+  --c-blue-tile: var(--c-blue);     --c-purple-tile: var(--c-purple); --c-pink-tile: var(--c-pink);   --c-red-tile: var(--c-red);
+  --c-grey-tile: #7C7C82;
+  --c-orange-tile: color-mix(in srgb, var(--c-orange) 78%, #000000);
+  --c-green-tile: color-mix(in srgb, var(--c-green) 78%, #000000);
+  --c-teal-tile: color-mix(in srgb, var(--c-teal) 70%, #000000);
+  --c-blue-soft: color-mix(in srgb, var(--c-blue) 18%, transparent);     --c-purple-soft: color-mix(in srgb, var(--c-purple) 18%, transparent);
+  --c-orange-soft: color-mix(in srgb, var(--c-orange) 18%, transparent); --c-pink-soft: color-mix(in srgb, var(--c-pink) 18%, transparent);
+  --c-green-soft: color-mix(in srgb, var(--c-green) 18%, transparent);   --c-red-soft: color-mix(in srgb, var(--c-red) 18%, transparent);
+  --c-teal-soft: color-mix(in srgb, var(--c-teal) 18%, transparent);     --c-grey-soft: color-mix(in srgb, var(--c-grey) 18%, transparent);
+  --c-blue-text: color-mix(in srgb, var(--c-blue) 70%, #FFFFFF);     --c-purple-text: color-mix(in srgb, var(--c-purple) 70%, #FFFFFF);
+  --c-orange-text: color-mix(in srgb, var(--c-orange) 70%, #FFFFFF); --c-pink-text: color-mix(in srgb, var(--c-pink) 70%, #FFFFFF);
+  --c-green-text: color-mix(in srgb, var(--c-green) 70%, #FFFFFF);   --c-red-text: color-mix(in srgb, var(--c-red) 70%, #FFFFFF);
+  --c-teal-text: color-mix(in srgb, var(--c-teal) 70%, #FFFFFF);     --c-grey-text: color-mix(in srgb, var(--c-grey) 70%, #FFFFFF);
+  /* The main button: the blue a step deeper, so its white words read at 4.5 to 1. */
+  --c-blue-strong: #0970D9;
+  --c-mark: #FFFFFF;                   /* the mark drawn on a tile */
+  /* A part's own colour (set by [data-c], below); grey until a part names one. */
+  --mc: var(--c-grey); --mc-tile: var(--c-grey-tile); --mc-soft: var(--c-grey-soft); --mc-text: var(--c-grey-text);
+  /* A featured card (the result at the top of Now, the practice at the top of Learn): its colour at 12 percent on a card. */
+  --feature-a: 12%;
+  /* The parts' measures (ui/parts.css Tile, Tag, ListRow, Lead): a 28 point tile in a list, 20 in the places, 18 on a
+     small button; the grouped list's 16 point corners, a button's 11, a tile's 8, 6 and 5. */
+  --tile-row: 28px; --tile-place: 20px; --tile-btn: 18px; --dot-m: 7px; --dot-tag: 6px;
+  --r-list: 16px; --r-btn: 11px; --r-tile-lg: 8px; --r-tile-md: 6px; --r-tile-sm: 5px;
+  --h-btn: 36px; --h-place: 30px; --h-list-row: 52px;
+  --lead-char: 64px;                   /* the character beside the lead */
+  --r-open: 24px;                      /* Home's open bottom corner, the shape's own (homeShape.ts OPEN_R) */
+
   font: 14px var(--font);
+}
+/* M71: a part names its colour (data-c, from meaning.ts) and takes that colour's four forms as its own. */
+[data-c="blue"] { --mc: var(--c-blue); --mc-tile: var(--c-blue-tile); --mc-soft: var(--c-blue-soft); --mc-text: var(--c-blue-text); }
+[data-c="purple"] { --mc: var(--c-purple); --mc-tile: var(--c-purple-tile); --mc-soft: var(--c-purple-soft); --mc-text: var(--c-purple-text); }
+[data-c="orange"] { --mc: var(--c-orange); --mc-tile: var(--c-orange-tile); --mc-soft: var(--c-orange-soft); --mc-text: var(--c-orange-text); }
+[data-c="pink"] { --mc: var(--c-pink); --mc-tile: var(--c-pink-tile); --mc-soft: var(--c-pink-soft); --mc-text: var(--c-pink-text); }
+[data-c="green"] { --mc: var(--c-green); --mc-tile: var(--c-green-tile); --mc-soft: var(--c-green-soft); --mc-text: var(--c-green-text); }
+[data-c="red"] { --mc: var(--c-red); --mc-tile: var(--c-red-tile); --mc-soft: var(--c-red-soft); --mc-text: var(--c-red-text); }
+[data-c="teal"] { --mc: var(--c-teal); --mc-tile: var(--c-teal-tile); --mc-soft: var(--c-teal-soft); --mc-text: var(--c-teal-text); }
+[data-c="grey"] { --mc: var(--c-grey); --mc-tile: var(--c-grey-tile); --mc-soft: var(--c-grey-soft); --mc-text: var(--c-grey-text); }
+/* Calm (look.colour): the same structure with blue as the only colour. Grey stays grey (it is no colour). */
+:root[data-colours="calm"] {
+  --c-purple: var(--c-blue); --c-orange: var(--c-blue); --c-pink: var(--c-blue); --c-green: var(--c-blue); --c-red: var(--c-blue); --c-teal: var(--c-blue);
+  --c-purple-tile: var(--c-blue); --c-orange-tile: var(--c-blue); --c-pink-tile: var(--c-blue); --c-green-tile: var(--c-blue); --c-red-tile: var(--c-blue); --c-teal-tile: var(--c-blue);
 }
 
 /* Text size (Settings, textsize.ts): one root size, and every size above is in rem. Standard is the root above. Only
@@ -834,23 +893,46 @@
    a pure black page, near black surfaces, and colour only from the water blue, the small accents and Flowflow. Depth comes
    from light, not shadow (a shadow vanishes on black): a hairline of light on each edge. The room's light is off; the job's
    card keeps a ring of the primary. Home and Settings only. ---------- */
+/* M71 (5 Nov 2026): Black is the one look. Home and its panel are the notch grown down, so they are pure black; a card is
+   #121214 and a raised item #1A1A1D; words are the Mac's own whites and greys. The accent is the M71 blue. */
 :root[data-theme="black"] {
-  --bg: #000000;
-  --surface-1: #0A0A0A;
-  --surface-2: #121212;
-  --surface-3: #1A1A1A;
-  --inset: #0E0E0E;
-  --fg: #FAFAFA;
-  --fg-2: #A3A3A3;                     /* 6.9 to 1 on the lightest step, 8.3 on black */
-  --fg-3: #8A8A8A;
-  --line: rgba(255, 255, 255, .12);
-  --line-strong: rgba(255, 255, 255, .2);
-  --key-fill: #121212;
+  --bg: var(--surface-0);
+  --surface-1: #121214;
+  --surface-2: #1A1A1D;
+  --surface-3: #242427;
+  --inset: #121214;
+  --fg: #F5F5F7;
+  --fg-2: #A1A1A8;                     /* 7.3 to 1 on a card */
+  --fg-3: #8E8E93;                     /* captions, 5.3 to 1 or more on every surface; never the first words */
+  --line: var(--edge);
+  --line-strong: rgba(255, 255, 255, .16);
+  --ok: var(--c-green);
+  --amber: var(--c-orange);
+  --bad: var(--c-red);
+  --bad-edge: color-mix(in srgb, var(--c-red) 45%, transparent);
+  --bad-hover: color-mix(in srgb, var(--c-red) 10%, transparent);
+  --bad-press: color-mix(in srgb, var(--c-red) 16%, transparent);
+  --acc: var(--c-blue-strong);
+  --btn2-bg: var(--surface-2);
+  --btn2-edge: transparent;
+  --card-flat: none;                   /* a card is its own step of black, with no edge (the grouped list's look) */
+  --btn-key: none;
+  --r-main: var(--r-btn);
+  --r-control: 8px;
+  --main-shadow: none;
+  --main-shadow-press: none;
+  --ok-tint: var(--c-green-soft);
+  --warn-tint: var(--c-orange-soft);
+  --danger-tint: var(--c-red-soft);
+  --acc-tint: var(--c-blue-soft);
+  --acc-text: var(--c-blue-text);
+  --hero-soft: var(--fg-2);
+  --key-fill: #1A1A1D;
   --key-edge: rgba(255, 255, 255, .16);
   --key-drop: rgba(255, 255, 255, .06);
-  --key-down: color-mix(in srgb, var(--water) 14%, #121212);
-  --keycap: #161616;
-  --keycap-hover: #1F1F1F;
+  --key-down: color-mix(in srgb, var(--water) 14%, #1A1A1D);
+  --keycap: #1A1A1D;
+  --keycap-hover: #242427;
   --keycap-lip: rgba(255, 255, 255, .1);
   --keycap-under: rgba(255, 255, 255, .04);
   --sheen-top: rgba(255, 255, 255, .08);
@@ -858,50 +940,21 @@
   --sheen-drop: transparent;
   --silver-edge: transparent;
   --shadow-raised: 0 0 0 1px rgba(255, 255, 255, .1), 0 8px 16px rgba(0, 0, 0, .6);
-  --bubble: rgba(18, 18, 18, .92);
+  --bubble: rgba(26, 26, 29, .94);
   --pond: #000000;
   --room-show: 0;
   --room-base: #000000;                /* the band under the ask box is pure black too */
+  --side-bg: var(--surface-0);
   --grain-a: 0;
   --sw-sky-a: 0%;
   --card-tint-a: 0%;
-  --card-lit-a: 14%;
-  --card-halo-a: 14%;
-  --fg-2-room: #A3A3A3;
-  --sea-see-a: .7;
+  --card-lit-a: 0%;
+  --card-halo-a: 0%;
+  --fg-2-room: #A1A1A8;
+  --sea-see-a: 0;
 }
-/* On Black the second words stay the page's own grey in every room: no tint of light in them. */
-:root[data-theme="black"] [data-element] { --fg-2: #A3A3A3; }
-
-
-/* ---------- The elements, one block each (the brand language). A page sets data-element on Home for the group at work
-   (element.ts roomElement), and a gem sets it on itself, so a gem always shows its own element in any room. Every value
-   is measured in element.test.ts: light on graphite 9.8 to 1 or more, ink on base 7 to 1 or more, white on deep 4.5 to 1
-   or more. A later creature gets its block from the OKLCH recipe and needs no other change. ---------- */
-[data-element="flow"] {
-  --el-base: var(--flow-base); --el-light: var(--flow-light); --el-deep: var(--flow-deep); --el-glow: var(--flow-glow); --el-tint: var(--flow-tint);
-  --el-grad-1: var(--flow-grad-1); --el-grad-2: var(--flow-grad-2); --el-grad-3: var(--flow-grad-3);
-  --el-sky: var(--flow-sky); --el-foot: var(--flow-foot); --el-lit: var(--flow-lit); --el-card: var(--flow-card);
-  --el-shadow: var(--flow-shadow); --el-wash: var(--flow-wash);
-}
-[data-element="guide"] {
-  --el-base: #F7A307; --el-light: #FCD176; --el-deep: #9A4901; --el-glow: #FDBD4A; --el-tint: #2D1F36;
-  --el-grad-1: #FBDD67; --el-grad-2: #F7A307; --el-grad-3: #DD6301;
-  --el-sky: #F0722A; --el-foot: #7A2FB0; --el-lit: #D2475F; --el-card: #C2409A;   /* a sunset: dim yellow reads olive and dim orange or red reads brown, so the sun's gold stays in the bright parts (the beams, the sky, the gem, the gel) and the wide dim parts fall from coral to rose to violet */
-  --el-shadow: rgba(60, 20, 70, .45); --el-wash: rgba(247, 163, 7, .15);
-}
-[data-element="voice"] {
-  --el-base: #F969B1; --el-light: #FEBAD7; --el-deep: #9B2065; --el-glow: #FE99C7; --el-tint: #2F1F2A;
-  --el-grad-1: #FFB4F7; --el-grad-2: #F65EAB; --el-grad-3: #C82360;
-  --el-sky: #FF6FC4; --el-foot: #9B1F6A; --el-lit: #A3206E; --el-card: #F969B1;
-  --el-shadow: rgba(90, 10, 55, .4); --el-wash: rgba(249, 105, 177, .15);
-}
-[data-element="files"] {
-  --el-base: #09C466; --el-light: #92E8AA; --el-deep: #046D36; --el-glow: #6FDC93; --el-tint: #132A21;
-  --el-grad-1: #A6EDB9; --el-grad-2: #01BD61; --el-grad-3: #018662;   /* the brand language gave #B0E477, 75 degrees from its deep end: kept inside the family */
-  --el-sky: #00935A; --el-foot: #066E58; --el-lit: #067A55; --el-card: #09C466;
-  --el-shadow: rgba(0, 60, 30, .4); --el-wash: rgba(9, 196, 102, .15);
-}
+/* M71: the rooms (data-element: a tint per group at work, its sky, its gel) are retired. Home is black with colour for
+   meaning only; the values below stay for the character's own art (the water character, Settings' preview). */
 /* The water chosen in Settings (look.water) is the one accent (2 Nov 2026): it gives the sea under Home's waterline and its
    deep foot, and the accent's whole palette, so the main button, focus, the place you are on and the marks of progress are
    the water's colour, never a second hue beside it. The values are the ones measured on 1 Nov 2026 (element.test.ts runs
@@ -938,85 +991,7 @@
   --flow-sky: #8D8AFF; --flow-foot: #5031B9; --flow-lit: #5D3DD5; --flow-card: #9398FE;
   --flow-shadow: rgba(42, 35, 89, .45); --flow-wash: rgba(151, 145, 255, .15); --flow-focus: #CBCBFF;
 }
-/* In a dark room the element also gives the words it may colour, the selected row, the one glossy pill, what is picked in
-   Settings, the working badge and a held key. White keeps its own (above): this block is the dark themes' (data-tone,
-   lookfeel.ts THEME_TONE), so a new dark theme needs no rule here. */
-:root[data-tone="dark"] [data-element] {
-  --el-text: var(--el-light);
-  --el-row: var(--el-tint);
-  --pick: color-mix(in srgb, var(--el-base) 55%, var(--fg));
-  --pick-wash: color-mix(in srgb, var(--el-base) 16%, var(--surface-3));
-  --switch-on: color-mix(in srgb, var(--el-deep) 70%, var(--el-base));
-  --stamp-working: var(--el-light);
-  --key-down: color-mix(in srgb, var(--el-base) 14%, var(--key-fill));
-  /* Second words in a lit room: a step lighter than the page's grey and touched with the room's light, so a line straight
-     on the room's colour reads at 4.5 to 1 and still sits a step under the first words. */
-  --fg-2: color-mix(in srgb, var(--el-light) 30%, var(--fg-2-room));
-}
-/* The one glossy pill in a room: light at the top, the element's body in the middle, a lighter step at its foot, a rim in
-   its deep colour, an inner shine and shade, and a drop shadow in its own deep tint. Ink words, never white. Flat (look.gloss)
-   keeps the colour and its rim and takes the light away. */
-[data-element] {
-  /* A raised surface in the room: graphite with 4 percent of the room's hue, and as glass at 88 percent. */
-  --raise: color-mix(in srgb, var(--el-card) var(--card-tint-a), var(--surface-1));
-  --raise-glass: color-mix(in srgb, var(--raise) 88%, transparent);
-  /* Flowflow's water in the room: a deep sea in the room's own light with a little of the chosen water in it, seen through
-     at --sea-see. In Flow's room both are the water's, so it is the water itself; under Guide's sun it is a violet sea at
-     sunset (never a pool of sun), in Voice's bloom a plum sea, while a file is over Home a teal one. Never a band of another
-     colour pasted across the room, and never grey: a water and a room of opposite colours are not mixed half and half. */
-  --sea-room: color-mix(in srgb, var(--el-foot) 80%, var(--w-sea));
-  --sea-see: var(--sea-see-a);
-  /* The water seen through, as a colour rather than a layer's opacity, so the waterline over it keeps its full strength and
-     the water under the line and the sea below it are one colour with no seam (the review, 2 Nov 2026). */
-  --sea-tint: color-mix(in srgb, var(--sea-room) calc(var(--sea-see) * 100%), transparent);
-  --sky-c: var(--el-sky);              /* the colour of the room's sky (look.css .room-sky); Calm's sun is rose, below */
-  --el-lift: color-mix(in srgb, var(--el-base) 82%, #FFFFFF);   /* the lighter step at a gel's foot */
-  --gel-body: color-mix(in srgb, var(--el-base) 70%, var(--el-grad-3));   /* the gel's fuller colour under its middle */
-  --gel-hi: var(--el-grad-1);
-  --gel-mid: var(--el-base);
-  --gel-top: color-mix(in srgb, var(--gel-hi) 40%, var(--gel-mid));
-  --gel-lo: var(--el-lift);
-  --gel-edge: var(--el-deep);
-  --gel-lip: rgba(255, 255, 255, .5);
-  --gel-gloss: rgba(255, 255, 255, var(--gel-gloss-a));
-  --gel-glow: color-mix(in srgb, var(--el-glow) var(--gel-glow-a), transparent);
-  --gel-ink: var(--el-ink);
-  --gel-shine: var(--sheen-shine);
-  --gel-shade: var(--sheen-shade);
-}
-:root[data-gloss="flat"] [data-element] {
-  --gel-hi: var(--el-base);
-  --gel-body: var(--el-base);
-  --gel-lo: var(--el-base);
-  --gel-lip: transparent;
-  --gel-gloss: transparent;
-  --gel-glow: transparent;
-  --gel-shine: transparent;
-  --gel-shade: transparent;
-}
-/* Calm, the usual (the founder, 2 Nov 2026: "too many colors, so it looks like an aquarium"): one accent. Home itself is
-   the water's room whatever group is at work, in the water chosen. Vivid gives each group its room. */
-:root[data-colour="calm"] .home[data-element] {
-  --el-base: var(--flow-base); --el-light: var(--flow-light); --el-deep: var(--flow-deep); --el-glow: var(--flow-glow); --el-tint: var(--flow-tint);
-  --el-grad-1: var(--flow-grad-1); --el-grad-2: var(--flow-grad-2); --el-grad-3: var(--flow-grad-3);
-  --el-sky: var(--flow-sky); --el-foot: var(--flow-foot); --el-lit: var(--flow-lit); --el-card: var(--flow-card);
-  --el-shadow: var(--flow-shadow); --el-wash: var(--flow-wash);
-}
-/* On the neutral pages, Black and White, a shadow is neutral too (the review, 2 Nov 2026: a faint blue glow, measured at
-   0, 4, 10, sat under the tall History card on black): the accent stays on the few things that mean it. */
-:root[data-theme="black"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .6); }
-:root[data-theme="paper"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .08); }
-/* Flowflow's pond in Flow's room (and in every room with Calm, where Home is Flow's) is the water's own (look.water), so a
-   pink Flowflow swims in pink water while Home stays blue. */
-.companion-hero, .home[data-element="flow"], :root[data-colour="calm"] .home[data-element] { --sea-room: color-mix(in srgb, var(--w-foot) 80%, var(--w-sea)); }
-/* The lines drawn in the primary resolve in each room (a custom property is resolved where it is set, so on :root they would
-   keep Ocean's): the waterline and the job's bars, the thread and the live dot. */
-[data-element] { --wl-line: var(--el-grad-1); --mark-line: var(--el-base); }
-/* On a light page the primary is its deep blue wherever it is words or a thin line (its light blues are 1.5 to 2.5 to 1 on
-   white), and the selected row a light wash of it. */
-:root[data-tone="light"] [data-element] { --el-text: var(--el-deep); --el-row: color-mix(in srgb, var(--el-base) 10%, #FFFFFF); --pick: var(--el-deep); --switch-on: var(--el-deep); --pick-wash: color-mix(in srgb, var(--el-base) 10%, #FFFFFF); --stamp-working: var(--el-deep); --wl-line: var(--el-deep); --mark-line: var(--el-deep); }
-/* On a light page the pond is a light wash of the water, never a deep sea. */
-:root[data-tone="light"] .companion-hero, :root[data-tone="light"] .home[data-element] { --sea-room: color-mix(in srgb, var(--water) 55%, var(--water-hi)); }
+
 /* The room's colours are registered, so moving from one group's room to another fades its light in about half a second
    instead of jumping (look.css .room). */
 @property --el-glow { syntax: "<color>"; inherits: true; initial-value: #89C3FE; }
@@ -1026,7 +1001,7 @@
 @property --el-sky { syntax: "<color>"; inherits: true; initial-value: #2FA4FF; }
 @property --el-foot { syntax: "<color>"; inherits: true; initial-value: #0A4DA8; }
 /* The audit, item 49: the card's tint, the row's tint and the gel's three colours are registered too, so a room change moves
-   them with the light, not in one jump (look.css .home[data-element]). */
+   them with the light, not in one jump. */
 @property --el-card { syntax: "<color>"; inherits: true; initial-value: #52A9FE; }
 @property --el-tint { syntax: "<color>"; inherits: true; initial-value: #1B2734; }
 @property --el-grad-1 { syntax: "<color>"; inherits: true; initial-value: #92DDFF; }
@@ -1039,7 +1014,7 @@
   :root[data-theme="paper"] { --line: rgba(0, 0, 0, .24); --line-strong: rgba(0, 0, 0, .4); --fg-2: #4A4A4F; --edge-control: rgba(0, 0, 0, .6); }
   :root[data-theme="deep"] { --line: rgba(190, 220, 255, .26); --line-strong: rgba(190, 220, 255, .42); --fg-2: #C9D5E2; --edge-control: rgba(190, 220, 255, .62); }
   :root[data-theme="black"] { --line: rgba(255, 255, 255, .26); --line-strong: rgba(255, 255, 255, .42); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
-  :root[data-theme="black"] [data-element] { --fg-2: #C7C7CC; }
+
   :root { --fg-2-room: #D6D7DB; }
 }
 
@@ -1108,8 +1083,7 @@
   --stamp-fill-a: 11%;
   --stamp-needs-a: 18%;
 }
-/* A faint orange sky reads brown, so Calm's sun lights its sky in its rose (Vivid's is bright enough to stay orange). */
-:root[data-colour="calm"] [data-element="guide"] { --sky-c: var(--el-card); }
+
 :root[data-tone="light"][data-colour="calm"] { --card-tint-a: 0%; --card-lit-a: 5%; --card-halo-a: 0%; --sea-see-a: .2; --stamp-fill-a: 3%; --stamp-needs-a: 6%; }
 /* The light behind Home (look.light): Still holds it as one picture; Off, the usual since 2 Nov 2026, takes it away, so Home
    is its plain page (no sky, no rays, no motes, and no sea filling the work: card.tsx seaFills). */
@@ -1173,10 +1147,7 @@
   --ask-hover-edge: var(--edge-control-hover);
   --ask-focus-edge: var(--ink-solid);
 }
-/* A shadow under a card is neutral in Instrument, never the room's blue (the room's element sets its own, so this is set
-   on Home's element too). */
-:root[data-style="instrument"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .35); --card-halo-a: 0%; --card-tint-a: 0%; --card-lit-a: 0%; }
-:root[data-style="instrument"][data-theme="paper"] .home[data-element] { --el-shadow: rgba(0, 0, 0, .08); }
+
 :root[data-style="instrument"][data-theme="paper"] {
   --card-flat: inset 0 0 0 var(--hair) var(--line), 0 1px 2px rgba(0, 0, 0, .04);
   /* M69 (spec 1.2, the mockups): White in Instrument is a warm off white window with white cards on it, and every grey is
@@ -1221,14 +1192,6 @@
   --r-tile: 2px;
   --r-stamp: 2px;
   --r-bubble: 4px;
-}
-/* In Home's room the gel and the second words are the room's own, so Instrument sets them there too: the flat accent, and
-   the page's plain grey words with no tint of light. */
-:root[data-style="instrument"] [data-element] {
-  --gel-hi: var(--acc); --gel-mid: var(--acc); --gel-lo: var(--acc); --gel-top: var(--acc); --gel-body: var(--acc);
-  --gel-edge: transparent; --gel-lip: transparent; --gel-gloss: transparent; --gel-glow: transparent;
-  --gel-ink: var(--acc-ink); --gel-shine: transparent; --gel-shade: transparent;
-  --fg-2: var(--fg-2-room);
 }
 
 /* M69 step 3: the notch's Keep is the accent, as Home's main button is in Instrument, in every look (a white pill read as

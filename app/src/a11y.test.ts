@@ -585,8 +585,9 @@ describe("Home from the keyboard alone (part 2)", () => {
       const block = card.slice(open, card.indexOf("</ConfirmStep>", at));
       const back = /back=\{(\w+)\}/.exec(block)?.[1];
       expect(back, `${s} has a way back`).toBeTruthy();
-      // The opener carries that id itself, or is a danger zone row given it (settingsPage.tsx DangerZone `row(id, ...)`).
-      expect(card, `${s}: the opener carries id={${back}}`).toMatch(new RegExp(`id=\\{${back}\\}|row\\(${back},`));
+      // The opener carries that id itself, or is a danger zone row given it (settingsPage.tsx DangerZone `row(id, ...)`), or
+      // (M71) a grouped list row's action given it (ui/parts.tsx ListRow `action={{ id, ... }}`).
+      expect(card, `${s}: the opener carries id={${back}}`).toMatch(new RegExp(`id=\\{${back}\\}|row\\(${back},|\\{ id: ${back},`));
       expect(block, `${s} has onCancel`).toMatch(/onCancel=\{/);
       expect(block, `${s}: the safe choice is marked`).toMatch(/data-cancel|<CancelButton /);
     }
@@ -823,7 +824,9 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
     for (const r of css) if (/var\(--fg-3\)/.test(r.decl.color ?? "")) expect(DISABLED.test(r.sel), r.sel).toBe(true);
   });
   // A drawing (an icon, a tick, a mark) is not words: it reaches 3 to 1, not 4.5 (WCAG 1.4.11).
-  const MARK = /-mark\b|\.ic\b|-tick\b/;
+  // M71: a colour tile's white mark (its drawing, or a short number) is a mark, 3 to 1 on the tile (system.test.ts measures each colour).
+  const MARK = /-mark\b|\.ic\b|-tick\b|^\.ui-mtile\b/;
+  const M71_PART = /\.ui-(mtile|mtag|mrow|mlist|lead|place|mdot)|\.sb-item\[data-c\]/;
   for (const [theme, tokens] of themes) {
     const c = (v: string) => parseColor(v, tokens);
     const bg = c("var(--bg)");
@@ -852,6 +855,9 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
       let checked = 0;
       for (const r of css) {
         if (r.media || !r.decl.color || /inherit|currentColor|CanvasText/.test(r.decl.color) || DISABLED.test(r.sel)) continue;
+        // M71: the black look's own parts are drawn only on black (every other theme is retired); system.test.ts measures
+        // each colour's forms on its surfaces.
+        if (M71_PART.test(r.sel) && !/Black/.test(theme)) continue;
         const own = colourIn(r.decl.background ?? r.decl["background-color"] ?? "");
         const behind = own ? over(c(own), ISLAND.test(r.sel) ? c("#000") : bg) : ISLAND.test(r.sel) ? c("#000") : bg;
         const fg = over(c(r.decl.color), behind);
@@ -1046,11 +1052,11 @@ describe("the notch panel keeps Night's tokens on its black in every theme (revi
   const tokRules = rules(TOKENS_CSS());
   const night = Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === ":root" && !r.media)!.decl).filter(([k]) => k.startsWith("--")));
   const c = (v: string) => parseColor(v, night);
-  test("the island page asks for the notch's look, which pins Night whatever look.theme says", () => {
+  test("the island page asks for the notch's look, which is black whatever a stored look.theme says (M71)", () => {
     expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
     const hook = read("./useLook.ts");
-    expect(hook).toContain('const theme = opts.keepNight ? "night" : opts.forceTheme ?? chosen;');
-    expect(hook).toContain("applyLook(document.documentElement, water, theme);");
+    expect(hook).toContain("applyLook(document.documentElement);");
+    expect(hook).not.toContain('useSetting("look.theme")');
   });
   test("every part the panel uses reads on the notch black and on its card (#111113)", () => {
     for (const under of ["#000", "#111113"]) {

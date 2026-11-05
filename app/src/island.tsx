@@ -29,7 +29,6 @@ import "./ui/fix.css";
 // (islandSpring.ts) toward the size the app gives; the window itself changes at once, and shrinks only after the shape has
 // tucked back. A click always opens Home below it, at once, and never closes it (main.rs island_click). The island never takes the keyboard (it is a borderless panel).
 import { useLook } from "./useLook.ts";
-import { choiceOf } from "./lookfeel.ts";
 import { IslandPanel } from "./islandPanel.tsx";
 import { armed, islandJobs, notchStep, resultPeekKey, RESULT_PEEK_MS, type NotchStep } from "./islandPanel.ts";
 import { FlowMini } from "./flowflowMini.tsx";
@@ -381,7 +380,7 @@ function Island() {
   const vars = { "--core": `${shape.core}px`, "--row": `${shape.row}px`, ...(shape.wing > 0 ? { "--wing": `${shape.wing}px` } : {}), ...(stepW > 0 ? { "--step-w": `${stepW}px` } : {}) } as CSSProperties;
   const st = wings ? step : lastStep.current;
   return (
-    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-home={homeUp ? "" : undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style={choiceOf("look.style", useSetting("look.style"))} style={vars}>
+    <main className={`island ${shape.kind}`} data-mode={shape.mode} data-tuck={tucking ?? undefined} data-home={homeUp ? "" : undefined} data-drop={drop.s.hover ? "over" : undefined} data-step={st && shape.wing > WING_USUAL ? "" : undefined} data-style="instrument" style={vars}>
       <span className="island-shape" ref={box}>
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>

@@ -4,7 +4,7 @@
 // Stamps, the glossy button and Corners. Each choice is a data attribute on the root and a token switch in ui/tokens.css.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { applyLook, applyLookChoices, choiceOf, LOOK_CHOICES, lookAttrs, themeOf, THEMES, WATER_TINTS, WATERS, type LookChoice } from "./lookfeel.ts";
+import { applyLook, applyLookChoices, COLOUR_CHOICES, colourChoiceOf, FIXED_LOOK, lookAttrs, RETIRED_LOOK_KEYS, themeOf, THEMES, WATER_TINTS, WATERS } from "./lookfeel.ts";
 import { glyphOf, historyStamp, KIND_GLYPH, SIDE_STAMPS, sideStamp, KIND_TINT, KINDS, kindOf, NEW_MINUTES, practiceStamp, STAMPS, taskName, TINTS } from "./itemLook.ts";
 import { HIDDEN_OPTIONS, OPTION_ALIASES, PAGES, placeOf, shownValue } from "./settingsPages.ts";
 import { S } from "./strings.ts";
@@ -14,7 +14,8 @@ import type { HistoryItem } from "./model.ts";
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const registry = JSON.parse(read("../../protocol/settings.json")) as { settings: { key: string; kind: string; default: unknown; options?: string[]; applies: string[]; section: string; live: boolean; store: string }[] };
 const def = (k: string) => registry.settings.find((s) => s.key === k);
-const KEYS = ["look.theme", "look.density", "look.icons", "look.stamps", "look.gloss", "look.corners", "look.light", "look.colour", "look.style", "look.character"] as const;
+// M71: the Look page offers Colour and Character (with the layout and the text size); the rest of the old choices are retired.
+const KEYS = ["look.colour", "look.character"] as const;
 
 // ---------- reading tokens.css ----------
 type Block = { sel: string; media: string | null; decl: Record<string, string> };
@@ -95,8 +96,8 @@ describe("the choices are real settings, with their words and one place in Setti
     expect(def("look.corners")).toMatchObject({ kind: "choice", default: "soft", options: ["soft", "crisp"], applies: ["pages"], live: true });
     // The light behind Home, off by default, with Still and Moving kept as choices.
     expect(def("look.light")).toMatchObject({ kind: "choice", default: "off", options: ["off", "still", "moving"], applies: ["pages"], live: true });
-    // Calm is the usual; Vivid stays a choice.
-    expect(def("look.colour")).toMatchObject({ kind: "choice", default: "calm", options: ["calm", "vivid"], applies: ["pages"], live: true });
+    // M71: Colourful is the usual, Calm the choice; a stored Vivid still checks out (hidden, reads as Colourful).
+    expect(def("look.colour")).toMatchObject({ kind: "choice", default: "colourful", options: ["colourful", "calm", "vivid"], applies: ["pages"], live: true });
   });
   test("each has a label, help, search words and short option words, in plain words with no dashes or capitals", () => {
     for (const k of KEYS) {
@@ -117,7 +118,7 @@ describe("the choices are real settings, with their words and one place in Setti
       }
     }
     expect(S.set["look.theme"].options).toMatchObject({ black: "Black", paper: "White", graphite: "Graphite", deep: "Deep" });
-    for (const q of ["dense", "compact", "crisp", "rounded", "glossy", "stamps", "icons", "graphite", "dark blue"]) {
+    for (const q of ["colourful", "calm", "blue", "visor", "orb", "water"]) {
       expect(KEYS.some((k) => [S.set[k].label, ...(S.set[k].also as readonly string[])].some((a) => a.toLowerCase().includes(q))), q).toBe(true);
     }
   });
@@ -125,68 +126,91 @@ describe("the choices are real settings, with their words and one place in Setti
   // own now, one press from the sidebar, beside the water's colour, and the big choices are pictures.
   // M65: the style and the character lead the page; the light and the gloss (the Friendly style's water and gel) moved to
   // the page's More options, kept whole, so the page stays at ten settings.
-  test("all of them sit on the Look page, with the layout and the water: Home first, then the details, then the extras", () => {
-    expect(PAGES.look.groups.map((g) => g.id)).toEqual(["look.home", "look.details"]);
-    expect(PAGES.look.groups[0].items).toEqual(["look.style", "look.character", "look.layout", "look.theme", "look.colour", "look.water"]);
-    expect(PAGES.look.groups[1].items).toEqual(["look.corners", "look.density", "look.icons", "look.stamps"]);
-    expect(PAGES.look.more).toEqual([{ id: "more.look.extras", items: ["look.light", "look.gloss"] }]);
-    expect(S.setGroupTitles["more.look.extras"]).toBe("Light and gloss");
+  test("the Look page offers four things: Colour, Character, Layout and Text size (M71)", () => {
+    expect(PAGES.look.groups.map((g) => g.id)).toEqual(["look.home"]);
+    expect(PAGES.look.groups[0].items).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
+    expect(PAGES.look.more).toEqual([]);
     expect(S.pages.look.title).toBe("Look");
     expect(S.setGroupTitles["look.home"]).toBe("Home");
-    expect(S.setGroupTitles["look.details"]).toBe("Details");
-    for (const k of [...KEYS, "look.layout", "look.water"]) {
-      if (k === "look.light" || k === "look.gloss") expect(placeOf(k), k).toMatchObject({ page: "more", more: true, topic: "more.look.extras" });
-      else expect(placeOf(k), k).toMatchObject({ page: "look", more: false });
-    }
+    for (const k of [...KEYS, "look.layout", "display.textSize"]) expect(placeOf(k), k).toMatchObject({ page: "look", more: false });
+    for (const k of RETIRED_LOOK_KEYS) expect(placeOf(k), k).toBeNull();
     expect(PAGES.general.more.some((t) => t.id === "more.general.look")).toBe(false);
     // Home's topic keeps only how Home behaves and its size, and (M55, adapts to you) what its main button and More ways follow.
     expect(PAGES.general.more.find((t) => t.id === "more.general.home")!.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", { fixed: "usedOften" }]);
   });
   test("a theme saved before M51 still works: night reads as Graphite, in the row and on the page, and is not offered twice", () => {
     expect(HIDDEN_OPTIONS["look.theme"]).toEqual(["night"]);
+    // M71: Colour's Vivid reads as Colourful, the Character's Match as the Visor; neither is offered.
+    expect(HIDDEN_OPTIONS["look.colour"]).toEqual(["vivid"]);
+    expect(shownValue("look.colour", "vivid")).toBe("colourful");
+    expect(shownValue("look.character", "match")).toBe("visor");
     expect(OPTION_ALIASES["look.theme"]).toEqual({ night: "graphite" });
     expect(shownValue("look.theme", "night")).toBe("graphite");
     expect(shownValue("look.theme", "deep")).toBe("deep");
     expect(shownValue("look.water", "night")).toBe("night");
-    expect(read("./settingsPage.tsx")).toContain("const value = shownValue(d.key, d.kind === \"custom\" ? snapshotNow()?.values[d.key] : setting(d.key));");
+    expect(read("./settingsPage.tsx")).toContain("const value = shownValue(d.key, d.kind === \"custom\" ? snapshotNow()?.values[d.key] : setting(d.key), setting(\"look.style\"));");
     expect(themeOf("night")).toBe("graphite");
     for (const t of THEMES) expect(themeOf(t)).toBe(t);
     for (const junk of [undefined, null, "", "Night", 3]) expect(themeOf(junk), String(junk)).toBe("black");
   });
 });
 
-describe("each choice is a data attribute on the root, never a branch in the code", () => {
-  test("the usual values give the usual attributes, and odd values read as the usual", () => {
-    expect(lookAttrs({})).toEqual({ "data-theme": "black", "data-tone": "dark", "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "soft", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "visor" });
-    expect(lookAttrs({ "look.theme": "deep", "look.density": "compact", "look.icons": "colour", "look.stamps": false, "look.gloss": "on", "look.corners": "crisp", "look.light": "moving", "look.colour": "vivid", "look.style": "friendly" }))
-      .toEqual({ "data-theme": "deep", "data-tone": "dark", "data-density": "compact", "data-icons": "colour", "data-stamps": "off", "data-gloss": "on", "data-corners": "crisp", "data-light": "moving", "data-colour": "vivid", "data-style": "friendly", "data-character": "friendly" });
-    expect(lookAttrs({ "look.theme": "paper" })["data-tone"]).toBe("light");
-    for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) for (const junk of [undefined, "", "Compact", 7]) expect(choiceOf(k, junk), `${k} ${String(junk)}`).toBe(LOOK_CHOICES[k].values[0]);
-    // Every choice's first value is the registry's usual one; Stamps is a switch, on.
-    for (const k of Object.keys(LOOK_CHOICES) as LookChoice[]) {
+describe("M71: one black look; Colour and Character are the choices, the retired keys load and are ignored", () => {
+  const FOUNDER = { "look.style": "friendly", "look.colour": "vivid", "look.theme": "deep" };
+  test("the usual values give the fixed black look, Colourful and the Visor", () => {
+    expect(lookAttrs({})).toEqual({ ...FIXED_LOOK, "data-colours": "colourful", "data-character": "visor" });
+    expect(FIXED_LOOK["data-theme"]).toBe("black");
+    expect(FIXED_LOOK["data-tone"]).toBe("dark");
+    expect(COLOUR_CHOICES).toEqual(["colourful", "calm"]);
+    expect(colourChoiceOf("calm")).toBe("calm");
+    for (const v of [undefined, "", "vivid", "Calm", 7]) expect(colourChoiceOf(v), String(v)).toBe("colourful");
+    expect(def("look.colour")!.default).toBe("colourful");
+    expect(def("look.character")!.default).toBe("visor");
+  });
+  test("the founder's own stored Friendly, Vivid and Deep shows the new look, the same as a new store", () => {
+    expect(lookAttrs(FOUNDER)).toEqual({ ...lookAttrs({}), "data-character": "friendly" });   // the same black look; their water character stays
+    const every = { ...FOUNDER, "look.water": "berry", "look.gloss": "on", "look.light": "moving", "look.corners": "crisp", "look.icons": "colour", "look.stamps": false, "look.density": "compact" };
+    expect(lookAttrs(every)).toEqual({ ...lookAttrs({}), "data-character": "friendly" });
+    // Each stored value still checks out against the registry, so it loads without a problem.
+    for (const [k, v] of Object.entries(every)) {
       const d = def(k)!;
-      if (d.kind === "choice") expect(d.options, k).toEqual([...LOOK_CHOICES[k].values]);
-      expect(choiceOf(k, d.default), k).toBe(LOOK_CHOICES[k].values[0]);
+      if (d.kind === "choice") expect(d.options, k).toContain(v as string);
+      else expect(typeof v, k).toBe(typeof d.default);
     }
+  });
+  test("every retired key stays in the registry, hidden, and only Colour and Character reach the page", () => {
+    expect([...RETIRED_LOOK_KEYS].sort()).toEqual(["look.corners", "look.density", "look.gloss", "look.icons", "look.light", "look.stamps", "look.style", "look.theme", "look.water"]);
+    for (const k of RETIRED_LOOK_KEYS) expect((def(k) as { hidden?: boolean }).hidden, k).toBe(true);
+    const hook = read("./useLook.ts");
+    for (const k of RETIRED_LOOK_KEYS) expect(hook, k).not.toContain(`"${k}"`);
+    expect(hook).toContain('useSetting("look.colour")');
+    expect(hook).toContain('useSetting("look.character")');
   });
   test("Home sets them on its root and keeps them in step; the island and the character keep the notch's look", () => {
     const attrs: Record<string, string> = {};
-    applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.corners": "crisp" });
-    expect(attrs).toEqual({ "data-density": "comfortable", "data-icons": "plain", "data-stamps": "on", "data-gloss": "flat", "data-corners": "crisp", "data-light": "off", "data-colour": "calm", "data-style": "instrument", "data-character": "visor" });
+    applyLookChoices({ setAttribute: (k, v) => { attrs[k] = v; } }, { "look.colour": "calm", "look.corners": "crisp" });
+    expect(attrs).toEqual({ ...FIXED_LOOK, "data-colours": "calm", "data-character": "visor" });
     const theme: Record<string, string> = {};
-    applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } }, "ocean", "night");
-    expect(theme["data-theme"]).toBe("graphite");
+    applyLook({ style: { setProperty: () => {} }, setAttribute: (k, v) => { theme[k] = v; } });
+    expect(theme["data-theme"]).toBe("black");
     expect(theme["data-tone"]).toBe("dark");
-    // The first run takes the chosen theme, so a new person sees Black, the usual, and Home after it is the same place
-    // (the review, 2 Nov 2026; it was always Graphite before).
+    expect(theme["data-water"]).toBe("ocean");
     expect(read("./card.tsx")).toContain("useLook({ choices: true });");
-    expect(read("./card.tsx")).not.toContain('forceTheme: onboarded ? undefined : "graphite"');
-    const hook = read("./useLook.ts");
-    expect(hook).toContain("const choices = !!opts.choices && !opts.keepNight;");
-    expect(hook).toMatch(/useSetting\("look\.density"\)[\s\S]*useSetting\("look\.corners"\)/);
+    expect(read("./useLook.ts")).toContain("const choices = !!opts.choices && !opts.keepNight;");
     expect(read("./island.tsx")).not.toContain("choices: true");
     expect(read("./dock.tsx")).not.toContain("choices: true");
   });
+  test("Calm keeps the structure with blue as the only colour (tokens.css)", () => {
+    const calm = /:root\[data-colours="calm"\] \{([^}]*)\}/.exec(TOKENS_CSS())![1];
+    for (const c of ["purple", "orange", "pink", "green", "red", "teal"]) {
+      expect(calm, c).toContain(`--c-${c}: var(--c-blue);`);
+      expect(calm, c).toContain(`--c-${c}-tile: var(--c-blue);`);
+    }
+    expect(calm).not.toContain("--c-grey");
+  });
+});
+
+describe("each choice is a data attribute on the root, never a branch in the code", () => {
   test("only tokens.css reads the attributes, and nothing else in the code branches on the choices' values", () => {
     const css = ALL_CSS().replace(/\/\*[\s\S]*?\*\//g, "");
     const outside = css.replace(TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, ""), "");
@@ -337,7 +361,7 @@ describe("an item's tile: its colour and its drawing both say what kind of work 
     expect(taskName(undefined as unknown as string)).toBe("");
     const card = read("./card.tsx"), side = read("./homeSide.tsx");
     expect(side).toContain("const name = taskName(i.label);");
-    expect(card).toContain("const name = taskName(h.label);");
+    expect(card).toContain("task = taskName(h.label)");
   });
   test("its colours are tokens; each tint is chosen by data-tint, and the drawing takes the tile's ink", () => {
     const css = blocks(LOOK_CSS());
@@ -399,7 +423,8 @@ describe("stamps: working, new, proven, needs you", () => {
 describe("the details are drawn in the lists", () => {
   const side = read("./homeSide.tsx"), card = read("./card.tsx"), practice = read("./practicePanel.tsx");
   test("the side list's recent work: a tile, its name on one line, then its badge, or the mark of how it ended", () => {
-    expect(side).toContain("<ItemTile label={name} />");
+    // M71: the tile is the result's own colour (green proven, red failed, grey stopped, orange undone; meaning.ts).
+    expect(side).toContain('<Tile colour={MEANING_COLOUR[i.status === "running" ? "working" : VERDICT_MEANING[(v as { kind: VerdictKind }).kind]]} icon={mark} size="place" />');
     expect(side).toContain("const stamp = sideStamp(historyStamp(i, now));");
     // Only what a person may act on or has not seen is badged there; Proven is its green tick, so the name has room.
     expect(SIDE_STAMPS).toEqual(["working", "needsYou", "new"]);
@@ -413,21 +438,17 @@ describe("the details are drawn in the lists", () => {
     expect(card).toMatch(/<HomeSide [^>]*now=\{clock\}/);
     expect(WIDE_CSS()).toMatch(/\.side-mark\.unstamped \{ display: var\(--unstamped-display\); \}/);
   });
-  test("History: each task with its tile, its name, one quiet line, and its badge at the end, saying how it ended once", () => {
-    expect(card).toContain("<ItemTile label={name} big />");
-    expect(card).toContain("{stamp && <Stamp kind={stamp} spoken />}");
-    // The words for how it ended hide while the badge says it (and show again with badges off), so it is never said twice.
-    expect(card).toContain('<span className={stamp ? "unstamped" : undefined}>{historyWords(h)}');
-    expect(LOOK_CSS()).toMatch(/\n\.hist-row \{[^}]*grid-template-columns: auto minmax\(0, 1fr\) auto;/);
+  // M71 (one structure): History and Learn are the one grouped list of the parts (ui/parts.tsx ListRow), each row's tile in
+  // its meaning's colour; the badges and kind tiles of M51 step 3 gave way to it.
+  test("History: each task a row of the grouped list, its tile coloured by how it ended, its name, one line and when", () => {
+    expect(card).toContain("<ListRow key={h.id} id={`history-${h.id}`} colour={MEANING_COLOUR[meaning]}");
+    expect(card).toContain("const lineWords = [historyWords(h), (h.changed ?? 0) > 0 ? S.screens.filesChanged(h.changed ?? 0) : \"\"].filter(Boolean).join(\" · \");");
     // No card inside the page: History's list is the page.
     expect(card).toContain('<section className="panel bare hist" aria-label={S.recentTitle}>');
   });
-  test("Learn: each practice with its tile; a done one is stamped Proven, its plain words kept for when stamps are off", () => {
-    // Its drawing is the kind of practice it is (practice.ts practiceKind: a fix, going live, a setting to learn), never one
-    // read from its title ("add" is not "make"); the audit, item 53: every practice had the same wrench.
-    expect(practice).toContain('<ItemTile label={r.title} big kind={practiceKind(r.entry)} />');
-    expect(practice).toContain("{practiceStamp(state) && <Stamp kind={practiceStamp(state)!} spoken />}");
-    expect(practice).toMatch(/className=\{`pr-state\$\{practiceStamp\(state\) \? " unstamped" : ""\}`\}/);
+  test("Learn: each practice a row with its own tile colour and number; a done one is green with a tick and says Done", () => {
+    expect(practice).toContain('colour={state === "done" ? "green" : practiceColour(i)} icon={state === "done" ? "tick" : undefined} mark={state === "done" ? undefined : String(i + 1)}');
+    expect(practice).toContain('fact={state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes)}');
   });
   test("a stamp read by VoiceOver only where it is the only words (Learn); elsewhere the row already says it", () => {
     const marks = read("./itemMarks.tsx");
@@ -436,14 +457,12 @@ describe("the details are drawn in the lists", () => {
     // carry them (the audit, item 31).
     expect(marks).toContain("{dot ? <Icon name={DOT_GLYPH[kind]} size={10} /> : S.look.stamp[kind]}");
   });
-  test("Flowflow's short lines are a bubble with a tail, and there is one glossy pill per view", () => {
+  test("Flowflow's short lines are a bubble with a tail, and (M71) no button is glossy any more", () => {
     const look = LOOK_CSS();
     expect(look).toMatch(/\n\.say \{[^}]*background: var\(--bubble\);/);
     expect(look).toMatch(/\n\.say::after \{[^}]*content: "";/);
-    expect(look).toContain("button.gel.primary, .hero-main button.primary {");
-    // The practice card's one gel pill is its Fix button; nothing else in a view asks for the gel.
-    expect((practice.match(/primary gel/g) ?? []).length).toBe(1);
-    expect(card).not.toContain("gel");
+    expect(look).not.toContain("button.gel.primary");
+    expect(practice).not.toContain("primary gel");
   });
 });
 

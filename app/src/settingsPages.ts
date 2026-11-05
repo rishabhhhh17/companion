@@ -4,6 +4,7 @@
 // search finds every one (settingsSearch.ts). The parts of Settings that are not settings (the plan, the key, the
 // permissions, the danger zone) are named `{ fixed }` and searched by their words in strings.ts (S.setFixed).
 import type { IconName } from "./icons.tsx";
+import type { Colour } from "./meaning.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
@@ -18,6 +19,9 @@ export type Page = { icon: IconName; groups: readonly GroupDef[]; more: readonly
 
 const f = (fixed: Fixed): Item => ({ fixed });
 
+/** M71: each section's tile in Settings' side list, the Mac's own Settings style: a colour for the sections with their own
+ *  subject (Account and Privacy blue, Fixing green, Character purple, Keys and voice teal), grey for the rest. */
+export const PAGE_COLOUR: Readonly<Record<PageId, Colour>> = { account: "blue", general: "grey", look: "grey", fixing: "green", flowflow: "purple", keys: "teal", privacy: "blue", about: "grey", more: "grey" };
 export const PAGES: Readonly<Record<PageId, Page>> = {
   account: {
     icon: "person",
@@ -39,7 +43,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     icon: "sliders",
     groups: [
       { id: "general.setup", items: [f("setup")] },
-      { id: "general.notch", items: ["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize"] },
+      { id: "general.notch", items: ["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops"] },
       { id: "general.tools", items: ["guide.on", "secondLook.on", "files.on", "watch.on"] },
     ],
     more: [
@@ -52,18 +56,15 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "more.general.watch", items: ["watch.schedule", "watch.dailyHour", "watch.quiet", "watch.quietFrom", "watch.quietTo", "where.after", f("google")] },
     ],
   },
-  // M51 polish (the founder, 1 Nov 2026: "as much customization as possible", "very unique"): Home's whole look on a page of
-  // its own, one step from the sidebar, beside the water's colour, chosen by looking at pictures. It was three levels deep in
-  // More options as words only.
+  // M71 (the founder, 5 Nov 2026: "black with accents of different color", "I don't want to do this again and again"): the
+  // look is one black look, so the page offers four things: Colour, Character, Layout and Text size. The retired look keys
+  // stay in the registry, hidden, so a stored value still loads; nothing offers or reads them.
   look: {
     icon: "image",
     groups: [
-      { id: "look.home", items: ["look.style", "look.character", "look.layout", "look.theme", "look.colour", "look.water"] },
-      { id: "look.details", items: ["look.corners", "look.density", "look.icons", "look.stamps"] },
+      { id: "look.home", items: ["look.colour", "look.character", "look.layout", "display.textSize"] },
     ],
-    // M65: the light behind Home and the glossy button belong to the Friendly style's water and gel, so they wait in More
-    // options, kept whole, and the Look page stays at ten (the spec, 3.4).
-    more: [{ id: "more.look.extras", items: ["look.light", "look.gloss"] }],
+    more: [],
   },
   fixing: {
     icon: "wrench",
@@ -142,12 +143,16 @@ export const ROW_OWNS: Readonly<Record<string, readonly string[]>> = { "characte
 export const CHILD_OF: Readonly<Record<string, string>> = { "talk.voice": "voice.on", "talk.speak": "voice.on", "talk.captions": "voice.on", "talk.dictate": "voice.on" };
 /** Options kept in the registry but not offered. A value already set to one still works. Night is the theme from before
  *  M51: Graphite replaced it, so it is kept only so a saved "night" checks out (it reads as Graphite, OPTION_ALIASES). Deep,
- *  hidden until it had a full, tested look (T17), is offered since M51. */
-export const HIDDEN_OPTIONS: Readonly<Record<string, readonly string[]>> = { "look.theme": ["night"] };
+ *  hidden until it had a full, tested look (T17), is offered since M51. M71: Colour's Vivid reads as Colourful, and the
+ *  Character's Match the look (the style is retired) reads as the Visor. */
+export const HIDDEN_OPTIONS: Readonly<Record<string, readonly string[]>> = { "look.theme": ["night"], "look.colour": ["vivid"], "look.character": ["match"] };
 /** A saved value that reads as another option. A row shows and compares the option it reads as, so a saved "night" shows
  *  Graphite picked and is not marked as changed. */
-export const OPTION_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = { "look.theme": { night: "graphite" } };
-export const shownValue = (key: string, v: unknown): unknown => (typeof v === "string" && OPTION_ALIASES[key]?.[v]) || v;
+export const OPTION_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = { "look.theme": { night: "graphite" }, "look.colour": { vivid: "colourful" }, "look.character": { match: "visor" } };
+export const shownValue = (key: string, v: unknown, style?: unknown): unknown =>
+  // M71: a stored "match" under the retired Friendly style shows as the water character it draws (lookfeel.ts characterOf).
+  key === "look.character" && (v === "match" || v === undefined) && style === "friendly" ? "friendly"
+    : (typeof v === "string" && OPTION_ALIASES[key]?.[v]) || v;
 
 const keysOf = (items: readonly Item[]): string[] => items.flatMap((i) => (typeof i === "string" ? [...(ROW_OWNS[i] ?? [i])] : []));
 /** Every setting key on a page's main level. */

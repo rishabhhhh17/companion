@@ -37,6 +37,9 @@ type Props = {
   onSentBack?: () => void;
   /** Home's top already says the rating in big words (homeHero.ts reviewLead), so the card leads with its one line only. */
   heroSays?: boolean;
+  /** M71 part 2: the words Home's lead says as its headline over this card ("3 files changed in this project."), so the
+   *  card never says the same words again under What changed. */
+  heroHeadline?: string;
   /** M69: when the card leads Now (reviewHead.ts), the character drawn at its top right, and the id its headline takes as
    *  the page's title (Home's own hero steps aside then: card.tsx). */
   mark?: ReactNode; titleId?: string;
@@ -218,7 +221,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
   );
 }
 
-function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, heroSays = false }: Props) {
+function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, heroSays = false, heroHeadline }: Props) {
   const res = r.result;
   const look = res ? ratingLook(res.rating) : null;
   const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
@@ -272,7 +275,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
       <div className="sr" role="status">{look ? S.review.arrived(look.words, look.line) : ""}</div>
       {/* Before a review, Home's top already says how much changed (M65 step 4: it was said three times), so the card goes
           straight to its presses and its list of files. */}
-      {(res || !heroSays) && (
+      {(res || !heroSays) && (res?.summary || S.review.lead(r.count)) !== heroHeadline && (
         <div className="answer">
           <div className="answer-lead">{S.review.whatChanged}</div>
           <p className="answer-words">{res?.summary || S.review.lead(r.count)}</p>

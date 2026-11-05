@@ -12,6 +12,8 @@ import type { ToolId } from "./groups.ts";
 import type { PanelView } from "./islandPanel.ts";
 import { cleanName, helloLine } from "./notchHello.ts";
 import { S } from "./strings.ts";
+import { FACT_MEANING, MEANING_COLOUR, type Colour, type FactKind } from "./meaning.ts";
+import type { IconName } from "./icons.tsx";
 
 export type QuickId = "pick" | "ask" | "review" | "check" | "ship" | "undo";
 /** The fixed slot order: an action never swaps places with another when the state changes. Pick a project comes first
@@ -70,9 +72,45 @@ export function quickFact(m: Model, now: number, note = ""): string {
   if (n > 0) return S.notch.changes(name, n);
   const s = homeStatus(m, project, now);
   if (s.kind === "works") return S.notch.passed(name, s.ago);
-  if (s.kind === "failing" || s.kind === "changed") return notchStatusLine(s, project);
+  // M71: the short form when the check has a time (the name moves up beside the greeting, factLines); a check that just
+  // answered keeps its own headline.
+  if (s.kind === "failing" && s.ago) return S.notch.failed(name, s.ago);
+  if (s.kind === "changed") return S.notch.changedSince(name);
+  if (s.kind === "failing") return notchStatusLine(s, project);
   if (s.kind === "unchecked") return S.notch.notChecked(name);
   return S.notch.ready;
+}
+
+/** M71: which fact quickFact says, by the same rules in the same order, so its dot takes that fact's meaning colour
+ *  (meaning.ts FACT_MEANING): orange for changes to review, red for a problem, green for a passed check, grey otherwise. */
+export function quickFactKind(m: Model, now: number, note = ""): FactKind {
+  if (note) return "note";
+  if (!m.runnerUp) return "off";
+  if (m.connected === "none") return "notConnected";
+  if (m.approvals.length > 0) return "questions";
+  const project = projectOf(m);
+  if (!nameOf(project)) return "pickProject";
+  if (reviewWaits(m) > 0) return "changes";
+  const s = homeStatus(m, project, now);
+  if (s.kind === "works") return "passed";
+  if (s.kind === "failing") return "failing";
+  if (s.kind === "changed") return "changedSince";
+  if (s.kind === "unchecked") return "notChecked";
+  return "ready";
+}
+/** The fact's dot colour. */
+export const factColour = (k: FactKind): Colour => MEANING_COLOUR[FACT_MEANING[k]];
+
+/** M71: each quick action's colour tile, the mock's (docs/design/2026-11-05-black-with-colour): Ask blue, Review changes
+ *  orange (take a look), Check my project green (it proves), Check before going live green, Undo orange, Pick a project
+ *  grey. Find and fix the problem (Check after a failed check) is red. */
+export const QUICK_LOOK: Record<QuickId, { colour: Colour; icon: IconName }> = {
+  pick: { colour: "grey", icon: "now" }, ask: { colour: "blue", icon: "sparkle" }, review: { colour: "orange", icon: "eye" },
+  check: { colour: "green", icon: "tick" }, ship: { colour: "green", icon: "shield" }, undo: { colour: "orange", icon: "undo" },
+};
+export function quickLook(id: QuickId, m: Model, now: number): { colour: Colour; icon: IconName } {
+  if (id === "check" && homeStatus(m, projectOf(m), now).kind === "failing") return { colour: "red", icon: "wrench" };
+  return QUICK_LOOK[id];
 }
 
 /** The panel's two lines (5 Nov 2026, a long project name cut the fact): a fact about the project ("my-shop: 3 changes to

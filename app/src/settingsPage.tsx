@@ -27,7 +27,7 @@ import { afterInstallFailed, canInstall, found, updateLine, type UpdateState } f
 import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
-import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
+import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
@@ -402,7 +402,7 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
   const { project, facts, inv } = c;
   useSetting(d.key);
   // A value kept from before that reads as another option (a saved "night" is Graphite, settingsPages.ts OPTION_ALIASES).
-  const value = shownValue(d.key, d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key));
+  const value = shownValue(d.key, d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key), setting("look.style"));
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
   // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always. A hidden
@@ -1469,7 +1469,7 @@ export function SettingsView({ place = "", onPlace = () => {}, working, practice
             <ul className="sb-list" ref={side} onKeyDown={sideKey} onScroll={measure}>
               {SIDEBAR.map((id) => (<li key={id}>
                 {id === HAIRLINE_BEFORE && <div className="sb-sep" role="separator" />}
-                <SidebarItem icon={PAGES[id].icon} label={S.pages[id].title} selected={!q && page === id} onClick={() => { setQ(""); onPlace(id); }} />
+                <SidebarItem icon={PAGES[id].icon} colour={PAGE_COLOUR[id]} label={S.pages[id].title} selected={!q && page === id} onClick={() => { setQ(""); onPlace(id); }} />
               </li>))}
             </ul>
             {/* Out of the tab order: Tab and the arrow keys already bring each page into view (focus scrolls it); these are for the pointer. */}

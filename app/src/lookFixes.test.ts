@@ -93,7 +93,7 @@ describe("Flowflow sits whole above the practice card, never over the tab row (r
 describe("the failing line reads as a code review's failing line, never a highlighter or a muddy tint", () => {
   test("a red wash with a red rule, in the page's words; no marker yellow and no tint of it", () => {
     const r = rule(ALL_CSS(), ".found-line") ?? "";
-    expect(r).toContain("background: linear-gradient(var(--removed), var(--removed))");
+    expect(r).toContain("background: var(--removed)");   // M71: flat, no gradient
     expect(r).toContain("var(--bad)");
     expect(r).toContain("color: var(--fg)");
     expect(r).not.toContain("--marker");

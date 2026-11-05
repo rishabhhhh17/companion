@@ -2,6 +2,22 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Black, with colour that means something: 5 Nov 2026 (in progress)
+
+- **One look: black like the notch.** Home and the notch's small panel are one black surface now, with no blocks of navy, grey or purple inside it. Colour only marks what something means: blue for Now and actions, purple for Learn and practice, orange for History and changes to look at, pink for Memory, green for proven and red for a real problem.
+- **Every place has its colour tile.** Now, Learn, History and Memory each have a small coloured square, like the Mac's own Settings. Settings is a grey gear.
+- **Now is one clear column.** A tag, a headline, one line and one main button, with the character beside them. Under it, one list of what happened since, at most three rows, each with its own colour and action. Home is as tall as what it holds, so there is no big empty gap.
+- **A practice says Practice ready.** A practice waiting for you is purple and says Practice ready, never Needs you, and it has a button to open it.
+- **The key hint has words.** "Press ⌃⌥⌘F when stuck", or it steps aside when there is no room.
+- **The notch's small panel matches.** The one fact has a coloured dot, and each button has its colour tile.
+- **A small moment when a fix is proven.** The green tick draws itself in and the Visor smiles. Reduce motion shows it already drawn.
+- **Fewer look settings.** The Look page keeps Colour (Colourful, or Calm with blue only), Character (Visor, Glass orb or Water), Layout and Text size. Older look choices you saved still load and are simply ignored.
+- **Learn, History, Memory and Settings have the same shape.** Each opens with one clear lead, then one list. Learn leads with the next practice on a faint purple card, then every practice with its own coloured number and its time. History shows each task with a tile in the colour of how it ended: green proven, red failed, grey stopped, orange undone. Memory lists each note with where it came from and Forget on the right. Settings has a coloured tile for each section, like the Mac's own.
+- **The first run looks like the rest.** The ways to start are one list with coloured tiles, and the welcome fits without scrolling.
+- **Said once.** Changes to review no longer repeat how many files changed under the headline, and the headline stays in view when the review card comes in.
+- **A practice ready on Now says what it is.** "A Join button that fails, on a practice copy." instead of what the button does.
+- **The old rooms are gone.** The coloured light behind Home, the sea and the glows are removed for good.
+
 ## Fix it means fix: 5 Nov 2026 (in progress)
 
 - **Fix it fixes the line it found.** When the check finds one line, Fix it now makes one small checked fix of that line, instead of planning first. When nothing specific was found, it still looks deeper first. You can still pick Look deeper first in Settings.

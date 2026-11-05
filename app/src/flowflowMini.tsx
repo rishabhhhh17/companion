@@ -30,7 +30,7 @@ export function FlowMini({ state, className, still, water, pose, band, glance }:
   /** M68: the Visor's lights glance once toward the right when this changes (the notch's word at rest). */
   glance?: string | null }) {
   const liveOn = useSetting("character.live") === true;
-  const chosen = waterOf(useSetting("look.water"));
+  const chosen: Water = "ocean";   // look.water is retired (M71)
   const colours = flowColours(water ?? chosen);
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
@@ -56,7 +56,7 @@ export function FlowMini({ state, className, still, water, pose, band, glance }:
   );
 }
 
-/** The character the look shows (look.style and look.character, lookfeel.ts characterOf): the orb or the friendly one. */
+/** The character chosen (look.character, lookfeel.ts characterOf): the Visor, the glass orb or the water character. */
 export function useCharacterLook(): CharacterLook {
-  return characterOf(useSetting("look.style"), useSetting("look.character"));
+  return characterOf(useSetting("look.character"), useSetting("look.style"));
 }

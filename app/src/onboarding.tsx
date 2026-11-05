@@ -20,8 +20,7 @@ import { HomeCharacter } from "./homeCharacter.tsx";
 import { Waterline } from "./waterline.tsx";
 import { FailingLine } from "./failingLine.tsx";
 import type { Usage } from "./plan.ts";
-import { Icon } from "./icons.tsx";
-import { Button, Card, Disclosure, Field, KeyLabel, Menu, Row, Segmented, Switch, VerdictLine } from "./ui/parts.tsx";
+import { Button, Card, Disclosure, Field, KeyLabel, ListGroup, ListRow, Menu, Row, Segmented, Switch, Tile, VerdictLine } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
 
 /** A headline as its first sentence and the rest (M41): "Your AI built it." and "Let's finish it.". One sentence: all first. */
@@ -185,13 +184,17 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
             <h2 className="fr-title">{twoTone(S.screens.welcomeTitle)[0]}<span className="fr-title-2">{twoTone(S.screens.welcomeTitle)[1]}</span></h2>
             <p className="fr-line fr-jobs">{S.screens.welcomeLine}</p>
             {keys.using.problem && <p className="fr-key-line"><span className="fr-key-name">{S.screens.welcomeKey}</span><KeyLabel chord={keys.using.problem} /></p>}
-            <ul className="fr-promises" aria-label={S.screens.promisesLabel}>{S.screens.promises.map((t) => <li key={t}><span className="fr-tick" aria-hidden="true"><Icon name="tick" size={12} /></span>{t}</li>)}</ul>
+            <ul className="fr-promises" aria-label={S.screens.promisesLabel}>{S.screens.promises.map((t) => <li key={t}><Tile colour="green" icon="tick" size="btn" />{t}</li>)}</ul>
+            <div className="fr-links">
+              {!buildsOpen && <Button kind="quiet" className="fr-link" expanded={false} onClick={() => setBuildsOpen(true)}>{S.screens.buildsWithLink}</Button>}
+              {/* The key practice is one press away from the hello too: the practice's pretend AI writes a key, and the review stops it. */}
+              {!first.needsNode || !noNode ? <Button kind="quiet" className="fr-link" onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.screens.helloPractice}</Button> : null}
+            </div>
           </div>
           <div className="fr-welcome-loop"><FirstLook loop label={S.screens.loopLabel} /></div>
         </div>
         {/* M58 (feature 9): optional, and it only picks a tip. Nothing is sent; Skip leaves it unanswered. It sits behind one
             link so Continue stays on the first screen (the review of 5 Nov). */}
-        {!buildsOpen && <Button kind="quiet" className="fr-link" expanded={false} onClick={() => setBuildsOpen(true)}>{S.screens.buildsWithLink}</Button>}
         {buildsOpen && <div className="fr-builds" role="group" aria-label={S.screens.buildsWithAsk}>
           <p className="fr-small"><b>{S.screens.buildsWithAsk}</b> {S.screens.buildsWithLine}</p>
           <div className="fr-chips-row">
@@ -200,36 +203,41 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
           </div>
           {buildsWithTip(buildsWith) && <p className="fr-small" role="status">{buildsWithTip(buildsWith)}</p>}
         </div>}
-        {/* The key practice is one press away from the hello too: the practice's pretend AI writes a key, and the review stops it. */}
-        {!first.needsNode || !noNode ? <Button kind="quiet" className="fr-link" onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.screens.helloPractice}</Button> : null}
+        {/* M71: Skip setup and Continue share the foot's line; the optional links sit under the promises. */}
         <div className="fr-grow" />
-        <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.skipSetup}</Button>
+        <div className="fr-foot">
+        <Button kind="quiet" className="fr-link" onClick={finish}>{S.fr.skipSetup}</Button>
         {main(S.obContinue, () => go(next(step)))}
+        </div>
       </>)}
 
       {step === "project" && (<>
         <h2 className="fr-title">{S.fr.folderTitle}</h2>
         <p className="fr-line">{S.obFolderHelp}</p>
+        {/* M71: one grouped list, the parts every page uses (ui/parts.tsx): the folder chosen as one row with its own
+            Choose another, or the three ways to start, each a row with its colour tile. */}
         {project ? (<>
-          <div className="fr-folder" role="status"><b>{folderName(project)}</b><span>{project}</span></div>
-          <p className="fr-small">{S.fr.checkWhat} {S.fr.checkPromise}</p>
-          <Button kind="quiet" className="fr-link" onClick={pickFolder}>{S.fr.otherFolder}</Button>
-        </>) : (
-          <div className="fr-choices" role="group" aria-label={S.fr.folderTitle}>
-            <Button kind="secondary" className="fr-choice" onClick={pickFolder}><b>{S.fr.pickFolder}</b><span>{S.fr.pickFolderLine}</span></Button>
-            <Button kind="secondary" className="fr-choice" expanded={linkOpen} onClick={() => setLinkOpen(!linkOpen)}><b>{S.fr.pickLink}</b><span>{S.fr.pickLinkLine}</span></Button>
-            {linkOpen && (<div className="fr-linkbox">
-              <div className="fr-keyrow">
-                <Field wide value={link} label={S.openLinkLabel} placeholder="https://github.com/name/project" error={linkNote || cloneNote || undefined} onChange={setLink} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); }} />
-                <Button kind="secondary" disabled={copying} onClick={openLink}>{S.openLinkGo}</Button>
-              </div>
-              <p className="fr-small">{copying ? S.copying : S.fr.linkLovable}</p>
-            </div>)}
+          <ListGroup label={S.fr.folderTitle}>
+            <ListRow colour="blue" icon="file" title={folderName(project)} line={project} action={{ label: S.fr.otherFolder, onClick: pickFolder, colour: "blue" }} />
+          </ListGroup>
+          <p className="fr-small" role="status">{S.fr.checkWhat} {S.fr.checkPromise}</p>
+        </>) : (<>
+          <ListGroup label={S.fr.folderTitle}>
+            <ListRow colour="blue" icon="file" title={S.fr.pickFolder} line={S.fr.pickFolderLine} onOpen={pickFolder} openLabel={S.fr.pickFolder} />
+            <ListRow colour="teal" icon="drop" title={S.fr.pickLink} line={S.fr.pickLinkLine} onOpen={() => setLinkOpen(!linkOpen)} openLabel={S.fr.pickLink} />
             {/* Taking the practice ends the first run here: the practice opens its own folder. The choices made on the way are kept. */}
-            <Button kind="secondary" className="fr-choice" disabled={first.needsNode && !!noNode} onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}><b>{S.fr.pickPractice}</b><span>{S.fr.pickPracticeLine}</span></Button>
-            {first.needsNode && noNode && <p className="fr-small" role="status">{S.fr.practiceNeedsNode(noNode.fix ?? "")}</p>}
-          </div>
-        )}
+            <ListRow colour="purple" icon="sparkle" title={S.fr.pickPractice} line={S.fr.pickPracticeLine} openLabel={S.fr.pickPractice}
+              onOpen={first.needsNode && !!noNode ? undefined : () => { keepChoices(); onDone(); startPractice(first.id); }} />
+          </ListGroup>
+          {linkOpen && (<div className="fr-linkbox">
+            <div className="fr-keyrow">
+              <Field wide value={link} label={S.openLinkLabel} placeholder="https://github.com/name/project" error={linkNote || cloneNote || undefined} onChange={setLink} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) openLink(); }} />
+              <Button kind="secondary" disabled={copying} onClick={openLink}>{S.openLinkGo}</Button>
+            </div>
+            <p className="fr-small">{copying ? S.copying : S.fr.linkLovable}</p>
+          </div>)}
+          {first.needsNode && noNode && <p className="fr-small" role="status">{S.fr.practiceNeedsNode(noNode.fix ?? "")}</p>}
+        </>)}
         <div className="fr-grow" />
         {project ? <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.skipCheck}</Button> : <Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipProject}</Button>}
         {main(project ? S.fr.checkGo(folderName(project)) : S.obContinue, startCheck, !canContinue(step, ctx))}

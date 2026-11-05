@@ -32,7 +32,7 @@ button, select, input, textarea { font: inherit; }
 /* A Pro tag inside the main button takes the button's own words, and its edge is drawn in them (payments spec section 3). */
 .btn.primary .pro-tag { color: inherit; border-color: currentColor; }
 .btn.primary:disabled { background: var(--fill-disabled); color: var(--ink-disabled); box-shadow: none; }
-.btn.secondary { border-color: var(--line-strong); }
+.btn.secondary { border-color: var(--btn2-edge); background: var(--btn2-bg); }
 /* Any button that stays pressed (a chosen key in Change keys): filled, with a full --fg edge, so the choice in use shows by
    shape and not by a tint alone. A quiet one keeps its own look below. */
 .btn[aria-pressed="true"] { background: var(--surface-3); border-color: var(--fg); }
@@ -382,3 +382,49 @@ button, select, input, textarea { font: inherit; }
 
 /* ---------- M69 step 2: a count of what waits on a place in the side list (amber, count only; homeSide.tsx) ---------- */
 .sb-count { flex: none; display: inline-grid; place-items: center; min-width: var(--h-pill); min-height: var(--h-pill); box-sizing: border-box; margin-left: auto; padding: 0 var(--space-1); border-radius: var(--r-pill); background: var(--warn-tint); color: var(--amber); font: var(--w-eyebrow) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); font-variant-numeric: tabular-nums; }
+
+/* ---------- M71, black with colour: Tile, Dot, Tag, the grouped list (ListGroup, ListRow, EmptyRow), Lead, PlaceButton ----------
+   Each reads its colour from [data-c] (ui/tokens.css: --mc, --mc-tile, --mc-soft, --mc-text). No gradient, no glow, no halo,
+   and never a card inside a card: the list is the one card, its rows are separated by hairlines. */
+.ui-mtile { display: inline-grid; place-items: center; flex: none; width: var(--tile-row); height: var(--tile-row); border-radius: var(--r-tile-lg); background: var(--mc-tile); color: var(--c-mark); font: var(--w-bold) var(--t-label) / 1 var(--font); font-variant-numeric: tabular-nums; }
+.ui-mtile[data-size="place"] { width: var(--tile-place); height: var(--tile-place); border-radius: var(--r-tile-md); font-size: var(--t-caption); }
+.ui-mtile[data-size="btn"] { width: var(--tile-btn); height: var(--tile-btn); border-radius: var(--r-tile-sm); font-size: var(--t-caption); }
+.ui-mtile .ic * { stroke-width: 2.25; }
+.ui-mdot { display: inline-block; flex: none; width: var(--dot-m); height: var(--dot-m); border-radius: var(--r-round); background: var(--mc); }
+.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-bold) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+.ui-mtag-tick { display: inline-grid; flex: none; color: var(--mc); }
+.ui-mtag-tick .ic * { stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 0; animation: ui-tick-draw var(--dur-4) var(--ease-out) var(--dur-2) both; }
+@keyframes ui-tick-draw { from { stroke-dashoffset: 24; } }
+.ui-mtag-dot { flex: none; width: var(--dot-tag); height: var(--dot-tag); border-radius: var(--r-round); background: var(--mc); }
+.ui-mlist { margin: 0; padding: 0; list-style: none; border-radius: var(--r-list); background: var(--surface-1); overflow: clip; }
+.ui-mrow { display: flex; align-items: center; gap: var(--space-2); min-height: var(--h-list-row); padding-inline-end: var(--space-4); }
+.ui-mrow + .ui-mrow { box-shadow: inset 0 var(--hair) 0 var(--edge); }
+.ui-mrow-main { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; align-self: stretch; margin: 0; padding: var(--space-3) 0 var(--space-3) var(--space-4); border: 0; background: transparent; color: var(--fg); text-align: start; font: inherit; }
+button.ui-mrow-main { transition: background-color var(--dur-hover) var(--ease-out); }
+button.ui-mrow-main:hover { background: var(--surface-2); }
+.ui-mrow-words { display: grid; flex: 1; min-width: 0; }
+.ui-mrow-title { color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
+.ui-mrow-line { color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.ui-mrow-fact { flex: none; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
+.ui-mrow-fact[data-c] { color: var(--mc-text); }
+.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out); }
+.ui-mrow-act:hover { background: var(--mc-soft); }
+.ui-mrow-act:active { transform: scale(var(--press)); }
+.ui-lead { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; }
+.ui-lead-words { display: grid; justify-items: start; gap: var(--space-2); min-width: 0; }
+.ui-lead-title { margin: var(--space-1) 0 0; color: var(--fg); font: var(--w-bold) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); text-wrap: balance; }
+.ui-lead-line { margin: 0; color: var(--fg-2); font: var(--t-answer) / var(--lh-answer) var(--font); text-wrap: pretty; }
+.ui-lead-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.ui-lead-char { display: grid; place-items: center; width: var(--lead-char); min-height: var(--lead-char); }
+.ui-place { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--h-place); margin: 0; padding: 0 var(--space-3) 0 var(--space-1); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+.ui-place:hover { color: var(--fg); background: var(--surface-1); }
+.ui-place[aria-pressed="true"] { background: var(--mc-soft); color: var(--fg); }
+/* A sidebar item with a colour tile (M71): the open one on its colour's soft fill. */
+.sb-item[data-c][aria-current="page"] { background: var(--mc-soft); }
+.sb-item .ui-mtile .ic, .sb-item[aria-current="page"] .ui-mtile .ic { color: var(--c-mark); }
+.ui-place-dot { width: var(--dot-tag); height: var(--dot-tag); border-radius: var(--r-round); background: var(--c-orange); }
+/* The one heading over a grouped list ("Practice projects", "About my-shop"): small, grey, lined up with the rows' words. */
+.ui-mlist-title { margin: 0 0 var(--space-2) var(--space-4); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-label); }
+/* A featured card (M71: the practice at the top of Learn, the result at the top of Now): its colour at 12 percent on a
+   card, nothing more, so it reads as that colour's card without becoming a coloured block. */
+.ui-lead.ui-feature { padding: var(--space-4); border-radius: var(--r-list); background: color-mix(in srgb, var(--mc) var(--feature-a), var(--surface-1)); }

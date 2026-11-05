@@ -59,7 +59,11 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
   // word for the moment, so the bubble never says one thing while the line says another (the founder, 2 Nov 2026).
   if (n && m.practice && n.key.startsWith("practice:")) {
     const st = m.practice.stage as keyof typeof S.home.practiceLine;
-    return { headline: n.why, line: S.home.practiceLine[st] ?? characterWords(m), tone: "needsYou", say: S.practiceSay[st] ?? "" };
+    // M71 (the mock): ready, the line is the practice itself in its own words ("A Join button that fails, on a practice
+    // copy."), never what the button does.
+    const own = S.practices[m.practice.kind as keyof typeof S.practices]?.title;
+    const line = st === "start" && own ? S.home.practiceOn(own) : S.home.practiceLine[st];
+    return { headline: n.why, line: line ?? characterWords(m), tone: "needsYou", say: S.practiceSay[st] ?? "" };
   }
   // A problem found, with its card on Now: the hero says the finding itself and which check found it, so the card under it
   // need not repeat What's wrong (the audit, item 53; the card's title is for VoiceOver only then).
@@ -96,13 +100,15 @@ export function sayFor(m: Pick<Model, "receipt" | "research" | "rescue">, h: Her
 
 /** The main button when something waits on another place (the founder, 2 Nov 2026: a practice open, and "no clear next
  *  step" above the fold): its next step, right on Now. Check my project runs its checks, Fix it fixes what was found (a practice
- *  fixed by a task), anything else in the practice opens it on Learn. Only this folder's practice; nothing for a question
+ *  fixed by a task), anything else in the practice (or a practice in another folder) opens it on Learn. Nothing for a question
  *  (its card is on Now, just below) or when nothing waits. */
 export type NeedMain = "practiceStart" | "practiceFix" | "openLearn";
 export function needMainFor(m: Model, n: Need | null, project: string): NeedMain | null {
   if (!n || n.question || n.tab === "now" || !project) return null;
   if (m.practice && n.key.startsWith("practice:")) {
-    if (m.practice.project !== project) return null;
+    // M71 (the founder's screenshot, 5 Nov 2026: a practice on Now with no button): a practice in another folder still has
+    // its next step on Now, which opens it on Learn.
+    if (m.practice.project !== project) return "openLearn";
     if (m.practice.stage === "start") return "practiceStart";
     if (m.practice.stage === "found" && practiceOf(m.practice.kind)?.fix === "task") return "practiceFix";
     return "openLearn";

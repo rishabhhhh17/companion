@@ -3,7 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { changeSize, BIG_CHANGE_LINES, SMALL_ASK_WORDS } from "./changeSize.ts";
-import { checksOnOpen, FrameBatch, Landing, mergeDeltas, onlyStreamChanged, revealTo, STREAM_CHUNK, STREAM_LINES, threadLands, waitScroll } from "./homeFlow.ts";
+import { checksOnOpen, FrameBatch, Landing, mergeDeltas, onlyStreamChanged, revealTo, STREAM_CHUNK, STREAM_LINES, threadLands, waitNeedsScroll, waitScroll } from "./homeFlow.ts";
 import { changesFiles, MAX_CHIPS, resultChips, type ChipFacts } from "./resultChips.ts";
 import { reduce, initial } from "./model.ts";
 import { S } from "./strings.ts";
@@ -95,6 +95,15 @@ describe("a card that needs you is scrolled to, not jumped to", () => {
     expect(waitScroll({ opening: false, reduced: true })).toBe("auto");
     expect(src("./card.tsx")).toMatch(/scrollIntoView\?\.\(\{ block: "nearest", behavior: waitScroll\(/);
   });
+  test("M71: a waiting card whose start is already in view scrolls nothing, so the lead above it stays (the wide review)", () => {
+    // The wide review: the card starts under the lead, in view; Home stays put however tall the card is.
+    expect(waitNeedsScroll({ cardTop: 180, viewTop: 0, viewBottom: 480 })).toBe(false);
+    // Its start below the fold, or above the top: it is brought into view.
+    expect(waitNeedsScroll({ cardTop: 460, viewTop: 0, viewBottom: 480 })).toBe(true);
+    expect(waitNeedsScroll({ cardTop: 700, viewTop: 0, viewBottom: 480 })).toBe(true);
+    expect(waitNeedsScroll({ cardTop: -20, viewTop: 0, viewBottom: 480 })).toBe(true);
+    expect(src("./card.tsx")).toContain("if (!waitNeedsScroll({ cardTop: at.top,");
+  });
 });
 
 describe("the proven check lands once", () => {
@@ -112,11 +121,11 @@ describe("the proven check lands once", () => {
     expect(threadLands(null, "done")).toBe(false);
     expect(threadLands("proving", "failed")).toBe(false);
   });
-  test("the landing is a line filling in, the tick drawing in and one soft glow, by transform, clip-path and opacity only", () => {
+  test("the landing is a line filling in, the tick drawing in and one hairline coming and going (M71: never a glow), by transform, clip-path and opacity only", () => {
     const css = src("./ui/homeFlow.css");
     expect(css).toMatch(/\[data-landed\] \.ui-verdict-mark[^{]*\{[^}]*animation: land-tick var\(--dur-3\) var\(--ease-out\)/);
     expect(css).toMatch(/@keyframes land-tick \{[^}]*clip-path/);
-    expect(css).toMatch(/\.panel\.receipt\[data-landed\]::after[^{]*\{[^}]*opacity: 0; animation: land-glow var\(--seq-glow\) var\(--ease-out\)/);
+    expect(css).toMatch(/\.panel\.receipt\[data-landed\]::after[^{]*\{[^}]*box-shadow: inset 0 0 0 var\(--hair\) var\(--line-strong\); opacity: 0; animation: land-glow var\(--seq-land\) var\(--ease-out\)/);
     expect(css).toMatch(/@keyframes land-glow \{[^]*?opacity/);
     expect(css).toMatch(/\.thread\[data-landed\] \.thread-step\[data-state="done"\]:last-child::before \{[^}]*animation: land-line var\(--dur-3\) var\(--ease-out\)/);
     expect(css).toMatch(/@keyframes land-line \{[^}]*scale/);

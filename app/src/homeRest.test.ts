@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ReviewRowView } from "../../protocol/index.ts";
 import type { HistoryItem } from "./model.ts";
-import { checkedAgo, firstSentence, fixPicture, lastFix, lastProven, outcomeTitle, restCards, restHero, restMainLabel, resultHero, sinceRows, PILL_TONE, SINCE_MAX } from "./homeRest.ts";
+import { checkedAgo, firstSentence, lastFix, lastProven, outcomeTitle, restCards, restHero, restMainLabel, resultHero, sinceRows, PILL_TONE, SINCE_MAX } from "./homeRest.ts";
 import { homeStatus } from "./homeHero.ts";
 import { initial } from "./model.ts";
 import { S } from "./strings.ts";
@@ -90,15 +90,6 @@ describe("the Last fix card", () => {
   test("only a finished task: a stopped one or a running one is not a fix", () => {
     expect(lastFix([task({ status: "interrupted" }), task({ status: "running" })], NOW)).toBeNull();
     expect(lastProven([task({ proof: "failed" })])).toBeNull();
-  });
-  test("its picture is the receipt's own, only for that same task", () => {
-    const f = lastFix([task({ checkpoint: "cp_x" })], NOW);
-    expect(fixPicture(f, { checkpoint: "cp_x", image: "abc", caption: "This works now." })).toEqual({ image: "abc", caption: "This works now." });
-    // M69 step 3: with the earlier version's picture, the why and the proof ticks, when the receipt had them.
-    expect(fixPicture(f, { checkpoint: "cp_x", image: "abc", before: "b4", caption: "c", why: "It now saves the email.", ticks: ["Builds", "Works in a browser"] }))
-      .toEqual({ image: "abc", before: "b4", caption: "c", why: "It now saves the email.", ticks: ["Builds", "Works in a browser"] });
-    expect(fixPicture(f, { checkpoint: "cp_other", image: "abc", caption: "" })).toBeNull();
-    expect(fixPicture(f, null)).toBeNull();
   });
 });
 

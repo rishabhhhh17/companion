@@ -9,6 +9,8 @@ import { verdictOf } from "./verdict.ts";
 import { agoWords, type HomeStatus } from "./homeHero.ts";
 import { taskName } from "./itemLook.ts";
 import { S } from "./strings.ts";
+import { FIX_MEANING, type Meaning } from "./meaning.ts";
+import type { IconName } from "./icons.tsx";
 
 /** The hero's status tag at rest: the last check passed, something needs a look, a check failed, or (only for a project
  *  with nothing in its log at all) not checked yet. */
@@ -131,16 +133,6 @@ export function resultHero(i: { project: string; label: string; kind: "proven" |
   return { pill: "failed", first: thing ? S.homeNow.notFixedThing(thing) : S.homeNow.notFixed(name), second: i.said || S.homeNow.checkFailed };
 }
 
-/** The proof picture for the Last fix card: the receipt's own picture, only for that same task (its undo point). */
-/** M69 step 3: with it, when the receipt had them, the earlier version's picture (the before and after pair), the receipt's
- *  own why in one line, and the proof ticks' words. All kept in memory only, for this same task. */
-export type FixProof = { checkpoint: string; image: string; caption: string; before?: string; why?: string; ticks?: string[] };
-export function fixPicture(fix: Pick<LastFix, "item"> | null, pic: FixProof | null): Omit<FixProof, "checkpoint"> | null {
-  if (!(fix && pic && pic.image && fix.item.checkpoint && pic.checkpoint === fix.item.checkpoint)) return null;
-  const { checkpoint: _c, ...rest } = pic;
-  return Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) as Omit<FixProof, "checkpoint">;
-}
-
 // ---------- the Since then card ----------
 
 export type SinceRow = { id: string; kind: "files" | "unchecked" | "task"; words: string; meta: string; act: "look" | "check" | "open"; item?: HistoryItem };
@@ -176,4 +168,43 @@ export function firstSentence(text: string): string {
   const m = /^(.+?[.!?])(?:\s|$)/.exec(t);
   const one = (m ? m[1] : t);
   return Array.from(one).length > 160 ? `${Array.from(one).slice(0, 159).join("").trimEnd()}\u2026` : one;
+}
+
+// ---------- M71: Now's one list (docs/milestones/M71-black-with-colour.md) ----------
+
+/** One row of Now's Since then list, by its meaning (meaning.ts): the last fix and how its check went, then what happened
+ *  after it, at most three. `act`: what a press on the row or its action does. Never who changed a file (M57). */
+export type NowRow = {
+  id: string; meaning: Meaning; icon: IconName; title: string; line: string; fact: string;
+  act: "open" | "look" | "practice"; action: "undo" | "show" | "start" | null; item?: HistoryItem;
+};
+export const NOW_ROWS_MAX = 3;
+const FIX_ICON: Record<FixTag, IconName> = { proven: "tick", undone: "undo", failed: "cross", partly: "half", unchecked: "dash" };
+const SINCE_MEANING: Record<SinceRow["kind"], Meaning> = { files: "review", unchecked: "review", task: "stopped" };
+
+export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; practice: boolean; undo: boolean; now: number }): NowRow[] {
+  const rows: NowRow[] = [];
+  if (i.practice) rows.push({ id: "practice", meaning: "practice", icon: "learn", title: S.homeNow.practiceTitle, line: S.homeNow.practiceLine, fact: "", act: "practice", action: "start" });
+  if (i.fix) {
+    const f = i.fix, it = f.item;
+    const files = it.changed != null ? S.homeNow.files(it.changed) : "";
+    const ago = agoWords(at(it), i.now);
+    const tick = f.ticks[0]?.words ?? "";
+    rows.push({
+      id: `fix:${it.id}`, meaning: FIX_MEANING[f.tag], icon: FIX_ICON[f.tag], title: f.title,
+      // With Undo on the right, the time moves into the line, so the row still says when.
+      line: [tick, files, i.undo ? ago : ""].filter(Boolean).join(" · "), fact: i.undo ? "" : ago,
+      act: "open", action: i.undo ? "undo" : null, item: it,
+    });
+  }
+  for (const r of i.since) {
+    const undone = r.item?.undone === true;
+    rows.push({
+      id: r.id, meaning: undone ? "undone" : SINCE_MEANING[r.kind], icon: r.kind === "files" ? "eye" : undone ? "undo" : "stop",
+      title: r.words, line: r.kind === "files" ? S.homeNow.sinceLine : S.homeNow.taskLine, fact: r.meta,
+      act: r.act === "look" ? "look" : "open", action: r.act === "look" ? "show" : null, item: r.item,
+    });
+  }
+  if (i.practice && !i.fix) rows.push({ id: "empty", meaning: "notChecked", icon: "dash", title: S.homeNow.noFixesTitle, line: S.homeNow.noFixesLine, fact: "", act: "open", action: null });
+  return rows.slice(0, NOW_ROWS_MAX);
 }

@@ -35,7 +35,9 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
   });
   test("the main levels are the ones the spec names", () => {
     expect(mainKeys("account")).toEqual(["spend.dailyLimit", "you.name"]);   // M68: what to call you, for the hello in the notch
-    expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "display.textSize", "guide.on", "secondLook.on", "files.on", "watch.on"]);
+    // M71: the text size moved to the Look page, beside Colour, Character and Layout.
+    expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "guide.on", "secondLook.on", "files.on", "watch.on"]);
+    expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
     // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
     expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");
     // M57 UI 12: the review of changes leads the Fixing page.
@@ -43,8 +45,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
     // M65: the style and the character lead it; the light and the gloss (the Friendly style's water and gel) are in its
     // More options, so it stays at ten.
-    expect(mainKeys("look")).toEqual(["look.style", "look.character", "look.layout", "look.theme", "look.colour", "look.water", "look.corners", "look.density", "look.icons", "look.stamps"]);
-    expect(PAGES.look.more).toEqual([{ id: "more.look.extras", items: ["look.light", "look.gloss"] }]);
+    // M71 (5 Nov 2026): one black look, so the page holds Colour, Character, Layout and Text size, with nothing more.
+    expect(PAGES.look.more).toEqual([]);
     expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
@@ -77,7 +79,8 @@ describe("the sidebar and the groups (the spec, 3.2)", () => {
       for (const g of PAGES[p].groups) expect(g.id === "flowflow.preview" || !!S.setGroupTitles[g.id], g.id).toBe(true);
       for (const t of PAGES[p].more) expect(S.setGroupTitles[t.id], t.id).toBeTruthy();
     }
-    expect(MORE_SECTIONS).toEqual(["account", "general", "look", "fixing", "flowflow", "keys", "privacy"]);
+    // M71: the Look page has nothing more (its extras were the retired light and gloss).
+    expect(MORE_SECTIONS).toEqual(["account", "general", "fixing", "flowflow", "keys", "privacy"]);
     // Powers, Advanced and the Squibby heading are gone; "Flow" is "Fix" everywhere a person reads it.
     const titles = JSON.stringify([S.pages, S.setGroupTitles]);
     expect(titles).not.toMatch(/Powers|Advanced/);

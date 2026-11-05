@@ -1,0 +1,105 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squibby black with colour</title>
+<style>
+:root { color-scheme: dark;
+  --bg: #000; --card: #121214; --card-2: #1A1A1D; --edge: rgba(255,255,255,.09); --fg: #F5F5F7; --fg2: #A1A1A8; --fg3: #48484D;
+  /* Apple's dark mode colours: one family, each with one job. */
+  --blue: #0A84FF; --purple: #BF5AF2; --orange: #FF9F0A; --green: #30D158; --pink: #FF375F; --teal: #64D2FF; --red: #FF453A; --grey: #8E8E93; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #3a3d44; font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color: var(--fg); padding: 28px 16px 40px; }
+h1 { font: 600 20px/1.2 -apple-system, sans-serif; margin: 0 0 6px; text-align: center; color: #fff; }
+.sub { text-align: center; color: #c9ccd3; margin: 0 0 24px; }
+.row { display: flex; gap: 28px; justify-content: center; flex-wrap: wrap; align-items: flex-start; }
+.cap { text-align: center; color: #c9ccd3; font-size: 13px; margin-top: 10px; max-width: 360px; }
+.panel { width: 360px; background: var(--bg); border-radius: 0 0 26px 26px; overflow: hidden; position: relative; box-shadow: 0 0 0 1px var(--edge), 0 24px 60px rgba(0,0,0,.5); }
+.notch { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 150px; height: 30px; background: #000; border-radius: 0 0 14px 14px; }
+.inner { padding: 44px 18px 18px; }
+.bar { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fg2); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--card-2); color: var(--fg); font-weight: 500; }
+.dot { width: 7px; height: 7px; border-radius: 50%; }
+/* Each place has its own colour: the icon tile, and the soft tint when it is open. */
+.tabs { display: flex; gap: 2px; margin: 14px 0 16px; }
+.tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px 5px 5px; border-radius: 999px; color: var(--fg2); font-weight: 500; font-size: 13px; }
+.tab .ic { width: 20px; height: 20px; border-radius: 6px; display: grid; place-items: center; color: #fff; font-size: 11px; font-weight: 700; background: var(--c); }
+.tab.on { background: color-mix(in srgb, var(--c) 18%, transparent); color: #fff; }
+.tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font: 600 11px/1 -apple-system, sans-serif; letter-spacing: .05em; text-transform: uppercase; background: color-mix(in srgb, var(--c) 18%, transparent); color: color-mix(in srgb, var(--c) 70%, white); }
+.tag i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+.hero { display: flex; gap: 12px; align-items: flex-start; }
+.hero .words { flex: 1; }
+h2 { font: 600 22px/1.2 -apple-system, sans-serif; letter-spacing: -.02em; margin: 10px 0 4px; }
+.line { color: var(--fg2); font-size: 15px; margin: 0 0 14px; }
+.btns { display: flex; gap: 8px; }
+.b1 { border: 0; border-radius: 11px; padding: 10px 15px; font: 600 14px/1 -apple-system, sans-serif; background: var(--blue); color: #fff; }
+.b2 { border: 0; border-radius: 11px; padding: 10px 15px; font: 500 14px/1 -apple-system, sans-serif; background: var(--card-2); color: var(--fg); }
+.orb { width: 64px; height: 64px; border-radius: 50%; flex: none; position: relative;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.9) 0 6%, transparent 16%), radial-gradient(circle at 50% 55%, #6CC4FF 0, #0A6CFF 72%); box-shadow: 0 6px 20px rgba(10,132,255,.35); }
+.orb::before, .orb::after { content: ""; position: absolute; top: 40%; width: 9px; height: 5px; border: 2.5px solid #06204A; border-bottom: 0; border-radius: 9px 9px 0 0; }
+.orb::before { left: 30%; } .orb::after { right: 30%; }
+.group { margin-top: 16px; border-radius: 16px; background: var(--card); overflow: hidden; }
+.item { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+.item + .item { box-shadow: inset 0 1px 0 var(--edge); }
+.item .ic { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: #fff; font-size: 14px; font-weight: 700; background: var(--c); flex: none; }
+.item b { display: block; font-weight: 600; font-size: 14px; }
+.item span { display: block; color: var(--fg2); font-size: 12.5px; }
+.item em { margin-left: auto; font-style: normal; font-size: 12px; font-weight: 600; color: color-mix(in srgb, var(--c2, var(--fg2)) 80%, white); }
+.ask { margin-top: 16px; border-radius: 16px; background: var(--card); box-shadow: inset 0 0 0 1px var(--edge); padding: 12px 12px 10px; }
+.ask .ph { color: var(--fg2); font-size: 15px; padding: 2px 4px 12px; }
+.ask .rowb { display: flex; align-items: center; gap: 8px; }
+.ask .proj { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; background: var(--card-2); font-size: 13px; font-weight: 500; }
+.ask .send { margin-left: auto; width: 32px; height: 32px; border-radius: 50%; background: var(--blue); display: grid; place-items: center; color: #fff; font-weight: 700; }
+.hover { width: 400px; background: #000; border-radius: 0 0 22px 22px; padding: 40px 16px 14px; position: relative; box-shadow: 0 0 0 1px var(--edge), 0 18px 40px rgba(0,0,0,.5); }
+.hover .top { color: var(--fg2); font-size: 12px; }
+.hover .fact { font-weight: 600; font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 7px; }
+.hover .acts { display: flex; gap: 8px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 7px 11px 7px 7px; border-radius: 10px; background: var(--card-2); font-size: 13px; font-weight: 500; }
+.pill .ic { width: 18px; height: 18px; border-radius: 5px; background: var(--c); display: grid; place-items: center; font-size: 10px; color: #fff; font-weight: 700; }
+</style></head>
+<body>
+<h1>Black, with colour that means something</h1>
+<p class="sub">Pure black like the notch. Each place and each kind of news has its own colour, all from one family that sits well on black.</p>
+<div class="row">
+  <div>
+    <div class="panel"><div class="notch"></div><div class="inner">
+      <div class="bar"><span class="chip"><span class="dot" style="background:var(--green)"></span>my-shop</span><span>Checked 1 hour ago</span></div>
+      <div class="tabs">
+        <span class="tab on" style="--c:var(--blue)"><span class="ic">●</span>Now</span>
+        <span class="tab" style="--c:var(--purple)"><span class="ic">✦</span>Learn</span>
+        <span class="tab" style="--c:var(--orange)"><span class="ic">↺</span>History</span>
+        <span class="tab" style="--c:var(--pink)"><span class="ic">♥</span>Memory</span>
+      </div>
+      <div class="hero"><div class="words"><span class="tag" style="--c:var(--purple)"><i></i>Practice ready</span><h2>Find it, fix it, prove it</h2><p class="line">A Join button that fails, on a practice copy.</p>
+        <div class="btns"><button class="b1">Check my project</button><button class="b2">Skip</button></div></div><div class="orb"></div></div>
+      <div class="group">
+        <div class="item" style="--c:var(--green);--c2:var(--green)"><span class="ic">✓</span><div><b>Last check passed</b><span>Build, tests and the page</span></div><em>2 h ago</em></div>
+        <div class="item" style="--c:var(--orange);--c2:var(--orange)"><span class="ic">!</span><div><b>3 changes to review</b><span>Made since your last check</span></div><em>Review</em></div>
+        <div class="item" style="--c:var(--red);--c2:var(--red)"><span class="ic">⚿</span><div><b>A key is in pay.js</b><span>Line 2. Move it to .env</span></div><em>Fix it</em></div>
+      </div>
+      <div class="ask"><div class="ph">What are you stuck on?</div><div class="rowb"><span class="proj"><span class="dot" style="background:var(--green)"></span>my-shop</span><span class="send">↑</span></div></div>
+    </div></div>
+    <div class="cap">Home from the notch. Blue for actions, purple for practice and learning, orange for "take a look", red for a real problem, green for proven.</div>
+  </div>
+  <div>
+    <div class="hover"><div class="notch"></div>
+      <div class="top">Hey Rishabh · my-shop</div>
+      <div class="fact"><span class="dot" style="background:var(--orange)"></span>3 changes to review</div>
+      <div class="acts"><span class="pill" style="--c:var(--blue)"><span class="ic">?</span>Ask</span><span class="pill" style="--c:var(--orange)"><span class="ic">!</span>Review changes</span><span class="pill" style="--c:var(--green)"><span class="ic">✓</span>Check</span></div>
+    </div>
+    <div class="cap">The hover panel: the same colours, so it looks like the same product.</div>
+    <div class="panel" style="margin-top:24px"><div class="notch"></div><div class="inner">
+      <div class="tabs">
+        <span class="tab" style="--c:var(--blue)"><span class="ic">●</span>Now</span>
+        <span class="tab on" style="--c:var(--purple)"><span class="ic">✦</span>Learn</span>
+        <span class="tab" style="--c:var(--orange)"><span class="ic">↺</span>History</span>
+        <span class="tab" style="--c:var(--pink)"><span class="ic">♥</span>Memory</span>
+      </div>
+      <div class="group">
+        <div class="item" style="--c:var(--purple)"><span class="ic">1</span><div><b>A Join button that fails</b><span>Find it, fix it, prove it</span></div><em>3 min</em></div>
+        <div class="item" style="--c:var(--teal)"><span class="ic">2</span><div><b>A key in the code</b><span>Watch the review catch it</span></div><em>1 min</em></div>
+        <div class="item" style="--c:var(--pink)"><span class="ic">3</span><div><b>A page that won't load</b><span>A missing setting</span></div><em>3 min</em></div>
+      </div>
+    </div></div>
+    <div class="cap">Learn: each practice gets its own colour tile, like the Mac's own Settings.</div>
+  </div>
+</div>
+</body></html>

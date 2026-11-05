@@ -45,7 +45,8 @@ describe("what search finds", () => {
     for (const q of ["mic", "microphone", "talk", "speak", "voice", "dictate"]) expect(keysFor(q), q).toContain("talk.voice");
     for (const q of ["shortcut", "hotkey", "keys", "stop", "panic"]) expect(keysFor(q), q).toContain("keys.hotkeys");
     for (const q of ["cost", "money", "spend", "limit", "budget"]) expect(keysFor(q), q).toContain("spend.dailyLimit");
-    for (const q of ["dark", "light", "theme"]) expect(keysFor(q), q).toContain("look.theme");
+    // M71: one black look; dark, light and theme find the Colour row, which says so.
+    for (const q of ["dark", "light", "theme"]) expect(keysFor(q), q).toContain("look.colour");
     for (const q of ["quiet", "calm", "still", "animation", "battery"]) expect(keysFor(q), q).toContain("character.lively");
     for (const q of ["zoom", "screen share", "record"]) expect(keysFor(q), q).toContain("sharing.hide");
     expect(keysFor("replay")).toContain("fixed:replay");

@@ -31,15 +31,18 @@ describe("History as a timeline (spec 3.6)", () => {
     expect(historyTime(item(1, at(2026, 11, 4, 0, 5)))).toBe("12:05 am");
     expect(historyTime(item(1, "x", "x"))).toBeNull();
   });
-  test("the page: the Undo order is one caption on top, day headings, no cost, and an empty state that starts the practice", () => {
+  // M71 (one structure): the lead says the Undo order with the count, the one list says the day on each row (the time
+  // today, else the day), and the empty list is one row with Start practice.
+  test("the page: the Undo order said once in the lead, the day on each row, no cost, and an empty row that starts the practice", () => {
     const card = read("./card.tsx");
     const panel = card.slice(card.indexOf("function HistoryPanel("), card.indexOf("function MemoryList("));
-    expect(panel.indexOf("{S.screens.undoCaption}")).toBeLessThan(panel.indexOf("historyDays(shown, now, S.screens)"));
-    expect(panel).toContain('<h3 className="hist-day-title"');
+    expect(panel.indexOf("S.screens.undoCaption")).toBeLessThan(panel.indexOf("<ListGroup"));
+    expect(panel).toContain("historyDays([h], now, S.screens)");
     expect(panel).toContain('<time className="hist-time"');
     expect(panel).not.toContain("costWords");
     expect(panel).not.toContain("S.historyUndoWhy");
-    expect(panel).toContain("{S.screens.historyEmpty}");
+    expect(panel).toContain("<EmptyRow icon=\"undo\" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}");
+    expect(panel).toContain("{ label: S.screens.startPractice, colour: \"purple\", onClick: onPractice }");
     expect(card).toContain("onPractice={groups.groupOn(\"guide\") ? () => beginPractice(FIRST_PRACTICE) : undefined}");
   });
 });
@@ -72,10 +75,11 @@ describe("Learn, calm and useful (spec 3.8)", () => {
     expect(practicePath([row("a", "done"), row("b", "notStarted"), row("c", "notStarted")])).toBe("b");
     expect(practicePath([row("a", "done")])).toBeNull();
   });
-  test("the lead shows Find it, Fix it, Prove it; the rest fold to one line; no cost line; no dead end Close", () => {
+  // M71: the practice to do now is Learn's featured card (what it teaches, its time, Start); every practice is one row.
+  test("the lead is the practice to do now with what it teaches; each practice is one row; no cost line; no dead end Close", () => {
     const panel = read("./practicePanel.tsx");
-    expect(panel).toContain("S.screens.pathSteps.map(");
-    expect(panel).toContain("{lead && <div className=\"line\">{r.teaches}</div>}");
+    expect(panel).toContain("const leadId = openId ? null : practicePath(rows);");
+    expect(panel).toContain("line={<><p className=\"ui-lead-line\">{lead.teaches}</p>");
     expect(panel).not.toContain("{r.time} · {r.cost}");
     const card = read("./card.tsx");
     expect(card).toContain("{S.screens.lessonsNone}");

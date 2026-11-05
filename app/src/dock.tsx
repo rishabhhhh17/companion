@@ -120,7 +120,7 @@ function Dock() {
   // The look (M19): the water's colour on this page and the character's size on the edge.
   const colours = useLook();
   const sizeSet = useSetting("look.size");
-  const waterSet = useSetting("look.water");
+  const waterSet = "ocean";   // look.water is retired (M71)
   // Two ways to draw Flowflow, one setting (character.live). On is the usual since 27 Oct 2026 (the founder: "I didn't see the
   // fluidity mechanics"). Off: the pose pictures,
   // moved by src/flow/ (a soft body of water in WebGL over the picture; the plain picture is the fallback). On: the founder's

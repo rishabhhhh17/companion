@@ -17,15 +17,13 @@
    Now and Learn are groups' rooms, so their row shows the group's gem in place of a drawing. The room's colours are read
    once on the list (--side-*), so a row that carries a gem's own element is still lit by the room it sits in: Now on a
    pink, green or sunset list is a pink, green or sunset row, never a blue one. */
-.home[data-side] .side { --side-row: var(--el-row); --side-text: var(--el-text); --side-glow: var(--el-glow); }
+.home[data-side] .side { --side-row: var(--el-row); --side-text: var(--el-text); }
 .home[data-side] .side .sb-item { border-radius: var(--r-card); }
 .home[data-side] .side .sb-item[aria-current="page"] { position: relative; background: var(--side-row); color: var(--fg); box-shadow: inset 0 var(--hair) 0 var(--sheen-line); transition: background-color var(--dur-3) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .home[data-side] .side .sb-item[aria-current="page"] .ic { color: var(--side-text); }
-.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); box-shadow: 0 0 8px var(--side-glow); animation: side-bar-in var(--dur-enter) var(--ease-out) both; }
+.home[data-side] .side .sb-item[aria-current="page"]::after { content: ""; position: absolute; left: 3px; top: 50%; width: 3px; min-height: 14px; margin-top: -7px; border-radius: var(--r-pill); background: var(--side-text); animation: side-bar-in var(--dur-enter) var(--ease-out) both; }
 @keyframes side-bar-in { from { transform: scaleY(.3); opacity: 0; } }
-.home[data-side] .side li[data-gem] .sb-item > .ic { display: var(--gem-icon-display); }
-.home[data-side] .side li[data-gem] .sb-item::before { content: ""; display: var(--gem-display); flex: none; width: 14px; min-height: 14px; margin: 2px; border-radius: var(--r-round); background: radial-gradient(circle at 34% 30%, var(--sheen-spec) 0, transparent 26%), linear-gradient(160deg, var(--el-grad-1), var(--el-grad-2) 55%, var(--el-grad-3)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 1px 3px var(--el-shadow); }
-.home[data-side] .side li[data-gem] .sb-item[aria-current="page"]::before { box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--el-deep) 70%, transparent), inset 0 -2px 3px color-mix(in srgb, var(--el-deep) 45%, transparent), 0 0 10px color-mix(in srgb, var(--el-glow) 70%, transparent); }
+
 /* A badge in the list is its dot alone, so the names have room; the row's tooltip and its spoken name carry the words, and
    History and Learn show them in full. Working breathes, Needs you is ringed, New is a plain grey dot. */
 .home[data-side] .side-work .stamp[data-dot] { justify-content: center; width: var(--icon-md); min-height: var(--icon-md); padding: 0; background: transparent; }
@@ -67,7 +65,7 @@
    between the water and the box). It still sticks to the foot once the work is taller than Home. The light's switch sets
    both (ui/tokens.css --ask-push, --sea-fill-show). */
 .home[data-side] .work > .askwrap { margin-top: var(--ask-push); }
-.home[data-side] .sea-fill { display: var(--sea-fill-show); }
+
 /* Under the ask box, a solid band in exactly the colour of the room's floor there (the floor is flat along the bottom,
    ui/look.css .room-floor), so at rest it cannot be seen, and work that scrolls under it fades into the floor instead of
    showing through as a ghost or meeting a tonal step. It needs no blur, so it does not depend on backdrop-filter. */
@@ -76,7 +74,7 @@
    out of sight before the band and never meets it as a hard line or a stray arc. It shows only while there is more work
    below to scroll to (data-more, homeLayout.ts useMoreBelow): at rest, and at the end of the list, the last card reads in
    full right down to the ask box. */
-.home[data-side] .work > .askwrap::before { content: ""; position: absolute; z-index: -1; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); bottom: 100%; height: calc(var(--fade) * 2); background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--band) 40%, transparent) 35%, color-mix(in srgb, var(--band) 80%, transparent) 62%, var(--band) 85%); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
+.home[data-side] .work > .askwrap::before { content: ""; position: absolute; z-index: -1; left: calc(var(--space-6) * -1); right: calc(var(--space-6) * -1); bottom: 100%; height: calc(var(--fade) * 2); opacity: 0; transition: opacity var(--dur-2) var(--ease-out); pointer-events: none; }
 .home[data-side][data-more] .work > .askwrap::before { opacity: 1; }
 /* M69 step 3: Friendly too: nothing fades over the work above the ask box (a fade hid a card's Undo and its proof), so no
    button ever sits under one; a hairline marks where the work goes under it, as in Instrument (ui/chrome.css). */
@@ -102,12 +100,7 @@
 /* It grows up beside the words, never down: the part above the usual size takes no height, so the status, the cards under
    it and the ask box keep their places. */
 .home[data-side] .home-pond .home-char { margin-top: calc((var(--char) - 104rem / 14) * -111 / 156 - 8px); }
-/* At rest, with nothing under the status yet, the water goes on down to the ask box: Flowflow floats on a sea that fills the
-   work, instead of a dead band between the waterline and the box (M51 polish). The water under the line is solid sea, and
-   the sea below it fades into the page at the ask box. */
-.home[data-side] .hero:has(+ .sea-fill) { margin-bottom: 0; }
-.home[data-side] .hero:has(+ .sea-fill) .ch-water { background: linear-gradient(180deg, transparent 0, transparent var(--wave-foot), var(--sea-tint) var(--wave-foot), var(--sea-tint) calc(var(--wave-foot) + 12px), color-mix(in srgb, var(--sea-tint) var(--sea-tail-a), transparent)); }
-.home[data-side] .sea-fill { flex: 1 0 0; margin: 0 calc(var(--space-6) * -1); opacity: var(--sea-fill-a); background: linear-gradient(180deg, color-mix(in srgb, var(--sea-tint) 80%, transparent) 0, color-mix(in srgb, var(--sea-tint) 45%, transparent) 55%, transparent 100%); }
+
 .home[data-side] .work > .askwrap .ask { margin-bottom: 0; }
 .home[data-side] .work > .askwrap details.more { margin-bottom: 0; }
 

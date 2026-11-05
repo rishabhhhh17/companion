@@ -57,3 +57,14 @@ After seeing the M68 wings and hello, the founder: "I don't want Squibby to be t
 - Open, Settings or a button grows the same black shape on into the full Home.
 
 Plan: docs/milestones/M70-practical-notch.md.
+
+## Update, 5 Nov 2026 (founder)
+
+The founder, looking at Home from the notch in their own look: "these colors don't look good, it feels so random", "I need it to be black with accents of different color", "look at how well structured fanout.sh is", and on approving: "Just make it simple, good, and useful, with a little bit of fun here and there, and immersive. I don't want to do this again and again."
+
+- The looks are now one black look with meaning colours, and one structure on every screen (the bar, the places, the lead, one grouped list, the ask box on Now). This changes the M51, M65 and M69 look choices and the "as much customization as possible" note for the look only.
+- The Look page keeps four choices: Colour (Colourful, the usual; Calm, the same layout with blue as the only colour), Character, Layout and Text size.
+- Theme, Water, Gloss, Light, Corners, Icons, Stamps, Style and Spacing leave the Look page, and Colour's Vivid is gone. Their stored values still load and are ignored (rule: a stored setting always loads), so the founder's own Friendly, Vivid and Deep now shows the black look.
+- Status first and quiet by choice (this record) are unchanged.
+
+Plan: docs/milestones/M71-black-with-colour.md.
