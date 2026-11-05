@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## A practical notch: 5 Nov 2026
+
+- **The notch looks like the notch again.** Nothing sits beside it while Squibby rests, and there is no hello when you start or wake your Mac. While a job works you see one small mark, and a question shows a small amber dot. Both old looks are still in Settings if you liked them.
+- **Rest the pointer on the notch for a small panel.** It leads with one useful thing, such as "my-shop: 3 changes to review" or "my-shop: not checked yet", with Settings and Open beside it, and a few buttons under it: Ask, Review changes, Check my project, Check before going live or Undo last change. After a failed check the button says Find and fix the problem; with no project it offers Pick a project. While a fix runs, the panel shows the fix, its time so far and Stop. No greeting and no character in it.
+- **One more click for everything else.** Settings opens Squibby on Settings and Open opens Squibby. Each button opens Squibby at the right place, growing out of the same black shape, with no flash of the bare notch in between. Your app keeps the keyboard until you click into Squibby. Move away and the panel folds back, its words fading out instead of blinking away.
+- **Clicks beside the panel reach what is behind it.** A click just past the small panel's round corners, or where the panel was while it folds away, now goes to the menu bar or the app under it. While Squibby grows out of the panel, the black you see beside the notch is Squibby's, and nothing you cannot see takes a click.
+- **Settings says what the panel does.** The help for pointing at the notch, the hello and Your name no longer promise a greeting on hover. Your name is used only by the hello, if you turn it on.
+- **Smoother and easier to read.** The panel's corners grow and fold with it instead of jumping, its words wait until there is room for them, the mark beside the notch steps aside while the panel says the same thing (the listening and screen marks always stay), and the edges of the black shape no longer show thin grey lines. In the White look, Squibby opened from the notch is now light with dark words instead of dark words on black.
+
 ## Clearer screens after a fix and a review: 4 Nov 2026
 
 - **No key, no cost.** Squibby pays for the AI it uses, so nothing asks you to connect Claude or add a key: the notch says "Squibby is getting ready on this Mac" instead, and an engine problem says it is on our side. Home, the notch and the practice no longer show what a job cost. Your own Claude key is still there for developers, under Settings, Account, Show all options.

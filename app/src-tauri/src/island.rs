@@ -396,17 +396,55 @@ pub fn inside_shape(rects: &[Rect], pt: (f64, f64), slack: f64) -> bool {
     rects.iter().enumerate().any(|(i, r)| {
         let (x0, y0, x1, y1) = (r[0] - slack, r[1] - slack, r[0] + r[2] + slack, r[1] + r[3] + slack);
         if !(pt.0 >= x0 && pt.0 < x1 && pt.1 >= y0 && pt.1 < y1) { return false; }
-        if i != last { return true; }
-        // The round foot: below the corner's centre line and beside it, the point must be within the corner's circle.
-        let rad = OPEN_R.min(r[2] / 2.0).min(r[3]);
-        let cy = r[1] + r[3] - rad;
-        if pt.1 <= cy { return true; }
-        let cxl = r[0] + rad;
-        let cxr = r[0] + r[2] - rad;
-        let dx = if pt.0 < cxl { cxl - pt.0 } else if pt.0 > cxr { pt.0 - cxr } else { 0.0 };
-        let dy = pt.1 - cy;
-        (dx * dx + dy * dy).sqrt() <= rad + slack
+        i != last || on_foot(*r, OPEN_R, pt, slack)
     })
+}
+/// Whether `pt` (already in `r` grown by `slack`) is on its round bottom corners of radius `rad`: below a corner's centre
+/// line and beside it, the point must be within the corner's circle.
+fn on_foot(r: Rect, rad: f64, pt: (f64, f64), slack: f64) -> bool {
+    let rad = rad.min(r[2] / 2.0).min(r[3]).max(0.0);
+    let cy = r[1] + r[3] - rad;
+    if pt.1 <= cy { return true; }
+    let cxl = r[0] + rad;
+    let cxr = r[0] + r[2] - rad;
+    let dx = if pt.0 < cxl { cxl - pt.0 } else if pt.0 > cxr { pt.0 - cxr } else { 0.0 };
+    let dy = pt.1 - cy;
+    (dx * dx + dy * dy).sqrt() <= rad + slack
+}
+
+/// M70 step 5: Home grown from the notch's small panel. While it opens, homeShape.ts draws the band at the panel's width
+/// (`from`), so the hit test takes that band too: the band is never narrower than `from_w`. Otherwise `shape_rects`.
+pub fn shape_rects_from(p: &HomePanel, open: bool, h: f64, from_w: Option<f64>) -> Vec<Rect> {
+    let mut r = shape_rects(p, open, h);
+    if let (Some(w), Some(band)) = (from_w, r.first_mut()) {
+        if p.kind != "free" && w > band[2] { *band = [p.frame[0] + p.cx - w / 2.0, band[1], w, band[3]]; }
+    }
+    r
+}
+/// How long after the opening starts the panel's band stays in Home's hit test: the opening (the height's delay and its
+/// spring, --seq-notch-height-at and --dur-notch-open-h), then the close curve's middle as the band eases back to the
+/// notch and its wings (homeShape.css data-from). Pinned against tokens.css.
+pub const FROM_BAND_MS: u64 = 780;
+/// The panel's band width now, from what the shell kept at the opening (`(width, until)`, epoch ms) and the time `t`.
+pub fn from_band(kept: Option<(f64, u64)>, t: u64) -> Option<f64> { kept.filter(|k| t < k.1).map(|k| k.0) }
+
+/// The small panel's bottom corners when fully open (style.css `.island.notch { --r-open: 22px }`, and the usual --r-card
+/// on the pill and the line). The window is exactly the panel, so the clear parts are only beside these corners.
+pub const PANEL_R_NOTCH: f64 = 22.0;
+pub const PANEL_R_CARD: f64 = 12.0;
+/// The bottom corner the island's shape is drawn with in a mode, for the click through: only the small panel (Peek,
+/// WingsPeek) is cut; at rest and with the wings out the window is the shape, as before.
+pub fn island_corner(mode: Mode, kind: Kind) -> f64 {
+    match (mode, kind) { (Mode::Peek | Mode::WingsPeek, Kind::Notch) => PANEL_R_NOTCH, (Mode::Peek | Mode::WingsPeek, _) => PANEL_R_CARD, _ => 0.0 }
+}
+/// Whether the island's window should let the pointer at `pt` through: it is on the window (`window`, its frame now) but
+/// not on the shape drawn in it (`shape`: the frame the shape is at or tucking into, and its bottom corner). Off the
+/// window there is nothing to pass, so the window stays as it is and its hover tracking keeps working. Pure.
+pub fn island_pass(window: Option<Rect>, shape: (Rect, f64), pt: (f64, f64)) -> bool {
+    let Some(w) = window else { return false };
+    if !contains(w, pt) { return false; }
+    let (r, rad) = shape;
+    !(contains(r, pt) && on_foot(r, rad, pt, 0.0))
 }
 
 /// A Home that pointing opened folds back once the pointer has been off its shape for the grace (island.closeDelay, the
@@ -603,12 +641,22 @@ pub fn mode(s: State) -> Mode {
     }
 }
 
-/// What resting the pointer on the island opens (island.pointOpens, 2 Nov 2026; the founder pointed at the notch, got a
-/// black strip with one line, and said "it needs to be open"): Home itself, the usual, or the status line under the notch
-/// (the peek from before). A word the file holds wrongly is the usual.
+/// What resting the pointer on the island opens (island.pointOpens). M70 (the founder, 4 Nov 2026: "When you first hover
+/// over it, a small text or some normal things come, and then when you go to the settings, everything else comes"): the
+/// small panel first (Status), the usual, or Home right away. A word the file holds wrongly is the usual.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PointOpens { Home, Status }
-impl PointOpens { pub fn of(word: &str) -> PointOpens { if word == "status" { PointOpens::Status } else { PointOpens::Home } } }
+impl PointOpens { pub fn of(word: &str) -> PointOpens { if word == "home" { PointOpens::Home } else { PointOpens::Status } } }
+
+/// M70: the size of the small panel the island shows now (its window, width and height from the top edge), or None when it
+/// shows none. Home opening at that moment grows on from it (homeShape.ts `from`), so the black shape is one shape all the
+/// way from the panel into Home. Read before the hover is forgotten (main.rs open_card_then).
+pub fn panel_rect(d: &Display, s: State) -> Option<(f64, f64)> {
+    let m = mode(State { home_open: false, ..s });
+    if !matches!(m, Mode::Peek | Mode::WingsPeek) { return None; }
+    let f = look_winged(d, m, f64::from(s.panel), f64::from(s.wing)).frame;
+    Some((f[2], f[3]))
+}
 
 /// What the pointer resting on the island does once the open wait has passed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -754,6 +802,52 @@ mod tests {
         assert_eq!(notch_from(1512.0, 32.0, 300.0, 300.0), None, "912 points is not a notch");
         assert_eq!(notch_from(1512.0, -5.0, 663.5, 663.5), None);
         assert_eq!(notch_from(1512.0, f64::NAN, 663.5, 663.5), None);
+    }
+    #[test]
+    fn home_grows_from_the_small_panel_only_while_the_island_shows_it() {
+        let d = mbp14();
+        let st = |hover: bool, alert: bool, ask: bool| State { hover, alert, home_open: false, panel: 132, ask, quiet: false, wing: 40 };
+        // The pointer opened the small panel: Home grows from exactly that window, PANEL_W wide, the row and 132 tall.
+        let (w, h) = panel_rect(&d, st(true, false, false)).unwrap();
+        assert_eq!((w, h), (PANEL_W, frame_of(&d, Mode::Peek, 132.0)[3]));
+        assert_eq!(h, look(&d, Mode::Rest, PANEL_MIN).row + 132.0);
+        // Under the wings while something runs, and for a question that opened it by itself.
+        assert_eq!(panel_rect(&d, st(true, true, false)).map(|r| r.0), Some(PANEL_W));
+        assert!(panel_rect(&d, st(false, true, true)).is_some());
+        // No panel: none (Home grows from the notch or the wings as before). Home already open counts as not open here.
+        assert_eq!(panel_rect(&d, st(false, false, false)), None);
+        assert_eq!(panel_rect(&d, st(false, true, false)), None);
+        assert!(panel_rect(&d, State { home_open: true, ..st(true, false, false) }).is_some());
+        // The pill and the edge line show the same panel.
+        assert_eq!(panel_rect(&air(), st(true, false, false)).map(|r| r.0), Some(PANEL_W));
+    }
+    #[test]
+    fn pointing_opens_the_small_panel_by_default_and_home_right_away_is_a_choice() {
+        assert_eq!(PointOpens::of("status"), PointOpens::Status);
+        assert_eq!(PointOpens::of("home"), PointOpens::Home);
+        assert_eq!(PointOpens::of(""), PointOpens::Status, "nothing stored is the usual: the small panel first");
+        assert_eq!(PointOpens::of("nonsense"), PointOpens::Status);
+    }
+    #[test]
+    fn stop_everything_closes_the_small_panel_and_forgets_the_hover_until_the_pointer_leaves() {
+        let main = include_str!("main.rs");
+        let body = |n: &str| { let at = main.find(n).unwrap(); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
+        assert!(body("fn home_stop_now(").contains("home_fold("));
+        assert!(body("fn home_fold(").contains("home_closed();"));
+        let closed = body("fn home_closed(");
+        assert!(closed.contains("reset_hover();") && closed.contains("place_island(mtm, false, \"home_closed\")"), "{closed}");
+        assert_eq!(main.matches("home_stop_now(\"stop_everything\")").count(), 2, "the hotkey and the menu");
+        // Forgetting the hover leaves the pointer counted outside: macOS tells only of entering and leaving, so the panel
+        // opens again only once the pointer has left and come back.
+        let mut h = Hover::new();
+        h.enter(0);
+        assert!(h.at(400));
+        let mut h = Hover::new();   // reset_hover
+        assert!(!h.at(10_000) && h.wait_ms(10_000).is_none());
+        h.exit(10_100);
+        assert!(!h.at(20_000));
+        h.enter(20_000);
+        assert!(h.at(20_400));
     }
     #[test]
     fn on_a_notch_the_island_at_rest_is_exactly_the_notch() {
@@ -1045,8 +1139,8 @@ mod tests {
         assert!(off.contains("island::inside_shape(") && off.contains("home_pass(false)"), "{off}");
         assert!(main_body("fn home_may_key(").contains("island::home_can_key(!HOME_PASS.load(Ordering::SeqCst), HOME_KEY_BY_KEY.load(Ordering::SeqCst))"));
         // The click through follows each mouse move at once (the monitors the ring already has), not only the 50 ms watch.
-        assert!(main.contains("let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); home_pointer_moved(); });"));
-        assert!(main.contains("let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); home_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });"));
+        assert!(main.contains("let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); home_pointer_moved(); island_pointer_moved(); });"));
+        assert!(main.contains("let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); home_pointer_moved(); island_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });"));
         assert!(main_body("fn home_pointer_moved(").contains("home_pass(on)"));
         // Only a press on the shape makes a pointing opened Home the person's.
         assert!(main.contains("if which == \"card\" && home_on_shape_now() { HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()).pressed_inside(); }"));
@@ -1267,13 +1361,12 @@ mod tests {
         assert!(h.at(70_001 + HOVER_IN_MS));
     }
     #[test]
-    fn pointing_at_the_notch_opens_home_itself_unless_the_setting_says_the_status_line() {
-        // 2 Nov 2026, the founder pointed at the notch, got only a black strip with one line, and said "it needs to be
-        // open": resting the pointer opens Home (after island.openDelay, the Hover above), the usual; Status line is the
-        // old peek.
+    fn pointing_at_the_notch_opens_what_the_setting_says() {
+        // 2 Nov 2026 made Home the usual; M70 (4 Nov 2026, the founder: "just like HeyClicky's notch") makes the small panel
+        // the usual again, with Home right away a choice. Either opens after island.openDelay (the Hover above).
         assert_eq!(PointOpens::of("home"), PointOpens::Home);
         assert_eq!(PointOpens::of("status"), PointOpens::Status);
-        for odd in ["", "Home", "peek", "nonsense"] { assert_eq!(PointOpens::of(odd), PointOpens::Home, "{odd:?} is the usual"); }
+        for odd in ["", "Home", "peek", "nonsense"] { assert_eq!(PointOpens::of(odd), PointOpens::Status, "{odd:?} is the usual"); }
         let rest = State::default();
         assert_eq!(on_point(rest, PointOpens::Home), PointDo::OpenHome);
         assert_eq!(on_point(rest, PointOpens::Status), PointDo::Status);
@@ -1966,5 +2059,98 @@ mod tests {
                 if full { assert_eq!(body[3], SETTINGS_H, "{}", d.id); } else { assert!(body[3] >= 480.0, "{}: still room to read", d.id); }
             }
         }
+    }
+    // ---- M70 step 5: the small panel and Home grown from it never take a click outside what is drawn ----
+    #[test]
+    fn the_small_panel_lets_clicks_beside_its_round_corners_through() {
+        for d in [mbp14(), air(), ext()] {
+            for m in [Mode::Peek, Mode::WingsPeek] {
+                let f = frame_of(&d, m, 120.0);
+                let rad = island_corner(m, kind(&d));
+                assert!(rad > 0.0, "{} {m:?}: the panel has round bottom corners", d.id);
+                let shape = (f, rad);
+                let (x0, x1, y1) = (f[0], f[0] + f[2], f[1] + f[3]);
+                // The clear corners beside the round foot pass the click on to what is behind.
+                assert!(island_pass(Some(f), shape, (x0 + 1.0, y1 - 1.0)), "{} {m:?}: bottom left corner", d.id);
+                assert!(island_pass(Some(f), shape, (x1 - 1.0, y1 - 1.0)), "{} {m:?}: bottom right corner", d.id);
+                // On the black: the panel's.
+                assert!(!island_pass(Some(f), shape, (cx(f), y1 - 1.0)), "{} {m:?}: the foot's middle", d.id);
+                assert!(!island_pass(Some(f), shape, (x0 + rad, y1 - 1.0)), "{} {m:?}: under the corner's middle", d.id);
+                assert!(!island_pass(Some(f), shape, (x0 + 1.0, y1 - rad)), "{} {m:?}: the straight side", d.id);
+                assert!(!island_pass(Some(f), shape, (x0 + 1.0, f[1] + 1.0)), "{} {m:?}: the top corners are square", d.id);
+                // Off the window: nothing to decide (the window stays as it is, so its hover tracking keeps working).
+                assert!(!island_pass(Some(f), shape, (x0 - 1.0, y1 - 1.0)));
+                assert!(!island_pass(None, shape, (cx(f), y1 - 1.0)));
+                // While the shape tucks back after the pointer left, the window keeps the panel's frame for RETRACT_MS:
+                // only the shape it is tucking into is the island's; the clear rest of the old frame lets clicks through.
+                let rest = frame_of(&d, Mode::Rest, 0.0);
+                let tuck = (rest, island_corner(Mode::Rest, kind(&d)));
+                assert!(island_pass(Some(f), tuck, (x0 + 2.0, rest[1] + 2.0)), "{} {m:?}: the old panel's strip beside the notch", d.id);
+                assert!(island_pass(Some(f), tuck, (cx(f), y1 - 2.0)), "{} {m:?}: where the panel was", d.id);
+                assert!(!island_pass(Some(f), tuck, (cx(rest), rest[1] + rest[3] / 2.0)), "{} {m:?}: the notch itself", d.id);
+            }
+            // At rest and with the wings out the window is the shape, as before: no corner is cut.
+            for m in [Mode::Rest, Mode::Alert] {
+                let f = frame_of(&d, m, 0.0);
+                assert_eq!(island_corner(m, kind(&d)), 0.0);
+                assert!(!island_pass(Some(f), (f, 0.0), (f[0] + 0.5, f[1] + f[3] - 0.5)), "{} {m:?}", d.id);
+            }
+        }
+        // The corners are the page's (style.css): 22 on the notch, the card radius on the pill and the line.
+        let css = include_str!("../../src/style.css");
+        assert!(css.contains(".island.notch { --r-open: 22px; }"), "PANEL_R_NOTCH matches style.css");
+        assert_eq!(PANEL_R_NOTCH, 22.0);
+        let tokens = include_str!("../../src/ui/tokens.css");
+        assert!(tokens.contains(&format!("--r-card: {}px;", PANEL_R_CARD as i64)), "PANEL_R_CARD matches the usual --r-card");
+    }
+    #[test]
+    fn the_island_window_follows_the_pointer_against_its_shape_never_keys() {
+        let main = include_str!("main.rs");
+        let moved = main_body("fn island_pointer_moved(");
+        assert!(moved.contains("island::island_pass(") && moved.contains("setIgnoresMouseEvents("), "{moved}");
+        assert!(moved.contains("NSEvent::mouseLocation()"), "only where the pointer is");
+        // Both the global and the local mouse move monitors drive it, as they drive Home's click through.
+        assert_eq!(main.matches("home_pointer_moved(); island_pointer_moved();").count(), 2);
+        // The shape is set the moment the island is placed, before the window's frame waits for the tuck.
+        let place = main_body("fn place_island(");
+        let set = place.find("*ISLAND_SHAPE.lock()").expect("place_island sets the shape");
+        assert!(set < place.find("island::retract_ms(").unwrap(), "the shape before the retract wait");
+        assert!(place.contains("island::island_corner(mode, kind)"));
+        // A pointer that moves into a clear corner leaves the island (its tracking area may say nothing while the window
+        // lets the pointer through), and coming back onto the black enters it again.
+        assert!(moved.contains("island_hover_changed(false)") && moved.contains("island_hover_changed(true)"), "{moved}");
+    }
+    #[test]
+    fn home_grown_from_the_small_panel_keeps_the_panels_band_in_its_hit_test_while_drawn() {
+        let d = mbp14();
+        let p = panel(&d);
+        let plain = shape_rects(&p, true, 480.0);
+        let from = shape_rects_from(&p, true, 480.0, Some(PANEL_W));
+        // The band is the panel's 400 points, centred on the notch, in the menu bar row, as homeShape.ts draws it while
+        // opening (notchQuick.test.ts: band [cx - 200, 0, 400, 32]); the body is unchanged.
+        assert_eq!(from[0], [p.frame[0] + p.cx - PANEL_W / 2.0, p.frame[1], PANEL_W, p.band.1]);
+        assert_eq!(from[1], plain[1]);
+        assert!(p.band.0 < PANEL_W, "the wings band is narrower than the panel");
+        assert!(inside_shape(&from, (from[0][0] + 2.0, 5.0), 0.0), "the black beside the notch, drawn 400 wide, is Home's");
+        assert!(!inside_shape(&plain, (from[0][0] + 2.0, 5.0), 0.0));
+        // Never narrower than the band; nothing while closed; none for a Home with no island.
+        assert_eq!(shape_rects_from(&p, true, 480.0, Some(10.0)), plain);
+        assert_eq!(shape_rects_from(&p, true, 480.0, None), plain);
+        assert!(shape_rects_from(&p, false, 480.0, Some(PANEL_W)).is_empty());
+        // Only until the band has eased halfway back to the wings (open, then the close curve's middle).
+        assert_eq!(from_band(Some((PANEL_W, 1_000)), 999), Some(PANEL_W));
+        assert_eq!(from_band(Some((PANEL_W, 1_000)), 1_000), None);
+        assert_eq!(from_band(None, 0), None);
+        let tokens = include_str!("../../src/ui/tokens.css");
+        let ms = |name: &str| -> f64 { let s = &tokens[tokens.find(&format!("{name}: ")).unwrap() + name.len() + 2..]; s[..s.find("ms").unwrap()].parse().unwrap() };
+        let close = &tokens[tokens.find("--ease-notch-close: linear(").unwrap() + 27..];
+        let pts: Vec<f64> = close[..close.find(')').unwrap()].split(',').map(|x| x.trim().parse().unwrap()).collect();
+        let half = pts.iter().position(|y| *y >= 0.5).unwrap() as f64 / (pts.len() - 1) as f64 * ms("--dur-notch-close");
+        let want = ms("--seq-notch-height-at") + ms("--dur-notch-open-h") + half;
+        assert!((FROM_BAND_MS as f64 - want).abs() <= 10.0, "FROM_BAND_MS {FROM_BAND_MS} vs {want}");
+        // The shell keeps it from the opening and asks again when it ends.
+        let open = main_body("fn open_card_then(");
+        assert!(open.contains("*HOME_FROM.lock()") && open.contains("island::FROM_BAND_MS"), "{open}");
+        assert!(main_body("fn home_rects_now(").contains("island::shape_rects_from(") && main_body("fn home_rects_now(").contains("island::from_band("));
     }
 }

@@ -5,7 +5,8 @@ import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
-import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
+import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, openness, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
+import { latched, rowMarkShown } from "./notchQuick.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
 import { S } from "./strings.ts";
@@ -47,8 +48,9 @@ const shapeFrom = (v: unknown): Shape | null => {
  *  The window is centred on the notch at every size, so a shape centred in it stays put on the screen when the window
  *  changes. Size 0 (not told yet): the whole window. The spring is chosen once for each new size (islandSpring.ts
  *  springFor), and a shape getting smaller as the hover panel stops showing (`panelWas`, `panelNow`) waits for its words to
- *  leave first (tuckHoldMs). */
-function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean, panelWas: boolean, panelNow: boolean) {
+ *  leave first (tuckHoldMs). M70 step 4: each frame also says how far the panel is out (--open, from `look`: the row's
+ *  height and the panel's), so the corner follows the same spring. */
+function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean, panelWas: boolean, panelNow: boolean, look: { current: { row: number; panel: number } }) {
   const box = useRef<HTMLSpanElement>(null);
   const at = useRef<{ x: Spring; y: Spring } | null>(null);
   useEffect(() => {
@@ -56,8 +58,12 @@ function useSpringBox(w: number, h: number, reduced: boolean, soft: boolean, pan
     if (!el) return;
     // The size goes straight on the shape (M25), not through inherited variables, so a frame restyles the shape alone and not
     // everything inside it.
-    const draw = () => { const s = at.current; if (!s) return; el.style.width = `${Math.max(0, s.x.x)}px`; el.style.height = `${Math.max(0, s.y.x)}px`; };
-    if (!w || !h) { at.current = null; el.style.removeProperty("width"); el.style.removeProperty("height"); return; }
+    const draw = () => {
+      const s = at.current; if (!s) return;
+      el.style.width = `${Math.max(0, s.x.x)}px`; el.style.height = `${Math.max(0, s.y.x)}px`;
+      el.style.setProperty("--open", String(openness(s.y.x, look.current.row, look.current.panel)));
+    };
+    if (!w || !h) { at.current = null; el.style.removeProperty("width"); el.style.removeProperty("height"); el.style.removeProperty("--open"); return; }
     if (!at.current || reduced) { at.current = { x: { x: w, v: 0 }, y: { x: h, v: 0 } }; draw(); return; }
     // M66: growing on WORK, tucking back on CLOSE (never past the notch), the done pulse on HOVER. Chosen here, once for
     // this target (M66 step 5: chosen on every frame, a grow switched to CLOSE the moment it first passed its target).
@@ -175,7 +181,9 @@ function Island() {
   // it (islandPanel.ts notchStep: the work card's own steps). Off with Show the step on the notch (island.showStep).
   const showStep = useSetting("island.showStep") !== false;
   const tries = Number(useSetting("work.tries")) || 3;   // read every render: a hook is never skipped
-  const step = showStep ? notchStep(m, wings, tries) : null;
+  // M70: with Show wings at rest off (the usual), a job shows only its mark; the step is in the small panel instead.
+  const wingsAtRest = useSetting("island.wings") === true;
+  const step = showStep && wingsAtRest ? notchStep(m, wings, tries) : null;
   // The wings are as wide as the longest of the four words needs (measured below, hidden), so they grow once when work starts
   // and never at each step. 0 when no step shows: the app's usual wings.
   const measure = useRef<HTMLSpanElement>(null);
@@ -191,10 +199,10 @@ function Island() {
     return () => ro.disconnect();
   }, []);
   const wing = step && stepW > 0 ? stepW + STEP_ROOM : 0;
-  // M68 step 2b, the notch has presence: at rest, on a real notch, small wings with the Visor's lights on the left and one
-  // short word or a tick on the right (notchHello.ts restWings); the live wings take over while something happens. Off
-  // with Show wings at rest (island.wings): then the notch looks like the hardware again.
-  const wingsAtRest = useSetting("island.wings") !== false;
+  // M68 step 2b: at rest, on a real notch, small wings with the Visor's lights on the left and one short word or a tick on
+  // the right (notchHello.ts restWings); the live wings take over while something happens. M70 (the founder, 4 Nov 2026: "I
+  // don't want Squibby to be there always"): off by default (island.wings), so the notch looks like the hardware; a stored
+  // true brings the M68 wings back exactly.
   const restAt = restWings(m, now, { on: wingsAtRest, kind: shape.kind });
   const rest = wings ? null : restAt;
   // The word's own width, measured, so the right wing is as wide as it needs (island.rs keeps it within WING_MAX).
@@ -261,7 +269,7 @@ function Island() {
   const tryHello = useRef(async (why: HelloWhy, awayMs?: number) => {
     const ok = await gate.attempt((last) => {
       const r = helloNow.current;
-      return { why, now: Date.now(), last, on: setting("island.hello") !== false, quiet: false, homeOpen: r.homeUp, asking: r.ask, kind: shapeKind.current, hidden: document.hidden, awayMs };
+      return { why, now: Date.now(), last, on: setting("island.hello") === true, quiet: false, homeOpen: r.homeUp, asking: r.ask, kind: shapeKind.current, hidden: document.hidden, awayMs };
     }, () => invoke("quiet_now").then((q) => q === true).catch(() => true));   // not known: stay quiet
     if (ok) setHello(helloLine(cleanName(setting("you.name")), helloFact(helloNow.current.m, Date.now())));
   }).current;
@@ -339,7 +347,34 @@ function Island() {
   const panelNow = parts.panel;
   const panelWas = useRef(panelNow);
   useEffect(() => { panelWas.current = panelNow; });
-  const box = useSpringBox(shapeW, shape.h, reduced, soft, panelWas.current, panelNow);
+  // M70 step 4: Home grows from the small panel (main.rs open_card_then sends its size), but the shell forgets the hover in
+  // the same moment, and Home's page draws the panel's shape only a frame or two later. So while Home is up, a shape that
+  // was the panel (showing, or still tucking back from it) holds that size, under its words fading out, until it stops
+  // drawing once Home's shape covers it (homeShape.css, --seq-island-hide-at). Without this, for a frame or more neither
+  // window showed the panel: a blink to the bare notch. Hidden, it then settles at the shell's
+  // size, out of sight.
+  // The hold ends with the tuck (TUCK_MS), well after the island has stopped drawing (240 ms).
+  const heldBox = useRef<{ w: number; h: number } | null>(null);
+  if (panelNow && !homeUp) heldBox.current = { w: shapeW, h: shape.h };
+  const fromPanel = panelNow || tucking === "peek" || tucking === "wingsPeek";
+  const held = homeUp && fromPanel ? heldBox.current : null;
+  // The panel's height, for the corner (--open): measured, as the shell sizes the window from it.
+  const lookNow = useRef({ row: shape.row, panel: panelH });
+  lookNow.current = { row: shape.row, panel: panelH };
+  const box = useSpringBox(held ? held.w : shapeW, held ? held.h : shape.h, reduced, soft, panelWas.current, panelNow, lookNow);
+  // M70 step 4: what the panel shows is kept while it fades out (notchQuick.ts latched): `brief` and the hello follow the
+  // pointer, which has already gone in the frame the panel starts to leave, so without this the words switched to another
+  // view (or to nothing) and the fade had nothing left to fade.
+  // While Home grows from it, the panel stays laid out with its words, which fade as Home's shape covers them (ui/notch.css
+  // .island[data-home]): Home's own words arrive once its body is there, so the two overlap instead of leaving a gap.
+  const panelShown = parts.panel || held !== null;
+  const briefRef = useRef(!shape.hover);
+  // Latched on the pointer's panel, not on the held one: holding is exactly when the pointer has gone.
+  briefRef.current = latched(briefRef.current, parts.panel, !shape.hover);
+  const helloRef = useRef<typeof hello>(null);
+  helloRef.current = latched(helloRef.current, parts.panel, helloOn && !shape.hover ? hello : null);
+  // The live mark in the notch's row hides while the panel says the same in words, except listening and looking (rule 5).
+  const rowMode = tucking ?? shape.mode;
   // F19: a file dragged over the island lights it; dropping it opens its choices in Home.
   // The wing the app drew the window for (island.rs Look.wing); the usual 40 points until it says.
   // The step is as wide as the longest of the four words, so its line keeps one length from Finding to Proven.
@@ -351,8 +386,9 @@ function Island() {
         {/* The notch's own row: a click opens Home, as always. The wings are drawn in it while something happens. */}
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
-            <span className="island-wing left"><FlowMini className="island-flow" state={w.state} band /></span>
-            <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}<Mark w={w} count={m.approvals.length} reduced={reduced} /></span>
+            {/* M70: the Visor's lights only with Show wings at rest on; otherwise the left wing is plain black. */}
+            <span className="island-wing left">{wingsAtRest && <FlowMini className="island-flow" state={w.state} band />}</span>
+            <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}{rowMarkShown(rowMode, w.mark) && <Mark w={w} count={m.approvals.length} reduced={reduced} />}</span>
           </span>}
           {/* M68: the wings at rest. The lights glance once toward a new word on the right. */}
           {showWings && !w && r && <span aria-hidden="true" data-rest="">
@@ -364,7 +400,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={parts.panel} brief={!shape.hover} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloOn && !shape.hover ? hello : null} kept={kept} onKeep={keep} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} />
       </span>
     </main>
   );

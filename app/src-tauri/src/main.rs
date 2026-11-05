@@ -304,9 +304,13 @@ static HOME_SHOWN: AtomicBool = AtomicBool::new(false);
 static HOME_PASS: AtomicBool = AtomicBool::new(true);
 /// The pointer's leave grace for a Home that pointing opened (island.rs Leave).
 static HOME_LEAVE: Mutex<island::Leave> = Mutex::new(island::Leave::new(false));
+/// M70 step 5: Home grew from the notch's small panel: the panel's width and until when (epoch ms) its band is drawn that
+/// wide (island.rs FROM_BAND_MS), so the hit test takes the black the person sees. Set at the opening, cleared on close.
+static HOME_FROM: Mutex<Option<(f64, u64)>> = Mutex::new(None);
 fn home_rects_now() {
     let shown = HOME_SHOWN.load(Ordering::SeqCst);
-    let r = HOME_PANEL.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|p| island::shape_rects(p, shown, CARD_H.load(Ordering::SeqCst) as f64)).unwrap_or_default();
+    let from = island::from_band(*HOME_FROM.lock().unwrap_or_else(|e| e.into_inner()), now() as u64);
+    let r = HOME_PANEL.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|p| island::shape_rects_from(p, shown, CARD_H.load(Ordering::SeqCst) as f64, from)).unwrap_or_default();
     *HOME_RECTS.lock().unwrap_or_else(|e| e.into_inner()) = r;
 }
 /// The window lets the pointer through unless it is on the shape (`on`). Main thread. Never takes focus.
@@ -704,6 +708,9 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     let gen = ISLAND_GEN.fetch_add(1, Ordering::SeqCst) + 1;
     let from = ISLAND.with(|i| i.borrow().as_ref().filter(|p| p.isVisible()).map(|p| from_appkit(p.frame(), ph)));
     let kind = island::kind(&d);
+    // M70 step 5: what the island draws now (or is tucking into), for its click through (island_pointer_moved); set before
+    // the window's frame may wait for the tuck, so the clear rest of the old frame lets clicks through at once.
+    *ISLAND_SHAPE.lock().unwrap_or_else(|e| e.into_inner()) = Some((f, island::island_corner(mode, kind)));
     tell_island(mode, kind, &look, state.hover);
     match from.filter(|_| !moved).and_then(|from| island::retract_ms(from, f, reduce_motion())) {
         None => set_island_frame(f, ph),
@@ -721,6 +728,28 @@ static ISLAND_AT: Mutex<Option<Rect>> = Mutex::new(None);
 fn set_island_frame(f: Rect, ph: f64) {
     *ISLAND_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(f);
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { set_frame_moving(p, to_appkit(f, ph), None, None, &ISLAND_MOVES); } });
+}
+
+/// M70 step 5: the shape the island draws (its frame, or the one it is tucking into, and its bottom corner, island.rs
+/// island_corner), and whether its window lets the pointer through now (set only when it changes).
+static ISLAND_SHAPE: Mutex<Option<(Rect, f64)>> = Mutex::new(None);
+static ISLAND_PASS: AtomicBool = AtomicBool::new(false);
+/// Each mouse move macOS reports (the ring's monitors, where the pointer is only, never keys): the island's window lets
+/// the pointer through where it is clear (beside the small panel's round corners, or the old panel's frame while the
+/// shape tucks back), as Home's does, so a click there reaches the menu bar or the app behind (rule 9). Its tracking area
+/// may say nothing while the window lets the pointer through, so moving into a clear part leaves the island, and coming
+/// back onto the black enters it again. Main thread.
+fn island_pointer_moved() {
+    let Some(mtm) = MainThreadMarker::new() else { return };
+    let Some(shape) = *ISLAND_SHAPE.lock().unwrap_or_else(|e| e.into_inner()) else { return };
+    let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+    let m = NSEvent::mouseLocation();
+    let pt = (m.x, ph - m.y);
+    let window = island_rect(ph);
+    let pass = island::island_pass(window, shape, pt);
+    if ISLAND_PASS.swap(pass, Ordering::SeqCst) == pass { return; }
+    ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setIgnoresMouseEvents(pass); } });
+    if pass { island_hover_changed(false); } else if window.is_some_and(|w| island::contains(w, pt)) { island_hover_changed(true); }
 }
 
 /// `hover`: the pointer is what opened the panel (M26): otherwise it opened by itself for a question or for work going on,
@@ -776,6 +805,7 @@ fn reset_hover() {
 /// click away watch stops and the island goes back to its own size. Main thread.
 fn home_closed() {
     HOME_OPEN.store(false, Ordering::SeqCst);
+    *HOME_FROM.lock().unwrap_or_else(|e| e.into_inner()) = None;
     HOME_GEN.fetch_add(1, Ordering::SeqCst);
     reset_hover();
     if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "home_closed"); }
@@ -2029,7 +2059,22 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         HOME_CLOSE_GEN.fetch_add(1, Ordering::SeqCst);   // a close still rolling up is called off
         HOME_FOLDING.store(0, Ordering::SeqCst);         // and with it the fold (M66 step 5: else the watch stood still)
         let was_open = HOME_OPEN.load(Ordering::SeqCst) && card_visible();
-        if !was_open { HOME_OPEN.store(true, Ordering::SeqCst); HOME_GEN.fetch_add(1, Ordering::SeqCst); reset_hover(); }
+        // M70: the small panel the island shows now, read before the hover is forgotten, so Home grows on from it.
+        let from = if was_open { None } else {
+            let st = *ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner());
+            ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|d| island::panel_rect(d, st))
+        };
+        if !was_open {
+            // M70 step 5: grown from the panel, Home's band is drawn the panel's width while it opens: so is its hit test,
+            // until the band has eased back (island.rs FROM_BAND_MS), then the rects are asked again.
+            let kept = from.filter(|_| island::animates_open(&src)).map(|(w, _)| (w, now() as u64 + island::FROM_BAND_MS));
+            *HOME_FROM.lock().unwrap_or_else(|e| e.into_inner()) = kept;
+            if kept.is_some() {
+                let a2 = a.clone();
+                std::thread::spawn(move || { std::thread::sleep(Duration::from_millis(island::FROM_BAND_MS + 5)); let _ = a2.run_on_main_thread(|| { home_rects_now(); home_pointer_moved(); }); });
+            }
+            HOME_OPEN.store(true, Ordering::SeqCst); HOME_GEN.fetch_add(1, Ordering::SeqCst); reset_hover();
+        }
         // M66: a light tap on the trackpad as the notch opens under the person's own pointer, only when turned on (haptic.rs).
         if haptic::ticks(&setting_now(haptic::KEY), &src, was_open) { haptic::tick(); }
         // Home opens on the display the person is using (the one with the pointer): the island goes there first.
@@ -2042,7 +2087,8 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             if !c.isVisible() { c.orderFrontRegardless(); }
             HOME_SHOWN.store(true, Ordering::SeqCst);
             home_rects_now();
-            if !was_open { *HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()) = island::Leave::new(src == "point"); }
+            // M70: a Home opened from the notch's small panel folds when the pointer leaves it, as one opened by pointing.
+            if !was_open { *HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()) = island::Leave::new(src == "point" || src == "notch_panel"); }
             // A Home that pointing opened, taken over by a click on the notch or a key, is the person's: it stays when the
             // pointer leaves (M66 step 5).
             if was_open && (src != "point" || keyboard) { HOME_LEAVE.lock().unwrap_or_else(|e| e.into_inner()).pressed_inside(); }
@@ -2064,6 +2110,7 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         let cleared = review_ready().clear();
         review_dot_told(&a, cleared);
         let mut opened = match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) };
+        if let (Some((w, h)), false) = (from, instant) { opened["from"] = json!({ "w": w, "h": h }); }
         // M55, adapts to you: the kind of app in front as Home opens (Home is a panel, so it is the app the person was using).
         if let Some(k) = everyday::home_front(&setting_now("home.followFrontApp"), front_id).and_then(|v| v.get("kind").cloned()) { opened["front"] = k; }
         let _ = a.emit_to("card", "opened", opened);
@@ -2179,6 +2226,15 @@ fn toggle_card(app: AppHandle) { toggle_home(app, "character"); }
 /// Never with the keyboard (rule 9): Home takes it only when the person clicks into it.
 #[tauri::command]
 fn island_click(app: AppHandle) { open_card(&app, "island", false); }
+
+/// M70: a press in the notch's small panel (Ask, Review changes, Check my project, Check before going live, Undo last change,
+/// the gear, Open). Home opens at that place, never with the keyboard (rule 9: the keys move only when the person clicks into
+/// Home), and grows on from the panel (open_card_then). Only the arrivals arrival.rs knows pass; anything else just opens Home.
+/// Nothing runs from here: what each one starts asks, snapshots and keeps a receipt in Home as it always does.
+#[tauri::command]
+fn island_go(app: AppHandle, then: Option<serde_json::Value>) {
+    open_card_then(&app, "notch_panel", false, then.as_ref().and_then(arrival::arrival));
+}
 
 /// Home folds back into the notch as it closes (homeShape.css, on the CLOSE spring), and its page says when the fold has
 /// ended (`home_folded`, from its own transitionend): one clock, the page's. The window stays ordered in, its shape collapsed
@@ -5177,7 +5233,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -5270,12 +5326,12 @@ fn main() {
             // M46: they stay installed in every choice; follow_to_pointer's early return while the ring is away (FOLLOW_LIVE
             // false, so always in Still and Gentle at rest) is their whole cost. They read the pointer only, never keys.
             let follow_moves = NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged | NSEventMask::OtherMouseDragged;
-            // M66 step 6: Home's click through follows the same moves at once (home_pointer_moved).
-            let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); home_pointer_moved(); });
+            // M66 step 6: Home's click through follows the same moves at once (home_pointer_moved); M70 step 5: so does the island's (island_pointer_moved).
+            let follow_global = RcBlock::new(|_e: NonNull<NSEvent>| { follow_to_pointer(); home_pointer_moved(); island_pointer_moved(); });
             let gm = unsafe { NSEvent::addGlobalMonitorForEventsMatchingMask_handler(follow_moves, &follow_global) };
             std::mem::forget(gm);
             // M47: the same local watch moves the character while the person drags it (drag_follow): our own drags only.
-            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); home_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });
+            let follow_local = RcBlock::new(|e: NonNull<NSEvent>| -> *mut NSEvent { follow_to_pointer(); home_pointer_moved(); island_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr() });
             let lm = unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(follow_moves, &follow_local) };
             std::mem::forget(lm);
             // The island in the notch (F18): borderless, so it can never become the key window, and above the menu bar.

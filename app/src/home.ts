@@ -106,16 +106,18 @@ export function need(m: Model): Need | null {
  *  arrival.rs): start that lesson, show Learn or Settings, run Find the problem or the check before going live, ask
  *  Undo's question on the result (the notch's Undo this fix), or open Settings at one place (the notch's Add your key,
  *  "account.claude"). Anything else is ignored and Home just opens. */
-export type HomeArrival = { lesson: string } | { place: "learn" | "settings" } | { do: "find" | "shipCheck" | "undo" } | { set: string };
+/** M70: the notch's small panel adds two: Ask (`place: "ask"`, the ask box on Now, shown but never focused: rule 9) and
+ *  Review changes (`do: "review"`, the review card on Now; it reviews nothing by itself). */
+export type HomeArrival = { lesson: string } | { place: "learn" | "settings" | "ask" } | { do: "find" | "shipCheck" | "undo" | "review" } | { set: string };
 /** A Settings place as a deep link names it: lower case words joined by dots ("account.claude"). */
 export const SETTINGS_PLACE = /^[a-z][a-zA-Z]*(\.[a-z][a-zA-Z]*)*$/;
 export function arrivalFrom(opened: unknown): HomeArrival | null {
   const t = (opened as { then?: unknown } | null)?.then as { lesson?: unknown; place?: unknown; do?: unknown; set?: unknown } | null | undefined;
   if (!t || typeof t !== "object") return null;
-  if (t.do === "find" || t.do === "shipCheck" || t.do === "undo") return { do: t.do };
+  if (t.do === "find" || t.do === "shipCheck" || t.do === "undo" || t.do === "review") return { do: t.do };
   if (typeof t.set === "string" && t.set.length <= 60 && SETTINGS_PLACE.test(t.set)) return { set: t.set };
   if (typeof t.lesson === "string" && t.lesson) return { lesson: t.lesson };
-  return t.place === "learn" ? { place: "learn" } : t.place === "settings" ? { place: "settings" } : null;
+  return t.place === "learn" ? { place: "learn" } : t.place === "settings" ? { place: "settings" } : t.place === "ask" ? { place: "ask" } : null;
 }
 
 export type HomeState = { tab: Tab; needKey: string };

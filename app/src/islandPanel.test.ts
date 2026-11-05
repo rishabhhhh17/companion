@@ -30,7 +30,12 @@ describe("the panel under the notch shows the work, not a character", () => {
   test("a question waiting comes first, and says it can be answered here", () => {
     const m = run([...started, ev({ type: "approval.request", approval: "ap1", agent: "a", checkpoint: "cp_1", toolUseId: "t", risk: "install", title: "Install a package", expiresAt: "2099-01-01T00:00:00Z" })]);
     const c = islandJobs(m);
-    expect(c[0]).toMatchObject({ tone: "needsYou", title: S.approval.question.install, sub: S.panel.askHere });   // M28: the plain question
+    // M28: the plain question. M70 step 4: its second line is the request's own words ("Install a package."), never a
+    // second "needs your OK"; only a request with no words of its own says it may be answered just this once.
+    expect(c[0]).toMatchObject({ tone: "needsYou", title: S.approval.question.install, sub: "Install a package." });
+    const bare = run([...started, ev({ type: "approval.request", approval: "ap2", agent: "a", checkpoint: "cp_1", toolUseId: "t2", risk: "install", title: "  ", expiresAt: "2099-01-01T00:00:00Z" })]);
+    expect(islandJobs(bare)[0].sub).toBe(S.panel.askHere);
+    expect(S.panel.askHere.toLowerCase()).not.toContain("needs your ok");
   });
   test("never more than a glance", () => {
     let m = run(started);
@@ -86,7 +91,10 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     expect(view).toContain('onClick={() => void invoke("send_command", { cmd: stopAgent() }).catch(() => {})}><Icon name="stop" size={12} />{S.stop}</Button>');
     // M69 (the YC benchmark spec 3.13): a mini receipt, not a toast. The character as the verdict says it, the fix, how it
     // was proven, the after picture, then Keep, Undo and See proof, with no key hints (the notch never takes the keyboard).
-    expect(view).toContain('<FlowMini className="ip-agent" state={view.job.state} still={!shown} />');
+    // M70 step 4: no character in the panel (the founder: Squibby is not there always); a small tick or dot says the verdict.
+    const cards = view.slice(view.indexOf("const list = "), view.indexOf('<p className="ip-status"'));
+    expect(cards).not.toContain("FlowMini");
+    expect(view).toContain('<span className="ip-dot" data-tone={view.job.tone} aria-hidden="true">');
     expect(view).toContain("<span className=\"ip-text\"><b>{view.mini.title || view.job.title}</b><span>{view.mini.line}</span></span>");
     expect(view).toContain('{view.mini.thumb && <img className="ip-thumb" src={view.mini.thumb} alt={S.fixRun.thumb} />}');
     expect(view).toContain('{view.mini.keep && <Button kind="primary" size="sm" tabIndex={tab} label={S.fixRun.keepLabel} onClick={click(view.job.key, () => onKeep?.(view.job.key))}>{S.fixRun.keep}</Button>}');
@@ -99,16 +107,21 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     expect(view.match(/kind="primary"/g)?.length).toBe(1);
     expect(view).toContain('<p className="ip-status" role="status">{view.line || S.home.notchNothing}</p>');
   });
-  test("no greeting, no launcher buttons, no Settings or Open Home button: a click on the notch opens Home", () => {
+  test("M70: one short greeting row with the gear and Open, a few buttons that only open Home; the old launcher stays gone", () => {
     const view = read("./islandPanel.tsx");
-    // M68 (the founder, 4 Nov 2026: "like hey Rishabh"): the old big hello and its launcher stay gone; the short hello in the
-    // notch (ip-hello, notchHello.ts) is the only greeting, for about 3 seconds, at most once an hour, with no buttons.
+    // M68's hello (ip-hello, notchHello.ts, off by default since M70) has no buttons.
     expect(view).toContain('hello ? <div className="ip-hello"');
-    expect(view.slice(view.indexOf('hello ? <div className="ip-hello"'), view.indexOf("</div> : <>"))).not.toContain("<Button");
-    for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-open", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello", "panel.showButtons"]) expect(view, gone).not.toContain(gone);
+    expect(view.slice(view.indexOf('hello ? <div className="ip-hello"'), view.indexOf("</div> : brief ? ("))).not.toContain("<Button");
+    // M70 (the founder, 4 Nov 2026: "practical, just like HeyClicky's notch"): the greeting is one line in the hover panel,
+    // with the gear and Open; the quick actions follow panel.showButtons (hidden, on). The old big hello and its chips stay gone.
+    // M70: a small greeting over the one fact, only on hover (the founder: "a small text" first, and "hey Rishabh"; the
+    // bubble they removed was the hello at rest), with Settings and Open in words.
+    expect(view).toContain('<span className="ip-lead"><span className="ip-greet">{greet}</span><b className="ip-fact" title={fact}>{fact}</b></span>');
+    expect(view).toContain('const showButtons = useSetting("panel.showButtons") !== false;');
+    for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello"]) expect(view, gone).not.toContain(gone);
     const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");
     for (const gone of [".ip-hello", ".ip-hi", ".ip-go", ".ip-pill", ".ip-open", ".ip-row", ".ip-plus"]) expect(css, gone).not.toContain(gone);
-    // Their settings are kept in the registry, hidden, so a value already set does nothing and nothing offers it.
+    // Both settings are kept in the registry, hidden: panel.showHello is retired, panel.showButtons is read again.
     const reg = JSON.parse(read("../../protocol/settings.json")).settings as { key: string; hidden?: boolean }[];
     for (const k of ["panel.showHello", "panel.showButtons"]) expect(reg.find((d) => d.key === k)?.hidden, k).toBe(true);
     // With the greeting gone, nothing reads the Mac account's full name: the command is neither defined, registered nor

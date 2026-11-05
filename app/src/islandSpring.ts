@@ -85,3 +85,9 @@ export function springStep(s: Spring, target: number, dt: number, reduced = fals
   }
   return settled({ x, v }, target) ? { x: target, v: 0 } : { x, v };
 }
+
+/** How far the hover panel is out, from the shape's height now (M70 step 4): 0 at the row's height (the notch, the pill or
+ *  the wings), 1 with the panel all the way out. island.tsx sets it on the shape every frame (--open), and the shape's
+ *  corner follows it from the rest corner to the panel's, so the corner moves with the size instead of with the mode. */
+export const openness = (h: number, row: number, panel: number): number =>
+  (panel > 0 && Number.isFinite(h) ? Math.max(0, Math.min(1, (h - row) / panel)) : 0);

@@ -91,7 +91,9 @@ describe("the island's hover panel", () => {
   });
   test("its words go as the shape starts to tuck back, never cut by the shape's edge", () => {
     const tsx = read("./island.tsx");
-    expect(tsx).toContain("shown={parts.panel}");
+    // M70 step 4: also while Home grows on from it (held), its words fading as Home covers them.
+    expect(tsx).toContain("shown={panelShown}");
+    expect(tsx).toContain("const panelShown = parts.panel || held !== null;");
     expect(tsx).toContain("tuckHoldMs(");
   });
 });

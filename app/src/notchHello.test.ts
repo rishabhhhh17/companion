@@ -169,11 +169,11 @@ describe("the page: wings and hello in the notch, black, non activating, quiet",
     expect(page + hello).not.toMatch(/\.focus\(|playSound|new Audio|sound_play/);
     expect(hello).toContain('export const LAST_HELLO_KEY = "companion.notchHello"');
   });
-  test("the settings: wings and hello switches on by default in the Notch section, the name in Account (your profile)", () => {
+  test("the settings: wings and hello switches, off by default since M70, in the Notch section, the name in Account (your profile)", () => {
     const reg = JSON.parse(read("../../protocol/settings.json")) as { settings: Record<string, unknown>[] };
     const def = (k: string) => reg.settings.find((s) => s.key === k);
-    expect(def("island.wings")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
-    expect(def("island.hello")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(def("island.wings")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(def("island.hello")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(def("you.name")).toMatchObject({ section: "home", kind: "text", default: "", maxLength: 24, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(def("panel.showHello")).toMatchObject({ default: false, hidden: true });
     const notch = PAGES.general.more.find((t) => t.id === "more.general.notch")!.items;

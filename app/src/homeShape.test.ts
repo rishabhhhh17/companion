@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
-  HEADROOM, NUDGE_H, NUDGE_W, OPEN_R, REST_R, SEAM, SHOULDER_OPEN, SHOULDER_REST, bodyHeight, contentAtMs, foldMs, geomFrom, homeNext,
+  HEADROOM, NUDGE_H, NUDGE_W, OPEN_R, OVERLAP, REST_R, SEAM, SHOULDER_OPEN, SHOULDER_REST, bodyHeight, contentAtMs, foldMs, geomFrom, homeNext,
   islandHideAtMs, islandPanelAtMs, isOut, outline, pieceSizes, shapeRects, shapeTransforms, springMs, type HomeEvent, type HomeGeom, type HomePhase,
 } from "./homeShape.ts";
 import { NOTCH, OPEN_H_DELAY_MS } from "./islandSpring.ts";
@@ -162,9 +162,10 @@ describe("the timings", () => {
     expect(raw("--seq-island-panel-at")).toBe(`${islandPanelAtMs()}ms`);
     expect(raw("--seq-island-hide-at")).toBe(`${islandHideAtMs()}ms`);
   });
-  test("the island's hover panel waits for its shape: WORK is 80 percent there; the island hides once OPEN_W is 99 percent there", () => {
+  test("the island's hover panel waits for its shape: WORK is 92 percent there; the island hides once OPEN_W is 99 percent there", () => {
     const work = springPath(NOTCH.WORK), w = springPath(NOTCH.OPEN_W);
-    expect(work[islandPanelAtMs()] ?? 1).toBeGreaterThan(0.78);
+    // M70 step 4: at 80 percent the panel's bottom row was cut by the shape's edge for a frame or two.
+    expect(work[islandPanelAtMs()] ?? 1).toBeGreaterThan(0.91);
     expect(islandPanelAtMs()).toBeLessThan(DUR[2]);
     expect(w[islandHideAtMs()] ?? 1).toBeGreaterThan(0.985);
     expect(islandHideAtMs()).toBeLessThan(springMs(NOTCH.OPEN_W));
@@ -227,5 +228,51 @@ describe("the page draws it from a data attribute and the shell's sizes", () => 
     expect(stage).toContain('invoke("home_folded")');
     expect(stage).toContain("foldMs(reducedMotion())");
     expect(stage).toContain("onTransitionEnd={onEnd}");
+  });
+});
+
+// M70 step 4: Home growing on from the small panel, and the one shape without seams.
+describe("growing on from the small panel (M70 step 4)", () => {
+  const from = { w: 400, h: 32 + 88 };
+  const pW = springPath(NOTCH.OPEN_W);
+  const at = (path: number[], ms: number) => (ms <= 0 ? 0 : path[Math.min(path.length - 1, Math.round(ms))]);
+  test("the band never narrows while the shape opens from the panel, then the notch and its wings once open", () => {
+    for (const g of [mbp14, air]) {
+      const c = outline(g, { phase: "closed", hover: false, bodyH: 480, from }), o = outline(g, { phase: "opening", hover: false, bodyH: 480, from });
+      expect(o.bw, g.kind).toBeGreaterThanOrEqual(c.bw);
+      // Each piece of the band moves from one to the other on one curve, so with an end no narrower, no frame is narrower.
+      for (let ms = 0; ms <= 600; ms += 4) { const w = c.bw + at(pW, ms) * (o.bw - c.bw); expect(w).toBeGreaterThanOrEqual(c.bw - 0.001); }
+      expect(outline(g, { phase: "open", hover: false, bodyH: 480, from }).bw).toBe(g.band.w);
+      // From the bare notch, as before.
+      expect(outline(g, { phase: "opening", hover: false, bodyH: 480 }).bw).toBe(g.band.w);
+    }
+    const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8");
+    expect(css).toContain('.home-stage[data-phase="open"][data-from] :is(.hs-band, .hs-top, .hs-join) { transition: transform var(--dur-notch-close) var(--ease-notch-close); }');
+  });
+  test("the island's words fade out as Home's shape covers them, and Home's arrive as before: no clip, no repaint", () => {
+    const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(css).not.toContain("clip-path");
+    const notch = readFileSync(new URL("./ui/notch.css", import.meta.url), "utf8");
+    expect(notch).toContain(".island[data-home] .island-panel[data-shown] { opacity: 0; scale: 1; transition: opacity var(--dur-exit-menu) linear calc(var(--seq-island-hide-at) - var(--dur-exit-menu)); }");
+    expect(islandHideAtMs()).toBeGreaterThan(EXIT_MS.menu);
+  });
+  test("pieces that meet overlap by a point where both are black: the strip under the corners, the shoulders toward the band", () => {
+    expect(OVERLAP).toBe(1);
+    const t = shapeTransforms(mbp14, { phase: "open", hover: false, bodyH: 480 });
+    // The strip starts a point inside the left corner and is two points wider than the gap between the corners.
+    expect(t.strip).toBe(`translate(${-(344 - OPEN_R) - 1}px, 0px) scale(1, 1)`);
+    expect(t.topL.startsWith(`translate(${-132.5 - SHOULDER_OPEN + 1}px, 0px)`)).toBe(true);
+    expect(t.topR.startsWith(`translate(${132.5 - 1}px, 0px)`)).toBe(true);
+    // Collapsed on the panel there are no shoulders, so nothing moves out past the panel's side.
+    const p = shapeTransforms(mbp14, { phase: "closed", hover: false, bodyH: 480, from });
+    expect(p.topL).toMatch(/scale\(0\)$/);
+  });
+});
+
+describe("White Home is readable on the black shape (M70 step 4)", () => {
+  test("in the White look Home's page has its own fill inside the shape, with the shape's round foot", () => {
+    const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8");
+    expect(css).toContain(':root[data-theme="paper"] .home-stage[data-told] .home-frame > .card.home { background: var(--bg); border-radius: 0 0 24px 24px; }');
+    expect(OPEN_R).toBe(24);
   });
 });

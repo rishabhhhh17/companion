@@ -53,6 +53,16 @@
 .home-stage:not([data-told]):is([data-phase="closed"], [data-phase="closing"]) .home-frame { visibility: hidden; }
 .home-stage[data-told] .home-frame > .card.home { height: 100%; background: transparent; border: 0; border-radius: 0; }
 .home-stage[data-told] .home-frame > .home[data-side] .side { height: calc(var(--hh) - var(--hair)); }
+/* M70 step 4: grown on from the notch's small panel (homeStage.tsx data-from), the band keeps the panel's width while the
+   shape opens (homeShape.ts outline), then eases back to the notch and its wings once Home is open. Home's content still
+   arrives at --seq-notch-content-at: drawn at its full size, any earlier it would show past the body (a clip that follows
+   the shape would paint every frame, which M66 rules out). The island's own words fade as Home's shape covers them. */
+.home-stage[data-phase="open"][data-from] :is(.hs-band, .hs-top, .hs-join) { transition: transform var(--dur-notch-close) var(--ease-notch-close); }
+/* M70 step 4: the White look's ink is dark, so its Home needs its own page under it: the black shape showed through every
+   part of Home without a fill of its own (the hero, the project bar, Settings' header), dark on black. The fill is in the
+   content's frame, so it arrives and leaves with the content, and has the shape's round foot. The dark looks keep the
+   shape's own black. */
+:root[data-theme="paper"] .home-stage[data-told] .home-frame > .card.home { background: var(--bg); border-radius: 0 0 24px 24px; }
 
 /* Reduce motion and Less motion: nothing grows or folds; the shape and the content fade on a short straight line. */
 @media (prefers-reduced-motion: reduce) {

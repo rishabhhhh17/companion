@@ -25,7 +25,7 @@ pub struct HomeSet {
     pub island_show: bool,
     /// island.peekOnHover, island.openDelay, island.closeDelay: the status when the pointer rests on the island.
     pub hover: HoverTimes,
-    /// island.pointOpens: resting the pointer on the notch opens Home itself (the usual) or the status line.
+    /// island.pointOpens: resting the pointer on the notch opens the small panel (the usual, M70) or Home right away.
     pub point_opens: PointOpens,
     /// island.display: which display the island and Home use.
     pub display: Where,
@@ -57,7 +57,7 @@ impl HomeSet {
     /// character hidden past the edge when they wanted it there); since M37d (30 Oct 2026, the founder: "it needs to stick…
     /// it just needs to dwell there… when I pull it, it needs to come out") it is on, stuck half in view at the edge.
     pub const USUAL: HomeSet = HomeSet {
-        island_show: true, hover: HoverTimes::USUAL, point_opens: PointOpens::Home, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
+        island_show: true, hover: HoverTimes::USUAL, point_opens: PointOpens::Status, display: Where::Follow, follow_ms: FOLLOW_MS, click_away: true,
         size: HomeSize::USUAL, linger_ms: LINGER_MS, less_motion: false, over_full_screen: false, peek: true, stick: true, peek_idle: false, esc_stops: true,
     };
 }
@@ -103,8 +103,8 @@ mod tests {
         // M51 (1 Nov 2026, the founder): Home is wide by default; the tall panel is a choice (look.layout).
         assert_eq!((u.island_show, u.display, u.click_away, u.size, u.less_motion, u.over_full_screen), (true, Where::Follow, true, HomeSize::WIDE, false, false));
         assert_eq!((u.peek, u.stick, u.peek_idle), (true, true, false), "M37d: stuck half in view at its edge, out when the pointer comes");
-        // 2 Nov 2026 (the founder): pointing at the notch opens Home itself.
-        assert_eq!(u.point_opens, PointOpens::Home);
+        // M70 (the founder, 4 Nov 2026): pointing at the notch opens the small panel first; Home right away is a choice.
+        assert_eq!(u.point_opens, PointOpens::Status);
     }
     #[test]
     fn what_pointing_at_the_notch_opens_is_read_from_settings_json() {

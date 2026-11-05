@@ -311,16 +311,16 @@ details.explain { margin-top: var(--space-2); } details.explain summary { cursor
    pill's) width and --row the height of the row the wings sit in, both given by the app. Sizes come from the same scale
    as Home, at the island's own 14 px root (it never takes the text size). */
 html.island-page, body.island-page { background: transparent; overflow: clip; height: 100%; }
-.island { height: 100vh; --wing: 40px; --wing-mark: 20px; --r: var(--r-card); }
+.island { height: 100vh; --wing: 40px; --wing-mark: 20px; --r: var(--r-card); --r-open: var(--r-card); }
 .island-hit { all: unset; box-sizing: border-box; position: absolute; top: 0; left: 0; right: 0; height: var(--row, 100%); min-height: 100%; display: block; color: var(--notch-ink); cursor: default; font: 600 var(--t-caption) var(--font); }
 .island-hit:focus-visible { outline: 2px solid var(--notch-ink); outline-offset: -3px; }
-.island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: var(--notch); overflow: hidden; border-radius: 0 0 var(--r) var(--r); }
-.island.notch[data-mode="peek"], .island.notch[data-mode="wingsPeek"] { --r: 22px; }
-.island.pill { --r: var(--r-pill); }
-.island.pill .island-shape { border-radius: 0 0 var(--r) var(--r); }   /* M66: it hangs from the top edge, as a notch does */
-.island.pill[data-mode="peek"], .island.pill[data-mode="wingsPeek"] { --r: var(--r-card); }
+/* M70 step 4: the corner follows the shape's height on its spring (island.tsx --open, not inherited), from --r to --r-open. */
+@property --open { syntax: "<number>"; inherits: false; initial-value: 0; }
+.island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: var(--notch); overflow: hidden; --r-now: calc(var(--r) + (var(--r-open) - var(--r)) * var(--open)); border-radius: 0 0 var(--r-now) var(--r-now); }
+.island.notch { --r-open: 22px; }
+.island.pill { --r: var(--row, 20px); }
 .island.edge { --r: 3px; }
-.island.edge[data-mode="wings"], .island.edge[data-mode="peek"], .island.edge[data-mode="wingsPeek"] { --r: var(--r-card); }
+.island.edge[data-mode="wings"] { --r: var(--r-card); }
 /* The wings: a tiny Flowflow on the left of the notch, one live mark on the right, each --wing wide, in the top row. */
 .island-wing { position: absolute; top: 0; height: var(--row); width: var(--wing); display: flex; align-items: center; justify-content: center; gap: var(--space-1); }
 .island-wing.left { left: calc(50% - var(--core) / 2 - var(--wing)); }
@@ -672,7 +672,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
    ("Add your key") is the flat silver; an approval's two buttons are both quiet outlines, the same width, never silver.
    Always laid out at island.rs PANEL_W so its height is measured before it opens; shown only while the pointer rests on
    the island. M66 step 5: its words come once WORK has the shape 80 percent there, and go first, before it tucks. */
-.island-panel { position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; gap: 10px; color: var(--notch-ink); font: 500 var(--t-small) var(--font); visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity var(--dur-exit-menu) linear, scale var(--dur-exit-menu) var(--ease-exit), visibility 0s linear var(--dur-exit-menu); }
+.island-panel { position: absolute; top: var(--row); left: 50%; translate: -50% 0; width: 400px; box-sizing: border-box; padding: 8px 14px 14px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; color: var(--notch-ink); font: 500 var(--t-small) var(--font); visibility: hidden; opacity: 0; scale: .97; transform-origin: 50% 0; transition: opacity var(--dur-exit-menu) linear, scale var(--dur-exit-menu) var(--ease-exit), visibility 0s linear var(--dur-exit-menu); }
 /* The notch's own black, all the way down: the panel is the notch grown, never a grey band (the founder, 31 Oct). */
 .island.notch[data-mode="peek"] .island-shape, .island.notch[data-mode="wingsPeek"] .island-shape, .island.pill[data-mode="peek"] .island-shape, .island.pill[data-mode="wingsPeek"] .island-shape, .island.edge[data-mode="peek"] .island-shape, .island.edge[data-mode="wingsPeek"] .island-shape { background: var(--notch); }
 .island-panel[data-shown] { visibility: visible; opacity: 1; scale: 1; transition: opacity var(--dur-2) var(--ease-out) var(--seq-island-panel-at), scale var(--dur-2) var(--ease-out) var(--seq-island-panel-at), visibility 0s var(--seq-island-panel-at); }

@@ -233,7 +233,7 @@
   --dur-notch-work: 417ms; --ease-notch-work: linear(0, 0.024, 0.076, 0.155, 0.245, 0.331, 0.423, 0.511, 0.592, 0.658, 0.723, 0.778, 0.822, 0.862, 0.895, 0.92, 0.942, 0.96, 0.972, 0.983, 0.99, 0.996, 1, 1.003, 1.005, 1.006, 1.006, 1.006, 1.006, 1.005, 1.005, 1.004, 1.004, 1.003, 1.003, 1.002, 1.002, 1.002, 1.001, 1);
   --seq-notch-height-at: 60ms;   /* the height starts after the width */
   --seq-notch-content-at: 340ms;  /* Home's content arrives once the height is 98.5 percent there (homeShape.ts contentAtMs) */
-  --seq-island-panel-at: 120ms;   /* the island's hover panel shows once WORK is 80 percent there (islandPanelAtMs) */
+  --seq-island-panel-at: 160ms;   /* the island's hover panel shows once WORK is 92 percent there (islandPanelAtMs) */
   --seq-island-hide-at: 240ms;    /* the island stops drawing once Home's band (OPEN_W) is 99 percent out (islandHideAtMs) */
   /* What each motion is for (M55), each one of the four above. */
   --dur-press: var(--dur-1);           /* a button going in under the pointer */

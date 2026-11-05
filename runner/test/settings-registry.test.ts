@@ -45,7 +45,7 @@ describe("the shipped list of settings", () => {
       // Area 4 (Home, the island and the character): each usual value is what the app does today.
       "island.show": true, "island.openForQuestions": true, "home.escStops": true, "island.showWork": true, "talk.captions": true,
       // M55, live progress: while a job works, the notch says its step in a word, with a thin line of the four steps under it.
-      "island.showStep": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "home", "island.openDelay": 0.3, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
+      "island.showStep": true, "talk.dictate": false, "island.peekOnHover": true, "island.pointOpens": "status", "island.openDelay": 0.3, "island.closeDelay": 0.3, "island.display": "follow", "island.followDelay": 3,
       "home.closeOnClickAway": true, "home.goToNeeds": "goToIt", "home.size": "standard",
       // M55, adapts to you: Home's main action follows the kind of app in front, and the ways you press most come first in
       // More ways to ask. Both on, as the plan asks; the shell reads the first so that, off, it never reads the app in front.
@@ -117,7 +117,7 @@ describe("the shipped list of settings", () => {
       "island.haptics": false,
       // M68 step 2b (the founder, 4 Nov 2026: "no notch like how HeyClicky has, like hey Rishabh"): small wings at rest and a
       // short hello in the notch, both on; the name for the hello is only what the person types, empty by default.
-      "island.wings": true, "island.hello": true, "you.name": "",
+      "island.wings": false, "island.hello": false, "you.name": "",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -128,9 +128,9 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("review.quietSeconds")!, 3).ok).toBe(false);
     expect(validate(defOf("review.mode")!, "always").ok).toBe(false);
   });
-  test("M68: the notch's wings at rest and its hello are switches on by default; the name for the hello is short text the person types", () => {
-    expect(defOf("island.wings")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
-    expect(defOf("island.hello")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+  test("M68, M70: the notch's wings at rest and its hello are switches, off by default since M70 (the bare notch); the name for the hello is short text the person types", () => {
+    expect(defOf("island.wings")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("island.hello")).toMatchObject({ section: "home", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(defOf("you.name")).toMatchObject({ section: "home", kind: "text", default: "", maxLength: 24, scope: "app", applies: ["pages"], store: "settings", live: true });
     expect(validate(defOf("you.name")!, "Rishabh").ok).toBe(true);
     expect(validate(defOf("you.name")!, "x".repeat(25)).ok).toBe(false);
@@ -162,8 +162,8 @@ describe("the shipped list of settings", () => {
     sec("character.position", 50, 0, 100, 5, "percent");
     sec("character.linger", 1.5, 0.5, 10, 0.5, "seconds");
     expect(defOf("island.display")!.options).toEqual(["follow", "builtIn", "main"]);
-    // 2 Nov 2026 (the founder: pointing at the notch "needs to be open"): pointing opens Home itself, the usual, or the status line.
-    expect(defOf("island.pointOpens")).toMatchObject({ section: "home", kind: "choice", default: "home", options: ["home", "status"], scope: "app", applies: ["shell"], store: "settings", live: true });
+    // M70 (the founder, 4 Nov 2026: "just like HeyClicky's notch"): pointing opens a small panel first, the usual, or Home right away.
+    expect(defOf("island.pointOpens")).toMatchObject({ section: "home", kind: "choice", default: "status", options: ["home", "status"], scope: "app", applies: ["shell"], store: "settings", live: true });
     expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);
     // M51: the layout, wide (the usual) or the tall panel. The shell sizes Home and keeps the character clear of it from it

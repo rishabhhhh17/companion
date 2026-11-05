@@ -20,6 +20,8 @@ pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
             Some("find") => Some(serde_json::json!({ "do": "find" })),
             Some("shipCheck") => Some(serde_json::json!({ "do": "shipCheck" })),
             Some("undo") => Some(serde_json::json!({ "do": "undo" })),
+            // M70: the notch's small panel. Review changes goes to the review card in Home; it reviews nothing by itself.
+            Some("review") => Some(serde_json::json!({ "do": "review" })),
             _ => None,
         };
     }
@@ -30,7 +32,13 @@ pub fn arrival(v: &serde_json::Value) -> Option<serde_json::Value> {
         return ok.then(|| serde_json::json!({ "set": id }));
     }
     // The notch's Settings button (M20) and the menu bar's Settings…: Settings inside Home.
-    match o.get("place").and_then(|p| p.as_str()) { Some("learn") => Some(serde_json::json!({ "place": "learn" })), Some("settings") => Some(serde_json::json!({ "place": "settings" })), _ => None }
+    // M70: the small panel's Ask shows the ask box on Now, never focused (rule 9: the keys move only on the person's click).
+    match o.get("place").and_then(|p| p.as_str()) {
+        Some("learn") => Some(serde_json::json!({ "place": "learn" })),
+        Some("settings") => Some(serde_json::json!({ "place": "settings" })),
+        Some("ask") => Some(serde_json::json!({ "place": "ask" })),
+        _ => None,
+    }
 }
 
 /// What the menu bar's Settings… asks Home for.
@@ -53,6 +61,10 @@ mod tests {
         // F28 (4.3): the notch's Undo this fix asks in Home; its Add your key opens Settings at Account, Your Claude.
         assert_eq!(arrival(&json!({ "do": "undo" })), Some(json!({ "do": "undo" })));
         assert_eq!(arrival(&json!({ "set": "account.claude" })), Some(json!({ "set": "account.claude" })));
+        // M70: the small panel under the notch: Ask (the box, unfocused) and Review changes (the card).
+        assert_eq!(arrival(&json!({ "place": "ask" })), Some(json!({ "place": "ask" })));
+        assert_eq!(arrival(&json!({ "do": "review" })), Some(json!({ "do": "review" })));
+        assert_eq!(arrival(&json!({ "do": "review", "place": "ask" })), None);
         for bad in [json!({ "do": "delete" }), json!({ "set": "" }), json!({ "set": "../x" }), json!({ "set": "Account.claude" }), json!({ "set": "a..b" }), json!({ "set": "a b" }), json!({ "set": 3 }), json!({ "set": "x".repeat(61) })] {
             assert_eq!(arrival(&bad), None, "{bad}");
         }

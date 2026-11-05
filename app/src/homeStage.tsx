@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type TransitionEvent } from "react";
 import { invoke, listen } from "./tauri.ts";
 import { reducedMotion } from "./motion.ts";
-import { bodyHeight, foldMs, geomFrom, homeNext, pieceSizes, shapeTransforms, type HomeGeom, type HomePhase } from "./homeShape.ts";
+import { bodyHeight, foldMs, geomFrom, homeNext, pieceSizes, shapeTransforms, type FromRect, type HomeGeom, type HomePhase } from "./homeShape.ts";
 import "./ui/homeShape.css";
 
 // Home's stage (M66 Part 2 step 1): the black shape that grows out of the notch, and Home's content inside it. The window
@@ -17,6 +17,12 @@ export function useHomeStage() {
   const [contentH, setContentH] = useState(0);
   // M26: opened by a keyboard shortcut, Home is simply there (island.rs animates_open): no growing for that opening.
   const [instant, setInstant] = useState(false);
+  // M70: opened while the notch showed its small panel: for one frame the shape is drawn as that panel, under it and with no
+  // motion (`snap`), then it grows on from there. `tok` calls off a start that a close or a stop overtook. The `from` is kept
+  // until Home closes (M70 step 4): the band keeps the panel's width while the shape opens, then eases back.
+  const [from, setFrom] = useState<FromRect | null>(null);
+  const [snap, setSnap] = useState(false);
+  const tok = useRef(0);
   const phaseRef = useRef<HomePhase>("closed");
   phaseRef.current = phase;
   const backstop = useRef(0);
@@ -38,17 +44,28 @@ export function useHomeStage() {
     const offHover = listen("home-hover", (e) => setHover((e.payload as { on?: unknown } | null)?.on === true));
     // Closing: fold back; the page's transitionend ends it, and this timer only if that never comes (a hidden page).
     const offClosing = listen("closing", () => {
+      tok.current++; setFrom(null); setSnap(false);
       setInstant(false);
       setPhase((p) => homeNext(p, "close"));
       window.clearTimeout(backstop.current);
       backstop.current = window.setTimeout(folded, foldMs(reducedMotion()));
     });
     // Closed by the shell itself (Stop everything, Hide, a display change, or after the fold): closed at once.
-    const offClosed = listen("closed", () => { window.clearTimeout(backstop.current); setPhase((p) => homeNext(p, "stop")); });
+    const offClosed = listen("closed", () => { tok.current++; setFrom(null); setSnap(false); window.clearTimeout(backstop.current); setPhase((p) => homeNext(p, "stop")); });
     return () => { for (const o of [offGeom, offHover, offClosing, offClosed]) o.then((f) => f()); window.clearTimeout(backstop.current); };
   }, []);
-  const open = (now = false) => { window.clearTimeout(backstop.current); setHover(false); setInstant(now); setPhase((p) => homeNext(p, "open")); };
-  return { geom, phase, hover, instant, contentH, setContentH, open, folded, setPhase };
+  const open = (now = false, f: FromRect | null = null) => {
+    window.clearTimeout(backstop.current); setHover(false); setInstant(now);
+    const t = ++tok.current;
+    if (f && !now && phaseRef.current === "closed" && !reducedMotion()) {
+      setFrom(f); setSnap(true);
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (tok.current !== t) return; setSnap(false); setPhase((p) => homeNext(p, "open")); }));
+      return;
+    }
+    setFrom(null); setSnap(false);
+    setPhase((p) => homeNext(p, "open"));
+  };
+  return { geom, phase, hover, instant, contentH, setContentH, open, folded, setPhase, from, snap };
 }
 
 type Stage = ReturnType<typeof useHomeStage>;
@@ -58,7 +75,8 @@ type Stage = ReturnType<typeof useHomeStage>;
 export function HomeStage({ stage, children }: { stage: Stage; children: ReactNode }) {
   const { geom: g, phase, hover, contentH } = stage;
   const bodyH = g ? bodyHeight(g, contentH) : 0;
-  const t = g ? shapeTransforms(g, { phase, hover: hover && phase === "closed", bodyH }) : null;
+  const from = phase === "closing" ? null : stage.from;
+  const t = g ? shapeTransforms(g, { phase, hover: hover && phase === "closed" && !from, bodyH, from }) : null;
   const P = g ? pieceSizes(g) : null;
   const px = (n: number) => `${Math.round(n * 100) / 100}px`;
   const vars = (g && t && P ? {
@@ -74,7 +92,7 @@ export function HomeStage({ stage, children }: { stage: Stage; children: ReactNo
     else if (phase === "opening") stage.setPhase((p) => homeNext(p, "shown"));
   };
   return (
-    <div className="home-stage" data-phase={phase} data-instant={stage.instant && phase !== "closing" ? "" : undefined} data-hover={hover && phase === "closed" ? "" : undefined} data-kind={g?.kind} data-told={g ? "" : undefined} style={vars}>
+    <div className="home-stage" data-phase={phase} data-instant={(stage.instant || stage.snap) && phase !== "closing" ? "" : undefined} data-hover={hover && phase === "closed" ? "" : undefined} data-from={from && g ? "" : undefined} data-kind={g?.kind} data-told={g ? "" : undefined} style={vars}>
       {g && <div className="hs" aria-hidden="true">
         <i className="hs-band" />
         <i className="hs-top l" /><i className="hs-top r" />

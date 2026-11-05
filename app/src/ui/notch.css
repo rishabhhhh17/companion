@@ -9,3 +9,36 @@
 .island-panel .ip-hello-line { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; column-gap: var(--space-2); color: var(--notch-fg); font: 500 var(--t-small) / var(--lh-small) var(--font); }
 .island-panel .ip-hello-line b { color: var(--notch-ink); font-weight: 600; }
 .island-panel .ip-hello-line span { color: var(--notch-fg-2); }
+/* M70, a practical notch (notchQuick.ts): the small panel that opens when the pointer rests on the notch. Two rows (step 4):
+   a small greeting over the one fact, with Settings and Open in words, then up to three buttons, or the running job with Stop. Fixed heights for
+   the quick and job layouts (LAYOUT_H), so a fact changing never moves anything. Colours only from the notch tokens in
+   ui/tokens.css; motion only the panel's own fade (style.css) and the M66 press and hover tokens. */
+.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: 96px; grid-template-rows: auto auto; align-content: space-between; gap: 6px; }
+.island-panel .ip-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-height: 24px; }
+.island-panel .ip-lead { display: flex; flex-direction: column; min-width: 0; }
+.island-panel .ip-greet { color: var(--notch-fg-2); font: 500 var(--t-caption) / 1.25 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.island-panel .ip-fact { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--notch-ink); font: 600 var(--t-small) / var(--lh-small) var(--font); }
+.island-panel .ip-tools { display: flex; align-items: center; gap: 2px; flex: none; }
+/* Settings and Open: quiet words, a soft fill under the pointer, the press on the M66 tokens. */
+.island-panel button.ip-word { display: inline-flex; align-items: center; height: 24px; padding: 0 var(--space-2); border-radius: 7px; color: var(--notch-fg-2); font: 500 var(--t-small) / 1 var(--font); white-space: nowrap; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.island-panel button.ip-word:hover { color: var(--notch-ink); background: var(--notch-card-hover); }
+.island-panel button.ip-word:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.island-panel .ip-quick { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.island-panel .ip-quick > button { flex: none; white-space: nowrap; }
+.island-panel[data-layout="job"] .ip-live { padding: 0; }
+.island-panel[data-layout="job"] .ip-live .ip-text > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.island-panel .ip-steps { margin-top: 6px; max-width: 160px; }
+.island-panel:not([data-shown]) .ip-head, .island-panel:not([data-shown]) .ip-quick { pointer-events: none; }
+/* Under the fact row, the mini receipt lines up with the fact and Settings, as the job does. */
+.island-panel .ip-head ~ .ip-result { padding-inline: 0; }
+/* The state of a question or a result, without a character (M70 step 4): a small amber dot for a question, a green tick
+   for a proven fix, a red dot for a failure, a plain dot otherwise. The same marks the notch's row uses. */
+.island-panel .ip-dot { flex: none; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: var(--notch-dot); color: var(--notch); }
+.island-panel .ip-dot[data-tone="needsYou"] { width: 8px; height: 8px; margin-inline: 2px; background: var(--amber); }
+.island-panel .ip-dot[data-tone="done"] { background: var(--notch-ok); }
+.island-panel .ip-dot[data-tone="failed"] { width: 8px; height: 8px; margin-inline: 2px; background: var(--notch-bad); }
+.island-panel .ip-dot .ic { stroke-width: 2.5; }
+.island-panel .ip-ask .ip-dot { justify-self: center; }
+/* M70 step 4: Home growing on from the panel. The island holds the panel's shape and words (island.tsx held) until it stops
+   drawing once Home's shape covers it (--seq-island-hide-at); the words fade out just before, so they are never cut. */
+.island[data-home] .island-panel[data-shown] { opacity: 0; scale: 1; transition: opacity var(--dur-exit-menu) linear calc(var(--seq-island-hide-at) - var(--dur-exit-menu)); }

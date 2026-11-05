@@ -99,7 +99,7 @@ import "./ui/fix.css";
 import "./ui/homeNow.css";
 import { checksOnOpen, Landing, onlyStreamChanged, revealTo, STREAM_LINES, waitScroll } from "./homeFlow.ts";
 import { changeSize } from "./changeSize.ts";
-import { contentAtMs } from "./homeShape.ts";
+import { contentAtMs, fromOf } from "./homeShape.ts";
 import { resultChips, type ChipId } from "./resultChips.ts";
 /** How long a proven result keeps its landing attribute: long enough for the glow to play once (ui/homeFlow.css). */
 const LAND_HOLD_MS = 2000;
@@ -1143,7 +1143,8 @@ function Card() {
       // M66: Home grows out of the notch (homeStage.tsx), in the same update that set the place it opens on, so it never
       // shows blank or the place it showed last. The motion is the stage's; with reduced or Less motion it fades.
       // M26: opened by a keyboard shortcut (the shell says instant, island.rs animates_open), it is simply there.
-      stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant);
+      // M70: opened while the notch showed its small panel, the shape grows on from that panel (homeShape.ts from).
+      stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant, fromOf(e.payload));
       // Opened from the Settings window's "Walk me through it" or "Open the practice list": do that now.
       const then = arrivalFrom(e.payload);
       if (then) onArrival.current(then);
@@ -1507,9 +1508,15 @@ function Card() {
     dispatch({ type: "ui.walkRequested", walk }); homeDispatch({ type: "pick", tab: "learn" }); void send(c);
     return walk;
   };
+  // M70: the small panel's Ask and Review changes. Shown and scrolled to, never focused: Home opened without the keyboard
+  // (main.rs island_go), and it takes the keys only when the person clicks into it (rule 9).
+  const showAsk = () => { setTimeout(() => box.current?.scrollIntoView({ block: "nearest" }), 0); };
+  const showReview = () => { setTimeout(() => document.getElementById(REVIEW_ID)?.scrollIntoView({ block: "start" }), 0); };
   onArrival.current = (t: HomeArrival) => {
+    if ("place" in t) { if (t.place === "ask") { pickTab("now"); showAsk(); return; } }
     // From the panel under the notch: the two things Squibby is for.
     if ("do" in t) {
+      if (t.do === "review") { pickTab("now"); if (nowModel.current.review) showReview(); return; }
       // The notch's Undo this fix: the receipt's own question, on Now (it is never undone without the person's yes there).
       if (t.do === "undo") { pickTab("now"); if (m.receipt && undoCan(m, project)) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); return; }
       if (t.do === "find") findFromHome(); else shipIt(); return;

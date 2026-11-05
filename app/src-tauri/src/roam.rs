@@ -829,7 +829,7 @@ mod tests {
             assert!(!follow.contains(heavy), "no {heavy} on each move");
         }
         // The same local watch as the ring's (follow_moves): no new global watch, never key events (rule 8).
-        assert!(MAIN.contains("follow_to_pointer(); home_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr()"));
+        assert!(MAIN.contains("follow_to_pointer(); home_pointer_moved(); island_pointer_moved(); drag_follow(unsafe { e.as_ref() }); e.as_ptr()"));
         assert_eq!(MAIN.matches("drag_follow(").count(), 2, "defined once, called from the local watch only");
         assert_eq!(MAIN.matches("addGlobalMonitorForEventsMatchingMask_handler(").count(), 1);
         // The let go: decided once (Drag::release takes the drag), saved once, placed once.

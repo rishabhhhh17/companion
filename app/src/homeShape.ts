@@ -30,6 +30,8 @@ export type HomeGeom = {
 export const REST_R = 11;
 export const OPEN_R = 24;
 export const SHOULDER_REST = 6;
+/** The small panel's bottom corner on a notch (style.css: .island.notch[data-mode="peek"] --r). */
+export const PANEL_R = 22;
 export const SHOULDER_OPEN = 12;
 /** The hover nudge: this much wider and taller, at once, on HOVER. */
 export const NUDGE_W = 6;
@@ -95,9 +97,11 @@ const reachMs = (s: SpringK, x: number): number => { const at = springPath(s).fi
 export function contentAtMs(): number {
   return Math.round((OPEN_H_DELAY_MS + reachMs(NOTCH.OPEN_H, 0.985)) / 10) * 10;
 }
-/** When the island's hover panel starts to show, from the moment its shape starts to grow: WORK is 80 percent of the way,
- *  so its words never show beyond the shape's edge (M66 step 5). Rounded to 10 ms. */
-export const islandPanelAtMs = (): number => Math.round(reachMs(NOTCH.WORK, 0.8) / 10) * 10;
+
+/** When the island's hover panel starts to show, from the moment its shape starts to grow: WORK is 92 percent of the way,
+ *  so its words never show beyond the shape's edge (M66 step 5; M70 step 4: at 80 percent the bottom row was cut by the
+ *  edge for a frame or two). Rounded to 10 ms. */
+export const islandPanelAtMs = (): number => Math.round(reachMs(NOTCH.WORK, 0.92) / 10) * 10;
 /** When the island stops drawing once Home opens: Home's band (OPEN_W) is 99 percent out, so the island's wings are never
  *  uncovered while Home's band is narrower. Rounded to 10 ms. */
 export const islandHideAtMs = (): number => Math.round(reachMs(NOTCH.OPEN_W, 0.99) / 10) * 10;
@@ -107,7 +111,23 @@ export const foldMs = (reduced: boolean): number => (reduced ? DUR[1] : EXIT_MS.
 
 // ---- the shape ----
 
-export type ShapeState = { phase: HomePhase; hover: boolean; bodyH: number };
+/** M70: the rect Home grows from when it opens while the notch shows its small panel (main.rs open_card_then sends the
+ *  panel's size with "opened"): width and height from the top edge, centred like everything else. Only the start of an
+ *  opening uses it; Home always folds back into the island at rest (`rest`). */
+export type FromRect = { w: number; h: number };
+/** The `from` in the shell's "opened" payload, checked: null for anything that does not make sense, or no panel. */
+export function fromOf(v: unknown): FromRect | null {
+  const f = (v as { from?: { w?: unknown; h?: unknown } } | null)?.from;
+  if (!f || typeof f !== "object") return null;
+  const w = pos(f.w), h = pos(f.h);
+  return w > 0 && h > 0 ? { w, h } : null;
+}
+export type ShapeState = { phase: HomePhase; hover: boolean; bodyH: number; from?: FromRect | null };
+/** Where two pieces of the one shape meet, the inner one reaches this far under its neighbour, so their anti aliased edges
+ *  never add up to a grey hairline at a fractional size (M70 step 4 shots: values of 20 to 45 on black). Only where both
+ *  are solid black: the strip under the foot's round corners, and the shoulders toward the band. */
+export const OVERLAP = 1;
+
 /** Every piece's transform, as CSS. Each piece is laid out at its largest (pieceSizes) from the shape's centre at the top
  *  of the window, transform origin at its own top left, and only scaled down and moved. */
 export type ShapeTransforms = {
@@ -122,7 +142,7 @@ export function pieceSizes(g: HomeGeom) {
   return {
     band: { w: g.band.w || 1, h: g.band.h || 1 },
     mid: { w: g.body.w, h: Math.max(1, g.body.maxH - OPEN_R) },
-    strip: { w: Math.max(1, g.body.w - 2 * OPEN_R), h: OPEN_R },
+    strip: { w: Math.max(1, g.body.w - 2 * OPEN_R + 2 * OVERLAP), h: OPEN_R },
     corner: OPEN_R,
     shoulder: SHOULDER_OPEN,
   };
@@ -137,7 +157,17 @@ export function outline(g: HomeGeom, s: ShapeState) {
   }
   if (out) {
     const h = bodyHeight(g, s.bodyH);
-    return { bw: g.band.w, bh: g.band.h, top: g.band.h, w: g.body.w, hm: Math.max(0, h - OPEN_R), r: OPEN_R, sTop: SHOULDER_OPEN, sJoin: SHOULDER_OPEN };
+    // M70 step 4: grown from the small panel, the band never narrows while the body grows (a pinch at the neck). It keeps
+    // the panel's width until the shape is open, then eases back to the notch and its wings (homeShape.css data-from).
+    const bw = s.phase === "opening" && s.from ? Math.max(g.band.w, s.from.w) : g.band.w;
+    return { bw, bh: g.band.h, top: g.band.h, w: g.body.w, hm: Math.max(0, h - OPEN_R), r: OPEN_R, sTop: SHOULDER_OPEN, sJoin: SHOULDER_OPEN };
+  }
+  // M70, collapsed on the small panel: the band keeps the row's height (only its width changes), and the panel below it is
+  // the body, so the band's foot and the body's top never part while the two springs run (OPEN_W, then OPEN_H). Its
+  // corner is the panel's, close to Home's own.
+  if (s.from) {
+    const w = s.from.w, row = g.band.h, r = Math.min(PANEL_R, Math.max(0, s.from.h - row), w / 2);
+    return { bw: w, bh: row, top: row, w, hm: Math.max(0, s.from.h - row - r), r, sTop: 0, sJoin: 0 };
   }
   // Collapsed: exactly the island at rest, a little bigger under the pointer (the nudge).
   const w0 = g.rest.w + (s.hover ? NUDGE_W : 0), h0 = g.rest.h + (s.hover ? NUDGE_H : 0);
@@ -151,18 +181,19 @@ export function shapeTransforms(g: HomeGeom, s: ShapeState): ShapeTransforms {
   const P = pieceSizes(g), o = outline(g, s), out = isOut(s.phase);
   const sc = (x: number, y: number) => `scale(${n(x)}, ${n(y)})`;
   const bandOn = g.kind !== "free";
+  const ov = o.r >= OVERLAP && o.w - 2 * o.r > 0 ? OVERLAP : 0;
   return {
     band: bandOn ? `${t(-o.bw / 2, 0)} ${sc(o.bw / P.band.w, o.bh / P.band.h)}` : "scale(0)",
     midY: `${t(0, o.top)} ${sc(1, o.hm / P.mid.h)}`,
     midX: `${t(-o.w / 2, 0)} ${sc(o.w / P.mid.w, 1)}`,
     footY: t(0, o.top + o.hm),
-    strip: `${t(-(o.w / 2 - o.r), 0)} ${sc(Math.max(0, o.w - 2 * o.r) / P.strip.w, o.r / P.strip.h)}`,
+    strip: `${t(-(o.w / 2 - o.r) - ov, 0)} ${sc(Math.max(0, o.w - 2 * o.r + 2 * ov) / P.strip.w, o.r / P.strip.h)}`,
     cornerL: `${t(-o.w / 2, 0)} scale(${n(o.r / P.corner)})`,
     cornerR: `${t(o.w / 2 - o.r, 0)} scale(${n(o.r / P.corner)})`,
-    topL: `${t(-o.bw / 2 - o.sTop, 0)} scale(${n(o.sTop / P.shoulder)})`,
-    topR: `${t(o.bw / 2, 0)} scale(${n(o.sTop / P.shoulder)})`,
-    joinL: `${t(-o.bw / 2 - o.sJoin, o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
-    joinR: `${t(o.bw / 2, o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
+    topL: `${t(-o.bw / 2 - o.sTop + Math.min(OVERLAP, o.sTop), 0)} scale(${n(o.sTop / P.shoulder)})`,
+    topR: `${t(o.bw / 2 - Math.min(OVERLAP, o.sTop), 0)} scale(${n(o.sTop / P.shoulder)})`,
+    joinL: `${t(-o.bw / 2 - o.sJoin + Math.min(OVERLAP, o.sJoin), o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
+    joinR: `${t(o.bw / 2 - Math.min(OVERLAP, o.sJoin), o.bh - o.sJoin)} scale(${n(o.sJoin / P.shoulder)})`,
     // The content arrives from the top: a little higher and smaller, then in place.
     content: out ? "none" : "translateY(-6px) scale(.97)",
     contentOpacity: out ? 1 : 0,

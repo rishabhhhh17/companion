@@ -441,7 +441,7 @@ describe("the island's motion agrees with the app's timing", () => {
     for (let u = 0; u < 0.5 && !settled(s, 185); u += 1 / 120) { s = springStep(s, 185, 1 / 120, false, ISLAND_SPRING.k, ISLAND_SPRING.c); expect(s.x - 185).toBeLessThan(1); }
     // M66 step 5: the panel's words leave first and fast, and the shape waits for them (homeGlitches.test.ts), so the
     // shape's edge never cuts them.
-    expect(read("./island.tsx")).toContain("shown={parts.panel}");
+    expect(read("./island.tsx")).toContain("shown={panelShown}");
   });
   test("a proven fix widens the wings by island.rs CHEER on the softer spring, only with reactions and motion on", async () => {
     const { CHEER_SPRING, CHEER_AT_MS, CHEER_FOR_MS } = await import("./islandSpring.ts");
@@ -471,8 +471,10 @@ describe("the island's motion agrees with the app's timing", () => {
     const page = read("./island.tsx"), css = read("./style.css");
     expect(page).not.toContain("island-peek");
     expect(css).not.toMatch(/\.island-peek \{|\.island-face \{|\.island-live \{/);
-    // An agent's face shows only inside its own job card.
-    expect(read("./islandPanel.tsx")).toContain('<FlowMini className="ip-agent" state={j.state} still={!shown} />');
+    // M70 step 4 (the founder: "I don't want Squibby to be there always"): no face in the panel's cards either; a small dot
+    // or tick says the state. Only the opt in hello (island.hello, off by default) shows the Visor.
+    expect(read("./islandPanel.tsx")).not.toContain('<FlowMini className="ip-agent" state={j.state}');
+    expect(read("./islandPanel.tsx")).toContain('<span className="ip-dot" data-tone={j.tone} aria-hidden="true" />');
   });
   test("Home folds back into the notch on the page's clock, and the shell waits for it", () => {
     const main = read("../src-tauri/src/main.rs");
@@ -519,8 +521,9 @@ describe("the bare notch (M46)", () => {
     expect(css).not.toContain("island-sun-in");
     expect(page).not.toContain("island-unseen");
     expect(page).toContain("const shapeW = shape.w;");
+    // M70: in the small panel, new results are its one fact when there is nothing more useful to say.
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("S.panel.newCount(");
+    expect(panel).toContain("const fact = fact0 === S.notch.ready && unseen > 0 ? S.panel.unseen(unseen) : fact0;");
     expect(S.panel.newCount(3)).toBe("3 new");
     expect(S.panel.newCount(12)).toBe("9+ new");
   });
@@ -532,7 +535,9 @@ describe("the bare notch (M46)", () => {
     // M57 feature 5: with the instant key warning, the same quiet line says a key was written (only a count crosses over).
     expect(main).toContain('app.emit_to("island", "review-ready", json!({ "on": on, "key": key }))');
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
-    expect(panel).toContain("{!brief && review && <p className=\"ip-new\">{reviewKey ? S.panel.reviewKey : S.panel.reviewReady}</p>}");
+    // M70: the small panel's one fact says the changes ("my-shop: 3 changes to review", notchQuick.ts), and a key written in
+    // them comes first, as quietly.
+    expect(panel).toContain("const fact0 = reviewKey ? S.panel.reviewKey : view.kind === \"job\" ? view.job.title : quickFact(m, now, note);");
     // Never in a panel that opened by itself, never the wings, never a sound: it does not ask for the island to open.
     expect(page).not.toMatch(/review[^\n]*island_alert|island_alert[^\n]*review/);
     expect(S.panel.reviewReady).toBe("Changes ready to review");
@@ -564,12 +569,13 @@ describe("the bare notch (M46)", () => {
     const w = Number(/pub const PANEL_W: f64 = (\d+)\.0;/.exec(rs)![1]);
     expect(Number(/\n\.island-panel \{[^}]*width: (\d+)px;/.exec(css)![1])).toBe(w);
   });
-  test("at rest the notch says nothing; on hover the panel shows one live thing, never a greeting or a launcher (F28)", () => {
+  test("at rest the notch says nothing; on hover the small panel (M70: a greeting, one fact, a few buttons that open Home)", () => {
     const panel = readFileSync(new URL("./islandPanel.tsx", import.meta.url), "utf8");
     expect(panel).toContain("const view = panelView(m, jobs, { note, status: notchStatusLine(homeStatus(m, project, now), project), kept });");
     for (const gone of ["greeting(", "S.panel.go", "ip-pill", "PANEL_DO.find", "PANEL_DO.ship", "PANEL_DO.settings"]) expect(panel, gone).not.toContain(gone);
-    // Opened by itself (brief), only a question or a result: never the line or Add your key.
-    expect(panel).toContain('{brief ? (view.kind === "questions" || view.kind === "result" ? live : null) : live}');
+    // Opened by itself (brief), only a question or a result: never the greeting, the line, a button or Add your key.
+    expect(panel).toContain('</div> : brief ? (');
+    expect(panel).toContain('view.kind === "questions" || view.kind === "result" ? live : null');
   });
   test("it never drops by itself for a start, a step or a cost: only a proven fix or a failure (resultPeekKey)", () => {
     expect(page).toContain("resultPeekKey(islandJobs(m))");

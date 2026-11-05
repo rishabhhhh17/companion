@@ -46,3 +46,14 @@ The founder asked for the notch to have presence: "there is still no notch like 
 - A short hello (about 3 seconds, no buttons, never takes focus) shows on start, on wake, or after more than an hour away. It shows at most once an hour, only on a real notch, and never while a call app is in front. A switch (island.hello, on by default) turns it off. The name is one the person types (you.name), never the Mac account name.
 
 Everything else in this record stands. Built in M68 (docs/milestones/M68-visor.md).
+
+## Update, 4 Nov 2026 (founder, later)
+
+After seeing the M68 wings and hello, the founder: "I don't want Squibby to be there always, and I don't need a small little bubble type to be there. The notch should be more practical and more to use, just like HeyClicky's notch."
+
+- The rest wings (island.wings) and the automatic hello (island.hello) are now off by default. Both switches stay, and a stored on still works. So the notch is the bare notch at rest again, as this record first said.
+- While something is live, the notch shows only one small mark (working, a question, a proven result, a failure). Listening and looking at the screen always show (rule 5).
+- Hovering opens a small panel first (island.pointOpens is "status" by default; "home" stays as a choice). Built in M70 step 4 as fact first, no greeting: one plain fact (such as "my-shop: 3 changes to review"), and up to three buttons that open Home at the right place (Ask, Review changes, Check my project, Check before going live, Undo last change), plus Settings and Open. This changes the line above that said buttons that only open Home leave the notch. The greeting stays out of the notch, as the line above says; the name (you.name) is used only by the opt in hello.
+- Open, Settings or a button grows the same black shape on into the full Home.
+
+Plan: docs/milestones/M70-practical-notch.md.

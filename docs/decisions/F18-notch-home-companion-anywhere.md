@@ -84,3 +84,7 @@ The founder asked for the island to be fun, like NotchNook, Alcove, Boring Notch
 - **Home's resize is never animated, and stays so.** Home grows out of the notch only as it opens. Once open, a new content height (a result arriving, Settings opening in the tall layout) or width takes Home's shape in the same frame as its content, with no glide, so nothing is ever drawn past Home's black body over the desktop.
 - **Home's window level.** Home sits above the menu bar so its shape can hang from the notch. The Show me how pointer and the ring draw above it, and while one of Companion's own macOS dialogs is up (the folder chooser, Open from a link, the Delete everything question) Home drops under it, then comes back.
 - **The pointer leaving.** A Home that resting on the notch opened folds back after the close delay (island.closeDelay), only with "Close Home when I click another app" on, and never while something on it waits for the person.
+
+## Note, 5 Nov 2026 (M70)
+
+This record says the panel under the pointer is 300 pt wide. It has been 400 pt (island.rs PANEL_W) since M46 and stays 400 pt in M70, where it becomes the small practical panel (built in M70 step 4 as fact first, no greeting: one fact, up to three buttons that open Home, and Settings and Open). Resting the pointer opens that panel first by default (island.pointOpens "status"); Home right away stays a choice. See docs/milestones/M70-practical-notch.md and F28's update of 4 Nov 2026 (founder, later).

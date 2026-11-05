@@ -47,7 +47,7 @@ export function islandJobs(m: Model): JobCard[] {
   // M28: the plain question, and exactly what will happen under it (approvals.ts), never the safety rule's own words.
   // Paths are shown from the project folder down, as on Home's card (M45).
   const project = m.task?.project ?? m.folder ?? "";
-  const out: JobCard[] = m.approvals.map((a) => { const w = approvalWords(a, project), here = answerHere(a.risk, w.canUndo || w.undo === null); return { key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: w.question, sub: w.what ?? (here ? S.panel.askHere : S.panel.needsYou), approval: a.id, risk: a.risk, here, ...(w.what ? { code: true } : {}) }; });
+  const out: JobCard[] = m.approvals.map((a) => { const w = approvalWords(a, project), here = answerHere(a.risk, w.canUndo || w.undo === null); return { key: `ask:${a.id}`, state: "needsYou" as const, tone: "needsYou" as const, title: w.question, sub: w.what ?? (w.why || (here ? S.panel.askHere : S.panel.needsYou)), approval: a.id, risk: a.risk, here, ...(w.what ? { code: true } : {}) }; });
   const v = visualState(m);
   if (m.task && BUSY.includes(v)) {
     const d = m.drive && !m.drive.finished ? m.drive : null;
@@ -83,7 +83,8 @@ export type PanelView =
   | { kind: "result"; job: JobCard; verdict: Verdict; canUndo: boolean; mini: MiniReceipt }
   | { kind: "line"; line: string };
 /** M69 (the YC benchmark spec 3.13): the result as a mini receipt, not a toast. Its line says how it was proven ("Checked in a
- *  browser · 5 s", runList.ts proofShort), else the verdict; the after picture the engine made, only for a proven fix still
+ *  browser · 5 s", runList.ts proofShort), else for a proven fix the check and the files changed (M70 step 4: the verdict
+ *  said again under the title was "Signup button fixed / Fixed and proven"), else the verdict; the after picture the engine made, only for a proven fix still
  *  in place; and Keep, the one main button, only on a proven fix: it folds the panel back. No key hints on any button: the
  *  notch never takes the keyboard (rule 9, M69 correction 3). */
 export type MiniReceipt = { title: string; line: string; thumb: string | null; keep: boolean };
@@ -91,7 +92,7 @@ export function miniReceipt(m: Pick<Model, "task" | "receipt" | "undo">, v: Verd
   const live = v.proven && !!m.receipt && !m.receipt.undone && !m.undo;
   const image = live ? m.receipt!.visual?.image ?? null : null;
   // M69 step 3: the title is the outcome as Home says it ("Sign up button fixed"), only for a proven fix.
-  return { title: outcomeTitle(m.task?.label ?? "", v.proven ? "proven" : "failed"), line: proofShort(m, v.proven) ?? v.headline, thumb: image ? `data:image/jpeg;base64,${image}` : null, keep: live };
+  return { title: outcomeTitle(m.task?.label ?? "", v.proven ? "proven" : "failed"), line: proofShort(m, v.proven) ?? (v.proven ? S.panel.proofLine(m.receipt?.changed.length ?? 0) : v.headline), thumb: image ? `data:image/jpeg;base64,${image}` : null, keep: live };
 }
 /** `kept`: the result the person pressed Keep on; the panel then says the project's line instead (island.tsx). */
 export function panelView(m: Model, jobs: JobCard[], o: { note: string; status: string; kept?: string | null }): PanelView {

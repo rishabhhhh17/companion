@@ -215,7 +215,7 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // Only transform and opacity; never a clip painted on every frame.
     expect(sheet).not.toMatch(/transition:[^;]*clip-path/);
     // M26: opened by a keyboard shortcut it is simply there (the shell says so, island.rs animates_open).
-    expect(card).toContain("stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant);");
+    expect(card).toContain("stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant, fromOf(e.payload));");
     expect(sheet).toContain(".home-stage[data-instant] :is(.hs > i, .hs > span, .hs > span > i, .home-frame) { transition: none; }");
   });
   test("reduced motion and Less motion stop it (the rules that stop every animation in the file)", () => {

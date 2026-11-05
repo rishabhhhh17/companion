@@ -504,10 +504,10 @@ export const S = {
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
     "island.haptics": "A light tap on the trackpad when you open the notch. Off unless you turn it on.",
-    "island.wings": "Small wings beside the notch show the lights and one short count. Off, the notch looks like the hardware.",
-    "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour.",
-    "you.name": "Used only for the hello in the notch. Empty says Hi there.",
-    "island.pointOpens": "What opens when you point at the notch: Home, or one status line.",
+    "island.wings": "Small wings beside the notch show the lights and one short count. Off, the usual, the notch looks like the hardware.",
+    "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour. Off unless you turn it on.",
+    "you.name": "Used only by the hello in the notch. Empty says Hi there.",
+    "island.pointOpens": "What opens when you point at the notch: a small panel first, or Home right away.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
     // M57 UI 12: the review of changes, first on the Fixing page.
@@ -580,7 +580,7 @@ export const S = {
     "attach.docLimit": { "20": "20 KB", "50": "50 KB", "100": "100 KB" },
     "talk.maxHold": { "30": "30 sec", "60": "1 min", "120": "2 min" },
     "look.theme": { black: "Black", paper: "White", graphite: "Graphite", deep: "Deep" },
-    "island.pointOpens": { home: "Home", status: "Status line" },
+    "island.pointOpens": { home: "Home", status: "Small panel" },
   } as Record<string, Record<string, string>>,
   // The Groups on each page and the topics in More options (settingsPages.ts), by their anchors.
   setGroupTitles: {
@@ -796,6 +796,23 @@ export const S = {
   // The panel under the notch (islandPanel.ts): the work, never a character.
   // M68 step 2b: the notch's hello and its wings at rest (notchHello.ts). A productivity tool's words (rule 16): a greeting
   // and one plain fact, never a mood, never "missed you", never a streak.
+  // M70 (the founder, 4 Nov 2026: "practical, just like HeyClicky's notch"): the small panel that opens when you rest the
+  // pointer on the notch. One fact, a few buttons that open Home at the right place (step 4: no greeting; only the opt in
+  // hello uses the name).
+  notch: {
+    ready: "Ready when you are",
+    pickProject: "Pick a project to start",
+    changes: (project: string, n: number) => `${project}: ${n} ${n === 1 ? "change" : "changes"} to review`,
+    passed: (project: string, ago: string) => `${project}: last check passed ${ago}`,
+    // M70 step 4: the fact for a project never checked, as Home's headline says it.
+    notChecked: (project: string) => `${project}: not checked yet`,
+    open: `Open ${PRODUCT}`,
+    // The visible word on Open (its name for VoiceOver stays `open`): a bare chevron read as "next".
+    openShort: "Open",
+    settings: "Settings",
+    actions: "Quick actions",
+    quick: { pick: "Pick a project", ask: "Ask", review: "Review changes", check: "Check my project", ship: "Check before going live", undo: "Undo last change", fix: "Find and fix the problem" },
+  },
   hello: {
     hey: (name: string) => `Hey ${name}`,
     hiThere: "Hi there",
@@ -816,7 +833,10 @@ export const S = {
     label: `${PRODUCT}: what is happening`,
     needsYou: "Needs your OK. Look at it first.",
     // M23: a question answered right in the notch (islandPanel.ts answerHere), this once only.
-    askHere: "Needs your OK, just this once.",
+    // M70 step 4: said only when the question has no detail of its own, and never a second "needs your OK".
+    askHere: "Only this time. You can say no.",
+    // M70 step 4: a proven fix's second line when it has no proof line of its own: the check, and how many files changed.
+    proofLine: (n: number) => `Check passed${n > 0 ? ` · ${n} ${n === 1 ? "change" : "changes"}` : ""}`,
     lookFirst: "Look first",
     step: (i: number, n: number, title: string) => `Step ${i} of ${n}: ${title}`,
     jobs: "Work going on",
@@ -1905,7 +1925,7 @@ export const S = {
     "talk.shortSteps": { label: "Say steps short, one at a time", help: "With Say answers out loud on, each step says just what to do when its ring lands. A sentence of explanation after it is left out. A warning, a key to press, a question or a second thing to do is still said. A step is never cut in the middle of a sentence. An answer Answer out loud says is said all of it. The full words stay in Home. Off, the whole step is said.", also: ["speak", "short", "voice", "steps", "read aloud", "tutor"] },
     "island.show": { label: "Show in the notch", help: `The notch is ${PRODUCT_S} place at the top of the screen. Off, Home opens beside the character instead, and its keys still open it.`, also: ["Show the notch", "notch", "menu bar", "island", "top of the screen", "hide"] },
     "island.peekOnHover": { label: "Open by pointing at the notch", help: "Rest the pointer on the notch and it opens. Off, the notch opens only when you click it.", also: ["Show status on hover", "Show status when I point at the notch", "hover", "peek", "status", "pointer"] },
-    "island.pointOpens": { label: "Pointing at the notch opens", help: `Home opens all of ${PRODUCT}, the usual. Status line shows one line under the notch instead. A click always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line"], options: { home: "Home", status: "Status line" } },
+    "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: one thing worth knowing and a few buttons, such as Ask and Check my project. Each button opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
     "island.closeDelay": { label: "Close it after moving away for", help: "How long the status stays open after the pointer leaves the notch, so a small slip does not close it.", also: ["hover", "delay", "wait"] },
     "island.haptics": { label: "Tap the trackpad when the notch opens", help: "A light tap you feel on the trackpad when the notch opens because you clicked it or pointed at it. Only on a Mac with a Force Touch trackpad, and only while your finger is on it. Never for anything that opens by itself.", also: ["haptic", "haptics", "vibrate", "feedback", "tap", "trackpad", "feel"] },
@@ -1916,10 +1936,10 @@ export const S = {
     "talk.dictate": { label: "Type by voice in any app", help: `Usually off, to keep things simple at first. Turn it on and pick its keys in Keys. Hold them, speak, and let go: your words are typed where the cursor is, in any app. ${PRODUCT} turns your voice into text on this Mac and never presses Return, so nothing is sent. It never types into a password box. It needs the microphone and Accessibility, asked the first time. Off, the keys type nothing.`, also: ["mic", "dictate", "voice", "dictation", "dictate", "type", "voice typing", "speech to text", "wispr", "any app"] },
     "talk.captions": { label: "Show your words", help: "When I say something out loud, the words also show at the bottom of your screen until I stop.", also: ["Show my words while I talk", "captions", "subtitles", "text", "read along", "deaf", "hard of hearing"] },
     "home.escStops": { label: "Esc clears the screen", help: "While I point at something or walk you through steps, Esc clears it and stops me talking. The rest of the time Esc stays with your other apps.", also: ["Esc stops what I show on screen", "escape", "esc", "stop", "cancel", "take back", "control"] },
-    "island.wings": { label: "Show wings at rest", help: "Small black wings beside the notch, even when nothing runs. The left one shows the character's lights. The right one shows one short count, such as 3 changes, or a tick after a proof, and nothing when there is nothing. Off, the notch looks like the hardware until something happens.", also: ["wings", "notch", "presence", "lights", "count", "tick", "rest", "idle", "hardware", "always"] },
-    "island.hello": { label: "Say hello in the notch", help: "A short hello when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
-    "you.name": { label: "Your name", help: "What to call you in the hello in the notch, such as Hey Sam. Only what you type here is used. Empty, the hello says Hi there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
-    "island.showStep": { label: "Show the step on the notch", help: "While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks.", also: ["progress", "step", "notch", "working", "live", "line"] },
+    "island.wings": { label: "Show wings at rest", help: "Small black wings beside the notch, even when nothing runs. The left one shows the character's lights. The right one shows one short count, such as 3 changes, or a tick after a proof, and nothing when there is nothing. Off, the usual, the notch looks like the hardware. While something runs it shows only one small mark.", also: ["wings", "notch", "presence", "lights", "count", "tick", "rest", "idle", "hardware", "always"] },
+    "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
+    "you.name": { label: "Your name", help: "Used only by the hello in the notch, such as Hey Sam, when Say hello in the notch is on. Only what you type here is used. Empty, it says Hi there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
+    "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. The small panel always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
     "home.goToNeeds": { label: "When something needs me", help: "Go to it opens the tab where it is waiting. Only mark the tab keeps you where you are. It puts a dot on that tab and a mark on the notch, or on the character when the notch is off. With Say answers out loud on, it also says what is waiting.", also: ["tab", "jump", "switch", "interrupt", "say it"], options: { goToIt: "Go to it", markTab: "Only mark the tab" } },
