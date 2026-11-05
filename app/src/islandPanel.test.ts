@@ -116,7 +116,7 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     // with the gear and Open; the quick actions follow panel.showButtons (hidden, on). The old big hello and its chips stay gone.
     // M70: a small greeting over the one fact, only on hover (the founder: "a small text" first, and "hey Rishabh"; the
     // bubble they removed was the hello at rest), with Settings and Open in words.
-    expect(view).toContain('<span className="ip-lead"><span className="ip-greet">{greet}</span><b className="ip-fact" title={fact}>{fact}</b></span>');
+    expect(view).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}>{lines.fact}</b></span>');
     expect(view).toContain('const showButtons = useSetting("panel.showButtons") !== false;');
     for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello"]) expect(view, gone).not.toContain(gone);
     const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");

@@ -75,6 +75,16 @@ export function quickFact(m: Model, now: number, note = ""): string {
   return S.notch.ready;
 }
 
+/** The panel's two lines (5 Nov 2026, a long project name cut the fact): a fact about the project ("my-shop: 3 changes to
+ *  review") moves the name up beside the greeting, small and allowed to shorten, and keeps its own words in full. Any other
+ *  fact stays as it is. */
+export function factLines(greet: string, fact: string, project: string): { top: string; fact: string } {
+  const name = nameOf(project), lead = `${name}: `;
+  if (!name || !fact.startsWith(lead) || fact.length === lead.length) return { top: greet, fact };
+  const rest = fact.slice(lead.length);
+  return { top: `${greet} · ${name}`, fact: rest[0].toUpperCase() + rest.slice(1) };
+}
+
 /** A button's words. Check my project reads as "check it again" after a check failed, so there it says what it leads to:
  *  Home finds the problem and offers Fix it (the same press, { do: "find" }). */
 export function quickLabel(id: QuickId, m: Model, now: number): string {

@@ -42,3 +42,7 @@
 /* M70 step 4: Home growing on from the panel. The island holds the panel's shape and words (island.tsx held) until it stops
    drawing once Home's shape covers it (--seq-island-hide-at); the words fade out just before, so they are never cut. */
 .island[data-home] .island-panel[data-shown] { opacity: 0; scale: 1; transition: opacity var(--dur-exit-menu) linear calc(var(--seq-island-hide-at) - var(--dur-exit-menu)); }
+/* 5 Nov 2026 (the founder's black wallpaper): pure black on black had no edge, so the open panel's words looked loose. A
+   faint edge on the sides and the bottom (never the top, which meets the screen's edge), growing with the shape's own
+   openness (--open), so the bare notch at rest has none. A file dragged over keeps its own ring. */
+.island:not([data-drop="over"]) .island-shape { box-shadow: inset 1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset -1px 0 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent), inset 0 -1px 0 color-mix(in srgb, var(--notch-edge-open) calc(var(--open) * 100%), transparent); }

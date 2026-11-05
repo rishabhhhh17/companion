@@ -393,6 +393,7 @@
   --notch-card: #141416;
   --notch-card-hover: #1A1A1D;
   --notch-edge: rgba(255, 255, 255, .08);
+  --notch-edge-open: rgba(255, 255, 255, .16);   /* the open panel's faint edge, so it reads on a black wallpaper */
   --notch-edge-strong: rgba(255, 255, 255, .2);
   --notch-edge-cost: rgba(255, 255, 255, .16);
   --notch-edge-ok: rgba(123, 228, 149, .5);

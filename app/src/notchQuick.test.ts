@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
-import { GEAR_DO, LAYOUT_H, QUICK_DO, QUICK_MAX, QUICK_SLOTS, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel, type PanelLayout } from "./notchQuick.ts";
+import { GEAR_DO, LAYOUT_H, QUICK_DO, QUICK_MAX, QUICK_SLOTS, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel, factLines, type PanelLayout } from "./notchQuick.ts";
 import { islandJobs, miniReceipt, panelView } from "./islandPanel.ts";
 import { latched, rowMarkShown } from "./notchQuick.ts";
 import { openness } from "./islandSpring.ts";
@@ -163,7 +163,7 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
     expect(panel).toContain('const greet = quickGreeting(useSetting("you.name"));');
-    expect(panel).toContain('<span className="ip-greet">{greet}</span><b className="ip-fact"');
+    expect(panel).toContain('<span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}>{lines.fact}</b></span>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.
     expect(read("./style.css")).toMatch(/\.island-panel \{[^}]*display: grid; grid-template-columns: minmax\(0, 1fr\);/);
   });
@@ -256,7 +256,7 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
   const view = read("./islandPanel.tsx"), page = read("./island.tsx");
   test("the head row is the fact with Settings and Open in words; no character anywhere in the panel but the opt in hello", () => {
     const head = view.slice(view.indexOf('<div className="ip-head">'), view.indexOf("</div>", view.indexOf('<div className="ip-head">')));
-    expect(head).toContain("{fact}");
+    expect(head).toContain("{lines.fact}");
     expect(head).toContain("{S.notch.settings}");
     expect(head).toContain("{S.notch.openShort}");
     expect(head).toContain("label={S.notch.open}");
@@ -348,5 +348,27 @@ describe("M70 step 5: Home grown from the panel, the band the shell hit tests (i
     const rs = read("../src-tauri/src/island.rs");
     expect(rs).toContain("pub fn shape_rects_from(");
     expect(rs).toContain("pub const FROM_BAND_MS: u64 = 780;");
+  });
+});
+
+// 5 Nov 2026, the founder's screenshot on a black wallpaper: the panel's words looked loose (no edge on black), and a long
+// project name cut the fact ("Squibby practice signup page: not chec..."). The project moves to the small line, the fact
+// keeps its own words, and the open shape draws a faint edge that grows with it.
+describe("the fact never loses its words to a long project name", () => {
+  test("a fact about the project moves the name up beside the greeting", () => {
+    expect(factLines("Hey Rishabh", "my-shop: 3 changes to review", "/Users/a/my-shop")).toEqual({ top: "Hey Rishabh · my-shop", fact: "3 changes to review" });
+    expect(factLines("Hi there", "Squibby practice signup page: not checked yet", "/p/Squibby practice signup page")).toEqual({ top: "Hi there · Squibby practice signup page", fact: "Not checked yet" });
+  });
+  test("a fact not about the project, or no project, stays as it is", () => {
+    expect(factLines("Hi there", S.notch.ready, "/p/my-shop")).toEqual({ top: "Hi there", fact: S.notch.ready });
+    expect(factLines("Hi there", "my-shop works", "/p/my-shop")).toEqual({ top: "Hi there", fact: "my-shop works" });
+    expect(factLines("Hi there", "x: y", "")).toEqual({ top: "Hi there", fact: "x: y" });
+  });
+  test("the panel uses it, and the open shape has an edge from the notch tokens that grows with the shape", () => {
+    const panel = read("./islandPanel.tsx");
+    expect(panel).toContain("factLines(greet, fact, project)");
+    const css = read("./ui/notch.css");
+    expect(css).toMatch(/\.island-shape \{[^}]*box-shadow:[^}]*var\(--notch-edge-open\)[^}]*var\(--open\)/);
+    expect(read("./ui/tokens.css")).toContain("--notch-edge-open:");
   });
 });

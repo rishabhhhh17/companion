@@ -16,7 +16,7 @@ import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { clockWords, homeStatus, jobStep, notchStatusLine } from "./homeHero.ts";
-import { GEAR_DO, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel } from "./notchQuick.ts";
+import { GEAR_DO, panelLayout, quickActions, quickFact, quickGo, quickGreeting, quickLabel, factLines } from "./notchQuick.ts";
 import { useGroups } from "./groups.ts";
 import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
@@ -98,6 +98,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const layout = panelLayout(view);
   const fact0 = reviewKey ? S.panel.reviewKey : view.kind === "job" ? view.job.title : quickFact(m, now, note);
   const fact = fact0 === S.notch.ready && unseen > 0 ? S.panel.unseen(unseen) : fact0;
+  const lines = factLines(greet, fact, project);
   const actions = showButtons ? quickActions(m, { now, layout, on: groups.on }) : [];
   const questions = jobs.filter((j) => j.approval);
   const list = questions.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
@@ -156,7 +157,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       {/* M70: a small greeting over the one fact (the founder asked for it by name), with Settings (Home on Settings) and Open (Home on
           Now) in words. Both grow the same shape into Home. While a job runs, the fact is the job's name. */}
       <div className="ip-head">
-        <span className="ip-lead"><span className="ip-greet">{greet}</span><b className="ip-fact" title={fact}>{fact}</b></span>
+        <span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}>{lines.fact}</b></span>
         <span className="ip-tools">
           <button className="ip-word" type="button" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", { then: GEAR_DO }).catch(() => {}); }}>{S.notch.settings}</button>
           <button className="ip-word" type="button" tabIndex={tab} aria-label={S.notch.open} onClick={() => { if (ready()) void invoke("island_go", {}).catch(() => {}); }}>{S.notch.openShort}</button>
