@@ -57,10 +57,15 @@ export type ResearchAsk = Envelope & { type: "research.ask"; project: string; ag
 export type RescueDiagnose = Envelope & { type: "rescue.diagnose"; project: string; agent: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DrivePlan = Envelope & { type: "drive.plan"; project: string; agent: string; goal: string; model: string; budgetUsd: number; offTheRecord?: boolean };
 export type DriveApprove = Envelope & { type: "drive.approve"; agent: string; steps: string[] };
-export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" };
+// M58: the fixed ladder adds "research" (look up this exact error, only when Let tasks search the web is on) and
+// "lastWorking" (put the files back to the last version whose checks passed, then plan; the page asks first).
+export type LoopChoose = Envelope & { type: "loop.choose"; agent: string; choice: "different" | "stop" | "research" | "lastWorking" };
 export type DrivePause = Envelope & { type: "drive.pause"; agent: string; reason: "editor" | "terminal" | "you" };
 export type DriveResume = Envelope & { type: "drive.resume"; agent: string };
 export type TasksList = Envelope & { type: "tasks.list"; project: string };
+// M58: star or name a save point (kept in the shadow store's own notes, never the project, never git). A starred or named
+// save is never pruned. name: at most 40 characters, cleaned; "" takes the name away.
+export type CheckpointMark = Envelope & { type: "checkpoint.mark"; project: string; checkpoint: string; star?: boolean; name?: string };
 export type MemoryScope = "project" | "profile";
 export type MemoryList = Envelope & { type: "memory.list"; project: string };
 export type MemoryForget = Envelope & { type: "memory.forget"; project: string; scope: MemoryScope; line: string };
@@ -97,6 +102,13 @@ export type ExplainSet = Envelope & { type: "explain.set"; project: string; mode
 export type ShipPreview = Envelope & { type: "ship.preview"; project: string };
 export type ShipLive = Envelope & { type: "ship.live"; project: string; url: string; confirm: true };
 export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; confirm: true };
+/** M58 (UI 13): the person pressed Sign in to Vercel. The engine runs their own `vercel login` as a visible step; it never
+ *  reads, stores or passes the login. Only on this press, never at launch or on a timer. */
+export type ShipSignIn = Envelope & { type: "ship.signIn"; project: string; /** true: end a sign in that is still waiting (the review of 5 Nov) */ stop?: boolean };
+/** M58 (feature 9): the key practice, on the person's press. write: the practice's pretend AI writes its made up key into the
+ *  copy (then the review looks at once, by its rules alone); fix: the fixed fix moves it to .env.local, with a safety copy
+ *  first. Only in a practice copy of the key practice (runner/src/practicekey.ts); no model, no cost. */
+export type PracticeKey = Envelope & { type: "practice.key"; project: string; step: "write" | "fix" };
 export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
@@ -236,7 +248,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -332,12 +344,12 @@ export type Problem =
 // needs: "browser" means this step was skipped only because the hidden browser is not installed, so the page can offer it.
 // summary: a failed step's one plain sentence; the detail (the check's own output) is shown behind Details.
 // runs (M69): the commands the rung ran and their exit codes, for the receipt's proof ticks; absent from older engines.
-export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser"; summary?: string; runs?: { command: string; exit: number }[] };
+export type ProofStep = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms?: number; problem?: Problem; needs?: "browser" | "signIn"; summary?: string; runs?: { command: string; exit: number }[] };
 // note: one plain line about a check that could not run (the Vercel tool missing or signed out), with what to do.
 // A problem with from "deploy" is the line the last Vercel deploy failed at, confirmed in this folder.
 export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser"; note?: string };
 export type ProofStepEvent = Envelope & { type: "proof.step"; agent: string } & ProofStep;
-export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number };
+export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number; of?: number };
 
 export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval: string; agent: string; outcome: "allowed" | "denied" | "expired" | "cancelled" };
 
@@ -354,10 +366,10 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 // index: the Drive step (from 1); 0 for a single task, whose title is the task's label.
 // tries and same: how the tries ran out, sent only when it was not the usual three identical failures (the settings
 // work.tries and work.askOnAnyFailure): how many checks failed in a row, and whether all of them the same way.
-export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[]; tries?: number; same?: boolean };
+export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[]; tries?: number; same?: boolean; rung?: "retry" | "research" | "lastWorking" };
 // undone (M45): an Undo put the project back to before this task. back: "Bring the fix back" then put its files back again
 // (undone stays set: nothing was checked since).
-export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
+export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
  *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
 /** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary
@@ -365,11 +377,18 @@ export type TaskSummary = { id: number; label: string; status: string; usd: numb
  *  no_longer_applies: a newer change made every reason go away). */
 export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies"] as const;
 export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
-export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[] };
+export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string } };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 // before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; before?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
+/** M58 (UI 13): where the person's own Vercel sign in is. opened: Vercel's own page (url, always https on vercel.com) is
+ *  ready to open in their browser. lesson: the step could not run here, so the step by step lesson is offered. */
+/** M58 (feature 9): what the key practice's step did. wrote: the pretend AI's change is in the copy (written: false when it
+ *  was already there). fixed: the key is in .env.local now; checkpoint is the safety copy Undo puts back, changed the files,
+ *  clean whether the review's key rule now finds no key in the code. refused: nothing was written, with why. */
+export type PracticeKeyEvent = Envelope & { type: "practice.key"; project: string; step: "wrote" | "fixed" | "refused"; written?: boolean; checkpoint?: string; changed?: { file: string; kind: "added" | "modified" }[]; clean?: boolean; reason?: string };
+export type ShipSignInEvent = Envelope & { type: "ship.signIn"; project: string; stage: "opened" | "done" | "failed"; url?: string; reason?: string; lesson?: boolean };
 // scripts, checks, proofFile and launchFile: what the Settings rows for checking this project need (its own script names,
 // the checks it has, and its own .claude/proof.json and .claude/launch.json, which win over Settings).
 export type ProjectReportEvent = Envelope & { type: "project.report"; project: string; origin: "lovable" | "bolt" | "replit" | "unknown"; about: string; stack: string; needsInstall: boolean; installCommand: string | null; start: string | null; missing: string[]; missingCount: number; example: string | null; notes: string[];
@@ -393,7 +412,7 @@ export type WalkStopped = Envelope & { type: "walk.stopped"; walk: string; reaso
 export type MetricsSummary = Envelope & { type: "metrics.summary"; enabled: boolean; days: Record<string, Record<string, number>>; totals: Record<string, number>; rates: Record<string, number | null> };
 // Undo finished. recovered: big files replaced by their older small version, copied aside first. largeLeftAlone: big files not touched.
 // yours: files the person changed themselves, which Undo left exactly as they are.
-export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[]; yours?: string[] };
+export type CheckpointRestored = Envelope & { type: "checkpoint.restored"; project: string; checkpoint: string; safety: string; recovered: string[]; largeLeftAlone: string[]; leftAlone: string[]; yours?: string[]; lastWorking?: true };
 // Put those back too finished. ok false: nothing was changed (reason says why). savedTo: the folder holding the person's versions.
 export type CheckpointPutBackDone = Envelope & { type: "checkpoint.putBackDone"; project: string; checkpoint: string; ok: boolean; putBack: string[]; skipped: string[]; savedTo?: string; safety?: string; reason?: string };
 export type BrowserStatus = Envelope & { type: "browser.status"; installed: boolean; installing: boolean };
@@ -477,7 +496,7 @@ export type ReviewResultEvent = Envelope & {
   /** M57: how many smaller reasons were left out by review.strictness or a "do not flag" line. Never a Fix this first. */
   hidden?: number;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError;
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -502,6 +521,8 @@ const NEXT_ACTIONS = ["fixWatch", "findProblem", "review", "open", "none"];
 const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
+// M58: a check step may also need the person to sign in (a sign in wall): never on any other event.
+const stepNeedsOk: Check = opt("needs", oneOf("needs", ["browser", "signIn"]));
 // A line in the project: a file, a line number from 1, and the line's text.
 const isPlace = (c: unknown): boolean => { const o = c as Record<string, unknown> | null; return !!o && typeof o === "object" && !Array.isArray(o) && typeof o.file === "string" && o.file.length > 0 && Number.isInteger(o.line) && (o.line as number) >= 1 && typeof o.lineText === "string"; };
 const place: (k: string) => Check = (k) => (m) => (isPlace(m[k]) ? null : `"${k}" must be a place: file, line and lineText`);
@@ -534,7 +555,7 @@ const filesOk: Check = opt("files", (m) => (Array.isArray(m.files) && m.files.ev
 const imagesOk: Check = opt("images", (m) => (Array.isArray(m.images) && m.images.every((p) => named(p, "base64") && ["image/png", "image/jpeg"].includes((p as any).mediaType)) ? null : '"images" must be a list of PNG or JPEG pictures, each with name, mediaType and base64'));
 // A practice id: a short plain name (app/sample/practices.json), never a path.
 const practiceOk: Check = opt("practice", (m) => (typeof m.practice === "string" && /^[a-z][a-z-]{0,39}$/.test(m.practice) ? null : '"practice" must be a practice id'));
-const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && needsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser"' : null);
+const stepsNeedsOk: Check = (m) => (Array.isArray(m.steps) && m.steps.some((s) => typeof s === "object" && s !== null && stepNeedsOk(s as Record<string, unknown>)) ? 'a step\'s "needs" must be "browser" or "signIn"' : null);
 
 const lookItemOk = (i: unknown): boolean => {
   if (typeof i !== "object" || i === null || Array.isArray(i)) return false;
@@ -663,7 +684,7 @@ const COMMANDS: Record<string, Check[]> = {
   "rescue.diagnose": [str("project"), str("agent"), str("model"), num("budgetUsd")],
   "drive.pause": [str("agent"), oneOf("reason", ["editor", "terminal", "you"])],
   "drive.resume": [str("agent")],
-  "loop.choose": [str("agent"), oneOf("choice", ["different", "stop"])],
+  "loop.choose": [str("agent"), oneOf("choice", ["different", "stop", "research", "lastWorking"])],
   "agent.send": [str("agent"), str("project"), opt("retry", bool("retry")), (m) => (m.retry === true ? opt("text", (x) => (typeof x.text === "string" ? null : '"text" must be text'))(m) : str("text")(m))],
   "agent.interrupt": [str("agent"), opt("release", bool("release"))],
   "agent.interruptAll": [str("reason")],
@@ -674,6 +695,11 @@ const COMMANDS: Record<string, Check[]> = {
   "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app")), opt("mode", oneOf("mode", ["everyday", "recheck"])), opt("before", oneOf("before", [...SHEET_CODES]))],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
+  "checkpoint.mark": [str("project"), str("checkpoint"), opt("star", bool("star")), opt("name", (m) => (typeof m.name === "string" && m.name.length <= 40 ? null : '"name" must be text of at most 40 characters')), (m) => (m.star === undefined && m.name === undefined ? 'a mark needs "star" or "name"' : null)],
+  // M58 (UI 13): the person's own Vercel sign in, on their press.
+  "ship.signIn": [str("project"), opt("stop", bool("stop"))],
+  // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press.
+  "practice.key": [str("project"), oneOf("step", ["write", "fix"])],
 };
 
 const EVENTS: Record<string, Check[]> = {
@@ -687,7 +713,7 @@ const EVENTS: Record<string, Check[]> = {
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
     (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
-  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk)],
+  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk), opt("lastWorking", (m) => { const w = m.lastWorking as Record<string, unknown>; return w && typeof w === "object" && typeof w.checkpoint === "string" && /^cp_/.test(w.checkpoint) && typeof w.at === "string" ? null : '"lastWorking" needs a checkpoint and when'; })],
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   // answers: the id of the command this state answers; refused: why that command could not do what it asked.
@@ -745,7 +771,7 @@ const EVENTS: Record<string, Check[]> = {
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],
   "drive.paused": [str("agent"), oneOf("reason", ["files_changed", "editor", "terminal", "you"])],
-  "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options"), opt("tries", (m) => (Number.isInteger(m.tries) && (m.tries as number) >= 1 ? null : '"tries" must be a whole number from 1')), opt("same", bool("same"))],
+  "loop.stuck": [str("agent"), num("index"), str("title"), obj("failure"), list("options"), opt("tries", (m) => (Number.isInteger(m.tries) && (m.tries as number) >= 1 ? null : '"tries" must be a whole number from 1')), opt("same", bool("same")), opt("rung", oneOf("rung", ["retry", "research", "lastWorking"]))],
   "plan.ready": [str("agent"), list("steps"), bool("truncated"), num("estimateUsd")],
   "drive.step": [str("agent"), num("index"), num("total"), str("title"), oneOf("status", ["started", "done", "not_done", "stopped", "over_budget"])],
   "drive.done": [str("agent"), str("status"), num("completed"), num("total"), num("usdEstimate")],
@@ -758,14 +784,19 @@ const EVENTS: Record<string, Check[]> = {
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],
-  "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), needsOk],
-  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries")],
+  "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
+  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1'))],
   "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
   "assist.prompt.delta": [str("req"), str("text")],
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
   "assist.error": [str("req"), str("reason")],
   "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
+  // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
+  "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
+  // M58 (feature 9): the key practice's step. A refusal says why; a fix names its safety copy and what it changed.
+  "practice.key": [str("project"), oneOf("step", ["wrote", "fixed", "refused"]), opt("written", bool("written")), opt("checkpoint", str("checkpoint")), opt("changed", filesListOk("changed")), opt("clean", bool("clean")), opt("reason", str("reason")),
+    (m) => (m.step === "refused" && !(typeof m.reason === "string" && m.reason) ? 'a refusal says why in "reason"' : null), (m) => (m.step === "fixed" && (typeof m.checkpoint !== "string" || !m.checkpoint || typeof m.clean !== "boolean") ? 'a fix names its "checkpoint" and says "clean"' : null)],
 };
 
 function parseWith<T>(line: string, table: Record<string, Check[]>): Parsed<T> {

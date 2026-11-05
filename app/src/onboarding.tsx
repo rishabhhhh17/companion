@@ -3,6 +3,7 @@ import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
 import { changeSetting, setting as getSetting } from "./settingsStore.ts";
+import { BUILDS_WITH, buildsWithSettings, buildsWithTip, moreShown, type BuildsWith } from "./onboarding.ts";
 import { STEPS, COUNTED, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, installAsks, keyShownFirst, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
 import { livelinessOf, type Liveliness } from "./lookfeel.ts";
 import { whatOf } from "./approvals.ts";
@@ -75,6 +76,11 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   // The person stopped the check themselves (Stop the check, Back, Skip): only then does it say it was stopped.
   const [stoppedByMe, setStoppedByMe] = useState(false);
   const [open, setOpen] = useState<Fold | null>(null);
+  // M58 (feature 9): the answer to Which AI do you build with?, only when a chip was pressed (Skip leaves it unanswered).
+  const [buildsWith, setBuildsWith] = useState<BuildsWith | null>(null);
+  const [buildsOpen, setBuildsOpen] = useState(false);
+  // M58 (UI 1): Set up more (optional) was pressed on the check screen, so its folds show.
+  const [more, setMore] = useState(false);
   // The keys every job uses now (the person may have picked others, or another app may hold the usual ones).
   const keys = useKeys();
   void usage; void keyTested;
@@ -102,6 +108,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const keepChoices = () => {
     for (const [k, v] of yoursSettings(yours, own, yoursNow())) void changeSetting(k, v);
     for (const [key, on] of groupSettingsFor(groupsOff)) void changeSetting(key, on);
+    for (const [k, v] of buildsWithSettings(buildsWith, getSetting("you.buildsWith"))) void changeSetting(k, v);
   };
   const finish = () => {
     keepChoices();
@@ -176,11 +183,25 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <div className="fr-welcome">
           <div className="fr-welcome-words">
             <h2 className="fr-title">{twoTone(S.screens.welcomeTitle)[0]}<span className="fr-title-2">{twoTone(S.screens.welcomeTitle)[1]}</span></h2>
+            <p className="fr-line fr-jobs">{S.screens.welcomeLine}</p>
             {keys.using.problem && <p className="fr-key-line"><span className="fr-key-name">{S.screens.welcomeKey}</span><KeyLabel chord={keys.using.problem} /></p>}
             <ul className="fr-promises" aria-label={S.screens.promisesLabel}>{S.screens.promises.map((t) => <li key={t}><span className="fr-tick" aria-hidden="true"><Icon name="tick" size={12} /></span>{t}</li>)}</ul>
           </div>
           <div className="fr-welcome-loop"><FirstLook loop label={S.screens.loopLabel} /></div>
         </div>
+        {/* M58 (feature 9): optional, and it only picks a tip. Nothing is sent; Skip leaves it unanswered. It sits behind one
+            link so Continue stays on the first screen (the review of 5 Nov). */}
+        {!buildsOpen && <Button kind="quiet" className="fr-link" expanded={false} onClick={() => setBuildsOpen(true)}>{S.screens.buildsWithLink}</Button>}
+        {buildsOpen && <div className="fr-builds" role="group" aria-label={S.screens.buildsWithAsk}>
+          <p className="fr-small"><b>{S.screens.buildsWithAsk}</b> {S.screens.buildsWithLine}</p>
+          <div className="fr-chips-row">
+            {BUILDS_WITH.map((b) => <Button key={b} size="sm" kind="secondary" pressed={buildsWith === b} onClick={() => setBuildsWith(buildsWith === b ? null : b)}>{S.screens.buildsWithNames[b]}</Button>)}
+            <Button size="sm" kind="quiet" onClick={() => setBuildsWith(null)}>{S.screens.buildsWithSkip}</Button>
+          </div>
+          {buildsWithTip(buildsWith) && <p className="fr-small" role="status">{buildsWithTip(buildsWith)}</p>}
+        </div>}
+        {/* The key practice is one press away from the hello too: the practice's pretend AI writes a key, and the review stops it. */}
+        {!first.needsNode || !noNode ? <Button kind="quiet" className="fr-link" onClick={() => { keepChoices(); onDone(); startPractice(first.id); }}>{S.screens.helloPractice}</Button> : null}
         <div className="fr-grow" />
         <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.skipSetup}</Button>
         {main(S.obContinue, () => go(next(step)))}
@@ -191,7 +212,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         <p className="fr-line">{S.obFolderHelp}</p>
         {project ? (<>
           <div className="fr-folder" role="status"><b>{folderName(project)}</b><span>{project}</span></div>
-          <p className="fr-small">{S.fr.checkPromise}</p>
+          <p className="fr-small">{S.fr.checkWhat} {S.fr.checkPromise}</p>
           <Button kind="quiet" className="fr-link" onClick={pickFolder}>{S.fr.otherFolder}</Button>
         </>) : (
           <div className="fr-choices" role="group" aria-label={S.fr.folderTitle}>
@@ -240,7 +261,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
 
         {/* Flowflow's choices and the optional questions (F05) stay in the first run, folded here, until the founder says
             when they move (M49). The groups too (F20: each has its place in the first run). */}
-        {(stage === "done" || stage === "stopped") && (<div className="fr-folds">
+        {moreShown(stage, more).link && <Button kind="quiet" className="fr-link fr-more" onClick={() => setMore(true)}>{S.screens.setUpMore}</Button>}
+        {moreShown(stage, more).folds && (<div className="fr-folds">
           {fold("yours", S.fr.yoursTitle(own), (<>
             <Row label={S.fr.nameLabel} control={<Field value={yours.name} label={S.fr.nameLabel} placeholder={own} maxLength={NAME_MAX} onChange={(v) => setYours({ ...yours, name: v })} />} />
             {/* M68: optional, only for the hello in the notch (you.name). */}
@@ -272,7 +294,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {/* While it runs there is one way out, Stop the check above (the audit, item 52: Skip the check was its near twin). */}
         {stage === "idle" && main(S.fr.checkGo(folderName(project)), startCheck, !project)}
         {/* A problem found: Fix it is the one main button, and Go to my project the quiet way out (the audit, item 8). */}
-        {stage === "done" && point?.stage === "found" && fixFound && <Button kind="quiet" className="fr-link" onClick={finish}>{S.fr.goProject}</Button>}
+        {stage === "done" && point?.stage === "found" && fixFound && <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.goProject}</Button>}
         {stage === "done" && point?.stage === "found" && fixFound
           ? main(S.fr.fixIt, () => { finish(); fixFound(); })
           : stage !== "idle" && main(S.fr.goProject, finish, stage === "checking" || stage === "asking")}

@@ -218,7 +218,7 @@ describe("what you use often rises in More ways to ask, learned only from your o
   test("the page notes a press only from the button the person pressed, and holds the order while the list is open", () => {
     expect(card).toContain('const wayPress = (id: Way, go: () => void) => (e: React.MouseEvent<HTMLButtonElement>) => { notePress(id, { trusted: e.nativeEvent.isTrusted, on: usedFirst }); go(); };');
     expect(card).toContain('const usedFirst = useSetting("home.usedOftenFirst") !== false;');
-    expect(card).toContain('<details className="more">\n              <summary onClick={() => setWayCounts(readCounts())}>{S.look.more}');
+    expect(card).toContain('<details className="more">\n              <summary onClick={(e) => { setWayCounts(readCounts()); const d = e.currentTarget.parentElement; setTimeout(() => setMoreDesc(firstWayTip(d)), 0); }}>{S.look.more}');
     expect(card).toContain("].filter((w) => !!w.el), wayCounts, usedFirst).map((w) => w.el)}");
     // Every way on the list is drawn with its own id, and only More ways notes presses.
     for (const w of WAYS) expect(card, w).toContain(`onClick={wayPress("${w}", `);

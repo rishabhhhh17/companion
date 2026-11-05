@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "The practice catalog: one list for the shell (practice.rs), the pages (practice.ts), the engine's tests and the rescue eval. Each practice is a folder next to this file, broken one way on purpose. Words a person reads are in app/src/strings.ts (S.practices), never here. minutes and costUsd are estimates until a real run measures them (docs/milestones/M11-real-run-checklist.md).",
+  "about": "The practice catalog: one list for the shell (practice.rs), the pages (practice.ts), the engine's tests and the rescue eval. Each practice is a folder next to this file, broken one way on purpose (or, for a practice the review finds, changed on purpose by the practice's pretend AI when it starts: runner/src/practicekey.ts). Words a person reads are in app/src/strings.ts (S.practices), never here. minutes and costUsd are estimates until a real run measures them (docs/milestones/M11-real-run-checklist.md).",
   "practices": [
     {
       "id": "signup", "folder": "stuck-signup", "order": 1, "copyName": "signup page",
@@ -31,6 +31,12 @@
       "find": "gate", "expect": { "gate": "database_access", "findings": ["notes"], "file": "supabase/migrations/20261001090000_create_notes.sql", "line": 2 },
       "fix": "task", "prove": "gate", "protect": ["supabase/migrations/20261001090000_create_notes.sql"],
       "needsNode": true, "budgetUsd": 0.6, "minutes": 3, "costUsd": 0.2
+    },
+    {
+      "id": "key", "folder": "stuck-key", "order": 0, "copyName": "key in the code",
+      "find": "review", "expect": { "file": "pay.js", "line": 2, "about": "secret_in_code" },
+      "fix": "fixed", "prove": "review", "protect": ["package.json"],
+      "needsNode": false, "budgetUsd": 0, "minutes": 1, "costUsd": 0
     }
   ]
 }

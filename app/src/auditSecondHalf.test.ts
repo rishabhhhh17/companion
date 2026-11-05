@@ -426,7 +426,8 @@ describe("(53) copy that says each thing once", () => {
   test("a review reason that already names its file does not repeat the place", () => {
     expect(placeSaid({ say: "app.js now sends the key to the browser.", file: "src/app.js", line: 4 })).toBe(true);
     expect(placeSaid({ say: "A key is sent to the browser.", file: "src/app.js", line: 4 })).toBe(false);
-    expect(read("./reviewCard.tsx")).toContain("{x.file && !placeSaid(x) && <code className=\"review-at\">");
+    // M58: the findings are drawn in their fixed shape by findingList.tsx, with the same rule.
+    expect(read("./findingList.tsx")).toContain("!placeSaid({ say: f.parts.detail ?? \"\", file: f.file }) && <code className=\"review-at\">");
   });
   test("no project is said once: the folder menu says No project, and no notice repeats it", () => {
     expect(S.look.noProject).toBe("No project");
@@ -449,7 +450,7 @@ describe("(53) when a card owns the moment, the hero says the finding and the ca
     const w = heroWords(m, P);
     expect(w.headline).toBe("x is not defined");
     expect(w.line).toBe("Building and checking the code");
-    expect(card).toContain('<h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{S.pointTitle}</h2>');
+    expect(card).toContain('<h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{m.point.stage === "clear" ? S.screens.pass.title : S.pointTitle}</h2>');
   });
 });
 

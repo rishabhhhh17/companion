@@ -66,7 +66,7 @@
 .home .rv-mark .home-char { width: var(--orb-card); height: var(--orb-card); }
 .home .rv-title { margin: var(--space-3) 0 0; color: var(--fg); font: var(--w-hero) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); }
 .home .rv-title > span { display: block; text-wrap: balance; }
-.home .rv-title > .rv-why-line { color: var(--hero-soft); }
+.home .rv-why-line { margin: var(--space-2) 0 0; color: var(--hero-soft); font: var(--w-regular) var(--t-body) / var(--lh-body) var(--font); }
 
 /* The place it points at: the file in a sunken header, the line tinted with a bar on its edge. File and line only. */
 .home .rv-code { margin: var(--space-4) 0 0; overflow: clip; border: var(--hair) solid var(--line); border-radius: var(--r-control); background: var(--surface-1); }
@@ -133,3 +133,20 @@
 .home .now-fix .shot-pair img { max-height: calc(var(--w-pic) * 1.1); }
 /* M69 step 3: the safety copy line under a working title is a small note, not a second headline. */
 .home .hero .hero-words > h1 + .subline.hero-safe { margin-top: var(--space-2); color: var(--fg-2); font: var(--w-regular) var(--t-body) / var(--lh-body) var(--font); letter-spacing: 0; }
+/* M58 shortlist 3: the fixed shape of every finding (findingList.tsx): the readiness line on top, a level heading, and
+   each finding's four short parts. Layout only, every value a token; the tag is the shared status part. */
+.finding-ready { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); }
+.finding-ready-line { margin: 0; color: var(--fg-2); font-size: var(--t-small); }
+.hero .finding-ready-line, .finding-ready-line:not(.finding-ready > *) { margin-top: var(--space-2); }
+.finding-group { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; }
+.finding-level { margin: 0; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-body) var(--font); }
+.finding-wrong { font-weight: var(--w-strong); }
+.finding-parts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-desc) var(--space-2); margin: var(--space-1) 0 0; }
+.finding-parts dt { color: var(--fg-2); }
+.finding-parts dd { margin: 0; }
+@media (max-width: 420px) { .finding-parts { grid-template-columns: 1fr; } }
+/* M58 UI 6: the check before going live ends on one main button once every gate passed. */
+.ship-finish { display: grid; gap: var(--space-1); margin-top: var(--space-2); }
+
+/* The line under the headline wraps in balanced lines, so "just now" never sits alone on a row (the review of 5 Nov). */
+.home .hero .hero-words > .subline { text-wrap: balance; }

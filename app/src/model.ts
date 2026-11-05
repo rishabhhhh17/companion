@@ -2,7 +2,7 @@
 // Input: events from the runner (protocol) plus a few events from the app itself.
 import { reviewReduce, type ReviewCard } from "./review.ts";
 import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
-import { gateFinding, isExpected, practiceOf } from "./practice.ts";
+import { gateFinding, isExpected, keyPracticeReduce, practiceOf } from "./practice.ts";
 import { activityWords } from "./activity.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S, PRODUCT } from "./strings.ts";
@@ -15,6 +15,7 @@ import { validView } from "./watch.ts";
 import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } from "./plan.ts";
 import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
 import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
+import { signInReduce, signInStopped } from "./shipFinish.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -23,8 +24,10 @@ export type ApprovalCard = { id: string; agent: string; title: string; risk: str
 // summary: a failed step's one plain sentence from the engine; problem: where it failed. The detail (the check's own
 // output) is shown behind Details (checkDetail.tsx).
 /** ms and runs (M69): how long the check took and the commands it ran with their exit codes, for the receipt's proof ticks. */
-export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[] };
-export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number };
+// M58: needs "signIn" when the browser check stopped at a sign in wall (the person's turn, never proven). of: the task's
+// tries for one approach (work.tries), as the engine said it, for "Try 1 of 3".
+export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[]; needs?: "signIn" };
+export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number; of?: number };
 // changedAt: the first changed line ("Show me what changed"). repeat: the same small change made in two places (your turn).
 export type ChangeAt = { file: string; line: number; lineText: string };
 export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: string };
@@ -51,7 +54,7 @@ export type LiveFile = { file: string; kind: "added" | "modified" | "deleted" };
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState; files?: LiveFile[] };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
-export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean };
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number }; whole?: PlanWhole };
 /** What a plan's steps did so far, added up from each step's receipt (must fix 7): the first step's undo point, every file
@@ -92,13 +95,16 @@ export type TeachState = {
   target?: ChangeAt; example?: { file: string; line: number; was: string; now: string }; change?: { was: string; now: string }; restore?: string;
   result?: { verdict: string; same: boolean; label?: string; detail?: string; problem?: Problem }; steps?: ProofLine[];
 };
-export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } };
+export type ShipFlow = { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string };
+  /** M58 (UI 13): the person's own Vercel sign in, from their press (shipFinish.ts). */
+  signIn?: { stage: "asked" | "opened" | "done" | "failed"; url?: string; reason?: string; lesson?: boolean } };
 // turn: the ring is waiting for the person's own click (Do it for me is offered).
 export type ShowMe = { stage: string; message: string; req?: string; turn?: boolean; step?: number; of?: number };
 export type Voice = { stage: string; message: string; percent?: number; text?: string };
 export type Problem = import("../../protocol/index.ts").Problem;
 // note: one plain line from the engine about something that could not be checked (the Vercel tool signed out, say).
-export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string; note?: string };
+// fixing (M58, feature 8): Fix it was pressed. The found problem stays on screen until the engine's first event for the fix.
+export type PointCard = { stage: "checking" | "found" | "clear" | "gaps" | "nothing"; label?: string; message?: string; problem?: Problem; agent?: string; note?: string; fixing?: boolean };
 /** Is there anything to point at on the screen? A deploy problem with no line in this folder (a setting Vercel lacks,
  *  say) is Companion's own sentence, never on screen, so the card says it in words and the screen is not looked at. */
 export const pointsOnScreen = (p: Problem | null | undefined): p is Problem => !!p && !(p.kind === "message" && p.from === "deploy");
@@ -128,6 +134,8 @@ export type Practice = {
   resumed?: boolean; already?: boolean; previous?: string;
   // The agent the fix's task runs on, from its undo point: the fix ends if that agent stops with no receipt.
   agent?: string;
+  // M58 (feature 9): the key practice's pretend AI was asked to change a file (writing), or did (wrote); the review's answer follows.
+  pretend?: "writing" | "wrote";
 };
 // Undo: asked (with a plain warning), sent, and finished only when the engine says it finished.
 // yours: files Undo left alone because the person changed them. putBack: the separate, confirmed "Put those back too" for them.
@@ -241,6 +249,8 @@ export type Model = {
   plan: PlanCard | null;
   drive: DriveProgress | null;
   history: HistoryItem[];
+  // M58: the last version whose checks passed here (its save point and when), from tasks.list.
+  lastWorking?: { checkpoint: string; at: string };
   /** M57 feature 1: the reviews of changes to the open project, as History's own rows (names of files only). */
   reviewHistory?: ReviewRowView[];
   runnerUp: boolean;
@@ -325,7 +335,7 @@ const browserBusy = (b: BrowserSetupState) => b.stage === "asked" || b.stage ===
 // ends as stopped, so the Online box gets its Close back and is no longer counted as busy (audit A28). Making it live keeps
 // the preview's address on its line, and once that was sent Vercel may finish it anyway, so it is never said that nothing
 // went live then (the engine's own words for a promote cut short, agent.ts shipLive).
-const shipStopped = (f: ShipFlow | null): ShipFlow | null => !f || !["checking_gates", "deploying", "checking_preview"].includes(f.stage) ? f
+const shipStopped = (f: ShipFlow | null): ShipFlow | null => !f || !["checking_gates", "deploying", "checking_preview"].includes(f.stage) ? signInStopped(f)
   : { ...f, stage: "failed", canGoLive: false, detail: f.stage === "deploying" && f.previewUrl ? `Stopped. ${PRODUCT} could not confirm whether it went live. Check your project on vercel.com.` : "Stopped. Nothing went live." };
 // A new task or another folder: an old offer or an old result goes; a download that is running stays on the card.
 const browserFresh = (b: BrowserSetupState): BrowserSetupState => (browserBusy(b) ? b : { needed: false, stage: "idle", ...(b.installed !== undefined ? { installed: b.installed } : {}) });
@@ -362,7 +372,8 @@ export function plainError(reason: string): string {
 type Ev = Record<string, any> & { type?: string };
 // A step's plain summary and its place, when the engine sent them whole.
 const runOk = (r: any): r is { command: string; exit: number } => !!r && typeof r.command === "string" && r.command.length > 0 && Number.isInteger(r.exit);
-const stepExtras = (s: any): { summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[] } => ({
+const stepExtras = (s: any): { summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[]; needs?: "signIn" } => ({
+  ...(s?.needs === "signIn" ? { needs: "signIn" as const } : {}),
   ...(typeof s?.summary === "string" && s.summary ? { summary: s.summary } : {}),
   ...(s?.problem && typeof s.problem === "object" && typeof s.problem.kind === "string" ? { problem: s.problem as Problem } : {}),
   ...(typeof s?.ms === "number" && Number.isFinite(s.ms) && s.ms > 0 ? { ms: s.ms } : {}),
@@ -452,6 +463,18 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
 // The everyday look (everyday.ts) is taken first, from the Show me look waiting then, and settled after everything else:
 // a look whose Show me went away or failed waits no more.
 export function reduce(m: Model, e: Ev): Model {
+  // M58 (feature 8, UI 4): Fix it answers at once. The found problem stays, marked as starting, until the engine's first
+  // event for the fix (its safety copy, a tool, it working, or Rescue's plan); a refusal leaves it as it was.
+  if (e.type === "ui.pointFixing") return m.point?.stage === "found" ? { ...m, point: { ...m.point, fixing: true } } : m;
+  const out = reduceSent(m, e);
+  if (!m.point?.fixing || out.point !== m.point) return out;
+  if (FIX_BEGAN(e)) return { ...out, point: null };
+  if (e.type === "ui.pointFixRefused" || e.type === "protocol.error" || e.type === "ui.taskSendFailed") { const { fixing: _f, ...pt } = m.point; return { ...out, point: pt }; }
+  return out;
+}
+const FIX_BEGAN = (e: Ev): boolean => e.type === "checkpoint.created" || e.type === "agent.tool" || e.type === "plan.ready" || e.type === "rescue.report" || e.type === "receipt"
+  || (e.type === "agent.state" && ["thinking", "working", "checking"].includes(String(e.state)));
+function reduceSent(m: Model, e: Ev): Model {
   // Return pressed (item 27): shown at once, before the engine answers.
   if (e.type === "ui.taskSent") return { ...m, sending: { words: String(e.words ?? "").slice(0, 500) } };
   if (m.sending) {
@@ -471,6 +494,12 @@ function reduceOne(m: Model, e: Ev): Model {
   if (m.proLimit && ((e.type === "agent.state" && (e.state === "thinking" || e.state === "working")) || e.type === "ui.projectChanged" || e.type === "app.stop_everything")) m = { ...m, proLimit: null };
   // M52: the review card follows its own events and presses (review.ts). A refused Fix it is said on its card, not as
   // Home's error.
+  // M58 (feature 9): the key practice follows its own steps, the review's answer and its presses (practice.ts).
+  if (m.practice && (e.type === "practice.key" || e.type === "review.result" || e.type === "ui.practiceKeyWrite" || e.type === "ui.practiceKeyFix" || e.type === "ui.practiceKeyRefused")) {
+    const pr = keyPracticeReduce(m.practice, e as never);
+    if (pr !== m.practice) m = { ...m, practice: pr };
+    if (e.type !== "review.result") return m;
+  }
   const hadReview = m.review ?? null;
   const rv = reviewReduce(hadReview, e);
   if (rv !== hadReview) m = { ...m, review: rv };
@@ -920,7 +949,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.verdict !== "cancelled") m = { ...m, where: failed?.problem ?? null };
       if (!m.task) return m;
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "", ...stepExtras(s) }));
-      return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1) } } };
+      return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1), ...(Number.isInteger(e.of) && e.of >= 1 ? { of: e.of } : {}) } } };
     }
     case "plan.ready": if (m.away[e.agent] !== undefined) return m;
       return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
@@ -945,6 +974,8 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...m, shipFlow: { stage: String(e.stage), detail: String(e.detail ?? ""), previewUrl: e.previewUrl, productionUrl: e.productionUrl, canGoLive: e.canGoLive === true } };
     // The it's live card belongs to the live site on screen; after a close or a roll back it is not shown.
     case "ship.card": return m.shipFlow?.stage === "live" && typeof e.image === "string" ? { ...m, shipFlow: { ...m.shipFlow, card: { image: e.image, url: String(e.url ?? ""), title: String(e.title ?? "") } } } : m;
+    // M58 (UI 13): Sign in to Vercel, from the person's press to its end (shipFinish.ts).
+    case "ui.signInAsked": case "ship.signIn": return { ...m, shipFlow: signInReduce(m.shipFlow, e) };
     case "ui.shipClosed": return { ...m, ship: null, shipFlow: null };
     case "research.done": return { ...m, researchCount: m.researchCount + 1, research: { title: e.title, answer: e.answer, notes: e.notes ?? [], ...(typeof e.file === "string" && e.file ? { file: e.file } : {}), n: m.researchCount + 1 }, task: null, receipt: null, error: null, notice: null };
     case "ui.researchRequested": case "ui.researchClosed": return { ...m, research: null };
@@ -965,7 +996,7 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "drive.done": if (m.driveAway !== null) return { ...m, driveAway: null };
       return { ...m, plan: null, stuck: null, paused: null, receipt: wholePlanReceipt(m.receipt, m.drive?.whole, e.usdEstimate), drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total }, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
-    case "tasks.list": return { ...m, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
+    case "tasks.list": return { ...m, lastWorking: e.lastWorking && typeof e.lastWorking.checkpoint === "string" && typeof e.lastWorking.at === "string" ? { checkpoint: e.lastWorking.checkpoint, at: e.lastWorking.at } : undefined, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
     case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, ...(typeof e.before === "string" && e.before ? { before: e.before } : {}), caption: String(e.caption ?? "") } : { caption: "" } } } : m;
     // M69 step 3: Keep on a result closes it (Home goes back to rest, where the Last fix card shows it). Never while an Undo

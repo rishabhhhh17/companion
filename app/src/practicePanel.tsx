@@ -19,6 +19,7 @@ import { S } from "./strings.ts";
 import { useSetting } from "./settingsStore.ts";
 import { undoneExcept } from "./undoWords.ts";
 import "./ui/chrome.css";
+import { SendBack } from "./reviewCard.tsx";
 
 const placeLine = (w?: { file?: string; line?: number; message?: string }) => `${w?.file ? `${w.file}, line ${w.line}: ` : ""}${w?.message ?? ""}`;
 
@@ -53,7 +54,8 @@ function Peek({ stage }: { stage: Practice["stage"] }) {
   // bubble and the ticks already say the checks pass; the reward is the evidence.
   const state = stage === "fixing" || stage === "proving" ? "working" : "idle";
   // While the fix or its checks run, Now carries the line (M51 polish: the same "On it." in two places read as chatter).
-  const quiet = stage === "fixing" || stage === "proving";
+  // A found problem says "Found it" in the card itself, so the bubble does not say it a third time (the review of 5 Nov).
+  const quiet = stage === "fixing" || stage === "proving" || stage === "found";
   return (
     <div className="pr-peek" aria-hidden="true">
       {!quiet && <span className="say" key={stage}>{S.practiceSay[stage]}</span>}
@@ -88,9 +90,10 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
       {r.changed.length > 0 && <ChangesCard changed={r.changed} />}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
-        {r.changed.length > 0 && !mine && <button id={undoId} className="btn danger" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button>}
         <button className="btn" type="button" onClick={act.showResult}>{S.practiceShowResult}</button>
       </div>
+      {/* Undo is a quiet button, never the loudest on a win (the review of 5 Nov): it still asks first. */}
+      {r.changed.length > 0 && !mine && <div className="row"><button id={undoId} className="btn quiet" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button></div>}
       {mine?.stage === "confirm" && (
         <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
           <div className="row">
@@ -128,9 +131,11 @@ function CopyButtons({ act, busy, title }: { act: PanelActions; busy: boolean; t
   </>;
 }
 
-export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act, checks = [] }: {
+export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act, checks = [], sendBack = "" }: {
   p: Practice; entry: PracticeEntry; folder: string; keys: Keys; checking: boolean; drawing: boolean; busy: boolean; nodeFix: string | null; note: string;
   next: PracticeEntry | null; undo: UndoState | null; explain: ReactNode; act: PanelActions; checks?: ProofLine[];
+  /** M58 (feature 9): the key practice's Copy for my AI, the review's own send back text for this change. */
+  sendBack?: string;
 }) {
   const w = S.practices[entry.id];
   // M66 fix 17: proven while on screen, the thread lands once (its last line fills in, the tick draws in, the card glows
@@ -139,18 +144,20 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
   if (threadLands(stageWas.current, p.stage)) landed.current = true; else if (p.stage !== "done") landed.current = false;
   stageWas.current = p.stage;
   const task = entry.fix === "task", gate = entry.find === "gate";
+  // M58 (feature 9): the key practice is found by the review of the pretend AI's change, and fixed by a fixed move (no model).
+  const review = entry.find === "review", fixed = entry.fix === "fixed";
   // A practice leans on three Flow tools (its check, its fix and its drawing). With Flow off their buttons are not drawn and one
   // plain line says so, so the panel never waits on an answer that cannot come. The check before going live is the core's.
-  const canFind = gate || buttonShown("practiceFind"), canFix = buttonShown("practiceFix"), canWhy = buttonShown("practiceWhy");
-  const findButton = canFind ? <button className="btn primary" type="button" disabled={checking} onClick={act.find}>{gate ? S.practiceFindGate : S.practiceFind}</button> : null;
-  const doneWords = p.already ? S.practiceDoneAlready : p.gaps ? S.practiceDoneGaps : entry.prove === "gate" ? S.practiceDoneGate : S.practiceDone;
+  const canFind = gate || review || buttonShown("practiceFind"), canFix = fixed || buttonShown("practiceFix"), canWhy = buttonShown("practiceWhy");
+  const findButton = canFind ? <button className="btn primary" type="button" disabled={checking || !!p.pretend} onClick={act.find}>{review ? S.practiceKey.go : gate ? S.practiceFindGate : S.practiceFind}</button> : null;
+  const doneWords = p.already ? S.practiceDoneAlready : p.gaps ? S.practiceDoneGaps : entry.prove === "gate" ? S.practiceDoneGate : review ? S.practiceKey.done : S.practiceDone;
   // The fix stopped to ask something: it is answered in the follow up box under the result on Now, never tried again blind.
   const asks = p.stage === "failed" && !p.checksFailed && !p.result?.protectedChanged?.length ? p.result?.asks : undefined;
   const failedWords = p.checksFailed ? S.practiceChecksDidNotRun
     : p.result?.protectedChanged?.length ? S.practiceProtectedChanged
     : asks ? S.practiceAsks
     : entry.fix === "lesson" ? (p.nameSet ? S.practiceSettingNameSet : S.practiceSettingFailed)
-    : entry.prove === "gate" && p.result?.proof !== "failed" ? S.practiceGateFailed : S.practiceFailed;
+    : entry.prove === "gate" && p.result?.proof !== "failed" ? S.practiceGateFailed : fixed ? S.practiceKey.notClean : S.practiceFailed;
   // Flowflow's peek is in the flow above the card, never laid over it, so it can never cross the tab row however tall its
   // line grows with bigger text (M51 review); the card is drawn over its foot, so it peeks over the card's top edge.
   return (<>
@@ -162,7 +169,9 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       {note && <div className="line" role="status">{note}</div>}
       {p.stage === "start" && <>
         <div className="line">{(gate ? S.practiceStartGate : S.practiceStartIn)(folder, w.start)}</div>
-        {!gate && <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>}
+        {!gate && !review && <div className="line muted">{keyHint("problem", S.practiceKeys, keys)}</div>}
+        {/* M58: the practice's pretend AI changed a file, and the review is looking at it (no model, no cost). */}
+        {review && p.pretend && <div className="line" role="status">{S.practiceKey.wrote} {S.practiceKey.looking}</div>}
         {/* The house rule note, folded (the audit, item 41: three paragraphs stood before the buttons). */}
         {task && <details className="raw pr-rules"><summary><Icon name="chevron" size={12} />{S.practiceRulesTitle}</summary><p className="line muted">{S.practiceRulesNote}</p></details>}
         {!canFind && <div className="line" role="status">{S.groups.practiceNeedsFlow}</div>}
@@ -170,6 +179,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       </>}
       {p.stage === "found" && <>
         {/* The words say what is wrong; the proof row under them shows where, and the line itself, in the system mono. */}
+        {review && <div className="line"><b>{S.practiceKey.stopped}</b></div>}
         <div className="line"><b>{S.practiceFound}</b> {lineOf(p.problem) ? (p.where?.message ?? lineOf(p.problem)!.message) : placeLine(p.where)}</div>
         {/* A test's own line is not what the learner changes, so it waits behind Details (the audit, item 41). */}
         {fromTest(p.problem) ? <details className="raw"><summary><Icon name="chevron" size={12} />{S.checkDetails}</summary><FailingLine problem={p.problem} /></details> : <FailingLine problem={p.problem} />}
@@ -179,11 +189,15 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="row">
           {p.problem && <button className="btn" type="button" onClick={() => act.where(p.problem!)}>{S.pointWhere}</button>}
           {p.problem && canWhy && <button className="btn" type="button" disabled={drawing} onClick={() => act.why(p.problem!)}>{S.drawWhy}</button>}
-          {task
+          {task || fixed
             ? canFix && <button className="btn primary gel" type="button" disabled={busy} onClick={act.fix}>{p.undone ? S.practiceAgain : S.practiceFix}</button>
             : <button className="btn primary" type="button" onClick={act.lesson}>{S.practiceSettingFix}</button>}
-          <button className="btn" type="button" onClick={act.close}>{S.practiceSkip}</button>
+          {/* M58: Copy for my AI, the review's own words for the AI tool (secrets hidden again by the engine). */}
+          {review && sendBack && <SendBack text={sendBack} label={S.fixRun.copyForAi} />}
+          <button className="btn quiet" type="button" onClick={act.close}>{S.practiceSkip}</button>
         </div>
+        {review && sendBack && <div className="line muted">{S.review.sendBackHelp}</div>}
+        {p.why && review && <div className="line muted" role="status">{p.why}</div>}
       </>}
       {p.stage === "lesson" && <>
         <div className="line">{S.practiceSettingLesson}</div>
@@ -194,9 +208,10 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="row"><button className="btn" type="button" onClick={act.stopChecks}>{S.practiceStopChecks}</button></div>
       </>}
       {p.stage === "fixing" && <>
-        <div className="line" role="status">{S.practiceFixing}</div>
-        {/* Stops the task the way the task card's Stop does, then closes: nothing keeps running or spending. */}
-        <div className="row"><button className="btn" type="button" onClick={act.stopFix}>{S.practiceStopFix}</button></div>
+        <div className="line" role="status">{fixed ? S.practiceKey.fixing : S.practiceFixing}</div>
+        {/* Stops the task the way the task card's Stop does, then closes: nothing keeps running or spending. The key
+            practice's fixed move is one quick step with no task to stop. */}
+        {!fixed && <div className="row"><button className="btn" type="button" onClick={act.stopFix}>{S.practiceStopFix}</button></div>}
       </>}
       {p.stage === "blocked" && <>
         <div className="line">{S.practiceBlocked[p.block ?? "couldNotRun"]}</div>
@@ -212,12 +227,18 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         {!p.already && <div className="line muted">{w.doneMore}</div>}
         {p.result && <ResultBox r={p.result} undo={undo} explain={explain} act={act} />}
         <div className="row">
-          {next && <button className="btn primary" type="button" disabled={busy} onClick={() => act.next(next.id)}>{S.practiceNext(S.practices[next.id].title, timeWords(next))}</button>}
-          <button className={`btn${next ? "" : " primary"}`} type="button" onClick={act.back}>{S.practiceBack}</button>
+          {next ? <button className="btn primary" type="button" disabled={busy} onClick={() => act.next(next.id)}>{S.practiceNext(S.practices[next.id].title, timeWords(next))}</button>
+            : <button className="btn primary" type="button" onClick={act.back}>{S.practiceBack}</button>}
         </div>
         {!next && <div className="line muted">{S.practiceAllDone}</div>}
-        <CopyButtons act={act} busy={busy} title={w.title} />
-        <div className="row"><button className="btn" type="button" onClick={act.close}>{S.pointClose}</button></div>
+        {/* The rest is one fold with one line on what each does (the review of 5 Nov), so a win is not seven buttons. */}
+        <details className="more-fold">
+          <summary>{S.practiceMore}</summary>
+          <div className="line muted">{S.practiceMoreNote}</div>
+          <div className="row"><button className={`btn${next ? "" : " primary"}`} type="button" onClick={act.back}>{S.practiceBack}</button></div>
+          <CopyButtons act={act} busy={busy} title={w.title} />
+          <div className="row"><button className="btn" type="button" onClick={act.close}>{S.pointClose}</button></div>
+        </details>
       </>}
       {p.stage === "failed" && <>
         <div className="line">{failedWords}</div>
@@ -228,7 +249,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
         <div className="row">
           {asks && <button className="btn primary" type="button" onClick={act.showResult}>{S.practiceAnswer}</button>}
           {(p.checksFailed || p.nameSet) && <button className="btn primary" type="button" onClick={act.checkAgain}>{S.practiceCheckAgain}</button>}
-          {task
+          {task || fixed
             ? <button className={`btn${p.checksFailed || asks ? "" : " primary"}`} type="button" disabled={busy} onClick={act.fix}>{S.practiceAgain}</button>
             : <button className={`btn${p.checksFailed || p.nameSet ? "" : " primary"}`} type="button" onClick={act.lesson}>{S.practiceAgain}</button>}
         </div>

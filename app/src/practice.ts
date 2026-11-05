@@ -10,11 +10,13 @@ import { noTableOpen } from "../../runner/src/ship/opentables.ts";
 
 export type PracticeEntry = {
   id: string; folder: string; order: number; copyName: string;
-  // find: the project's own checks (Point at the problem), or the check before going live (a ship gate, the files only).
-  find: "checks" | "gate";
+  // find: the project's own checks (Point at the problem), or the check before going live (a ship gate, the files only), or
+  // (M58) the review of a change the practice's pretend AI makes (runner/src/practicekey.ts).
+  find: "checks" | "gate" | "review";
   expect: { file: string; line: number; about?: string; gate?: string; findings?: string[] };
   // fix: a small checked task, or a lesson (the value is the person's to put in place). prove: what says it is done.
-  fix: "task" | "lesson"; prove: "receipt" | "checks" | "gate";
+  // M58: fixed is a fixed move with no model (the key practice's key goes to .env.local); review: the review's key rule proves it.
+  fix: "task" | "lesson" | "fixed"; prove: "receipt" | "checks" | "gate" | "review";
   protect: string[]; needsNode: boolean; budgetUsd: number; minutes: number; costUsd: number;
 };
 export const CATALOG: readonly PracticeEntry[] = [...(catalogJson as { practices: PracticeEntry[] }).practices].sort((a, b) => a.order - b.order);
@@ -165,6 +167,14 @@ export function pointFixRoute(choice: unknown, p: Problem | null | undefined, pr
   return usesSmallFix(choice, p) ? "smallFix" : "rescue";
 }
 
+/** M58 (feature 9): what the review card's Fix it starts. In the key practice's copy it is never a model fix: the practice's
+ *  own fixed move while its problem is found (or its fix did not pass), and nothing at any other stage (the engine refuses
+ *  a review fix there too). Elsewhere, the ordinary review fix. */
+export function reviewFixRoute(pr: Practice | null | undefined, project: string): "practice" | "none" | "review" {
+  if (!pr || !project || pr.project !== project || practiceOf(pr.kind)?.fix !== "fixed") return "review";
+  return pr.stage === "found" || pr.stage === "failed" ? "practice" : "none";
+}
+
 // The parts of Home's model that say something is working (updates.ts isBusy reads the same ones), and a lesson.
 type Working = Parameters<typeof isBusy>[0] & { walk?: { stage?: string } | null };
 /** Something works on the project now, so a practice must not open another folder under it, and its copy must not go to the
@@ -195,4 +205,58 @@ export function threadOf(p: { stage: string; result?: unknown }): Thread {
 
 /** The kind of work a practice is, for its tile (the audit, item 53: every practice had the same wrench): a check before
  *  going live, a setting to learn, or a fix. */
-export const practiceKind = (e: Pick<PracticeEntry, "fix" | "prove">): "live" | "explain" | "fix" => (e.prove === "gate" ? "live" : e.fix === "lesson" ? "explain" : "fix");
+export const practiceKind = (e: Pick<PracticeEntry, "fix" | "prove">): "live" | "explain" | "fix" => (e.prove === "gate" || e.prove === "review" ? "live" : e.fix === "lesson" ? "explain" : "fix");
+
+
+// ---------- M58 (feature 9): the key practice, found by the review of a change ----------
+
+/** The events the key practice follows: its own steps (practice.key), the review's answer, and the page's presses. */
+export type KeyEv = { type: string; project?: unknown; step?: unknown; written?: unknown; checkpoint?: unknown; changed?: unknown; clean?: unknown; reason?: unknown; ok?: unknown; reasons?: unknown; summary?: unknown };
+const txt = (v: unknown) => (typeof v === "string" ? v : "");
+/** The place the catalog expects, as the problem the panel and its proof row show. */
+function keyProblem(e: PracticeEntry, r?: { line?: unknown; say?: unknown; lines?: unknown }): Problem {
+  const line = Number.isInteger(r?.line) ? (r!.line as number) : e.expect.line;
+  const lines = Array.isArray(r?.lines) ? (r!.lines as { n?: unknown; text?: unknown }[]) : [];
+  const lineText = txt(lines.find((l) => l && l.n === line)?.text);
+  return { kind: "line", file: e.expect.file, line, lineText, message: txt(r?.say) || S.practiceKey.inCode(e.expect.file, line), from: "review" };
+}
+function keyFound(pr: Practice, e: PracticeEntry, r?: { line?: unknown; say?: unknown; lines?: unknown }): Practice {
+  const p = keyProblem(e, r);
+  return { ...pr, stage: "found", pretend: undefined, label: S.practiceKey.label, problem: p, where: { file: p.kind === "line" ? p.file : undefined, line: p.kind === "line" ? p.line : undefined, message: p.message }, block: undefined, why: undefined };
+}
+/** The key practice's whole path, from its events and the page's presses, and nothing else (rule 14: done only when the
+ *  review's key rule finds no key in the code after the fixed fix). Every other practice is left as it is. */
+export function keyPracticeReduce(pr: Practice, ev: KeyEv): Practice {
+  const e = practiceOf(pr.kind);
+  if (!e || e.find !== "review") return pr;
+  const mine = ev.project === undefined || ev.project === pr.project;
+  switch (ev.type) {
+    // Let the pretend AI change a file: only from the start (or after it could not run), and once.
+    case "ui.practiceKeyWrite": return (pr.stage === "start" && !pr.pretend) || (pr.stage === "blocked" && pr.block === "couldNotRun") ? { ...pr, stage: "start", pretend: "writing", block: undefined, why: undefined } : pr;
+    case "ui.practiceKeyFix": return ["found", "failed"].includes(pr.stage) ? { ...pr, stage: "fixing", why: undefined, checkpoint: undefined, result: undefined, undone: undefined, checksFailed: undefined } : pr;
+    case "ui.practiceKeyRefused": return keyRefused(pr, txt(ev.reason));
+    case "practice.key": {
+      if (!mine) return pr;
+      if (ev.step === "wrote" && pr.stage === "start" && pr.pretend) return ev.written === false ? keyFound(pr, e) : { ...pr, pretend: "wrote" };
+      if (ev.step === "refused") return keyRefused(pr, txt(ev.reason));
+      if (ev.step === "fixed" && pr.stage === "fixing" && typeof ev.checkpoint === "string" && ev.checkpoint) {
+        const changed = Array.isArray(ev.changed) ? (ev.changed as { file?: unknown; kind?: unknown }[]).filter((c) => c && typeof c.file === "string" && typeof c.kind === "string").map((c) => ({ file: c.file as string, kind: c.kind as string })) : [];
+        return { ...pr, stage: ev.clean === true ? "done" : "failed", checkpoint: ev.checkpoint, result: { checkpoint: ev.checkpoint, changed, usdEstimate: 0 }, why: ev.clean === true ? undefined : S.practiceKey.notClean };
+      }
+      return pr;
+    }
+    case "review.result": {
+      if (!mine || pr.stage !== "start" || !pr.pretend) return pr;
+      if (ev.ok !== true) return { ...pr, stage: "blocked", block: "couldNotRun", pretend: undefined, why: txt(ev.reason) };
+      const reasons = Array.isArray(ev.reasons) ? (ev.reasons as { kind?: unknown; file?: unknown; line?: unknown; say?: unknown; lines?: unknown }[]) : [];
+      const hit = reasons.find((r) => r && r.kind === "secret_in_code" && r.file === e.expect.file);
+      return hit ? keyFound(pr, e, hit) : { ...pr, stage: "blocked", block: "elsewhere", pretend: undefined, why: txt(ev.summary), where: { message: txt(ev.summary) } };
+    }
+    default: return pr;
+  }
+}
+function keyRefused(pr: Practice, reason: string): Practice {
+  if (pr.stage === "fixing") return { ...pr, stage: "found", why: reason };
+  if (pr.stage === "start") return { ...pr, stage: "blocked", block: "couldNotRun", pretend: undefined, why: reason };
+  return pr;
+}

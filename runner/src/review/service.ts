@@ -76,6 +76,9 @@ export type ReviewDeps = {
   check?: (project: string, signal: AbortSignal, o: { asked: boolean }) => Promise<CheckOutcome>;
   /** Starts Fix it: an ordinary task, admitted by the plan gate and run by the agent runner (main.ts). */
   fix?: (cmd: AgentStart) => Promise<unknown> | unknown;
+  /** M58 (feature 9): a project whose reviews use the rules alone, with no model and no cost (the key practice's copy,
+   *  practicekey.ts isKeyPractice). No note is added: nothing is missing, the practice simply needs no model. */
+  rulesOnly?: (project: string) => boolean;
   /** Other work of the engine in the project that is not wrapped in around() (a watch's check): batches wait for it. */
   busy?: (project: string) => boolean;
   watch?: WatchFn;
@@ -134,6 +137,8 @@ const LABEL_AFTER = `Review: after ${PRODUCT_S} own work`;
 const OFF_REASON = "Reviews of changes are off. Turn them on in Settings.";
 const NOT_OPEN = "Open this project first, then review its changes.";
 const BUSY_REASON = "A review is already running. It will finish in a moment.";
+/** M58 (feature 9): the key practice's copy is free and model free, so its review's Fix it never starts a model fix there. */
+const PRACTICE_FIX = "In this practice, Fix it is the practice's own move.";
 const MOVED_ON = "Those changes were already reviewed or have moved on. Review the newest ones.";
 const NOTHING = "Nothing has changed since the last review.";
 const STOPPED = "The review was stopped.";
@@ -276,6 +281,14 @@ export class ReviewService {
     const want = this.project && this.on() ? this.project : null;
     if (this.watching && this.watching !== want) this.stopWatching();
     if (want && !this.watching) this.startWatching(want);
+  }
+  /** M58 (feature 9): why a change in this project could not be reviewed now (reviews off, or another folder watched), or
+   *  null when it can. The key practice asks before its pretend AI writes anything. */
+  cannotReview(project: string): string | null {
+    if (!this.on()) return OFF_REASON;
+    let p: string;
+    try { p = resolve(project); } catch { return NOT_OPEN; }
+    return p === this.watching && this.batcher ? null : NOT_OPEN;
   }
   /** The starting point is taken (or could not be). For tests and for the engine's own start. */
   async ready(): Promise<void> { await this.baseline; await this.chain.catch(() => undefined); }
@@ -692,6 +705,9 @@ export class ReviewService {
     const fail = (reason: string) => this.deps.emit({ type: "protocol.error", reason, failed: "review.fix" });
     if (!rec || rec.batch.project !== resolve(cmd.project)) { fail("Review these changes first, then press Fix it."); return; }
     if (!this.deps.fix) { fail("Fixing is not available here."); return; }
+    // A project reviewed by the rules alone (the key practice's copy) never gets a model fix, whatever the page sent: the
+    // practice's own fixed move (practice.key) is its Fix it. Refused before the plan gate, so nothing is counted or spent.
+    if (this.deps.rulesOnly?.(cmd.project) === true) { fail(PRACTICE_FIX); return; }
     this.said(rec.batch, "fix");
     this.reviewed.delete(cmd.batch);
     // An ordinary task: it keeps a safety copy first and can be undone, like every fix. The plan gate admits it in main.ts.
@@ -800,8 +816,10 @@ export class ReviewService {
       // M57 feature 3: the project's notes for AI tools, only when a model writes the words, quoted to it as data.
       let ruleNotes: RuleFile[] = [];
       const strong = needsStrongModel(rated.rating, touches);
-      const model = strong && this.deps.strong ? this.deps.strong : this.deps.cheap;
-      if (!model) note = "No Claude is connected, so these are the rules' own words.";
+      const rulesOnly = this.deps.rulesOnly?.(b.project) === true;
+      const model = rulesOnly ? null : strong && this.deps.strong ? this.deps.strong : this.deps.cheap;
+      if (rulesOnly) note = undefined;
+      else if (!model) note = "No Claude is connected, so these are the rules' own words.";
       else if (this.deps.spend.room(b.project) <= 0) note = limitReached(b.project);
       else {
         lane = model === this.deps.strong && strong ? "strong" : "cheap";

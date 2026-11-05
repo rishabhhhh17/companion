@@ -78,8 +78,11 @@ describe("and in Go, Rust, Java, Swift and Xcode projects, with their own tools"
 // check (a ship gate, reading the migration files) must find it, at the line that makes the table.
 const samples = join(import.meta.dir, "../../app/sample");
 type GateExpected = { gate: "database_access"; findings: string[]; file: string; line: number };
-const catalog = JSON.parse(readFileSync(join(samples, "practices.json"), "utf8")) as { practices: { folder: string; expect: Expected | GateExpected }[] };
-const practice: Record<string, Expected | GateExpected> = Object.fromEntries(catalog.practices.map((p) => [p.folder, p.expect]));
+// M58: a practice the review finds (the pretend AI writes a key when it starts, runner/src/practicekey.ts) has no failing
+// program; the review catching it is runner/test/m58-practicekey.test.ts. Here: its folder holds the file it names.
+type ReviewExpected = { file: string; line: number; about: string };
+const catalog = JSON.parse(readFileSync(join(samples, "practices.json"), "utf8")) as { practices: { folder: string; expect: Expected | GateExpected | ReviewExpected }[] };
+const practice: Record<string, Expected | GateExpected | ReviewExpected> = Object.fromEntries(catalog.practices.map((p) => [p.folder, p.expect]));
 describe("the practice stuck moments fail where they are meant to", () => {
   test("every practice project that ships has an entry in the catalog, and every entry has its folder", () => {
     // transfer is not a practice: it holds the did they learn study's second variants (runner/test/transfer-library.test.ts).
@@ -99,6 +102,10 @@ describe("the practice stuck moments fail where they are meant to", () => {
           expect(g.places?.[0]).toMatchObject({ file: exp.file, line: exp.line });
         } finally { rmSync(dir, { recursive: true, force: true }); }
       });
+      continue;
+    }
+    if ("about" in exp) {
+      test(name, () => { expect(existsSync(join(samples, name, exp.file)), `${name}/${exp.file}`).toBe(true); expect(exp.line).toBeGreaterThan(0); });
       continue;
     }
     const skip = !have(resolve(exp.cmd)[0]);

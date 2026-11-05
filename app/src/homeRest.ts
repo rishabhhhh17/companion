@@ -40,6 +40,8 @@ export type RestInput = {
   sinceChanged?: boolean;
   /** Check my project just answered and found nothing (point clear): a pass, never a fix. */
   pointClear?: boolean;
+  /** The check before going live answered (homeHero.ts goLiveAnswer): the page says what the go live card says. */
+  goLive?: "ready" | "blocked" | null;
   now: number;
 };
 
@@ -57,7 +59,8 @@ export function restHero(i: RestInput): RestHero {
     const more = since.length === 1 && since[0].count > 0 ? S.homeNow.filesChangedSince(since[0].count) : S.homeNow.changedSince;
     return { pill: "passed", first: S.homeNow.fine(name), second: `${S.homeNow.proven(ago)} ${more}` };
   }
-  if (i.pointClear) return { pill: "passed", first: S.homeNow.checksPass(name), second: S.homeNow.checksPassLine };
+  if (i.goLive === "blocked") return { pill: "look", first: S.home.notReadyOnline(name), second: S.home.notReadyOnlineSub };
+  if (i.pointClear || i.goLive === "ready") return { pill: "passed", first: S.homeNow.checksPass(name), second: S.homeNow.checksPassLine };
   if (proven) return { pill: "look", first: S.homeNow.fresh(name), second: S.homeNow.lastProven(agoWords(at(proven), i.now)) };
   const last = [...i.history].filter((h) => h.status !== "running").sort(newestFirst)[0];
   if (last) return { pill: "look", first: S.homeNow.notProven(name), second: S.homeNow.lastTask(verdictOf(historyFacts(last)).headline, agoWords(at(last), i.now)) };

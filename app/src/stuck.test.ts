@@ -116,10 +116,12 @@ describe("A56: closing Point at the problem or which task broke it is heard by t
   test("Close on Home asks the engine to let the agent rest, only when nothing else waits for it", () => {
     const point = card.slice(card.indexOf("{show(\"point\") && m.point && ("), card.indexOf("{show(\"bisect\")"));
     expect(point).toContain("putAside(m.point?.agent); void invoke(\"showme_clear\"); dispatch({ type: \"ui.pointClosed\" });");
-    // Fix it too: the point card's Fix it is fixKnown (the audit, item 1), which closes the point and lets its agent rest.
+    // Fix it too: the point card's Fix it is fixKnown (the audit, item 1), which lets its agent rest. M58 (feature 8): the
+    // found problem now stays on screen, marked as starting, until the fix's first event (m58-fix.test.ts).
     expect(point).toContain("onClick={fixKnown}");
     const fix = card.slice(card.indexOf("const fixKnown = () => {"), card.indexOf("\n  };\n", card.indexOf("const fixKnown = () => {")));
-    expect(fix).toContain("putAside(pt.agent); void invoke(\"showme_clear\"); dispatch({ type: \"ui.pointClosed\" });");
+    expect(fix).toContain("putAside(pt.agent); void invoke(\"showme_clear\");");
+    expect(fix).toContain('dispatch({ type: "ui.pointFixing" })');
     const bisect = card.slice(card.indexOf("{show(\"bisect\") && m.bisect && ("), card.indexOf("{show(\"errorHelp\")"));
     expect(bisect).toContain("putAside(m.bisect?.agent); dispatch({ type: \"ui.bisectClosed\" });");
   });

@@ -20,11 +20,12 @@ const edit = (p: string, f: string, from: string, to: string) => { const t = rea
 // The project's own check, as the participant runs it (npm test runs node --test), in a plain environment.
 const nodeTest = (p: string) => { const r = spawnSync("node", ["--test"], { cwd: p, encoding: "utf8", timeout: 60_000, env: { PATH: process.env.PATH ?? "", HOME: p, NO_COLOR: "1" } }); return { ok: r.status === 0, out: `${r.stdout}\n${r.stderr}` }; };
 const walk = (d: string): string[] => readdirSync(d).flatMap((n) => statSync(join(d, n)).isDirectory() ? walk(join(d, n)).map((x) => `${n}/${x}`) : [n]);
-const catalog = JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { id: string }[] };
+const catalog = JSON.parse(readFileSync(join(SAMPLES, "practices.json"), "utf8")) as { practices: { id: string; find: string }[] };
 
 describe("one transfer project for every practice", () => {
   test("every practice names its transfer folder, and each holds the project, FIX.md and fix.json", () => {
-    expect(transferIds()).toEqual(catalog.practices.map((p) => p.id));
+    // M58: the key practice is about the review stopping a change, not a fix to learn, so it has no transfer project.
+    expect(transferIds()).toEqual(catalog.practices.filter((p) => p.find !== "review").map((p) => p.id));
     expect(readdirSync(TRANSFERS).sort()).toEqual([...transferIds()].sort());
     // The answers never ship inside the app: nothing for the study is in the app's practice folder.
     expect(existsSync(join(SAMPLES, "transfer"))).toBe(false);

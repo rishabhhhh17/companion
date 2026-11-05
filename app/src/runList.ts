@@ -13,7 +13,7 @@ import { S } from "./strings.ts";
 
 export type RowState = "done" | "now" | "waiting" | "failed";
 export type RunRow = { key: string; words: string; state: RowState; status: string; ms?: number; detail?: string };
-export type RunList = { rows: RunRow[]; at: number; of: number; counter: string; say: string };
+export type RunList = { rows: RunRow[]; at: number; of: number; counter: string; say: string; /** the time the listed checks took together, a floor for the job clock */ ms: number };
 
 /** A time in seconds as the rows say it: one decimal under ten seconds ("2.1"), whole seconds to a minute, then m:ss. */
 export function secondsWords(ms: number): string {
@@ -50,7 +50,12 @@ export function runList(m: Model, maxTries = 3): RunList | null {
   // check); after that, only the checks the engine said.
   if (!checks.length) rows.push({ key: "plan:check", words: S.fixRun.waitRow, state: "waiting", status: S.fixRun.waiting });
   const of = S.home.steps.length, at = Math.min(step, of - 1) + 1;
-  return { rows, at, of, counter: S.fixRun.counter(at, of), say: S.fixRun.counterSay(at, of, S.home.steps[at - 1]) };
+  // One counter only (the review of 5 Nov): while a failed check is tried again, the try is the count ("Trying again (2 of 3)"
+  // on the change's row), so the step number is left off rather than saying "2 of 4" beside it.
+  const ms = rows.reduce((n, r) => n + (r.ms ?? 0), 0);
+  return retry
+    ? { rows, at, of, counter: "", say: S.home.steps[at - 1], ms }
+    : { rows, at, of, counter: S.fixRun.counter(at, of), say: S.fixRun.counterSay(at, of, S.home.steps[at - 1]), ms };
 }
 
 /** One tick under a result: a check that ran, in its result words ("Tests pass", "Tests fail"), the commands it ran with
@@ -62,6 +67,8 @@ export function proofTicks(m: Pick<Model, "task" | "receipt">): Tick[] {
   return m.task.proof.steps.filter((s) => s.status !== "skipped").map((s): Tick => {
     const runs = (s.runs ?? []).map((r) => S.fixRun.exit(r.command, r.exit));
     if (s.status === "running") return { rung: s.rung, words: s.label, state: "unfinished", runs };
+    // A browser check that stopped at a sign in page is not a pass: no green tick beside "Works in a browser" (rule 14).
+    if (s.needs === "signIn") return { rung: s.rung, words: S.fix.browserSignInStop, state: "unfinished", runs };
     const ok = s.status === "passed";
     const words = ok ? (S.proofChip[s.rung] ?? s.label) : (S.proofChipFailed[s.rung] ?? S.ui.failedStep(s.label));
     return { rung: s.rung, words, state: ok ? "ok" : "bad", runs, ...(timed(s.ms) ? { ms: s.ms } : {}), ...(ok ? {} : { parts: checkParts(s) }) };

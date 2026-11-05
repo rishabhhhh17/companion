@@ -13,11 +13,16 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
-import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
+// M58 area A: the fixed ladder, Last working and save marks, the sign in turn.
+import { markSave } from "./commands.ts";
+import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
+import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
+import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
 import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
 import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
-import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
+import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
 import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
@@ -31,7 +36,7 @@ import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { SetupList } from "./setupList.tsx";
@@ -45,13 +50,20 @@ import { ChangesCard } from "./changesCard.tsx";
 import { RecentList } from "./recentList.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
 import { barContext, barKeyChord, layoutOf, seaFills, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
-import { askChips } from "./askChips.ts";
+import { askChips, firstWayTip } from "./askChips.ts";
 import { checkedAgo, firstSentence, fixPicture, lastFix, PILL_TONE, restCards, restHero, restMainLabel, resultHero, sinceRows, type FixProof } from "./homeRest.ts";
 import { LastFixCard, PracticeCard, SinceCard, ShotPair } from "./homeRest.tsx";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
+// M58 UI 6 and UI 13: the check before going live's finish line and the Sign in to Vercel step.
+import { ShipGatesPanel, SignInStep } from "./shipPanels.tsx";
+import { detailShown, gateFixCommand, putOnlineShown, signingIn, type Gate } from "./shipFinish.ts";
+import { shipSignIn } from "./commands.ts";
+import { practiceKey } from "./commands.ts";
+import type { ShipFlow } from "./model.ts";
 import { changesWait, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
+import { sendBackCopy } from "./review.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
 import { roomElement, useRoomStill } from "./element.ts";
 import { RoomLight } from "./roomLight.tsx";
@@ -245,7 +257,7 @@ function LinkLine({ label, url, strong }: { label: string; url: string; strong?:
   );
 }
 
-function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string; previewUrl?: string; productionUrl?: string; canGoLive?: boolean; card?: { image: string; url: string; title: string } }; project: string; onClose: () => void }) {
+function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { f: ShipFlow; project: string; onClose: () => void; onCheckAgain: () => void; onLesson: () => void; dispatch: (e: { type: string; [k: string]: unknown }) => void }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
   const [shared, setShared] = useState("");
   const liveId = useId(), rollId = useId();
@@ -253,7 +265,9 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
   return (
     <section className={`panel ${f.stage === "failed" || f.stage === "refused" || f.stage === "not_signed_in" ? "amber" : ""}`} role="status" aria-label={S.onlineTitle}>
       <h2>{S.onlineTitle}</h2>
-      <div className="line">{f.detail}</div>
+      {detailShown(f) && <div className="line">{f.detail}</div>}
+      {/* M58 UI 13: not signed in to Vercel: a step the person starts, never Terminal (shipPanels.tsx). */}
+      <SignInStep f={f} onSignIn={() => { dispatch({ type: "ui.signInAsked" }); void send(shipSignIn(project)); }} onCheckAgain={onCheckAgain} onLesson={onLesson} open={(url) => <OpenButton url={url} onNote={setShared} />} />
       {f.previewUrl && <LinkLine label={S.previewAddress} url={f.previewUrl} />}
       {f.productionUrl && <LinkLine label={S.liveAddress} url={f.productionUrl} strong />}
       {f.stage === "ready" && f.canGoLive && ask !== "live" && <div className="row"><button id={liveId} className="btn primary" type="button" onClick={() => setAsk("live")}>{S.makeLive}</button></div>}
@@ -283,7 +297,11 @@ function OnlineBox({ f, project, onClose }: { f: { stage: string; detail: string
           <button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button>
         </ConfirmStep>
       )}
-      {!busy && <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>}
+      {/* One way out. While a sign in still waits, it ends the sign in too (Vercel's login would otherwise keep running and
+          hold the project); otherwise it only closes the box. */}
+      {!busy && (signingIn(f)
+        ? <div className="row"><button className="btn" type="button" onClick={() => void send(shipSignInStop(project))}>{S.going.signInStop}</button></div>
+        : <div className="row"><button className="btn" type="button" onClick={onClose}>{S.onlineClose}</button></div>)}
     </section>
   );
 }
@@ -339,13 +357,16 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
           <div className="hist-main">
             <span className="hist-name">{name}</span>
             <span className="hist-meta"><span className={stamp ? "unstamped" : undefined}>{historyWords(h)}</span>{(h.changed ?? 0) > 0 && <span>{stamp ? "" : "\u00a0·\u00a0"}{S.screens.filesChanged(h.changed ?? 0)}</span>}</span>
+            <SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} />
           </div>
           <span className="hist-end">{stamp && <Stamp kind={stamp} spoken />}<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{historyTime(h, now) ?? agoWords(h.endedAt ?? h.startedAt, now)}</time></span>
           <div className="hist-extra">
           {offers[i] === "undo" && !u && <div className="row"><button id={backId} className="btn" type="button" onClick={() => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint })}>{S.historyUndo}</button></div>}
+          {/* M58: star or name this save point (the store's own notes; a starred or named save is never pruned). */}
+          {h.checkpoint && project && !u && <SaveMarksActions star={h.star} name={h.name} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />}
           {h.checkpoint && u?.checkpoint === h.checkpoint && project && (<>
             {u.stage === "confirm" && (
-              <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
+              <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
                 <div className="row">
                   <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
                   <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
@@ -708,6 +729,22 @@ function Card() {
   const landing = useRef(new Landing()), landedAt = useRef<{ id: string; at: number } | null>(null);
   // M66 (the shortlist, item 1): Fix it from a chip asks first, then runs as a checked task with its own safety copy.
   const [chipFixAsk, setChipFixAsk] = useState(false);
+  // M58: the stuck card's Go back to the last working version asks first; once the files are back there (the engine says
+  // so, lastWorking), Look deeper plans the next step from that version, on the yes the person already gave.
+  const [stuckBack, setStuckBack] = useState(false);
+  const backPlans = useRef(false);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; lastWorking?: boolean; project?: string } | null;
+      const here = projectRef.current;
+      const step = backPlanStep(backPlans.current, ev, here);
+      backPlans.current = step.armed;
+      if (step.plan) { dispatch({ type: "app.notice", message: S.fix.backDone }); void send(diagnose(here)); }
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
+  // Every Stop on this card: a Go back that was asked for is called off too, so no Look deeper starts after it.
+  const stopNow = () => { backPlans.current = false; return send(stopAgent()); };
   useEffect(() => { setChipFixAsk(false); }, [m.receipt?.checkpoint]);
   const routinesOn = useSetting("watch.on") === true;
   // The browser check's one time download: ask the engine whether it is set up (or downloading) whenever it is up.
@@ -819,6 +856,8 @@ function Card() {
     const e = practiceOf(nowModel.current.practice?.kind);
     if (!e || !project) return;
     if (e.find === "gate") { void send(checkShip(project)); return; }
+    // M58 (feature 9): the key practice's pretend AI changes a file, then the review looks at once (no model, no cost).
+    if (e.find === "review") { pressed(); dispatch({ type: "ui.practiceKeyWrite" }); void sendQuiet(practiceKey(project, "write")).catch((err) => dispatch({ type: "ui.practiceKeyRefused", reason: refusalNotice(err) })); return; }
     // The check is Point at the problem (Flow): with Flow off nothing is sent and the panel never waits on it.
     if (!toolOn("findProblem")) return;
     pressed(); dispatch({ type: "ui.findProblem" }); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" }));
@@ -826,6 +865,15 @@ function Card() {
   // The practice's own fix (Fix it with me on Learn, and Point at the problem's Fix it in a practice copy): one small checked
   // task named for its practice. Like the Point panel's own Fix it, it takes the ring off and closes that panel.
   const practiceFix = (pr: Practice) => {
+    // M58 (feature 9): the key practice's fix is a fixed move with no model: the key to .env.local, a safety copy first. The
+    // review's card for this change closes, since the practice panel now carries it (its result and Undo).
+    if (practiceOf(pr.kind)?.fix === "fixed") {
+      pressed(); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.practiceKeyFix" });
+      const r = nowModel.current.review;
+      if (r && project === pr.project) { dispatch({ type: "ui.reviewDismissed", batch: r.batch }); void sendQuiet(reviewDismiss(pr.project, r.batch)).catch(() => {}); }
+      void sendQuiet(practiceKey(pr.project, "fix")).catch((err) => dispatch({ type: "ui.practiceKeyRefused", reason: refusalNotice(err) }));
+      return;
+    }
     // The fix is a task (Flow): with Flow off nothing is sent and the panel never waits on it.
     if (!toolOn("drive")) return;
     pressed(); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); dispatch({ type: "ui.undoClosed" }); dispatch({ type: "ui.practiceFixing" });
@@ -841,6 +889,8 @@ function Card() {
     resumedKey.current = pr.project;
     // Only the key's checks answer with problem.found; the open table's check before going live never points at all.
     if (practiceOf(pr.kind)?.find === "checks") quietFind.current = pr.project;
+    // M58: the key practice's pretend AI writes only on the person's press, never when the copy opens.
+    if (practiceOf(pr.kind)?.find === "review") return;
     practiceFind();
   }, [m.practice?.project, m.practice?.stage, m.practice?.resumed, project]);
   // After its lesson or its fix: the practice's own checks again, so done is proven, not assumed.
@@ -1105,6 +1155,11 @@ function Card() {
     onFix: () => {
       const r = nowModel.current.review;
       if (!r || !project) return;
+      // M58 (feature 9): in the key practice's copy, Fix it is the practice's fixed move (no model, no cost).
+      // At any other step of that copy nothing is sent (the engine refuses a model fix there too).
+      const route = reviewFixRoute(nowModel.current.practice, project);
+      if (route === "practice") { practiceFix(nowModel.current.practice!); return; }
+      if (route === "none") { dispatch({ type: "ui.reviewFixCancelled" }); dispatch({ type: "app.notice", message: S.practiceKey.fixHere }); return; }
       if (atFreeLimit(planNow(), nowModel.current.proUsage ?? null)) { dispatch({ type: "ui.reviewFixCancelled" }); dispatch({ type: "ui.proLimit", reason: "fixes", resetsOn: nowModel.current.proUsage?.resetsOn }); return; }
       dispatch({ type: "ui.reviewFixSent", batch: r.batch });
       dispatch({ type: "ui.undoClosed" });
@@ -1413,15 +1468,19 @@ function Card() {
   // the three never start different fixes for one problem. In a practice copy whose problem was found, the practice's own
   // fix; else look deeper first (Rescue), as usual; one small checked fix when Settings says so and the problem is one line
   // (point.fixWith). The fix asked next sets its own state; if it is refused, the agent is not left on Needs you anywhere.
+  // M58 (feature 8, UI 4): Fix it answers at once. The found problem stays on screen, marked "Starting the fix", until
+  // the engine's first event for the fix (model.ts); a refusal leaves it as it was, with the reason.
   const fixKnown = () => {
     const pt = nowModel.current.point?.stage === "found" ? nowModel.current.point : null;
-    if (pt) { putAside(pt.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }
+    if (pt?.fixing) return;
+    if (pt) { putAside(pt.agent); void invoke("showme_clear"); }
     if (!projectRef.current) return;
     const here = projectRef.current;
     const route = pointFixRoute(setting("point.fixWith"), pt?.problem, nowModel.current.practice, here);
-    if (route === "practice") practiceFix(nowModel.current.practice!);
-    else if (route === "smallFix" && pt) { pressed(); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(here, { label: pt.label, detail: pt.message, problem: pt.problem })); }
-    else void send(diagnose(here));
+    const refusedFix = () => dispatch({ type: "ui.pointFixRefused" });
+    if (route === "practice") practiceFix(nowModel.current.practice!);   // it closes the point card itself
+    else if (route === "smallFix" && pt) { pressed(); dispatch({ type: "ui.pointFixing" }); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(here, { label: pt.label, detail: pt.message, problem: pt.problem }), refusedFix); }
+    else { if (pt) dispatch({ type: "ui.pointFixing" }); void send(diagnose(here)).catch(refusedFix); }
   };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   // With "Ask Did that work? after each step" set to only when unsure (showme.askWorked), a clean click on a solid ring
@@ -1718,6 +1777,9 @@ function Card() {
   const shipGate = (): boolean => { if (!proTag("ship", planNow())) return true; dispatch({ type: "ui.proLimit", reason: "ship" }); return false; };
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
   const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); };
+  // M58 UI 6: a blocked gate's Fix it, an ordinary checked fix of what it found. No plan request first, so the panel and its
+  // found problem stay on screen until the task's first event (its safety copy) takes their place. False when refused.
+  const gateFix = (g: Gate): Promise<boolean> => { if (!project) return Promise.resolve(false); let ok = true; dispatch({ type: "ui.undoClosed" }); return sendOrExplain(gateFixCommand(project, g), () => { ok = false; }).then(() => ok); };
   const research = () => {
     if (inNewFolder) { startNew("research"); return; }
     if (!project && (box.current?.value.trim() ?? "")) { setNoProjectFor("research"); return; }
@@ -1793,7 +1855,7 @@ function Card() {
     keyWarned: (keyWarned(m.review as typeof m.review) || !!m.review?.result?.reasons.some((x) => x.kind === "secret_in_code" || x.kind === "key_in_page")) && m.review?.project === project,
     reviewOpen: reviewOn,
     errorExplained: m.eh?.stage === "ready" && (!m.eh.project || m.eh.project === project),
-    checkFound: m.point?.stage === "found",
+    checkFound: m.point?.stage === "found" && !m.point.fixing,
     watchFailing: watchesOf(m.watches, project).filter((w) => w.state === "failing").map((w) => w.kind),
     changedSinceCheck: m.sinceCheck?.project === project && m.sinceCheck.changed,
     needsInstall: m.about?.project === project && m.about.needsInstall,
@@ -1862,7 +1924,7 @@ function Card() {
   // M69 step 2, Home at rest is never empty (homeRest.ts): the two tone hero from the latest real state, the Last fix and
   // Since then cards (or the practice offer for a project with no fixes yet), and Check it again once it was checked.
   const atRest = mode === "rest" && !blocker;
-  const restIn = { project, status, history: project ? m.history : [], reviews: project ? m.reviewHistory ?? [] : [], sinceChanged: !!project && m.sinceCheck?.project === project && m.sinceCheck.changed, pointClear: m.point?.stage === "clear", now: clock };
+  const restIn = { project, status, history: project ? m.history : [], reviews: project ? m.reviewHistory ?? [] : [], sinceChanged: !!project && m.sinceCheck?.project === project && m.sinceCheck.changed, pointClear: m.point?.stage === "clear", goLive: goLiveAnswer(m, project), now: clock };
   const restWords = restHero(restIn);
   const restFix = project ? lastFix(restIn.history, clock) : null;
   const restSince = sinceRows({ ...restIn, fix: restFix });
@@ -2079,13 +2141,32 @@ function Card() {
 
       {m.stuck && (
         <section className="panel amber" aria-label={S.stuckTitle}>
-          <h2>{S.stuckTitle}</h2>
+          {/* The page's title already says it (homeHero.ts): the card keeps the name for VoiceOver only. */}
+          <h2 className="sr">{S.stuckTitle}</h2>
           {m.stuck.agent && m.away[m.stuck.agent] && <div className="line muted">{S.awayQuestion(folderName(m.away[m.stuck.agent]))}</div>}
           <div className="line">{stuckWords(m)}</div>
+          {/* M58 (the shortlist, item 4): the try this was, from the check itself, and the fixed ladder, the current rung marked. */}
+          {tryCounter(m.task?.proof) && <div className="line muted">{tryCounter(m.task?.proof)}</div>}
+          {m.stuck.index === 0 && (
+            <ol className="fix-ladder" aria-label={S.fix.ladderLabel}>
+              {fixLadder({ rung: stuckRung(m.stuck.options), webSearch: m.stuck.options.some((o) => o.id === "research"), lastWorking: m.stuck.options.some((o) => o.id === "lastWorking") ? (lastWorkingTime(m.lastWorking?.at) ?? "") : null }).map((r) => (
+                <li key={r.id} data-current={r.current || undefined}>{r.words}{r.current && <span className="sr"> ({S.fix.ladderNow})</span>}</li>
+              ))}
+            </ol>
+          )}
           {/* The choices right after what happened (the audit, item 13), then why and the check, as the evidence. */}
+          {/* Go back to the last working version asks first (rule 10: rolling back needs a tap), then the engine puts the files
+              back with its own safety copy and Look deeper plans from there. */}
+          {stuckBack && (
+            <ConfirmStep className="line" label={S.fix.backSure(lastWorkingTime(m.lastWorking?.at))} back="stuck-lastWorking" onCancel={() => setStuckBack(false)}><div>{S.fix.backSure(lastWorkingTime(m.lastWorking?.at))}</div>
+              <div className="row">
+                <button className="btn" type="button" onClick={() => { setStuckBack(false); backPlans.current = true; void send(chooseLoop("lastWorking")); dispatch({ type: "ui.stuckAnswered" }); }}>{S.fix.backYes}</button>
+                <button className="btn" type="button" data-cancel onClick={() => setStuckBack(false)}>{S.fix.backNo}</button>
+              </div></ConfirmStep>
+          )}
           <div className="row">
-            {m.stuck.options.map((o, i) => (
-              <button key={o.id} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { void send(chooseLoop(o.id as "different" | "stop")); dispatch({ type: "ui.stuckAnswered" }); }}>{o.label}</button>
+            {!stuckBack && m.stuck.options.map((o, i) => (
+              <button key={o.id} id={o.id === "lastWorking" ? "stuck-lastWorking" : undefined} className={`btn ${i === 0 ? "primary" : ""}`} type="button" data-safe={o.id === "stop" || undefined} onClick={() => { if (o.id === "lastWorking") { setStuckBack(true); return; } void send(chooseLoop(o.id as "different" | "stop" | "research")); dispatch({ type: "ui.stuckAnswered" }); }}>{optionWords(o)}</button>
             ))}
             {pointsOnScreen(m.where) && <button className="btn" type="button" onClick={() => pointProblem(project, m.where)}>{S.pointWhere}</button>}
           </div>
@@ -2161,13 +2242,14 @@ function Card() {
             {/* The tall Home's row of places names the open one and leads back to Now, so the back arrow is only for Settings,
                 where that row steps aside (the review, 2 Nov 2026: a back arrow beside the row was a second way to the same place). */}
             {!side && home.tab === "settings" && <button className="back" type="button" aria-label={S.look.back} title={S.look.back} onClick={() => pickTab("now")}><Icon name="back" size={16} />{needNow?.tab === "now" && <><span className="tabdot" aria-hidden="true" /><span className="sr">, {S.homeTabWaiting}</span></>}</button>}
-            <h1 id="home-title" className="view-title">{viewTitle}</h1>
+            {/* The tall Home's row of places already names the open one, so its title is for VoiceOver only there (Settings keeps it). */}
+            <h1 id="home-title" className={!side && home.tab !== "settings" ? "view-title sr" : "view-title"}>{viewTitle}</h1>
           </>}
           {/* In the wide Home the side list is the one Places landmark, so the bar's buttons are a plain group then (item 51). */}
           <PlacesBox side={side}>
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
                 working card). */}
-            {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
+            {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
             {/* In Settings the sidebar is the only way around: the place buttons step back (the spec, 3.1). */}
             {/* The tall Home (M51 polish): Now is a place in the row too, so the open place always shows which it is. */}
             {home.tab !== "settings" && !side && <Button kind="quiet" size="sm" pressed={home.tab === "now"} onClick={() => pickTab("now")}>{S.look.now}</Button>}
@@ -2230,13 +2312,14 @@ function Card() {
               while the hero is folded for a card that needs a tap (item 13): that card's own buttons are the ones. */}
           {/* M69 step 3: over a proven or failed result the receipt's own buttons lead (Keep, or Try a different fix). */}
           {(heroMain || whereOn) && !resHero && <div className="hero-main">
-            {heroMain && <Button kind="primary" size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}
+            {/* After Stop with changes, Undo what it did is the one main button; Carry on steps back to secondary (the review of 5 Nov). */}
+            {heroMain && <Button kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}
             {/* M69 step 2: Where was I? beside it at rest, once the project has a log (F21, Flow's own; nothing in the background). */}
             {whereOn && <Button kind="secondary" size="lg" onClick={() => void sendQuiet(whereWasI(project))}>{S.homeNow.whereWasI}</Button>}
           </div>}
           {lastFree && <p className="subline muted pro-last">{lastFree}</p>}
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
-          {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button></div>}
+          {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
         </div>
       </section>
       {setup && home.tab === "now" && <SetupList rows={setup} blocker={blocker} onAct={setupAct} />}
@@ -2304,13 +2387,13 @@ function Card() {
               check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
           {home.tab === "now" && !working && (
             <details className="more">
-              <summary onClick={() => setWayCounts(readCounts())}>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
+              <summary onClick={(e) => { setWayCounts(readCounts()); const d = e.currentTarget.parentElement; setTimeout(() => setMoreDesc(firstWayTip(d)), 0); }}>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
               {/* The audit, item 40: every way has its drawing and one line, shown under the ways for the one under the pointer
                   or the keyboard (and as its tooltip, with its keys, so no keycaps crowd the buttons). In the wide Home this
                   opens as a popover over the ask box (ui/wide.css), so the page never jumps. The voice switch lives in
                   Settings, Keys and voice. */}
               <div className="more-pop">
-              <div className="more-ways" onMouseOver={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onFocus={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onMouseLeave={() => setMoreDesc("")}>
+              <div className="more-ways" onMouseOver={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onFocus={(e) => setMoreDesc((e.target as HTMLElement).closest("button")?.title ?? "")} onMouseLeave={(e) => setMoreDesc(firstWayTip(e.currentTarget))}>
                 {/* M55, adapts to you: the ways pressed most come first (usedFirst, wayCounts); each press is noted only when the
                     person made it (wayPress). The main action is not here twice. */}
                 {orderWays([
@@ -2388,12 +2471,13 @@ function Card() {
           nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={practiceNote} next={pr.stage === "done" ? nextPractice(practiceRec, pr.kind) : null}
           undo={m.undo} explain={pr.result && m.explain?.checkpoint === pr.result.checkpoint ? <ExplainBox e={m.explain} key={m.explain.checkpoint} /> : null}
           checks={m.task?.proof?.steps ?? []}
+          sendBack={entry.find === "review" && m.review ? sendBackCopy(m.review) : ""}
           act={{
             find: practiceFind,
             fix: () => practiceFix(pr),
             lesson: practiceLesson,
-            stopFix: () => { void send(stopAgent()); dispatch({ type: "ui.practiceClosed" }); },
-            stopChecks: () => { void send(stopAgent()); dispatch({ type: "ui.practiceStopProving" }); },
+            stopFix: () => { void stopNow(); dispatch({ type: "ui.practiceClosed" }); },
+            stopChecks: () => { void stopNow(); dispatch({ type: "ui.practiceStopProving" }); },
             checkAgain: () => dispatch({ type: "ui.practiceProving" }),
             close: () => dispatch({ type: "ui.practiceClosed" }),
             where: (p) => { if (pointsOnScreen(p)) pointProblem(project, p); },
@@ -2570,21 +2654,13 @@ function Card() {
         </section>
       )}
 
-      {show("ship") && m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} />}
+      {show("ship") && m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} onCheckAgain={() => shipIt()} onLesson={() => beginLesson("vercel-sign-in", false)} dispatch={dispatch} />}
 
       {show("ship") && m.ship && (
-        <section className={`panel ${m.ship.canShip ? "" : "amber"}`} aria-label={S.shipTitle}>
-          <h2>{S.shipTitle}</h2>
-          <div className="line"><b>{shipWords(m)}</b></div>
-          {m.ship.gates.map((g) => (
-            <div key={g.id} className={`line ${g.status === "blocked" ? "blocked" : ""}`}>
-              {g.label}: {({ passed: "Passed", blocked: "Blocked", could_not_check: "Could not check", not_applicable: "Not needed" } as const)[g.status]}
-              <span className="muted"> {g.detail}</span>
-              {confirmable(m).includes(g.id) && <div className="row"><button className="btn" type="button" aria-label={`${S.shipConfirm}: ${g.label}`} onClick={() => shipIt({ confirm: [g.id] })}>{S.shipConfirm}</button></div>}
-            </div>
-          ))}
-          <div className="row"><button className="btn" type="button" onClick={() => dispatch({ type: "ui.shipClosed" })}>{S.shipClose}</button></div>
-        </section>
+        // M58 UI 6: the readiness line, each gate's own next step (Fix it, Check again, I checked this myself), and Put it
+        // online as the one main button once every gate passed (shipPanels.tsx; shipFinish.ts decides).
+        <ShipGatesPanel ship={m.ship as { gates: Gate[]; canShip: boolean }} words={shipWords(m)} online={putOnlineShown(m.ship as { gates: Gate[]; canShip: boolean }, m.practice?.project === project)} practice={m.practice?.project === project}
+          onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })} />
       )}
 
       {show("research") && m.research && (
@@ -2622,7 +2698,8 @@ function Card() {
           payments off. */}
       {show("receipt") && proLimit && <LimitPanel view={proLimit} status={pro} usage={usage} say={(l) => dispatch({ type: "app.notice", message: l })} onClose={() => dispatch({ type: "ui.proLimitClosed" })} />}
       {show("task") && m.task && working && (() => {
-        const maxTries = Number(setting("work.tries")) || 3;
+        // M58: the limit the engine said for this task (proof.result of), so the counter never guesses; the setting until then.
+        const maxTries = m.task.proof?.of ?? (Number(setting("work.tries")) || 3);
         // M69 (spec 3.4): the run list, one row per step, verb first, its live status on the right (runList.ts), and the
         // step under way of the same four as the notch, "2 of 4".
         const rl = runList(m, maxTries)!;
@@ -2633,13 +2710,13 @@ function Card() {
         return (
           <section className="panel job" aria-label={m.task.label || S.home.jobLabel}>
             <div className="job-top">
-              <p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]} · {rl.counter}</span></p>
-              {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void send(stopAgent())}><Icon name="stop" size={14} />{S.stop}</Button>}
+              <p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>
+              {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
             </div>
             <RunRows rows={rl.rows} label={S.fixRun.label} under={live.kind === "files" ? <JobLive view={live} /> : null} />
             {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second at
                 a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
-            <p className="job-meta"><span><CountUp value={Math.max(0, Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>
+            <p className="job-meta"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>
             {odd.map((l, i) => <div key={i} className="line blocked">{l.outcome === "blocked" ? `${S.blocked}: ` : l.outcome === "denied" ? `${S.denied}: ` : `${S.waiting}: `}{l.words}</div>)}
           </section>
         );
@@ -2665,6 +2742,10 @@ function Card() {
         // One Undo button for the result, wherever it sits (M69 step 3: at the top of a proven result, in a failed one's
         // lead, else in the row with Replay): the receipt's own question follows on a press, on the same id.
         const undoButton = (words: string) => <Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{words}</Button>;
+        // M58 (the shortlist, item 9): after Stop, Undo what it did is the one main button, ready. It only asks: the
+        // receipt's own question comes first, and nothing is put back without that tap.
+        // The same id as undoButton (the confirm's way back): only one of the two is ever drawn.
+        const undoMain = () => <Button {...{ id: undoId }} kind="primary" onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.fix.undoWhatItDid}</Button>;
         return (
         <section className="panel receipt" data-landed={landed ? "" : undefined} onPointerEnter={() => { overReceipt.current = true; }} onPointerLeave={() => { overReceipt.current = false; }}>
           {/* M45 and the overhaul spec 4.2: the result first, as the verdict says it, at verdict size. A tick only for a
@@ -2693,6 +2774,8 @@ function Card() {
           <div className="receipt-proof">
             <ProofTicks ticks={proofTicks(m)} title={undone ? S.checksBeforeUndo : S.fixRun.ticksLabel} led={!!failLead} />
           </div>
+          {/* M58 (the shortlist, item 8): a sign in wall is the person's turn, never proven, and never typed for them. */}
+          {!undone && signInTurn(m.task?.proof?.steps) && <div className="line" role="note">{signInTurn(m.task?.proof?.steps)}</div>}
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {/* Undo right under the verdict (the audit, item 13: after a fix it was below the files, off Home's 480 points).
               Inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The
@@ -2700,7 +2783,7 @@ function Card() {
           {/* M69 (spec 3.4): beside it, Replay what Squibby did, from the steps this task already holds (runList.ts). */}
           {resHero?.pill !== "proven" && ((undoCan(m, project) && !failLead) || replayRows(m).rows.length > 0) && (
             <div className="row result-actions">
-              {undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}
+              {receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) && !failLead ? undoMain() : <>{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}</>}
               <Replay m={m} id={`${undoId}-replay`} />
             </div>
           )}
@@ -2734,7 +2817,7 @@ function Card() {
             </div>
           )}
           {m.undo?.stage === "confirm" && !m.undo.back && project && (
-            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
+            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine(m.receipt.notUndoable)}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
@@ -2840,11 +2923,12 @@ function Card() {
       {show("point") && m.point && (
         <section className={`panel ${m.point.stage === "found" ? "amber" : ""}`} role="status" aria-label={S.pointTitle}>
           {/* Found: the hero above already says what broke (the audit, item 53), so the title is for VoiceOver only then. */}
-          <h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{S.pointTitle}</h2>
+          <h2 className={m.point.stage === "found" && !m.practice ? "sr" : undefined}>{m.point.stage === "clear" ? S.screens.pass.title : S.pointTitle}</h2>
           {m.point.stage === "checking" && <div className="line">{S.pointChecking}</div>}
-          {m.point.stage === "clear" && <div className="line">{S.pointClear}</div>}
-          {m.point.stage === "gaps" && <div className="line">{S.pointGaps}</div>}
-          {m.point.stage === "nothing" && <div className="line">{S.pointNothing}</div>}
+          {/* M58 (UI 20): each line names the button that is really there, Look at my screen, or the ask box when it is off. */}
+          {m.point.stage === "clear" && <div className="line">{S.screens.pass.clear(everydayOn ? S.everydayLookInstead : null)}</div>}
+          {m.point.stage === "gaps" && <div className="line">{S.screens.pass.gaps(everydayOn ? S.everydayLookInstead : null)}</div>}
+          {m.point.stage === "nothing" && <div className="line">{S.screens.pass.nothing(everydayOn ? S.everydayLookInstead : null)}</div>}
           {m.point.note && <div className="line muted" role="note">{m.point.note}</div>}
           {/* The hero says which check found it (the audit, item 53); with a practice open the card says it itself. */}
           {m.point.stage === "found" && m.practice && <div className="line"><b>{m.point.label}</b></div>}
@@ -2854,11 +2938,13 @@ function Card() {
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
               {m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {/* While a fix already runs (a practice's, or one asked for from Learn), Fix it is not offered again (M51 polish). */}
-              {m.point.stage === "found" && !working && <button className="btn primary" type="button" onClick={fixKnown}>{S.pointFix}</button>}
+              {m.point.stage === "found" && !working && !m.point.fixing && <button className="btn primary" type="button" onClick={fixKnown}>{S.pointFix}</button>}
+              {m.point.stage === "found" && m.point.fixing && <span className="fix-starting" role="status"><b>{S.fix.starting}</b> <span className="muted">{S.fix.startingLine}</span></span>}
               {m.point.stage === "found" && !working && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
               {["clear", "gaps", "nothing"].includes(m.point.stage) && everydayOn && <button className="btn" type="button" onClick={() => { pressed(); putAside(m.point?.agent); dispatch({ type: "ui.pointClosed" }); lookEveryday(); }}>{S.everydayLookInstead}</button>}
-              <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>
+              {/* While the fix starts, Stop (in the hero) is the way out; Close would be unclear (cancel, or only hide?). */}
+              {!m.point.fixing && <button className="btn" type="button" onClick={() => { putAside(m.point?.agent); void invoke("showme_clear"); dispatch({ type: "ui.pointClosed" }); }}>{S.pointClose}</button>}
             </div>
           )}
           {m.point.stage === "found" && <>
@@ -2917,7 +3003,7 @@ function Card() {
               </div></ConfirmStep>
           )}
           <div className="row">
-            {m.bisect.stage === "running" && <button className="btn" type="button" onClick={() => void send(stopAgent())}>{S.stop}</button>}
+            {m.bisect.stage === "running" && <button className="btn" type="button" onClick={() => void stopNow()}>{S.stop}</button>}
             {m.bisect.stage === "done" && m.bisect.outcome === "found" && m.bisect.undo === "safe" && !m.bisect.undoStage && project && <button id={bisectUndoId} className="btn danger" type="button" onClick={() => dispatch({ type: "ui.bisectUndoAsked" })}>{S.bisectUndo}</button>}
             {m.bisect.stage === "done" && m.bisect.undoStage !== "working" && <button className="btn" type="button" onClick={() => { putAside(m.bisect?.agent); dispatch({ type: "ui.bisectClosed" }); }}>{S.bisectClose}</button>}
           </div>

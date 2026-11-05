@@ -13,7 +13,7 @@ import { parseDiagnosis, rescueGoal, rescuePrompt } from "./rescue.ts";
 import { isSafeUrl, noteFileName, notesMarkdown, parseResearch, researchPrompt } from "./research.ts";
 import { ProjectWatcher } from "./watcher.ts";
 import { changeOf, inProject, markOf, type FileMark } from "./livefile.ts";
-import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, shortenPrompt, STUCK_OPTIONS, stepPrompt, type LoopEnd } from "./drive.ts";
+import { differentPrompt, freshShortenPrompt, freshStepPrompt, pausedPrompt, estimateUsd, failureSignature, MAX_STEPS, parsePlan, planPrompt, READ_ONLY_TOOLS, lookUpPrompt, shortenPrompt, STUCK_OPTIONS, stepPrompt, stuckOptions, type LoopEnd } from "./drive.ts";
 import { answerPrompt, differentTaskPrompt, endedWhyOf, endingOf, evidence, freshAnswerPrompt, followUpPrompt, freshDifferentTaskPrompt, freshFollowUpPrompt, freshRetryPrompt, MAX_FOLLOW_UP_CHARS, planAnswerPrompt, planGoalWithAnswer, retryPrompt, type Ending, type Failure } from "./followup.ts";
 import { CheckpointStore, NEEDS_GIT, type LineCount } from "./checkpoints.ts";
 /** M66: how many words the person asked in, for the result card's warning on a big rewrite for a small ask. */
@@ -36,6 +36,7 @@ import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
+import { SIGN_IN, signInStep } from "./ship/signin.ts";
 import { readDeployFailure } from "./ship/buildlog.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
@@ -722,6 +723,7 @@ export class AgentRunner {
       case "ship.preview": return this.shipPreview(cmd);
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
+      case "ship.signIn": return this.shipSignIn(cmd);
       case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplainMode(cmd.mode); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled(), mode: m.explainMode() } as never); return; }
       case "memory.add": {
         // A line the person chose themselves (for example an answer at setup). It still goes through the same filter.
@@ -818,12 +820,24 @@ export class AgentRunner {
         return;
       }
       case "tasks.list": {
-        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}) }));
+        // M58: Last working, and the save points the person starred or named (the store's own notes).
+        // A folder that is not there has no store to read marks from: the list is still given (as before).
+        const working = this.lastWorking(cmd.project);
+        let marks: Record<string, { star?: true; name?: string }> = {};
+        try { marks = this.store(cmd.project).marks(); } catch { /* no marks to show */ }
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}),
+          ...(working?.task === t.id ? { lastWorking: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.star ? { star: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.name ? { name: marks[t.checkpoint].name } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
         const reviews = this.o.log.reviews(resolve(cmd.project), 50, { keepDays: Number(this.setting("review.keepDays")) });
-        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}) } as never);
+        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}) } as never);
         return;
+      }
+      // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.
+      case "checkpoint.mark": {
+        const r = this.store(cmd.project).mark(cmd.checkpoint, { ...(cmd.star !== undefined ? { star: cmd.star } : {}), ...(cmd.name !== undefined ? { name: cmd.name } : {}) });
+        if (!r.ok) { this.fail(r.reason); return; }
+        return this.handle({ v: PROTOCOL_VERSION, id: cmd.id, type: "tasks.list", project: cmd.project });
       }
       case "agent.send": await this.followUp(cmd); return;
     }
@@ -884,8 +898,9 @@ export class AgentRunner {
 
   // The fix loop breaker for a single task: the same card a Drive plan shows (index 0: no step number). The task stays open
   // until the person answers; Stop and Stop everything answer it too.
-  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal, end: LoopEnd): Promise<string> {
-    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options: STUCK_OPTIONS, ...loopHow(end) } as never);
+  // M58: the card names its rung and offers the fixed ladder (stuckOptions).
+  private askStuck(agent: string, title: string, failure: Failure, signal: AbortSignal, end: LoopEnd, options = STUCK_OPTIONS): Promise<string> {
+    this.emit({ type: "loop.stuck", agent, index: 0, title, failure: evidence(failure), options, rung: "retry", ...loopHow(end) } as never);
     this.state(agent, "needsYou");
     return new Promise<string>((res) => {
       if (signal.aborted) { res("interrupt"); return; }
@@ -943,6 +958,7 @@ export class AgentRunner {
     const found = this.bisected.get(key); if (found) out.push(found.before, found.after);
     for (const [p, r] of this.lastProof) if (resolve(p) === key) out.push(r.snapshot);
     const kept = this.proven(project); if (kept) out.push(kept.snapshot);
+    const working = this.lastWorking(project); if (working) out.push(working.snapshot);
     return out;
   }
 
@@ -1209,6 +1225,7 @@ export class AgentRunner {
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let stuckOffered = false;
+    let backTo: string | undefined;   // M58: the person chose Go back to the last working version
     // The same failure on every check of this approach (three in a row, as usual).
     const sameRun = (s: string[]) => s.length >= MAX_TRIES && new Set(s.slice(-MAX_TRIES)).size === 1;
     let ranOut = false;   // this approach's checks ran out on a failure
@@ -1257,8 +1274,9 @@ export class AgentRunner {
       // A check that Stop ended says nothing about the project: it is told as cancelled, and never kept as this version's
       // result (Put it online would refuse a version whose stopped check read as failed, and never check it again).
       if (abort.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };
-      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks } as never);
-      if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id });
+      // M58: "Try 1 of 3": the try, and this approach's limit (work.tries), so the card never guesses it.
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES } as never);
+      if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
       if (res.verdict === "cancelled") { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
@@ -1275,12 +1293,18 @@ export class AgentRunner {
         if (stuckOffered || this.driving.has(cmd.agent) || !lastFailure || !(sameRun(sigs) || askAny)) break;
         stuckOffered = true;
         const end = endOf();
-        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal, end);
-        if (choice !== "different") { if (choice === "interrupt" || abort.signal.aborted) status = "interrupted"; break; }
+        // M58, the fixed ladder: look up this exact error (only with web search on), or go back to Last working and plan
+        // (only when a version passed its checks here; the page asks first, and the files go back after the receipt).
+        const working = this.lastWorking(cmd.project);
+        const choice = await this.askStuck(cmd.agent, lbl, lastFailure, abort.signal, end, stuckOptions({ webSearch, lastWorking: !!working && working.snapshot !== before.id }));
+        if (choice === "research" && !webSearch) { this.fail("Looking up the error needs Let tasks search the web, which is off in Settings. Nothing more was changed.", cmd.agent); break; }
+        if (choice === "lastWorking") { if (working) backTo = working.snapshot; else this.fail("There is no working version saved yet, so nothing was put back.", cmd.agent); break; }
+        if (choice !== "different" && choice !== "research") { if (choice === "interrupt" || abort.signal.aborted) status = "interrupted"; break; }
         // A clearly different approach, in this same task (one undo point, one receipt), with up to MAX_TRIES more tries.
         tries = 0;   // checks keeps counting
         ranOut = false;
-        next = offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure, end) : differentTaskPrompt(lastFailure, end);
+        next = choice === "research" ? (offRecord ? `You were asked to do this in the project:\n${cmd.prompt}\n\n${lookUpPrompt(lastFailure, end)}` : lookUpPrompt(lastFailure, end))
+          : offRecord ? freshDifferentTaskPrompt(cmd.prompt, lastFailure, end) : differentTaskPrompt(lastFailure, end);
       } else {
         // Send the evidence back into the same conversation and try again.
         const f = res.failedAt ?? res.steps.at(-1);
@@ -1336,6 +1360,10 @@ export class AgentRunner {
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);
     this.state(cmd.agent, status === "done" ? "done" : status === "needs_you" ? "needsYou" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
+    // M58: Go back to the last working version, chosen on the stuck card after the page asked. The task has ended with its
+    // receipt (not a fix); now the files go back, with Undo's own safety copy first, so this can be undone too.
+    // Stop or Stop everything after that choice (while the receipt was made) cancels it too: nothing is put back.
+    if (backTo && !abort.signal.aborted) await this.backToWorking(cmd.project, backTo);
     if (picture) this.track(this.visualReceipt(cmd, store, before.id, shot!, checking, pictures.keep));
     // One explanation per finished task, and per finished Drive step (each step is its own run), in the background.
     if (status === "done" && cmd.mode === "drive" && !cmd.offTheRecord && explainHere) { const ex = new AbortController(); this.picturing.add(ex); this.owner.set(ex, "flow"); void this.explain(cmd, { label: lbl, changed, said, diff: diffForExplain(hunks) }, before.id, ex.signal, opts.step).finally(() => this.picturing.delete(ex)); }   // Stop everything ends it too
@@ -1581,9 +1609,48 @@ export class AgentRunner {
       return rec;
     } catch { return undefined; }
   }
-  private setProven(project: string, rec: { verdict: string; snapshot: string }) {
+  private setProven(project: string, rec: { verdict: string; snapshot: string }, task?: number | null) {
     this.lastProof.set(project, rec);
     try { mkdirSync(this.o.shadowRoot, { recursive: true }); writeFileSync(this.proofPath(project), JSON.stringify(rec), { mode: 0o600 }); } catch { /* kept for this run only */ }
+    if (rec.verdict === "passed") this.setLastWorking(project, { snapshot: rec.snapshot, at: this.now().toISOString(), ...(typeof task === "number" ? { task } : {}) });
+  }
+
+  /** M58 (the shortlist, item 5): Last working, the newest version of this project whose checks all passed, and the task
+   *  that made it. Kept beside the snapshots, outside the project (never git), so it outlasts a restart. */
+  private workingPath(project: string): string {
+    const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
+    return join(this.o.shadowRoot, `${id}.last-working.json`);
+  }
+  private working = new Map<string, { snapshot: string; at: string; task?: number }>();
+  private lastWorking(project: string): { snapshot: string; at: string; task?: number } | undefined {
+    const key = resolve(project), known = this.working.get(key);
+    if (known) return known;
+    try {
+      const j = JSON.parse(readFileSync(this.workingPath(project), "utf8")) as { snapshot?: unknown; at?: unknown; task?: unknown };
+      if (typeof j.snapshot !== "string" || !/^cp_[A-Za-z0-9_-]{1,80}$/.test(j.snapshot) || typeof j.at !== "string") return undefined;
+      const rec = { snapshot: j.snapshot, at: j.at, ...(Number.isInteger(j.task) ? { task: j.task as number } : {}) };
+      this.working.set(key, rec);
+      return rec;
+    } catch { return undefined; }
+  }
+  private setLastWorking(project: string, rec: { snapshot: string; at: string; task?: number }) {
+    this.working.set(resolve(project), rec);
+    try { mkdirSync(this.o.shadowRoot, { recursive: true }); writeFileSync(this.workingPath(project), JSON.stringify(rec), { mode: 0o600 }); } catch { /* kept for this run only */ }
+  }
+  /** Puts the files back to Last working, as Undo does (its own safety copy first, the person's own edits kept as Settings
+   *  says), and tells the page it was this rung. Only ever on the person's choice. */
+  private async backToWorking(project: string, snapshot: string): Promise<void> {
+    try {
+      const r = await this.store(project).restore(snapshot, { protect: this.setting<boolean>("undo.protectMyEdits", project) !== false });
+      this.noteSafety(project, r.safetyCheckpoint);
+      this.teachOffers.delete(resolve(project)); this.teaching.delete(resolve(project));
+      for (const [a, t] of this.lastTask) if (resolve(t.project) === resolve(project)) this.lastTask.set(a, { ...t, undone: true });
+      try { this.o.log.markUndone(project, CheckpointStore.num(snapshot), r.safetyCheckpoint); } catch { /* the log is not worth a second failure */ }
+      this.emit({ type: "checkpoint.restored", project, checkpoint: r.restored, safety: r.safetyCheckpoint, recovered: r.recovered, largeLeftAlone: r.largeLeftAlone, leftAlone: r.leftAlone, yours: r.yours, lastWorking: true } as never);
+    } catch (e) {
+      const m = String((e as Error).message ?? e);
+      this.fail(/^Unknown checkpoint/.test(m) ? "The last working version is not there any more, so nothing was put back." : `${PRODUCT} could not put the files back to the last working version (${clip(redact(m.split("\n")[0]), 120)}). Nothing was changed.`);
+    }
   }
 
   /** Did the project change since the version its last passed check ran on (must fix 11)? Home says so instead of "works".
@@ -1640,6 +1707,8 @@ export class AgentRunner {
   /** The first run's first checks so far, for their stand in sessions' keys (problemFind). */
   private firstChecks = 0;
   // Each ship step is its own session under its own key, so one finishing never hides another from Stop everything (the checks inside a preview, then the deploy).
+  /** The Vercel sign in waiting for each project, so Stop signing in can end it. */
+  private signIns = new Map<string, AbortController>();
   private openShipSession(ac: AbortController): string { const k = `ship:${++this.shipSessions}`; this.sessions.set(k, newSession("ship", ac)); return k; }
   private shipSay(project: string, stage: string, detail: string, extra: Record<string, unknown> = {}) {
     this.emit({ type: "ship.status", project, stage, detail: clip(redact(detail), 400), ...extra } as never);
@@ -1752,6 +1821,23 @@ export class AgentRunner {
     } finally { this.shipping.delete(key); this.sessions.delete(sk); }
   }
 
+  // M58 (UI 13): the person's own Vercel sign in, on their press only (ship/signin.ts). Its own session, so Stop everything
+  // ends it; one ship step at a time per project, as for the others.
+  private async shipSignIn(cmd: Extract<Command, { type: "ship.signIn" }>): Promise<void> {
+    // Stop signing in (the review of 5 Nov): ends the login that is still waiting, so the project is free again. Nothing
+    // waiting, nothing happens.
+    if (cmd.stop === true) { this.signIns.get(resolve(cmd.project))?.abort(); return; }
+    const d = this.shipTools(cmd.project);
+    if (!d) return;
+    const key = resolve(cmd.project), ac = new AbortController();
+    this.shipping.add(key);
+    this.signIns.set(key, ac);
+    const sk = this.openShipSession(ac);
+    try { await signInStep(d, cmd.project, (e) => this.emit(e as never), ac.signal); }
+    catch { this.emit({ type: "ship.signIn", project: cmd.project, stage: "failed", reason: SIGN_IN.failed } as never); }
+    finally { this.shipping.delete(key); this.signIns.delete(key); this.sessions.delete(sk); }
+  }
+
   // The places a task changed, from the two snapshots. Only files that may be taught from are read (teach.ts), at most 40 of
   // them; a problem reading them only means there is nothing to show.
   private async taskHunksOf(store: CheckpointStore, fromId: string, toId: string, changed: { file: string; kind: string }[]): Promise<Hunk[]> {
@@ -1827,7 +1913,7 @@ export class AgentRunner {
       const did = turnChange(given, now, turn.hunk);
       if (did === "unchanged") { say("cancelled", false, { reason: "You have not changed that line yet." }); return; }
       this.state(cmd.agent, "checking");
-      const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs ? { needs: u.needs } : {}) } as never);
+      const onStep = (u: StepUpdate) => this.emit({ type: "teach.step", project: cmd.project, checkpoint: cmd.checkpoint, rung: u.rung, label: u.label, status: u.status, detail: u.detail, ms: u.ms, ...(u.needs === "browser" ? { needs: u.needs } : {}) } as never);   // teach.step needs only "browser"
       let res: LadderResult = { verdict: "cancelled", steps: [] };
       try { if (!abort.signal.aborted) res = await (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: turn.start, afterId: snap.id, onStep, signal: abort.signal, noInstall: true, ...this.checkFor(cmd.project), approvals: this.approvals(cmd.project) }); }
       catch (e) { res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking your change", status: "failed", detail: CHECKER_STOPPED, summary: CHECKER_STOPPED, ms: 0, forModel: `The checker itself stopped: ${clip(redactOutput(String((e as Error)?.message ?? e)), 300)}` }] }; }

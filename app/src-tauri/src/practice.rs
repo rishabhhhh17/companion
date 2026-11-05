@@ -186,6 +186,12 @@ impl Record {
             _ => false,
         }
     }
+    /// M58 (feature 9): whether `current` is this practice's own recorded copy. The key practice's pretend AI and its fixed
+    /// fix (practice.key) run only there: never in a folder of the person's, never in another practice's copy.
+    pub fn is_copy_of(&self, id: &str, current: &Path) -> bool {
+        let s = current.to_string_lossy();
+        !s.is_empty() && self.practices.get(id).and_then(|p| p.path.as_deref()) == Some(&*s)
+    }
     /// What the pages show: every practice in catalog order, its copy (and whether it is still there) and its dates.
     pub fn listed(&self) -> Value {
         let rows: Vec<Value> = entries().iter().map(|e| {
@@ -267,15 +273,17 @@ mod tests {
     const D: &str = "2026-10-19";
 
     #[test]
-    fn the_catalog_lists_all_five_in_order_and_each_folder_is_shipped() {
+    fn the_catalog_lists_all_six_in_order_and_each_folder_is_shipped() {
         let ids: Vec<&str> = entries().iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(ids, ["signup", "setting", "route", "import", "open-table"]);
+        // M58 (feature 9): the key practice comes first (order 0), so the first run starts with it; the others keep theirs.
+        assert_eq!(ids, ["key", "signup", "setting", "route", "import", "open-table"]);
         for (i, e) in entries().iter().enumerate() {
-            assert_eq!(e.order as usize, i + 1, "{}", e.id);
+            assert_eq!(e.order as usize, i, "{}", e.id);
             assert!(Path::new(env!("CARGO_MANIFEST_DIR")).join("../sample").join(&e.folder).join("package.json").is_file(), "{}", e.folder);
             assert!(!e.copy_name.is_empty() && !e.protect.is_empty(), "{}", e.id);
         }
-        assert_eq!(first().id, "signup");
+        assert_eq!(first().id, "key");
+        assert_eq!(pick(Some("key")).unwrap().copy_name, "key in the code");
         assert_eq!(copy_base(), crate::practice_base!());
     }
     #[test]
@@ -391,6 +399,7 @@ mod tests {
             ("stuck-route", &["package.json", "server.js", "index.html", "pricing.html", "test/links.test.js"]),
             ("stuck-import", &["package.json", "server.js", "lib/money.js", "test/prices.test.js"]),
             ("stuck-open-table", &["package.json", "server.js", "index.html", "supabase/migrations/20261001090000_create_notes.sql", "supabase/migrations/20261002090000_create_profiles.sql"]),
+            ("stuck-key", &["package.json", "server.js", "index.html", "pay.js", "README.md"]),
         ];
         assert_eq!(want.len(), entries().len());
         for (folder, files) in want { for f in *files { assert!(base.join(folder).join(f).is_file(), "{folder}/{f}"); } }
@@ -398,8 +407,8 @@ mod tests {
     }
     #[test]
     fn a_page_may_choose_only_a_practice_in_the_catalog() {
-        assert_eq!(pick(None).unwrap().id, "signup");
-        for id in ["signup", "setting", "route", "import", "open-table"] { assert_eq!(pick(Some(id)).unwrap().id, id); }
+        assert_eq!(pick(None).unwrap().id, "key");
+        for id in ["key", "signup", "setting", "route", "import", "open-table"] { assert_eq!(pick(Some(id)).unwrap().id, id); }
         for bad in ["../signup", "/etc", "signup/../../x", "", "stuck-signup", "Setting", "open_table", "open-table ", "deploy"] { assert!(pick(Some(bad)).is_err(), "{bad}"); }
     }
     #[test]
@@ -439,6 +448,19 @@ mod tests {
         assert_eq!(r.practices["signup"].found.as_deref(), Some(D));   // done means it was found too
     }
     #[test]
+    fn the_key_practices_pretend_ai_may_run_only_in_its_own_recorded_copy() {
+        let home = Path::new("/Users/sam");
+        let key = home.join(concat!(crate::practice_base!(), " key in the code"));
+        let signup = home.join(concat!(crate::practice_base!(), " signup page"));
+        let mut r = Record::default();
+        assert!(!r.is_copy_of("key", &key));   // never started
+        r.started("key", &key, D); r.started("signup", &signup, D);
+        assert!(r.is_copy_of("key", &key));
+        assert!(!r.is_copy_of("key", &signup), "another practice's copy");
+        assert!(!r.is_copy_of("key", &home.join("my shop")), "a folder of the person's");
+        assert!(!r.is_copy_of("key", Path::new("")), "no folder chosen");
+    }
+    #[test]
     fn a_fresh_copy_keeps_a_done_practice_done() {
         let home = Path::new("/Users/sam"); let p = home.join(concat!(crate::practice_base!(), " signup page"));
         let mut r = Record::default(); r.started("signup", &p, D); r.mark("signup", "done", D, &p);
@@ -472,10 +494,12 @@ mod tests {
         r.started("route", &home.join(concat!(crate::practice_base!(), " missing page")), D);
         let v = r.listed();
         let rows = v["practices"].as_array().unwrap();
-        assert_eq!(rows.len(), 5);
-        assert_eq!(rows[0]["id"], "signup"); assert_eq!(rows[0]["there"], true);
-        assert_eq!(rows[2]["id"], "route"); assert_eq!(rows[2]["there"], false);
-        assert_eq!(rows[1]["id"], "setting"); assert!(rows[1].get("path").is_none());
+        assert_eq!(rows.len(), 6);
+        // M58: the key practice is listed first, not started here.
+        assert_eq!(rows[0]["id"], "key"); assert!(rows[0].get("path").is_none());
+        assert_eq!(rows[1]["id"], "signup"); assert_eq!(rows[1]["there"], true);
+        assert_eq!(rows[3]["id"], "route"); assert_eq!(rows[3]["there"], false);
+        assert_eq!(rows[2]["id"], "setting"); assert!(rows[2].get("path").is_none());
         let _ = fs::remove_dir_all(&root);
     }
 

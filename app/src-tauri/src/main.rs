@@ -2159,6 +2159,10 @@ fn click_log(app: &AppHandle, label: &str, n: u64) {
 fn send_command(app: AppHandle, cmd: serde_json::Value) -> Result<(), String> {
     runner::check_command(&cmd)?;
     runner::check_project(&cmd, &current_project())?;
+    // M58 (feature 9): the key practice's pretend AI and its fixed fix run only in that practice's own recorded copy.
+    if cmd.get("type").and_then(serde_json::Value::as_str) == Some("practice.key") && !practice_record().0.is_copy_of("key", std::path::Path::new(&current_project())) {
+        return Err("This only works in the key practice's own copy. Start the practice on Learn.".into());
+    }
     // A tool whose group is switched off does nothing (groups.rs): one plain line, and the engine is not even asked.
     if let Some(line) = groups::refuse_runner(&group_off, &cmd) { return Err(line.into()); }
     app.state::<runner::Runner>().send(&cmd)?;

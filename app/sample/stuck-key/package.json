@@ -1,0 +1,9 @@
+{
+  "name": "practice-key",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A tiny shop checkout for the practice run. In this practice a pretend AI changes one file, and the review checks the change.",
+  "scripts": {
+    "dev": "node server.js"
+  }
+}

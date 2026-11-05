@@ -43,3 +43,10 @@ export function askChips(f: ChipFacts): AskChip[] {
   const seen = new Set<string>();
   return out.filter((c) => (seen.has(c.words) ? false : (seen.add(c.words), true))).slice(0, ASK_CHIPS_MAX);
 }
+
+/** M58 (UI 20): the line More ways to ask shows when it opens, and again when the pointer leaves the ways: the first way's
+ *  own line (its tooltip), never a blank. `box`: the opened More (or the ways inside it). */
+export function firstWayTip(box: Pick<Element, "querySelector"> | null | undefined): string {
+  const b = box?.querySelector(".more-ways button") as { title?: string } | null | undefined;
+  return typeof b?.title === "string" ? b.title : "";
+}

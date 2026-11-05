@@ -92,3 +92,11 @@
 {"v":1,"id":"rv3","type":"review.dismiss","project":"p_9f2c","batch":"rv_4f2a9c01de"}
 {"v":1,"id":"rv3b","type":"review.dismiss","project":"p_9f2c","batch":"rv_4f2a9c01de","how":"sentBack"}
 {"v":1,"id":"rv4","type":"review.fix","project":"p_9f2c","batch":"rv_4f2a9c01de","agent":"builder-1","model":"claude-sonnet-5-5","budgetUsd":3}
+{"v":1,"id":"m58a1","type":"loop.choose","agent":"builder-1","choice":"research"}
+{"v":1,"id":"m58a2","type":"loop.choose","agent":"builder-1","choice":"lastWorking"}
+{"v":1,"id":"m58a3","type":"checkpoint.mark","project":"p_9f2c","checkpoint":"cp_0042","star":true}
+{"v":1,"id":"m58a4","type":"checkpoint.mark","project":"p_9f2c","checkpoint":"cp_0042","name":"Before the new menu"}
+{"v":1,"id":"m58c1","type":"ship.signIn","project":"p_9f2c"}
+{"v":1,"id":"m58b1","type":"practice.key","project":"p_9f2c","step":"write"}
+{"v":1,"id":"m58b2","type":"practice.key","project":"p_9f2c","step":"fix"}
+{"v":1,"id":"m58r1","type":"ship.signIn","project":"p_9f2c","stop":true}

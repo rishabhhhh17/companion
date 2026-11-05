@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { TaskLog } from "../src/tasklog.ts";
-import { STUCK_OPTIONS } from "../src/drive.ts";
+import { stuckOptions } from "../src/drive.ts";
 import type { LadderResult } from "../src/proof/ladder.ts";
 import type { Event } from "../../protocol/index.ts";
 import { Runners, waitFor } from "./helpers/settle.ts";
@@ -46,7 +46,8 @@ describe("three identical failures in a single task stop and ask", () => {
     const card = of(r.events, "loop.stuck")[0];
     expect(card).toMatchObject({ agent: "builder-1", index: 0, title: "Fix the signup page" });
     expect(card.failure.detail).toContain("x is not defined");
-    expect(card.options).toEqual(STUCK_OPTIONS);
+    // M58: the fixed ladder adds Look up this exact error (web search is on as usual); no version passed yet, so no Last working.
+    expect(card.options).toEqual(stuckOptions({ webSearch: true, lastWorking: false }));
     expect(states(r.events).at(-1)).toBe("needsYou");
     expect(of(r.events, "receipt").length).toBe(0);   // the task is still open
     expect(r.engine.calls.length).toBe(3);

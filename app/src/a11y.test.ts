@@ -919,7 +919,7 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
       expect(one(s)!.decl.color).toBe("var(--fg)");
       expect(one(s)!.decl.background).toBe("var(--surface-2)");
       expect(one(".btn.quiet")!.decl.color).toBe("var(--fg-2)");
-      expect(read("./card.tsx")).toContain('<h1 id="home-title" className="view-title">{viewTitle}</h1>');
+      expect(read("./card.tsx")).toContain('<h1 id="home-title" className={!side && home.tab !== "settings" ? "view-title sr" : "view-title"}>{viewTitle}</h1>');
       // The open page in Settings is a filled row, and its name is bold too, so it is never shown by a tint alone.
       expect(one('.sb-item[aria-current="page"]')!.decl["font-weight"]).toBe("var(--w-strong)");
       // The option the arrow keys are on in an open menu: a ring as well as its fill, 3 to 1 on the fill and on the list

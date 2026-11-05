@@ -79,3 +79,13 @@
 .island-panel .ip-receipt[data-tone="failed"] .ip-text span { color: var(--notch-bad); }
 .island-panel .ip-thumb { display: block; width: calc(2 * var(--w-pic) / 3); height: auto; max-height: var(--h-pic); object-fit: cover; object-position: top left; border: var(--hair) solid var(--notch-edge); border-radius: var(--r-control); }
 .run-under .job-file b { font-weight: var(--w-regular); font-size: var(--t-caption); }
+
+/* M58 area A: Starting the fix in the point card's place, the fixed ladder under the stuck card's words (three quiet rows,
+   the current one marked by weight, never by colour alone), and a History row's save marks. Tokens only, no motion. */
+.fix-starting { flex: 1 0 100%; order: -1; display: flex; flex-wrap: wrap; gap: var(--space-1); align-items: baseline; color: var(--fg); font: var(--w-regular) var(--t-small) / var(--lh-small) var(--font); }
+.fix-ladder { list-style: decimal inside; margin: var(--space-2) 0; padding: 0; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+.fix-ladder > li { padding: var(--space-1) 0; border-bottom: var(--hair) solid var(--line); }
+.fix-ladder > li[data-current] { color: var(--fg); font-weight: var(--w-strong); }
+.hist-marks { display: flex; flex-wrap: wrap; gap: var(--space-1); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+.hist-mark { padding: 0 var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
+.hist-hint { display: block; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }

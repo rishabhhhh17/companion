@@ -19,6 +19,13 @@ export type Checkpoint = { id: string; commit: string; label: string; files: num
 // yours: files the person changed themselves (made, edited or deleted since our last step ended, or while a plan was paused) that Undo
 // left exactly as they are. "Put those back too" (putBack) is a separate, confirmed action.
 export type RestoreResult = { restored: string; safetyCheckpoint: string; envRestored: string[]; leftAlone: string[]; recovered: string[]; largeLeftAlone: string[]; yours: string[]; ignoredRestored: string[] };
+/** M58: a save point the person starred or named. */
+export type SaveMark = { star?: true; name?: string };
+const CHECKPOINT_ID = /^cp_[A-Za-z0-9_-]{1,80}$/;
+/** A save point's name as the person typed it, made safe to show: one line, no control characters, at most 40 characters. */
+export function cleanSaveName(t: string): string {
+  return t.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40).trim();
+}
 /** What `keepIgnored` did: copied it, noted it was not there, it is in the snapshot anyway, too big to keep, or not ours to touch. */
 export type IgnoredKept = "kept" | "absent" | "tracked" | "too_big" | "skipped";
 export type PutBackResult = { restored: string; safetyCheckpoint: string; putBack: string[]; skipped: Skipped[]; savedTo: string };
@@ -170,6 +177,29 @@ export class CheckpointStore {
     try { const r = JSON.parse(readFileSync(f, "utf8")); if (r && typeof r === "object" && !Array.isArray(r)) j = r; } catch { /* a new one */ }
     if (value === null) delete j[name]; else j[name] = value;
     try { mkdirSync(this.shadowDir, { recursive: true }); const tmp = `${f}.${randomBytes(4).toString("hex")}.tmp`; writeFileSync(tmp, JSON.stringify(j), { mode: 0o600 }); renameSync(tmp, f); } catch { /* a nicety: the review then starts from the newest version, as before */ }
+  }
+  /** M58: the save points the person starred or named, kept in this store's own notes (never the project, never git). */
+  marks(): Record<string, SaveMark> {
+    try {
+      const j = JSON.parse(this.note("marks") ?? "{}") as Record<string, unknown>;
+      const out: Record<string, SaveMark> = {};
+      for (const [id, v] of Object.entries(j && typeof j === "object" ? j : {})) {
+        if (!CHECKPOINT_ID.test(id) || !v || typeof v !== "object") continue;
+        const o = v as { star?: unknown; name?: unknown }, name = typeof o.name === "string" ? cleanSaveName(o.name) : "";
+        if (o.star === true || name) out[id] = { ...(o.star === true ? { star: true as const } : {}), ...(name ? { name } : {}) };
+      }
+      return out;
+    } catch { return {}; }
+  }
+  /** Star or name a save point, or take either away (star false, name ""). Only a save point this store holds. */
+  mark(id: string, m: { star?: boolean; name?: string }): { ok: true } | { ok: false; reason: string } {
+    if (!CHECKPOINT_ID.test(id) || !this.refs().some((r) => r.id === id)) return { ok: false, reason: "That save point is not there any more." };
+    const all = this.marks(), was = all[id] ?? {};
+    const star = m.star === undefined ? was.star === true : m.star === true;
+    const name = m.name === undefined ? was.name ?? "" : cleanSaveName(m.name);
+    if (star || name) all[id] = { ...(star ? { star: true as const } : {}), ...(name ? { name } : {}) }; else delete all[id];
+    this.setNote("marks", Object.keys(all).length ? JSON.stringify(all) : null);
+    return { ok: true };
   }
   /** Over the size cap, even after pruning down to the newest few and gc: the review of changes pauses for this project. */
   get full(): boolean { return this.fullNow; }
@@ -485,6 +515,7 @@ export class CheckpointStore {
   private kept(all: { id: string }[], keepNewest: number): Set<string> | null {
     const keep = new Set<string>();
     try { for (const g of this.guards) for (const id of g()) if (typeof id === "string") keep.add(id); } catch { return null; }
+    for (const id of Object.keys(this.marks())) keep.add(id);   // M58: a starred or named save is never pruned
     for (const r of all.slice(-keepNewest)) keep.add(r.id);
     let afterOf = false;
     for (const r of all) {

@@ -2,6 +2,44 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Fix it means fix: 5 Nov 2026 (in progress)
+
+- **Fix it fixes the line it found.** When the check finds one line, Fix it now makes one small checked fix of that line, instead of planning first. When nothing specific was found, it still looks deeper first. You can still pick Look deeper first in Settings.
+- **Fix it answers at once.** Pressing it says Starting the fix right away, and the problem stays on screen until the work really begins. If the fix cannot start, the problem stays and Squibby says why.
+- **You can see how many tries there are.** A fix that fails says Try 2 of 3 (the number comes from the task itself), and the stuck card shows the steps Squibby tries next: try a different approach, look up this exact error (only when Let tasks search the web is on, otherwise it is not shown), then go back to the last working version and plan. The main button is the step the list marks as current, in the same words.
+- **Last working.** Squibby remembers the last version of your project whose checks all passed. When a fix is stuck, you can go back to it: Squibby asks first, makes its own safety copy, and then plans the next step from there. History marks it.
+- **Star or name a save.** In History, star a save or give it a name. A starred or named save is never cleared away, and it is still there after a restart. It is kept in Squibby's own folder, never in your project or its Git.
+- **Undo says what it cannot bring back.** Under every Undo: it puts your files back, but not a database, a live site, emails sent or installed packages.
+- **A sign in page is said plainly.** When the browser check meets a sign in page, the result says the page needs a sign in, that Squibby never types passwords, and that what is behind it is not checked. The browser check shows as stopped at the sign in page, not as a tick. A way to sign in yourself and carry on the check is not built yet.
+- **After Stop, Undo what it did is ready.** A stopped run that changed files shows Undo what it did as the main button. Nothing is undone until you tap it, and a stopped run never counts as a fix.
+
+## A first run that shows both jobs: 5 Nov 2026 (in progress)
+
+- **The welcome says both jobs.** "I look over every change your AI makes, and fix what breaks."
+- **One optional question: which AI do you build with?** Lovable, Bolt, Replit, Cursor, Claude Code or something else, or Skip. It only picks a tip about where Copy for my AI's words go. It stays on this Mac, is never sent, and Settings can forget it.
+- **A new first practice: a key written into the code.** Press the button and the practice's pretend AI changes one file, writing a made up payments key into the code, the way AI tools sometimes do. Squibby's review stops it with its own rules, with Copy for my AI and Fix it beside it. Fix it moves the key to .env.local, with a safety copy and Undo. No model, no sign in and no cost. It works only in its own practice copy.
+- **Fix it stays in view on the first check.** The optional parts (Make it yours, more tools, how you like things, keys) wait behind one Set up more (optional) link.
+- **Small wording fixes.** A cost under a cent says Less than 1 cent, never About less than 1 cent. A passing check is titled Checks pass and names the button that is really there, Look at my screen. More ways to ask shows the first way's line as soon as it opens. A one minute practice says About 1 minute.
+
+## Findings with a fixed shape, and a finish line for going live: 5 Nov 2026 (in progress)
+
+- **Every review says how ready it is, in one line.** Ready, Check these 2 things, or Not safe yet. It is never Ready when something must be fixed, when your checks failed, or when they did not run.
+- **Every finding has the same four parts.** Must fix comes first, then Should fix, then Worth a look. Each one says what is wrong, what it means for you, how to fix it, and when it may be fine on purpose. The top finding shows them on the card (the headline, one line of what it means, then how to fix it and, where it can be, when it may be fine); the rest are under Why does this matter. A key in the code is never fine, so that part is left out there, and the button that closes the card says Leave the key in the code instead of Keep it anyway. There is no score.
+- **The check before going live ends on one button.** When every check passed, Put it online is the main button, and it uses the check that just passed. A blocked check has its own Fix it, which says Starting the fix at once and keeps the problem on screen until the fix begins.
+- **Sign in to Vercel without Terminal.** When you are not signed in, the box says your browser opens Vercel's own sign in page and that Squibby never sees your password. Press Sign in to Vercel, open Vercel's page, sign in there, then press Check again, which runs the check before going live (it does not put anything online). Stop signing in ends a sign in that is still waiting. If that cannot work on your Mac, Show me the steps walks you through it.
+
+## Review fixes for Fix it, the first run and going live: 5 Nov 2026
+
+- **The stuck card says one thing.** "Pick one of the choices just below" replaces a line that pointed at the ask box, the title is not said twice, and the list of next steps matches the buttons. A saved version with no known time no longer shows "(Last working)" in brackets.
+- **Fix it works at once, and says so.** After you press it the page says Fixing it (not the raw error), nothing says Needs you, Stop is there, and Close is not offered while the fix starts. The Fix what the check found chip waits too.
+- **One count while it works.** A retry shows "Trying again (2 of 3)" and no second "2 of 4". The clock never reads less than the checks already listed, and the line under the title no longer promises an Undo button that is not there yet.
+- **Going live and the page agree.** After the check before going live, the page no longer says Not checked yet over a card that says Ready; it says the checks pass, or that it is not ready to go online.
+- **A finished practice is one main step.** Next is the main button, Undo is quiet, and Back to my project, Start over, Remove my copy and Close sit under More with a line on what each does. The key practice says Found it once.
+- **The first run keeps Continue in view.** Continue and Skip stay at the bottom, the question about which AI you build with is behind one link, and the check button says Look for problems in your project, with a line that it reads your files and runs your tests.
+- **History marks are tags.** Last working, Starred and a name are separate tags, Last working says what it is for, and Remove star looks like Star.
+- **Going live to Vercel.** Check again after signing in only checks (it no longer starts a preview), Stop signing in ends a waiting sign in, and the old "press Sign in" line is gone once you have pressed it.
+- **After Stop, one main button.** Undo what it did is main; Carry on is secondary.
+
 ## A practical notch: 5 Nov 2026
 
 - **Squibby stays on until you quit it.** macOS could count Squibby as an app it may close by itself to free memory, because it has no ordinary window; that is now off. Closing a window, a `kill` from a terminal or a problem in Squibby's own code no longer ends it without a word: a problem opens it again once and it tells you, and every ending leaves one plain line in ~/Library/Logs/Squibby/exits.log saying what ended it.

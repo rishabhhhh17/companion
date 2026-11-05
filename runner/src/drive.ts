@@ -90,5 +90,13 @@ export function triedLine(end: LoopEnd = { tries: 3, same: true }): string {
 export const differentPrompt = (title: string, f: { label: string; detail: string; forModel?: string }, end?: LoopEnd) =>
   `Step: ${title}\n\n${triedLine(end)}\nFailed check: ${f.label}\nWhat happened: ${f.forModel ?? f.detail}\n\nTake a clearly different approach to this step. Keep the change small.`;
 export const STUCK_OPTIONS = [{ id: "different", label: "Try a different approach" }, { id: "stop", label: "Stop here" }];
+// M58 (the shortlist, item 4): the fixed ladder on a single task's stuck card. Look up this exact error only when Let tasks
+// search the web is on (hidden, not greyed, when off); go back to the last working version only when one is kept. The
+// page shows its own words for each id (strings.ts); these labels are the engine's fallback, as STUCK_OPTIONS' are.
+export function stuckOptions(o: { webSearch: boolean; lastWorking: boolean }): { id: string; label: string }[] {
+  return [STUCK_OPTIONS[0], ...(o.webSearch ? [{ id: "research", label: "Look up this exact error" }] : []), ...(o.lastWorking ? [{ id: "lastWorking", label: "Go back to the last working version and plan" }] : []), STUCK_OPTIONS[1]];
+}
+export const lookUpPrompt = (f: { label: string; detail: string; forModel?: string }, end?: LoopEnd) =>
+  `${triedLine(end)}\nFailed check: ${f.label}\nWhat happened: ${f.forModel ?? f.detail}\n\nBefore you change anything, search the web for this exact error and read what others found. Then fix it with what you learned, and keep the change small.`;
 export const pausedPrompt = (title: string) =>
   `You were paused because the person looked at or changed the project themselves. Re-read whatever you need, keep their changes, and carry on with this step: ${title}`;

@@ -589,3 +589,8 @@ details.raw[open] > summary .ic { transform: rotate(90deg); }
 .note-btn { border-radius: var(--rv-btn-r, 6px); }
 .note + .row { margin: var(--rv-erase-m, var(--space-2) 0); padding-top: var(--rv-erase-pad, 0); border-top: var(--rv-erase-edge, 0) solid var(--line); }
 /* end M65 review and change cards */
+
+/* The first run's Continue stays on screen: it sticks to the bottom of the slide while the slide scrolls (the review of 5
+   Nov). More specific than the key's own look above. Skip setup stays in the flow at the end, so it never lies over the
+   links above it. */
+.home .fr .fr-slide > .fr-key { position: sticky; bottom: var(--space-3); z-index: 1; }

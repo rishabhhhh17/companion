@@ -232,3 +232,27 @@ export function firstCheckVerdict(point: Exclude<PointNow, null>, name: string):
     default: return null;
   }
 }
+
+// ---------- M58 (feature 9, UI 1): both jobs on the hello, an optional question, and the check screen kept short ----------
+
+/** The answers to "Which AI do you build with?" (you.buildsWith), in the order the chips show. Skip is not an answer. */
+export const BUILDS_WITH = ["lovable", "bolt", "replit", "cursor", "claudeCode", "other"] as const;
+export type BuildsWith = (typeof BUILDS_WITH)[number];
+export const isBuildsWith = (v: unknown): v is BuildsWith => typeof v === "string" && (BUILDS_WITH as readonly string[]).includes(v);
+/** What the answer changes in Settings: only you.buildsWith, only when the person picked a chip and it differs from the value
+ *  in force. Skip, or no answer, writes nothing (rule 15: a pre-filled answer is never theirs). It is never sent anywhere. */
+export function buildsWithSettings(picked: BuildsWith | null, now: unknown): [string, unknown][] {
+  return picked && picked !== now ? [["you.buildsWith", picked]] : [];
+}
+/** The one tip the answer picks (it changes nothing else): where Copy for my AI's words go. Null until there is an answer. */
+export function buildsWithTip(v: unknown): string | null {
+  if (!isBuildsWith(v)) return null;
+  return S.screens.buildsWithTip(v === "other" ? null : S.screens.buildsWithNames[v]);
+}
+/** UI 1: the check screen's optional parts (Make it yours, More tools, How you like things, Keys) stay behind one quiet
+ *  link, Set up more (optional), so Fix it and Go to my project stay in view. The link shows once the check has an answer
+ *  (or ended), and the folds only after it is pressed. */
+export function moreShown(stage: CheckStage, pressed: boolean): { link: boolean; folds: boolean } {
+  const after = stage === "done" || stage === "stopped";
+  return { link: after && !pressed, folds: after && pressed };
+}

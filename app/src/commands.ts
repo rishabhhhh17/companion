@@ -55,7 +55,9 @@ export const listTasks = (project: string): Command => ({ v: 1, id: id(), type: 
 export const planDrive = (project: string, goal: string, offTheRecord = false): Command =>
   ({ v: 1, id: id(), type: "drive.plan", project, agent: AGENT, goal, model: workModel(), budgetUsd: budgetFor("budget.plan"), ...(offTheRecord ? { offTheRecord: true } : {}) });
 export const approvePlan = (steps: string[]): Command => ({ v: 1, id: id(), type: "drive.approve", agent: AGENT, steps });
-export const chooseLoop = (choice: "different" | "stop"): Command => ({ v: 1, id: id(), type: "loop.choose", agent: AGENT, choice });
+export const chooseLoop = (choice: "different" | "stop" | "research" | "lastWorking"): Command => ({ v: 1, id: id(), type: "loop.choose", agent: AGENT, choice });
+// M58: star or name a save point (the shadow store's own notes, never the project, never git).
+export const markSave = (project: string, checkpoint: string, m: { star?: boolean; name?: string }): Command => ({ v: 1, id: id(), type: "checkpoint.mark", project, checkpoint, ...m });
 export const pauseDrive = (): Command => ({ v: 1, id: id(), type: "drive.pause", agent: AGENT, reason: "you" });
 export const resumeDrive = (): Command => ({ v: 1, id: id(), type: "drive.resume", agent: AGENT });
 export const DIAGNOSE_MODEL = MODELS.diagnose;
@@ -104,6 +106,10 @@ export const whereWasI = (project: string, since?: string): Command => ({ v: 1, 
 export const shipPreview = (project: string): Command => ({ v: 1, id: id(), type: "ship.preview", project });
 export const shipLive = (project: string, url: string): Command => ({ v: 1, id: id(), type: "ship.live", project, url, confirm: true });
 export const shipRollback = (project: string): Command => ({ v: 1, id: id(), type: "ship.rollback", project, confirm: true });
+// M58 (UI 13): Sign in to Vercel, on the person's press: their own login as a visible step (runner/src/ship/signin.ts).
+export const shipSignIn = (project: string): Command => ({ v: 1, id: id(), type: "ship.signIn", project });
+/** Ends a Vercel sign in that is still waiting (the person pressed Stop signing in, or Close). */
+export const shipSignInStop = (project: string): Command => ({ v: 1, id: id(), type: "ship.signIn", project, stop: true });
 export const addMemory = (project: string, scope: "project" | "profile", text: string, source: string): Command => ({ v: 1, id: id(), type: "memory.add", project, scope, text, source });
 export const checkMac = (): Command => ({ v: 1, id: id(), type: "doctor.check" });
 // Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails. `first`: the first
@@ -181,3 +187,7 @@ export const NO_PROJECT = "no-project";
 // The zero cost warm up (runner/src/warm.ts): the engine reads the bundled Claude binary through once so the first task
 // starts sooner. Nothing is run, sent or spent, and it names no folder.
 export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" });
+// M58 (feature 9): the key practice, on the person's press: the practice's pretend AI writes its made up key into the copy
+// (the review then looks at once, by its rules alone), or the fixed fix moves it to .env.local. No model, no cost; the
+// shell lets it through only for that practice's own copy.
+export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });

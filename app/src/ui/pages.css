@@ -99,3 +99,13 @@
 .home .fr .fr-welcome .fr-title { font: var(--w-hero) var(--t-hero) / var(--lh-hero) var(--font); letter-spacing: var(--track-display); }
 .home .where-label { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 .home .note-tag { padding: 0 var(--space-2); min-height: var(--h-pill); display: inline-flex; align-items: center; border-radius: var(--r-pill); background: var(--neutral-tint); color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font); }
+/* M58 (feature 9, UI 1): the optional "Which AI do you build with?" chips on the hello, and the one link to the folds. */
+.home .fr-builds { display: grid; gap: var(--space-1); margin-top: var(--space-3); }
+.home .fr-chips-row { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.home .fr .fr-jobs { margin: 0 0 var(--space-3); }
+.home .fr-more { margin-top: var(--space-3); }
+
+/* The practice's finished card keeps its extra choices in one fold (the review of 5 Nov). */
+.home .more-fold { margin: 0 0 var(--space-2); }
+.home .more-fold > summary { width: fit-content; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); cursor: default; }
+.home .more-fold[open] > summary { margin-bottom: var(--space-2); }

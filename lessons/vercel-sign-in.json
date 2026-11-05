@@ -1,0 +1,50 @@
+{
+  "id": "vercel-sign-in",
+  "title": "Sign in to Vercel",
+  "app": "Vercel",
+  "goal": "Sign in to Vercel in your browser, then let {product} put your site online",
+  "status": "draft",
+  "needsProject": false,
+  "steps": [
+    {
+      "id": "open",
+      "say": "Open vercel.com in your browser and press Log In.",
+      "find": "Log In at the top right of vercel.com",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "account",
+      "say": "Choose the way you made your Vercel account, such as GitHub or email, and finish signing in there.",
+      "find": "the list of ways to sign in on Vercel's page",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "again",
+      "say": "Go back to {product} and press Sign in to Vercel again, so Vercel's page opens already signed in.",
+      "find": "Sign in to Vercel in {product_s} Putting it online box",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "confirm",
+      "say": "On Vercel's page, press Confirm to let the Vercel tool on this Mac sign in. Never type your password anywhere but Vercel's own page.",
+      "find": "the Confirm button on Vercel's sign in page",
+      "check": {
+        "kind": "ask"
+      }
+    },
+    {
+      "id": "check",
+      "say": "Go back to {product} and press Check again.",
+      "find": "Check again in {product_s} Putting it online box",
+      "check": {
+        "kind": "ask"
+      }
+    }
+  ]
+}

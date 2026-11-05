@@ -6,6 +6,7 @@
 // reviewHead.test.ts; reviewCard.tsx draws it.
 import type { CodeLine, ReviewReason } from "../../protocol/index.ts";
 import { fixedSince, keyWarned, type ReviewCard } from "./review.ts";
+import { levelRank } from "./findingShape.ts";
 import { S } from "./strings.ts";
 
 /** lines (M69): the pointed line and the lines either side of it, masked by the engine and again by review.ts. */
@@ -54,8 +55,8 @@ export function reviewHead(r: ReviewCard | null | undefined): ReviewHead | null 
   }
   const res = r.result;
   if (!res || r.stage !== "reviewed" || res.rating === "safe") return null;
-  // The first reason that still holds leads; one that a newer change fixed goes last.
-  const order = res.reasons.map((x, i) => ({ x, i })).sort((a, b) => Number(fixedSince(r, a.i)) - Number(fixedSince(r, b.i)));
+  // The first reason that still holds leads, Must fix first (M58, findingShape.ts); one that a newer change fixed goes last.
+  const order = res.reasons.map((x, i) => ({ x, i })).sort((a, b) => Number(fixedSince(r, a.i)) - Number(fixedSince(r, b.i)) || levelRank(a.x.kind) - levelRank(b.x.kind) || a.i - b.i);
   const tone = res.rating === "stop" ? "stop" : "look";
   const lead: ReviewReason | undefined = order[0]?.x;
   const pointed = lead ? place(lead.file, lead.line, lead.lines) : null;

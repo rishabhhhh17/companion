@@ -12,13 +12,15 @@ import { ChangesCard } from "./changesCard.tsx";
 import { keyFiles } from "./changeRows.ts";
 import { copyable } from "./copytext.ts";
 import { Icon } from "./icons.tsx";
-import { canFix, checksLook, fixedSince, keyWarned, placeSaid, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
+import { canFix, checksLook, keyWarned, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
 import type { ReviewReasonKind } from "../../protocol/index.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { ProofChip, Said } from "./ui/parts.tsx";
 import { reviewHead, type ReviewHead } from "./reviewHead.ts";
 import { CodePoint } from "./codePoint.tsx";
+import { keepWords, readinessOf, shapeFindings, type Shaped } from "./findingShape.ts";
+import { FindingList, LeadParts, ReadinessLine } from "./findingList.tsx";
 
 export const REVIEW_ID = "home-review";
 const FIX_ID = "home-review-fix";
@@ -42,7 +44,7 @@ type Props = {
 
 /** Send back to my AI: copies the engine's ready message (secrets hidden again) on a press, and says it is copied. The Mac
  *  side writes the clipboard (copy_text); the page's own clipboard is the fallback, only for text the Mac side would take. */
-function SendBack({ text, onCopied, label = S.review.sendBack }: { text: string; onCopied?: () => void; label?: string }) {
+export function SendBack({ text, onCopied, label = S.review.sendBack }: { text: string; onCopied?: () => void; label?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   if (!text) return null;
   const copy = () => {
@@ -56,6 +58,21 @@ function SendBack({ text, onCopied, label = S.review.sendBack }: { text: string;
     <button className="btn" type="button" title={S.review.sendBackHelp} onClick={copy}><Icon name="copy" size={14} />{label}</button>
     <span className={state === "idle" ? "sr" : "line review-copied"} role="status">{state === "copied" ? S.review.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
+}
+
+/** M58 shortlist 3: what a finding's row adds under its four parts: Don't flag this kind here again where review.ts
+ *  silenceOffered allows it (never for a key, correction 4), and the line that says it was saved. */
+function silenceExtra(r: ReviewCard, onSilence?: (kind: ReviewReasonKind) => void) {
+  const reasons = r.result?.reasons ?? [];
+  return (f: Shaped) => {
+    const i = f.i;
+    if (i < 0 || f.kind === "checks_unchecked" || !reasons[i]) return null;
+    const kind = f.kind as ReviewReasonKind;
+    return <>
+      {onSilence && silenceOffered(r, i) && <button className="btn quiet" type="button" title={S.review.silenceHelp} onClick={() => onSilence(kind)}>{S.review.silence}</button>}
+      {(r.silenced ?? []).includes(kind) && reasons.findIndex((y) => y.kind === kind) === i && <span className="line muted" role="status">{S.review.silenced}</span>}
+    </>;
+  };
 }
 
 export function ReviewCardView(p: Props) {
@@ -80,10 +97,15 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         <div className="rv-head">
           <div className="rv-words">
             <p className="ui-status" data-tone={head.tone === "stop" ? "stop" : "needs"}><span className="ui-status-dot" aria-hidden="true" />{head.tag}</p>
-            <h1 id={`${REVIEW_ID}-title`} className="rv-title"><span id={titleId}>{head.headline}</span> <span className="rv-why-line">{head.why}</span></h1>
+            {/* The headline is the title; what it means is a paragraph at the card's width, not part of a 40 point heading. */}
+            <h1 id={`${REVIEW_ID}-title`} className="rv-title"><span id={titleId}>{head.headline}</span></h1>
+            {head.why && <p className="rv-why-line">{head.why}</p>}
           </div>
           {mark && <div className="rv-mark" aria-hidden="true">{mark}</div>}
         </div>
+        {/* M58 shortlist 3: the readiness line, in words, under the headline that already has its own tag. */}
+        <ReadinessLine r={readinessOf(r)} quiet />
+        {res && <LeadParts f={shapeFindings(r)[0]} />}
         <div className="sr" role="status">{res ? S.review.arrived(S.review.rating[res.rating], head.headline) : ""}</div>
         {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
             and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
@@ -104,7 +126,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <div className="row result-actions rv-actions">
               {onReviewFix && <button id={FIX_ID} className="btn primary" type="button" onClick={onReviewFix}>{S.review.fix}</button>}
               <SendBack text={S.homeNow.keyCopy((r.keys ?? []).map((k) => S.review.at(k.file, k.line)).join("; "))} label={S.fixRun.copyForAi} />
-              <button className="btn" type="button" onClick={onDismiss}>{S.review.keepAnyway}</button>
+              <button className="btn quiet" type="button" onClick={onDismiss}>{keepWords(r)}</button>
               <button className="btn quiet rv-whylink" type="button" onClick={() => onReview(true)}>{S.homeNow.reviewAll}</button>
             </div>
           </>
@@ -120,7 +142,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           <div className="row result-actions rv-actions">
             {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}>{S.review.fix}</button>}
             <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
-            <button className="btn" type="button" onClick={onDismiss}>{res?.rating === "stop" ? S.review.keepAnyway : S.review.looksFine}</button>
+            <button className="btn" type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
             <button className="btn quiet rv-whylink" type="button" aria-expanded={open === "why"} aria-controls={whyId} onClick={() => toggle("why")}>{S.homeNow.whyMatters}</button>
           </div>
         )}
@@ -151,18 +173,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
               {res.notes.map((n, i) => <div className="line muted" key={i}>{n}</div>)}
             </div>
           )}
-          {res && res.reasons.length > 0 && (
-            <ul className="review-reasons" aria-label={S.review.whyLabel}>
-              {res.reasons.map((x, i) => (
-                <li key={i} data-kind={x.kind} data-fixed={fixedSince(r, i) || undefined}>
-                  <span>{x.say}</span>{x.file && !placeSaid(x) && <code className="review-at">{S.review.at(x.file, x.line)}</code>}
-                  {fixedSince(r, i) && <span className="line muted review-fixed">{S.review.fixedSince}</span>}
-                  {onSilence && silenceOffered(r, i) && <button className="btn quiet" type="button" title={S.review.silenceHelp} onClick={() => onSilence(x.kind)}>{S.review.silence}</button>}
-                  {(r.silenced ?? []).includes(x.kind) && res.reasons.findIndex((y) => y.kind === x.kind) === i && <span className="line muted" role="status">{S.review.silenced}</span>}
-                </li>
-              ))}
-            </ul>
-          )}
+          {/* M58 shortlist 3: every finding in its fixed shape, Must fix first (findingShape.ts). */}
+          {res && <FindingList items={shapeFindings(r)} id={`${REVIEW_ID}-lead`} extra={silenceExtra(r, onSilence)} />}
           {keyWarned(r) && <div className="line muted">{S.review.keyWarningLine}</div>}
           {res?.hidden ? <div className="line muted">{S.review.hidden(res.hidden)}</div> : null}
           {res && res.touches.length > 0 && <ul className="review-touches-list" aria-label={S.review.touchesLabel}>{res.touches.map((t) => <li key={t} className="review-tag" data-touch={t}>{S.review.touches[t]}</li>)}</ul>}
@@ -251,6 +263,8 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           <div className="line muted">{S.review.keyWarningLine}</div>
         </div>
       )}
+      {/* M58 shortlist 3: the readiness line on top: Ready only when nothing was found and the checks passed. */}
+      {res && <ReadinessLine r={readinessOf(r)} />}
       {/* Jumping by heading lands here and hears the rating with it (the audit, item 37); the rating's arrival is said once. */}
       {/* Once rated, the rating leads the card, so this heading is for VoiceOver only (the review, 2 Nov 2026: Changes to
           review sat over What changed). */}
@@ -291,7 +305,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}><Icon name="wrench" size={14} />{S.review.fix}</button>}
           <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
           {/* On a stop it keeps the change as it is, so it says so, as a quiet text button (M65 step 4). */}
-          <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? S.review.keepAnyway : S.review.looksFine}</button>
+          <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
         </div>
       )}
       {r.fix === "confirm" && (
@@ -305,21 +319,13 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
       )}
       {/* Why comes straight after the presses (the review, 2 Nov 2026: in the wide Home the key written into pay.ts was
           below the fold, under What it touches). */}
-      {res && res.reasons.length > 0 && (
+      {/* M58 shortlist 3: every finding in its fixed shape, Must fix first, with checks that did not run as a thing to
+          check (findingShape.ts). M57: one that no longer holds says so in words; Don't flag this kind here again only where
+          review.ts silenceOffered allows it. */}
+      {res && shapeFindings(r).length > 0 && (
         <div className="review-why">
-          <span className="review-label" id={`${REVIEW_ID}-why`}>{S.review.whyLabel}</span>
-          <ul className="review-reasons" aria-labelledby={`${REVIEW_ID}-why`}>
-            {/* M57: a reason that no longer holds after a newer change says so in words, not only by its look. Don't flag
-                this kind here again is offered only where review.ts silenceOffered allows it. */}
-            {res.reasons.map((x, i) => (
-              <li key={i} data-kind={x.kind} data-fixed={fixedSince(r, i) || undefined}>
-                <span>{x.say}</span>{x.file && !placeSaid(x) && <code className="review-at">{S.review.at(x.file, x.line)}</code>}
-                {fixedSince(r, i) && <span className="line muted review-fixed">{S.review.fixedSince}</span>}
-                {onSilence && silenceOffered(r, i) && <button className="btn quiet" type="button" title={S.review.silenceHelp} onClick={() => onSilence(x.kind)}>{S.review.silence}</button>}
-                {(r.silenced ?? []).includes(x.kind) && !!res && res.reasons.findIndex((y) => y.kind === x.kind) === i && <span className="line muted" role="status">{S.review.silenced}</span>}
-              </li>
-            ))}
-          </ul>
+          <span className="review-label">{S.review.whyLabel}</span>
+          <FindingList items={shapeFindings(r)} id={`${REVIEW_ID}-why`} extra={silenceExtra(r, onSilence)} />
         </div>
       )}
       {res?.hidden ? <div className="line muted">{S.review.hidden(res.hidden)}</div> : null}

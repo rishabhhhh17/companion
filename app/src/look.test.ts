@@ -163,7 +163,7 @@ describe("Undo and Stop are in reach whenever they can act (F28, the overhaul sp
   });
   test("Stop stops the agent, shows while one works, and the key that stops everything is in its name and its tooltip", () => {
     for (const at of [job, card.slice(card.indexOf("{stopCan(m) && !jobShown && mode !== \"question\" &&"))]) {
-      expect(at).toContain("onClick={() => void send(stopAgent())}");
+      expect(at).toContain("onClick={() => void stopNow()}");
       expect(at).toContain('label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)}');
     }
     // Where something works with no card of its own (a look, an answer being written), Stop sits beside the words.

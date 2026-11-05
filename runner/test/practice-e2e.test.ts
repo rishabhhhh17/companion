@@ -19,6 +19,8 @@ import { PRODUCT } from "../src/names.ts";
 type Entry = { id: string; folder: string; find: "checks" | "gate"; expect: { file: string; line: number; about?: string; gate?: string; findings?: string[] }; fix: "task" | "lesson"; prove: string; protect: string[] };
 const ROOT = join(import.meta.dir, "../..");
 const CATALOG = JSON.parse(readFileSync(join(ROOT, "app/sample/practices.json"), "utf8")) as { practices: Entry[] };
+// M58: the practices Find or the gate finds (the key practice is found by the review, m58-practicekey.test.ts).
+const FOUND = CATALOG.practices.filter((e) => (e.find as string) !== "review");
 const FIXTURES = new Map(readFileSync(join(ROOT, "protocol/fixtures/practice-found.jsonl"), "utf8").split("\n").filter(Boolean).map((l) => { const x = JSON.parse(l); return [x.practice as string, x.event as Record<string, any>]; }));
 
 const made: string[] = [];
@@ -94,14 +96,16 @@ describe("Your turn on the route practice", () => {
 });
 
 describe("every practice in the catalog, start to finish, with no model", () => {
-  test("the catalog and the shared fixtures name the same five practices", () => {
-    expect(CATALOG.practices.map((e) => e.id)).toEqual(["signup", "setting", "route", "import", "open-table"]);
-    expect([...FIXTURES.keys()]).toEqual(CATALOG.practices.map((e) => e.id));
+  test("the catalog and the shared fixtures name the same five practices that the project's checks or the gate find", () => {
+    expect(CATALOG.practices.map((e) => e.id)).toEqual(["signup", "setting", "route", "import", "open-table", "key"]);
+    // M58: the key practice is found by the review of a change, not by Find; it has its own run (m58-practicekey.test.ts).
+    expect(CATALOG.practices.filter((e) => (e.find as string) === "review").map((e) => e.id)).toEqual(["key"]);
+    expect([...FIXTURES.keys()]).toEqual(FOUND.map((e) => e.id));
     for (const ev of FIXTURES.values()) expect(parseEvent(JSON.stringify(ev)).ok).toBe(true);
     for (const e of CATALOG.practices) if (e.fix === "task") expect(FIX[e.id], e.id).toBeDefined();
   });
 
-  for (const e of CATALOG.practices) {
+  for (const e of FOUND) {
     test(`${e.id}: Find shows the failure the catalog expects, as the shared fixture records it`, async () => {
       const s = runnerFor(copyOf(e), []);
       const ev = await s.find(e);

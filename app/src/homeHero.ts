@@ -42,7 +42,10 @@ export function heroWords(m: Model, project: string, n: Need | null = need(m)): 
   // A question waits for the person: it is the job now, and it is drawn just below.
   // M69 step 3: an approval's own question is the page's one title ("Squibby needs your OK to add a tool."); its card under
   // it gives the why and the two answers, so the page asks once.
-  if (n?.question) { const a = m.approvals[0]; return a ? { headline: approvalWords(a, project).question, line: "", tone: "needsYou" } : { headline: n.why, line: S.look.below, tone: "needsYou" }; }
+  if (n?.question) { const a = m.approvals[0]; return a ? { headline: approvalWords(a, project).question, line: "", tone: "needsYou" } : { headline: n.why, line: n.key.startsWith("asks:") ? S.look.below : S.look.pickBelow, tone: "needsYou" }; }
+  // Fix it was pressed and the engine has not said anything yet (M58, the review of 5 Nov): the page says it is working and
+  // what comes first, not the raw error it started from; the card keeps the problem for the person to see.
+  if (m.point?.stage === "found" && m.point.fixing && !cardWorking(m)) return { headline: S.fix.fixingTitle, line: S.fix.startingLine, tone: "working" };
   // Return was just pressed and the engine has not answered yet (the audit, item 27): the words, and that it is starting.
   if (m.sending && !cardWorking(m)) return { headline: title(m.sending.words), line: S.look.starting, tone: "working" };
   if (cardWorking(m)) {
@@ -122,7 +125,7 @@ export const bringBackCan = (m: Model, project: string): boolean =>
 
 /** Stop shows only while something works (not while a finished task waits for an answer: nothing runs then). That starts
  *  at Return: while Starting… shows, the engine already takes Stop (m67 bug 21). */
-export const stopCan = (m: Model): boolean => cardWorking(m) || (!!m.sending && m.runnerUp);
+export const stopCan = (m: Model): boolean => cardWorking(m) || ((!!m.sending || !!m.point?.fixing) && m.runnerUp);
 /** Stop in the top row of a place: only where the open place has no Stop of its own. Now has one (the hero or the working
  *  card), and Learn has the practice's own (Stop the fix, Stop the checks) while it fixes or checks, so there is one Stop,
  *  in the card (M51 review, 1 Nov). */
@@ -180,7 +183,15 @@ const dot = (headline: string): Verdict => ({ kind: "noChange", headline, line: 
 
 /** How the project is, in its own name, from the last check only (F28): "test-shop works" (proven), "test-shop has a
  *  problem" (a check failed), or "Not checked yet" (nothing proven: never checked, stopped, undone, partly checked). */
-export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history"> & { point?: Model["point"]; sinceCheck?: Model["sinceCheck"] }, project: string, now: number): HomeStatus {
+/** The check before going live, as Home says it (M58, review of 5 Nov): "ready" when every gate passed (or is not needed) and
+ *  the engine says it may ship, "blocked" when a gate did not pass or could not run, null with no answer, after a task's result
+ *  (the answer is older than it) or in a practice (a practice is never put online). One answer for the page and the card. */
+export function goLiveAnswer(m: { receipt?: Model["receipt"]; ship?: Model["ship"]; practice?: Model["practice"] }, project: string): "ready" | "blocked" | null {
+  const g = m.receipt || m.practice?.project === project ? null : m.ship;
+  if (!g || !g.gates.length) return null;
+  return g.canShip && g.gates.every((x) => x.status === "passed" || x.status === "not_applicable") ? "ready" : "blocked";
+}
+export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "history"> & { point?: Model["point"]; sinceCheck?: Model["sinceCheck"]; ship?: Model["ship"]; practice?: Model["practice"] }, project: string, now: number): HomeStatus {
   const name = nameOf(project);
   if (!name) return { kind: "noProject", verdict: dot(S.home.noProject), sub: "", ago: "", main: "folder" };
   // The project's own checks just answered (the first run's first check, or Point at the problem), with no task result on
@@ -189,12 +200,23 @@ export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "histor
   const pt = m.receipt ? null : m.point;
   if (pt?.stage === "found") return { kind: "failing", verdict: { kind: "failed", headline: S.home.failing(name), line: null, say: S.verdict.say(S.home.failing(name), null), tone: "bad", icon: "cross", offer: null, proven: false }, sub: S.home.inProject(name), ago: "", main: "fix" };
   if (pt?.stage === "clear") return { kind: "unchecked", verdict: dot(S.home.checksPass(name)), sub: S.home.inProject(name), ago: "", main: "check" };
+  // The check before going live just answered (M58, the review of 5 Nov): the page never says "Not checked yet" over a
+  // go live card that says Ready or Not safe yet. Both come from the same answer, so they cannot disagree. Passed gates are
+  // said as checks passing (nothing was fixed or proven), blocked or unchecked ones as not ready.
+  const answer = goLiveAnswer(m, project);
+  if (answer) {
+    const ready = answer === "ready";
+    return { kind: "unchecked", verdict: dot(ready ? S.home.checksPass(name) : S.home.notReadyOnline(name)), sub: ready ? S.home.readyOnline : S.home.notReadyOnlineSub, ago: "", main: "shipCheck" };
+  }
   const last = lastResult(m, project);
   const ago = last ? agoWords(last.at, now) : "";
   // The engine says the files changed since the version its last check passed on (must fix 11): never "works" over them.
   if (last?.verdict.proven && m.sinceCheck?.changed && samePlace(m.sinceCheck.project, project)) return { kind: "changed", verdict: dot(S.home.changedSince(name)), sub: S.home.checkedAgo(ago), ago, main: "check" };
   if (last?.verdict.proven) return { kind: "works", verdict: said(last.verdict, S.home.works(name)), sub: S.home.checkedAgo(ago), ago, main: "shipCheck" };
   if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: S.home.failedAgo(ago), ago, main: "fix" };
+  // A browser check that stopped at a sign in page (M58): the page says what the last task was, once, and what is left. It is
+  // not "Not checked yet / Last task: Fixed, not fully proven" (the same words twice), and never proven.
+  if (last && !last.verdict.proven && m.task?.proof?.steps.some((x) => x.needs === "signIn")) return { kind: "unchecked", verdict: dot(last.verdict.headline), sub: S.home.signInRest, ago, main: "check" };
   return { kind: "unchecked", verdict: dot(S.home.notChecked), sub: last ? S.home.lastWas(last.verdict.headline, ago) : S.home.inProject(name), ago, main: "check" };
 }
 
@@ -214,7 +236,8 @@ export type HomeMode = "rest" | "working" | "question" | "needs" | "answer" | "r
  *  card.tsx, which knows Claude's own state and whether the review card shows. */
 export function homeMode(m: Model, n: Need | null = need(m), o: { blocker?: Blocker | null; review?: ReviewLead | null } = {}): HomeMode {
   if (n?.question) return "question";
-  if (cardWorking(m) || (m.sending && !o.blocker)) return "working";
+  // Fix it was pressed and the engine has not spoken yet (M58, review of 5 Nov): Home is working, not still on the problem.
+  if (cardWorking(m) || ((m.sending || m.point?.fixing) && !o.blocker)) return "working";
   // Nothing can run (no key, the engine stopped, Claude missing): that is the job now, whatever the last check said.
   if (o.blocker) return "blocked";
   if (n) return "needs";

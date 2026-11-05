@@ -9,6 +9,7 @@ import { minimalEnv } from "../env.ts";
 import { companionDirUsable, readCompanionFile } from "../companionfile.ts";
 import { clip, redact } from "../redact.ts";
 import { refuseWrite } from "../readonly.ts";
+import { SIGN_IN } from "./signin.ts";
 
 export type Ok<T = object> = { ok: true } & T;
 // unclear: the command was sent and then stopped, ran out of time or ended in a way that does not say what happened, so
@@ -20,9 +21,25 @@ export interface Deployer {
   preview(project: string, signal?: AbortSignal): Promise<Ok<{ url: string }> | Fail>;
   promote(url: string, project: string, signal?: AbortSignal): Promise<Ok<{ productionUrl?: string }> | Fail>;
   rollback(project: string, signal?: AbortSignal): Promise<Ok | Fail>;
+  /** M58 (UI 13): the person's own Vercel sign in, only on their press (signin.ts). onPage: Vercel's own page, to open in
+   *  their browser. cannotStart: the step could not run here, so the step by step lesson is offered. */
+  signIn?(project: string, o: { onPage: (url: string) => void; signal?: AbortSignal }): Promise<Ok | (Fail & { cannotStart?: true })>;
 }
 
-export const NOT_SIGNED_IN = "You are not signed in to Vercel. Open Terminal, run: vercel login, then try again.";
+// M58 (UI 13): never "Open Terminal". The Online box has the Sign in to Vercel step these words name.
+export const NOT_SIGNED_IN = "You are not signed in to Vercel. Press Sign in to Vercel, then try again.";
+
+/** The page Vercel's own tool printed for the person to sign in on: an https page on vercel.com itself (no other host, no
+ *  name or password in the address), or null. */
+export function signInPage(text: string): string | null {
+  for (const m of text.matchAll(/https:\/\/[^\s"'<>()\]]+/g)) {
+    const raw = m[0].replace(/[.,;:!?]+$/, "");
+    let u: URL;
+    try { u = new URL(raw); } catch { continue; }
+    if (u.protocol === "https:" && u.hostname === "vercel.com" && !u.username && !u.password && !u.port && raw.length <= 500 && /^https:\/\/vercel\.com\//.test(raw)) return raw;
+  }
+  return null;
+}
 
 // Reading why the last deploy failed: read only. It lists the deployments and prints one build log; it never deploys,
 // promotes, rolls back or removes anything. Only for a folder linked to a Vercel project (.vercel/project.json): in any
@@ -134,6 +151,36 @@ export class VercelCli implements Deployer, DeployLogReader, LatestDeployReader 
   async rollback(project: string, signal?: AbortSignal) {
     const { fail, unclear } = await this.vercel("rollback --yes", project, 5 * 60_000 * this.scale(), signal);
     return fail ? { ok: false as const, reason: fail, ...(unclear ? { unclear } : {}) } : { ok: true as const };
+  }
+
+  /** M58 (UI 13): how long to wait for Vercel's tool to print its sign in page before the step is called one that cannot
+   *  run here (an older tool asks a question in Terminal instead). [verify] with the current Vercel tool on a real Mac. */
+  signInPageMs = 30_000;
+  // The person's own `vercel login`, on their press only (signin.ts). Its output is read only for the page's address; the
+  // login it saves is never opened (signedIn looks only at whether the file exists). Done only when the tool ended well
+  // and its login is there.
+  async signIn(project: string, o: { onPage: (url: string) => void; signal?: AbortSignal }): Promise<Ok | (Fail & { cannotStart?: true })> {
+    if (!this.hasCli()) return { ok: false, reason: SIGN_IN.noCli };
+    const inner = new AbortController();
+    const stop = () => inner.abort();
+    if (o.signal?.aborted) return { ok: false, reason: SIGN_IN.stopped };
+    o.signal?.addEventListener("abort", stop, { once: true });
+    let seen = false, noPage = false, heard = "";
+    const wait = setTimeout(() => { if (!seen) { noPage = true; inner.abort(); } }, this.signInPageMs);
+    try {
+      const r = await this.run("vercel login", { cwd: project, timeoutMs: 10 * 60_000 * this.scale(), signal: inner.signal, onOutput: (t) => {
+        if (seen) return;
+        heard = (heard + t).slice(-4000);
+        const page = signInPage(heard);
+        if (page) { seen = true; o.onPage(page); }
+      } });
+      if (o.signal?.aborted) return { ok: false, reason: SIGN_IN.stopped };
+      if (noPage) return { ok: false, reason: SIGN_IN.noPage, cannotStart: true };
+      if (r.code === 127) return { ok: false, reason: SIGN_IN.noCli };
+      if (r.timedOut) return { ok: false, reason: SIGN_IN.tooLong };
+      if (r.code !== 0 || !this.signedIn()) return { ok: false, reason: SIGN_IN.notFinished };
+      return { ok: true };
+    } finally { clearTimeout(wait); o.signal?.removeEventListener("abort", stop); }
   }
 
   // Read only, and checked in code: nothing but `vercel list` and `vercel inspect` is ever run here (readonly.ts).

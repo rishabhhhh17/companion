@@ -5,7 +5,7 @@ import { redact } from "../redact.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
-import { browserCheck, knownSignIn, type BrowserOptions, type BrowserResult } from "./browser.ts";
+import { browserCheck, knownSignIn, SIGN_IN_GAP, type BrowserOptions, type BrowserResult } from "./browser.ts";
 import { changesData, detectProject, withStartScript, type Detected } from "./detect.ts";
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
@@ -30,7 +30,7 @@ export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "revie
 // detail. Neither is ever shown raw.
 /** M69: a command a rung ran, with its exit code, for the receipt's proof ticks ("npm run build · exit 0"). Secrets hidden. */
 export type RunCommand = { command: string; exit: number };
-export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser"; summary?: string; problem?: Problem; runs?: RunCommand[] };
+export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser" | "signIn"; summary?: string; problem?: Problem; runs?: RunCommand[] };
 // A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
 export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem; forModel?: string };
 
@@ -342,8 +342,8 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     if (!left.includes(words)) left.push(words);
     return words;
   };
-  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
-  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser", more: { summary?: string; forModel?: string; runs?: RunCommand[] } = {}): Step => {
+  const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser" | "signIn") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
+  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser" | "signIn", more: { summary?: string; forModel?: string; runs?: RunCommand[] } = {}): Step => {
     const runs = more.runs?.length ? more.runs.map((r) => ({ command: redact(r.command), exit: r.exit })) : null;
     const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}), ...(runs ? { runs } : {}) };
     steps.push(s); o.onStep?.({ rung, label: LABELS[rung], status, detail: s.detail, ms: s.ms, ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(problem ? { problem } : {}), ...(runs ? { runs } : {}) });
@@ -691,7 +691,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (i < sizes.length - 1 && cancelled()) return result("cancelled", undefined, srv.url);
     }
     const opened = two ? "The page opened with no errors, at desktop and at phone size." : sizes[0] === "phone" ? "The page opened with no errors at phone size." : "The page opened with no errors.";
-    finish("browser", "passed", notDone.length ? `${opened} ${notDone.join(" ")}` : opened, t0);
+    // M58: behind a sign in wall (M67's detection, browser.ts) the page is the person's turn: the step says so, and the
+    // result stays passed with gaps (left holds the gap). The check never types into the page.
+    finish("browser", "passed", notDone.length ? `${opened} ${notDone.join(" ")}` : opened, t0, null, notDone.includes(SIGN_IN_GAP) ? "signIn" : undefined);
     return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}) };
   } finally {
     if (srv.ok) await srv.stop();

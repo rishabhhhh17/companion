@@ -228,7 +228,7 @@ describe("the verdict", () => {
     expect(w("failed", "done", false, 2)).toEqual(["Not fixed yet", "A check failed."]);
     expect(w("failed", "stopped", false, 2)).toEqual(["Not fixed yet", "A check failed, and then you stopped it."]);
     expect(w("failed", "limit:daily", false, 2)).toEqual(["Not fixed yet", "A check failed, and then it stopped at today's limit."]);
-    expect(w("none", "stopped", false, 2)).toEqual(["Stopped", "It changed files before you stopped it. Nothing was checked."]);
+    expect(w("none", "stopped", false, 2)).toEqual(["Stopped", "It changed files before you stopped it. Nothing was checked. This run does not count as a fix."]);
     expect(w("none", "stopped", false, 0)).toEqual(["Stopped", "Nothing was changed."]);
     expect(w("none", "limit:spending", false, 2)).toEqual(["Stopped at this task's spending limit", "It changed files before it stopped. Nothing was checked."]);
     expect(w("none", "limit:daily", false, 0)).toEqual(["Stopped at today's limit", null]);

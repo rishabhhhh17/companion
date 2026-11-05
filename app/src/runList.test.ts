@@ -60,6 +60,15 @@ describe("the run list: verb first rows, live status on the right, the same four
     expect(l.rows[0].status).toBe(S.home.tryingAgain(2, 3));
     expect(l.rows[0].state).toBe("now");
     expect(l.rows.find((r) => r.key === "tests")?.state).toBe("failed");
+    // One counter (review of 5 Nov): the try is the count, so the step "2 of 4" is not said beside "Trying again (2 of 3)".
+    expect(l.counter).toBe("");
+    expect(l.say).not.toContain("of 4");
+  });
+  test("rows run oldest first, and the clock never reads less than the checks already listed", () => {
+    const m = run([...task(), tool("Edit", "t1"), checking, step("checks", "passed", { ms: 4100, ...BUILD }), step("tests", "failed", { ms: 2100 })]);
+    const l = runList(m)!;
+    expect(l.rows.map((r) => r.key)).toEqual(["work", "checks", "tests"]);
+    expect(l.ms).toBe(6200);
   });
   test("the first row is always the verb first change, whatever the task was called; no task, no list", () => {
     expect(runList(run(task("")))!.rows[0].words).toBe(S.fixRun.workRow);

@@ -58,7 +58,7 @@ describe("the shipped list of settings", () => {
       "point.pace": "normal", "drawIt.on": false, "drawIt.seconds": "15", "talk.maxHold": "60", "showme.listen": true, "speak.alsoSay": [], "ph.style": "full", "ph.useProjectInfo": true,
       "ph.handBack": "paste", "ph.appAnswers": null, "secondLook.on": false, "secondLook.searches": 3, "pointat.editor": "editorInFront", "calls.apps": CALL_APPS,
       // The practice library: Point at the problem's Fix it looks deeper first (Rescue), as it always has.
-      "point.fixWith": "rescue",
+      "point.fixWith": "smallFix",   // M58 feature 8: Fix it means fix (Rescue when nothing specific was found)
       // HeyClicky v1.0.53 parity, the shell and teaching side: each new behaviour is off, or as today, until turned on.
       "talk.followUpByPointing": false, "showme.askWorked": "everyStep", "showme.waitForPage": false, "teach.startWhereYouAre": false, "home.stepAside": false,
       // F19, drop a file on the companion: on, since the founder asked for it; results next to the original.
@@ -118,9 +118,17 @@ describe("the shipped list of settings", () => {
       // M68 step 2b (the founder, 4 Nov 2026: "no notch like how HeyClicky has, like hey Rishabh"): small wings at rest and a
       // short hello in the notch, both on; the name for the hello is only what the person types, empty by default.
       "island.wings": false, "island.hello": false, "you.name": "",
+      // M58 (feature 9): which AI the person builds with, asked once in the first run and optional. It only picks a tip.
+      "you.buildsWith": "unset",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
+  });
+  test("M58: which AI you build with is an optional choice for the pages only, unset until picked, and only the six named answers", () => {
+    expect(defOf("you.buildsWith")).toMatchObject({ section: "home", kind: "choice", default: "unset", options: ["unset", "lovable", "bolt", "replit", "cursor", "claudeCode", "other"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("you.buildsWith")!, "cursor").ok).toBe(true);
+    expect(validate(defOf("you.buildsWith")!, "").ok).toBe(false);
+    expect(validate(defOf("you.buildsWith")!, "chatgpt").ok).toBe(false);
   });
   test("M52: how often changes are reviewed, and how long the folder must be quiet first", () => {
     expect(defOf("review.mode")).toMatchObject({ section: "watch", kind: "choice", default: "ask", options: ["ask", "automatic", "off"], scope: "app", applies: ["runner", "pages"], store: "settings", live: true });

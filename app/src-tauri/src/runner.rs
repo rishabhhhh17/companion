@@ -44,6 +44,13 @@ const ALLOWED: &[&str] = &[
     // M52 (F30): the review of a change another AI tool made: review it now (optionally with its checks), close its card,
     // or Fix it (an ordinary task with its safety copy). All name the project, so all are project bound.
     "review.now", "review.dismiss", "review.fix",
+    // M58: star or name a save point (the shadow store's own notes, never the project, never git). Names the project.
+    "checkpoint.mark",
+    // M58 (UI 13): Sign in to Vercel, on the person's press: their own `vercel login` as a visible step. Names the project.
+    "ship.signIn",
+    // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press. Names the project, and the
+    // shell lets it through only for that practice's own recorded copy (main.rs send_command).
+    "practice.key",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -83,6 +90,9 @@ pub const PROJECT_BOUND: &[&str] = &[
     "bisect.start", "bisect.undo",
     "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
     "review.now", "review.dismiss", "review.fix",
+    "checkpoint.mark",
+    "ship.signIn",
+    "practice.key",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -836,6 +846,57 @@ mod tests {
         assert_eq!(seen, 2);
     }
     #[test]
+    fn sign_in_to_vercel_may_be_asked_by_a_page_but_only_for_the_chosen_project() {
+        // M58 (UI 13): the shared fixture (read by the runner's suite too) passes here, for the chosen folder only.
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let line = fixtures.lines().find(|l| l.contains("\"ship.signIn\"")).expect("a ship.signIn fixture");
+        let v: Value = serde_json::from_str(line).unwrap();
+        assert!(check_command(&v).is_ok(), "{line}");
+        let project = v["project"].as_str().unwrap();
+        assert!(check_project(&v, project).is_ok());
+        assert!(check_project(&v, "/somewhere/else").is_err());
+        assert!(check_project(&v, "").is_err(), "not before a folder is chosen");
+        // The events that say where it is name the project too, and carry no detail for the log.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let mut stages = Vec::new();
+        for l in events.lines().filter(|l| l.contains("\"type\":\"ship.signIn\"")) {
+            let e: Value = serde_json::from_str(l).unwrap();
+            assert!(e["project"].as_str().map_or(false, |p| !p.is_empty()), "{l}");
+            assert!(e.get("detail").is_none(), "{l}");
+            if let Some(u) = e["url"].as_str() { assert!(u.starts_with("https://vercel.com/"), "{l}"); }
+            stages.push(e["stage"].as_str().unwrap_or("").to_string());
+        }
+        assert_eq!(stages, ["opened", "done", "failed"]);
+    }
+    #[test]
+    fn the_key_practice_may_be_asked_by_a_page_but_only_for_the_chosen_project() {
+        // M58 (feature 9): the shared fixtures (read by the runner's suite too) pass here, for the chosen folder only; the
+        // shell also checks that folder is the key practice's own recorded copy (practice.rs is_copy_of).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let lines: Vec<&str> = fixtures.lines().filter(|l| l.contains("\"type\":\"practice.key\"")).collect();
+        assert_eq!(lines.len(), 2);
+        for line in lines {
+            let v: Value = serde_json::from_str(line).unwrap();
+            assert!(check_command(&v).is_ok(), "{line}");
+            let project = v["project"].as_str().unwrap();
+            assert!(check_project(&v, project).is_ok());
+            assert!(check_project(&v, "/somewhere/else").is_err());
+            assert!(check_project(&v, "").is_err(), "not before a folder is chosen");
+        }
+        let main = include_str!("main.rs");
+        assert!(main.contains("Some(\"practice.key\") && !practice_record().0.is_copy_of(\"key\", std::path::Path::new(&current_project()))"));
+        // The events say the step, name the project, and never carry the key.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let mut steps = Vec::new();
+        for l in events.lines().filter(|l| l.contains("\"type\":\"practice.key\"")) {
+            let e: Value = serde_json::from_str(l).unwrap();
+            assert!(e["project"].as_str().map_or(false, |p| !p.is_empty()), "{l}");
+            assert!(!l.contains("sk_practice_"), "{l}");
+            steps.push(e["step"].as_str().unwrap_or("").to_string());
+        }
+        assert_eq!(steps, ["wrote", "fixed", "refused"]);
+    }
+    #[test]
     fn a_review_of_changes_may_be_asked_for_by_a_page_but_only_for_the_chosen_project() {
         // protocol/fixtures is read by the runner's suite too (runner/test/protocol.test.ts): the same review commands pass
         // both sides' checks, and here they may only name the folder the person chose.
@@ -1442,5 +1503,23 @@ mod tests {
         let s2 = shared.clone();
         let _ = std::thread::spawn(move || { let _g = s2.tx.lock().unwrap(); panic!("boom"); }).join();
         assert!(shared.send_line("{}".into()).is_err());      // an ordinary error, not another panic
+    }
+    #[test]
+    fn m58_the_ladder_choices_and_a_save_mark_are_page_commands_and_the_mark_is_project_bound() {
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let mut seen = 0;
+        for line in fixtures.lines().filter(|l| l.contains("\"id\":\"m58a")) {
+            let v: Value = serde_json::from_str(line).expect("a fixture is JSON");
+            assert!(check_command(&v).is_ok(), "{line}");
+            if v["type"] == "checkpoint.mark" {
+                let project = v["project"].as_str().unwrap();
+                assert!(check_project(&v, project).is_ok(), "{line}");
+                assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+            }
+            seen += 1;
+        }
+        assert_eq!(seen, 4);
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        assert_eq!(events.lines().filter(|l| l.contains("\"id\":\"em58a")).map(|l| serde_json::from_str::<Value>(l).expect("JSON")).count(), 4);
     }
 }

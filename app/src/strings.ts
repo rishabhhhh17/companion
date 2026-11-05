@@ -7,6 +7,8 @@ import names from "../../protocol/names.json";
 export const PRODUCT: string = names.product;
 export const PRODUCT_S: string = names.productPossessive;
 export const NAMES = names;
+/** M58 (UI 20): "About 7 cents", but never "About less than 1 cent": a cost under a cent is said as "Less than 1 cent". */
+export const aboutCost = (cost: string): string => (/^less than /i.test(cost.trim()) ? `L${cost.trim().slice(1)}` : `About ${cost}`);
 
 export const S = {
   product: PRODUCT,
@@ -97,8 +99,10 @@ export const S = {
     noFolder: "Pick a project folder to start",
     noProject: "No project",
     below: "Your answer goes just below.",
+    // The stuck card has choices, not a question for the ask box (review of 5 Nov: the old line pointed at the wrong box).
+    pickBelow: "Pick one of the choices just below.",
     answerBelow: "The answer is just below.",
-    working: (cost: string) => `About ${cost} so far`,
+    working: (cost: string) => `${aboutCost(cost)} so far`,
     workingFree: "Working",
     // Return was just pressed and the engine has not answered yet (the audit, item 27).
     starting: "Starting…",
@@ -143,9 +147,15 @@ export const S = {
     changedSince: (name: string) => `${name} changed since its last check`,
     // The project's own checks passed just now (a check, not a fix: never "works", which only a proven fix may say).
     checksPass: (name: string) => `${name}'s checks pass`,
+    // The check before going live answered (homeStatus): the page says the same thing as the go live card under it.
+    readyOnline: "Every check before going live passed.",
+    notReadyOnline: (name: string) => `${name} is not ready to go online`,
+    notReadyOnlineSub: "The go live card says what to fix first.",
     noProject: "Choose a project to start",
     checkedAgo: (ago: string) => `Checked ${ago}`,
     failedAgo: (ago: string) => `A check failed ${ago}`,
+    // Under a result whose browser check stopped at a sign in page.
+    signInRest: "Sign in to check the rest.",
     lastWas: (headline: string, ago: string) => `Last task: ${headline}, ${ago}`,
     inProject: (name: string) => `In ${name}`,
     // How long ago, in words (homeHero.ts agoWords).
@@ -280,7 +290,7 @@ export const S = {
   stillThere: "Still there after Undo, which cannot take it back",
   cost: "Cost",
   commands: "commands run",
-  fixCost: (usd: string) => `About ${usd}`,
+  fixCost: (usd: string) => aboutCost(usd),
   modified: "changed",
   /** M39 (Linear's agent results: one card of what changed): the header of the changes card. */
   changedFiles: (n: number) => `Changed ${n} ${n === 1 ? "file" : "files"}`,
@@ -426,7 +436,8 @@ export const S = {
     failedThenStopped: "A check failed, and then you stopped it.",
     failedThenLimit: (where: string) => `A check failed, and then it stopped at ${where}.`,
     stopped: "Stopped",
-    stoppedChanged: "It changed files before you stopped it. Nothing was checked.",
+    // M58 (the shortlist, item 9): a stopped run is never a fix, and the line says so.
+    stoppedChanged: "It changed files before you stopped it. Nothing was checked. This run does not count as a fix.",
     stoppedNothing: "Nothing was changed.",
     limit: { spending: "Stopped at this task's spending limit", daily: "Stopped at today's limit", turns: "Stopped at the most turns allowed" },
     limitWhere: { spending: "this task's spending limit", daily: "today's limit", turns: "the most turns allowed" },
@@ -508,6 +519,7 @@ export const S = {
     "island.wings": "Small wings beside the notch show the lights and one short count. Off, the usual, the notch looks like the hardware.",
     "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour. Off unless you turn it on.",
     "you.name": "Used only by the hello in the notch. Empty says Hi there.",
+    "you.buildsWith": "Picks which tip you see first. Kept on this Mac, never sent.",
     "island.pointOpens": "What opens when you point at the notch: a small panel first, or Home right away.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
@@ -596,6 +608,7 @@ export const S = {
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
     "more.account.spending": "Spending per job and models",
     "more.account.developer": "For developers: your own Claude key",
+    "more.account.you": "The AI you build with",
     "more.general.notch": "Notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
     "more.fixing.review": "Reviews of changes", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
@@ -756,7 +769,9 @@ export const S = {
     pickPracticeLine: "A small broken project to try a fix on. Nothing of yours is touched.",
     practiceNeedsNode: (fix: string) => `The practice project needs Node, which is not on this Mac. ${fix} Then come back here: the practice turns on by itself.`,
     otherFolder: "Choose another",
-    checkGo: (name: string) => `Check ${name}`,
+    // The button names what it does (the review of 5 Nov): "Check" was never explained.
+    checkGo: (name: string) => `Look for problems in ${name}`,
+    checkWhat: "I read your files and run your tests.",
     checkPromise: "A safety copy is saved first, and I'll ask before installing anything.",
     skipProject: "Skip for now",
     skipCheck: "Skip the check",
@@ -795,6 +810,43 @@ export const S = {
     powersLine: "Turn on what you want. It asks for your screen, the microphone or Accessibility the first time a tool needs it, never now.",
     asks: { guide: "Asks for screen access the first time", voice: "Asks for the microphone the first time", prompt: "Asks for Accessibility the first time" } as Record<string, string>,
     howYouLike: "Tell it how you like things (optional)",
+  },
+  // M58 area A, Fix it means fix (feature 8), the fixed ladder (shortlist 4), Last working and saves (shortlist 5), the sign
+  // in wall (shortlist 8) and Stop (shortlist 9). Plain words; never a key, never another tool named as the doer.
+  fix: {
+    starting: "Starting the fix",
+    // The page title while the fix starts (the review of 5 Nov): working, not a raw compiler line.
+    fixingTitle: "Fixing it",
+    startingLine: "Saving a safety copy first.",
+    tryOf: (n: number, of: number) => `Try ${n} of ${of}`,
+    tryN: (n: number) => `Try ${n}`,
+    stillFailing: (n: number) => `Still failing after ${n} ${n === 1 ? "try" : "tries"}.`,
+    ladderLabel: `What ${PRODUCT} tries next`,
+    ladder: { retry: "Try a different approach", research: "Look up this exact error", lastWorking: "Go back to the last working version and plan" },
+    ladderNow: "Now",
+    noLastWorking: "No working version saved yet",
+    option: { different: "Try a different approach", research: "Look up this exact error", lastWorking: "Go back to the last working version and plan", stop: "Stop here" } as Record<string, string>,
+    backSure: (when: string | null) => `Put your files back to the last working version${when ? ` (${when})` : ""}? You can undo this.`,
+    backYes: "Put them back",
+    backNo: "Not now",
+    backDone: "Your files are back at the last working version. Look deeper plans the next step.",
+    lastWorking: "Last working",
+    lastWorkingHint: `The version ${PRODUCT} goes back to when a fix keeps failing.`,
+    lastWorkingAt: (when: string) => `Last working, ${when}`,
+    undoLimits: "Undo puts your files back. It does not bring back a database, a live site, emails sent or installed packages (node_modules).",
+    undoLimitsShort: "Undo puts your files back. It does not bring back a database, a live site or emails sent.",
+    star: "Star",
+    unstar: "Remove star",
+    starred: "Starred",
+    nameIt: "Name it",
+    namePlaceholder: "A name for this save",
+    nameSave: "Save name",
+    nameCancel: "Cancel",
+    // No "Your turn" here: the sign in handover (Continue / Skip) is not built, so the line promises no button (rule 14, honest words).
+    signInTurn: `This page needs a sign in. ${PRODUCT} never types passwords, so what is behind it is not checked.`,
+    browserSignInStop: "Browser check: stopped at the sign in page",
+    undoWhatItDid: "Undo what it did",
+    askWhatsWrong: "Say what is still wrong",
   },
   // The panel under the notch (islandPanel.ts): the work, never a character.
   // M68 step 2b: the notch's hello and its wings at rest (notchHello.ts). A productivity tool's words (rule 16): a greeting
@@ -1288,7 +1340,29 @@ export const S = {
       foundMore: `${PRODUCT} read the project's database files (no database was touched) and found the table made without row level security. On your own project, Check before going live does this. Nothing was changed yet.`,
       doneMore: `No table is open in the project's files now. On your own project, ${PRODUCT} also checks the live database once you connect it; until then it asks you to confirm you checked it.`,
     },
+    // M58 (feature 9): the sixth practice. The practice's pretend AI writes a made up key into the code, and the review stops it.
+    key: {
+      title: "A key written into the code",
+      teaches: `${PRODUCT} looks over every change your AI makes, and stops a key written into the code.`,
+      start: "Its checkout needs a payments key. When you press the button, the practice's pretend AI changes one file, the way AI tools sometimes do. The key is made up.",
+      foundMore: `The review of every change caught it with its own rules. No model was used and nothing was sent. On your own project, ${PRODUCT} does this for every change your AI makes. Fix it moves the key to .env.local, or Copy for my AI gives your AI tool the words to fix it.`,
+      doneMore: "That is the whole loop: a change was looked at, stopped, and fixed. Undo puts it back if you want to see it again.",
+    },
   } as Record<string, { title: string; teaches: string; start: string; foundMore: string; doneMore: string }>,
+  // M58 (feature 9): the key practice's own lines (practice.ts keyPracticeReduce, practicePanel.tsx).
+  practiceKey: {
+    go: "Let the pretend AI change a file",
+    wrote: "The practice's pretend AI just changed a file.",
+    looking: `${PRODUCT} is looking at the change.`,
+    stopped: `${PRODUCT} stopped it: a secret key is written into the code.`,
+    inCode: (file: string, line: number) => `A key is written into ${file} at line ${line}. It belongs in .env.local, not in the code.`,
+    label: "The review of every change",
+    fixing: "Moving the key to .env.local, with a safety copy first.",
+    done: "Fixed: the key is in .env.local now, and the code reads it from there.",
+    notClean: "The key is still in the code. Undo, then try again.",
+    // The review's Fix it in this copy at any other step: no model fix is started here.
+    fixHere: "In this practice, Fix it is the practice's own move.",
+  },
   practiceTitle: "Practice: find it, fix it, prove it",
   // The thread under it: three steps, each with where it is in plain words, and the one short line Flowflow says at each.
   practiceThread: { label: "The three steps", find: "Find it", fix: "Fix it", prove: "Prove it", state: { todo: "Waiting", now: "Now", done: "Done", failed: "Did not pass" } },
@@ -1315,6 +1389,8 @@ export const S = {
   practiceShowResult: "Show the result",
   practiceOwn: "Open my own project",
   practiceBack: "Back to my project",
+  practiceMore: "More",
+  practiceMoreNote: "Close hides this card and keeps your practice copy. Start over resets the copy. Remove my copy deletes it, after asking.",
   practiceNext: (title: string, time: string) => `Next: ${title} (${time.toLowerCase()})`,
   practiceAllDone: "That was the last practice you had not done yet.",
   practiceFailed: "That did not pass this time. Nothing is lost: Undo is here, and you can try again.",
@@ -1344,7 +1420,7 @@ export const S = {
   // The practice list on Learn.
   practiceListTitle: "Practice projects",
   practiceListHelp: `Small projects with one thing wrong on purpose, so you can see how ${PRODUCT} helps before you are stuck. Each one is copied into a new folder in your home folder; your own projects are never touched.`,
-  practiceMinutes: (n: number) => `About ${n} minutes`,
+  practiceMinutes: (n: number) => `About ${n} ${n === 1 ? "minute" : "minutes"}`,
   practiceCostKey: (cents: number) => `About ${cents} ${cents === 1 ? "cent" : "cents"}`,
   practiceFree: "Free, no Claude",
   // The setting practice's lesson (model.ts lessonWordsOnly): each step in words, nothing looked at or sent.
@@ -1510,7 +1586,7 @@ export const S = {
     at: (file: string, line?: number) => (line ? `${file}, line ${line}` : file),
     checksLabel: "Your project's checks",
     checks: { passed: "Checks passed", failed: "Checks failed", unknown: "Checks could not tell", not_run: "Checks not run" },
-    cost: (usd: string) => `About ${usd}`,
+    cost: (usd: string) => aboutCost(usd),
     noCost: "This review cost nothing.",
     fix: "Fix it",
     fixSure: "Fix what the review found? A safety copy of your project is kept first, so Undo puts every file back.",
@@ -1539,6 +1615,7 @@ export const S = {
     riskyLine: (n: number, risky: number) => `${n === 1 ? "1 file" : `${n} files`} changed. ${risky === 1 ? (n === 1 ? "It looks risky." : "One looks risky.") : `${risky} look risky.`}`,
     // On a stop, closing the card keeps the change as it is, said plainly (never Looks fine over a key in the code).
     keepAnyway: "Keep it anyway",
+    leaveKey: "Leave the key in the code",
     // Passed checks under a stop or a worth a look: never a green all good.
     checksPassedBut: { stop: "Tests passed. It still needs fixing.", key: "Tests passed. The key still needs fixing.", worth_a_look: "Tests passed. Still worth a look." },
     keyAt: (file: string, line: number) => `${file}, line ${line}`,
@@ -1553,6 +1630,68 @@ export const S = {
     silenced: "Saved in What I remember. Forget that line to see this kind again.",
     // The source the memory line shows (at most 80 characters, no commas).
     silenceSource: "a review: Don't flag this kind here again",
+  },
+  // M58 (shortlist 3): the fixed shape of every finding (findingShape.ts). One readiness line, three levels, four short parts.
+  // Fixed sentences per kind: no model writes them, none names a value or another tool, and there is no number score.
+  // What is wrong is the kind's headline (homeNow.reviewHead); what it means for you is its second half, unless said here.
+  finding: {
+    ready: { ready: "Ready", check: (n: number) => (n === 1 ? "Check this 1 thing" : `Check these ${n} things`), notSafe: "Not safe yet" },
+    readyLine: { ready: "Nothing was found, and the checks passed.", check: "Nothing blocks it. Look at these before you go on.", notSafe: "Fix these before you share or ship this." } as Record<"ready" | "check" | "notSafe", string>,
+    level: { must: "Must fix", should: "Should fix", look: "Worth a look" } as Record<"must" | "should" | "look", string>,
+    means: "What it means for you",
+    how: "How to fix it",
+    fine: "When it may be fine",
+    fixedSince: "No longer applies",
+    // The project's checks did not run on the change, or could not tell: never Ready over that (rule 14).
+    unchecked: ["Your project's checks did not run on this change.", "Nothing is proven yet, so it may still be broken.", "Press Review changes to run the checks on a copy."] as readonly [string, string, string],
+    uncheckedUnknown: ["Your project's checks could not tell if this change works.", "Nothing is proven yet, so it may still be broken.", "Open the checks below to see what stopped them, then check again."] as readonly [string, string, string],
+    meansFor: { model_concern: "It may not do what you meant." } as Record<string, string>,
+    howFor: {
+      secret_in_code: "Move the key into a settings file such as .env and read it from there. If it was shared, make a new key.",
+      key_in_page: "Keep the key on the server only, in a setting the page never reads.",
+      open_table: "Turn on row level security for the table, then add rules for who may read and change it.",
+      removed_still_used: "Put the file back, or change the code that still uses it.",
+      house_rule: "Undo the change to that file, or change your house rule if it no longer holds.",
+      checks_failed: "Press Fix it, or open the check that failed to see why.",
+      risky_with_failing_checks: "Fix the failing checks first, then try that part yourself.",
+      secret_file_changed: "Open the file and make sure only the keys you meant are in it. Never share it.",
+      touches_risky: "Try sign in, payments or saving data yourself before you share it.",
+      signed_in_open: "Add a rule so each account reads only its own rows.",
+      house_rule_ask: "Check the change was meant. If not, press Undo.",
+      files_removed: "Make sure nothing still needs them. Undo puts them back.",
+      too_many: "Look at the most important files first, or undo it and ask for smaller changes.",
+      model_concern: "Read why, then try that part yourself.",
+    } as Record<string, string>,
+    // Left out for a Must fix that is never fine on purpose (a key in the code, open data, failing checks).
+    fineFor: {
+      removed_still_used: "If you are removing the code that uses it too.",
+      house_rule: "If you changed your mind about that rule. Then change the rule too.",
+      secret_file_changed: "If you added or changed a key there yourself.",
+      touches_risky: "If you meant to change that part.",
+      signed_in_open: "If every account is meant to see every row, such as a public list.",
+      house_rule_ask: "If you asked for this change.",
+      files_removed: "If you meant to remove them.",
+      too_many: "If you asked for a big change on purpose.",
+      model_concern: "If it does what you meant when you try it.",
+    } as Record<string, string>,
+  },
+  // M58 (UI 6 and UI 13): going live has a finish line, and signing in to Vercel is a step the person starts.
+  going: {
+    product: PRODUCT,
+    putOnline: "Put it online",
+    putOnlineLine: "Every check passed on this version. Putting it online starts with a private preview.",
+    fix: "Fix it",
+    fixStarting: "Starting the fix",
+    checkFirst: "Check again",
+    signIn: "Sign in to Vercel",
+    signInLine: `Your browser opens Vercel's own sign in page. ${PRODUCT} never sees your password.`,
+    signInAsked: "Starting Vercel's sign in.",
+    signInOpened: "Vercel's sign in page is ready. Open it, then finish signing in there.",
+    signInDone: "Vercel's sign in finished.",
+    signInStop: "Stop signing in",
+    checkAgain: "Check again",
+    tryAgain: "Try again",
+    showSteps: "Show me the steps",
   },
   // Watch routines (F21). Plain words; nothing here scores, praises or counts a streak (rule 16).
   watch: {
@@ -1947,6 +2086,7 @@ export const S = {
     "island.wings": { label: "Show wings at rest", help: "Small black wings beside the notch, even when nothing runs. The left one shows the character's lights. The right one shows one short count, such as 3 changes, or a tick after a proof, and nothing when there is nothing. Off, the usual, the notch looks like the hardware. While something runs it shows only one small mark.", also: ["wings", "notch", "presence", "lights", "count", "tick", "rest", "idle", "hardware", "always"] },
     "island.hello": { label: "Say hello in the notch", help: "Off unless you turn it on. On, a short hello shows when you start the app, wake your Mac or come back after more than an hour. The notch widens for about 3 seconds with one line, such as Hey Sam, and one fact if there is one. Only on a Mac with a notch, at most once an hour, and never with a sound. Never while a call app such as Zoom is in front. It checks only which app is in front, so turn on Hide from screen sharing to keep it out of a share.", also: ["hello", "greeting", "hi", "notch", "welcome", "wake", "start", "name"] },
     "you.name": { label: "Your name", help: "Used only by the hello in the notch, such as Hey Sam, when Say hello in the notch is on. Only what you type here is used. Empty, it says Hi there.", also: ["your name", "name", "call me", "hello", "greeting", "profile", "me", "you"], placeholder: "Your name" },
+    "you.buildsWith": { label: "The AI you build with", help: "Your answer to the first run's question. It only picks which tip you see first. It is kept on this Mac and never sent anywhere. Not set forgets it.", also: ["lovable", "bolt", "replit", "cursor", "claude code", "ai tool", "builder", "tip", "first run"], options: { unset: "Not set", lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } },
     "island.showStep": { label: "Show the step on the notch", help: "Only with Show wings at rest on. While a job works, the notch shows its step, such as Fixing, and a thin line of the four steps. Off, it shows only its marks. The small panel always shows the step.", also: ["progress", "step", "notch", "working", "live", "line"] },
     "island.showWork": { label: "Drop work from the notch as it moves on", help: "When a fix is proven, or fails, its card drops from the notch for a few seconds, then tucks back. Off, the notch only shows its marks.", also: ["Show results under the notch", "live", "progress", "cards", "jobs", "activity", "notch"] },
     "island.openForQuestions": { label: "Open for questions", help: "When the AI needs your OK, the notch opens by itself so you can answer there. Things that cannot be undone, and changes to your project's Git history, still open Home so you can look first. Off, the notch only shows a mark.", also: ["Open the notch for questions", "approve", "allow", "ask", "question", "notch", "pop up"] },
@@ -2741,6 +2881,27 @@ export const S = {
     approvalUndo: "You can undo this.",
     // Where was I (spec 3.5).
     whereMore: (n: number) => (n === 1 ? "1 more line" : `${n} more lines`),
+    // M58 (feature 9): the welcome names both jobs, and one optional question that only picks a tip (you.buildsWith).
+    welcomeLine: "I look over every change your AI makes, and fix what breaks.",
+    buildsWithLink: "Tell me what you build with (optional)",
+    buildsWithAsk: "Which AI do you build with?",
+    buildsWithLine: "Optional. It only picks which tip you see first, and it stays on this Mac.",
+    buildsWithSkip: "Skip",
+    buildsWithNames: { lovable: "Lovable", bolt: "Bolt", replit: "Replit", cursor: "Cursor", claudeCode: "Claude Code", other: "Something else" } as Record<"lovable" | "bolt" | "replit" | "cursor" | "claudeCode" | "other", string>,
+    // The tip: where Copy for my AI's words go. Never says the other tool made or broke anything (M57's honest words).
+    buildsWithTip: (tool: string | null) => tool
+      ? `Tip: when ${PRODUCT} stops a change, Copy for my AI gives you words to paste into ${tool}'s chat.`
+      : `Tip: when ${PRODUCT} stops a change, Copy for my AI gives you words to paste into your AI tool.`,
+    helloPractice: "Or see it on a practice copy first",
+    // M58 (UI 1): the first check's optional parts wait behind one quiet link, so Fix it stays in view.
+    setUpMore: "Set up more (optional)",
+    // M58 (UI 20): a passing check says so, and names the button that is really there.
+    pass: {
+      title: "Checks pass",
+      clear: (look: string | null) => `Your project's checks all pass. If something still looks wrong, ${look ? `press ${look} and tell me what` : "tell me what in the box"}.`,
+      gaps: (look: string | null) => `The checks that could run passed, but some could not run, so this is not fully checked. ${look ? `Press ${look} and tell me what looks wrong` : "Tell me what looks wrong in the box"}.`,
+      nothing: (look: string | null) => `I found nothing to check in this project (no build, tests or page). ${look ? `Press ${look} and tell me what looks wrong` : "Tell me what looks wrong in the box"}.`,
+    },
   },
   // M69 step 2, Fix it and proof (the YC benchmark spec 3.4 and 3.13): the run list while it works, the receipt's proof
   // ticks, the failing lead, Replay what Squibby did, and the notch's mini receipt. Every number is from the engine's own
@@ -2752,7 +2913,8 @@ export const S = {
     workRow: "Changing the code",
     waitRow: "Checking the work",
     planned: { checks: "Build the code", tests: "Run the tests", browser: "Try it in a browser" } as Record<"checks" | "tests" | "browser", string>,
-    safeLine: `${PRODUCT} kept a safety copy. Undo is ready.`,
+    // Undo has nothing to undo while it works, so the line promises no button (the review of 5 Nov).
+    safeLine: `${PRODUCT} kept a safety copy first.`,
     finding: "Finding...",
     fixing: "Fixing...",
     running: "Running...",

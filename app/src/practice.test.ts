@@ -38,9 +38,10 @@ const fix = (e: PracticeEntry, ok: boolean) => (e.fix === "lesson"
   : [ev({ type: "ui.practiceFixing" }), cp(e), receipt(e, ok || e.prove === "gate" ? "passed" : "failed")]);
 
 describe("one catalog for every practice", () => {
-  test("five practices, in order, each with its words and a folder the shell copies from the same file", () => {
-    expect(CATALOG.map((e) => e.id)).toEqual(["signup", "setting", "route", "import", "open-table"]);
-    expect(FIRST_PRACTICE).toBe("signup");
+  test("six practices, in order, each with its words and a folder the shell copies from the same file", () => {
+    // M58 (feature 9): the key practice comes first (order 0), so the first run starts with it.
+    expect(CATALOG.map((e) => e.id)).toEqual(["key", "signup", "setting", "route", "import", "open-table"]);
+    expect(FIRST_PRACTICE).toBe("key");
     for (const e of CATALOG) {
       const w = S.practices[e.id];
       for (const k of ["title", "teaches", "start", "foundMore", "doneMore"] as const) expect(w?.[k]?.length ?? 0, `${e.id} ${k}`).toBeGreaterThan(10);
@@ -64,7 +65,8 @@ describe("one catalog for every practice", () => {
 });
 
 describe("each practice from start to done", () => {
-  for (const e of CATALOG) {
+  // M58: the key practice is found by the review of a change and fixed by a fixed move: m58KeyPractice.test.ts follows it.
+  for (const e of CATALOG.filter((x) => x.find !== "review")) {
     test(`${e.id}: start, found, fixed, done`, () => {
       let m = run([start(e)]); expect(m.practice).toMatchObject({ kind: e.id, stage: "start", project: P(e) });
       m = run([found(e)], m); expect(m.practice).toMatchObject({ stage: "found", where: { file: e.expect.file, line: e.expect.line } });
@@ -396,10 +398,13 @@ describe("the record and the list on Learn", () => {
     const rows = listRows(rec([{ id: "route", path: `/Users/sam/${COPY_BASE} missing page`, there: true }]), null);
     expect(rows.map((r) => r.entry.id)).toEqual(CATALOG.map((e) => e.id));
     expect(rows.find((r) => r.entry.id === "route")!.state).toBe("inProgress");
-    expect(rows[0]).toMatchObject({ title: "A Join button that fails", time: "About 2 minutes", cost: "About 20 cents", needsNode: false });
-    expect(rows[1].cost).toBe("Free, no Claude");
+    expect(rows.find((r) => r.entry.id === "signup")).toMatchObject({ title: "A Join button that fails", time: "About 2 minutes", cost: "About 20 cents", needsNode: false });
+    expect(rows.find((r) => r.entry.id === "setting")!.cost).toBe("Free, no Claude");
+    // M58: the key practice comes first, free, and never waits for Node (the review needs none).
+    expect(rows[0]).toMatchObject({ title: "A key written into the code", time: "About 1 minute", cost: "Free, no Claude", needsNode: false });
     const noNode = [{ id: "node", label: "Node", ok: false, detail: "Node is not installed.", fix: "Install it from nodejs.org.", missing: true as const }];
-    expect(listRows(NO, noNode).every((r) => r.needsNode)).toBe(true);
+    expect(listRows(NO, noNode).filter((r) => r.entry.id !== "key").every((r) => r.needsNode)).toBe(true);
+    expect(listRows(NO, noNode).find((r) => r.entry.id === "key")!.needsNode).toBe(false);
     // An old Node still runs node --test: no wait for it.
     expect(listRows(NO, [{ id: "node", label: "Node", ok: false, detail: "Version 18 is too old", fix: "x" }]).some((r) => r.needsNode)).toBe(false);
     expect(nodeMissing(noNode)?.fix).toBe("Install it from nodejs.org.");
@@ -434,7 +439,7 @@ describe("the record and the list on Learn", () => {
     // Neither: the practice waits for Node, as before.
     expect(canStart(false, e, none)).toBe(false);
     expect(practiceWithoutNode(none)).toBeNull();
-    expect(listRows(NO, none).every((r) => r.needsNode)).toBe(true);
+    expect(listRows(NO, none).filter((r) => r.entry.id !== "key").every((r) => r.needsNode)).toBe(true);
     // Node here: nothing to say.
     expect(canStart(false, e, here)).toBe(true);
     expect(practiceWithoutNode(here)).toBeNull();
@@ -447,7 +452,9 @@ describe("the record and the list on Learn", () => {
   test("after a practice: the next one not done in catalog order, then round to the start, and none when all are done", () => {
     expect(nextPractice(NO, "signup")?.id).toBe("setting");
     expect(nextPractice(rec([{ id: "setting", there: false, done: "2026-10-19" }]), "signup")?.id).toBe("route");
-    expect(nextPractice(rec([{ id: "signup", there: false }]), "open-table")?.id).toBe("signup");
+    // Round to the start: the key practice is first now (M58).
+    expect(nextPractice(rec([{ id: "signup", there: false }]), "open-table")?.id).toBe("key");
+    expect(nextPractice(rec([{ id: "key", there: false, done: "2026-10-19" }]), "open-table")?.id).toBe("signup");
     expect(nextPractice(rec(CATALOG.map((e) => ({ id: e.id, there: false, done: "2026-10-19" }))), "import")).toBeNull();
   });
   test("Back to my project is the folder used before, never a practice copy, else the newest folder of the person's own", () => {
@@ -598,8 +605,9 @@ describe("the open table's gate", () => {
 });
 
 describe("Point at the problem's own Fix it (point.fixWith)", () => {
-  test("looks deeper first (Rescue), as before, unless Settings says one small checked fix, and then only for one line", () => {
-    expect(defaultOf("point.fixWith")).toBe("rescue");
+  // M58 feature 8: Fix it means fix. The usual is now one small checked fix for a confirmed line; Look deeper first stays a choice.
+  test("one small checked fix for one line as usual (M58), Rescue when Settings says look deeper first or nothing specific was found", () => {
+    expect(defaultOf("point.fixWith")).toBe("smallFix");
     const line = FOUND.get("route")!.problem;
     expect(usesSmallFix("rescue", line)).toBe(false);
     expect(usesSmallFix(undefined, line)).toBe(false);
@@ -666,7 +674,7 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
   const panel = readFileSync(join(import.meta.dir, "./practicePanel.tsx"), "utf8");
   const settings = readFileSync(join(import.meta.dir, "./settingsPage.tsx"), "utf8");
   test("Stop the fix stops the task the way the task card's Stop does, then closes; Skip is never shown while it fixes", () => {
-    expect(card).toContain('stopFix: () => { void send(stopAgent()); dispatch({ type: "ui.practiceClosed" }); }');
+    expect(card).toContain('stopFix: () => { void stopNow(); dispatch({ type: "ui.practiceClosed" }); }');
     const fixing = panel.slice(panel.indexOf('p.stage === "fixing"'), panel.indexOf('p.stage === "blocked"'));
     expect(fixing).toContain("act.stopFix"); expect(fixing).not.toContain("practiceSkip");
     const proving = panel.slice(panel.indexOf('p.stage === "proving"'), panel.indexOf('p.stage === "fixing"'));
@@ -750,7 +758,7 @@ describe("the practice says what its fix is, and what Fix it does on your own pr
     expect(f.help).toMatch(/Look deeper first/);
     expect(f.help).toContain(f.options.smallFix);
     expect(f.help).not.toMatch(/the same request/);
-    expect(defaultOf("point.fixWith")).toBe("rescue");
+    expect(defaultOf("point.fixWith")).toBe("smallFix");   // M58 feature 8
   });
 });
 

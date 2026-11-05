@@ -42,6 +42,8 @@ export const NEVER_GATED = [
   "agent.interrupt", "agent.interruptAll", "drive.pause", "drive.resume",
   // Undo and restore
   "checkpoint.restore", "checkpoint.putBack", "bisect.undo", "ship.rollback",
+  // M58: starring or naming a save point (the store's own notes)
+  "checkpoint.mark",
   // approvals
   "approval.resolve",
   // checks and proof
@@ -56,6 +58,10 @@ export const NEVER_GATED = [
   "project.clone", "auth.check", "google.accounts", "engine.warm", "runner.ping", "loop.choose", "explain.set",
   // M52: reviewing a change and closing its card (a review spends only against the daily limit, like Explain).
   "review.now", "review.dismiss",
+  // M58 (UI 13): signing in to Vercel costs nothing and is the person's own login.
+  "ship.signIn",
+  // M58 (feature 9): the key practice uses no model and costs nothing, so it is never a counted fix.
+  "practice.key",
 ] as const;
 
 type Listed = (typeof FIX_GATED)[number] | (typeof PRO_ONLY)[number] | (typeof NEVER_GATED)[number];

@@ -40,6 +40,7 @@ import { FreeFixes } from "./db.ts";
 import { PlanGate } from "./plan.ts";
 import { MODELS } from "./models.ts";
 import { OWN_WORK, ReviewService } from "./review/service.ts";
+import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -106,6 +107,8 @@ const review = new ReviewService({
   // M57 feature 7: "Don't flag this kind here again" is a line in the project's memory (What I remember), read each review,
   // and it counts only when the person pressed for it (silences).
   silenced: (p) => silences.lines(p, projectLines(p)),
+  // M58 (feature 9): the key practice's copy is reviewed by the rules alone, with no model and no cost.
+  rulesOnly: (p) => isKeyPractice(p),
   // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
   history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d) },
   fix: (start) => {
@@ -194,6 +197,18 @@ function dispatch(cmd: Command) {
   if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   metrics.observeCommand(cmd);
   if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); review.stopAll(); }
+  // M58 (feature 9): the key practice's pretend AI (not the engine's own work, so the review looks at it) and its fixed fix
+  // (the engine's own work, with a safety copy first). No model, no cost.
+  if (cmd.type === "practice.key") {
+    const c = cmd;
+    const p = practiceKeyStep(c, {
+      say, cannotReview: (x) => review.cannotReview(x), ready: () => review.ready(), busy: (x) => runner.busyIn(x),
+      review: (x) => review.handle({ v: PROTOCOL_VERSION, id: `${c.id}-review`, type: "review.now", project: x }),
+      snapshot: (x, label) => runner.checkpointsFor(x).snapshot(label), own: (x, work) => ownWork(x, work, "practice.key"),
+    }).catch((e: Error) => say({ type: "protocol.error", ...failure(e, c.type) })).finally(() => inflight.delete(p));
+    inflight.add(p);
+    return;
+  }
   if (cmd.type === "review.now" || cmd.type === "review.dismiss" || cmd.type === "review.fix") { const p = review.handle(cmd).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   const c = cmd;
   const work = c.type.startsWith("walk.") ? walks.handle(c as never) : c.type.startsWith("assist.")

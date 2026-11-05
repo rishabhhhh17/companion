@@ -346,7 +346,8 @@ describe("M57: a review that stays current", () => {
   });
   test("the words say it plainly, and the card draws the mark", () => {
     expect(S.review.fixedSince).toBe("Changed since, this no longer applies.");
-    const view = readFileSync(new URL("./reviewCard.tsx", import.meta.url), "utf8");
+    // M58: the findings are drawn in their fixed shape by findingList.tsx (reviewCard.tsx uses it).
+    const view = readFileSync(new URL("./findingList.tsx", import.meta.url), "utf8");
     expect(view).toContain("S.review.fixedSince");
   });
 });
@@ -396,7 +397,7 @@ describe("the review card's words and presses (M65 step 4, the critics)", () => 
     expect(view).not.toContain('<Icon name="send"');
   });
   test("on a stop, closing the card is Keep it anyway, a quiet text button, never an equal Looks fine", () => {
-    expect(view).toContain("res?.rating === \"stop\" ? S.review.keepAnyway : S.review.looksFine");
+    expect(view).toContain("res?.rating === \"stop\" ? keepWords(r) : S.review.looksFine");
     expect(S.review.keepAnyway).toBe("Keep it anyway");
   });
   test("plain, short words: once each, and full sentences", () => {

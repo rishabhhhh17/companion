@@ -159,7 +159,7 @@ describe("Undo and Stop show only when they can act", () => {
     expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
     expect(job).toContain("{stopCan(m) && <Button");
-    expect(job).toContain("onClick={() => void send(stopAgent())}");
+    expect(job).toContain("onClick={() => void stopNow()}");
     expect(job).toContain('keyHint("stop", S.look.stopKeys, keys)');
     expect(card.match(/id=\{undoId\}/g)?.length).toBe(1);
   });
@@ -421,7 +421,7 @@ describe("one main button per state", () => {
     expect(card).toContain("{stopCan(m) && !jobShown && mode !== \"question\" && <div className=\"hero-main\"><Button kind=\"secondary\" size=\"sm\"");
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>", card.indexOf('<header className="bar">')));
     expect(bar).toContain('{barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop"');
-    expect(bar).toContain("onClick={() => void send(stopAgent())}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
+    expect(bar).toContain("onClick={() => void stopNow()}><Icon name=\"stop\" size={14} />{S.stop}</Button>}");
     // Drawn before the places, and outside the Settings condition, so Settings gets it too.
     expect(bar.indexOf("bar-stop")).toBeLessThan(bar.indexOf('{home.tab !== "settings" && places.map('));
   });
@@ -432,11 +432,12 @@ describe("one main button per state", () => {
   });
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
     const now = card.slice(card.indexOf('<section className="hero"'), card.indexOf('{show("notes") && <>'));
-    expect(now.match(/kind="primary"/g)?.length).toBe(1);
+    // The hero's main button is primary except after Stop with Undo ready, where Undo what it did is the main one (5 Nov review).
+    expect(now.match(/kind="primary"|\? "secondary" : "primary"/g)?.length).toBe(1);
     // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
     // 2 Nov 2026 (the ranked UI audit): or the way out of a block, or Review the changes; still one button (heroMain).
     // M69 step 2: at rest its words may be Check it again (homeRest.ts restMainLabel), with Where was I? as a secondary beside it.
-    expect(now).toContain('{heroMain && <Button kind="primary" size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}');
+    expect(now).toContain('{heroMain && <Button kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}');
     expect(now).toContain('{whereOn && <Button kind="secondary" size="lg"');
     expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
     expect(now).not.toMatch(/btn primary/);
@@ -500,7 +501,7 @@ describe("the working card's four steps read only the runner's real states (4.2)
     expect(job).not.toContain("job-safe");
     expect(card).toContain('const safeSaid = jobShown && m.task?.checkpoint ? S.fixRun.safeLine : "";');
     // M69 (spec 3.4): the four steps are the counter now ("2 of 4"), and the run list says each step (runList.test.ts).
-    expect(job).toContain('<p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]} · {rl.counter}</span></p>');
+    expect(job).toContain('<p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>');
     expect(job).toContain("<RunRows rows={rl.rows} label={S.fixRun.label}");
     expect(S.home.steps).toEqual(["Finding", "Fixing", "Checking", "Proven"]);
   });

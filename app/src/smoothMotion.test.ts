@@ -146,7 +146,7 @@ describe("numbers count up rather than jumping", () => {
     expect(timeLine(65)).toBe("1:05 so far");
     expect(timeLine(4.6), "a count on its way lands on whole seconds").toBe("0:05 so far");
     expect(timeLine(0)).toBe("0:00 so far");
-    expect(card).toContain('<p className="job-meta"><span><CountUp value={Math.max(0, Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>');
+    expect(card).toContain('<p className="job-meta"><span><CountUp value={Math.max(Math.floor(rl.ms / 1000), Math.floor((clock - (jobStart.current?.at ?? clock)) / 1000))} words={timeLine} step={1} /></span></p>');
   });
   test("it writes its words only when they change, and a new number takes over from wherever the count is", () => {
     const up = fnOf("CountUp");

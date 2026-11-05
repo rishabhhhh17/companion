@@ -31,6 +31,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "more.account.spending", items: ["budget.task", "budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] },
       // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
       { id: "more.account.developer", items: [f("key")] },
+      // M58 (feature 9): the first run's optional answer, which AI you build with. It only picks a tip; Not set forgets it.
+      { id: "more.account.you", items: ["you.buildsWith"] },
     ],
   },
   general: {
