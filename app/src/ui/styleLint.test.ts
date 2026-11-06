@@ -241,7 +241,7 @@ describe("M71: one black look, colour for meaning only", () => {
   /** What may keep its gradients and its light: the character's own art (the Visor, the glass orb, the water character
    *  and its waterline, Settings' preview of it), and the notch itself (the island and its marks, the shape that grows
    *  out of it), and their own keyframes. */
-  const CHARACTER_ART = /\.ui-visor|\.ui-orb|\.home-orb|\.home-char|\.character|visor|flowflow|\.fl-|\.ch-water|\.waterline|companion-hero|\.mark\b|island|\.hs\b|@keyframes (glow|pose-glow|island-)/;
+  const CHARACTER_ART = /\.ui-visor|\.ui-orb|\.home-orb|\.home-char|\.character|visor|flowflow|\.fl-|\.ch-water|\.waterline|companion-hero|\.mark\b|\.island-wing|\.island-mark|\.island-shape|\.hs\b|@keyframes (glow|pose-glow|island-)/;   // M72: the notch's own art, never its panel
   test("no gradient outside the character's own art", () => {
     const bad: string[] = [];
     // A mask that fades a scrolling strip's edge is no colour: it is left to the clean up, which decides about it.

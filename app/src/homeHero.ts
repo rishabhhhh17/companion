@@ -110,10 +110,19 @@ export function needMainFor(m: Model, n: Need | null, project: string): NeedMain
     // its next step on Now, which opens it on Learn.
     if (m.practice.project !== project) return "openLearn";
     if (m.practice.stage === "start") return "practiceStart";
-    if (m.practice.stage === "found" && practiceOf(m.practice.kind)?.fix === "task") return "practiceFix";
+    // M72: the key practice's fix is its own fixed move, offered on Now as Fix it too.
+    if (m.practice.stage === "found" && ["task", "fixed"].includes(practiceOf(m.practice.kind)?.fix ?? "")) return "practiceFix";
     return "openLearn";
   }
   return n.tab === "learn" ? "openLearn" : null;
+}
+
+/** The main button's words for a practice (M72, the walkthrough, item 4): the practice's own action, as its card on Learn
+ *  says it (the key practice lets its pretend AI change a file; a go live practice runs the check before going live). */
+export function needMainWords(m: Pick<Model, "practice">, n: NeedMain): string {
+  if (n !== "practiceStart") return S.home.needMain[n];
+  const e = m.practice ? practiceOf(m.practice.kind) : undefined;
+  return e?.find === "review" ? S.practiceKey.go : e?.find === "gate" ? S.practiceFindGate : S.home.needMain.practiceStart;
 }
 
 /** Undo shows only when the result offers it (the last task changed files, and no Undo put them back since, unless they
@@ -165,15 +174,17 @@ const nameOf = (project: string): string => project.split("/").filter(Boolean).a
 const samePlace = (a: string, b: string): boolean => a.replace(/\/+$/, "") === b.replace(/\/+$/, "");
 
 /** The project's last check: the result on Home now, else the newest finished row of History. Its verdict is M45's, whole. */
-export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string): { verdict: Verdict; at: string | null } | null {
+/** `failed` (M72): the rung of the check that failed, from this task's own steps or the task log, so the page names it. */
+export function lastResult(m: Pick<Model, "receipt" | "task" | "teach" | "history">, project: string): { verdict: Verdict; at: string | null; failed?: string } | null {
   if (m.receipt && m.task && (!m.task.project || m.task.project === project)) {
     const v = receiptVerdict(m);
     const at = m.receipt.wholePlan?.last ?? m.receipt.checkpoint;
     const row = m.history.find((h) => h.checkpoint === at);
-    if (v) return { verdict: v, at: row?.endedAt ?? null };
+    const failed = m.task.proof?.steps.find((x) => x.status === "failed")?.rung ?? row?.failedCheck;
+    if (v) return { verdict: v, at: row?.endedAt ?? null, ...(failed ? { failed } : {}) };
   }
   const done = recentOf(m.history.filter((h) => h.status !== "running"))[0];
-  return done ? { verdict: verdictOf(historyFacts(done)), at: done.endedAt ?? done.startedAt } : null;
+  return done ? { verdict: verdictOf(historyFacts(done)), at: done.endedAt ?? done.startedAt, ...(done.failedCheck ? { failed: done.failedCheck } : {}) } : null;
 }
 
 export type StatusKind = "works" | "changed" | "failing" | "unchecked" | "noProject";
@@ -182,7 +193,9 @@ export type StatusKind = "works" | "changed" | "failing" | "unchecked" | "noProj
 export type MainAct = "fix" | "shipCheck" | "check" | "folder" | "carryOn" | "explain";
 /** `verdict`: what the headline draws (ui/parts.tsx VerdictLine). Its mark is the last check's own: a tick only when that
  *  check was proven, a cross only when one failed, the status dot otherwise. */
-export type HomeStatus = { kind: StatusKind; verdict: Verdict; sub: string; ago: string; main: MainAct };
+export type HomeStatus = { kind: StatusKind; verdict: Verdict; sub: string; ago: string; main: MainAct;
+  /** M72: the rung of the check that failed, when known (a failing status names it). */
+  failed?: string };
 const said = (v: Verdict, headline: string): Verdict => ({ ...v, headline, say: S.verdict.say(headline, v.line) });
 /** The status dot, for a project nothing has proven yet: never a tick, never a colour. */
 const dot = (headline: string): Verdict => ({ kind: "noChange", headline, line: null, say: headline, tone: "plain", icon: "wait", offer: null, proven: false });
@@ -219,7 +232,7 @@ export function homeStatus(m: Pick<Model, "receipt" | "task" | "teach" | "histor
   // The engine says the files changed since the version its last check passed on (must fix 11): never "works" over them.
   if (last?.verdict.proven && m.sinceCheck?.changed && samePlace(m.sinceCheck.project, project)) return { kind: "changed", verdict: dot(S.home.changedSince(name)), sub: S.home.checkedAgo(ago), ago, main: "check" };
   if (last?.verdict.proven) return { kind: "works", verdict: said(last.verdict, S.home.works(name)), sub: S.home.checkedAgo(ago), ago, main: "shipCheck" };
-  if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: S.home.failedAgo(ago), ago, main: "fix" };
+  if (last?.verdict.kind === "failed") return { kind: "failing", verdict: said(last.verdict, S.home.failing(name)), sub: S.home.failedAgo(ago, last.failed), ago, main: "fix", ...(last.failed ? { failed: last.failed } : {}) };
   // A browser check that stopped at a sign in page (M58): the page says what the last task was, once, and what is left. It is
   // not "Not checked yet / Last task: Fixed, not fully proven" (the same words twice), and never proven.
   if (last && !last.verdict.proven && m.task?.proof?.steps.some((x) => x.needs === "signIn")) return { kind: "unchecked", verdict: dot(last.verdict.headline), sub: S.home.signInRest, ago, main: "check" };
@@ -232,7 +245,7 @@ export function notchStatusLine(s: HomeStatus, project: string): string {
   // A check that just answered has no time of its own (homeStatus, the point): its headline as one sentence.
   if (!s.ago && (s.kind === "failing" || (s.kind === "unchecked" && s.verdict.headline !== S.home.notChecked))) return S.verdict.say(s.verdict.headline, null);
   if (s.kind === "changed") return S.home.notchChanged(name);
-  return s.kind === "works" ? S.home.notchWorks(name, s.ago) : s.kind === "failing" ? S.home.notchFailing(name, s.ago) : s.kind === "unchecked" ? S.home.notchNotChecked(name) : S.home.notchNothing;
+  return s.kind === "works" ? S.home.notchWorks(name, s.ago) : s.kind === "failing" ? S.home.notchFailing(name, s.ago, s.failed) : s.kind === "unchecked" ? S.home.notchNotChecked(name) : S.home.notchNothing;
 }
 
 /** What Now is about: at rest, a job at work, a question, something else that needs a look, an answer, or a result. Same

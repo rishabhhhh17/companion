@@ -52,20 +52,7 @@ describe("Home's theme", () => {
     expect(themeOf("paper")).toBe("paper"); expect(themeOf("deep")).toBe("deep"); expect(themeOf("black")).toBe("black"); expect(themeOf(3)).toBe("black"); expect(themeOf("night")).toBe("graphite");
     expect(def("look.theme")).toMatchObject({ default: "black", options: ["black", "paper", "graphite", "deep", "night"] });
   });
-  test("paper keeps every word readable (its tokens in ui/tokens.css)", () => {
-    const css = readFileSync(new URL("./ui/tokens.css", import.meta.url), "utf8");
-    const block = /:root\[data-theme="paper"\] \{([^}]*)\}/.exec(css)?.[1] ?? "";
-    const tok = (n: string) => new RegExp(`--${n}: (#[0-9A-Fa-f]{6})`).exec(block)?.[1] ?? "";
-    expect(block).not.toBe("");
-    expect(ratio(tok("fg"), tok("bg"))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(tok("fg-2"), tok("bg"))).toBeGreaterThanOrEqual(4.5);
-    expect(ratio(tok("fg"), tok("surface-1"))).toBeGreaterThanOrEqual(4.5);
-    // Paper's main button is ink with the page's colour for its words (silver on white reads as disabled).
-    expect(block).toMatch(/--main: var\(--fg\);[^}]*--main-ink: var\(--bg\);/);
-    expect(ratio(tok("bg"), tok("fg"))).toBeGreaterThanOrEqual(4.5);
-    // Deep is offered since M51, with its own tokens (lookChoices.test.ts and a11y.test.ts check its contrast).
-    expect(css).toContain(':root[data-theme="deep"] {');
-  });
+
 });
 
 describe("how lively (M46, F28): Still, Gentle or Lively, one key of its own", () => {
@@ -128,7 +115,7 @@ describe("How lively in Settings (M46)", () => {
     expect(S.short["character.follow"]).toBe("Still only follows while listening or pointing.");
     expect(rowLine("character.restLowPower")).toBe("On, the character holds still while your Mac is in Low Power Mode.");
     const follow = S.set["character.follow"] as { help: string; options: Record<string, string> };
-    expect(follow.help).toContain(`${follow.options.off}: nothing follows`);   // the option is named as it reads
+    expect(follow.help).toContain(`${follow.options.off}: not even while it listens`);   // the option is named as it reads
     expect(follow.help).toContain("never what you type or what is on the screen, and never kept");
     expect(S.set["fun.reactions"].help).not.toContain("Small moves of the character when a check passes or fails");
     for (const t of [S.short["character.follow"], rowLine("character.restLowPower"), S.set["fun.reactions"].help]) expect(t).not.toMatch(/[–—]/);

@@ -62,7 +62,6 @@
    part of Home without a fill of its own (the hero, the project bar, Settings' header), dark on black. The fill is in the
    content's frame, so it arrives and leaves with the content, and has the shape's round foot. The dark looks keep the
    shape's own black. */
-:root[data-theme="paper"] .home-stage[data-told] .home-frame > .card.home { background: var(--bg); border-radius: 0 0 24px 24px; }
 
 /* Reduce motion and Less motion: nothing grows or folds; the shape and the content fade on a short straight line. */
 @media (prefers-reduced-motion: reduce) {

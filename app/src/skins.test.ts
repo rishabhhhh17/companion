@@ -59,10 +59,9 @@ describe("the chrome does not read a skin", () => {
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
     for (const line of rules.split("\n").filter((l) => l.includes("--skin-glow"))) expect(line, line).toMatch(/\.character/);
   });
-  test("the base tokens are neutral greys in Night and Paper (only the marks and the water carry a hue)", () => {
+  test("the base tokens are neutral greys (only the marks and the water carry a hue)", () => {
     const tokensCss = TOKENS_CSS();
     const night = /\n:root \{([^}]*)\}/.exec(tokensCss)![1];
-    const paper = /:root\[data-theme="paper"\] \{([^}]*)\}/.exec(tokensCss)![1];
     const tokens = (block: string) => Object.fromEntries([...block.matchAll(/(--[\w-]+):\s*(#[0-9a-fA-F]{3,6})\b/g)].map((m) => [m[1], m[2]]));
     // How far a colour is from grey: the spread between its strongest and weakest channel (0 is grey, 1 is a pure colour).
     const sat = (hex: string) => {
@@ -108,7 +107,7 @@ describe("the chrome does not read a skin", () => {
       "--flow-sky", "--flow-foot", "--flow-lit", "--flow-card", "--flow-focus",
       // M68, the Visor (the founder's pick, 4 Nov 2026): the light behind its band, fixed art in every theme, never chrome.
       "--visor-light", "--visor-glow", "--visor-needs", "--visor-needs-glow", "--visor-stop"];
-    for (const [name, block] of [["Night", night], ["Paper", paper]] as const) {
+    for (const [name, block] of [["Night", night]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);
     }
@@ -134,8 +133,6 @@ describe("the chrome does not read a skin", () => {
     expect(tokens).toMatch(/--silver: #FAFAFA;/);   // M51: the neutral white pill of the graphite look
     expect(tokens).toMatch(/--silver-ink: #0A0A0B;/);
     expect(tokens).toMatch(/--main-shadow: inset 0 1px 0 var\(--silver-lip\), 0 1px 0 var\(--silver-edge\);/);
-    // Paper's main button is ink: silver on white reads as disabled.
-    expect(/:root\[data-theme="paper"\] \{([^}]*)\}/.exec(tokens)![1]).toMatch(/--main: var\(--fg\);[^}]*--main-shadow: none;/);
     // The banded chrome is gone everywhere, and nothing else is ever silver.
     const code = css.replace(/\/\*[\s\S]*?\*\//g, "");
     expect(code).not.toMatch(/--chrome/);

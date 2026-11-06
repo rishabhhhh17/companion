@@ -6,7 +6,8 @@ import type { SwitchedId } from "./groups.ts";
 /** The character's name: the one chosen in Settings (character.name), or its own. */
 export function characterName(v: unknown): string {
   const s = typeof v === "string" ? v.trim().slice(0, 24) : "";
-  return s || names.character;
+  // M72: one product name; the character goes by the product's name until the person names it.
+  return s || names.product;
 }
 
 /** Who can be chosen. `ready`: has a character today. A place that is not ready is shown empty, saying it is coming. */

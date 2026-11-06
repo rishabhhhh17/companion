@@ -49,7 +49,7 @@ function Thread({ t, landed = false }: { t: ThreadState; landed?: boolean }) {
 
 /** Flowflow on the card's top edge with one short line (decorative: the thread says the same in words). It stays out of the
  *  work itself, never inside the steps, the buttons or the approval cards. */
-function Peek({ stage }: { stage: Practice["stage"] }) {
+function Peek({ stage, review = false }: { stage: Practice["stage"]; review?: boolean }) {
   // Done rests: Flowflow's "done" plays its success flash, three drops that read as confetti over the card (M51 review). The
   // bubble and the ticks already say the checks pass; the reward is the evidence.
   const state = stage === "fixing" || stage === "proving" ? "working" : "idle";
@@ -58,7 +58,8 @@ function Peek({ stage }: { stage: Practice["stage"] }) {
   const quiet = stage === "fixing" || stage === "proving" || stage === "found";
   return (
     <div className="pr-peek" aria-hidden="true">
-      {!quiet && <span className="say" key={stage}>{S.practiceSay[stage]}</span>}
+      {/* M72 (item 16): the key practice's last step is the review looking again, so it says that, not that checks pass. */}
+      {!quiet && <span className="say" key={stage}>{review && stage === "done" ? S.practiceKey.doneSay : S.practiceSay[stage]}</span>}
       <FlowMini state={state} className="pr-char" />
     </div>
   );
@@ -131,11 +132,13 @@ function CopyButtons({ act, busy, title }: { act: PanelActions; busy: boolean; t
   </>;
 }
 
-export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act, checks = [], sendBack = "" }: {
+export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy, nodeFix, note, next, undo, explain, act, checks = [], sendBack = "", retry = null }: {
   p: Practice; entry: PracticeEntry; folder: string; keys: Keys; checking: boolean; drawing: boolean; busy: boolean; nodeFix: string | null; note: string;
   next: PracticeEntry | null; undo: UndoState | null; explain: ReactNode; act: PanelActions; checks?: ProofLine[];
   /** M58 (feature 9): the key practice's Copy for my AI, the review's own send back text for this change. */
   sendBack?: string;
+  /** M72 (the walkthrough, item 6): which try the fix is on ("Trying again (2 of 3)"), as Now says it. */
+  retry?: string | null;
 }) {
   const w = S.practices[entry.id];
   // M66 fix 17: proven while on screen, the thread lands once (its last line fills in, the tick draws in, the card glows
@@ -161,7 +164,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
   // Flowflow's peek is in the flow above the card, never laid over it, so it can never cross the tab row however tall its
   // line grows with bigger text (M51 review); the card is drawn over its foot, so it peeks over the card's top edge.
   return (<>
-    <Peek stage={p.stage} />
+    <Peek stage={p.stage} review={review} />
     <section className="panel practice" aria-label={S.practiceTitle} data-stage={p.stage} data-landed={landed.current ? "" : undefined}>
       <h2>{S.practiceTitle}</h2>
       <div className="line muted">{w.title}</div>
@@ -209,6 +212,7 @@ export function PracticePanel({ p, entry, folder, keys, checking, drawing, busy,
       </>}
       {p.stage === "fixing" && <>
         <div className="line" role="status">{fixed ? S.practiceKey.fixing : S.practiceFixing}</div>
+        {retry && <div className="line" role="status">{retry}</div>}
         {/* Stops the task the way the task card's Stop does, then closes: nothing keeps running or spending. The key
             practice's fixed move is one quick step with no task to stop. */}
         {!fixed && <div className="row"><button className="btn" type="button" onClick={act.stopFix}>{S.practiceStopFix}</button></div>}
@@ -271,10 +275,13 @@ export const practiceColour = (i: number): Colour => PRACTICE_COLOURS[i % PRACTI
  *  one line and its time (Done, in green, once proven). A row opens its practice: Start, Continue, or Start over (asked
  *  first). A practice with a copy on this Mac has Remove my copy on the right, asked first. It never brings Learn
  *  forward by itself (home.ts). No cost line (F29). */
-export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, act, onTour }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null; act: ListActions;
+export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, damaged, openId, opening = null, act, onTour }: { rows: ListRow[]; busy: boolean; nodeFix: string | null; withoutNode?: string | null; note: string; damaged: boolean; openId: string | null;
+  /** M72 (the walkthrough, item 5): the practice being opened now (its copy is being made), said where it was pressed. */
+  opening?: string | null; act: ListActions;
   /** The recorded first run again (firstLook.ts), the featured card's quiet button. */
   onTour?: () => void }) {
-  const [ask, setAsk] = useState<{ id: string; what: "startOver" | "remove" } | null>(null);
+  // back: the press that opened the question, which gets the keyboard back when it closes (the row's button, or its action).
+  const [ask, setAsk] = useState<{ id: string; what: "startOver" | "remove"; back: string } | null>(null);
   const base = useId(), rowId = (id: string, what: string) => `${base}-${what}-${id}`;
   // The practice open on Now is under way even before its copy is recorded, so the list never says Not started beside the
   // practice card's Find it: Now (the review, 2 Nov 2026).
@@ -284,17 +291,17 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
   const lead = rows.find((r) => r.entry.id === leadId) ?? null;
   const allDone = rows.length > 0 && rows.every((r) => r.state === "done");
   const askRow = ask ? rows.find((r) => r.entry.id === ask.id) ?? null : null;
-  // The press that opened a question gets the keyboard back when it closes: the row (Start over) or its Remove.
-  const overId = ask ? rowId(ask.id, "row") : "", removeId = ask ? rowId(ask.id, "remove") : "";
+  // The press that opened a question gets the keyboard back when it closes: the row (Start over), or its action.
+  const overId = ask?.back ?? "", removeId = ask?.back ?? "";
   return (
     <section className="learn" aria-label={S.practiceListTitle}>
       {lead ? (
         <Lead className="ui-feature learn-lead" meaning="practice" labelledBy={`${base}-lead`}
           tag={<Tag meaning="practice" words={lead.state === "inProgress" ? S.practiceState.inProgress : undefined} />}
           title={<h2 className="ui-lead-title" id={`${base}-lead`}>{lead.title}</h2>}
-          line={<><p className="ui-lead-line">{lead.teaches}</p><p className="learn-lead-fact">{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</p></>}
+          line={<><p className="ui-lead-line">{lead.teaches}</p><p className="learn-lead-fact" role="status">{opening === lead.entry.id ? S.practiceOpening : <>{lead.time}{lead.needsNode ? ` · ${S.practiceNeedsNode}` : ""}</>}</p></>}
           actions={<>
-            <Button kind="primary" disabled={busy || lead.needsNode} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
+            <Button kind="primary" disabled={busy || lead.needsNode || !!opening} label={`${lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}: ${lead.title}`}
               onClick={() => (lead.state === "inProgress" && lead.there ? act.open(lead.entry.id) : act.start(lead.entry.id))}>{lead.state === "inProgress" ? S.practiceContinue : S.practiceStart}</Button>
             {onTour && <Button kind="secondary" onClick={onTour}>{S.firstLook.watch}</Button>}
           </>} />
@@ -304,30 +311,38 @@ export function PracticeList({ rows, busy, nodeFix, withoutNode = null, note, da
       ) : null}
       {damaged && <p className="page-caption">{S.practiceRecordDamaged}</p>}
       {note && <p className="page-caption" role="status">{note}</p>}
-      {busy && <p className="page-caption">{S.practiceBusy}</p>}
+      {/* The open practice is itself the work in progress: then this line has nothing to add (M72, item 6). */}
+      {busy && !openId && <p className="page-caption">{S.practiceBusy}</p>}
       {nodeFix && rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceNodeList(nodeFix)}</p>}
       {withoutNode != null && !rows.some((r) => r.needsNode) && <p className="page-caption">{S.practiceWithoutNode(withoutNode)}</p>}
       <ListGroup label={S.practiceListTitle} shown>
         {rows.map((r, i) => {
-          const id = r.entry.id, state = stateOf(r), open = openId === id, blocked = busy || r.needsNode;
-          const rowOver = rowId(id, "row"), rowRemove = rowId(id, "remove");
+          const id = r.entry.id, state = stateOf(r), open = openId === id, blocked = busy || r.needsNode || !!opening;
+          const rowOver = rowId(id, "row"), rowAct = rowId(id, "act");
           const short = (S.practices[id as keyof typeof S.practices] as { short?: string } | undefined)?.short ?? r.teaches;
           // What a press on the row does: start it, carry on with it, or (done, with its copy here) start over, asked first.
-          const go = state === "done" && r.there ? () => setAsk({ id, what: "startOver" })
+          const go = state === "done" && r.there ? () => setAsk({ id, what: "startOver", back: rowOver })
             : state === "inProgress" && !open ? () => act.open(id)
             : state === "notStarted" || (state === "done" && !r.there) ? () => act.start(id) : undefined;
           const goWord = state === "done" && r.there ? S.practiceStartOver : state === "inProgress" ? S.practiceContinue : S.practiceStart;
           return <Row key={id} id={rowOver} colour={state === "done" ? "green" : practiceColour(i)} icon={state === "done" ? "tick" : undefined} mark={state === "done" ? undefined : String(i + 1)}
-            title={r.title} line={state === "inProgress" ? S.practiceState.inProgress : short}
+            title={r.title} line={opening === id ? S.practiceOpening : state === "inProgress" ? S.practiceState.inProgress : short}
             fact={state === "done" ? S.practiceState.done : S.practiceMin(r.entry.minutes)} factColour={state === "done" ? "green" : undefined}
             onOpen={go && !blocked ? go : undefined} openLabel={`${goWord}: ${r.title}`}
-            action={r.there && !busy ? { id: rowRemove, label: S.practiceRemove, colour: "grey", onClick: () => setAsk({ id, what: "remove" }) } : null} />;
+            // M72 (finding 5): a practice under way with its copy here can be started over (asked first; Remove my copy is
+            // inside that question). Any other practice with a copy has Remove my copy, asked first.
+            action={!r.there || busy ? null
+              : state === "inProgress" && r.there ? { id: rowAct, label: S.practiceStartOver, colour: "grey", ariaLabel: `${S.practiceStartOver}: ${r.title}`, onClick: () => setAsk({ id, what: "startOver", back: rowAct }) }
+              : { id: rowAct, label: S.practiceRemove, colour: "grey", ariaLabel: `${S.practiceRemove}: ${r.title}`, onClick: () => setAsk({ id, what: "remove", back: rowAct }) }} />;
         })}
         {!lead && onTour && <Row colour="blue" icon="eye" title={S.practiceTourRow} line={S.practiceTourLine} onOpen={onTour} openLabel={S.firstLook.watch} />}
       </ListGroup>
       {ask && askRow && ask.what === "startOver" && (
         <ConfirmStep className="learn-ask" label={S.practiceStartOverSure} back={overId} onCancel={() => setAsk(null)}><p className="learn-ask-line">{askRow.title}. {S.practiceStartOverSure}</p>
-          <div className="row"><Button kind="primary" onClick={() => { setAsk(null); act.startOver(ask.id); }}>{S.practiceStartOverYes}</Button><button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
+          <div className="row"><Button kind="primary" onClick={() => { setAsk(null); act.startOver(ask.id); }}>{S.practiceStartOverYes}</Button>
+            {/* M72: the copy can be removed from here too (an in progress row's own action is Start over). */}
+            <Button kind="quiet" onClick={() => setAsk({ ...ask, what: "remove" })}>{S.practiceRemove}</Button>
+            <button className="btn" type="button" data-cancel onClick={() => setAsk(null)}>{S.planCancel}</button></div>
         </ConfirmStep>
       )}
       {ask && askRow && ask.what === "remove" && (

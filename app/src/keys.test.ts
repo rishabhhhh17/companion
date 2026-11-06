@@ -124,7 +124,7 @@ describe("every line that names a key", () => {
     expect(keysIn("Control, Option, Command and K or Control, Option, Command and F", both)).toBe("Control, Option, Shift, Command and K or Control, Option, Command and U");
     // A job without keys is named by its job, never by keys that do not work, and the text ends with where to pick others
     // (the same words a hint uses, keyHint), once for each such job however often it is named.
-    // The key's job is named Check my project (the audit, item 9: one name for each action).
+    // The key's job is named Check my project (the audit, item 9: one name for each action; M72 keeps it).
     expect(keysIn(say, swap("problem", null))).toBe(`Press the keys for Check my project in ${PRODUCT} to find the same place in your project. Check my project: another app is using its shortcut. Pick another in Settings, under Keys to remember.`);
     const twice = keysIn("Press Control, Option, Command and F. Then Control, Option, Command and F again.", swap("problem", null));
     expect(twice).not.toContain("Control, Option, Command and F");

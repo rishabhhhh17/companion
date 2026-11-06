@@ -148,7 +148,7 @@ describe("the choices are real settings, with their words and one place in Setti
     expect(shownValue("look.theme", "night")).toBe("graphite");
     expect(shownValue("look.theme", "deep")).toBe("deep");
     expect(shownValue("look.water", "night")).toBe("night");
-    expect(read("./settingsPage.tsx")).toContain("const value = shownValue(d.key, d.kind === \"custom\" ? snapshotNow()?.values[d.key] : setting(d.key), setting(\"look.style\"));");
+    expect(read("./settingsPage.tsx")).toContain("const value = d.key === \"look.character\" ? characterNow() : shownValue(d.key, d.kind === \"custom\" ? snapshotNow()?.values[d.key] : setting(d.key));");
     expect(themeOf("night")).toBe("graphite");
     for (const t of THEMES) expect(themeOf(t)).toBe(t);
     for (const junk of [undefined, null, "", "Night", 3]) expect(themeOf(junk), String(junk)).toBe("black");
@@ -182,7 +182,8 @@ describe("M71: one black look; Colour and Character are the choices, the retired
     expect([...RETIRED_LOOK_KEYS].sort()).toEqual(["look.corners", "look.density", "look.gloss", "look.icons", "look.light", "look.stamps", "look.style", "look.theme", "look.water"]);
     for (const k of RETIRED_LOOK_KEYS) expect((def(k) as { hidden?: boolean }).hidden, k).toBe(true);
     const hook = read("./useLook.ts");
-    for (const k of RETIRED_LOOK_KEYS) expect(hook, k).not.toContain(`"${k}"`);
+    // M72 (finding 2): the retired style is read only to keep a Friendly store's water character on the root.
+    for (const k of RETIRED_LOOK_KEYS.filter((k) => k !== "look.style")) expect(hook, k).not.toContain(`"${k}"`);
     expect(hook).toContain('useSetting("look.colour")');
     expect(hook).toContain('useSetting("look.character")');
   });
@@ -281,14 +282,7 @@ describe("each value changes the tokens it should, and the usual values give exa
     expect(Object.keys(p)).toHaveLength(TINTS.length * 2 + 2);
     expect(sw("stamps", "off")).toEqual({ "--stamp-display": "none", "--unstamped-display": "inline-flex" });
   });
-  test("Deep is a full theme: its own surfaces, words and lines, with a cool cast, and More contrast for it", () => {
-    const d = block(':root[data-theme="deep"]');
-    for (const k of ["--bg", "--surface-1", "--surface-2", "--surface-3", "--inset", "--fg", "--fg-2", "--fg-3", "--line", "--line-strong", "--edge-control", "--pond", "--bubble", "--key-fill"]) expect(d[k], k).toBeTruthy();
-    const [r, g, b] = colour(d["--bg"], d);
-    expect(b, "a sea blue").toBeGreaterThan(r + 12);
-    expect(b).toBeGreaterThan(g);
-    expect(Object.keys(block(':root[data-theme="deep"]', MORE))).toEqual(expect.arrayContaining(["--line", "--line-strong", "--fg-2", "--edge-control"]));
-  });
+
 });
 
 describe("every tile and every stamp is readable in every theme", () => {
@@ -441,7 +435,7 @@ describe("the details are drawn in the lists", () => {
   // M71 (one structure): History and Learn are the one grouped list of the parts (ui/parts.tsx ListRow), each row's tile in
   // its meaning's colour; the badges and kind tiles of M51 step 3 gave way to it.
   test("History: each task a row of the grouped list, its tile coloured by how it ended, its name, one line and when", () => {
-    expect(card).toContain("<ListRow key={h.id} id={`history-${h.id}`} colour={MEANING_COLOUR[meaning]}");
+    expect(card).toContain("<Fragment key={h.id}><ListRow rowId={`history-${h.id}`} flash={focus === h.id} colour={MEANING_COLOUR[meaning]}");
     expect(card).toContain("const lineWords = [historyWords(h), (h.changed ?? 0) > 0 ? S.screens.filesChanged(h.changed ?? 0) : \"\"].filter(Boolean).join(\" · \");");
     // No card inside the page: History's list is the page.
     expect(card).toContain('<section className="panel bare hist" aria-label={S.recentTitle}>');
@@ -524,10 +518,7 @@ describe("the accent: what is picked in Settings, in the water chosen", () => {
     expect(root["--seg-thumb-edge"]).toBe("var(--pick)");
     expect(parts.find((b) => b.sel === '.ui-pic[aria-checked="true"]')?.decl["border-color"]).toBe("var(--pick)");
   });
-  test("Paper keeps the pastel tiles with a deep ink; the dark themes take the deep washes", () => {
-    const paper = block(':root[data-theme="paper"]');
-    expect(paper["--tint-rose"]).toBe("#FFD3E2");
-    expect(paper["--tint-rose-ink"]).toBe("#8C2350");
+  test("the dark look takes the deep washes (M72: the White block is gone)", () => {
     for (const tint of TINTS) expect(ratio(colour(`var(--tint-${tint})`, root), colour("var(--bg)", root)), `${tint}: a deep wash on Graphite`).toBeLessThan(1.6);
   });
 });
@@ -544,7 +535,5 @@ describe("the look's big choices are pictures, on the Look page", () => {
       expect(root[`--sw-${t}-bg`], t).toMatch(/^#[0-9A-F]{6}$/);
     }
     expect(root["--sw-graphite-bg"]).toBe(root["--bg"]);
-    expect(root["--sw-paper-bg"]).toBe(block(':root[data-theme="paper"]')["--bg"]);
-    expect(root["--sw-deep-bg"]).toBe(block(':root[data-theme="deep"]')["--bg"]);
   });
 });

@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ReviewRowView } from "../../protocol/index.ts";
 import type { HistoryItem } from "./model.ts";
-import { checkedAgo, firstSentence, lastFix, lastProven, outcomeTitle, restCards, restHero, restMainLabel, resultHero, sinceRows, PILL_TONE, SINCE_MAX } from "./homeRest.ts";
+import { checkedAgo, lastFix, lastProven, outcomeTitle, restCards, restHero, restMainLabel, resultHero, sinceRows, PILL_TONE, SINCE_MAX } from "./homeRest.ts";
 import { homeStatus } from "./homeHero.ts";
 import { initial } from "./model.ts";
 import { S } from "./strings.ts";
@@ -149,11 +149,3 @@ describe("M69 step 3: the hero over a result says the outcome once", () => {
   });
 });
 
-describe("M69 step 3: the why line is the receipt's first sentence", () => {
-  test("one sentence, cut at 160 characters", () => {
-    expect(firstSentence("It now saves the email. Then it shows the thank you screen.")).toBe("It now saves the email.");
-    expect(firstSentence("  no stop  ")).toBe("no stop");
-    expect(Array.from(firstSentence("a".repeat(400))).length).toBe(160);
-    expect(firstSentence("")).toBe("");
-  });
-});

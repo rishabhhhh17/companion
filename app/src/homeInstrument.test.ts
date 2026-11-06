@@ -119,7 +119,7 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(css).toContain(home);
   });
   test("Home's character is the faceless orb when the look's character is the orb, with no live water running under it", () => {
-    expect(homeChar).toContain("const look = characterOf(useSetting(\"look.character\"), useSetting(\"look.style\"));");   // M71: the style is retired
+    expect(homeChar).toContain("const look = useCharacter();");   // M72: the character in force (settingsStore characterNow)
     expect(homeChar).toContain("const orb = look !== \"friendly\";");
     expect(homeChar).toContain("off: live || orb");
     expect(homeChar).toContain("const shownRing = homeRingShown(state, ring);");

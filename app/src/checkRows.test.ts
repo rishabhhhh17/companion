@@ -185,7 +185,7 @@ describe("a reset that puts Pictures to keep back to usual says first how many p
   test("the words say it, and Reset all no longer says every picture stays", () => {
     expect(S.setPicturesGo(300, 200)).toBe("Pictures to keep goes back to 200, so 300 of your oldest pictures will be deleted when the next picture is made.");
     expect(S.setResetAllSure("x")).not.toMatch(/undo points, pictures,/);
-    expect(S.setResetAllSure("x")).toContain("Pictures stay up to the number Pictures to keep allows.");
+    expect(S.setResetAllSure("x")).toContain("Pictures are kept as Pictures to keep says.");   // M72, item 14
   });
   test("each reset asks with that line: the row's own Reset, Reset this section and Reset all", () => {
     const src = readFileSync(new URL("./settingsPage.tsx", import.meta.url), "utf8");

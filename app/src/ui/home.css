@@ -64,3 +64,15 @@
 /* M69 step 3: no wave band across the hero in any look (spec 1.3: Friendly changes only the backdrop, the accent and the
    character). Flowflow still floats beside the words; the band added height and pushed the cards under the ask box. */
 .home .home-pond > .ch-water { display: none; }
+
+/* M72 (the walkthrough, item 18): the tall first run follows its words, so a short screen has no empty band before its foot. */
+.home[data-layout="tall"] .fr { min-height: 0; }
+.home[data-layout="tall"] .fr-grow { flex: 0 0 var(--space-5); }
+.home[data-layout="tall"] .inner:has(> .onboarding.fr), .home[data-layout="tall"] .inner > .onboarding.fr { flex: 0 0 auto; }
+
+/* M72 (the engineer's finding 1): the water character sits in the lead's own column at the lead's size, as the Visor and
+   the glass orb do, never under the buttons or cut by the lead's edge. */
+.home .hero.ui-lead > .hero-words { grid-column: 1; padding-right: 0; }
+.home .hero .ui-lead-char .home-char { width: var(--lead-char); height: var(--lead-char); margin: 0; top: 0; translate: none; }
+.home .hero .ui-lead-char .home-char .home-flowflow, .home .hero .ui-lead-char .home-char .home-pose { inset: 0; width: 100%; height: 100%; }
+.home .hero.ui-lead .ui-lead-char .ch-char { inset: 0; height: auto; margin: 0; padding: 0; -webkit-mask-image: none; mask-image: none; }

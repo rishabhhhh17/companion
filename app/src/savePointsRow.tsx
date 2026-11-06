@@ -3,6 +3,7 @@
 // back stays the row's own Undo, which asks first.
 import { useState } from "react";
 import { Button } from "./ui/parts.tsx";
+import { Icon } from "./icons.tsx";
 import { S } from "./strings.ts";
 import { saveName } from "./savePoints.ts";
 
@@ -22,8 +23,10 @@ export function SaveMarksLine({ lastWorking, star, name }: { lastWorking?: boole
   </>;
 }
 
-/** Star and Name it, for a row with a save point. send gets the mark to send (markSave in commands.ts). */
-export function SaveMarksActions({ star, name, onMark }: { star?: boolean; name?: string; onMark: (m: Mark) => void }) {
+/** Star and Name it, for a row with a save point. send gets the mark to send (markSave in commands.ts). M72 (the
+ *  walkthrough, item 9): real buttons, drawn right under the row they belong to; Star shows its state (a filled star and
+ *  aria-pressed) and names the task it marks. */
+export function SaveMarksActions({ star, name, onMark, subject = "" }: { star?: boolean; name?: string; onMark: (m: Mark) => void; subject?: string }) {
   const [naming, setNaming] = useState(false);
   const [text, setText] = useState(name ?? "");
   if (naming) return (
@@ -35,9 +38,10 @@ export function SaveMarksActions({ star, name, onMark }: { star?: boolean; name?
     </form>
   );
   return (
-    <div className="row">
-      <Button size="sm" kind="quiet" onClick={() => onMark({ star: !star })}>{star ? S.fix.unstar : S.fix.star}</Button>
-      <Button size="sm" kind="quiet" onClick={() => { setText(name ?? ""); setNaming(true); }}>{S.fix.nameIt}</Button>
+    <div className="row hist-marks-acts">
+      {/* The state is the filled star and its words (Starred), never a filled button (the review of 5 Nov). */}
+      <Button size="sm" kind="secondary" label={`${star ? S.fix.unstar : S.fix.star}${subject ? `: ${subject}` : ""}`} onClick={() => onMark({ star: !star })}><Icon name={star ? "starFilled" : "star"} size={14} />{star ? S.fix.starred : S.fix.star}</Button>
+      <Button size="sm" kind="secondary" label={subject ? `${S.fix.nameIt}: ${subject}` : undefined} onClick={() => { setText(name ?? ""); setNaming(true); }}>{S.fix.nameIt}</Button>
     </div>
   );
 }

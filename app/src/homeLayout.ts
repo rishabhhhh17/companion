@@ -61,14 +61,6 @@ export function useMoreBelow(root: RefObject<HTMLElement | null>): void {
   }, [root]);
 }
 
-/** Whether the sea goes on down from Flowflow's waterline to the ask box (the wide Home at rest, M51 polish): only while
- *  nothing comes between the status and the ask box, since a card under the status (a review, a recap, a toast, a notice,
- *  an error, About this project) would cut the sea across in a hard seam (the audit, item 5). With the light behind Home
- *  off (the usual since 2 Nov 2026) the sea is drawn at no strength (ui/tokens.css --sea-fill-a), so Home is a plain page. */
-export function seaFills(o: { side: boolean; tab: Tab; mode: string; cardsUnder: boolean }): boolean {
-  return o.side && o.tab === "now" && o.mode === "rest" && !o.cardsUnder;
-}
-
 // ---------- M69, the system: one layout grammar (the YC benchmark spec 3) ----------
 // Every look and both layouts: the top bar carries the project's status dot and name, one line of context and the Fix it
 // key on the right; the ask box is pinned at the bottom of the work; Settings is the last place. The context line holds

@@ -22,5 +22,5 @@ export const DOT_GLYPH = { working: "spin", new: "sparkle", proven: "tick", need
  *  the badge's dot alone, with no words (the side list, where the row's tooltip and its spoken name carry them). */
 export function Stamp({ kind, spoken, dot }: { kind: StampKind; spoken?: boolean; dot?: boolean }) {
   // Working is Flow at work, so its badge keeps the water's light in any room (a sunbeam badge would read as Needs you).
-  return <span className="stamp" data-stamp={kind} data-dot={dot ? "" : undefined} data-element={kind === "working" ? "flow" : undefined} aria-hidden={spoken ? undefined : "true"}>{dot ? <Icon name={DOT_GLYPH[kind]} size={10} /> : S.look.stamp[kind]}</span>;
+  return <span className="stamp" data-stamp={kind} data-dot={dot ? "" : undefined} aria-hidden={spoken ? undefined : "true"}>{dot ? <Icon name={DOT_GLYPH[kind]} size={10} /> : S.look.stamp[kind]}</span>;
 }

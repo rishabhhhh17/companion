@@ -701,9 +701,9 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 .island-panel .ip-job { position: relative; overflow: hidden; box-sizing: border-box; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 12px; background: var(--notch-card); box-shadow: inset 0 0 0 1px var(--notch-edge); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .island-panel .ip-job:hover, .island-panel .ip-ask:hover { background: var(--notch-card-hover); }
 .island-panel .ip-job[data-tone="working"] { box-shadow: inset 0 0 0 1px var(--notch-edge-strong); }
-/* While it works, a thin water light runs along the card's foot ("Squibby is acting"). */
-.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: linear-gradient(90deg, transparent, var(--water), transparent) no-repeat; background-size: 40% 100%; animation: ip-run var(--loop-run) linear infinite; pointer-events: none; }
-@keyframes ip-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+/* While it works, a thin solid bar grows and shrinks along the card's foot (M72: solid, no gradient; only transform moves). */
+.island-panel .ip-job[data-tone="working"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--water); animation: ip-run var(--loop-run) var(--ease-loop) infinite alternate; transform-origin: left center; pointer-events: none; }
+@keyframes ip-run { from { transform: scaleX(0.15); } to { transform: scaleX(1); } }
 .island-panel .ip-job[data-tone="needsYou"] { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 70%, transparent); }
 /* M23: a question answered right in the notch. The buttons sit under the words and wake up once the card has been seen
    for a moment (islandPanel.ts ARM_MS), so a pointer resting where the panel opens cannot answer by accident. */

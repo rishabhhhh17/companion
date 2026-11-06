@@ -825,7 +825,7 @@ export class AgentRunner {
         const working = this.lastWorking(cmd.project);
         let marks: Record<string, { star?: true; name?: string }> = {};
         try { marks = this.store(cmd.project).marks(); } catch { /* no marks to show */ }
-        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.back ? { back: true } : {}),
+        const tasks = this.o.log.list(cmd.project, 50).map((t) => ({ id: t.id, label: t.label, status: t.status, usd: t.usd, startedAt: t.startedAt, endedAt: t.endedAt, checkpoint: t.checkpoint, changed: t.changed, proof: t.proof, ...(t.undone ? { undone: true } : {}), ...(t.failedCheck ? { failedCheck: t.failedCheck } : {}), ...(t.back ? { back: true } : {}),
           ...(working?.task === t.id ? { lastWorking: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.star ? { star: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.name ? { name: marks[t.checkpoint].name } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
@@ -1222,6 +1222,8 @@ export class AgentRunner {
     // Receipt: compare the state before with the state now. Proof: "done" has to be earned, so a task
     // that changed files is checked, and a failed check goes back to Claude (up to MAX_TRIES checks an approach).
     let proof: "passed" | "partial" | "failed" | "skipped" = "skipped";
+    // M72: the rung of the last check that failed, kept with the task so a page can say which check failed.
+    let failedCheck: string | undefined;
     const sigs: string[] = [];
     let lastFailure: { label: string; detail: string } | undefined;
     let stuckOffered = false;
@@ -1281,7 +1283,7 @@ export class AgentRunner {
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
 
       proof = "failed"; status = "not_done";
-      { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail, ...(fl.forModel ? { forModel: fl.forModel } : {}) }; } }
+      { const fl = res.failedAt ?? res.steps.at(-1); if (fl) { failedCheck = fl.rung; sigs.push(failureSignature(fl)); lastFailure = { label: fl.label, detail: fl.detail, ...(fl.forModel ? { forModel: fl.forModel } : {}) }; } }
       if (askingTheirs()) { status = "needs_you"; break; }
       if (usd >= budget) { status = "error_max_budget_usd"; break; }
       let next: string;
@@ -1329,7 +1331,7 @@ export class AgentRunner {
     if (status === "done" && this.driving.has(cmd.agent) && asking() && !abort.signal.aborted) status = "needs_you";
     // Save the task first, so a page that asks for the timeline when the receipt arrives sees it.
     book();
-    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof });
+    this.o.log.finish(taskId, status, usd, this.now().toISOString(), { checkpoint: before.id, changed: changed.length, proof, ...(proof === "failed" && failedCheck ? { failedCheck } : {}) });
     this.openTasks.delete(cmd.agent);
     // Our work ends here: the project as it is now is what this step left. Later differences are the person's own.
     started.ended = true;

@@ -205,8 +205,8 @@ describe("the words", () => {
     expect(pause).toContain(S.set["memory.tellClaude"].label);
   });
   test("the help lines say what costs more, and what off the record turns off", () => {
-    expect(S.set["memory.recallLength"].help).toMatch(/costs more/i);
-    expect(S.set["explain.after"].help).toMatch(/costs less/i);
+    expect(S.set["memory.recallLength"].help).toMatch(/slower/i);   // M72 (F29): Squibby pays, so it says what the person notices
+    expect(S.set["explain.after"].help).toMatch(/fewer explanations/i);   // M72 (F29): Squibby pays
     for (const w of ["memory", "Explain", "pictures", "Your turn", "conversation"]) expect(S.set["task.offRecordByDefault"].help, w).toContain(w);
     // It names every button the box covers.
     for (const b of [S.start, S.planIt, S.rescueIt, S.researchIt]) expect(S.set["task.offRecordByDefault"].help, b).toContain(b);

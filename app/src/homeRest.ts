@@ -8,7 +8,7 @@ import { historyFacts, type HistoryItem } from "./model.ts";
 import { verdictOf } from "./verdict.ts";
 import { agoWords, type HomeStatus } from "./homeHero.ts";
 import { taskName } from "./itemLook.ts";
-import { S } from "./strings.ts";
+import { failedCheckWords, S } from "./strings.ts";
 import { FIX_MEANING, type Meaning } from "./meaning.ts";
 import type { IconName } from "./icons.tsx";
 
@@ -35,7 +35,7 @@ const reviewsAfter = (reviews: readonly ReviewRowView[], after: string | null): 
 
 export type RestInput = {
   project: string;
-  status: Pick<HomeStatus, "kind" | "ago">;
+  status: Pick<HomeStatus, "kind" | "ago" | "failed">;
   history: readonly HistoryItem[];
   reviews?: readonly ReviewRowView[];
   /** The engine says the files changed since the version its last check passed on (tasks.list sinceCheck). */
@@ -52,7 +52,7 @@ export function restHero(i: RestInput): RestHero {
   const name = nameOf(i.project);
   if (!name || i.status.kind === "noProject") return { pill: null, first: S.homeNow.noProject, second: S.homeNow.noProjectLine };
   const proven = lastProven(i.history);
-  if (i.status.kind === "failing") return { pill: "failed", first: S.homeNow.problem(name), second: i.status.ago ? S.homeNow.failedAgo(i.status.ago) : S.homeNow.foundNow };
+  if (i.status.kind === "failing") return { pill: "failed", first: S.homeNow.problem(name), second: i.status.ago ? S.homeNow.failedAgo(i.status.ago, i.status.failed) : S.homeNow.foundNow };
   if (i.status.kind === "works" || i.status.kind === "changed") {
     const ago = i.status.ago || agoWords(proven ? at(proven) : null, i.now);
     if (i.status.kind === "works") return { pill: "passed", first: S.homeNow.fine(name), second: S.homeNow.proven(ago) };
@@ -100,7 +100,7 @@ export function lastFix(history: readonly HistoryItem[], now: number): LastFix |
   if (tag === "undone") ticks.push({ ok: null, words: S.homeNow.tick.undone });
   else if (proof === "passed") ticks.push({ ok: true, words: S.homeNow.tick.passed });
   else if (proof === "partial") ticks.push({ ok: true, words: S.homeNow.tick.partly });
-  else if (proof === "failed") ticks.push({ ok: false, words: S.homeNow.tick.failed });
+  else if (proof === "failed") ticks.push({ ok: false, words: item.failedCheck ? failedCheckWords(item.failedCheck) : S.homeNow.tick.failed });
   else ticks.push({ ok: null, words: S.homeNow.tick.none });
   // The count is the engine's own; an unknown count is never said as a number.
   const meta = [item.changed != null ? S.homeNow.files(item.changed) : "", agoWords(at(item), now)].filter(Boolean).join(" · ");
@@ -159,15 +159,6 @@ export function sinceRows(i: { history: readonly HistoryItem[]; reviews?: readon
 export function restCards(o: { project: string; history: readonly HistoryItem[] }): "fix" | "practice" | null {
   if (!o.project) return null;
   return o.history.some((h) => h.status === "done" && taskName(h.label)) ? "fix" : "practice";
-}
-
-/** M69 step 3: the receipt's own words, cut to their first sentence (at most 160 characters), for the Last fix card's why. */
-export function firstSentence(text: string): string {
-  const t = text.replace(/\s+/g, " ").trim();
-  if (!t) return "";
-  const m = /^(.+?[.!?])(?:\s|$)/.exec(t);
-  const one = (m ? m[1] : t);
-  return Array.from(one).length > 160 ? `${Array.from(one).slice(0, 159).join("").trimEnd()}\u2026` : one;
 }
 
 // ---------- M71: Now's one list (docs/milestones/M71-black-with-colour.md) ----------

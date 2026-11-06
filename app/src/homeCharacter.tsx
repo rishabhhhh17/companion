@@ -13,8 +13,8 @@ import { useFlow } from "./flow/useFlow.ts";
 import { lookState, type CharacterState, type Model } from "./model.ts";
 import { playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { reactionsOn } from "./reactions.ts";
-import { useSetting } from "./settingsStore.ts";
-import { characterOf, flowColours, livelinessOf, waterOf, type Liveliness } from "./lookfeel.ts";
+import { useCharacter, useSetting } from "./settingsStore.ts";
+import { flowColours, livelinessOf, waterOf, type Liveliness } from "./lookfeel.ts";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb, Visor } from "./ui/parts.tsx";
 import { useRest } from "./useRest.ts";
@@ -46,7 +46,7 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   const water = "ocean";
   const colours = flowColours(waterOf(water));
   // M65: the faceless orb in the chosen water, drawn once per water. M68: or the Visor; both faceless, neither runs water.
-  const look = characterOf(useSetting("look.character"), useSetting("look.style"));
+  const look = useCharacter();
   const orb = look !== "friendly";
   const orbSrc = useMemo(() => svgUrl(glassOrbSvg(waterOf(water))), [water]);
   const [liveFailed, setLiveFailed] = useState(false);

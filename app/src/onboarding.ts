@@ -82,6 +82,14 @@ export function skipTo(step: Step): Step | "done" {
 
 export function next(step: Step): Step | null { const i = STEPS.indexOf(step); return i < 0 || i === STEPS.length - 1 ? null : STEPS[i + 1]; }
 export function back(step: Step): Step | null { const i = STEPS.indexOf(step); return i <= 0 ? null : STEPS[i - 1]; }
+/** What the first run's Back does (M72, the walkthrough, item 1): with an optional sub panel open on the check screen (Set up
+ *  more, or one of its folds), it closes that and stays on the finding; otherwise it goes to the screen before. A problem
+ *  found is never thrown away: the page keeps it, and the project screen offers it again (found). Null: no Back here. */
+export function backPress(step: Step, open: { fold: boolean; more: boolean; found: boolean }): { close: true } | { to: Step } | null {
+  if (step === "check" && (open.fold || open.more)) return { close: true };
+  const to = back(step);
+  return to ? { to } : null;
+}
 
 /// The questions are optional (the person can skip them all), and each answer says out loud what it changes.
 export const QUESTIONS: { key: keyof Answers; ask: string; yes: string; no: string; yesEffect: string; noEffect: string }[] = [

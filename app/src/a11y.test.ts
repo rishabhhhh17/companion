@@ -786,13 +786,13 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
   const css = rules(ALL_CSS());
   const tokRules = rules(TOKENS_CSS());
   const decls = (sel: string, media: RegExp | null) => Object.fromEntries(Object.entries(tokRules.find((r) => r.sel === sel && (media ? media.test(r.media ?? "") : !r.media))?.decl ?? {}).filter(([k]) => k.startsWith("--")));
-  const night = decls(":root", null), paper = { ...night, ...decls(':root[data-theme="paper"]', null) }, deep = { ...night, ...decls(':root[data-theme="deep"]', null) };
+  // M72: the White (paper) and Deep blocks are gone (nothing sets those themes since M71), so only Night and Black are measured.
+  const night = decls(":root", null);
   const more = /prefers-contrast: more/;
   // 2 Nov 2026: Black (the usual) is measured too, and Paper's tokens are White's (the stored value stays "paper").
   const black = { ...night, ...decls(':root[data-theme="black"]', null) };
-  const themes: [string, Record<string, string>][] = [["Night", night], ["Paper", paper], ["Deep", deep], ["Black", black],
-    ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Paper, more contrast", { ...paper, ...decls(':root[data-theme="paper"]', more) }],
-    ["Deep, more contrast", { ...deep, ...decls(':root[data-theme="deep"]', more) }], ["Black, more contrast", { ...black, ...decls(':root[data-theme="black"]', more) }]];
+  const themes: [string, Record<string, string>][] = [["Night", night], ["Black", black],
+    ["Night, more contrast", { ...night, ...decls(":root", more) }], ["Black, more contrast", { ...black, ...decls(':root[data-theme="black"]', more) }]];
   // M65: every theme again in the Instrument style (look.style), the usual since 4 Nov 2026, with and without More contrast.
   // Its tokens fall in the order the page's cascade gives them: :root, Instrument's page, the theme, then Instrument's
   // block over every theme and its block for that theme. Friendly is :root's own tokens, measured above.
@@ -802,23 +802,19 @@ describe("text, controls and marks meet WCAG AA in Night (Graphite), Paper and D
     ...(theme ? decls(`:root[data-theme="${theme}"]`, null) : {}), ...(theme && m ? decls(`:root[data-theme="${theme}"]`, more) : {}),
     ...decls(`${IS}[data-tone]`, null), ...(theme ? decls(`${IS}[data-theme="${theme}"]`, null) : {}),
   });
-  for (const [name, theme] of [["Graphite", null], ["White", "paper"], ["Deep", "deep"], ["Black", "black"]] as const) {
+  for (const [name, theme] of [["Graphite", null], ["Black", "black"]] as const) {
     themes.push([`Instrument, ${name}`, instrument(theme, false)], [`Instrument, ${name}, more contrast`, instrument(theme, true)]);
   }
   const one = (sel: string) => css.find((r) => r.sel === sel && !r.media);
   const ISLAND = /island|\.lip|\.mark|\.peekline|\.pillrow/;
   // Disabled words need not be read (WCAG 1.4.3 leaves them out); they are the only place --fg-3 may colour words.
   const DISABLED = /:disabled|\[data-disabled\]|\[aria-disabled/;
-  test("Night (Graphite) is the usual theme on every page, Paper and Deep are the others, and the Mac's light or dark changes nothing", () => {
-    // The graphite look (M51, the founder, 1 Nov 2026): the usual page is #111111, Paper's is white, Deep's a dark sea blue.
+  test("Night (Graphite) is the base, Black the look on every page (M71), and the Mac's light or dark changes nothing", () => {
     expect(night["--bg"]).toBe("#111111");
-    expect(paper["--bg"]).toBe("#FFFFFF");
-    expect(deep["--bg"]).toBe("#0B1622");
     expect(css.some((r) => /prefers-color-scheme/.test(r.media ?? "")), "no rule follows the Mac's light or dark").toBe(false);
-    // Deep was hidden until it had a full, tested look (founder call 3, T17); M51 offers it, with every check here run on it.
-    expect(TOKENS_CSS()).toContain(':root[data-theme="deep"] {');
-    expect(themes.map(([n]) => n)).toEqual(expect.arrayContaining(["Deep", "Deep, more contrast"]));
-    expect(themes[1][1]["--bg"]).not.toBe(night["--bg"]);
+    // M72: the White (paper) and Deep blocks are gone with the themes M71 retired.
+    expect(TOKENS_CSS()).not.toContain(':root[data-theme="deep"] {');
+    expect(TOKENS_CSS()).not.toContain(':root[data-theme="paper"] {');
   });
   test("--fg-3 colours only disabled words and marks, never words that must be read", () => {
     for (const r of css) if (/var\(--fg-3\)/.test(r.decl.color ?? "")) expect(DISABLED.test(r.sel), r.sel).toBe(true);

@@ -128,7 +128,7 @@ describe("the page sends it only on a press, and Fix it never starts a model tas
     expect(panel).toContain("{S.practiceKey.wrote} {S.practiceKey.looking}");
     expect(panel).toContain("<b>{S.practiceKey.stopped}</b>");
     expect(panel).toContain("{review && sendBack && <SendBack text={sendBack} label={S.fixRun.copyForAi} />}");
-    expect(card).toContain('sendBack={entry.find === "review" && m.review ? sendBackCopy(m.review) : ""}');
+    expect(card).toContain('sendBack={entry.find === "review" ? (m.review ? sendBackCopy(m.review) : practiceKeyCopy(pr.problem)) : ""}');
   });
 });
 

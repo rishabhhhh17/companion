@@ -30,7 +30,7 @@ import { invoke, listen } from "./tauri.ts";
 import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
-import { changedNow, changeSetting, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
+import { changedNow, changeSetting, characterNow, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { floorWords, homeSizeHint, PLACE_KEYS, problemWords, rowModel, shownNow, valueWords, wordsOf } from "./settingsRows.ts";
 import { offeredOptions, shownSettings } from "./modelChoice.ts";
@@ -402,7 +402,8 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
   const { project, facts, inv } = c;
   useSetting(d.key);
   // A value kept from before that reads as another option (a saved "night" is Graphite, settingsPages.ts OPTION_ALIASES).
-  const value = shownValue(d.key, d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key), setting("look.style"));
+  // The character shows the one in force (a Friendly store that never picked one shows its water, settingsStore characterNow).
+  const value = d.key === "look.character" ? characterNow() : shownValue(d.key, d.kind === "custom" ? snapshotNow()?.values[d.key] : setting(d.key));
   const usual = usualOf(d.key);
   const r = rowModel(d, value, usual, project);
   // A model row offers only the options whose real smoke test has passed (modelChoice.ts); the usual one always. A hidden

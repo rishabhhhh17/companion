@@ -2,6 +2,21 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Make it work: 6 Nov 2026 (in progress)
+
+- **Your water character stays.** If you used the Friendly look and never picked a character, Home, the edge of your screen and Settings show the water character again, drawn whole beside the headline. Picking another character still works.
+- **Back never loses a problem.** In the first run, Back closes Set up more and keeps the problem it found. Going back further, the project screen offers See the problem instead of checking again.
+- **The found problem shows where.** The first run's found screen shows the file, the line and the line itself, under the plain reason.
+- **The buttons are always in view.** A review's Fix it, Copy for my AI and Looks fine sit right under its headline. After you stop a fix, Undo what it did is the main button at the top.
+- **A failed check says which one.** "The tests failed 2 hours ago" instead of "A check failed". Fix it on a failed check now says Starting the fix at once.
+- **Practices answer where you press.** Start says Opening the practice copy right away. The key practice's button on Now says what it does (Let the pretend AI change a file), its card always has Copy for my AI, and a practice that tries again says Trying again (2 of 3) on its own card.
+- **One name.** Squibby is the product; the character goes by Squibby too unless you name it. The key is called Check my project everywhere, and the notch's button over a failed check says Fix it, as Home does.
+- **One story on who pays.** Settings no longer says anything costs you money: Squibby pays.
+- **History is one list.** Reviews sit in the same list as tasks. Opening a task shows Star and Name it right under it, and a starred task shows a filled star.
+- **Forget can be undone.** Forget says Forgotten, with Undo for a few seconds, before the note goes for good.
+- **Clearer options.** More ways to ask shows all of itself, and each switch has one line on what it does. Stop sharing these notes says what it removes. Odd words in Settings are plain now.
+- **Easier with VoiceOver and the keyboard.** Rows say what they do and to what ("Forget: Uses pnpm"), the keyboard comes back to the row after Edit or Start over, and a practice under way can be started over.
+
 ## Black, with colour that means something: 5 Nov 2026 (in progress)
 
 - **One look: black like the notch.** Home and the notch's small panel are one black surface now, with no blocks of navy, grey or purple inside it. Colour only marks what something means: blue for Now and actions, purple for Learn and practice, orange for History and changes to look at, pink for Memory, green for proven and red for a real problem.

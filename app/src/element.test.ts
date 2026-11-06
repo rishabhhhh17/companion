@@ -6,10 +6,9 @@
 // Then which room Home is and when its light may move.
 // M71 (black with colour, 5 Nov 2026): the rooms are retired. Home is black and sets no data-element; tokens.css keeps no
 // [data-element] block. What stays here is what still holds: each water's block and the accent it gives (the water
-// character, focus and what is picked in Settings), and element.ts's logic, which the dock and the island still read.
+// character, focus and what is picked in Settings), M72: element.ts is gone (nothing read it), and its tests with it.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { ROOM_IDLE_MS, roomElement, roomStill } from "./element.ts";
 import { WATERS } from "./lookfeel.ts";
 import { TOKENS_CSS } from "./ui/cssFiles.ts";
 
@@ -102,37 +101,13 @@ describe("the water chosen in Settings is the one accent (2 Nov 2026), set once 
   });
 });
 
-describe("which room Home is, and when its light may move", () => {
-  test("Flow's water is the usual room; Learn is Guide's; what you are doing right now wins", () => {
-    for (const tab of ["now", "did", "memory", "settings"] as const) expect(roomElement({ tab, active: null }), tab).toBe("flow");
-    expect(roomElement({ tab: "now", active: "flow" })).toBe("flow");
-    expect(roomElement({ tab: "learn", active: null })).toBe("guide");
-    // A practice or a lesson running makes Now Guide's room too.
-    expect(roomElement({ tab: "now", active: "guide" })).toBe("guide");
-    expect(roomElement({ tab: "did", active: "guide" })).toBe("flow");
-    // Holding the talk keys, or Prompt help reading the words you picked, is Voice's room on any place but Settings.
-    for (const tab of ["now", "learn", "did", "memory"] as const) {
-      expect(roomElement({ tab, active: "voice" }), tab).toBe("voice");
-      expect(roomElement({ tab, active: "prompt" }), tab).toBe("voice");
-      // A file dragged over Home is Files' room.
-      expect(roomElement({ tab, active: "files" }), tab).toBe("files");
-    }
-    // Settings keeps its own room, so the accents on the page you are changing never flicker.
-    expect(roomElement({ tab: "settings", active: "voice" })).toBe("flow");
-    expect(roomElement({ tab: "settings", active: "files" })).toBe("flow");
-  });
-  test("the light holds still when Home is closed or hidden, and after ten seconds with no touch", () => {
-    expect(ROOM_IDLE_MS).toBe(10_000);
-    expect(roomStill({ open: true, hidden: false, sinceTouch: 0 })).toBe(false);
-    expect(roomStill({ open: true, hidden: false, sinceTouch: 9_999 })).toBe(false);
-    expect(roomStill({ open: true, hidden: false, sinceTouch: 10_000 })).toBe(true);
-    expect(roomStill({ open: false, hidden: false, sinceTouch: 0 })).toBe(true);
-    expect(roomStill({ open: true, hidden: true, sinceTouch: 0 })).toBe(true);
-  });
+describe("M71 and M72: Home carries no room (element.ts is gone with it)", () => {
   test("M71: Home carries no room: no data-element, no room light, and no stylesheet keys a rule on one", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).not.toContain("data-element={room}");
     expect(card).not.toContain("<RoomLight");
     expect(TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, "")).not.toContain("[data-element");
+    // M72: nothing writes the attribute any more either.
+    expect(readFileSync(new URL("./itemMarks.tsx", import.meta.url), "utf8")).not.toContain("data-element");
   });
 });

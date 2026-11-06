@@ -1,8 +1,7 @@
 /* The design tokens (docs/design/2026-10-31-uiux-overhaul-spec.md, 2.1). This file is the only place a colour is written
    as a value, in any stylesheet or page, and the only place parts.css finds a size, a radius or a duration
-   (ui/styleLint.test.ts checks both). Four themes (look.theme, M51 and 2 Nov 2026): Graphite, the usual one, on :root (a
-   stored "night" from before reads as Graphite, lookfeel.ts themeOf), Deep on :root[data-theme="deep"], Black on
-   :root[data-theme="black"] and White on :root[data-theme="paper"] (the stored value stays "paper", so nothing saved breaks).
+   (ui/styleLint.test.ts checks both). The base on :root, and Black on :root[data-theme="black"], the one look since M71
+   (lookfeel.ts FIXED_LOOK). M72: the White (paper) and Deep blocks are gone; nothing sets those themes any more.
    Each theme is dark or light, and lookfeel.ts sets that as data-tone, so a rule that only cares whether the page is dark
    never names a theme. The colour rule (the founder, 2 Nov 2026, after showing friends: "too many colors, so it looks like
    an aquarium"): calm and grown up. A neutral page (Black, the usual, White or Graphite) carries Home. One accent, the
@@ -754,140 +753,7 @@
   :root[data-style="instrument"] { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); --fg-2-room: #D6D7DB; }
 }
 
-/* ---------- Colour, White (look.theme = paper; 2 Nov 2026, the founder: "so we gonna have white and black"): Home and
-   Settings only. Pure white with near white steps, near black words, and hairlines where white meets white (a shadow alone
-   is not an edge there). The stored value stays "paper", so a saved choice keeps working; only the words and these tokens
-   changed. No room light: colour comes from the primary and the small accents. The light blues are never words or thin
-   lines here (1.5 to 2.5 to 1 on white): the deep blue is (tone light, below). ---------- */
-:root[data-theme="paper"] {
-  color-scheme: light;
-  --bg: #FFFFFF;
-  --surface-1: #FFFFFF;
-  --surface-2: #F5F5F5;
-  --surface-3: #EDEDED;
-  --inset: #F7F7F7;
-  --fg: #0A0A0A;
-  --fg-2: #5C5C5C;                     /* 5.7 to 1 on the darkest step, 6.7 on white */
-  --fg-3: #737373;                     /* only on white, never on --surface-3 */
-  --line: #E6E6E6;
-  --line-strong: rgba(0, 0, 0, .16);
-  --edge-control: rgba(0, 0, 0, .5);
-  --edge-control-hover: rgba(0, 0, 0, .62);
-  --knob-off: rgba(0, 0, 0, .55);
-  --focus: var(--flow-deep);           /* the accent's deep colour: its light ones are 1.5 to 2.5 to 1 on white */
-  --ok: #0E7E4E;
-  --amber: #8F5B00;
-  --amber-ink: #FFFFFF;
-  --bad: #B3261E;
-  --bad-room: #B3261E;
-  --bad-edge: rgba(179, 38, 30, .45);
-  --bad-hover: rgba(179, 38, 30, .08);
-  --bad-press: rgba(179, 38, 30, .14);
-  --water: #1676C8;
-  --pond: var(--surface-1);            /* a light sky over the same water, never a black box on a white page */
-  --added: rgba(14, 126, 78, .12);
-  --removed: rgba(179, 38, 30, .1);
-  --marker: #FFEE8A;                   /* the same highlighter on white, a little lighter, under White's own ink */
-  --marker-ink: #0A0A0A;
-  --key-fill: #FFFFFF;
-  --key-edge: #DDDDDD;
-  --key-lip: #FFFFFF;
-  --key-drop: #D4D4D4;
-  --key-down: color-mix(in srgb, var(--water) 14%, #F0F0F0);
-  --bubble: rgba(255, 255, 255, .96);
-  /* The accent on white is the primary's deep blue (the light blues are 1.5 to 2.5 to 1 on white), with white on it. */
-  --pick: var(--el-deep);
-  --pick-ink: #FFFFFF;
-  --switch-on: var(--el-deep);
-  --pick-wash: color-mix(in srgb, var(--el-base) 10%, #FFFFFF);
-  --stamp-working: var(--el-deep);
-  /* The tiles on white: the pastels, with a deep ink of the same hue. */
-  --tint-sky: #CFE5FF;   --tint-sky-ink: #1B4F8A;
-  --tint-mint: #C8F0DC;  --tint-mint-ink: #145C3B;
-  --tint-rose: #FFD3E2;  --tint-rose-ink: #8C2350;
-  --tint-sun: #FFE9AE;   --tint-sun-ink: #6B4A00;
-  --tint-lilac: #E2DAFF; --tint-lilac-ink: #4A3699;
-  --ink-disabled: #737373;             /* 4 to 1 on the disabled fill, and still fainter than every readable word */
-  /* Silver on white reads as disabled, so White's main button is ink, with no lip and no edge. Home's own main button is
-     the water blue gel in every theme (ui/look.css). */
-  --main: var(--fg);
-  --main-hover: #2A2A2A;
-  --main-press: #000000;
-  --main-ink: var(--bg);
-  --main-shadow: none;
-  --main-shadow-press: none;
-  --shadow-raised: 0 8px 20px rgba(0, 0, 0, .08), 0 1px 3px rgba(0, 0, 0, .08);
-  --scrim: rgba(0, 0, 0, .25);
-  /* The primary on white: its deep blue is the words, the selected row a light wash of it. */
-  --el-text: var(--el-deep);
-  --el-row: color-mix(in srgb, var(--el-base) 10%, #FFFFFF);
-  --wl-line: var(--el-deep);
-  --mark-line: var(--el-deep);
-  --room-show: 0;
-  --room-base: #FFFFFF;
-  --grain-a: 0;
-  --sw-sky-a: 0%;
-  --fg-2-room: #5C5C5C;
-  /* White stays clean: white cards with no tint, only a faint light on the group's own card, and Flowflow's water a light
-     wash of the water rather than a deep sea (--sea-room, tone light, below), with a faint glow. */
-  --sea-see-a: .9;
-  --char-glow-a: 20%;
-  --stamp-fill-a: 4%;                  /* a badge's pill on white: a faint tint, so its words keep 4.5 to 1 */
-  --stamp-needs-a: 8%;
-  --card-tint-a: 0%;
-  --card-lit-a: 8%;
-  --card-halo-a: 0%;
-  /* Hairlines instead of white on white: every card and key is found by a light grey line. */
-  --sheen-top: transparent;
-  --sheen-line: #E6E6E6;
-  --sheen-drop: rgba(0, 0, 0, .06);
-  --keycap: #FFFFFF;
-  --keycap-hover: #F5F5F5;
-  --keycap-lip: #FFFFFF;
-  --keycap-under: rgba(0, 0, 0, .1);
-  --keycap-ring: #E0E0E0;
-  /* M69: the accent's words on its tint are its deep step on white; the floating shadow is lighter on a light page. */
-  --acc-text: var(--acc-press);
-  --acc-tint: color-mix(in srgb, var(--acc) 12%, var(--surface-1));
-  --ok-tint: color-mix(in srgb, var(--ok) 7%, var(--surface-1));
-  --warn-tint: color-mix(in srgb, var(--amber) 8%, var(--surface-1));
-  --danger-tint: color-mix(in srgb, var(--bad) 7%, var(--surface-1));
-  --shadow-float: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .06);
-}
 
-/* ---------- Colour, Deep (look.theme = deep, M51): a dark sea blue, the same steps as Graphite with a cool cast ----------
-   Home and Settings only. The main button stays the neutral white pill; the marks keep their meanings. */
-:root[data-theme="deep"] {
-  --bg: #0B1622;
-  --surface-1: #0F1D2C;
-  --surface-2: #142536;
-  --surface-3: #1B2F44;
-  --inset: #142536;
-  --fg: #F3F7FB;
-  --fg-2: #A9BACB;
-  --fg-3: #8A9CAF;
-  --line: rgba(190, 220, 255, .1);
-  --line-strong: rgba(190, 220, 255, .2);
-  --edge-control: rgba(190, 220, 255, .42);
-  --edge-control-hover: rgba(190, 220, 255, .54);
-  --knob-off: rgba(225, 236, 247, .58);
-  --bad: #F47372;
-  --bad-edge: rgba(244, 115, 114, .45);
-  --bad-hover: rgba(244, 115, 114, .1);
-  --bad-press: rgba(244, 115, 114, .16);
-  --pond: #06101A;                     /* the sky over Flowflow's water: deeper than the page, never a black box */
-  --key-fill: #142536;
-  --key-edge: rgba(190, 220, 255, .14);
-  --key-down: color-mix(in srgb, var(--water) 14%, #142536);
-  --bubble: rgba(27, 47, 68, .9);
-  --shadow-raised: 0 8px 14px rgba(0, 6, 14, .5), 0 2px 4px rgba(0, 6, 14, .3);
-  --scrim: rgba(2, 8, 16, .55);
-  --room-base: #08121C;
-  --room-wash-a: 42%;                  /* Deep is the sea: the room's blue all the way down */
-  --room-floor-a: 50%;
-  --keycap: #1B2F44;
-  --keycap-hover: #22394F;
-}
 
 /* ---------- Colour, Black (look.theme = black; 2 Nov 2026, the founder: "make dark theme where you make everything black"):
    a pure black page, near black surfaces, and colour only from the water blue, the small accents and Flowflow. Depth comes
@@ -1011,8 +877,6 @@
 /* More contrast, from the Mac's own setting. */
 @media (prefers-contrast: more) {
   :root { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
-  :root[data-theme="paper"] { --line: rgba(0, 0, 0, .24); --line-strong: rgba(0, 0, 0, .4); --fg-2: #4A4A4F; --edge-control: rgba(0, 0, 0, .6); }
-  :root[data-theme="deep"] { --line: rgba(190, 220, 255, .26); --line-strong: rgba(190, 220, 255, .42); --fg-2: #C9D5E2; --edge-control: rgba(190, 220, 255, .62); }
   :root[data-theme="black"] { --line: rgba(255, 255, 255, .26); --line-strong: rgba(255, 255, 255, .42); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
 
   :root { --fg-2-room: #D6D7DB; }
@@ -1148,33 +1012,6 @@
   --ask-focus-edge: var(--ink-solid);
 }
 
-:root[data-style="instrument"][data-theme="paper"] {
-  --card-flat: inset 0 0 0 var(--hair) var(--line), 0 1px 2px rgba(0, 0, 0, .04);
-  /* M69 (spec 1.2, the mockups): White in Instrument is a warm off white window with white cards on it, and every grey is
-     one deep ink (rgb 11 18 32) at a step of opacity. Friendly's White keeps its own block above. */
-  --bg: #F6F6F4;
-  --surface-1: #FFFFFF;
-  --surface-2: #EEEEEB;
-  --surface-3: #E6E6E2;
-  --inset: #F6F6F4;
-  --fg: rgba(11, 18, 32, .92);
-  --fg-2: rgba(11, 18, 32, .62);
-  --fg-2-room: rgba(11, 18, 32, .62);
-  --line: rgba(11, 18, 32, .09);
-  --line-strong: rgba(11, 18, 32, .14);
-  --ink-solid: #0B1220;
-  --ok: #0C7548;                       /* White's green one step deeper, so a proven stamp reads 4.5 to 1 on the off white steps */
-  --hero-soft: rgba(11, 18, 32, .6);       /* the spec's t3 .42 reads 2.7 to 1; .6 is the faintest at 4.5 to 1 on the page */
-  --room-base: #F6F6F4;
-  --acc-tint: color-mix(in srgb, var(--acc) 12%, var(--surface-1));
-  --acc-text: var(--acc-press);
-  --ok-tint: color-mix(in srgb, var(--ok) 7%, var(--surface-1));
-  --warn-tint: color-mix(in srgb, var(--amber) 8%, var(--surface-1));
-  --danger-tint: color-mix(in srgb, var(--bad) 7%, var(--surface-1));
-  --side-bg: color-mix(in srgb, #0B1220 3%, var(--bg));
-  --shadow-float: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .06);
-}
-:root[data-style="instrument"][data-theme="deep"] { --fg-2-room: #A9BACB; }
 :root[data-style="instrument"][data-density="compact"] {
   --space-row-y: 5px;
   --h-md: 24px;

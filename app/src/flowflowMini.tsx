@@ -11,13 +11,13 @@
 // then: it shows its still picture until a warm drawing is ready (flowflow/pool.ts), made in an idle moment.
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { poseFor, poseUrl, ringOf, type Pose } from "./characters.ts";
-import { characterOf, flowColours, hueTurn, livelinessOf, waterOf, type CharacterLook, type Water } from "./lookfeel.ts";
+import { flowColours, hueTurn, livelinessOf, waterOf, type CharacterLook, type Water } from "./lookfeel.ts";
 import { miniShows } from "./chromeLook.ts";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb, Visor } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
-import { useSetting } from "./settingsStore.ts";
+import { useCharacter, useSetting } from "./settingsStore.ts";
 import { useRest } from "./useRest.ts";
 
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
@@ -58,5 +58,5 @@ export function FlowMini({ state, className, still, water, pose, band, glance }:
 
 /** The character chosen (look.character, lookfeel.ts characterOf): the Visor, the glass orb or the water character. */
 export function useCharacterLook(): CharacterLook {
-  return characterOf(useSetting("look.character"), useSetting("look.style"));
+  return useCharacter();
 }

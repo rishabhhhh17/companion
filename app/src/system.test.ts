@@ -137,18 +137,12 @@ describe("Instrument: every grey is one ink at a step of opacity (spec 1.2)", ()
     for (const [k, a] of [["--fg", ".92"], ["--fg-2", ".62"], ["--line", ".09"], ["--line-strong", ".14"]]) expect(t[k], k).toBe(`rgba(${ink}, ${a})`);
   };
   test("Graphite: the warm off white ink", () => steps(tokensOf("instrument", "graphite"), "233, 235, 223"));
-  test("White: the deep ink, on a warm off white window with white cards", () => {
-    const t = tokensOf("instrument", "paper");
-    steps(t, "11, 18, 32");
-    expect(t).toMatchObject({ "--bg": "#F6F6F4", "--surface-1": "#FFFFFF" });
-  });
+
   test("the hero's soft tone is the faintest step that still reads 4.5 to 1 (the spec's .42 is too faint to read)", () => {
     expect(tokensOf("instrument", "graphite")["--hero-soft"]).toBe("rgba(233, 235, 223, .52)");
-    expect(tokensOf("instrument", "paper")["--hero-soft"]).toBe("rgba(11, 18, 32, .6)");
   });
   test("Friendly keeps its own greys (only the grammar is shared)", () => {
     expect(tokensOf("friendly", "graphite")["--fg"]).toBe("#FAFAFA");
-    expect(tokensOf("friendly", "paper")["--fg"]).toBe("#0A0A0A");
   });
 });
 

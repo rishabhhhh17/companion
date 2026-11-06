@@ -369,7 +369,8 @@ export type DrivePaused = Envelope & { type: "drive.paused"; agent: string; reas
 export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: number; title: string; failure: { label: string; detail: string }; options: { id: string; label: string }[]; tries?: number; same?: boolean; rung?: "retry" | "research" | "lastWorking" };
 // undone (M45): an Undo put the project back to before this task. back: "Bring the fix back" then put its files back again
 // (undone stays set: nothing was checked since).
-export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string };
+/** failedCheck (M72): the rung of the check that failed (install, checks, tests, start, browser, review), for a failed task. */
+export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
  *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
 /** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary

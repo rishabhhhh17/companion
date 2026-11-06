@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
@@ -36,7 +36,7 @@ import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { SetupList } from "./setupList.tsx";
@@ -95,7 +95,7 @@ import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
 import { Icon } from "./icons.tsx";
 import { FailingLine, lineOf } from "./failingLine.tsx";
-import { Button, Dot, EmptyRow, Group, KeyLabel, Lead, ListGroup, ListRow, Menu, PlaceButton, ProofChip, Row, Said, Switch, Tag, VerdictLine } from "./ui/parts.tsx";
+import { Button, Dot, EmptyRow, Group, KeyLabel, Lead, ListGroup, ListRow, Menu, PlaceButton, ProofChip, Row, Said, Switch, Tag, Toast, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
@@ -250,6 +250,9 @@ function PlacesBox({ side, children }: { side: boolean; children: ReactNode }) {
 
 /** The first letter capital (a headline that lost its "Practice:" in front). */
 const capFirst = (t: string): string => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+/** M72 (the walkthrough, item 4): the key practice's Copy for my AI when its review is no longer on screen: the place, in the
+ *  review's own words (never the key itself). Empty without a line to name, and then the button is not drawn. */
+const practiceKeyCopy = (p: Problem | null | undefined): string => (p && p.kind === "line" ? S.homeNow.keyCopy(S.review.at(p.file, p.line)) : "");
 
 function LinkLine({ label, url, strong }: { label: string; url: string; strong?: boolean }) {
   const [note, setNote] = useState("");
@@ -333,6 +336,24 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
   const asking = u && project ? shown.find((h) => h.checkpoint && h.checkpoint === u.checkpoint) ?? null : null;
   const name = project.split("/").filter(Boolean).at(-1) ?? project;
   // When: the time today, else the day (historyDays), so one list holds every day.
+  // The Undo question for a task, right under its row (the same words as the receipt's).
+  const undoAsk = (h: HistoryItem) => { const backId = `${undoId}-${h.id}`; return (<div className="hist-extra">
+        {u!.stage === "confirm" && (
+          <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
+            <div className="row">
+              <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
+              <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+            </div></ConfirmStep>
+        )}
+        {u!.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+        {u!.stage === "failed" && <div className="line" role="alert">{u!.note}</div>}
+        {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? undoneExcept(u!.yours) : S.undone}{u!.recovered ? ` ${S.undoRecovered}` : ""}{u!.large ? ` ${S.undoLarge}` : ""}</div>}
+      </div>); };
+  // Tasks and reviews in one list, newest first (a task by when it ended or started, a review by when it ran).
+  const byTime = (tasks: HistoryItem[], rs: ReviewRowView[]) => [
+    ...tasks.map((h, i) => ({ kind: "task" as const, h, i, at: Date.parse(h.endedAt ?? h.startedAt) || 0 })),
+    ...rs.map((x) => ({ kind: "review" as const, x, at: Date.parse(x.at) || 0 })),
+  ].sort((a, b) => b.at - a.at);
   const when = (h: HistoryItem) => { const day = historyDays([h], now, S.screens)[0]; return day && day.label !== S.screens.today ? day.label : historyTime(h, now) ?? agoWords(h.endedAt ?? h.startedAt, now); };
   return (
     <section className="panel bare hist" aria-label={S.recentTitle}>
@@ -357,47 +378,32 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
             action={onPractice ? { label: S.screens.startPractice, colour: "purple", onClick: onPractice } : onAsk ? { label: S.screens.askFirst, onClick: onAsk, colour: "blue" } : null} />
         </ListGroup>
       )}
-      {shown.length > 0 && (
+      {/* M72 (the engineer's low list: one list per screen): the reviews of changes (M57 feature 1) are rows of the same
+          list, by time, each with its rating's colour, the rating in words, what was done with it and the files by name only.
+          Not searched with the tasks, so a search shows tasks only. */}
+      {(shown.length > 0 || (reviews.length > 0 && !filtering)) && (
         <ListGroup label={S.recentTitle}>
-          {shown.map((h, i) => {
+          {byTime(shown, filtering ? [] : reviews).map((row) => { if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
+            <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
+          ); }
+            const h = row.h, i = row.i;
             const backId = `${undoId}-${h.id}`, task = taskName(h.label), meaning = historyMeaning(h);
             const v = h.status === "running" ? null : verdictOf(historyFacts(h));
             const lineWords = [historyWords(h), (h.changed ?? 0) > 0 ? S.screens.filesChanged(h.changed ?? 0) : ""].filter(Boolean).join(" · ");
-            return <ListRow key={h.id} id={`history-${h.id}`} colour={MEANING_COLOUR[meaning]} icon={v ? verdictMark(v).mark : "spin"}
+            return <Fragment key={h.id}><ListRow rowId={`history-${h.id}`} flash={focus === h.id} colour={MEANING_COLOUR[meaning]} icon={v ? verdictMark(v).mark : "spin"}
               title={<>{task}<SaveMarksLine lastWorking={h.lastWorking} star={h.star} name={h.name} /></>}
               line={lineWords} fact={<time className="hist-time" dateTime={h.endedAt ?? h.startedAt}>{when(h)}</time>}
               onOpen={h.checkpoint && project ? () => setSel(sel === h.id ? null : h.id) : undefined} openLabel={h.checkpoint ? `${S.fix.star}, ${S.fix.nameIt}: ${task}` : undefined}
-              action={offers[i] === "undo" && !u ? { id: backId, label: S.historyUndo, colour: "orange", onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null} />;
+              action={offers[i] === "undo" && !u ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${task}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: h.checkpoint }) } : null}
+              expanded={h.checkpoint && project ? sel === h.id : undefined} />
+              {/* M72 (the walkthrough, item 9): the Undo question and the opened row's Star and Name it sit right under the
+                  row they belong to, never at the foot of the page. */}
+              {asking?.id === h.id && h.checkpoint && <li className="ui-mrow hist-extra-row">{undoAsk(h)}</li>}
+              {picked?.id === h.id && h.checkpoint && project && !u && <li className="ui-mrow hist-extra-row" role="group" aria-label={task}>
+                <SaveMarksActions star={h.star} name={h.name} subject={task} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />
+              </li>}
+            </Fragment>;
           })}
-        </ListGroup>
-      )}
-      {/* The Undo question for the newest task, under the list (the same words as the receipt's). */}
-      {asking && asking.checkpoint && (() => { const h = asking, backId = `${undoId}-${h.id}`; return (<div className="hist-extra" data-flash={focus === h.id || undefined}>
-        {u!.stage === "confirm" && (
-          <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
-            <div className="row">
-              <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, h.checkpoint!)); }}>{S.undoYes}</button>
-              <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
-            </div></ConfirmStep>
-        )}
-        {u!.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
-        {u!.stage === "failed" && <div className="line" role="alert">{u!.note}</div>}
-        {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? undoneExcept(u!.yours) : S.undone}{u!.recovered ? ` ${S.undoRecovered}` : ""}{u!.large ? ` ${S.undoLarge}` : ""}</div>}
-      </div>); })()}
-      {/* M58: star or name this save point (the store's own notes; a starred or named save is never pruned). */}
-      {picked && picked.checkpoint && project && !u && (
-        <div className="hist-extra" role="group" aria-label={taskName(picked.label)}>
-          <p className="hist-extra-title">{taskName(picked.label)}</p>
-          <SaveMarksActions star={picked.star} name={picked.name} onMark={(mk) => void send(markSave(project, picked.checkpoint!, mk))} />
-        </div>
-      )}
-      {/* M57 feature 1: the reviews of changes to this project, each with its rating's colour, the rating in words, what was
-          done with it, and the files by name only. Not searched with the tasks: their own titled list. */}
-      {reviews.length > 0 && !filtering && (
-        <ListGroup label={S.history.reviewsTitle} shown>
-          {reviews.map((x) => { const l = reviewRowLook(x, now); return (
-            <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
-          ); })}
         </ListGroup>
       )}
     </section>
@@ -409,6 +415,8 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
 // an example, and the one sentence on how the list fills in. Nothing in the example is stored.
 // M71 (one structure): each section is a titled grouped list, one row per note: its pink tile, the note, where it came
 // from, and Forget on the right. A press on the note edits it in place.
+/** How long Forget's Undo stays (M72): a few seconds, then the note is forgotten for good. */
+const FORGET_MS = 6000;
 function MemoryList({ title, scope, lines, project, eraseLabel }: { title: string; scope: "project" | "profile"; lines: MemoryLine[]; project: string; eraseLabel: string }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -416,15 +424,23 @@ function MemoryList({ title, scope, lines, project, eraseLabel }: { title: strin
   // Each line's own row button, so the keyboard goes back to it after the line is saved or Esc puts the box away.
   const base = useId(), editId = (line: string) => `${base}-edit-${line}`, eraseId = `${base}-erase`;
   const save = (id: string) => { void send(editLine(project, scope, id, text)); setEditing(null); focusBack(editId(id)); };
+  // M72 (the walkthrough, item 10): Forget takes the note off the list at once and says so, with Undo for a few seconds;
+  // only when that time is up is it forgotten for good. A second Forget, or leaving the page, sends the one waiting first.
+  const [pending, setPending] = useState<MemoryLine | null>(null);
+  const waiting = useRef<MemoryLine | null>(null); waiting.current = pending;
+  const commitForget = () => { const p = waiting.current; if (p) void send(forgetLine(project, scope, p.id)); setPending(null); };
+  const forgetSoon = (l: MemoryLine) => { if (waiting.current) void send(forgetLine(project, scope, waiting.current.id)); setPending(l); };
+  useEffect(() => () => { if (waiting.current) void send(forgetLine(project, scope, waiting.current.id)); }, []);
+  const shownLines = lines.filter((l) => l.id !== pending?.id);
   const icon = scope === "project" ? "memory" : "person";
   return (
     <div className="mem-section" role="group" aria-label={title}>
       <ListGroup label={title} shown>
-        {lines.length === 0 && (
+        {shownLines.length === 0 && (
           <ListRow colour="grey" icon={icon} title={<span className="note-example">{S.screens.example[scope].text}</span>}
             line={<>{S.screens.example[scope].source} · {S.screens.exampleTag}</>} />
         )}
-        {lines.map((l) => editing === l.id ? (
+        {shownLines.map((l) => editing === l.id ? (
           <li className="ui-mrow mem-editing" key={l.id}>
             <input ref={focusIfLost} type="text" value={text} aria-label={`${S.memoryEdit}: ${l.text}`} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) save(l.id); if (e.key === "Escape") { e.stopPropagation(); setEditing(null); focusBack(editId(l.id)); } }} />
             <button className="ui-mrow-act" data-c="blue" type="button" onClick={() => save(l.id)}>{S.memorySave}</button>
@@ -433,10 +449,11 @@ function MemoryList({ title, scope, lines, project, eraseLabel }: { title: strin
           // A note is one row: the fact in plain words, then its source, so every line can be forgotten.
           <ListRow key={l.id} id={editId(l.id)} colour="pink" icon={icon} title={l.text} line={`${S.memoryFrom} ${l.source}${l.date ? `, ${memoryDate(l.date)}` : ""}`}
             onOpen={() => { setEditing(l.id); setText(l.text); }} openLabel={`${S.memoryEdit}: ${l.text}`}
-            action={{ label: S.memoryForget, colour: "grey", describedBy: undefined, onClick: () => void send(forgetLine(project, scope, l.id)) }} />
+            action={{ label: S.memoryForget, colour: "grey", ariaLabel: `${S.memoryForget}: ${l.text}`, onClick: () => forgetSoon(l) }} />
         ))}
       </ListGroup>
-      {lines.length === 0 && <p className="page-caption">{S.screens.memoryEmpty}</p>}
+      {pending && <Toast text={S.memoryForgotten(pending.text)} action={S.memoryUndo} onAction={() => setPending(null)} onDone={commitForget} ms={FORGET_MS} />}
+      {shownLines.length === 0 && <p className="page-caption">{S.screens.memoryEmpty}</p>}
       {lines.length > 0 && !sure && <div className="row mem-erase-row"><Button id={eraseId} kind="quiet" className="mem-erase" onClick={() => setSure(true)}>{eraseLabel}</Button></div>}
       {sure && (
         <ConfirmStep className="row mem-ask" label={S.memoryEraseSure} back={eraseId} onCancel={() => setSure(false)}>
@@ -784,10 +801,13 @@ function Card() {
   const loadPractice = () => void invoke("practice_list").then((v) => setPracticeRec(recordFrom(v))).catch(() => {});
   useEffect(loadPractice, [project]);
   const practiceBusy = useRef(false);   // one copy per press
-  const practiceAction = (run: () => Promise<unknown>) => {
+  // M72 (the walkthrough, item 5): the practice being opened, so the press answers where it was made until its copy is ready.
+  const [practiceOpening, setPracticeOpening] = useState<string | null>(null);
+  const practiceAction = (run: () => Promise<unknown>, id: string | null = null) => {
     if (practiceBusy.current) return;
     practiceBusy.current = true; setPracticeNote("");
-    void run().catch((e) => { if (String(e)) setPracticeNote(String(e)); }).finally(() => { practiceBusy.current = false; loadPractice(); });
+    if (id) setPracticeOpening(id);
+    void run().catch((e) => { if (String(e)) setPracticeNote(String(e)); }).finally(() => { practiceBusy.current = false; setPracticeOpening(null); loadPractice(); });
   };
   // The folder in use before a practice (never a practice copy), for Back to my project.
   const before = () => (project && !copyOf(practiceRec, project) ? project : nowModel.current.practice?.previous);
@@ -801,7 +821,7 @@ function Card() {
     // A practice opens its own folder, so never while something works on the project (it would switch it under the work).
     if (!canStart(workingOn(nowModel.current), e, nowModel.current.doctor)) { setPracticeNote(workingOn(nowModel.current) ? S.practiceBusy : S.practiceNodeLine(nodeMissing(nowModel.current.doctor)?.fix ?? "")); return; }
     const previous = before();
-    practiceAction(() => invoke("create_practice", { which: id }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind: id, ...(previous ? { previous } : {}) })));
+    practiceAction(() => invoke("create_practice", { which: id }).then((p) => dispatch({ type: "ui.practiceStarted", project: String(p), kind: id, ...(previous ? { previous } : {}) })), id);
   };
   // Continue: the recorded copy opens as the project; the practice comes back and Find runs again (resume, below). When that
   // copy is already the project (its panel was closed), opening the same folder again changes nothing, so it comes back here.
@@ -809,7 +829,7 @@ function Card() {
     homeDispatch({ type: "pick", tab: "learn" });
     if (workingOn(nowModel.current)) { setPracticeNote(S.practiceBusy); return; }
     if (project && copyOf(practiceRec, project) === id) { resumedKey.current = ""; dispatch({ type: "ui.practiceStarted", project, kind: id, resumed: true }); return; }
-    practiceAction(() => invoke("open_practice", { which: id }));
+    practiceAction(() => invoke("open_practice", { which: id }), id);
   };
   // Start over (asked first): the old copy to the Trash, a fresh copy in a new folder. The fresh copy opens as the project,
   // so, like Start, never while something works.
@@ -1474,7 +1494,10 @@ function Card() {
     const refusedFix = () => dispatch({ type: "ui.pointFixRefused" });
     if (route === "practice") practiceFix(nowModel.current.practice!);   // it closes the point card itself
     else if (route === "smallFix" && pt) { pressed(); dispatch({ type: "ui.pointFixing" }); dispatch({ type: "ui.undoClosed" }); void sendOrExplain(fixFound(here, { label: pt.label, detail: pt.message, problem: pt.problem }), refusedFix); }
-    else { if (pt) dispatch({ type: "ui.pointFixing" }); void send(diagnose(here)).catch(refusedFix); }
+    // M72 (the walkthrough, item 12): Fix it on a failed check with no found problem on screen answers at once too
+    // (Starting the fix, with Stop), until the engine's first event; a refusal puts the page back as it was.
+    else if (pt) { dispatch({ type: "ui.pointFixing" }); void send(diagnose(here)).catch(refusedFix); }
+    else { pressed(); dispatch({ type: "ui.taskSent", words: S.review.fixStarting }); void send(diagnose(here)).catch((e) => { dispatch({ type: "ui.taskSendFailed" }); explainRefusal(e); }); }
   };
   // Anywhere mode: after each click, "did that work?" before the next step. A step that did not work is not suggested again.
   // With "Ask Did that work? after each step" set to only when unsure (showme.askWorked), a clean click on a solid ring
@@ -1583,7 +1606,8 @@ function Card() {
       if (t.do === "review") { pickTab("now"); if (nowModel.current.review) showReview(); return; }
       // The notch's Undo this fix: the receipt's own question, on Now (it is never undone without the person's yes there).
       if (t.do === "undo") { pickTab("now"); if (m.receipt && undoCan(m, project)) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); return; }
-      if (t.do === "find") findFromHome(); else shipIt(); return;
+      // M72 (item 15): over a failed check the panel's button says Fix it, and does what Home's Fix it does.
+      if (t.do === "find") { if (homeStatus(nowModel.current, project, Date.now()).kind === "failing") fixKnown(); else findFromHome(); } else shipIt(); return;
     }
     // The notch's Add your key: Settings, at that place (Account, Your Claude).
     if ("set" in t) { setSetPlace(t.set); pickTab("settings"); return; }
@@ -1910,13 +1934,15 @@ function Card() {
     else if (a === "pickFolder") pickFolder();
     else beginPractice(FIRST_PRACTICE);
   };
+  // M72 (the walkthrough, item 3): after Stop with changes, Undo what it did leads, in the lead itself (always in view).
+  const stoppedUndo = !compact && !setup && !!m.receipt && receiptVerdict(m)?.kind === "stopped" && undoCan(m, project);
   const heroMain: { label: string; go: () => void; status: boolean } | null = compact || setup ? null
     : retryOwnsMain(m, project) ? null
     : blockMain ? { label: S.home.blocked[blockMain].main, go: () => doBlockMain(), status: false }
     // M71: one main button per screen. When the review card is right under the lead with its own Review changes, the lead
     // has none of its own (two blue buttons said the same thing).
     : reviewMain ? (show("review") && reviewOn && home.tab === "now" ? null : { label: S.home.reviewMain, go: () => openReview(), status: false })
-    : main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;
+    : main || needMain ? { label: main ? S.home.main[main] : needMainWords(m, needMain!), go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;
   // M69 step 2, Home at rest is never empty (homeRest.ts): the two tone hero from the latest real state, the Last fix and
   // Since then cards (or the practice offer for a project with no fixes yet), and Check it again once it was checked.
   const atRest = mode === "rest" && !blocker;
@@ -1961,7 +1987,8 @@ function Card() {
   // "Practice ready" in purple, never needs you (the founder, 5 Nov 2026).
   const practiceLead = !!m.practice && !!needNow && needNow.key.startsWith("practice:") && !atRest;
   const leadMeaning = heroMeaning({ mode, tone: hero.tone, status: status.kind, practice: practiceLead ? m.practice!.stage : null, reviewStop: !!rlead?.stop, atRest, restPill: atRest ? restWords.pill : null });
-  const leadHeadline = leadMeaning === "practice" ? capFirst(heroShown.headline.replace(/^practice:\s*/i, "")) : heroShown.headline;
+  // M72 (the engineer's low list): the practice's own short title, never English matched in logic.
+  const leadHeadline = leadMeaning === "practice" && heroShown.headline === S.practiceTitle ? S.practiceLeadTitle : heroShown.headline;
   const practiceSkip = practiceLead && m.practice?.stage === "start" && !!m.practice && !workingOn(m);
   // The project menu in the top bar: change the folder, open one from a link, or one used before.
   const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },
@@ -2106,7 +2133,7 @@ function Card() {
           {rows.map((r) => r.id === "empty"
             ? <EmptyRow key={r.id} title={r.title} line={r.line} />
             : <ListRow key={r.id} colour={MEANING_COLOUR[r.meaning]} icon={r.icon} title={r.title} line={r.line}
-              fact={r.fact} factColour={MEANING_COLOUR[r.meaning]} onOpen={r.act === "practice" ? undefined : () => act(r)} openLabel={r.act === "look" ? S.homeNow.look : S.homeNow.open}
+              fact={r.fact} factColour={MEANING_COLOUR[r.meaning]} onOpen={r.act === "practice" ? undefined : () => act(r)} openLabel={`${r.act === "look" ? S.homeNow.look : S.homeNow.open}: ${r.title}`}
               action={r.action === "undo" && cp ? { id: fixUndoId, label: S.homeNow.undo, colour: "orange", onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: cp }) }
                 : r.action === "show" ? { label: S.homeNow.look, onClick: () => act(r) }
                 : r.action === "start" ? { label: S.homeNow.practiceStart, onClick: () => act(r) } : null} />)}
@@ -2321,9 +2348,12 @@ function Card() {
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
               while the hero is folded for a card that needs a tap (item 13): that card's own buttons are the ones. */}
           {/* M69 step 3: over a proven or failed result the receipt's own buttons lead (Keep, or Try a different fix). */}
-          {(heroMain || whereOn || practiceSkip) && !resHero && <div className="hero-main ui-lead-acts">
-            {/* After Stop with changes, Undo what it did is the one main button; Carry on steps back to secondary (the review of 5 Nov). */}
-            {heroMain && <Button kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}
+          {(heroMain || whereOn || practiceSkip || stoppedUndo) && !resHero && <div className="hero-main ui-lead-acts">
+            {/* After Stop with changes, Undo what it did is the one main button; Carry on steps back to secondary (the review of 5 Nov).
+                M72 (the walkthrough, item 3): it sits here, in the lead, so it is in view without scrolling, never under the ask box. */}
+            {/* The same id as the receipt's Undo (the confirm's way back): only one of them is ever drawn. */}
+            {stoppedUndo && <Button {...{ id: undoId }} kind="primary" size="lg" onClick={() => { if (m.receipt) dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint }); }}><Icon name="undo" size={14} />{S.fix.undoWhatItDid}</Button>}
+            {heroMain && <Button kind={stoppedUndo ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}
             {/* M69 step 2: Where was I? beside it at rest, once the project has a log (F21, Flow's own; nothing in the background). */}
             {whereOn && <Button kind="secondary" size="lg" onClick={() => void sendQuiet(whereWasI(project))}>{S.homeNow.whereWasI}</Button>}
             {/* M71: a practice not started yet can be skipped (the same as closing it on Learn); nothing runs yet. */}
@@ -2423,8 +2453,9 @@ function Card() {
               <p className="more-desc muted" aria-hidden="true">{moreDesc || "\u00a0"}</p>
               {/* M69 (spec 3.15): the jobs on top, this request's options under a divider. */}
               <hr className="more-rule" />
-              <label className="more-opt"><Switch checked={off} onChange={setOff} label={S.offRecord} /><span aria-hidden="true">{S.offRecord}</span></label>
-              {project && <label className="more-opt"><Switch checked={newFolder} onChange={setNewFolder} label={S.newFolder.tick} /><span aria-hidden="true">{S.newFolder.tick}</span></label>}
+              {/* M72 (the walkthrough, item 11): each option a switch with its name and one line on what it does. */}
+              <label className="more-opt"><Switch checked={off} onChange={setOff} label={S.offRecord} /><span className="more-opt-words" aria-hidden="true"><span>{S.offRecord}</span><span className="more-opt-line">{S.offRecordLine}</span></span></label>
+              {project && <label className="more-opt"><Switch checked={newFolder} onChange={setNewFolder} label={S.newFolder.tick} /><span className="more-opt-words" aria-hidden="true"><span>{S.newFolder.tick}</span><span className="more-opt-line">{S.newFolder.tickLine}</span></span></label>}
               {attached.length === 0 && <div className="muted">{S.attachHint}</div>}
               </div>
             </details>
@@ -2482,7 +2513,8 @@ function Card() {
           nodeFix={nodeMissing(m.doctor)?.fix ?? null} note={practiceNote} next={pr.stage === "done" ? nextPractice(practiceRec, pr.kind) : null}
           undo={m.undo} explain={pr.result && m.explain?.checkpoint === pr.result.checkpoint ? <ExplainBox e={m.explain} key={m.explain.checkpoint} /> : null}
           checks={m.task?.proof?.steps ?? []}
-          sendBack={entry.find === "review" && m.review ? sendBackCopy(m.review) : ""}
+          sendBack={entry.find === "review" ? (m.review ? sendBackCopy(m.review) : practiceKeyCopy(pr.problem)) : ""}
+          retry={m.task ? jobStep(m, m.task.proof?.of ?? (Number(setting("work.tries")) || 3)).retry : null}
           act={{
             find: practiceFind,
             fix: () => practiceFix(pr),
@@ -2511,7 +2543,7 @@ function Card() {
       {home.tab === "learn" && !learnShown() && <section className="panel" role="status" aria-label={S.groups.title}><div className="line">{S.groups.learnOff}</div></section>}
       {groups.groupOn("guide") && show("practice") && (
         <PracticeList rows={listRows(practiceRec, m.doctor)} busy={workingOn(m)} nodeFix={nodeMissing(m.doctor)?.fix ?? null} withoutNode={practiceWithoutNode(m.doctor) && (practiceWithoutNode(m.doctor)!.fix ?? "")} note={m.practice && m.practice.project === project ? "" : practiceNote} damaged={practiceRec.damaged}
-          openId={m.practice && m.practice.project === project ? m.practice.kind : null}
+          openId={m.practice && m.practice.project === project ? m.practice.kind : null} opening={practiceOpening}
           act={{ start: beginPractice, open: continuePractice, startOver: restartPractice, remove: removePractice }} onTour={home.tab === "learn" && !tour ? () => setTour(true) : undefined} />
       )}
       {groups.groupOn("guide") && show("lessons") && !m.walk && (
@@ -2793,7 +2825,8 @@ function Card() {
           {/* M69 (spec 3.4): beside it, Replay what Squibby did, from the steps this task already holds (runList.ts). */}
           {resHero?.pill !== "proven" && ((undoCan(m, project) && !failLead) || replayRows(m).rows.length > 0) && (
             <div className="row result-actions">
-              {receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) && !failLead ? undoMain() : <>{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}</>}
+              {/* M72: after Stop, Undo what it did is in the lead (stoppedUndo), so it is not drawn here a second time. */}
+              {receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) && !failLead ? (stoppedUndo ? null : undoMain()) : <>{undoCan(m, project) && !failLead && undoButton(m.receipt.wholePlan ? S.home.undoWholeFix : S.home.undoFix)}</>}
               <Replay m={m} id={`${undoId}-replay`} />
             </div>
           )}

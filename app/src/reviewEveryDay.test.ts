@@ -110,7 +110,7 @@ describe("feature 1: a closed review says how, and History shows each review wit
       expect(w.meta).not.toMatch(/streak|in a row|keep it up|great job/i);
     }
   });
-  test("the model keeps the rows from tasks.list, and History draws them as their own list", () => {
+  test("the model keeps the rows from tasks.list, and History draws them in its one list (M72: one list per screen)", () => {
     let m = initial();
     m = reduce(m, { type: "tasks.list", project: P, tasks: [], reviews: [row] } as never);
     expect(m.reviewHistory).toHaveLength(1);
@@ -118,7 +118,8 @@ describe("feature 1: a closed review says how, and History shows each review wit
     expect(m.reviewHistory).toEqual([]);
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain("reviewRowLook(");
-    expect(card).toContain("S.history.reviewsTitle");
+    expect(card).toContain("byTime(shown, filtering ? [] : reviews).map(");
+    expect(card).not.toContain("S.history.reviewsTitle");
   });
   test("Copy for my AI is counted as a beta number, and the numbers say counts only", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");

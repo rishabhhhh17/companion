@@ -6,7 +6,7 @@
 // reviewHead.test.ts; reviewCard.tsx draws it.
 import type { CodeLine, ReviewReason } from "../../protocol/index.ts";
 import { fixedSince, keyWarned, type ReviewCard } from "./review.ts";
-import { levelRank } from "./findingShape.ts";
+import { levelRank, readinessOf } from "./findingShape.ts";
 import { S } from "./strings.ts";
 
 /** lines (M69): the pointed line and the lines either side of it, masked by the engine and again by review.ts. */
@@ -64,7 +64,10 @@ export function reviewHead(r: ReviewCard | null | undefined): ReviewHead | null 
   const others: Finding[] = order.slice(1).map(({ x, i }) => ({ id: `reason:${i}`, tag: "then", title: x.say, line: x.file ? S.review.at(x.file, x.line) : "", at: place(x.file, x.line), act: "look" }));
   const named = res.reasons.map((x) => x.file).filter((f): f is string => !!f);
   const kind = lead ? (lead.kind === "secret_in_code" ? keyKind(pointed) : lead.kind) : "";
-  return { tone, tag: tagOf(tone, 1, Math.max(1, res.reasons.length)), headline, why, whyMore: S.homeNow.whyMore[kind] ?? why, pointed,
+  // M72 (the walkthrough, item 2): the tag counts what the readiness line counts (checks that did not run are a thing to
+  // check too), so "1 of 2" never sits beside "Check these 3 things".
+  const things = Math.max(1, res.reasons.length, readinessOf(r).n);
+  return { tone, tag: tagOf(tone, 1, things), headline, why, whyMore: S.homeNow.whyMore[kind] ?? why, pointed,
     reassure: r.fix === "sent" ? "" : S.homeNow.reassure, others: withFine(others, r, named, res.checksNote), count: Math.max(1, res.reasons.length) };
 }
 

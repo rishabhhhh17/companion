@@ -10,19 +10,6 @@
 .home[data-side] .hero[data-rest] { --orb: var(--orb-hero); }
 .home:not([data-side]) .hero[data-rest] { --orb: var(--orb-hero-sm); }
 
-/* ---------- The cards under it: Last fix beside Since then (wide), one under the other (tall) ---------- */
-.home .now-cards { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--space-3); align-items: stretch; margin: var(--space-2) 0 var(--space-4); }
-.home .now-cards[data-one] { grid-template-columns: minmax(0, 1fr); }
-.home:not([data-side]) .now-cards { grid-template-columns: minmax(0, 1fr); margin-top: var(--space-1); }
-.home .now-cards > .now-card { margin: 0; padding: var(--space-4); }
-.home .now-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--h-pill); margin-bottom: var(--space-3); }
-.home .now-card-head > h2 { margin: 0; color: var(--fg-2); }
-.home .now-fix-title { margin: 0; color: var(--fg); font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
-.home .now-link { margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: start; cursor: pointer; }
-.home .now-link:hover { text-decoration: underline; text-underline-offset: var(--ring); }
-.home .now-link:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); border-radius: var(--r-control); }
-.home .now-fix-meta { margin: var(--space-1) 0 0; color: var(--fg-2); font: var(--t-body) / var(--lh-body) var(--font); font-variant-numeric: tabular-nums; }
-
 /* The proof picture, in a small browser frame with the project's name in its bar. */
 .home .now-shot { margin: var(--space-3) 0 0; }
 .home .now-shot-frame { overflow: clip; border: var(--hair) solid var(--line); border-radius: var(--r-control); background: var(--sunken); }
@@ -31,31 +18,6 @@
 .home .now-shot-bar > code { margin-inline-start: var(--space-1); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font-code); }
 .home .now-shot img { display: block; width: 100%; max-height: calc(var(--orb-hero) * 2); object-fit: cover; object-position: top; background: var(--surface-1); }
 .home .now-shot figcaption { margin-top: var(--space-1); color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
-
-/* The proof ticks and the quiet Undo along the card's foot. */
-.home .now-fix-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-top: var(--space-4); }
-.home .now-ticks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin: 0; padding: 0; list-style: none; }
-.home .now-ticks > li { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--fg-2); font: var(--t-body) / var(--lh-body) var(--font); }
-.home .now-ticks > li > .ic { color: var(--fg-2); }
-.home .now-ticks > li[data-ok] > .ic { color: var(--ok); }
-.home .now-ticks > li[data-bad] > .ic { color: var(--bad); }
-.home .now-fix-foot > :last-child:not(.now-ticks) { margin-inline-start: auto; }
-.home .now-fix-foot > .now-undo { flex-basis: 100%; }
-
-/* Since then: rows with a small mark, the words and the time; Check in the accent. */
-.home .now-rows { margin: 0; padding: 0; list-style: none; }
-.home .now-row { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: var(--h-md); box-sizing: border-box; margin: 0; padding: var(--space-2) 0; border: 0; border-bottom: var(--hair) solid var(--line); background: none; color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); text-align: start; }
-.home .now-rows > li:last-child > .now-row { border-bottom: 0; }
-.home button.now-row { cursor: pointer; }
-.home button.now-row:hover .now-row-words { text-decoration: underline; text-underline-offset: var(--ring); }
-.home button.now-row:focus-visible, .home .now-row-check:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: var(--ring-offset); border-radius: var(--r-control); }
-.home .now-row-mark { flex: none; display: inline-grid; place-items: center; width: var(--h-pill); height: var(--h-pill); border-radius: var(--r-control); background: var(--sunken); color: var(--fg-2); }
-.home .now-row-words { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.home .now-row-meta { flex: none; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
-.home .now-row-check { flex: none; margin: 0; padding: 0; border: 0; background: none; color: var(--acc-text); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); cursor: pointer; }
-.home .now-row-check:hover { text-decoration: underline; text-underline-offset: var(--ring); }
-.home .now-since-none { margin: 0; color: var(--fg-2); font: var(--t-body) / var(--lh-body) var(--font); }
-.home .now-practice .row { margin: var(--space-3) 0; }
 
 /* ---------- The review card that leads Now: a top edge in its tone, the tag, the two tone headline, the character ---------- */
 .home .panel.rv-lead, .home .view .panel.rv-lead:not(.bare) { position: relative; padding: var(--space-5); border-top: calc(var(--ring) + var(--hair)) solid var(--bad); }

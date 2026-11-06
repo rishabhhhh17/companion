@@ -83,7 +83,7 @@ describe("every step can be skipped and has a way back", () => {
     expect(stepOf(ui, "check")).toContain("main(S.fr.goProject, finish,");
     expect(ui).toContain('{back(step) && <button className="fr-back" type="button" aria-label={S.obBack}');
     // Back while the check runs stops it first, so nothing keeps running behind the first run.
-    expect(ui).toContain("if (stage === \"checking\" || stage === \"asking\") stopCheck(); go(back(step));");
+    expect(ui).toContain("if (stage === \"checking\" || stage === \"asking\") stopCheck();\n    go(b.to);");   // M72: through backPress
   });
   test("Continue waits for a folder on Pick a project; the rest never wait, and never for a key (F29)", () => {
     expect(canContinue("project", { connected: true, project: "" })).toBe(false);
@@ -282,7 +282,7 @@ describe("make it yours", () => {
     expect(reg.settings.find((x) => x.key === "fun.reactions")!.kind).toBe("switch");
   });
   test("the character is called by the name chosen, or its own", () => {
-    expect(characterName("")).toBe("Flowflow"); expect(characterName(undefined)).toBe("Flowflow");
+    expect(characterName("")).toBe("Squibby"); expect(characterName(undefined)).toBe("Squibby");   // M72 (item 7): one product name
     expect(characterName("  Blub ")).toBe("Blub");
   });
   test("Flowflow is the only companion ready; the others are empty places, one per group, with no art", () => {

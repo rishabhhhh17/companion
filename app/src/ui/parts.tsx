@@ -660,23 +660,32 @@ export function ListGroup({ label, id, shown, children }: { label: string; id?: 
   return <><h3 className="ui-mlist-title" id={hid}>{label}</h3><ul className="ui-mlist" id={id} aria-labelledby={hid}>{children}</ul></>;
 }
 
-export type RowAction = { label: string; onClick: () => void; colour?: Colour; id?: string; describedBy?: string };
-/** One row of the grouped list: a colour tile, a title, one line, and one fact or one action on the right. `onOpen`: the row
- *  opens what it is about (its tile and words are one button). `action`: one press on the right in the row's colour
- *  (Review, Fix it). `fact`: a short fact on the right (2 h ago, 3 min). */
-export function ListRow({ colour, icon, mark, title, line, fact, factColour, onOpen, openLabel, action, id }: {
+export type RowAction = { label: string; onClick: () => void; colour?: Colour; id?: string; describedBy?: string;
+  /** What VoiceOver hears for a press repeated on every row ("Forget: <the note>", M72): the verb and the row's subject. */
+  ariaLabel?: string };
+/** One row of the grouped list: a colour tile, a title, one line, and one fact and one action on the right. `onOpen`: the row
+ *  opens what it is about (its tile and words are one button, named by `openLabel`, the verb and its subject). `action`: one
+ *  press on the right in the row's colour (Review, Fix it). `fact`: a short fact on the right (2 h ago, 3 min), kept beside
+ *  an action (M72: a row with Undo still says when). `id` goes on the row's own button when it has one, so the keyboard can
+ *  come back to it after Edit, Start over or Remove (M72, finding 3); `rowId` names the row itself (History scrolls to it).
+ *  `expanded`: the row opens something under it (aria-expanded). `flash`: the row flashes once (History, from Now, F28). */
+export function ListRow({ colour, icon, mark, title, line, fact, factColour, onOpen, openLabel, action, id, rowId, expanded, flash }: {
   colour: Colour; icon?: IconName; mark?: ReactNode; title: ReactNode; line?: ReactNode; fact?: ReactNode; factColour?: Colour;
-  onOpen?: () => void; openLabel?: string; action?: RowAction | null; id?: string;
+  onOpen?: () => void; openLabel?: string; action?: RowAction | null; id?: string; rowId?: string; expanded?: boolean; flash?: boolean;
 }) {
-  const body = <>
+  const lineId = useId();
+  const words = <>
     <Tile colour={colour} icon={icon}>{mark}</Tile>
-    <span className="ui-mrow-words"><span className="ui-mrow-title">{title}</span>{line ? <span className="ui-mrow-line">{line}</span> : null}</span>
-    {fact != null && fact !== "" && !action ? <span className="ui-mrow-fact" data-c={factColour}>{fact}</span> : null}
+    <span className="ui-mrow-words"><span className="ui-mrow-title">{title}</span>{line ? <span className="ui-mrow-line" id={lineId}>{line}</span> : null}</span>
   </>;
+  const factShown = fact != null && fact !== "" ? <span className="ui-mrow-fact" data-c={factColour}>{fact}</span> : null;
   return (
-    <li className="ui-mrow" id={id} data-open={onOpen ? "" : undefined}>
-      {onOpen ? <button type="button" className="ui-mrow-main" title={openLabel} onClick={onOpen}>{body}</button> : <div className="ui-mrow-main">{body}</div>}
-      {action ? <button type="button" className="ui-mrow-act" id={action.id} data-c={action.colour ?? colour} aria-describedby={action.describedBy} onClick={action.onClick}>{action.label}</button> : null}
+    <li className="ui-mrow" id={onOpen ? rowId : rowId ?? id} data-open={onOpen ? "" : undefined} data-flash={flash || undefined}>
+      {onOpen
+        ? <button type="button" className="ui-mrow-main" id={id} aria-label={openLabel} aria-describedby={openLabel && line ? lineId : undefined} aria-expanded={expanded} onClick={onOpen}>{words}{action ? null : factShown}</button>
+        : <div className="ui-mrow-main">{words}{action ? null : factShown}</div>}
+      {action ? factShown : null}
+      {action ? <button type="button" className="ui-mrow-act" id={action.id} data-c={action.colour ?? colour} aria-label={action.ariaLabel} aria-describedby={action.describedBy} onClick={action.onClick}>{action.label}</button> : null}
     </li>
   );
 }

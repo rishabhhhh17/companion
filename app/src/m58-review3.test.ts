@@ -223,7 +223,8 @@ describe("Vercel sign in: Check again checks, Close ends a waiting sign in, no s
 
 describe("after Stop, one main button", () => {
   test("Undo what it did is primary and the hero's Carry on is secondary while Undo is ready", () => {
-    expect(card).toContain('kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"}');
+    // M72: Undo what it did sits in the lead itself (stoppedUndo), primary; the hero's Carry on is secondary then.
+    expect(card).toContain('{heroMain && <Button kind={stoppedUndo ? "secondary" : "primary"}');
   });
 });
 

@@ -123,8 +123,8 @@ export function factLines(greet: string, fact: string, project: string): { top: 
   return { top: `${greet} · ${name}`, fact: rest[0].toUpperCase() + rest.slice(1) };
 }
 
-/** A button's words. Check my project reads as "check it again" after a check failed, so there it says what it leads to:
- *  Home finds the problem and offers Fix it (the same press, { do: "find" }). */
+/** A button's words. Check my project reads as "check it again" after a check failed, so there it is Fix it, Home's own
+ *  words, and Home does what its Fix it does (card.tsx, the same press, { do: "find" }; M72, the walkthrough, item 15). */
 export function quickLabel(id: QuickId, m: Model, now: number): string {
   if (id === "check" && homeStatus(m, projectOf(m), now).kind === "failing") return S.notch.quick.fix;
   return S.notch.quick[id];

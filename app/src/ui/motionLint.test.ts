@@ -101,7 +101,6 @@ const STILL_MOVING_PAINT: Record<string, string> = {
   "style.css: @keyframes pose-glow filter": "the pictures' needs you glow, Friendly only (Tier 3, item 18)",
   "style.css: @keyframes island-glow filter": "the notch's done tick, redrawn with the notch shape (Part 2)",
   "style.css: @keyframes fr-fall top": "the first run's drop falling (Tier 3, item 18)",
-  "style.css: @keyframes ip-run background-position": "the notch panel's running line, redrawn with the notch shape (Part 2)",
   "style.css: @keyframes island-needsYou-pulse box-shadow": "needs you becomes one nudge of the notch, no loop (Part 2)",
   "style.css: @keyframes island-needsYou-pulse background": "needs you becomes one nudge of the notch, no loop (Part 2)",
 };

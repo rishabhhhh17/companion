@@ -63,7 +63,7 @@ describe("Flowflow sits whole above the practice card, never over the tab row (r
   const look = LOOK_CSS();
   test("the peek is in the flow above the card, so however tall its line grows it pushes the card down, never up over the bar", () => {
     const panel = read("./practicePanel.tsx");
-    expect(panel).toMatch(/return \(<>\n\s*<Peek stage=\{p\.stage\} \/>\n\s*<section className="panel practice"/);
+    expect(panel).toMatch(/return \(<>\n\s*<Peek stage=\{p\.stage\} review=\{review\} \/>\n\s*<section className="panel practice"/);
     const peek = rule(look, ".pr-peek") ?? "";
     expect(peek).not.toMatch(/position: absolute|translate:|top:/);
     expect(peek).toMatch(/display: flex;/);

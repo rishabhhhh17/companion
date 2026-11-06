@@ -139,6 +139,11 @@
 .home .hist-extra { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-radius: var(--r-list); background: var(--surface-1); }
 .home .hist-extra-title { margin: 0; color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-label) var(--font); }
 .home .hist-extra .row { margin: 0; }
+/* M72 (the walkthrough, item 9): the opened row's Star and Name it, and its Undo question, sit right under the row, lined up
+   with its words. */
+.home .hist-extra-row { display: block; padding: 0 var(--space-4) var(--space-3) calc(var(--space-4) + var(--tile-row) + var(--space-3)); }
+.home .hist-extra-row > .hist-extra { padding: 0; background: transparent; }
+.home .hist-marks-acts { margin: 0; }
 .home .mem-lead .ui-lead-title { margin: 0; }
 .home .mem-section { display: grid; gap: var(--space-2); }
 .home .mem-section .ui-mlist-title { margin-bottom: 0; }

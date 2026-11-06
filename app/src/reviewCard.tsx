@@ -106,15 +106,9 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           </div>
           {mark && <div className="rv-mark" aria-hidden="true">{mark}</div>}
         </div>
-        {/* M58 shortlist 3: the readiness line, in words, under the headline that already has its own tag. */}
-        <ReadinessLine r={readinessOf(r)} quiet />
-        {res && <LeadParts f={shapeFindings(r)[0]} />}
-        <div className="sr" role="status">{res ? S.review.arrived(S.review.rating[res.rating], head.headline) : ""}</div>
-        {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
-            and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
-        {head.pointed && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
-        {/* m67 bug 14: a key warning before any review says when the changes were made, as the plain card does. */}
-        {!res && r.away && <div className="line muted">{S.review.away[r.away]}</div>}
+        {/* M72 (the walkthrough, item 2): the decision comes first, right under the headline, so Fix it, Copy for my AI and
+            Looks fine are in view without scrolling, never under the ask box. The evidence follows: the readiness line, the
+            finding's parts and the line pointed at. */}
         {r.note && <div className="line" role="status">{r.note}</div>}
         {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
         {/* m67 bug 12: Fix it on a key warning runs the review first; the card says it is running, as the plain card does. */}
@@ -158,8 +152,19 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             </div>
           </ConfirmStep>
         )}
-        {/* While the review runs, nothing waits on a press, so "Nothing changes until you press a button" is not said. */}
+        {/* While the review runs, nothing waits on a press, so "Nothing changes until you press a button" is not said. M72: right under the presses. */}
         {r.stage !== "reviewing" && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
+        {/* M58 shortlist 3: the readiness line, in words, under the headline that already has its own tag. */}
+        <ReadinessLine r={readinessOf(r)} quiet />
+        {res && <LeadParts f={shapeFindings(r)[0]} />}
+        <div className="sr" role="status">{res ? S.review.arrived(S.review.rating[res.rating], head.headline) : ""}</div>
+        {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
+            and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
+        {head.pointed && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
+        {/* m67 bug 14: a key warning before any review says when the changes were made, as the plain card does. */}
+        {!res && r.away && <div className="line muted">{S.review.away[r.away]}</div>}
+        {/* M72 (item 2): what the change did, in the review's own summary, said once under the evidence. */}
+        {res?.summary && <p className="line muted rv-summary"><b>{S.review.whatChanged}:</b> {res.summary}</p>}
         {/* Why does this matter: the review's own words, its reasons (with Don't flag this kind here again only where
             review.ts silenceOffered allows it: never for a key, correction 4), and what it touches. */}
         <div id={whyId} className="rv-more" hidden={open !== "why"}>

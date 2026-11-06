@@ -278,8 +278,10 @@ describe("a stored Friendly look keeps its water character", () => {
   });
   test("every place that draws the character, and Settings, read the retired style the same way", () => {
     const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-    expect(read("./homeCharacter.tsx")).toContain('characterOf(useSetting("look.character"), useSetting("look.style"))');
-    expect(read("./flowflowMini.tsx")).toContain('characterOf(useSetting("look.character"), useSetting("look.style"))');
+    // M72: through the one character in force, which reads what is actually stored (m72Character.test.ts).
+    expect(read("./homeCharacter.tsx")).toContain("useCharacter()");
+    expect(read("./flowflowMini.tsx")).toContain("useCharacter()");
+    expect(read("./settingsStore.ts")).toContain('characterOf(storedSetting("look.character", st), storedSetting("look.style", st))');
     expect(read("./lookfeel.ts")).toContain('characterOf(values["look.character"], values["look.style"])');
     expect(shownValue("look.character", "match", "friendly")).toBe("friendly");
     expect(shownValue("look.character", "match")).toBe("visor");

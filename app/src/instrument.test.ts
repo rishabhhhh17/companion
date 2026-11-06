@@ -132,8 +132,9 @@ describe("the style and the character are real settings, and a store from before
   });
   test("Home and Settings set both on their root; the notch keeps its own look", () => {
     const hook = read("./useLook.ts");
-    expect(hook).toContain('const colour = useSetting("look.colour"), character = useSetting("look.character");');
-    expect(hook).toContain('{ "look.colour": colour, "look.character": character }');
+    expect(hook).toContain('const character = storedSetting("look.character"), style = storedSetting("look.style");');
+    // M72 (finding 2): the style goes through too, so the root agrees with the drawn character.
+    expect(hook).toContain('{ "look.colour": colour, "look.character": character, "look.style": style }');
     expect(read("./island.tsx")).toContain("useLook({ keepNight: true });");
   });
 });
@@ -205,14 +206,11 @@ describe("Instrument's sizes, corners and motion (the lab's look A)", () => {
     expect(Math.max(...pts)).toBe(1);
     expect(pts[1], "it answers at once, never an ease in").toBeGreaterThan(0.05);
   });
-  test("the Graphite page is the lab's #161618 family; the other themes keep their own page", () => {
+  test("the Graphite page is the lab's #161618 family, and Black is the look", () => {
     expect(ins).toMatchObject({ "--bg": "#161618", "--surface-1": "#1D1D20", "--surface-2": "#26262A" });
     expect(tokensOf("instrument", "black")["--bg"]).toBe("var(--surface-0)");   // M71: the black look's surface 0
     expect(tokensOf("instrument", "black")["--surface-0"]).toBe("#000000");
-    // M69 (spec 1.2, the mockups): Instrument's White is a warm off white window with white cards on it.
-    expect(tokensOf("instrument", "paper")).toMatchObject({ "--bg": "#F6F6F4", "--surface-1": "#FFFFFF" });
-    expect(tokensOf("friendly", "paper")["--bg"]).toBe("#FFFFFF");
-    expect(tokensOf("instrument", "deep")["--bg"]).toBe("#0B1622");
+    // M72: the White (paper) and Deep blocks are gone with the themes M71 retired.
   });
   test("buttons: the main one filled with the accent, the others a hairline edge with no gloss, in every theme", () => {
     for (const t of ALL_THEMES) {

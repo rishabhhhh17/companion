@@ -87,7 +87,7 @@ describe("the quick actions (M70: chosen from state, fixed slots, at most three)
   test("a project with a problem offers to find and fix it, in the Check slot; everywhere else the plain words", () => {
     const failing = m({ history: [row({ proof: "failed", status: "error" })] });
     expect(quickLabel("check", failing, NOW)).toBe(S.notch.quick.fix);
-    expect(S.notch.quick.fix).toBe("Find and fix the problem");
+    expect(S.notch.quick.fix).toBe("Fix it");   // M72 (item 15): Home's own words, and Home's own Fix it
     for (const x of [m(), m({ history: [row()] }), m({ review: review(2) })]) expect(quickLabel("check", x, NOW)).toBe(S.notch.quick.check);
     for (const id of ["ask", "review", "ship", "undo", "pick"] as const) expect(quickLabel(id, failing, NOW)).toBe(S.notch.quick[id]);
     // The same press either way: Home finds the problem, then offers Fix it, with today's approvals.

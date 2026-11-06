@@ -1,14 +1,12 @@
 // The founder's screenshot (2 Nov 2026: tall, Deep, Calm, midnight water, a practice open; "does this look good??"). Five
 // problems, each pinned here so it cannot come back: Flowflow's glow cut by a box, a bubble that says one thing while the page
 // says another, no next step above the fold, cards that say nothing, and a muddy room. Plain code where it is decided
-// (homeHero.ts, homeLayout.ts, element.ts), and the stylesheets read as text.
+// (homeHero.ts, homeLayout.ts), and the stylesheets read as text.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { aboutWorthACard, heroWords, homeMode, needMainFor, recapShownLines, recapWorthACard, sayFor } from "./homeHero.ts";
 import { need } from "./home.ts";
-import { seaFills } from "./homeLayout.ts";
-import { roomElement } from "./element.ts";
 import { S } from "./strings.ts";
 import { ALL_CSS, TOKENS_CSS } from "./ui/cssFiles.ts";
 
@@ -90,8 +88,7 @@ describe("(1) Flowflow's glow is never cut by a box, and its water has no step",
 
 describe("(5) calm and grown up: the usual Home is a plain page with one blue accent", () => {
   test("M71: the sea that filled the work is retired: Home draws no sea fill", () => {
-    const base = { side: true, tab: "now" as const, mode: "rest", cardsUnder: false };
-    expect(seaFills(base)).toBe(true);   // the rule itself is kept in homeLayout.ts for the record; Home no longer draws it
+    // M72: the rule that said where the sea went is gone too (it was kept only for the record).
     expect(card).not.toContain('className="sea-fill"');
     expect(css).not.toMatch(/\.sea-fill \{/);
   });
@@ -100,7 +97,6 @@ describe("(5) calm and grown up: the usual Home is a plain page with one blue ac
     const flow = /\n\[data-element="flow"\] \{([^}]*)\}/.exec(tokens.replace(/\/\*[\s\S]*?\*\//g, ""))?.[1] ?? "";
     const norm = (x: string) => x.split(";").map((d) => d.trim()).filter(Boolean).sort();
     expect(norm(calm)).toEqual(norm(flow));
-    expect(roomElement({ tab: "learn", active: null })).toBe("guide");
   });
   test("the water colours Flowflow and its pond only: no water block sets a room colour", () => {
     const blocks = [...tokens.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/\n([^{}\n]*\[data-water=[^{}]*)\{([^}]*)\}/g)];

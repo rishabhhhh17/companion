@@ -696,7 +696,7 @@ describe("the panel's buttons do what they say (bugs 1, 5 and starting while bus
     expect(card).toContain("if (!canStart(workingOn(nowModel.current), e, nowModel.current.doctor))");
     // M71: a row opens its practice only when nothing blocks it (busy, or Node missing).
     expect(panel).toContain("onOpen={go && !blocked ? go : undefined}");
-    expect(panel).toContain("disabled={busy || lead.needsNode}");
+    expect(panel).toContain("disabled={busy || lead.needsNode || !!opening}");   // M72: and while a copy is being opened
     // Start over and Remove my copy tell the shell the same (it refuses the open copy while something works on it).
     expect(card.match(/busy: isBusy\(nowModel\.current\)/g)).toBeNull();
     expect(card.match(/busy: workingOn\(nowModel\.current\)/g)?.length).toBe(2);

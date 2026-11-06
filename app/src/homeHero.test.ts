@@ -434,13 +434,17 @@ describe("one main button per state", () => {
   test("the page draws at most one silver button on Now: the main one (the ask field's Start, Undo and Stop are not silver)", () => {
     const now = card.slice(card.indexOf('<Lead className="hero"'), card.indexOf('{show("notes") && <>'));
     // The hero's main button is primary except after Stop with Undo ready, where Undo what it did is the main one (5 Nov review).
-    expect(now.match(/kind="primary"|\? "secondary" : "primary"/g)?.length).toBe(1);
+    // M72: after Stop with Undo ready, Undo what it did is drawn in the lead (stoppedUndo) and the hero's own button steps
+    // back to secondary, so one silver still shows.
+    expect(now.match(/kind="primary"|\? "secondary" : "primary"/g)?.length).toBe(2);
+    expect(now).toContain('{heroMain && <Button kind={stoppedUndo ? "secondary" : "primary"}');
     // One button: the status's main action, or (2 Nov 2026) the next step of what waits on another place (a practice).
     // 2 Nov 2026 (the ranked UI audit): or the way out of a block, or Review the changes; still one button (heroMain).
     // M69 step 2: at rest its words may be Check it again (homeRest.ts restMainLabel), with Where was I? as a secondary beside it.
-    expect(now).toContain('{heroMain && <Button kind={receiptVerdict(m)?.kind === "stopped" && undoCan(m, project) ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}');
+    expect(now).toContain('{heroMain && <Button kind={stoppedUndo ? "secondary" : "primary"} size="lg" onClick={heroMain.go}>{atRest ? restMain : heroMain.label}</Button>}');
     expect(now).toContain('{whereOn && <Button kind="secondary" size="lg"');
-    expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : S.home.needMain[needMain!], go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
+    // M72 (item 4): a practice's button names the practice's own action (homeHero.ts needMainWords).
+    expect(card).toContain(': main || needMain ? { label: main ? S.home.main[main] : needMainWords(m, needMain!), go: () => (main ? doMain(main) : doNeedMain()), status: !!main } : null;');
     expect(now).not.toMatch(/btn primary/);
     const result = card.slice(card.indexOf('<section className="panel receipt"'), card.indexOf("</section>", card.indexOf('<section className="panel receipt"')));
     const job = card.slice(card.indexOf('<section className="panel job"'), card.indexOf("</section>", card.indexOf('<section className="panel job"')));
@@ -448,7 +452,7 @@ describe("one main button per state", () => {
     // M69 step 3: over a proven result the hero has no button and the receipt's Keep is the one main button.
     expect(result.match(/kind="primary"/g)?.length).toBe(1);
     expect(result).toContain('{resHero?.pill === "proven" && (');
-    expect(now).toContain("{(heroMain || whereOn || practiceSkip) && !resHero && <div className=\"hero-main ui-lead-acts\">");   // M71: a practice's Skip
+    expect(now).toContain("{(heroMain || whereOn || practiceSkip || stoppedUndo) && !resHero && <div className=\"hero-main ui-lead-acts\">");   // M71: a practice's Skip; M72: Undo what it did after Stop
   });
   test("what can show beside the hero is never silver too: the update notice, Try again, a watch's Fix it, Learn's rows (review, 31 Oct)", () => {
     const silver = /kind="primary"|btn primary|btnClass\("primary"/;
@@ -535,7 +539,6 @@ describe("Flowflow lives on Home's water again (the founder, 31 Oct), and follow
     expect(read("./settingsPage.tsx")).toContain('<div className="companion-hero" id={fixedAnchor("preview")} data-lively={lively}>');
     // The sky over the preview water is a token, so Paper never draws a black box on its light page; Home has no sky box.
     expect(/\.companion-hero \{([^}]*)\}/.exec(css)?.[1]).toContain("background: var(--pond);");
-    expect(tokens).toMatch(/:root\[data-theme="paper"\] \{[^}]*--pond: var\(--surface-1\);/);
   });
 });
 

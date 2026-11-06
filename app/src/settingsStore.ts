@@ -10,6 +10,7 @@
 import { useSyncExternalStore } from "react";
 import { defOf, defaultOf, fromPageStorage, PAGE_STORAGE_MARK, REGISTRY, RUNNER_STORES, type Def } from "../../protocol/settings.ts";
 import { invoke, listen } from "./tauri.ts";
+import { characterOf, type CharacterLook } from "./lookfeel.ts";
 
 /** `restore`: for a value shown rounded, what Undo sends to put back exactly what is in force (a character's place dragged
  *  off its step: the exact fraction along the edge, settings.rs place_from). Nothing else reads it. */
@@ -88,6 +89,31 @@ export function setting(key: string, st: Storage = pageStorage()): unknown {
   if (snap && Object.hasOwn(snap.values, key)) return snap.values[key];
   return d.default;
 }
+/** The value actually written down for a setting, or undefined when it is on its usual value (the shell keeps only values
+ *  away from usual, so a setting never touched is not stored). Only for a reader that must tell "never chosen" from "chose
+ *  the usual": the character under the retired Friendly style (M72, the engineer's finding 1). */
+export function storedSetting(key: string, st: Storage = pageStorage()): unknown {
+  const d = defOf(key);
+  if (!d) return undefined;
+  if (RUNNER_STORES.includes(d.store)) return engine.get(key);
+  if (!migrated(st)) { const old = oldValue(d, st); if (old !== undefined) return old; }
+  return snap && Object.hasOwn(snap.values, key) ? snap.values[key] : undefined;
+}
+/** The character in force everywhere (Home, the edge character, Settings and the page root): a stored character wins; a
+ *  store with the retired Friendly style and no character of its own keeps its water character (lookfeel.ts characterOf). */
+export const characterNow = (st: Storage = pageStorage()): CharacterLook => characterOf(storedSetting("look.character", st), storedSetting("look.style", st));
+/** Re-renders when any setting changes, and gives the character in force. */
+export function useCharacter(): CharacterLook {
+  useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f); }; }, () => version, () => version);
+  return characterNow();
+}
+/** A character picked (or put back) while the retired style is still stored puts the style back too, so the choice sticks:
+ *  the Visor is the usual and is never stored, and without this the retired Friendly style would keep drawing water. */
+const styleToo = (key: string, p: Promise<Done>): Promise<Done> => {
+  if (key !== "look.character" || storedSetting("look.style") === undefined) return p;
+  return p.then((d) => (d.ok ? asDone(call("settings_reset", { key: "look.style", engine: [], ...shown() })) : d));
+};
+
 /** The usual value: for keys and voice the shell says what theirs are; for every other setting, the registry's. */
 export const usualOf = (key: string): unknown => (snap && Object.hasOwn(snap.usual, key) && defOf(key)?.kind === "custom" ? snap.usual[key] : defaultOf(key));
 
@@ -129,12 +155,12 @@ export type Done = { ok: true; notReset?: string[] } | { ok: false; code: string
 const asDone = (p: Promise<unknown>): Promise<Done> => p.then((v) => { takeSnapshot(v); const n = isObj(v) && Array.isArray(v.notReset) ? (v.notReset as string[]) : []; return { ok: true as const, ...(n.length ? { notReset: n } : {}) }; }, (e) => ({ ok: false as const, code: String(e) }));
 /** project: the project the page was shown this value for (house rules always say it). The shell keeps the change only
  *  while that is still the project in Home, so one project's list is never written over another's ("projectChanged"). */
-export const changeSetting = (key: string, value: unknown, project?: string): Promise<Done> => asDone(call("settings_set", project === undefined ? { key, value } : { key, value, project }));
+export const changeSetting = (key: string, value: unknown, project?: string): Promise<Done> => styleToo(key, asDone(call("settings_set", project === undefined ? { key, value } : { key, value, project })));
 // Each reset names the engine's own settings the page has heard away from usual; the shell resets only those of the engine's.
 // A reset names the project the page showed (the confirm named that project's values): the shell refuses it with
 // "projectChanged" if another folder is open by then, so it never resets or writes into a project that was not shown.
 const shown = (): { project?: string } => { const p = snap?.project; return p ? { project: p } : {}; };
-export const resetSetting = (key: string): Promise<Done> => asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)), ...shown() }));
+export const resetSetting = (key: string): Promise<Done> => styleToo(key, asDone(call("settings_reset", { key, engine: changedNow().filter((k) => k === key && isEngines(k)), ...shown() })));
 export const resetSection = (section: string): Promise<Done> => asDone(call("settings_reset", { section, engine: changedNow(section).filter(isEngines), ...shown() }));
 export const resetAll = (): Promise<Done> => asDone(call("settings_reset", { all: true, engine: changedNow().filter(isEngines), ...shown() }));
 /** The project the last reset was made for, which its Undo (ten seconds) puts a project's own values back to. */

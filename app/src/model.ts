@@ -54,7 +54,7 @@ export type LiveFile = { file: string; kind: "added" | "modified" | "deleted" };
 export type Task = { agent: string; project?: string; checkpoint?: string; label: string; lines: ToolLine[]; costUsd: number; proof?: ProofState; files?: LiveFile[] };
 // undone (M45): an Undo put the project back to before this task (the engine's task log says so). back: Bring the fix back
 // then put its files back again (undone stays set).
-export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string };
+export type HistoryItem = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string };
 export type PlanCard = { agent: string; steps: string[]; truncated: boolean; estimateUsd: number };
 export type DriveProgress = { index: number; total: number; title: string; status: string; completed: number; finished?: { status: string; completed: number; total: number }; whole?: PlanWhole };
 /** What a plan's steps did so far, added up from each step's receipt (must fix 7): the first step's undo point, every file

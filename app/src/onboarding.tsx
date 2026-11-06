@@ -4,14 +4,14 @@ import type { Command } from "../../protocol/index.ts";
 import { addMemory, AGENT, checkMac, stopAgent } from "./commands.ts";
 import { changeSetting, setting as getSetting } from "./settingsStore.ts";
 import { BUILDS_WITH, buildsWithSettings, buildsWithTip, moreShown, type BuildsWith } from "./onboarding.ts";
-import { STEPS, COUNTED, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, installAsks, keyShownFirst, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
+import { STEPS, COUNTED, backPress, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, installAsks, keyShownFirst, LEVEL, NAME_MAX, next, back, QUESTIONS, settingsFor, skipTo, yoursSettings, type Answers, type Edge, type PointNow, type Step, type Yours } from "./onboarding.ts";
 import { livelinessOf, type Liveliness } from "./lookfeel.ts";
 import { whatOf } from "./approvals.ts";
 import { keyRows, talkSharedNote } from "./settings.ts";
 import { useKeys } from "./useKeys.ts";
 import { invoke, listen } from "./tauri.ts";
 import { shouldTakeFocus } from "./cardlogic.ts";
-import { S, NAMES } from "./strings.ts";
+import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { offGroups, SWITCHED, type SwitchedId } from "./groups.ts";
 import { FIRST_PRACTICE, needsMacCheck, nodeMissing, practiceOf } from "./practice.ts";
@@ -100,7 +100,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
     // A fold left open belongs to the screen it was on: the next one starts with every fold closed, and Flowflow shown.
     setDir(STEPS.indexOf(target) >= STEPS.indexOf(step) ? "on" : "back"); setOpen(null); setStep(target);
   };
-  const own = NAMES.character;
+  const own = S.characterName;
   const name = yours.name.trim() || own;
   // What was chosen on the way (the name, how lively, the edge, the groups) is kept however the first run ends; the answers
   // to the questions only when the person gave them and then finishes (Go to my project, or a skip after answering).
@@ -126,6 +126,15 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
   const stage = checkStage(asked, point, asks.length > 0);
   const result = stage === "done" && point ? firstCheckVerdict(point, folderName(project)) : null;
   const endLine = checkEndLine(stoppedByMe, why);
+  // M72 (item 1): a problem the first check found stays found through Back; the project screen offers it again.
+  const found = stage === "done" && point?.stage === "found";
+  const pressBack = () => {
+    const b = backPress(step, { fold: open !== null, more, found });
+    if (!b) return;
+    if ("close" in b) { setOpen(null); setMore(false); return; }
+    if (stage === "checking" || stage === "asking") stopCheck();
+    go(b.to);
+  };
   const announce = checkAnnounce(stage, folderName(project), result, endLine);
   const openLink = () => {
     const u = link.trim();
@@ -168,7 +177,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
     <section className="panel onboarding fr" data-step={step} aria-label={S.obTitle} ref={box} style={level}>
       <div className="fr-tank" aria-hidden="true"><Waterline under />{step !== "hello" && open === null && <div className="fr-float"><HomeCharacter as={look} /></div>}</div>
       <div className="fr-top">
-        {back(step) && <button className="fr-back" type="button" aria-label={S.obBack} onClick={() => { if (stage === "checking" || stage === "asking") stopCheck(); go(back(step)); }}>&#8592;</button>}
+        {back(step) && <button className="fr-back" type="button" aria-label={S.obBack} onClick={pressBack}>&#8592;</button>}
         {/* Where the person is: a short bar per step, the ones reached in the water, then the words (M51 polish). */}
         {/* M69 (Willow's step chips): "01 Welcome · 02 Pick a project", the one you are on in the accent tint. */}
         {count && <ol className="fr-chips" aria-label={S.fr.count(count.n, count.of)}>{COUNTED.map((c, i) => <li key={c} className="fr-chip" aria-current={i + 1 === count.n ? "step" : undefined} data-done={i + 1 < count.n || undefined}>{S.screens.stepChip(i + 1, S.screens.stepNames[c as "hello" | "project"])}</li>)}</ol>}
@@ -224,7 +233,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         </>) : (<>
           <ListGroup label={S.fr.folderTitle}>
             <ListRow colour="blue" icon="file" title={S.fr.pickFolder} line={S.fr.pickFolderLine} onOpen={pickFolder} openLabel={S.fr.pickFolder} />
-            <ListRow colour="teal" icon="drop" title={S.fr.pickLink} line={S.fr.pickLinkLine} onOpen={() => setLinkOpen(!linkOpen)} openLabel={S.fr.pickLink} />
+            <ListRow colour="teal" icon="drop" title={S.fr.pickLink} line={S.fr.pickLinkLine} onOpen={() => setLinkOpen(!linkOpen)} openLabel={S.fr.pickLink} expanded={linkOpen} />
             {/* Taking the practice ends the first run here: the practice opens its own folder. The choices made on the way are kept. */}
             <ListRow colour="purple" icon="sparkle" title={S.fr.pickPractice} line={S.fr.pickPracticeLine} openLabel={S.fr.pickPractice}
               onOpen={first.needsNode && !!noNode ? undefined : () => { keepChoices(); onDone(); startPractice(first.id); }} />
@@ -240,7 +249,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         </>)}
         <div className="fr-grow" />
         {project ? <Button kind="quiet" className="fr-link fr-skip" onClick={finish}>{S.fr.skipCheck}</Button> : <Button kind="quiet" className="fr-link fr-skip" onClick={skip}>{S.fr.skipProject}</Button>}
-        {main(project ? S.fr.checkGo(folderName(project)) : S.obContinue, startCheck, !canContinue(step, ctx))}
+        {/* A problem found before Back is offered again, never checked again (M72, item 1). */}
+        {found ? main(S.fr.seeProblem, () => go("check")) : main(project ? S.fr.checkGo(folderName(project)) : S.obContinue, startCheck, !canContinue(step, ctx))}
       </>)}
 
       {step === "check" && (<>
@@ -251,7 +261,7 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
         {(stage === "checking" || stage === "asking") && <p className="fr-line fr-live"><span className="live" aria-hidden="true" />{point?.label || S.fr.checkPromise}</p>}
         {result?.line && <p className="fr-line">{result.line}</p>}
         {/* What broke, where, and the line itself (the same proof row as Home's), when the problem is a line. */}
-        {stage === "done" && point?.stage === "found" && <FailingLine problem={point.problem as never} />}
+        {stage === "done" && point?.stage === "found" && <FailingLine problem={point.problem as never} pointed />}
         {stage === "stopped" && <p className="fr-line">{endLine}</p>}
         {/* The install question, on this screen while the first run covers Home: "Don't allow" first, neither one silver. */}
         {asks.map((a) => (

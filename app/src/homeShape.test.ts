@@ -269,10 +269,10 @@ describe("growing on from the small panel (M70 step 4)", () => {
   });
 });
 
-describe("White Home is readable on the black shape (M70 step 4)", () => {
-  test("in the White look Home's page has its own fill inside the shape, with the shape's round foot", () => {
+describe("M72: the White Home is gone with its theme", () => {
+  test("no rule fills Home for the White look any more, and the shape keeps its round foot", () => {
     const css = readFileSync(new URL("./ui/homeShape.css", import.meta.url), "utf8");
-    expect(css).toContain(':root[data-theme="paper"] .home-stage[data-told] .home-frame > .card.home { background: var(--bg); border-radius: 0 0 24px 24px; }');
+    expect(css).not.toContain(':root[data-theme="paper"]');
     expect(OPEN_R).toBe(24);
   });
 });
