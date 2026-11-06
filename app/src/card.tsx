@@ -65,7 +65,7 @@ import { detailShown, gateFixCommand, putOnlineShown, signingIn, type Gate } fro
 import { shipSignIn } from "./commands.ts";
 import { practiceKey } from "./commands.ts";
 import type { ShipFlow } from "./model.ts";
-import { changesWait, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
+import { changesWait, CLOSE_QUIETLY_MS, closesQuietly, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
 import { sendBackCopy } from "./review.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
@@ -79,7 +79,7 @@ import { failNote } from "./failwords.ts";
 import { CheckDetail, checkParts } from "./checkDetail.tsx";
 import { fileNames, undoneExcept } from "./undoWords.ts";
 import { fixWhat, watchesOf } from "./watch.ts";
-import type { NewFolderKind, ReviewReasonKind, ReviewRowView, WatchKind, WatchView } from "../../protocol/index.ts";
+import { reviewModeOf, type NewFolderKind, type ReviewReasonKind, type ReviewRowView, type WatchKind, type WatchView } from "../../protocol/index.ts";
 import { WatchPanel } from "./watchPanel.tsx";
 import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, offLine, refusalNotice, toolOn, triedList, usedBy, useGroups } from "./groups.ts";
 import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
@@ -1124,8 +1124,21 @@ function Card() {
   // M52 (F30): the review of another AI tool's changes, on Now for the open folder only, with reviews and Flow on. Each
   // button is a press that names the card's own batch; nothing starts by itself. Fix it asks first (reviewCard.tsx), then
   // starts an ordinary task with its safety copy and Undo, counted as a fix: at the free limit it starts nothing.
-  const reviewMode = useSetting("review.mode");
+  // M74: this project's own choice (review.modeHere), else the usual one.
+  const reviewMode = reviewModeOf(useSetting("review.mode"), useSetting("review.modeHere"));
   const reviewOn = reviewShown(m.review, project, reviewMode, groups.on("review"));
+  // M74 (review.whenNothing): with Close it quietly, a review that found nothing closes by itself after a few seconds,
+  // and its History row says so (never "you said it looks fine").
+  const quietBatch = reviewOn && closesQuietly(m.review, useSetting("review.whenNothing")) ? m.review!.batch : null;
+  useEffect(() => {
+    if (!quietBatch || !project) return;
+    const t = setTimeout(() => {
+      if (nowModel.current.review?.batch !== quietBatch || !closesQuietly(nowModel.current.review, setting("review.whenNothing"))) return;
+      dispatch({ type: "ui.reviewDismissed", batch: quietBatch });
+      void sendQuiet(reviewDismiss(project, quietBatch, "quiet")).catch(() => {});
+    }, CLOSE_QUIETLY_MS);
+    return () => clearTimeout(t);
+  }, [quietBatch, project]);
   const reviewHandlers = {
     onReview: (proof: boolean) => {
       const r = nowModel.current.review;

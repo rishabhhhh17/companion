@@ -1993,6 +1993,9 @@ mod tests {
         assert!(include_str!("runner.rs").contains("crate::review_heard(app, &v);"), "every engine event passes by it");
         let watched = body("fn review_watched(");
         assert!(watched.contains("\"review.mode\"") && watched.contains("\"off\"") && watched.contains("group_off(\"flow.on\")"), "{watched}");
+        // M74: the open project's own choice (review.modeHere) comes first, then the usual review.mode.
+        let mode = body("fn review_mode_now(");
+        assert!(mode.contains("\"review.modeHere\"") && mode.contains("\"review.mode\""), "{mode}");
         // Cleared when Home opens (with the count of new results), when the page asks for the review or closes it, when
         // another folder is opened, and when reviews or Flow are turned off.
         let open = body("fn open_card_then(");

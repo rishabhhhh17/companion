@@ -161,6 +161,11 @@ export type RateInput = {
   /** M57: reasons other rules found (look.ts: open data, keys that reach the page, house rules). Those of a Fix this first
    *  kind come after the key and before the rest; the others are worth a look. */
   found?: Reason[];
+  /** M74: the kinds the person asked to always stop for (review.stopKinds: sign in, payments). A change to one is Fix this
+   *  first. Keys and open data stop whatever this says (they are in the rules above, not on this list). */
+  stopTouches?: readonly Touch[];
+  /** M74: the most files one batch may have before it is too many to look at one by one (review.maxFiles, usual 200). */
+  maxFiles?: number;
 };
 const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule"]);
 
@@ -171,6 +176,12 @@ export const listWords = (xs: string[]): string => (xs.length <= 1 ? xs.join("")
 const RISKY: readonly Touch[] = ["sign_in", "payments", "data", "settings", "dependencies"];
 /** How many files one batch may have before it is "too many to look at one by one" (the cap on a batch). */
 export const MAX_BATCH_FILES = 200;
+/** M74: the choices for the biggest change read file by file (review.maxFiles). Anything else is the usual 200. */
+export const BATCH_FILE_CHOICES: readonly number[] = [50, 200, 500];
+export const maxFilesOf = (v: unknown): number => { const n = Number(v); return BATCH_FILE_CHOICES.includes(n) ? n : MAX_BATCH_FILES; };
+/** M74: only sign in and payments may be chosen as a stop; anything else in the list is ignored. */
+export const CHOOSABLE_STOPS: readonly Touch[] = ["sign_in", "payments"];
+export const stopTouchesOf = (v: unknown): Touch[] => (Array.isArray(v) ? CHOOSABLE_STOPS.filter((t) => v.includes(t)) : []);
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /** The rating and its reasons, the most serious first. Stop: a key in the code, a removed file still used, checks that fail
@@ -183,6 +194,8 @@ export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   // lines any more.
   for (const f of i.found ?? []) if (FOUND_STOP.has(f.kind)) stop.push(f);
   for (const u of i.stillUsed.slice(0, 5)) stop.push({ kind: "removed_still_used", file: u.by, line: u.line, say: `${u.file} was removed, but ${u.by} still uses it at line ${u.line}, so the project may not start.` });
+  const chosen = (i.stopTouches ?? []).filter((t) => CHOOSABLE_STOPS.includes(t) && i.touches.includes(t));
+  if (chosen.length) stop.push({ kind: "chosen_stop", say: `It touches ${listWords(chosen.map(touchWords))}, and you asked to stop for every change there.` });
   if (i.checks === "failed") {
     const note = i.checksNote ? clip(redactOutput(i.checksNote).replace(/\s+/g, " ").trim(), 160) : "";
     stop.push({ kind: "checks_failed", say: note ? `The project's own checks did not pass. ${note}` : "The project's own checks did not pass." });
@@ -194,7 +207,7 @@ export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   if (risky.length) look.push({ kind: "touches_risky", say: `It touches ${listWords(risky.map(touchWords))}. Worth a careful look.` });
   const removed = i.changes.filter((c) => c.kind === "deleted" && !i.stillUsed.some((u) => u.file === c.file)).length;
   if (removed) look.push({ kind: "files_removed", say: `${plural(removed, "file was", "files were")} removed.` });
-  if (i.capped || i.count > MAX_BATCH_FILES) look.push({ kind: "too_many", say: `${plural(i.count, "file", "files")} changed at once, more than can be looked at one by one.` });
+  if (i.capped || i.count > (i.maxFiles ?? MAX_BATCH_FILES)) look.push({ kind: "too_many", say: `${plural(i.count, "file", "files")} changed at once, more than can be looked at one by one.` });
   for (const f of i.found ?? []) if (!FOUND_STOP.has(f.kind)) look.push(f);
   if (i.concern) look.push({ kind: "model_concern", say: i.concernSay ? clip(i.concernSay, 200) : "Something in the change may not do what was meant." });
   const rating: Rating = stop.length ? "stop" : look.length ? "worth_a_look" : "safe";

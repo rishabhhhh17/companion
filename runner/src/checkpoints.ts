@@ -145,6 +145,20 @@ export class CheckpointStore {
     }
   }
 
+  /** M74 (Settings, Privacy, Safety copies): the size the store may grow to (undo.keepSize, 1, 2 or 5 GB) and how old a
+   *  safety copy may get (undo.keepAge, in days; null is any age, as before). Whatever is chosen, starred and named saves,
+   *  every checkpoint something still points at (History, an open card, Your turn, a review) with its Before and After, and
+   *  the newest 20 always stay: never below what Undo needs right now. */
+  setLimits(o: { capBytes?: number; maxAgeDays?: number | null }): void {
+    if (typeof o.capBytes === "number" && Number.isFinite(o.capBytes) && o.capBytes > 0) this.capBytes = o.capBytes;
+    if (o.maxAgeDays === null || (typeof o.maxAgeDays === "number" && Number.isFinite(o.maxAgeDays) && o.maxAgeDays > 0)) this.maxAgeMs = o.maxAgeDays === null ? null : o.maxAgeDays * 24 * 60 * 60_000;
+  }
+  /** For tests and Settings: the limits in force. */
+  limits(): { capBytes: number; maxAgeDays: number | null } { return { capBytes: this.capBytes, maxAgeDays: this.maxAgeMs === null ? null : this.maxAgeMs / (24 * 60 * 60_000) }; }
+  private maxAgeMs: number | null = null;
+  /** For tests: the clock the age limit reads. */
+  ageNow: () => number = () => Date.now();
+
   // Operations run one at a time per project. Each one counts as work, for "idle" (maintain); maintenance itself does not.
   private serial<T>(fn: () => Promise<T>, o: { upkeep?: boolean } = {}): Promise<T> {
     const work = o.upkeep ? fn : async () => { this.lastWork = Date.now(); try { return await fn(); } finally { this.lastWork = Date.now(); } };
@@ -530,12 +544,25 @@ export class CheckpointStore {
   private async pruneNow(keepNewest = this.keepNewest, slack = this.pruneSlack): Promise<number> {
     if (!existsSync(join(this.shadowDir, "HEAD"))) return 0;
     const all = this.refs();
-    if (all.length <= keepNewest + slack) return 0;
+    // M74: past the age limit, a safety copy goes too (kept: the newest 20, and everything kept below).
+    const cutoff = this.maxAgeMs === null ? null : this.ageNow() - this.maxAgeMs;
+    const tooOld = (id: string): boolean => {
+      if (cutoff === null) return false;
+      const t = Date.parse(this.readMeta(id)?.createdAt ?? "");
+      return Number.isFinite(t) && t < cutoff;
+    };
+    const overCount = all.length > keepNewest + slack;
+    const aged = cutoff !== null && all.slice(0, -KEEP_WHEN_FULL).some((r) => tooOld(r.id));
+    if (!overCount && !aged) return 0;
     const keep = this.kept(all, keepNewest);
     if (!keep) return 0;
+    const floor = this.kept(all, Math.min(keepNewest, KEEP_WHEN_FULL));
+    if (!floor) return 0;
     let n = 0;
     for (const r of all) {
-      if (keep.has(r.id)) continue;
+      // Never below what Undo needs now (the floor). Too old: it goes. Over the count: what kept() does not keep goes.
+      if (floor.has(r.id)) continue;
+      if (!tooOld(r.id) && !(overCount && !keep.has(r.id))) continue;
       const d = await this.gitFull(["update-ref", "-d", r.ref]);
       if (d.code !== 0) continue;   // still there: its notes stay with it
       rmSync(this.metaPath(r.id), { recursive: true, force: true });

@@ -77,6 +77,18 @@ export const permissionLesson = (kind: PermissionKind): string => `companion-${k
 const dollars = (n: number, cents: boolean) => `$${cents || !Number.isInteger(n) ? n.toFixed(2) : String(n)}`;
 
 /** Today's spend for this project against its limit, in plain words. Always "about": it is Companion's own estimate. */
+/** M74: the line under Review changes that says when a review starts, from the waits in force. With reviews off in force
+ *  (this project's own choice, or the usual one), it says the folder is not watched. */
+export function reviewStartLine(mode: unknown, quietSeconds: unknown, autoSeconds: unknown): string {
+  if (mode === "off") return S.m74.reviewOff;
+  const n = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? Math.round(v) : d);
+  return S.m74.reviewStarts(S.m74.seconds(n(quietSeconds, 20)), S.m74.seconds(n(autoSeconds, 60)));
+}
+/** M74: the Privacy page's line about review history, in the words the setting's own choice uses. */
+export function reviewKeepLine(keepDays: unknown): string {
+  const words = (S.set as Record<string, { options?: Record<string, string> }>)["review.keepDays"]?.options ?? {};
+  return S.m74.reviewKeep((words[String(keepDays)] ?? words["90"] ?? "90 days").toLowerCase());
+}
 export function spendingLine(s: Spending): string {
   const line = S.spendingToday.replace("{spent}", dollars(s.spentUsd, true)).replace("{limit}", dollars(s.limitUsd, false));
   return s.spentUsd >= s.limitUsd ? `${line} ${S.spendingOver}` : line;

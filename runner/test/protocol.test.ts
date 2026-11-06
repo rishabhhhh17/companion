@@ -341,7 +341,8 @@ describe("the review of a change", () => {
     for (const [k, v] of [["did", "ignored"], ["rating", "fine"], ["checks", "maybe"], ["files", [{ file: "a.ts", text: "x" }]], ["files", Array.from({ length: 21 }, (_, i) => `f${i}.ts`)], ["at", "yesterday"], ["touches", ["love"]], ["summary", undefined]] as const) {
       expect(parseEvent(JSON.stringify({ ...t, reviews: [{ ...row, [k]: v }] })).ok, k).toBe(false);
     }
-    expect(REVIEW_DID).toEqual(["open", "looks_fine", "sent_back", "fix", "no_longer_applies"]);
+    // M74: closed_quietly, a review that found nothing and closed by itself (review.whenNothing).
+    expect(REVIEW_DID).toEqual(["open", "looks_fine", "sent_back", "fix", "no_longer_applies", "closed_quietly"]);
     // A closed card says how: Looks fine, or after Copy for my AI. Nothing else.
     expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), how: "sentBack" })).ok).toBe(true);
     expect(parseCommand(JSON.stringify({ ...fx("review.dismiss"), how: "looksFine" })).ok).toBe(true);

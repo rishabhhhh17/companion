@@ -16,7 +16,7 @@ import { LIVELINESS, livelinessOf, waterOf, WATERS, type Liveliness } from "./lo
 import type { Pose } from "./characters.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { takeIfLost } from "./focus.ts";
-import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
+import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, reviewKeepLine, reviewStartLine, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
@@ -30,6 +30,7 @@ import { invoke, listen } from "./tauri.ts";
 import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
 import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
+import { reviewModeOf } from "../../protocol/index.ts";
 import { changedNow, changeSetting, characterNow, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { floorWords, homeSizeHint, PLACE_KEYS, problemWords, rowModel, shownNow, valueWords, wordsOf } from "./settingsRows.ts";
@@ -418,6 +419,9 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
   const shownFor = snapshotNow()?.project ?? project;
   const change = (v: unknown): Promise<Done> => { setProblem(""); const p = changeSetting(d.key, v, d.scope === "project" && shownFor ? shownFor : undefined); done(p); return p; };
   const reset = () => { setProblem(""); setAskReset(false); done(resetSetting(d.key)); };
+  // M74: Open when you log in is a standing change to this Mac, so turning it on asks first (turning it off never does).
+  const [askLogin, setAskLogin] = useState(false);
+  const loginNo = useId();
   // Restore usual of Pictures to keep while more are kept: says first how many go, as lowering the number does.
   const [askReset, setAskReset] = useState(false);
   const resetGo = d.key === "pictures.keep" ? picturesResetGoing([d.key], inv?.receiptPictures, value) : 0;
@@ -470,7 +474,7 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
     if (d.key === "check.start") return <ChoiceControl d={d} value={String(value)} options={startOptions(value, facts_)} labelId={labelId} disabled={off} onChange={change} />;
     if (d.key === "pictures.keep") return <PicturesKeep d={d} value={typeof value === "number" ? value : (d.default as number)} count={inv?.receiptPictures} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} inputId={inputId} />;
     switch (d.kind) {
-      case "switch": return <Switch id={switchId} checked={value === true} labelledBy={labelId} describedBy={helpId} disabled={off} onChange={change} />;
+      case "switch": return <Switch id={switchId} checked={value === true} labelledBy={labelId} describedBy={helpId} disabled={off} onChange={d.key === "app.openAtLogin" ? (v: boolean) => { if (v) setAskLogin(true); else { setAskLogin(false); void change(false); } } : change} />;
       case "choice": return <ChoiceControl d={d} value={String(value)} options={options} labelId={labelId} disabled={off} onChange={change} />;
       case "number": return <NumberControl d={d} value={typeof value === "number" ? value : (d.default as number)} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} inputId={inputId} />;
       case "text": return <TextControl d={d} value={typeof value === "string" ? value : ""} labelId={labelId} disabled={off} onChange={change} onProblem={setProblem} />;
@@ -493,6 +497,12 @@ function SettingRow({ d, parentOff = "", indent }: { d: Def; parentOff?: string;
       <ConfirmStep key="ask" className="set-confirm" label={S.chkPicturesGo(resetGo, Number(usual))} back={inputId} onCancel={() => setAskReset(false)}>
         <p>{S.chkPicturesGo(resetGo, Number(usual))}</p>
         <div className="set-buttons"><Button kind="danger" onClick={reset}>{S.chkPicturesGoYes}</Button><CancelButton onClick={() => setAskReset(false)} /></div>
+      </ConfirmStep>
+    ) : null,
+    askLogin ? (
+      <ConfirmStep key="login" className="set-confirm" label={S.m74.loginAsk} back={switchId} onCancel={() => setAskLogin(false)}>
+        <p>{S.m74.loginAsk}</p>
+        <div className="set-buttons"><Button kind="primary" onClick={() => { setAskLogin(false); void change(true); }}>{S.m74.loginYes}</Button><Button id={loginNo} onClick={() => setAskLogin(false)}>{S.m74.loginNo}</Button></div>
       </ConfirmStep>
     ) : null,
     problem ? <Problem key="problem" text={problem} /> : null,
@@ -699,7 +709,7 @@ function ItemRows({ item, parentOff = "", indent }: { item: Item; parentOff?: st
 /** A page's group: its title, its rows, its footer. A group with nothing to show is left out. */
 function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
   const c = useCtx();
-  useSettings([...items.map(keyOf).filter((k): k is string => !!k), "groups.cutNotice"]);
+  useSettings([...items.map(keyOf).filter((k): k is string => !!k), "groups.cutNotice", ...(id === "fixing.review" ? ["review.quietSeconds", "review.autoQuietSeconds"] : [])]);
   if (items.length === 1 && typeof items[0] === "string" && items[0] === "keys.hotkeys") return <KeysRows keys={c.keys} />;
   const only = items.length === 1 && typeof items[0] !== "string" ? items[0].fixed : null;
   // A few parts are a whole group on their own, with their own card.
@@ -708,7 +718,8 @@ function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
   if (only === "setup") return <SetupGroup />;
   if (only === "danger") return <DangerZone />;
   const title = (S.setGroupTitles as Record<string, string>)[id];
-  const foot = (S.setGroupFoot as Record<string, string>)[id];
+  const foot = id === "fixing.review" ? reviewStartLine(reviewModeOf(setting("review.mode"), setting("review.modeHere")), setting("review.quietSeconds"), setting("review.autoQuietSeconds"))
+    : (S.setGroupFoot as Record<string, string>)[id];
   // F28, once after the update: the tools that now start off and that this Mac had not used (settings.rs launch_cut).
   const cut = id === "general.tools" ? cutNoticeLine() : "";
   return (
@@ -733,12 +744,21 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "logs": return <LogsRow />;
     case "acknowledgements": return <AckRow />;
     case "usedOften": return <UsedOftenRow />;
+    case "reviewKeep": return <ReviewKeepRow />;
     // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
     case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
     default: return null;
   }
 }
 const fixedAnchor = (fx: Fixed): string => `set-fixed-${fx}`;
+
+/** M74: on Privacy, how long reviews stay in History, with a way to the one row that changes it (on Fixing, in More). */
+function ReviewKeepRow() {
+  const c = useCtx();
+  const days = useSetting("review.keepDays");
+  return <Row id={fixedAnchor("reviewKeep")} label={S.setFixed.reviewKeep.title} description={reviewKeepLine(days)}
+    control={<Button size="sm" onClick={() => c.go("review.keepDays")}>{S.m74.reviewKeepChange}</Button>} />;
+}
 
 /** The Plan card (the payments spec, 9a; T17): from the shell's license_status and the engine's free fix count. With
  *  payments off it says Early access and offers nothing to buy (planCard.tsx draws it, plan.ts decides it). */
@@ -1220,6 +1240,8 @@ function PageView({ page }: { page: PageId }) {
   return (<>
     <PageHead title={S.pages[page].title} line={S.pages[page].sub} />
     {changedHere && <p className="set-note set-legend">{S.setFrame.changedLegend}</p>}
+    {/* M74: a page with a setting for one project says so at the top while no project is open. */}
+    {!c.project && keys.some((k) => defOf(k)?.scope === "project") && <p className="set-note" role="note">{S.m74.pickProject}</p>}
     {page === "about" && <AboutHead />}
     {p.groups.map((g) => <GroupView key={g.id} id={g.id} items={g.items} />)}
     {n > 0 && <div className="set-buttons set-foot"><Button kind="quiet" onClick={() => c.go(`more:${page}`)}>{S.setFrame.moreLink(S.pages[page].title, n)}</Button></div>}
@@ -1289,7 +1311,7 @@ function TopicView({ topic, open, setOpen }: { topic: Topic; open: boolean; setO
   // M69 (spec 3.9): no counts on the folds ("More General options (56)" read as a chore); the title says what is inside.
   return (
     <Disclosure id={topic.id} title={(S.setGroupTitles as Record<string, string>)[topic.id] ?? topic.id} open={open} onToggle={setOpen} disabledNote={off || undefined}>
-      <Group>
+      <Group footer={(S.setGroupFoot as Record<string, string>)[topic.id]}>
         {topic.items.map((i) => <ItemRows key={typeof i === "string" ? i : `fixed:${i.fixed}`} item={i} parentOff={off} indent={false} />)}
         {topic.id === "more.privacy.calls" && <Row label={wordsOf("numbers.on").label}>{<NumbersRows />}</Row>}
       </Group>

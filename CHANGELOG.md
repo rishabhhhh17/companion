@@ -2,6 +2,22 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Your way: 6 Nov 2026 (in progress)
+
+- **Settings you looked for are easier to find.** How strict reviews are, the instant key warning (still off unless you turn it on) and How many times to try a fix are now on the main Fixing page. A line under Review changes says when a review starts.
+- **A warning before the daily limit.** Squibby tells you once a day when a project has used most of today's limit, or half if you pick that. It never shows an amount. The most one task may spend now sits right beside it on Account.
+- **Each project can review its own way.** Reviews in this project can follow the usual choice, or be Ask first, Automatic or Off just for that project.
+- **Skip folders in reviews.** Add your own folders or files for reviews to skip, such as notes or exported data. Squibby's own list of build and package folders always stays.
+- **Choose what counts as a stop.** Changes to sign in or payments can say Fix this first if you want. A key in the code and data open to anyone always do.
+- **Reviews without Claude.** What a review may send to Claude: words and checks, or checks only, where nothing about the change leaves your Mac.
+- **Files that never go to Claude.** Add your own names or patterns, such as clients or *.contract, on top of the built in .env and key rules, which can never be removed.
+- **Safety copies your size.** Pick 1, 2 or 5 GB of room, and how long copies are kept. Starred saves and what Undo needs right now are always kept.
+- **Quiet hours for the notch.** Pick hours when the notch shows no dot or line about changes to review. Home still shows everything.
+- **A quiet close.** A review that finds nothing can close by itself after a few seconds. History says it closed by itself.
+- **Biggest change to read file by file:** 50, 200 or 500 files.
+- **Open when you log in.** Off unless you turn it on; Squibby asks first, and you can turn it off here or in System Settings.
+- **How long reviews stay in History** is now also shown on the Privacy page.
+
 ## Fluid: 6 Nov 2026 (in progress)
 
 - **Everything answers your press.** Places, list rows and their buttons sink a little when you press them, like the buttons already did.

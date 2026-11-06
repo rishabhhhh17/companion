@@ -59,3 +59,13 @@ export function startingLimit(envValue: string | undefined, saved: number | null
   if (envValue && Number.isFinite(dev) && dev > 0) return dev;
   return saved ?? DEFAULT_DAILY_LIMIT_USD;
 }
+
+/** M74 (spend.warnAt): the level a booking just passed, as a percent of the daily limit, or null. Off, or a value that is
+ *  not one of the choices, never warns. Only the moment of passing counts, so a project already past it is not told again
+ *  by the next booking (the caller also keeps one warning per day and level). */
+export function warnCrossed(before: number, after: number, limitUsd: number, warnAt: unknown): 50 | 80 | null {
+  const level = warnAt === "50" ? 50 : warnAt === "80" ? 80 : null;
+  if (level === null || !(limitUsd > 0) || !Number.isFinite(before) || !Number.isFinite(after)) return null;
+  const at = (limitUsd * level) / 100;
+  return before < at && after >= at ? level : null;
+}

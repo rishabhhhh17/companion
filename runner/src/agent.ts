@@ -23,7 +23,8 @@ import { isClaudeStop, NOT_REACHED, withoutTryAgain } from "./reach.ts";
 import { EngineStop, type Engine, type ShellFacts, type ToolResult, type ToolUse } from "./engine.ts";
 import { MODELS } from "./models.ts";
 import { agentModesOf, type Owner } from "./groups.ts";
-import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD } from "./spending.ts";
+import { storeLimits } from "./storelimits.ts";
+import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReached, MAX_DAILY_LIMIT_USD, MIN_DAILY_LIMIT_USD, warnCrossed } from "./spending.ts";
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
@@ -566,7 +567,23 @@ export class AgentRunner {
    *  it spends and books through bookSpend after. */
   roomFor(project?: string): number { return this.room(this.dayOf(project)); }
   /** The one place a light feature's cost is booked. Only a number is kept, never any text. */
-  bookSpend(project: string | undefined, usd: number) { if (Number.isFinite(usd) && usd > 0) this.ledger.add(this.dayOf(project), usd); }
+  bookSpend(project: string | undefined, usd: number) { if (Number.isFinite(usd) && usd > 0) this.addSpend(this.dayOf(project), usd); }
+  /** Every booking goes through here: the ledger, then M74's warning (spend.warnAt) the moment a project passes half or
+   *  most of today's limit, once a day per project and level. The warning carries no amount (F29). */
+  private warned = new Set<string>();
+  private addSpend(project: string, usd: number) {
+    if (!Number.isFinite(usd) || usd <= 0) return;
+    const before = this.ledger.spentToday(project);
+    this.ledger.add(project, usd);
+    const level = warnCrossed(before, this.ledger.spentToday(project), this.dailyLimitUsd, this.setting("spend.warnAt"));
+    if (level === null) return;
+    const d = this.now();
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}|${project}|${level}`;
+    if (this.warned.has(key)) return;
+    this.warned.add(key);
+    if (this.warned.size > 500) this.warned = new Set([...this.warned].slice(-200));
+    this.emit({ type: "spending.warn", project, percent: level } as never);
+  }
   // The Settings row: the daily limit against what this project spent today. A new limit is used only once it is kept.
   private spendingState(project: string, problem?: string) {
     const spent = Math.round(this.ledger.spentToday(project) * 1e6) / 1e6;
@@ -934,6 +951,9 @@ export class AgentRunner {
     const id = createHash("sha256").update(resolve(project)).digest("hex").slice(0, 16);
     const s = CheckpointStore.shared(join(this.o.shadowRoot, `${id}.git`), project);
     s.gitTimeoutMs = SNAPSHOT_LIMIT_MS * this.slow();   // "my internet is slow" doubles it
+    // M74: Safety copies' size and age (undo.keepSize, undo.keepAge), read each time the store is used, so a change counts at
+    // the next snapshot. Starred saves and what Undo needs now always stay (checkpoints.ts setLimits).
+    s.setLimits(storeLimits((k) => this.setting(k)));
     if (!this.guardedStores.has(s)) { this.guardedStores.add(s); s.guard(() => this.pointedAt(project)); }
     return s;
   }
@@ -1144,7 +1164,7 @@ export class AgentRunner {
 
     let usd = prior, booked = prior, commands = 0, status = "done";   // what was spent before it started is booked already
     const tokens = { in: 0, cacheRead: 0, out: 0 };
-    const book = () => { this.ledger.add(cmd.project, usd - booked); booked = usd; this.taskUsd.set(cmd.agent, usd); };
+    const book = () => { this.addSpend(cmd.project, usd - booked); booked = usd; this.taskUsd.set(cmd.agent, usd); };
     // Off the record, the engine saves no conversation, so nothing can be continued later: each round starts afresh.
     const offRecord = !!cmd.offTheRecord;
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
@@ -1479,7 +1499,7 @@ export class AgentRunner {
     const hadClaudeFolder = claudeFolderExists(spec.project);
     const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     let booked = 0;
-    const book = () => { this.ledger.add(spec.project, st.usd - booked); booked = st.usd; };
+    const book = () => { this.addSpend(spec.project, st.usd - booked); booked = st.usd; };
     const exec = this.o.executor ?? defaultExecutor;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     // ExitPlanMode is how plan mode hands back its plan: it changes nothing, so it is let through, and the plan in its input is

@@ -211,8 +211,17 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // M57: open_table (a table anyone can read, from a changed migration), signed_in_open (every signed in account can read
 // all its rows), key_in_page (a key that would reach the page every visitor loads), house_rule (a "never edit" rule of the
 // project's own .companion/rules.txt matched a changed file) and house_rule_ask (an "ask before editing" rule matched).
-export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask"] as const;
+// M74: chosen_stop, a change to a kind the person asked to always stop for (review.stopKinds: sign in, payments).
+export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
+/** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
+ *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
+export const REVIEW_MODES = ["ask", "automatic", "off"] as const;
+export type ReviewMode = (typeof REVIEW_MODES)[number];
+export function reviewModeOf(app: unknown, here: unknown): ReviewMode {
+  if ((REVIEW_MODES as readonly unknown[]).includes(here)) return here as ReviewMode;
+  return (REVIEW_MODES as readonly unknown[]).includes(app) ? (app as ReviewMode) : "ask";
+}
 /** M57 feature 7: how strict a review is (review.strictness). Quiet shows only Fix this first; Normal is the usual and leaves
  *  out the kinds the person said not to flag here; Careful shows every worth a look, those kinds too. */
 export const REVIEW_STRICTNESS = ["quiet", "normal", "careful"] as const;
@@ -245,7 +254,8 @@ export type ReviewReason = { kind: ReviewReasonKind; say: string; file?: string;
 export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?: string; proof?: boolean };
 /** M57 feature 1: how the card was closed, for its row in History. looksFine: Looks fine. sentBack: Copy for my AI was
  *  pressed on this card before it was closed. Absent: closed with no review (Skip this one). */
-export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack"] as const;
+// M74: quiet, closed by itself after a review that found nothing (review.whenNothing).
+export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
 export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey;
@@ -376,7 +386,7 @@ export type TaskSummary = { id: number; label: string; status: string; usd: numb
 /** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary
  *  had secrets hidden before it was kept. did: what the person did with it (open: nothing yet, or the engine closed before;
  *  no_longer_applies: a newer change made every reason go away). */
-export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies"] as const;
+export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies", "closed_quietly"] as const;
 export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string } };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
@@ -420,6 +430,10 @@ export type BrowserStatus = Envelope & { type: "browser.status"; installed: bool
 // The download's progress (percent 0 to 100 and its real size, once known), then done, failed or cancelled (Stop everything).
 export type BrowserInstallEvent = Envelope & { type: "browser.install"; stage: "downloading" | "done" | "failed" | "cancelled"; detail: string; percent?: number; mb?: number };
 // problem: why a new limit was refused or not kept; the limit shown is the one still in force.
+/** M74: a project has used half, or most, of today's limit (spend.warnAt). Said once a day per project and level; it
+ *  carries no amount (F29: a customer never sees cents). */
+export const SPEND_WARN_LEVELS = [50, 80] as const;
+export type SpendingWarn = Envelope & { type: "spending.warn"; project: string; percent: (typeof SPEND_WARN_LEVELS)[number] };
 export type SpendingState = Envelope & { type: "spending.state"; project: string; limitUsd: number; spentUsd: number; minUsd: number; maxUsd: number; problem?: string };
 // Which task broke it. Each check of a version is one run (at most maxRuns); "now" is the project as it is, "after" and
 // "before" a version saved after or before the task named in label.
@@ -497,7 +511,7 @@ export type ReviewResultEvent = Envelope & {
   /** M57: how many smaller reasons were left out by review.strictness or a "do not flag" line. Never a Fix this first. */
   hidden?: number;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent;
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -729,6 +743,7 @@ const EVENTS: Record<string, Check[]> = {
   "browser.status": [bool("installed"), bool("installing")],
   "browser.install": [oneOf("stage", ["downloading", "done", "failed", "cancelled"]), str("detail"), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("mb", num("mb"))],
   "spending.state": [str("project"), num("limitUsd"), num("spentUsd"), num("minUsd"), num("maxUsd")],
+  "spending.warn": [str("project"), (m) => ((SPEND_WARN_LEVELS as readonly unknown[]).includes(m.percent) ? null : `"percent" must be one of ${SPEND_WARN_LEVELS.join(", ")}`)],
   "bisect.progress": [str("project"), str("agent"), num("run"), num("maxRuns"), oneOf("what", ["now", "after", "before"])],
   "bisect.result": [str("project"), str("agent"), oneOf("outcome", ["found", "not_failing", "already_failing", "after_last_task", "outside_change", "unsure", "too_few", "cannot_check", "busy", "failed", "cancelled"]), num("runs"), num("maxRuns"),
     opt("undo", oneOf("undo", ["safe", "show_only"])), (m) => (m.outcome !== "found" || (typeof m.task === "object" && m.task !== null && typeof (m.task as Record<string, unknown>).checkpoint === "string") ? null : 'a found task needs "task" with its "checkpoint"')],

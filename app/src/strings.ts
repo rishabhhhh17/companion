@@ -542,6 +542,8 @@ export const S = {
     "island.display": "Which screen the notch and Home use.",
     // M57 UI 12: the review of changes, first on the Fixing page.
     "review.mode": "When your project changes, say what changed and whether it is safe. Ask first waits for your press.",
+    // M74
+    "spend.warnAt": "A note once a day when a project has used half, or most, of today's limit.",
     "home.escStops": `Esc removes what ${PRODUCT} is showing on your screen.`,
     "display.textSize": "Every word in Home gets bigger. The notch keeps its size.",
     "guide.on": "Points at where to click, step by step.",
@@ -585,6 +587,10 @@ export const S = {
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
   // menu, in the help and for search.
   setSeg: {
+    // M74
+    "spend.warnAt": { off: "Off", "50": "At half", "80": "Near limit" },
+    "review.send": { wordsAndChecks: "With words", checksOnly: "Checks only" },
+    "review.whenNothing": { leave: "Keep it", closeQuietly: "Close it" },
     "island.display": { follow: "Follow you", builtIn: "Built in", main: "Main" },
     "home.goToNeeds": { goToIt: "Go to it", markTab: "Mark it" },
     "character.motion": { followMac: "Follow Mac", less: "Less" },
@@ -617,16 +623,16 @@ export const S = {
     "account.plan": "Plan and billing", "account.spending": "Spending", "account.you": "You",
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
-    "general.setup": "Finish setting up", "general.notch": "Notch and Home", "general.tools": "Tools",
-    "fixing.review": "Reviews of changes to your project", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
+    "general.setup": "Finish setting up", "general.start": "Starting", "general.notch": "Notch and Home", "general.tools": "Tools",
+    "fixing.review": "Reviews of changes to your project", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
-    "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.danger": "Danger zone",
+    "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
     "more.account.spending": "Spending per job and models",
     "more.account.developer": "For developers: your own Claude key",
     "more.account.you": "The AI you build with",
-    "more.general.notch": "Notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
+    "more.general.notch": "Notch", "more.general.quiet": "Quiet hours for the notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
     "more.fixing.review": "Reviews of changes", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
     "more.flowflow.motion": "Motion and placement",
@@ -638,6 +644,10 @@ export const S = {
     "general.tools": `A tool that is off keeps its settings. ${PRODUCT} always fixes; that can't be turned off here.`,
     "fixing.rules": `${PRODUCT} always asks before it sends, pays, deletes or goes live. That can't be turned off.`,
     "keys.talking": "Your voice is turned into words on this Mac. Nothing you say is kept.",
+    // M74: the notch's settings in one place, said plainly.
+    "general.notch": `The notch is where ${PRODUCT} shows what it is doing. Point at it for a small panel; click it for Home.`,
+    "more.general.notch": "What the notch shows at rest and while working, how fast it opens and closes, and which screen it uses.",
+    "privacy.claude": "Everything else stays on this Mac.",
   } as Record<string, string>,
   // The parts of Settings that are not settings, as search finds them (the spec, 3.7).
   setFixed: {
@@ -655,6 +665,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
+    reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
   // The Settings frame (the spec, 3.1 to 3.3 and 3.7).
@@ -1699,6 +1710,7 @@ export const S = {
       touches_risky: "Try sign in, payments or saving data yourself before you share it.",
       signed_in_open: "Add a rule so each account reads only its own rows.",
       house_rule_ask: "Check the change was meant. If not, press Undo.",
+      chosen_stop: "Try that part yourself before you share it. You asked to stop for every change there.",
       files_removed: "Make sure nothing still needs them. Undo puts them back.",
       too_many: "Look at the most important files first, or undo it and ask for smaller changes.",
       model_concern: "Read why, then try that part yourself.",
@@ -1711,6 +1723,7 @@ export const S = {
       touches_risky: "If you meant to change that part.",
       signed_in_open: "If every account is meant to see every row, such as a public list.",
       house_rule_ask: "If you asked for this change.",
+      chosen_stop: "If you meant to change that part.",
       files_removed: "If you meant to remove them.",
       too_many: "If you asked for a big change on purpose.",
       model_concern: "If it does what you meant when you try it.",
@@ -1986,7 +1999,7 @@ export const S = {
   // M57 feature 1: the reviews of changes, as their own rows in History (reviewHistory.ts). What was done, never a score.
   history: {
     reviewMark: "Review",
-    reviewDid: { open: "Not closed", looks_fine: "You said it looks fine", sent_back: "You copied it for an AI tool", fix: "You pressed Fix it", no_longer_applies: "Changed since, it no longer applies" } as Record<string, string>,
+    reviewDid: { open: "Not closed", looks_fine: "You said it looks fine", sent_back: "You copied it for an AI tool", fix: "You pressed Fix it", no_longer_applies: "Changed since, it no longer applies", closed_quietly: "Nothing found, closed by itself" } as Record<string, string>,
     reviewMore: (n: number) => `and ${n} more`,
     reviewsKept: (days: string) => `Kept for ${days}. Only file names are kept, never what is in them.`,
   },
@@ -2203,7 +2216,7 @@ export const S = {
     "model.work": { label: "Claude for tasks, plans and research", help: "The Claude model that does the work. Careful thinks harder about difficult changes and takes longer.", also: ["model", "sonnet", "opus", "quality", "smarter"], options: { recommended: "Recommended: Sonnet 5.5", careful: "Careful: Opus 5.5, about twice the cost" } },
     "model.rescue": { label: "Claude for Rescue", help: "The Claude model that looks at a stuck project and plans the fix.", also: ["model", "sonnet", "opus", "rescue", "stuck"], options: { careful: "Careful: Opus 5.5", recommended: "Recommended: Sonnet 5.5, about half the cost" } },
     "model.quick": { label: "Claude for quick answers", help: "The Claude model for Prompt help, Explain, Draw it for me and the error explainer. Recommended answers more carefully. Fast answers a little sooner.", also: ["model", "haiku", "sonnet", "prompt help", "explain", "fast"], options: { fast: "Fast: Haiku 4.5, about half the cost", recommended: "Recommended: Sonnet 5.5" } },
-    "work.tries": { label: `Checks before ${PRODUCT} asks you what to do`, help: `When a check on the work fails, Claude tries again. After this many failed checks Claude stops. If they all failed the same way, ${PRODUCT} asks you what to do next. Try a different approach gets as many again. The spending limit still caps the cost.`, also: ["tries", "retries", "attempts", "loop", "stuck", "checks"] },
+    "work.tries": { label: "How many times to try a fix", help: `When a check on the work fails, Claude tries again. After this many failed checks Claude stops. If they all failed the same way, ${PRODUCT} asks you what to do next. Try a different approach gets as many again. The spending limit still caps the cost.`, also: ["tries", "retries", "attempts", "loop", "stuck", "checks"] },
     "work.askOnAnyFailure": { label: "Ask me when the tries run out, even if each failure was different", help: `Off, a task whose checks failed in different ways ends as not done. On, ${PRODUCT} asks you whether to try a different approach. It asks at most once in a task.`, also: ["tries", "loop", "stuck", "ask", "different approach"] },
     "work.tryAgain": { label: "Try again", help: "What Try again does after a task that did not work. Fresh starts a new conversation with Claude. It is still told what you asked, how the last try ended and which check failed.", also: ["retry", "again", "conversation", "fresh"], options: { carry_on: "Carry on the conversation", fresh: "Start a fresh conversation" } },
     "work.stopOnQuestion": { label: "Stop and wait when Claude asks me something", help: "When Claude needs something only you can give, such as a setting's value, it does what it can. Then it asks you one short question and waits for your answer under the result. Off, it is sent the failed checks to fix, as it was before, and its question is only shown.", also: ["question", "ask", "answer", "wait", "needs you", "fix"] },
@@ -2276,6 +2289,21 @@ export const S = {
     // M57 feature 1: how long History keeps its review rows (names of files only, never their text).
     "review.keepDays": { label: "Keep reviews in History for", help: `Each review is one row in History: when, which files by name, what it found and what you did. ${PRODUCT} never keeps the text of your files. Older rows are removed, and Delete everything removes them all.`, also: ["review", "history", "keep", "days", "retention", "delete"], options: { "30": "30 days", "90": "90 days", "180": "180 days", "365": "A year" } },
     "review.strictness": { label: "How strict reviews are", help: `Quiet shows only what needs fixing first. Normal shows what is worth a look too, except the kinds you asked ${PRODUCT} not to flag in this project. Careful shows everything, those kinds too. A key in the code, a changed settings or key file, and data open to anyone or to every signed in account are always shown.`, also: ["review", "strict", "quiet", "careful", "noise", "flag", "Cursor", "Codex", "Claude Code"], options: { quiet: "Quiet", normal: "Normal", careful: "Careful" } },
+    // M74 (your way): the behaviours that had no setting. Each keeps a fixed floor (S.floors).
+    "spend.warnAt": { label: "Warn when a project nears its limit", help: `${PRODUCT} tells you once a day when a project has used half, or most, of today's limit, so a stuck fix never surprises you. Work goes on until the limit itself.`, also: ["warn", "warning", "spending", "money", "cost", "budget", "alert", "limit", "near"], options: { off: "Off", "50": "At half", "80": "Near the limit" } },
+    "review.modeHere": { label: "Reviews in this project", help: `This project can have its own choice, for example Automatic for a client project and Off for a hobby one. Same as everywhere follows Review changes to your project above.`, also: ["review", "project", "this project", "client", "per project", "automatic", "off"], options: { same: "Same as everywhere", ask: "Ask first", automatic: "Automatic", off: "Off" } },
+    "review.ignore": { label: "Folders and files reviews skip", help: `A name such as notes skips that file or folder anywhere in the project. A path such as docs/clients skips it from the project folder. A star stands for any part of a name, as in *.csv. ${PRODUCT} already skips installed packages, build output and its own folders, and those stay skipped. Keys in a skipped file are not looked for either.`, also: ["review", "ignore", "skip", "exclude", "folders", "noise", "generated"] },
+    "review.send": { label: "What a review may send to Claude", help: `Words and checks: Claude writes the review's plain words from the change, with keys and settings files left out. Checks only: nothing about the change is sent, ${PRODUCT_S} own rules and your project's checks rate it, and the words are the rules' own.`, also: ["review", "privacy", "send", "model", "claude", "client code", "contract", "offline"], options: { wordsAndChecks: "Words and checks", checksOnly: "Checks only" } },
+    "review.stopKinds": { label: "Also stop for changes to", help: `Usually a change to sign in or payments is worth a look. Pick one here and every change there says Fix this first.`, also: ["review", "stop", "sign in", "login", "payments", "stripe", "strict"], options: { sign_in: "Sign in", payments: "Payments" } },
+    "review.whenNothing": { label: "When a review finds nothing", help: `Keep it in Home: the review stays until you close it. Close it quietly: it closes by itself a few seconds after it says nothing was found. History keeps the review either way.`, also: ["review", "safe", "nothing", "clutter", "close", "dismiss"], options: { leave: "Keep it in Home", closeQuietly: "Close it quietly" } },
+    "review.maxFiles": { label: "Biggest change to read file by file", help: `Past this many files at once, a review says the change is too big to look at one by one.`, also: ["review", "files", "big", "limit", "cap", "too many"], options: { "50": "50 files", "200": "200 files", "500": "500 files" } },
+    "app.openAtLogin": { label: "Open when you log in", help: `${PRODUCT} opens by itself when you log in to this Mac, so reviews and checks are ready. It is a login item: you can also turn it off in System Settings, General, Login Items.`, also: ["login", "startup", "start", "launch", "boot", "open at login", "login items"] },
+    "undo.keepSize": { label: "Room for safety copies", help: `${PRODUCT} keeps a safety copy of your project before each change so Undo works. When the copies pass this size, the oldest ones go first.`, also: ["undo", "safety copy", "snapshot", "disk", "space", "storage", "size", "GB"], options: { "1": "1 GB", "2": "2 GB", "5": "5 GB" } },
+    "undo.keepAge": { label: "Keep safety copies for", help: "Copies older than this go. Any age keeps them until the room above is used.", also: ["undo", "safety copy", "snapshot", "days", "old", "age", "keep"], options: { "7": "7 days", "30": "30 days", "90": "90 days", any: "Any age" } },
+    "privacy.neverSend": { label: "Files never sent to Claude", help: `Add a name such as clients, or a pattern such as *.contract. ${PRODUCT} never reads those files, never sends them and never adds them to a request, in fixes and in reviews.`, also: ["privacy", "never send", "secret", "private", "client", "contract", "exclude", "env", "keys"] },
+    "quiet.on": { label: "Keep the notch quiet", help: `Between the hours below, the notch shows no dot and no line about changes to review. Home still shows everything when you open it.`, also: ["quiet", "night", "do not disturb", "focus", "notch", "dot", "review", "sleep"] },
+    "quiet.from": { label: "Quiet from hour", help: "From 0 to 23 on this Mac's clock.", also: ["quiet", "night", "start"] },
+    "quiet.to": { label: "Quiet until hour", help: "From 0 to 23 on this Mac's clock. The same hour as the start means no quiet hours.", also: ["quiet", "morning", "end"] },
     "numbers.on": { label: `Count how I use ${PRODUCT}`, help: `${PRODUCT} counts how often things happen, never words, names, files or your screen. The counts stay on this Mac, and nothing is sent.`, also: ["metrics", "stats", "analytics", "beta", "numbers"] },
   },
   // The fixed part of a setting that can never change, shown under its row, by the id its definition names (floor).
@@ -2300,6 +2328,11 @@ export const S = {
     "drop.local": "Files never leave this Mac: nothing is sent to Claude or anywhere else, and only the Mac's own tools are used.",
     "drop.never": "The original is never changed, replaced or deleted, and no file already there is ever written over.",
     "calls.apps": "Only which app is in front is checked, never what is in it. Up to 20 apps can be added.",
+    reviewIgnoreBuiltIn: "Installed packages, build output and the project's own history folder are always skipped. A changed settings or key file is still named.",
+    neverSendBuiltIn: ".env files, keys, certificates and credential files are never sent, and that cannot be changed. Your own names only add to them.",
+    reviewAlwaysStops: "A key written into the code, and data open to anyone, always say Fix this first.",
+    undoKeeps: "Starred saves, and the copies Undo needs for what you can see now, are always kept.",
+    quietKeys: "A key written into your code is still said at once, if you turned that warning on.",
   } as Record<string, string>,
   // Under Home size, when the text is larger than usual (display.textSize larger or largest) and Home is standard.
   setHomeLarger: "Your text is larger than usual. Large may fit it better.",
@@ -2491,6 +2524,24 @@ export const S = {
   setNextTask: "From the next task",
   setThisProject: (name: string) => `This project: ${name}`,
   setNeedsProject: "Choose a project folder to change this",
+  // M74 (your way): the words Settings draws itself for the new settings.
+  m74: {
+    // Under Review changes: when a review starts, from the two waits (settings.ts reviewStartLine).
+    reviewStarts: (ask: string, auto: string) => `A review starts once your files have not changed for ${ask}, or ${auto} with Automatic.`,
+    reviewOff: "Reviews are off, so the folder is not watched.",
+    seconds: (n: number) => (n % 60 === 0 && n >= 60 ? `${n / 60 === 1 ? "a minute" : `${n / 60} minutes`}` : `${n} seconds`),
+    // At the top of a page with a setting for one project, while none is open.
+    pickProject: "Pick a project first. The settings marked This project are kept for each project.",
+    // On Privacy: how long reviews stay in History, with a way to the setting on Fixing.
+    reviewKeep: (days: string) => `Reviews stay in History for ${days}. Only file names are kept, never their text.`,
+    reviewKeepChange: "Change",
+    // Open when you log in asks first: it is a standing change to this Mac.
+    loginAsk: `${PRODUCT} will open by itself each time you log in to this Mac. You can turn it off here or in System Settings, General, Login Items.`,
+    loginYes: "Open at login",
+    loginNo: "Not now",
+    // The spend warning (spending.warn): no amount, ever (F29).
+    spendWarn: (percent: number) => (percent >= 80 ? "This project has used most of today's limit. Work goes on until the limit itself." : "This project has used half of today's limit."),
+  },
   setNone: "None",
   setLess: (label: string) => `Less: ${label}`,
   setMore: (label: string) => `More: ${label}`,
@@ -2518,6 +2569,8 @@ export const S = {
   setBadValue: (label: string) => `${label} had a value ${PRODUCT} could not use, so it is back to usual.`,
   setSpendingNoProject: "Choose a project folder to see what it used today.",
   setProblem: {
+    // M74: the shell could not add the login item (an unsigned copy, or one outside Applications).
+    loginItem: `This Mac did not let ${PRODUCT} open at login. Try again from the copy in your Applications folder.`,
     unknown: `That setting is not in this version of ${PRODUCT}.`,
     custom: "That setting has its own controls.",
     notSwitch: "Pick one of the choices shown.",
@@ -2859,6 +2912,7 @@ export const S = {
       model_concern: ["The review found something to check.", "Read why below before you go on."],
       house_rule: ["A file you said never to edit was changed.", "Your house rules say to leave it alone."],
       house_rule_ask: ["A file you wanted to be asked about was changed.", "Your house rules say to ask before editing it."],
+      chosen_stop: ["A part you asked to stop for changed.", "You chose to stop for every change to sign in or payments."],
     } as Record<string, readonly [string, string]>,
     pointing: `${PRODUCT} is pointing here`,
     lineNo: (n: number) => `line ${n}`,

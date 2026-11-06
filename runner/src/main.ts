@@ -40,6 +40,7 @@ import { FreeFixes } from "./db.ts";
 import { PlanGate } from "./plan.ts";
 import { MODELS } from "./models.ts";
 import { OWN_WORK, ReviewService } from "./review/service.ts";
+import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 
 const SDK_VERSION = "0.3.293";
@@ -100,7 +101,7 @@ function ownWork(project: string | undefined, start: () => Promise<unknown>, kin
 const silences = new SilenceLedger(join(settings.data, "review-silenced.json"));
 const projectLines = (p: string): string[] => { try { return new MemoryStore({ project: p, profileDir: settings.data }).list("project").entries.map((e) => e.text); } catch { return []; } };
 const review = new ReviewService({
-  emit: (e) => say(e), setting: (k) => runnerSettings.get(k), store: (p) => runner.checkpointsFor(p),
+  emit: (e) => say(e), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
   check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p),
@@ -167,6 +168,8 @@ function dispatch(cmd: Command) {
   if (cmd.type === "settings.apply") {
     const before = offNow((k) => runnerSettings.get(k));
     say({ type: "settings.applied", ...runnerSettings.apply(plan.admit(cmd) as typeof cmd) });
+    // M74: the person's own Files never sent to Claude, on top of the built in .env and key rule (secretfiles.ts).
+    setOwnSecretPatterns(runnerSettings.get("privacy.neverSend"));
     stopGroups(newlyOff(before, offNow((k) => runnerSettings.get(k))));
     // The review watches the project this line names, and only while review.mode is not off and Flow is on.
     review.setProject(cmd.project);

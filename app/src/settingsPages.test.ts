@@ -28,20 +28,24 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
   });
   // M51 polish (the founder, 1 Nov 2026: "as much customization as possible", "very unique"): Home's look came up from More
   // options to a page of its own, seven more settings one press away, so the main levels together are about 45 now.
-  test("each page's main level holds at most 10 settings, and the main levels together are about 45", () => {
+  // M74 (the founder: "add all the customizations"; the audit: settings that matter were hard to find): a few came up
+  // from More options and the new ones that matter most are on the main levels, still at most ten a page.
+  test("each page's main level holds at most 10 settings, and the main levels together are about 50", () => {
     for (const p of SIDEBAR) expect(mainKeys(p).length, p).toBeLessThanOrEqual(10);
     expect(MAIN.size).toBeGreaterThanOrEqual(38);
-    expect(MAIN.size).toBeLessThanOrEqual(48);
+    expect(MAIN.size).toBeLessThanOrEqual(54);
   });
   test("the main levels are the ones the spec names", () => {
-    expect(mainKeys("account")).toEqual(["spend.dailyLimit", "you.name"]);   // M68: what to call you, for the hello in the notch
+    // M74: the warning before the daily limit, and the most one task may spend, beside it.
+    expect(mainKeys("account")).toEqual(["spend.dailyLimit", "spend.warnAt", "budget.task", "you.name"]);   // M68: what to call you, for the hello in the notch
     // M71: the text size moved to the Look page, beside Colour, Character and Layout.
-    expect(mainKeys("general")).toEqual(["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "guide.on", "secondLook.on", "files.on", "watch.on"]);
+    expect(mainKeys("general")).toEqual(["app.openAtLogin", "island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);
     // 2 Nov 2026: what pointing at the notch opens is in More options, first beside how long the notch waits.
     expect(PAGES.general.more.find((t) => t.id === "more.general.notch")!.items[0]).toBe("island.pointOpens");
     // M57 UI 12: the review of changes leads the Fixing page.
-    expect(mainKeys("fixing")).toEqual(["review.mode", "rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
+    // M74: how strict reviews are, the key warning, this project's own choice and how many times to try a fix came up.
+    expect(mainKeys("fixing")).toEqual(["review.mode", "review.modeHere", "review.strictness", "review.keyWarning", "work.tries", "rules.house", "check.install", "check.pageSize", "explain.mode", "undo.protectMyEdits"]);
     // M51 polish: Home's look is its own page, the water's colour with it; the character's page keeps how it moves and lives.
     // M65: the style and the character lead it; the light and the gloss (the Friendly style's water and gel) are in its
     // More options, so it stays at ten.
@@ -50,7 +54,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("flowflow")).toEqual(["character.lively", "look.size", "character.name", "character.edge", "character.dockWhen", "character.peek", "character.stick", "character.follow", "sound.on"]);
     // The overhaul spec (3.4): Prompt help, split out of voice.on, is its own group on Keys and voice.
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
-    expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused"]);
+    // M74: what goes to Claude, and how long safety copies are kept.
+    expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused", "privacy.neverSend", "review.send", "undo.keepSize", "undo.keepAge"]);
     expect(mainKeys("about")).toEqual(["updates.daily"]);
     expect(mainKeys("more")).toEqual([]);
   });
@@ -88,7 +93,11 @@ describe("the sidebar and the groups (the spec, 3.2)", () => {
   });
   test("a topic whose tool is off says how to turn it on, and child rows follow their parent switch", () => {
     for (const p of SIDEBAR) for (const t of PAGES[p].more) if (t.parent) expect(REGISTRY.settings.find((d) => d.key === t.parent)?.kind, t.id).toBe("switch");
-    for (const [child, parent] of Object.entries(CHILD_OF)) { expect(mainKeys("keys"), child).toContain(child); expect(parent).toBe("voice.on"); }
+    for (const [child, parent] of Object.entries(CHILD_OF)) {
+      // M74: the quiet hours' two times follow their own switch, in the same topic.
+      if (parent === "quiet.on") { expect(placeOf(child)!.topic, child).toBe(placeOf(parent)!.topic); continue; }
+      expect(mainKeys("keys"), child).toContain(child); expect(parent).toBe("voice.on");
+    }
     expect(S.setFrame.turnOnTool("Convert files")).toBe("Turn on Convert files in General to use these.");
   });
   test("a deep link finds a page, a group, a topic, a setting or a part", () => {
@@ -96,7 +105,8 @@ describe("the sidebar and the groups (the spec, 3.2)", () => {
     expect(placeOf("account.spending")).toMatchObject({ page: "account", group: "account.spending" });
     expect(placeOf("spend.dailyLimit")).toMatchObject({ page: "account", group: "account.spending" });
     expect(placeOf("character.stick")).toMatchObject({ page: "flowflow", group: "flowflow.place" });
-    expect(placeOf("budget.task")).toMatchObject({ page: "more", topic: "more.account.spending" });
+    expect(placeOf("budget.plan")).toMatchObject({ page: "more", topic: "more.account.spending" });
+    expect(placeOf("budget.task")).toMatchObject({ page: "account", group: "account.spending" });   // M74
     expect(placeOf("plan")).toMatchObject({ page: "account", group: "account.plan" });
     expect(placeOf("no.suchKey")).toBeNull();
   });

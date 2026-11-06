@@ -7,6 +7,7 @@
 // that work, late file events are its own. One batch holds at most a fixed number of paths.
 import { lstatSync, watch as fsWatch } from "node:fs";
 import { join } from "node:path";
+import { coveredBy } from "../pathglob.ts";
 
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
@@ -19,13 +20,14 @@ const IGNORED_DIRS = new Set([
  *  over the file (file.tmp.<pid>.<time>, seen on this Mac in M57 step 1). */
 const SCRATCH = /(^|\/)(\.DS_Store|4913|\.#[^/]*|[^/]*~|\.[^/]*\.sw[a-p]|[^/]*\.tmp|[^/]*\.tmp(\.\d+)+|[^/]*\.tsbuildinfo)$/;
 
-/** A path the review never counts: ignored, scratch, or one that would leave the folder. */
-export function ignoredPath(rel: string): boolean {
+/** A path the review never counts: ignored, scratch, or one that would leave the folder. M74: `own` is the person's own
+ *  list (review.ignore, as pathglob.ts tests), checked after the built in one, so it can only add to it. */
+export function ignoredPath(rel: string, own: readonly RegExp[] = []): boolean {
   if (!rel || rel.startsWith("/") || rel.includes("\0")) return true;
   const parts = rel.split("/");
   if (parts.some((p) => p === "..")) return true;
   if (parts.some((p) => IGNORED_DIRS.has(p))) return true;
-  return SCRATCH.test(rel);
+  return SCRATCH.test(rel) || coveredBy(rel, own);
 }
 
 /** How the folder's file events are listened to (the real one, or a test's own). It names paths relative to the folder. */
@@ -48,6 +50,8 @@ export type BatcherOptions = {
   /** Other work of the engine in the project that does not go through holdOwn (a watch's check): the batch waits for it. */
   busy?: () => boolean;
   maxPaths?: number;
+  /** M74: the person's own names and paths to skip (review.ignore), read at each change so a new list counts at once. */
+  ignore?: () => readonly RegExp[];
   graceMs?: number;
   watch?: WatchFn;
 };
@@ -114,7 +118,7 @@ export class ChangeBatcher {
   private seen(raw: string): void {
     if (!this.on) return;
     const rel = raw.replace(/\\/g, "/").replace(/^\.\//, "");
-    if (ignoredPath(rel)) return;
+    if (ignoredPath(rel, this.o.ignore?.() ?? [])) return;
     if (this.own > 0) {
       if (!this.ownSeen.has(rel)) { if (this.ownSeen.size >= (this.o.maxPaths ?? MAX_PATHS)) this.ownCapped = true; else this.ownSeen.add(rel); }
       return;

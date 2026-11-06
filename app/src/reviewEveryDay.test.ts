@@ -146,10 +146,11 @@ describe("feature 6: Where was I's next step is Review the changes", () => {
 
 describe("UI 12: the review settings where people look", () => {
   test("a group on the Fixing page with review.mode in view, and the rest under its More", () => {
-    expect(PAGES.fixing.groups[0]).toEqual({ id: "fixing.review", items: ["review.mode"] });
+    // M74: how strict and the key warning came up beside the mode, with this project's own choice.
+    expect(PAGES.fixing.groups[0]).toEqual({ id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] });
     expect(mainKeys("fixing")[0]).toBe("review.mode");
     const more = PAGES.fixing.more.find((t) => t.id === "more.fixing.review")!;
-    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"]);
+    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays"]);
     for (const k of ["review.mode", "review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"]) {
       expect(moreKeys("general"), k).not.toContain(k);
       expect(placeOf(k)!.page === "fixing" || placeOf(k)!.topic === "more.fixing.review", k).toBe(true);

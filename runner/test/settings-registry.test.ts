@@ -122,6 +122,10 @@ describe("the shipped list of settings", () => {
       "island.wings": false, "island.hello": false, "you.name": "",
       // M58 (feature 9): which AI the person builds with, asked once in the first run and optional. It only picks a tip.
       "you.buildsWith": "unset",
+      // M74 (your way): every new behaviour with a setting, each usual value safe and, where something was built, today's.
+      "spend.warnAt": "80", "review.ignore": [], "review.modeHere": "same", "app.openAtLogin": false, "undo.keepSize": "2", "undo.keepAge": "any",
+      "privacy.neverSend": [], "review.send": "wordsAndChecks", "quiet.on": false, "quiet.from": 22, "quiet.to": 7, "review.stopKinds": [],
+      "review.whenNothing": "leave", "review.maxFiles": "200",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -160,6 +164,27 @@ describe("the shipped list of settings", () => {
     expect(defOf("review.keepDays")).toMatchObject({ section: "watch", kind: "choice", default: "90", options: ["30", "90", "180", "365"], scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(validate(defOf("review.keepDays")!, "forever").ok).toBe(false);
     expect(validate(defOf("review.keepDays")!, 90).ok).toBe(false);
+  });
+  test("M74: the new settings, their choices and their fixed floors", () => {
+    expect(defOf("spend.warnAt")).toMatchObject({ section: "spending", kind: "choice", options: ["off", "50", "80"], scope: "app", applies: ["runner"], store: "settings" });
+    expect(defOf("review.modeHere")).toMatchObject({ kind: "choice", options: ["same", "ask", "automatic", "off"], scope: "project", applies: ["shell", "runner", "pages"] });
+    expect(defOf("review.ignore")).toMatchObject({ kind: "list", maxItems: 30, item: { maxLength: 120 }, scope: "app", applies: ["runner"], floor: "reviewIgnoreBuiltIn" });
+    // Files never sent to Claude only add to the built in rule, and no reset ever removes them.
+    expect(defOf("privacy.neverSend")).toMatchObject({ kind: "list", protective: true, applies: ["runner"], floor: "neverSendBuiltIn" });
+    // Only sign in and payments can be chosen as a stop; keys and open data always stop and are not on the list.
+    expect(defOf("review.stopKinds")!.allowedItems).toEqual(["sign_in", "payments"]);
+    for (const v of [["secrets"], ["data"], ["secret_in_code"]]) expect(validateKey("review.stopKinds", v).ok, JSON.stringify(v)).toBe(false);
+    expect(defOf("undo.keepSize")!.options).toEqual(["1", "2", "5"]);
+    expect(defOf("undo.keepAge")!.options).toEqual(["7", "30", "90", "any"]);
+    expect(defOf("review.maxFiles")!.options).toEqual(["50", "200", "500"]);
+    expect(defOf("review.send")!.options).toEqual(["wordsAndChecks", "checksOnly"]);
+    expect(defOf("review.whenNothing")!.options).toEqual(["leave", "closeQuietly"]);
+    // Open when you log in is a standing Mac change: off until the person turns it on, and only the shell applies it.
+    expect(defOf("app.openAtLogin")).toMatchObject({ kind: "switch", default: false, applies: ["shell"] });
+    for (const k of ["quiet.from", "quiet.to"]) expect(defOf(k), k).toMatchObject({ kind: "number", min: 0, max: 23, step: 1, applies: ["pages"] });
+    expect(validateKey("quiet.from", 24).ok).toBe(false);
+    // No safety rule became a setting: no key names deny rules, git writes, approvals or the screen and the microphone.
+    for (const d of REGISTRY.settings) expect(d.key, d.key).not.toMatch(/deny|gitWrite|approve(Send|Pay|Delete|Live)|screen\.background|mic\.background/i);
   });
   test("the worked example: most turns in one task, read when a task starts, for the engine only", () => {
     expect(defOf("work.maxTurns")).toMatchObject({ kind: "number", min: 20, max: 200, step: 10, unit: "count", scope: "app", applies: ["runner"], store: "settings", live: false });

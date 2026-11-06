@@ -112,6 +112,7 @@
     { "key": "point.fixWith", "section": "pointing", "kind": "choice", "default": "smallFix", "options": ["rescue", "smallFix"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
 
     { "key": "spend.dailyLimit", "section": "spending", "kind": "number", "default": 10, "min": 1, "max": 500, "step": 0.01, "unit": "dollars", "scope": "app", "applies": ["runner"], "store": "spending", "live": true },
+    { "key": "spend.warnAt", "section": "spending", "kind": "choice", "default": "80", "options": ["off", "50", "80"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "budget.task", "section": "spending", "kind": "number", "default": 3, "min": 0.5, "max": 50, "step": 0.5, "unit": "dollars", "scope": "app", "applies": ["pages"], "store": "settings", "live": false, "floor": "budgetDay" },
     { "key": "budget.plan", "section": "spending", "kind": "number", "default": 5, "min": 0.5, "max": 50, "step": 0.5, "unit": "dollars", "scope": "app", "applies": ["pages"], "store": "settings", "live": false, "floor": "budgetDay" },
     { "key": "budget.rescue", "section": "spending", "kind": "number", "default": 5, "min": 0.5, "max": 50, "step": 0.5, "unit": "dollars", "scope": "app", "applies": ["pages"], "store": "settings", "live": false, "floor": "budgetDay" },
@@ -127,6 +128,8 @@
     { "key": "work.stopOnQuestion", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "work.webSearch", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "undo.protectMyEdits", "section": "work", "kind": "switch", "default": true, "scope": "app", "applies": ["pages", "runner"], "store": "settings", "live": false },
+    { "key": "undo.keepSize", "section": "work", "kind": "choice", "default": "2", "options": ["1", "2", "5"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "undoKeeps" },
+    { "key": "undo.keepAge", "section": "work", "kind": "choice", "default": "any", "options": ["7", "30", "90", "any"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "undoKeeps" },
     { "key": "drive.maxSteps", "section": "work", "kind": "number", "default": 12, "min": 3, "max": 20, "step": 1, "unit": "count", "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "make.folder", "section": "work", "kind": "choice", "default": "home", "options": ["home", "documents", "desktop"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
     { "key": "approval.waitMinutes", "section": "work", "kind": "number", "default": 30, "min": 5, "max": 30, "step": 5, "unit": "minutes", "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "noAnswerIsNo" },
@@ -160,6 +163,15 @@
     { "key": "review.strictness", "section": "watch", "kind": "choice", "default": "normal", "options": ["quiet", "normal", "careful"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "review.keyWarning", "section": "watch", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "review.keepDays", "section": "watch", "kind": "choice", "default": "90", "options": ["30", "90", "180", "365"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.modeHere", "section": "watch", "kind": "choice", "default": "same", "options": ["same", "ask", "automatic", "off"], "scope": "project", "applies": ["shell", "runner", "pages"], "store": "settings", "live": true },
+    { "key": "review.ignore", "section": "watch", "kind": "list", "default": [], "maxItems": 30, "item": { "maxLength": 120 }, "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "reviewIgnoreBuiltIn" },
+    { "key": "review.send", "section": "watch", "kind": "choice", "default": "wordsAndChecks", "options": ["wordsAndChecks", "checksOnly"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "review.stopKinds", "section": "watch", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["sign_in", "payments"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "floor": "reviewAlwaysStops" },
+    { "key": "review.whenNothing", "section": "watch", "kind": "choice", "default": "leave", "options": ["leave", "closeQuietly"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "review.maxFiles", "section": "watch", "kind": "choice", "default": "200", "options": ["50", "200", "500"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "quiet.on", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "quietKeys" },
+    { "key": "quiet.from", "section": "home", "kind": "number", "default": 22, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "quiet.to", "section": "home", "kind": "number", "default": 7, "min": 0, "max": 23, "step": 1, "unit": "count", "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
 
     { "key": "memory.paused", "section": "memory", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "memory", "live": true },
     { "key": "memory.learnFromFiles", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
@@ -196,12 +208,14 @@
     { "key": "sharing.hide", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.quiet", "section": "sharing", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "presentation", "live": true },
     { "key": "calls.apps", "section": "sharing", "kind": "list", "default": ["us.zoom.xos", "com.microsoft.teams2", "com.microsoft.teams", "com.apple.FaceTime", "Cisco-Systems.Spark", "com.webex.meetingmanager", "com.skype.skype"], "maxItems": 27, "item": { "maxLength": 200, "shape": "appId" }, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "calls.apps" },
+    { "key": "privacy.neverSend", "section": "work", "kind": "list", "default": [], "maxItems": 30, "item": { "maxLength": 120 }, "scope": "app", "applies": ["runner"], "store": "settings", "live": true, "protective": true, "floor": "neverSendBuiltIn" },
 
     { "key": "display.textSize", "section": "display", "kind": "choice", "default": "standard", "options": ["standard", "large", "larger", "largest", "huge"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.textSize", "map": "textSize" } } },
 
     { "key": "updates.daily", "section": "updates", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.updateAuto", "map": "notZero" } } },
+    { "key": "app.openAtLogin", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
 
     { "key": "numbers.on", "section": "numbers", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "metrics", "live": true }
   ]

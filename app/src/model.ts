@@ -714,6 +714,13 @@ function reduceRest(m: Model, e: Ev): Model {
       if (typeof e.project !== "string" || !n(e.limitUsd) || !n(e.spentUsd) || !n(e.minUsd) || !n(e.maxUsd) || e.limitUsd <= 0) return m;
       return { ...m, spending: { project: e.project, limitUsd: e.limitUsd, spentUsd: e.spentUsd, minUsd: e.minUsd, maxUsd: e.maxUsd, ...(typeof e.problem === "string" && e.problem ? { problem: e.problem } : {}) } };
     }
+    // M74 (spend.warnAt): a project passed half or most of today's limit. Said for the project open now (or, with none
+    // open, for work outside a project), in words with no amount (F29).
+    case "spending.warn": {
+      if (typeof e.project !== "string" || (e.percent !== 50 && e.percent !== 80)) return m;
+      const here = m.folder ? e.project.replace(/\/+$/, "") === m.folder.replace(/\/+$/, "") : e.project === NO_PROJECT;
+      return here ? { ...m, notice: S.m74.spendWarn(e.percent) } : m;
+    }
     case "recap.ready": return { ...m, recap: Array.isArray(e.lines) && e.lines.length ? { lines: e.lines.map(String) } : null };
     // Where was I: the lines, and the one next step as a button (it starts nothing until it is pressed).
     case "where.ready": {

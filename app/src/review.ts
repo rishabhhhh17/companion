@@ -233,6 +233,32 @@ export function changesWait(r: ReviewCard | null | undefined): boolean {
   return !!r && r.stage === "ready" && !r.asked;
 }
 
+/** M74: quiet hours (quiet.on, quiet.from, quiet.to) on this Mac's clock. From 22 to 7 runs across midnight; the same hour
+ *  for both means no quiet hours. */
+export function quietNow(on: unknown, from: unknown, to: unknown, now: Date): boolean {
+  if (on !== true) return false;
+  const f = Number(from), t = Number(to);
+  if (!Number.isInteger(f) || !Number.isInteger(t) || f < 0 || f > 23 || t < 0 || t > 23 || f === t) return false;
+  const h = now.getHours();
+  return f < t ? h >= f && h < t : h >= f || h < t;
+}
+/** M74 (quiet hours for the notch): the model the notch draws from while quiet hours are on. Changes waiting to be
+ *  reviewed are left out, so no dot, count or line says them; a batch carrying the instant key warning stays (quietKeys).
+ *  Home keeps its own model, so it still shows everything. */
+export function hushReview<M extends { review?: ReviewCard | null }>(m: M, hushed: boolean): M {
+  if (!hushed || !m.review || (m.review.keys?.length ?? 0) > 0) return m;
+  return { ...m, review: null };
+}
+
+/** M74 (review.whenNothing): how long a review that found nothing stays before it closes by itself, with Close it quietly. */
+export const CLOSE_QUIETLY_MS = 4000;
+/** M74: the card closes by itself: Close it quietly is chosen, the review ran, it is safe with no reason at all, nothing
+ *  was pressed on it and no newer change waits behind it. Leave the card (the usual) never closes anything. */
+export function closesQuietly(r: ReviewCard | null | undefined, whenNothing: unknown): boolean {
+  return whenNothing === "closeQuietly" && !!r?.result && r.stage === "reviewed" && r.result.rating === "safe" && r.result.reasons.length === 0
+    && !r.fix && !r.asked && !r.sentBack && !r.later && !r.note;
+}
+
 /** Fix it is offered after a review that ran and found something, and only once. */
 export function canFix(r: ReviewCard | null | undefined): boolean {
   if (!r?.result || r.stage !== "reviewed" || r.fix === "sent") return false;

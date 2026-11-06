@@ -78,6 +78,7 @@ mod convert;
 mod docread;
 mod homeset;
 mod houserules;
+mod loginitem;
 
 mod runner;
 mod instance;
@@ -603,7 +604,15 @@ fn review_dot_told(app: &AppHandle, changed: bool) {
     let _ = app.emit_to("island", "review-ready", json!({ "on": on, "key": key }));
 }
 /// The engine watches the open project for changes only while review.mode is not off and Flow is on (runner/src/review).
-fn review_watched() -> bool { setting_now("review.mode") != json!("off") && !group_off("flow.on") }
+fn review_watched() -> bool { review_mode_now() != "off" && !group_off("flow.on") }
+/// M74: the review mode in force for the open project (protocol/index.ts reviewModeOf): its own choice (review.modeHere),
+/// or with Same as everywhere the usual review.mode. setting_now reads the open project's own values.
+fn review_mode_now() -> String {
+    let modes = ["ask", "automatic", "off"];
+    let here = setting_now("review.modeHere");
+    if let Some(h) = here.as_str().filter(|h| modes.contains(h)) { return h.to_string(); }
+    setting_now("review.mode").as_str().filter(|m| modes.contains(m)).unwrap_or("ask").to_string()
+}
 /// An event from the engine (Runner::publish): a batch of changes ready to review, a result, or the engine starting again.
 /// On the main thread, where Home's window lives, so whether Home is in front is read truly. Never a sound, never the wings.
 pub(crate) fn review_heard(app: &AppHandle, v: &Value) {
@@ -1693,6 +1702,9 @@ fn setting_change(app: &AppHandle, key: &str, value: &Value, asked: Option<&str>
     match d.store.as_str() {
         "settings" => {
             settings_writable(app)?;
+            // M74: Open when you log in is macOS's own login item. It is asked of macOS first; if macOS says no, the setting
+            // stays as it was and the page says so (loginitem.rs).
+            if key == loginitem::KEY { let (_, v) = settings::check(r, key, value)?; loginitem::set(v == json!(true))?; }
             let project = for_project.clone();
             let changed = with_settings(|s| -> Result<bool, &'static str> {
                 let mut next = s.file.clone();
@@ -1766,7 +1778,9 @@ fn setting_applied(app: &AppHandle, key: &str) {
     // A group was switched (F20): its keys are let go or taken again, and a group just switched off stops its tools.
     if groups::is_switch(key) { groups_applied(app); }
     // M52: reviews or Flow turned off: the engine stops watching and forgets its batches, so the dot goes out.
-    if (key == "review.mode" || key == "flow.on") && !review_watched() { let cleared = review_ready().clear(); review_dot_told(app, cleared); }
+    if (key == "review.mode" || key == "review.modeHere" || key == "flow.on") && !review_watched() { let cleared = review_ready().clear(); review_dot_told(app, cleared); }
+    // M74: Open when you log in went back to off (Restore usual, Reset all): the login item goes too.
+    if key == loginitem::KEY && off(key) { loginitem::off(); }
     home_setting_applied(app, key);
 }
 
@@ -3659,6 +3673,8 @@ async fn delete_everything(app: AppHandle, confirm: String, with_projects: bool,
     helper.arg("--wipe-everything").arg(std::process::id().to_string()).arg(if with_projects { "1" } else { "0" }).args(&projects)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null());
     if helper.spawn().is_err() { WIPING.store(false, SeqCst); return Err("Could not start the cleanup.".into()); }
+    // M74: Open when you log in goes with the settings, so a Mac with nothing kept never opens Squibby at login.
+    loginitem::off();
     // Everything stops, then the app quits; the helper is waiting for that.
     showme_stop(&app);
     let _ = app.state::<runner::Runner>().stop_everything("delete everything");

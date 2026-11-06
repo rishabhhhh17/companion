@@ -8,7 +8,7 @@ import type { Colour } from "./meaning.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
-export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften";
+export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep";
 export type Item = string | { fixed: Fixed };
 /** A Group on a page: its anchor (#account.plan) is its id; its words are S.setGroupTitles[id] and S.setGroupFoot[id]. */
 export type GroupDef = { id: string; items: readonly Item[] };
@@ -27,12 +27,13 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     icon: "person",
     groups: [
       { id: "account.plan", items: [f("plan")] },
-      { id: "account.spending", items: ["spend.dailyLimit"] },
+      // M74: the warning before the limit, and the most one task may spend (it stops there; Carry on goes on), beside it.
+      { id: "account.spending", items: ["spend.dailyLimit", "spend.warnAt", "budget.task"] },
       // M68: what to call you, only for the hello in the notch (you.name).
       { id: "account.you", items: ["you.name"] },
     ],
     more: [
-      { id: "more.account.spending", items: ["budget.task", "budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] },
+      { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] },
       // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
       { id: "more.account.developer", items: [f("key")] },
       // M58 (feature 9): the first run's optional answer, which AI you build with. It only picks a tip; Not set forgets it.
@@ -43,12 +44,16 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     icon: "sliders",
     groups: [
       { id: "general.setup", items: [f("setup")] },
+      // M74: a standing Mac change, so the switch asks first (settingsPage.tsx OpenAtLogin).
+      { id: "general.start", items: ["app.openAtLogin"] },
       { id: "general.notch", items: ["island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops"] },
       { id: "general.tools", items: ["guide.on", "secondLook.on", "files.on", "watch.on"] },
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
       { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size"] },
+      // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
+      { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", f("usedOften")] },
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
@@ -70,14 +75,16 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     icon: "wrench",
     groups: [
       // M57 UI 12: the review of changes to the project, first on the page about fixing, where people look for it.
-      { id: "fixing.review", items: ["review.mode"] },
+      // M74: how strict and the key warning beside the mode, and this project's own choice (a project setting).
+      { id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] },
+      { id: "fixing.tries", items: ["work.tries"] },
       { id: "fixing.rules", items: ["rules.house", "check.install"] },
       { id: "fixing.checks", items: ["check.pageSize", "explain.mode"] },
       { id: "fixing.undo", items: ["undo.protectMyEdits"] },
     ],
     more: [
-      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"] },
-      { id: "more.fixing.run", items: ["work.maxTurns", "work.tries", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after"] },
+      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays"] },
+      { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after"] },
       { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun"] },
     ],
   },
@@ -111,6 +118,9 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "privacy.see", items: [f("permissions")] },
       { id: "privacy.sharing", items: ["sharing.hide", "calls.quiet"] },
       { id: "privacy.memory", items: ["memory.paused", f("kept")] },
+      // M74: what leaves this Mac for Claude, and how long safety copies and review history are kept.
+      { id: "privacy.claude", items: ["privacy.neverSend", "review.send"] },
+      { id: "privacy.copies", items: ["undo.keepSize", "undo.keepAge", f("reviewKeep")] },
       { id: "privacy.danger", items: [f("danger")] },
     ],
     more: [
@@ -140,7 +150,7 @@ export const isPage = (id: string): id is PageId => Object.hasOwn(PAGES, id);
 /** One row that owns more than one key: At rest writes Tuck into the edge and Stick to the edge (the spec, 3.4). */
 export const ROW_OWNS: Readonly<Record<string, readonly string[]>> = { "character.peek": ["character.peek", "character.stick"] };
 /** Child rows on a page: indented under their parent switch, and dimmed with why while it is off. */
-export const CHILD_OF: Readonly<Record<string, string>> = { "talk.voice": "voice.on", "talk.speak": "voice.on", "talk.captions": "voice.on", "talk.dictate": "voice.on" };
+export const CHILD_OF: Readonly<Record<string, string>> = { "talk.voice": "voice.on", "talk.speak": "voice.on", "talk.captions": "voice.on", "talk.dictate": "voice.on", "quiet.from": "quiet.on", "quiet.to": "quiet.on" };
 /** Options kept in the registry but not offered. A value already set to one still works. Night is the theme from before
  *  M51: Graphite replaced it, so it is kept only so a saved "night" checks out (it reads as Graphite, OPTION_ALIASES). Deep,
  *  hidden until it had a full, tested look (T17), is offered since M51. M71: Colour's Vivid reads as Colourful, and the

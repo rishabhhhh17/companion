@@ -1,6 +1,7 @@
 import { StrictMode, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createRoot } from "react-dom/client";
 import { setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
+import { hushReview, quietNow } from "./review.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
 import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
@@ -126,7 +127,19 @@ function StepWord({ step }: { step: NotchStep }) {
 
 function Island() {
   useLook({ keepNight: true });   // the water's colour for the work cards (M19); the notch keeps Night in every theme
-  const [m, dispatch] = useModel();
+  const [mAll, dispatch] = useModel();
+  // M74, quiet hours for the notch (quiet.on, quiet.from, quiet.to): looked at again each minute while they are on. During
+  // them the notch says nothing about changes to review (review.ts hushReview); Home still shows everything.
+  const quietOn = useSetting("quiet.on"), quietFrom = useSetting("quiet.from"), quietTo = useSetting("quiet.to");
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => {
+    if (quietOn !== true) return;
+    setClock(new Date());
+    const id = setInterval(() => setClock(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, [quietOn]);
+  const hushed = quietNow(quietOn, quietFrom, quietTo, clock);
+  const m = hushReview(mAll, hushed);
   // The project open now, for the hover panel's one true line when nothing is live (F28, 4.3: "test-shop works. Last fix
   // proven 2 hours ago."). Its History rows come with the engine's own events, as Home's do.
   useEffect(() => {
@@ -401,7 +414,7 @@ function Island() {
         <span className="island-step island-step-measure" ref={measure} aria-hidden="true">{S.home.steps.map((word) => <span key={word} className="island-step-word">{word}</span>)}</span>
         {/* M68: the word at rest, laid out but never shown, so the right wing is asked for as wide as it needs. */}
         <span className="island-rest-word island-step-measure" ref={restMeasure} aria-hidden="true">{rest?.word ?? ""}</span>
-        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} />
+        <IslandPanel ref={panelRef} m={m} line={line} shown={panelShown} brief={briefRef.current} unseen={unseen} review={review && !hushed} reviewKey={reviewKey} hello={helloRef.current} kept={kept} onKeep={keep} />
       </span>
     </main>
   );
