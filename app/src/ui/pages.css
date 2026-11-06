@@ -109,3 +109,7 @@
 .home .more-fold { margin: 0 0 var(--space-2); }
 .home .more-fold > summary { width: fit-content; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); cursor: default; }
 .home .more-fold[open] > summary { margin-bottom: var(--space-2); }
+
+/* M75: the done signal's card shows the exact lines it would write, wrapped, and scrolls when long. */
+.set-confirm.done-ask > * { min-width: 0; }
+.done-ask .ask-what { margin: 0; max-height: 12em; overflow: auto; }

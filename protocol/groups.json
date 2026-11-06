@@ -41,7 +41,7 @@
 
     { "id": "drive", "group": "flow", "tried": "page", "permissions": [], "settings": ["work.maxTurns", "drive.maxSteps"],
       "commands": [],
-      "runner": ["drive.plan", "drive.approve", "drive.pause", "drive.resume", "loop.choose"], "agentModes": ["drive"] },
+      "runner": ["drive.plan", "drive.approve", "drive.pause", "drive.resume", "loop.choose", "cost.choose", "proof.signIn"], "agentModes": ["drive"] },
     { "id": "followUp", "group": "flow", "tried": "page", "permissions": [], "settings": [],
       "commands": [],
       "runner": ["agent.send"] },
@@ -77,7 +77,7 @@
       "runner": ["where.was.i"] },
     { "id": "review", "group": "flow", "tried": "page", "permissions": [], "settings": ["review.mode", "review.quietSeconds"],
       "commands": [],
-      "runner": ["review.now", "review.dismiss", "review.fix"], "stays": ["review.dismiss"] },
+      "runner": ["review.now", "review.dismiss", "review.fix", "donesignal.show", "donesignal.add", "donesignal.remove"], "stays": ["review.dismiss", "donesignal.remove"] },
 
     { "id": "showMe", "group": "guide", "hotkeys": ["showme"], "tried": "page", "permissions": ["screenRecording"], "settings": ["showme.allScreens", "point.everyday"],
       "commands": ["showme_start", "showme_aim", "do_it_for_me"],

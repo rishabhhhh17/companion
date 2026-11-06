@@ -18,7 +18,8 @@ import { ConfirmStep } from "./confirm.tsx";
 import { takeIfLost } from "./focus.ts";
 import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, reviewKeepLine, reviewStartLine, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
-import { eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, showSpending } from "./commands.ts";
+import { addDoneSignal, eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, removeDoneSignal, showDoneSignal, showSpending } from "./commands.ts";
+import { doneAsk, doneStateFrom, type DoneState, type DoneTool } from "./doneSignal.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
@@ -745,12 +746,52 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "acknowledgements": return <AckRow />;
     case "usedOften": return <UsedOftenRow />;
     case "reviewKeep": return <ReviewKeepRow />;
+    case "doneSignal": return <DoneSignalRows />;
     // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
     case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
     default: return null;
   }
 }
 const fixedAnchor = (fx: Fixed): string => `set-fixed-${fx}`;
+
+/** M75 (roadmap 19, F30): the other tool's done signal, one row per tool. Set up opens the card that shows exactly what is
+ *  written where, and only its yes sends the add; Remove is one press. What is set up is read from the files themselves. */
+function DoneSignalRows() {
+  const c = useCtx();
+  const project = c.project;
+  const [st, setSt] = useState<DoneState | null>(null);
+  const [asking, setAsking] = useState<DoneTool | null>(null);
+  const [said, setSaid] = useState("");
+  useEffect(() => {
+    setSt(null); setAsking(null); setSaid("");
+    if (!project) return;
+    void send(showDoneSignal(project));
+    const off = listen("runner-event", (e) => { const d = doneStateFrom(e.payload, project); if (d) setSt(d); });
+    return () => { off.then((f) => f()); };
+  }, [project]);
+  if (!project) return <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={S.doneSignal.noProject} />;
+  const rows = st?.tools ?? [];
+  const ask = asking ? rows.find((r) => r.tool === asking) : undefined;
+  return (<>
+    <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback}`} />
+    {rows.map((r) => (
+      <Row key={r.tool} indent label={S.doneSignal.tool[r.tool]} description={r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}
+        control={r.on
+          ? <Button size="sm" onClick={() => { setSaid(S.doneSignal.removed(S.doneSignal.tool[r.tool])); void send(removeDoneSignal(project, r.tool)); }}>{S.doneSignal.remove}</Button>
+          : <Button size="sm" id={`done-set-${r.tool}`} onClick={() => { setSaid(""); setAsking(r.tool); }}>{S.doneSignal.setUp}</Button>} />
+    ))}
+    {ask && (() => { const w = doneAsk(ask); return (
+      <ConfirmStep className="set-confirm done-ask" label={w.title} back={`done-set-${ask.tool}`} onCancel={() => setAsking(null)}>
+        <p><b>{w.title}</b></p>
+        <p>{w.where}</p>
+        <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>
+        {w.notes.map((n) => <p key={n}>{n}</p>)}
+        <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool; setAsking(null); void send(addDoneSignal(project, t)); }}>{S.doneSignal.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
+      </ConfirmStep>
+    ); })()}
+    <Note text={st?.problem ?? said} live />
+  </>);
+}
 
 /** M74: on Privacy, how long reviews stay in History, with a way to the one row that changes it (on Fixing, in More). */
 function ReviewKeepRow() {

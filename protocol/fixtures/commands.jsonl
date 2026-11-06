@@ -100,3 +100,12 @@
 {"v":1,"id":"m58b1","type":"practice.key","project":"p_9f2c","step":"write"}
 {"v":1,"id":"m58b2","type":"practice.key","project":"p_9f2c","step":"fix"}
 {"v":1,"id":"m58r1","type":"ship.signIn","project":"p_9f2c","stop":true}
+{"v":1,"id":"m75d1","type":"donesignal.show","project":"p_9f2c"}
+{"v":1,"id":"m75d2","type":"donesignal.add","project":"p_9f2c","tool":"claude","confirm":true}
+{"v":1,"id":"m75d3","type":"donesignal.remove","project":"p_9f2c","tool":"codex"}
+{"v":1,"id":"m75c1","type":"cost.choose","agent":"builder-1","choice":"keep"}
+{"v":1,"id":"m75c2","type":"cost.choose","agent":"builder-1","choice":"undo"}
+{"v":1,"id":"m75s1","type":"proof.signIn","agent":"builder-1","choice":"open"}
+{"v":1,"id":"m75s2","type":"proof.signIn","agent":"builder-1","choice":"continue"}
+{"v":1,"id":"m75s3","type":"proof.signIn","agent":"builder-1","choice":"skip"}
+{"v":1,"id":"m75s4","type":"proof.signIn","agent":"builder-1","choice":"getBrowser"}

@@ -529,6 +529,10 @@ export const S = {
   // One line under each row on a page (the spec, 3.4 and 3.11): what changes for you. Never "I" or "me" here; the full
   // words stay in each setting's help, behind Learn more.
   short: {
+    // M75
+    "spend.pauseAt": "A task that uses far more than a usual one here stops and asks before it goes on.",
+    "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
+    "ask.choices": "A short ask like \"make it better\" shows a few choices first. Nothing runs until you pick one.",
     "spend.dailyLimit": `${PRODUCT} stops and asks before spending more than this in a day.`,
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
@@ -587,6 +591,8 @@ export const S = {
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
   // menu, in the help and for search.
   setSeg: {
+    // M75
+    "spend.pauseAt": { off: "Off", "3": "3 times", "5": "5 times" },
     // M74
     "spend.warnAt": { off: "Off", "50": "At half", "80": "Near limit" },
     "review.send": { wordsAndChecks: "With words", checksOnly: "Checks only" },
@@ -624,7 +630,7 @@ export const S = {
     "look.home": "Home", "look.details": "Details",
     "more.look.extras": "Light and gloss",
     "general.setup": "Finish setting up", "general.start": "Starting", "general.notch": "Notch and Home", "general.tools": "Tools",
-    "fixing.review": "Reviews of changes to your project", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
+    "fixing.review": "Reviews of changes to your project", "fixing.done": "Start reviews sooner", "fixing.tries": "Fixes", "fixing.rules": "Rules", "fixing.checks": "Checks", "fixing.undo": "Undo",
     "flowflow.preview": "", "flowflow.lively": "Movement", "flowflow.look": "Size and name", "flowflow.place": "Where it lives", "flowflow.sound": "Sound",
     "keys.keys": "Keys", "keys.talking": "Talking", "keys.prompt": "Prompt help",
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
@@ -665,6 +671,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
+    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
@@ -1714,6 +1721,7 @@ export const S = {
       files_removed: "Make sure nothing still needs them. Undo puts them back.",
       too_many: "Look at the most important files first, or undo it and ask for smaller changes.",
       model_concern: "Read why, then try that part yourself.",
+      open_private_page: "Put the page behind your sign in, the way your other private pages are. Then check it again.",
     } as Record<string, string>,
     // Left out for a Must fix that is never fine on purpose (a key in the code, open data, failing checks).
     fineFor: {
@@ -1727,7 +1735,77 @@ export const S = {
       files_removed: "If you meant to remove them.",
       too_many: "If you asked for a big change on purpose.",
       model_concern: "If it does what you meant when you try it.",
+      open_private_page: "If the page is meant for everyone and shows nothing private, such as a demo.",
     } as Record<string, string>,
+  },
+  // M75: the cost pause card. No amounts anywhere (F29, M69).
+  costPause: {
+    title: "This one is taking a lot more than usual. Keep going?",
+    line: "It has used far more than a usual task in this project. Nothing more runs until you choose.",
+    keep: "Keep going",
+    stop: "Stop",
+    undo: "Undo what it did",
+    undoLine: "Undo what it did stops the task and puts your files back as they were before it started.",
+    resolved: { keep: "Going on.", stop: "Stopped. This run does not count as a fix.", undo: "Stopped. Putting your files back." } as Record<"keep" | "stop" | "undo", string>,
+  },
+  // M75 (M58 A4): the sign in handover. Squibby never types, never reads a field, never solves a CAPTCHA.
+  signInTurn: {
+    title: "Your turn: sign in, then tap Continue, or skip this check.",
+    line: "The page needs a sign in. Open it in a window, sign in there yourself, then come back and tap Continue.",
+    never: `${PRODUCT} never types your password and never reads what you type there.`,
+    open: "Open the sign in page",
+    openedLine: "Sign in in the window that opened. When you see the page behind the sign in, tap Continue.",
+    continue: "Continue",
+    skip: "Skip this check",
+    checking: "Checking the page behind your sign in.",
+    needsBrowser: `For this, ${PRODUCT} needs a browser it can show you, a one time download of about 150 MB.`,
+    getBrowser: "Download it",
+    downloading: (p: number) => `Downloading the visible browser: ${p}%.`,
+    skipped: "Skipped. What is behind the sign in is not proven.",
+    timedOut: "No answer, so what is behind the sign in is not proven.",
+    failed: "That did not work, so what is behind the sign in is not proven.",
+  },
+  // M75: a private looking page opened with no sign in, on a task's result.
+  privateOpen: {
+    where: (routes: readonly string[]) => `Opened without a sign in: ${routes.slice(0, 3).join(", ")}${routes.length > 3 ? ` and ${routes.length - 3} more` : ""}.`,
+  },
+  // M75 (roadmap 19, F30): the done signal of another AI tool.
+  doneSignal: {
+    title: "When Claude Code or Codex says it is done",
+    line: `${PRODUCT} can start a review the moment Claude Code or Codex finishes, instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
+    tool: { claude: "Claude Code", codex: "Codex" } as Record<"claude" | "codex", string>,
+    on: "On",
+    off: "Not set up",
+    setUp: "Set up",
+    remove: "Remove",
+    noProject: "Pick a project first.",
+    askTitle: (tool: string) => `Add a done signal for ${tool}?`,
+    askWhere: (file: string, creates: boolean) => `${PRODUCT} will ${creates ? "make" : "add to"} ${file} in this project:`,
+    askWhat: `It only touches an empty file in ${PRODUCT_S} own folder when the tool finishes. Nothing it says or reads is sent or kept.`,
+    askGit: `If this project is kept in Git, the file may show up as a change there. ${PRODUCT} never adds it to Git.`,
+    askCodex: "Codex runs this only after you trust it: type /hooks in Codex, then trust the new line.",
+    yes: "Add it",
+    no: "Not now",
+    removed: (tool: string) => `Removed. ${tool} no longer tells ${PRODUCT} when it is done here.`,
+    fallback: "Without it, a review still starts once your files have been quiet for a while.",
+  },
+  // M75 (shortlist 10): choices when an ask is vague. Nothing runs until one is tapped.
+  vague: {
+    title: "Which one did you mean?",
+    line: "Tap one, or type more words and press Return.",
+    fixFailing: (what: string) => `Fix the failing check: ${what}`,
+    fixFailingPrompt: (what: string) => `Fix what makes this check fail: ${what}. Change as little as you can.`,
+    fixFinding: (what: string) => `Fix what the review found: ${what}`,
+    fixFindingPrompt: (what: string) => `Fix this, which a review of the latest changes found: ${what}`,
+    reviewChanges: (n: number) => (n === 1 ? "Look over the latest change (1 file)" : `Look over the latest changes (${n} files)`),
+    cleanerLook: "Make the page look cleaner",
+    cleanerLookPrompt: "Make the main page look cleaner and more even: spacing, alignment and text sizes. Do not change what it does.",
+    faster: "Make the page load faster",
+    fasterPrompt: "Make the main page load faster without changing how it looks or what it does.",
+    tidy: "Tidy the code without changing what it does",
+    tidyPrompt: "Tidy the code: clearer names, no dead code, no repeats. Do not change what the app does.",
+    check: "Look for problems in my project",
+    asTyped: "Do it as I typed it",
   },
   // M58 (UI 6 and UI 13): going live has a finish line, and signing in to Vercel is a step the person starts.
   going: {
@@ -2290,6 +2368,9 @@ export const S = {
     "review.keepDays": { label: "Keep reviews in History for", help: `Each review is one row in History: when, which files by name, what it found and what you did. ${PRODUCT} never keeps the text of your files. Older rows are removed, and Delete everything removes them all.`, also: ["review", "history", "keep", "days", "retention", "delete"], options: { "30": "30 days", "90": "90 days", "180": "180 days", "365": "A year" } },
     "review.strictness": { label: "How strict reviews are", help: `Quiet shows only what needs fixing first. Normal shows what is worth a look too, except the kinds you asked ${PRODUCT} not to flag in this project. Careful shows everything, those kinds too. A key in the code, a changed settings or key file, and data open to anyone or to every signed in account are always shown.`, also: ["review", "strict", "quiet", "careful", "noise", "flag", "Cursor", "Codex", "Claude Code"], options: { quiet: "Quiet", normal: "Normal", careful: "Careful" } },
     // M74 (your way): the behaviours that had no setting. Each keeps a fixed floor (S.floors).
+    "spend.pauseAt": { label: "Pause a task that uses far more than usual", help: `When one task has used far more than a usual task here, ${PRODUCT} pauses it and asks: Keep going, Stop, or Undo what it did. Usual comes from this project's own tasks. Nothing runs while it asks.`, also: ["pause", "cost", "money", "spending", "budget", "keep going", "stuck", "loop", "usual", "expensive", "too much"], options: { off: "Off", "3": "At 3 times a usual task", "5": "At 5 times a usual task" } },
+    "check.privatePages": { label: "Look for pages that should need a sign in", help: `In a project with a sign in, ${PRODUCT} opens pages that look private, such as a dashboard or settings page, once without signing in. It only reads them. One that opens is Worth a look.`, also: ["sign in", "login", "auth", "private", "dashboard", "admin", "security", "protected", "middleware", "open"] },
+    "ask.choices": { label: "Offer choices when an ask is vague", help: `When you type something short like "make it better" or "fix it", ${PRODUCT} first shows a few choices from what it knows about your project. Nothing runs until you tap one. More words and Return still work.`, also: ["vague", "choices", "options", "unclear", "make it better", "fix it", "clean up", "ask box", "suggest"] },
     "spend.warnAt": { label: "Warn when a project nears its limit", help: `${PRODUCT} tells you once a day when a project has used half, or most, of today's limit, so a stuck fix never surprises you. Work goes on until the limit itself.`, also: ["warn", "warning", "spending", "money", "cost", "budget", "alert", "limit", "near"], options: { off: "Off", "50": "At half", "80": "Near the limit" } },
     "review.modeHere": { label: "Reviews in this project", help: `This project can have its own choice, for example Automatic for a client project and Off for a hobby one. Same as everywhere follows Review changes to your project above.`, also: ["review", "project", "this project", "client", "per project", "automatic", "off"], options: { same: "Same as everywhere", ask: "Ask first", automatic: "Automatic", off: "Off" } },
     "review.ignore": { label: "Folders and files reviews skip", help: `A name such as notes skips that file or folder anywhere in the project. A path such as docs/clients skips it from the project folder. A star stands for any part of a name, as in *.csv. ${PRODUCT} already skips installed packages, build output and its own folders, and those stay skipped. Keys in a skipped file are not looked for either.`, also: ["review", "ignore", "skip", "exclude", "folders", "noise", "generated"] },
@@ -2913,6 +2994,8 @@ export const S = {
       house_rule: ["A file you said never to edit was changed.", "Your house rules say to leave it alone."],
       house_rule_ask: ["A file you wanted to be asked about was changed.", "Your house rules say to ask before editing it."],
       chosen_stop: ["A part you asked to stop for changed.", "You chose to stop for every change to sign in or payments."],
+      // M75: a private looking page opened with no sign in. Worth a look, never a stop: a page can be public on purpose.
+      open_private_page: ["This page should need a sign in but does not.", "Anyone with the address can open it without signing in."],
     } as Record<string, readonly [string, string]>,
     pointing: `${PRODUCT} is pointing here`,
     lineNo: (n: number) => `line ${n}`,

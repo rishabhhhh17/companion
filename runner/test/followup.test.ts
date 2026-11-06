@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { RunnerSettings } from "../src/settings.ts";
 import { AgentRunner } from "../src/agent.ts";
 import { ScriptedEngine, type Step } from "../src/engine.ts";
 import { Ledger } from "../src/ledger.ts";
@@ -25,7 +26,7 @@ const waitFor = async (fn: () => boolean, ms = 3000) => { const end = Date.now()
 
 // empty: no file in the project to begin with. A Drive plan watches the folder for the person's own changes, and a file
 // written just before it starts can be reported late as one.
-function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling?: number; empty?: boolean } = {}) {
+function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling?: number; empty?: boolean; settings?: RunnerSettings } = {}) {
   const project = tmp("p");
   if (!o.empty) writeFileSync(join(project, "a.txt"), "original");
   const events: Event[] = [];
@@ -33,7 +34,7 @@ function setup(rounds: Step[][], proofs: LadderResult[] = [good()], o: { ceiling
   const log = new TaskLog(":memory:");
   const ledger = new Ledger(":memory:");
   let n = 0;
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, ledger, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)], ...(o.ceiling !== undefined ? { dailyCeilingUsd: o.ceiling } : {}) });
+  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine, log, ledger, emit: (e) => events.push(e), proof: async () => proofs[Math.min(n++, proofs.length - 1)], ...(o.ceiling !== undefined ? { dailyCeilingUsd: o.ceiling } : {}), ...(o.settings ? { settings: o.settings } : {}) });
   const start = (extra: Record<string, unknown> = {}) => runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: "Add a signup button", model: "m", budgetUsd: 3, ...extra } as never);
   const send = (extra: Record<string, unknown>) => runner.handle({ v: 1, id: "c2", type: "agent.send", agent: "builder-1", project, ...extra } as never);
   // A Drive plan for the same agent: the planning round, then the approved steps.
@@ -215,7 +216,9 @@ describe("after a Drive plan", () => {
   }
 
   test("a follow up gets the plan's whole budget and a plain label, not the last step's leftovers", async () => {
-    const r = setup([[plan("One", "Two")], [write("a.txt", "1", 2)], [write("a.txt", "2", 2.5)], [write("a.txt", "3")]], [good()], { empty: true });
+    // M75: the cost pause is off here (its own tests are m75-cost-pause.test.ts): these steps cost far more than a usual task.
+    const off = new RunnerSettings(); off.apply({ v: 1, id: "s", type: "settings.apply", values: { "spend.pauseAt": "off" } });
+    const r = setup([[plan("One", "Two")], [write("a.txt", "1", 2)], [write("a.txt", "2", 2.5)], [write("a.txt", "3")]], [good()], { empty: true, settings: off });
     await r.drive(["One", "Two"]);
     expect(of(r.events, "drive.done")[0].status).toBe("done");
     await r.send({ text: "make the button blue" });

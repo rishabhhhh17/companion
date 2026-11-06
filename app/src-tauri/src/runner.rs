@@ -51,6 +51,9 @@ const ALLOWED: &[&str] = &[
     // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press. Names the project, and the
     // shell lets it through only for that practice's own recorded copy (main.rs send_command).
     "practice.key",
+    // M75: the other tool's done signal (show, add only with the yes the card asked for, remove), named by project; the cost
+    // pause's answer and the sign in handover's answer, named by agent.
+    "donesignal.show", "donesignal.add", "donesignal.remove", "cost.choose", "proof.signIn",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -93,6 +96,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "checkpoint.mark",
     "ship.signIn",
     "practice.key",
+    "donesignal.show", "donesignal.add", "donesignal.remove",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -867,6 +871,33 @@ mod tests {
             stages.push(e["stage"].as_str().unwrap_or("").to_string());
         }
         assert_eq!(stages, ["opened", "done", "failed"]);
+    }
+    #[test]
+    fn m75_the_done_signal_cost_pause_and_sign_in_answers_pass_and_the_hook_only_for_the_chosen_project() {
+        // M75: the shared fixtures (read by the runner's suite too). The done signal names the project and may only name the
+        // one chosen; the two answers name an agent only. A page can never add a hook without the yes (the runner refuses an
+        // add with no "confirm": true; the fixture has it).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let mut seen = std::collections::BTreeSet::new();
+        for line in fixtures.lines().filter(|l| ["donesignal.", "cost.choose", "proof.signIn"].iter().any(|t| l.contains(&format!("\"type\":\"{t}")))) {
+            let v: Value = serde_json::from_str(line).unwrap();
+            assert!(check_command(&v).is_ok(), "{line}");
+            let t = v["type"].as_str().unwrap().to_string();
+            if t.starts_with("donesignal.") {
+                let project = v["project"].as_str().unwrap();
+                assert!(check_project(&v, project).is_ok(), "{line}");
+                assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+                if t == "donesignal.add" { assert_eq!(v["confirm"], Value::Bool(true), "{line}"); }
+            } else { assert!(check_project(&v, "").is_ok(), "{line}"); }
+            seen.insert(t);
+        }
+        assert_eq!(seen.into_iter().collect::<Vec<_>>(), ["cost.choose", "donesignal.add", "donesignal.remove", "donesignal.show", "proof.signIn"]);
+        // The cost pause carries no amount.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        for l in events.lines().filter(|l| l.contains("\"type\":\"cost.pause\"")) {
+            let e: Value = serde_json::from_str(l).unwrap();
+            for k in e.as_object().unwrap().keys() { assert!(!["usd", "cost", "amount", "spent", "limit"].iter().any(|w| k.to_lowercase().contains(w)), "{l}"); }
+        }
     }
     #[test]
     fn the_key_practice_may_be_asked_by_a_page_but_only_for_the_chosen_project() {

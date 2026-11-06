@@ -2,7 +2,8 @@
 // the button on the card (the browser.install command), one download at a time, with its progress said in plain words.
 // A second press while it runs does nothing, and Stop everything (or the app closing) ends it. If the app has to end the
 // engine by force, the installer ends with it (see endWithUs in exec.ts).
-import { browserInstalled, installBrowser, type InstallOutcome, type InstallProgress } from "./browser.ts";
+import { chromium } from "playwright-core";
+import { browserInstalled, installBrowser, visibleBrowserExecutable, type InstallOutcome, type InstallProgress, type SignInWindow } from "./browser.ts";
 import { PRODUCT } from "../names.ts";
 
 export type InstallFn = (o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void; timeoutMs?: number }) => Promise<InstallOutcome>;
@@ -94,3 +95,17 @@ export function pretendInstaller(stepMs: number): { install: InstallFn; installe
     },
   };
 }
+
+/** M75 (M58 A4): the window a person signs into at a sign in wall, from a fresh profile folder Squibby makes and deletes. Its
+ *  download (Playwright's full browser, which can show a window) runs only on the person's press of Download it. Squibby
+ *  never types into the window, never reads a field and never presses anything there. [verify] on a real Mac. */
+export const visibleWindow: SignInWindow = {
+  ready: () => visibleBrowserExecutable() !== null,
+  async open(url, profile) {
+    const ctx = await chromium.launchPersistentContext(profile, { headless: false, executablePath: visibleBrowserExecutable()!, viewport: null });
+    const page = ctx.pages()[0] ?? await ctx.newPage();
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15_000 }).catch(() => {});
+    return { state: () => ctx.storageState(), close: () => ctx.close().catch(() => {}) };
+  },
+  install: (o) => installBrowser({ ...o, visible: true, timeoutMs: 15 * 60_000 }),
+};

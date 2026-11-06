@@ -77,6 +77,8 @@ export function need(m: Model): Need | null {
   if (m.approvals.length) return { key: `approval:${m.approvals[0].id}`, tab: "now", why: S.needsYouTitle, question: true };
   if (m.agentsAsk) return { key: "agents", tab: "now", why: S.agentsTitle, question: true };
   if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle, question: true };
+  if (m.costPause) return { key: `cost:${m.costPause.agent}`, tab: "now", why: S.costPause.title, question: true };
+  if (m.signIn) return { key: `signIn:${m.signIn.agent}:${m.signIn.stage}`, tab: "now", why: S.signInTurn.title, question: true };
   if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle, question: true };
   if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle, question: true };
   // The last task ended on a question to the person: its words and the box to answer in are under its receipt, on Now.

@@ -64,6 +64,10 @@ import { ShipGatesPanel, SignInStep } from "./shipPanels.tsx";
 import { detailShown, gateFixCommand, putOnlineShown, signingIn, type Gate } from "./shipFinish.ts";
 import { shipSignIn } from "./commands.ts";
 import { practiceKey } from "./commands.ts";
+import { answerSignIn, chooseCost } from "./commands.ts";
+import { privateOpenFindings } from "./findingShape.ts";
+import { FindingList } from "./findingList.tsx";
+import { isVague, vagueChoices, vagueStateOf, type VagueChoice } from "./vagueAsk.ts";
 import type { ShipFlow } from "./model.ts";
 import { changesWait, CLOSE_QUIETLY_MS, closesQuietly, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
 import { sendBackCopy } from "./review.ts";
@@ -782,7 +786,7 @@ function Card() {
   // takeIfLost), never off a control the person is on, and then onto its safe choice (Don't allow, No, Stop here: data-safe),
   // so a key pressed for something else can never say yes to it (rule 13). Its words are said on Home's live line either way.
   const urgent = useRef<HTMLDivElement>(null);
-  const urgentKey = m.approvals[0]?.id ?? (m.agentsAsk ? "agents" : m.stuck ? "stuck" : m.paused ? "paused" : m.plan ? "plan" : "");
+  const urgentKey = m.approvals[0]?.id ?? (m.agentsAsk ? "agents" : m.stuck ? "stuck" : m.costPause ? "cost" : m.signIn ? `signIn:${m.signIn.stage}` : m.paused ? "paused" : m.plan ? "plan" : "");
   useEffect(() => {
     if (!urgentKey) return;
     takeIfLost(() => urgent.current?.querySelector<HTMLElement>("[data-safe]") ?? urgent.current?.querySelector<HTMLElement>("input, button"));
@@ -1754,13 +1758,30 @@ function Card() {
     // first, so a request it would refuse is never sent, and nothing is cleared.
     const added = forRequest(attachedNow.current);
     if ("error" in checkAttachments(added)) { setAttachNotes([S.attachCannotSend]); return; }
+    // M75: a vague ask with nothing added shows choices built from what is known here; the words stay in the box.
+    if (setting("ask.choices") !== false && !attachedNow.current.length && isVague(prompt)) { setVague(vagueChoices(prompt, vagueStateOf(m, project))); return; }
+    setVague(null);
+    sendTask(prompt);
+  };
+  // M75 (shortlist 10): a vague ask gets choices first; nothing runs until one is tapped (rule 13).
+  const [vague, setVague] = useState<VagueChoice[] | null>(null);
+  const sendTask = (prompt: string) => {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
     sent.current = { prompt, attached: attachedNow.current, off };
     // Something shows at once (the audit, item 27): the words and Starting, until the engine answers.
     dispatch({ type: "ui.taskSent", words: prompt });
+    const added = forRequest(attachedNow.current);
     void sendQuiet(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
+  };
+  const pickVague = (c: VagueChoice) => {
+    pressed();
+    setVague(null);
+    if (c.kind === "check") { dispatch({ type: "ui.findProblem" }); clearBox(); void sendOrExplain(findProblem(project), () => dispatch({ type: "ui.pointClosed" })); return; }
+    if (c.kind === "review") { clearBox(); reviewHandlers.onReview(false); return; }
+    if (working) { needWords(S.askBusy); return; }
+    if (c.kind === "task" || c.kind === "asTyped") sendTask(c.prompt);
   };
   // The Explain chip: words in the box (an error pasted or typed into Squibby itself) are explained the way the explain keys
   // explain a selection (errhelp.rs typed). Nothing is read from another app here: that still needs the keys (rule 5). With
@@ -2267,6 +2288,38 @@ function Card() {
         </section>
       )}
 
+      {/* M75: the cost pause. Nothing more runs until a press; Stop everything ends it too (rule 11). No amount (F29). */}
+      {m.costPause && (
+        <section className="panel amber cost-pause" aria-label={S.costPause.title}>
+          <h2 className="sr">{S.costPause.title}</h2>
+          <div className="line">{S.costPause.line}</div>
+          <div className="row">
+            <button className="btn primary" type="button" onClick={() => { void send(chooseCost(m.costPause!.agent, "keep")); }}>{S.costPause.keep}</button>
+            <button className="btn" type="button" data-safe onClick={() => { void send(chooseCost(m.costPause!.agent, "stop")); }}>{S.costPause.stop}</button>
+            <button className="btn" type="button" onClick={() => { void send(chooseCost(m.costPause!.agent, "undo")); }}>{S.costPause.undo}</button>
+          </div>
+          <div className="line muted">{S.costPause.undoLine}</div>
+        </section>
+      )}
+
+      {/* M75 (M58 A4): a sign in wall. The person signs in in a window of their own; Squibby never types or reads a field.
+          No answer, or Skip, is not proven (rule 14). */}
+      {m.signIn && (
+        <section className="panel amber sign-in-turn" aria-label={S.signInTurn.title}>
+          <h2 className="sr">{S.signInTurn.title}</h2>
+          <div className="line">{m.signIn.stage === "opened" ? S.signInTurn.openedLine : m.signIn.stage === "checking" ? S.signInTurn.checking : m.signIn.stage === "needsBrowser" ? S.signInTurn.needsBrowser : m.signIn.stage === "downloading" ? S.signInTurn.downloading(m.signIn.percent ?? 0) : S.signInTurn.line}</div>
+          {m.signIn.stage !== "checking" && (
+            <div className="row">
+              {m.signIn.stage === "waiting" && <button className="btn primary" type="button" onClick={() => { void send(answerSignIn(m.signIn!.agent, "open")); }}>{S.signInTurn.open}</button>}
+              {m.signIn.stage === "opened" && <button className="btn primary" type="button" onClick={() => { void send(answerSignIn(m.signIn!.agent, "continue")); }}>{S.signInTurn.continue}</button>}
+              {m.signIn.stage === "needsBrowser" && <button className="btn primary" type="button" onClick={() => { void send(answerSignIn(m.signIn!.agent, "getBrowser")); }}>{S.signInTurn.getBrowser}</button>}
+              {m.signIn.stage !== "downloading" && <button className="btn" type="button" data-safe onClick={() => { void send(answerSignIn(m.signIn!.agent, "skip")); }}>{S.signInTurn.skip}</button>}
+            </div>
+          )}
+          <div className="line muted">{S.signInTurn.never}</div>
+        </section>
+      )}
+
       {m.paused && (
         <section className="panel amber" aria-label={S.pausedTitle}>
           <h2>{S.pausedTitle}</h2>
@@ -2441,7 +2494,7 @@ function Card() {
             <span className="ask-mark" aria-hidden="true"><Icon name="sparkle" size={16} /></span>
             <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-label={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-describedby="ask-keys"
               aria-controls={palOn ? palId : undefined} aria-activedescendant={palOn ? `${palId}-${palAt}` : undefined} aria-autocomplete={palOn ? "list" : undefined}
-              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setPalText(e.currentTarget.value); setPalAt(0); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
+              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setPalText(e.currentTarget.value); setPalAt(0); setVoiceHint(null); setAskHint(null); setVague(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
               onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
               onKeyDown={(e) => {
@@ -2489,6 +2542,16 @@ function Card() {
             <div className="line ask-choose" role="status">{S.home.noProjectAsk}{" "}
               <Button size="sm" kind="secondary" onClick={() => { setNoProjectFor(null); pickFolder(); }}>{S.home.chooseMine}</Button>{" "}
               <Button size="sm" kind="secondary" onClick={() => { const k = noProjectFor; setNoProjectFor(null); startNew(k); }}>{S.home.startNewFrom}</Button>
+            </div>
+          )}
+          {/* M75: the choices for a vague ask, the M73 chips' look. A tap runs it the way its own button does; more words and
+              Return still work. Do it as I typed it is always there. */}
+          {vague && (
+            <div className="vague-ask" role="group" aria-label={S.vague.title}>
+              <div className="line">{S.vague.title} <span className="muted">{S.vague.line}</span></div>
+              <div className="ask-row vague-row">
+                {vague.map((c) => <button type="button" key={c.id} className={c.kind === "asTyped" ? "ask-chip vague-typed" : "ask-chip"} onClick={() => pickVague(c)}>{c.words}</button>)}
+              </div>
             </div>
           )}
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
@@ -2911,6 +2974,8 @@ function Card() {
           {!undone && (() => { const w = workedFor(m.history, m.receipt.checkpoint); return w ? <p className="line muted worked-for">{w}</p> : null; })()}
           {/* M58 (the shortlist, item 8): a sign in wall is the person's turn, never proven, and never typed for them. */}
           {!undone && signInTurn(m.task?.proof?.steps) && <div className="line" role="note">{signInTurn(m.task?.proof?.steps)}</div>}
+          {/* M75: a private looking page opened with no sign in, in the fixed finding shape. Worth a look, never a failure. */}
+          {!undone && !!m.task?.proof?.privateOpen?.length && <div className="receipt-findings"><FindingList id="receipt-private" items={privateOpenFindings(m.task.proof.privateOpen)} /></div>}
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
           {/* Undo right under the verdict (the audit, item 13: after a fix it was below the files, off Home's 480 points).
               Inside the card (4.2): a secondary button, only when the result offers it (homeHero.ts undoCan). The

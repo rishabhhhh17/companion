@@ -475,7 +475,7 @@ export function reviewHeroSays(mode: HomeMode, lead: ReviewLead | null, r: Revie
 /** In the wide Home, the hero folds to one line (no pond, no main button) while a card that needs a tap shows (item 13): an
  *  approval, a stuck fix, the question about other agents, a found problem, the review, or a result that just came in. */
 export function heroCompact(m: Model, reviewOn: boolean): boolean {
-  return m.approvals.length > 0 || !!m.stuck || !!m.agentsAsk || m.point?.stage === "found" || reviewOn || (!!m.receipt && !!m.task && resultIsFresh(m));
+  return m.approvals.length > 0 || !!m.stuck || !!m.costPause || !!m.signIn || !!m.agentsAsk || m.point?.stage === "found" || reviewOn || (!!m.receipt && !!m.task && resultIsFresh(m));
 }
 const resultIsFresh = (m: Model): boolean => (m.character === "done" || m.character === "error") && m.agents[m.task!.agent] === m.character;
 

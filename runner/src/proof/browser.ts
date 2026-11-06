@@ -31,6 +31,31 @@ export function browserExecutable(root: string = browsersPath()): string | null 
 }
 export const browserInstalled = () => browserExecutable() !== null;
 
+/** M75: the full browser that can show a window (Playwright's own "chromium", in the same private folder), for the sign in
+ *  handover only. The hidden check's small browser cannot show one. [verify] the folder's layout with this Playwright. */
+export function visibleBrowserExecutable(root: string = browsersPath()): string | null {
+  try {
+    const dir = readdirSync(root).filter((d) => /^chromium-\d+$/.test(d) && existsSync(join(root, d, "INSTALLATION_COMPLETE"))).sort().pop();
+    if (!dir) return null;
+    for (const inner of readdirSync(join(root, dir)).filter((d) => d.startsWith("chrome-mac"))) {
+      for (const app of ["Google Chrome for Testing", "Chromium"]) {
+        const exe = join(root, dir, inner, `${app}.app`, "Contents", "MacOS", app);
+        if (existsSync(exe)) return exe;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+/** M75: the window a person signs into. ready: the visible browser is on this Mac. open: a window on the page from the
+ *  given fresh profile folder; state() takes its sign in (memory only), close() ends it. Squibby never types into it, never
+ *  reads a field and never presses anything there. */
+export type SignInWindow = {
+  ready(): boolean;
+  open(url: string, profile: string): Promise<{ state(): Promise<unknown>; close(): Promise<void> }>;
+  install?(o: { signal: AbortSignal; onProgress: (p: InstallProgress) => void }): Promise<{ ok: boolean; detail: string }>;
+};
+// The window itself (visibleWindow) is in browsersetup.ts, the one place that may start a download.
+
 /** One line of Playwright's own download progress ("|■■■■   |  40% of 89.6 MiB"), as a percent and a size in MB. */
 export function parseInstallProgress(line: string): { percent: number; mb: number } | null {
   const m = /\|\s*(\d{1,3})% of ([\d.]+) MiB\s*$/.exec(line.trim());
@@ -48,7 +73,7 @@ type Run = (command: string, o: RunOptions) => Promise<RunResult>;
 // Playwright's installer adds FFmpeg (a video tool, about 1 MB, from the same servers) to every browser install, and prints
 // its own "Downloading ..." line and progress bar for it after the browser's. Companion never uses it. Only the browser's
 // own bar is progress; FFmpeg is part of "setting it up". The bar never goes back, even when Playwright tries a download again.
-const BROWSER_DOWNLOAD = /\(playwright chromium-headless-shell v\d+\)|^Chrome Headless Shell\b/;
+const BROWSER_DOWNLOAD = /\(playwright chromium-headless-shell v\d+\)|^Chrome Headless Shell\b|\(playwright chromium v\d+\)|^Chrome for Testing\b|^Chromium\b/;
 export function installProgressReader(onProgress: (p: InstallProgress) => void): (text: string) => void {
   let pending = "", current: "browser" | "other" | null = null, last = -1, mb: number | undefined;
   const say = (p: InstallProgress) => { if (p.percent <= last) return; last = p.percent; onProgress(p); };
@@ -87,7 +112,7 @@ export const downloadScratch = (root: string = browsersPath()) => join(root, ".d
 // person's can point it at another server. Stop everything ends it through the signal, and if the engine itself is ended by
 // force, the installer ends with it (endWithUs). installer: the runner's own process tests only, a stand in for Playwright's.
 // timeoutMs: 15 minutes, doubled by "my internet is slow".
-export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run; installer?: string; timeoutMs?: number } = {}): Promise<InstallOutcome> {
+export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p: InstallProgress) => void; run?: Run; installer?: string; timeoutMs?: number; /** M75: the full browser the sign in window needs */ visible?: boolean } = {}): Promise<InstallOutcome> {
   const cli = o.installer ?? join(dirname(Bun.resolveSync("playwright-core/package.json", import.meta.dir)), "cli.js");
   if (!existsSync(cli)) return { ok: false, detail: "The browser installer was not found" };
   const root = browsersPath(), scratch = downloadScratch(root);
@@ -95,12 +120,12 @@ export async function installBrowser(o: { signal?: AbortSignal; onProgress?: (p:
   clear();
   try { mkdirSync(scratch, { recursive: true }); } catch { /* the installer says why if it cannot write here */ }
   try {
-    const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install chromium-headless-shell`, {
+    const r = await (o.run ?? runCommand)(`${JSON.stringify(process.execPath)} ${JSON.stringify(cli)} install ${o.visible ? "chromium" : "chromium-headless-shell"}`, {
       cwd: homedir(), timeoutMs: o.timeoutMs ?? 15 * 60_000, env: { PLAYWRIGHT_BROWSERS_PATH: root, TMPDIR: scratch }, signal: o.signal, endWithUs: true,
       onOutput: installProgressReader((p) => o.onProgress?.(p)),
     });
     // A failure after the browser is in place (FFmpeg not downloading, or a stop while it did) still leaves a browser that works.
-    return { ok: browserInstalled(), detail: (r.stderr || r.stdout).slice(-300), ...(r.aborted ? { aborted: true } : {}), ...(r.timedOut ? { timedOut: true } : {}) };
+    return { ok: o.visible ? visibleBrowserExecutable() !== null : browserInstalled(), detail: (r.stderr || r.stdout).slice(-300), ...(r.aborted ? { aborted: true } : {}), ...(r.timedOut ? { timedOut: true } : {}) };
   } finally { clear(); }
 }
 
@@ -118,6 +143,9 @@ export type BrowserOptions = { expectText?: string[]; click?: string; expectAfte
    *  Otherwise only one that asks for a sign in is (a WWW-Authenticate header, a password field, sign in words), so a
    *  change that put the whole app behind a bare error is told and fixed. A redirect to a login page is always a gap. */
   signInExpected?: boolean;
+  /** M75 (M58 A4): the sign in from the visible window the person used (its cookies and site storage), held in memory only
+   *  and handed to this one check. It is never written, logged or read by Squibby itself. */
+  storageState?: unknown;
   /** Tests only: names the hidden browser maps to addresses (host resolver rules), and the lookup and address test of the
    *  internet preview's proxy, so a rebinding name can be played on this Mac. Never set by the app. */
   _testNet?: { mapHosts?: Record<string, string>; lookup?: Lookup; isAllowed?: (ip: string, host: string) => boolean } };
@@ -209,7 +237,7 @@ export async function browserCheck(url: string, o: BrowserOptions = {}): Promise
   async function run(): Promise<BrowserResult> {
   try {
     const view = o.viewport ?? { width: VIEW.w, height: VIEW.h };
-    const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, serviceWorkers: "block" });
+    const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, serviceWorkers: "block", ...(o.storageState ? { storageState: o.storageState as never } : {}) });
     // Once a button is pressed, nothing reaches beyond the page's own address, and writes are answered with "nothing to do".
     let guarded = false;
     // The press now going on, or the last one: its label, and whether the guard answered or stopped a request of its. What
@@ -385,6 +413,42 @@ async function pressByLabel(page: import("playwright-core").Page, wanted: string
     return { pressed: want };
   }
   return { problem: `Could not find a button or link called "${want}" on the page` };
+}
+
+/** M75: opens each private looking page once in the hidden browser with no sign in, only read, nothing pressed, kept to this
+ *  Mac's own addresses as every check is. One "loads without a sign in" when it answers below 400, stays on its own path,
+ *  and shows no password field and no sign in words. Returns those paths. */
+export async function openWithoutSignIn(baseUrl: string, routes: readonly string[], o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<string[]> {
+  if (!routes.length || !browserInstalled() || o.signal?.aborted || !onThisMac(baseUrl)) return [];
+  let door: { port: number; stop: () => void } | null = null;
+  try { const d = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open(sk) { sk.end(); }, data() {} } }); door = { port: d.port, stop: () => d.stop(true) }; } catch { return []; }
+  let browser: import("playwright-core").Browser | null = null;
+  const stop = () => { browser?.close().catch(() => {}); };
+  o.signal?.addEventListener("abort", stop, { once: true });
+  const open: string[] = [];
+  try {
+    browser = await chromium.launch({ headless: true, executablePath: browserExecutable()!, args: localOnlyArgs(door.port) });
+    const context = await browser.newContext({ serviceWorkers: "block" });
+    await context.route("**/*", (route) => (reachableFrom(baseUrl, route.request().url()) ? route.continue() : route.abort("blockedbyclient")));
+    await context.routeWebSocket(() => true, (ws) => ws.close({ code: 1008, reason: "A check never connects here" }));
+    const page = await context.newPage();
+    for (const r of routes) {
+      if (o.signal?.aborted) break;
+      const url = new URL(r, baseUrl).toString();
+      let status = 0;
+      try { const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: o.timeoutMs ?? 15_000 }); status = res?.status() ?? 0; } catch { continue; }
+      await page.waitForTimeout(300);
+      if (!(status > 0 && status < 400)) continue;
+      const here = new URL(page.url()), want = new URL(url);
+      if (here.host !== want.host || here.pathname.replace(/\/+$/, "") !== want.pathname.replace(/\/+$/, "")) continue;
+      if ((await page.locator('input[type="password"]').count().catch(() => 1)) > 0) continue;
+      const text = (await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "";
+      if (!text.trim() || SIGN_IN_WORDS.test(text)) continue;
+      open.push(r);
+    }
+  } catch { /* a probe that cannot run finds nothing */ }
+  finally { o.signal?.removeEventListener("abort", stop); await browser?.close().catch(() => {}); door.stop(); }
+  return open;
 }
 
 export const SIGN_IN_GAP = "The page needs a sign in, so what is behind it was not checked.";

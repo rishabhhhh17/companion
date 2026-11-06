@@ -12,7 +12,7 @@ import { coveredBy } from "../pathglob.ts";
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", "dist", "build", ".next", ".nuxt", "out", "target", "coverage", ".cache", ".turbo", ".venv", "venv",
-  "__pycache__", ".claude", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
+  "__pycache__", ".claude", ".codex", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
   ".build", ".idea", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".expo", ".angular", ".docusaurus", ".yarn", ".pnpm-store",
 ]);
 /** Scratch files editors write while saving (vim's swap and test files, emacs' locks and backups), the Finder's notes,
@@ -110,6 +110,15 @@ export class ChangeBatcher {
   }
   /** Says ready (with no paths, if none came) once the folder has been quiet for the quiet time from now. */
   poke(): void { if (!this.on) return; this.poked = true; this.arm(); }
+  /** M75: the other tool said it is done (donesignal.ts). What is waiting is said after `ms`, a short settle for its last
+   *  write to land, instead of the whole quiet time. With nothing waiting, nothing is said (false). Work of the engine, or
+   *  other work, that is busy still makes it wait, as the quiet time does. */
+  settle(ms: number): boolean {
+    if (!this.on || (!this.paths.size && !this.dirs.size && !this.capped)) return false;
+    this.clearTimer();
+    this.timer = setTimeout(() => this.fire(), Math.max(0, ms));
+    return true;
+  }
   /** Paths waiting for the quiet time to end. */
   waiting(): number { return this.paths.size; }
   private isDir(rel: string): boolean { try { return lstatSync(join(this.o.project, rel)).isDirectory(); } catch { return false; } }

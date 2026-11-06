@@ -8,7 +8,7 @@ import type { Colour } from "./meaning.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
-export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep";
+export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep" | "doneSignal";
 export type Item = string | { fixed: Fixed };
 /** A Group on a page: its anchor (#account.plan) is its id; its words are S.setGroupTitles[id] and S.setGroupFoot[id]. */
 export type GroupDef = { id: string; items: readonly Item[] };
@@ -28,7 +28,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     groups: [
       { id: "account.plan", items: [f("plan")] },
       // M74: the warning before the limit, and the most one task may spend (it stops there; Carry on goes on), beside it.
-      { id: "account.spending", items: ["spend.dailyLimit", "spend.warnAt", "budget.task"] },
+      { id: "account.spending", items: ["spend.dailyLimit", "spend.warnAt", "spend.pauseAt", "budget.task"] },
       // M68: what to call you, only for the hello in the notch (you.name).
       { id: "account.you", items: ["you.name"] },
     ],
@@ -77,6 +77,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       // M57 UI 12: the review of changes to the project, first on the page about fixing, where people look for it.
       // M74: how strict and the key warning beside the mode, and this project's own choice (a project setting).
       { id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] },
+      // M75 (roadmap 19): when Claude Code or Codex says it is done, one row per tool, beside the review it starts.
+      { id: "fixing.done", items: [f("doneSignal")] },
       { id: "fixing.tries", items: ["work.tries"] },
       { id: "fixing.rules", items: ["rules.house", "check.install"] },
       { id: "fixing.checks", items: ["check.pageSize", "explain.mode"] },
@@ -84,8 +86,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays"] },
-      { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after"] },
-      { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun"] },
+      { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after", "ask.choices"] },
+      { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun", "check.privatePages"] },
     ],
   },
   flowflow: {

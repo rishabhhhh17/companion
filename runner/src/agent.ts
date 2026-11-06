@@ -42,7 +42,10 @@ import { readDeployFailure } from "./ship/buildlog.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
-import { browserCheck, SIGN_IN_GAP } from "./proof/browser.ts";
+import { browserCheck, SIGN_IN_GAP, type SignInWindow } from "./proof/browser.ts";
+import { visibleWindow } from "./proof/browsersetup.ts";
+import { nextPauseAt, pauseAtUsd, usualTaskUsd, type CostChoice } from "./costpause.ts";
+export type { SignInWindow } from "./proof/browser.ts";
 import { headMovedLine, headOf } from "./githead.ts";
 import { sqliteFiles } from "./dbsafety.ts";
 import { applyRules, loadRules, withHouseRule } from "./rules.ts";
@@ -169,6 +172,10 @@ export type RunnerOptions = {
   settings?: RunnerSettings;
   // How an install the person pressed and a copy from a link are run (runCommand; tests pass a stand in).
   commands?: (command: string, o: RunOptions) => Promise<RunResult>;
+  // M75 (M58 A4): the visible window a person signs into at a sign in wall (visibleWindow by default; tests pass a stand in),
+  // and the folder its temporary profiles are made in (Squibby's own data, beside the shadow store, by default).
+  signInWindow?: SignInWindow;
+  signInProfiles?: string;
 };
 
 /** How long one snapshot may take (checkpoints.ts), doubled by "my internet is slow". */
@@ -201,7 +208,9 @@ function pruneOldest(dir: string, keep: number) {
 // webSearch: false when Let tasks search the web is off for this task (work.webSearch), so a search asked for anyway is refused.
 type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string>; webSearch?: boolean;
   /** The answer to a build's internet or download question, kept for the whole task so a fix round never asks again. */
-  netAnswers?: Map<string, boolean> };
+  netAnswers?: Map<string, boolean>;
+  /** M75: the cost pause. at: where it pauses next; usd: what the task has used; before: its safety copy (Undo what it did). */
+  cost?: { at: number; usd: () => number; project: string; before: string; waiting?: Promise<void> } };
 const newSession = (agent: string, abort: AbortController, taskAllowed: Set<string> = new Set()): Session => ({ agent, abort, pending: new Map(), taskAllowed, shells: new Set() });
 type StartCmd = Extract<Command, { type: "agent.start" }>;
 // resumeSession: carry on Claude's conversation. taskAllowed: what a Drive plan's steps share (see Session).
@@ -302,6 +311,13 @@ const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 export class AgentRunner {
   private sessions = new Map<string, Session>();
+  /** M75: the answer each waiting cost pause and sign in handover is waiting for, by agent. */
+  private costAnswers = new Map<string, (c: CostChoice) => void>();
+  private signInAnswers = new Map<string, (c: string) => void>();
+  /** M75: Undo what it did on the cost pause: restored once the task has ended. */
+  private costUndo = new Map<string, { project: string; checkpoint: string }>();
+  /** M75: how long the handover waits for the first press (null: point.yourTurnSeconds) and once the window is open. */
+  signInWaits: { first: number | null; open: number } = { first: null, open: 10 * 60_000 };
   private plans = new Map<string, PendingPlan>();
   private driving = new Set<string>();
   private installing = new Map<string, AbortController>();   // package installs and clones the person started, so Stop everything ends them
@@ -482,7 +498,7 @@ export class AgentRunner {
       // Review them pressed: a yes for the safety box only. Outside it nothing that changed runs (rule 13).
       const askScripts = review?.asked ? async (_byTask: boolean, unboxed?: boolean) => unboxed !== true : undefined;
       let res: LadderResult;
-      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}) }); }
+      try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}), privatePages: !!review && this.setting<boolean>("check.privatePages", project) !== false }); }
       catch { return { outcome: "unknown", reason: CHECKER_STOPPED }; }
       if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
@@ -491,7 +507,7 @@ export class AgentRunner {
       if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
       if (review) {
         const browser = res.steps.find((x) => x.rung === "browser");
-        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser." };
+        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", ...(res.openPrivate?.length ? { open: res.openPrivate } : {}) };
         const why = browser?.detail ? clip(redactOutput(browser.detail).replace(/\s+/g, " ").trim(), 140) : "";
         return { outcome: "ok", reason: why ? `The project's own checks passed. The browser check did not run: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : "The project's own checks passed. The browser check did not run." };
       }
@@ -779,6 +795,8 @@ export class AgentRunner {
         this.fail("The agent is not paused.", cmd.agent); return;
       }
       case "loop.choose": if (!this.answerChoice(cmd.agent, cmd.choice)) this.fail("Nothing is waiting for an answer.", cmd.agent); return;
+      case "cost.choose": { const r = this.costAnswers.get(cmd.agent); if (r) r(cmd.choice); else this.fail("Nothing is waiting for an answer.", cmd.agent); return; }
+      case "proof.signIn": { const r = this.signInAnswers.get(cmd.agent); if (r) r(cmd.choice); else this.fail("Nothing is waiting for a sign in.", cmd.agent); return; }
       case "agent.interrupt": {
         const running = this.runsFor(cmd.agent);
         // Put aside, never stopped: only an agent with nothing running rests again.
@@ -1018,6 +1036,14 @@ export class AgentRunner {
 
   // One agent, and one writer per project, at a time. Whatever goes wrong inside, nothing is left stuck.
   private async run(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
+    const r = await this.runOnce(cmd, opts);
+    // M75: Undo what it did, pressed on the cost pause: the task has ended as a stop, so its files go back to its own safety
+    // copy now, the way Undo does (with its own safety copy first, and its receipt).
+    const u = this.costUndo.get(cmd.agent);
+    if (u) { this.costUndo.delete(cmd.agent); await this.handle({ v: PROTOCOL_VERSION, id: `cost-undo-${cmd.agent}`, type: "checkpoint.restore", project: u.project, checkpoint: u.checkpoint }); }
+    return r;
+  }
+  private async runOnce(cmd: StartCmd, opts: RunOpts = {}): Promise<{ status: string; usd: number; sessionId?: string; stuck?: Stuck }> {
     const key = resolve(cmd.project);
     this.modes.set(cmd.agent, cmd.mode);
     // What the request carries (files into the ask box) is checked again here, whatever the page checked: anything off
@@ -1165,6 +1191,11 @@ export class AgentRunner {
     let usd = prior, booked = prior, commands = 0, status = "done";   // what was spent before it started is booked already
     const tokens = { in: 0, cacheRead: 0, out: 0 };
     const book = () => { this.addSpend(cmd.project, usd - booked); booked = usd; this.taskUsd.set(cmd.agent, usd); };
+    // M75: the cost pause, from this project's own usual task (the task log), read once as the task starts.
+    { let past: { usd: number }[] = []; try { past = this.o.log.list(cmd.project, 60).filter((r) => r.id !== taskId && r.endedAt); } catch { past = []; }
+      // A line at or past the task's own budget never pauses: the budget ends the task first.
+      const at = pauseAtUsd(usualTaskUsd(past), this.setting<string>("spend.pauseAt", cmd.project));
+      session.cost = { at: at < budget ? at : Infinity, usd: () => usd, project: cmd.project, before: before.id }; }
     // Off the record, the engine saves no conversation, so nothing can be continued later: each round starts afresh.
     const offRecord = !!cmd.offTheRecord;
     const notUndoable: string[] = before.skipped.map((k) => `${k.path}: ${k.reason}`);
@@ -1203,6 +1234,9 @@ export class AgentRunner {
           tellCost();
           if (abort.signal.aborted) { status = "interrupted"; return false; }
           if (usd > budget) { status = "error_max_budget_usd"; this.fail("error_max_budget_usd: the spending limit was reached", cmd.agent); return false; }
+          // M75: past the cost pause, the task waits here for the person (after the budget, which ends it first).
+          await this.costGate(cmd.agent, session);
+          if (abort.signal.aborted) { status = "interrupted"; return false; }
 
           let result: ToolResult | undefined;
           if (turn.tool) {
@@ -1289,7 +1323,8 @@ export class AgentRunner {
         return parseReview(text);
       } : undefined;
       try {
-        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id), approvals: this.approvals(cmd.project) }));
+        res = await this.inTurn(cmd.project, () => (this.o.proof ?? runLadder)({ project: cmd.project, store, beforeId: before.id, afterId: after.id, onStep, signal: abort.signal, review, ...checking, askInstall: this.installAsker(session, cmd.agent, before.id), askScripts: this.scriptsAsker(session, cmd.agent, before.id), approvals: this.approvals(cmd.project),
+          signIn: this.signInFor(cmd.agent, cmd.project, abort.signal), privatePages: this.setting<boolean>("check.privatePages", cmd.project) !== false }));
       } catch (e) {
         res = { verdict: "failed", steps: [{ rung: "checks", label: "Checking the work", status: "failed", detail: CHECKER_STOPPED, summary: CHECKER_STOPPED, ms: 0, forModel: `The checker itself stopped: ${clip(redactOutput(String((e as Error)?.message ?? e)), 300)}` }] };
       } finally { this.watchers.get(cmd.agent)?.end("ladder"); }
@@ -1297,7 +1332,7 @@ export class AgentRunner {
       // result (Put it online would refuse a version whose stopped check read as failed, and never check it again).
       if (abort.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };
       // M58: "Try 1 of 3": the try, and this approach's limit (work.tries), so the card never guesses it.
-      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES } as never);
+      this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES, ...(res.openPrivate?.length ? { privateOpen: res.openPrivate } : {}) } as never);
       if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
       if (res.verdict === "cancelled") { status = "interrupted"; break; }
       if (res.verdict !== "failed") { if (res.verdict === "passed") proof = "passed"; else if (res.verdict === "passed_with_gaps") proof = "partial"; shot = res.shot; break; }   // partial: it passed, but a check could not run (for example the browser): never called proven
@@ -2518,6 +2553,86 @@ export class AgentRunner {
 
   // Judge one tool call. Returns whether it may run. Used by the runner for scripted engines
   // and by the real engine's PreToolUse hook; either way the safety rules are the same.
+  /** M75: the cost pause. Past the line, the task waits for Keep going, Stop or Undo what it did; nothing more runs meanwhile
+   *  (this is awaited after each booked turn and before any tool). Stop everything ends the wait as a stop (rule 11). No
+   *  amount is ever said (F29). */
+  private async costGate(agent: string, s: Session): Promise<void> {
+    const c = s.cost;
+    if (!c || s.abort.signal.aborted) return;
+    if (c.waiting) { await c.waiting; return; }
+    if (c.usd() < c.at) return;
+    c.waiting = (async () => {
+      this.emit({ type: "cost.pause", agent, project: c.project } as never);
+      this.state(agent, "needsYou");
+      const choice = await new Promise<CostChoice>((res) => {
+        const end = (ch: CostChoice) => { s.abort.signal.removeEventListener("abort", stop); this.costAnswers.delete(agent); res(ch); };
+        const stop = () => end("stop");
+        s.abort.signal.addEventListener("abort", stop, { once: true });
+        this.costAnswers.set(agent, end);
+      });
+      this.emit({ type: "cost.resolved", agent, choice } as never);
+      if (choice === "keep" && !s.abort.signal.aborted) { c.at = nextPauseAt(c.at); this.state(agent, "working"); return; }
+      if (choice === "undo") this.costUndo.set(agent, { project: c.project, checkpoint: c.before });
+      s.abort.abort();
+    })().finally(() => { c.waiting = undefined; });
+    await c.waiting;
+  }
+
+  /** M75 (M58 A4): the sign in handover for a task's check. The card asks; Open opens a visible window from a fresh profile
+   *  in Squibby's own folder; Continue takes that window's sign in (memory only), closes it and deletes the profile; Skip,
+   *  no press in time or Stop keep the gap. Squibby never types, never reads a field, never solves a CAPTCHA. */
+  private signInFor(agent: string, project: string, signal: AbortSignal): (o: { url: string }) => Promise<{ storageState: unknown } | null> {
+    return async ({ url }) => {
+      const w = this.o.signInWindow ?? visibleWindow;
+      const root = this.o.signInProfiles ?? join(dirname(this.o.shadowRoot), "signin");
+      const say = (stage: string, extra: Record<string, unknown> = {}) => this.emit({ type: "proof.signIn", agent, stage, ...extra } as never);
+      let win: Awaited<ReturnType<SignInWindow["open"]>> | null = null, profile: string | null = null;
+      const cleanup = async () => { const x = win; win = null; if (x) await x.close().catch(() => {}); if (profile) { try { rmSync(profile, { recursive: true, force: true }); } catch { /* gone */ } profile = null; } };
+      const first = this.signInWaits.first ?? this.setting<number>("point.yourTurnSeconds", project) * 1000;
+      const answer = (ms: number) => new Promise<string>((res) => {
+        const end = (c: string) => { clearTimeout(t); signal.removeEventListener("abort", stop); this.signInAnswers.delete(agent); res(c); };
+        const stop = () => end("stop");
+        const t = setTimeout(() => end("timeout"), ms);
+        if (signal.aborted) { end("stop"); return; }
+        signal.addEventListener("abort", stop, { once: true });
+        this.signInAnswers.set(agent, end);
+      });
+      try {
+        say("waiting"); this.state(agent, "needsYou");
+        let wait = first;
+        for (;;) {
+          const c = await answer(wait);
+          if (c === "stop") return null;
+          if (c === "timeout") { say("timedOut"); return null; }
+          if (c === "skip") { say("skipped"); return null; }
+          if (c === "getBrowser") {
+            if (!w.install) { say("failed", { reason: "The visible browser cannot be downloaded from here." }); return null; }
+            say("downloading", { percent: 0 });
+            const r = await w.install({ signal, onProgress: (p) => say("downloading", { percent: Math.max(0, Math.min(100, Math.round(p.percent))) }) }).catch(() => ({ ok: false, detail: "" }));
+            if (signal.aborted) return null;
+            if (!r.ok || !w.ready()) { say("failed", { reason: "The visible browser did not download. Try again later." }); return null; }
+            say("waiting"); wait = first; continue;
+          }
+          if (c === "continue" && win) {
+            const st = await win.state().catch(() => null);
+            await cleanup();
+            if (!st) { say("failed", { reason: "The sign in window closed before its sign in could be used." }); return null; }
+            say("checking"); this.state(agent, "checking");
+            return { storageState: st };
+          }
+          if (!w.ready()) { say("needsBrowser"); wait = first; continue; }
+          if (!win) {
+            profile = join(root, randomBytes(6).toString("hex"));
+            try { mkdirSync(profile, { recursive: true, mode: 0o700 }); win = await w.open(url, profile); }
+            catch { await cleanup(); say("failed", { reason: "The sign in window could not be opened." }); return null; }
+            if (signal.aborted) return null;
+          }
+          say("opened"); wait = this.signInWaits.open;
+        }
+      } finally { this.signInAnswers.delete(agent); await cleanup(); }
+    };
+  }
+
   private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const base = await withLookup(evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells }, ...(s.webSearch === false ? { webSearch: false } : {}) }), tool.name, tool.input);
@@ -2543,6 +2658,8 @@ export class AgentRunner {
       tell("blocked");
       return { allow: false, reason: refusal(verdict.reason) };
     }
+    // M75: a task past its cost pause runs nothing more until the person answers.
+    await this.costGate(cmd.agent, s);
     // After Stop (or a pause) nothing more runs in this task, and nothing more is asked: the real engine can still ask once
     // while it winds down.
     if (s.abort.signal.aborted) {

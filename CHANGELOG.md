@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Features, batch one: 6 Nov 2026 (in progress)
+
+- **Reviews start when your AI tool says it is done.** In Settings, Fixing, you can let Claude Code or Codex tell Squibby the moment it finishes in this project, so the review starts then instead of after a quiet spell. Squibby shows you exactly the lines it would add to that tool's own settings file first, adds them only when you say yes, and one press removes them. The signal carries nothing of what the tool said, only "done in this folder". Without it, reviews start after the quiet time as before.
+- **A pause before a task runs away.** When one task has used far more than a usual task in your project, Squibby stops it and asks: Keep going, Stop, or Undo what it did. Nothing more runs while it asks, and Stop everything still stops it. It never shows an amount. You can pick 3 or 5 times a usual task, or turn it off, on the Account page.
+- **Your turn to sign in.** When the browser check meets a sign in page, the card says "Your turn: sign in, then tap Continue, or skip this check." Open the sign in page opens a window where you sign in yourself; Continue checks the page behind it. Squibby never types your password or reads what you type. Skipping, or not answering, means the page is not proven.
+- **Pages that should need a sign in.** In a project with a sign in, a dashboard, settings, account or admin page that opens without signing in is shown as Worth a look, with what it means and how to fix it.
+- **Choices for a vague ask.** Type "make it better" or "fix it" and Squibby shows a few choices from what it knows about your project, such as fixing the check that fails. Nothing runs until you tap one, and typing more words still works.
+
 ## Your way: 6 Nov 2026 (in progress)
 
 - **Settings you looked for are easier to find.** How strict reviews are, the instant key warning (still off unless you turn it on) and How many times to try a fix are now on the main Fixing page. A line under Review changes says when a review starts.

@@ -27,7 +27,7 @@ export type ApprovalCard = { id: string; agent: string; title: string; risk: str
 // M58: needs "signIn" when the browser check stopped at a sign in wall (the person's turn, never proven). of: the task's
 // tries for one approach (work.tries), as the engine said it, for "Try 1 of 3".
 export type ProofLine = { rung: string; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; summary?: string; problem?: Problem; ms?: number; runs?: { command: string; exit: number }[]; needs?: "signIn" };
-export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number; of?: number };
+export type ProofState = { steps: ProofLine[]; verdict?: string; tries: number; of?: number; /** M75 */ privateOpen?: string[] };
 // changedAt: the first changed line ("Show me what changed"). repeat: the same small change made in two places (your turn).
 export type ChangeAt = { file: string; line: number; lineText: string };
 export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: string };
@@ -246,6 +246,10 @@ export type Model = {
   rescue: RescueCard | null;
   paused: Paused | null;
   stuck: StuckCard | null;
+  /** M75: a task that used far more than usual waits for Keep going, Stop or Undo what it did (no amount, F29). */
+  costPause?: { agent: string } | null;
+  /** M75 (M58 A4): a sign in wall in a task's check waits for the person. */
+  signIn?: { agent: string; stage: "waiting" | "needsBrowser" | "downloading" | "opened" | "checking"; percent?: number } | null;
   plan: PlanCard | null;
   drive: DriveProgress | null;
   history: HistoryItem[];
@@ -687,7 +691,7 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), away: {}, driveAway: null, workIn: {}, task, receipt: m.receipt ? { ...m.receipt, gone: true } : null, bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "idle", percent: undefined } : m.browser, undo: null, showme: null, install: null, ph: null, walk: null, walkWant: null, diagram: null, practice: m.practice?.stage === "fixing" ? { ...m.practice, stage: "failed" as const } : m.practice && ["lesson", "proving"].includes(m.practice.stage) ? { ...m.practice, stage: "found" as const, checksFailed: undefined } : m.practice, point: null, where: null, teach: turn, runnerUp: true, approvals: [], plan: null, drive: null, stuck: null, paused: null, followUp: "idle" }, {}), notice, error: null };
     }
     case "app.notice": return { ...m, notice: String(e.message ?? "") || m.notice };
-    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
+    case "app.stop_everything": return { ...withAgents({ ...m, shipFlow: shipStopped(m.shipFlow), bisect: null, eh: null, sl: null, browser: browserBusy(m.browser) ? { ...m.browser, stage: "cancelled", percent: undefined } : m.browser, undo: null, walk: null, walkWant: null, practice: null, diagram: null, showme: null, point: null, where: null, approvals: [], plan: null, drive: null, stuck: null, paused: null, costPause: null, signIn: null, toast: null, followUp: "idle", task: m.task }, {}), notice: "Stopped everything.", error: null };
     case "auth.status": {
       const connected = e.method === "api_key" || e.method === "plan" ? e.method : e.method === "none" ? "none" : "unknown";
       // Only this line is the connection's to set or clear: a notice about something else (the engine restarting, say) stays,
@@ -863,6 +867,15 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...m, task: { ...m.task, files: withLiveFile(m.task.files ?? [], f, kind) } };
     }
     case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
+    case "cost.pause": return m.away[e.agent] !== undefined ? m : { ...m, costPause: { agent: String(e.agent) } };
+    case "cost.resolved": return m.costPause?.agent === e.agent ? { ...m, costPause: null, ...(e.choice !== "keep" ? { notice: S.costPause.resolved[e.choice as "stop" | "undo"] } : {}) } : m;
+    case "proof.signIn": {
+      if (m.away[e.agent] !== undefined) return m;
+      const st = String(e.stage);
+      if (st === "waiting" || st === "needsBrowser" || st === "downloading" || st === "opened" || st === "checking") return { ...m, signIn: { agent: String(e.agent), stage: st, ...(typeof e.percent === "number" ? { percent: Math.round(e.percent) } : {}) } };
+      const words = st === "skipped" ? S.signInTurn.skipped : st === "timedOut" ? S.signInTurn.timedOut : S.signInTurn.failed;
+      return { ...m, signIn: null, notice: words };
+    }
     case "cost.update": return m.task && m.away[e.agent] === undefined ? { ...m, task: { ...m.task, costUsd: Number(e.usdEstimate) } } : m;
     case "approval.request":
       if (m.approvals.some((a) => a.id === e.approval)) return m;
@@ -956,7 +969,8 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.verdict !== "cancelled") m = { ...m, where: failed?.problem ?? null };
       if (!m.task) return m;
       const steps: ProofLine[] = (m.task.proof?.steps ?? []).length ? m.task.proof!.steps : (e.steps ?? []).map((s: any) => ({ rung: s.rung, label: s.label, status: s.status, detail: s.detail ?? "", ...stepExtras(s) }));
-      return { ...m, task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1), ...(Number.isInteger(e.of) && e.of >= 1 ? { of: e.of } : {}) } } };
+      const privateOpen = Array.isArray(e.privateOpen) ? e.privateOpen.filter((x: unknown) => typeof x === "string").slice(0, 5) as string[] : [];
+      return { ...m, ...(m.signIn?.agent === e.agent ? { signIn: null } : {}), task: { ...m.task, proof: { steps, verdict: e.verdict, tries: Number(e.tries ?? 1), ...(Number.isInteger(e.of) && e.of >= 1 ? { of: e.of } : {}), ...(privateOpen.length ? { privateOpen } : {}) } } };
     }
     case "plan.ready": if (m.away[e.agent] !== undefined) return m;
       return { ...m, stepExplains: [], planCheckpoints: [], plan: { agent: e.agent, steps: (e.steps ?? []).map((x: any) => String(x.title)), truncated: !!e.truncated, estimateUsd: Number(e.estimateUsd ?? 0) }, drive: null, stuck: null, paused: null, task: null, receipt: null, error: null, notice: null };
@@ -1016,6 +1030,9 @@ function reduceRest(m: Model, e: Ev): Model {
       // Where to see what it did is said instead. With the folder known, only a task begun in it has its receipt shown.
       const away = m.away[e.agent], w = m.workIn[e.agent];
       m = { ...m, workIn: without(m.workIn, e.agent) };
+      // M75: the task ended, so nothing of it waits on the person any more.
+      if (m.costPause?.agent === e.agent) m = { ...m, costPause: null };
+      if (m.signIn?.agent === e.agent) m = { ...m, signIn: null };
       if (away !== undefined) return away ? { ...m, notice: S.awayFinished(folderName(away)) } : m;
       if (m.folder && (w?.project ?? m.task?.project) !== m.folder) return m;
       // A plan's step: what it did joins the plan's whole fix, which drive.done shows as one receipt (must fix 7).

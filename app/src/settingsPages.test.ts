@@ -37,7 +37,7 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
   });
   test("the main levels are the ones the spec names", () => {
     // M74: the warning before the daily limit, and the most one task may spend, beside it.
-    expect(mainKeys("account")).toEqual(["spend.dailyLimit", "spend.warnAt", "budget.task", "you.name"]);   // M68: what to call you, for the hello in the notch
+    expect(mainKeys("account")).toEqual(["spend.dailyLimit", "spend.warnAt", "spend.pauseAt", "budget.task", "you.name"]);   // M75: the cost pause beside them   // M68: what to call you, for the hello in the notch
     // M71: the text size moved to the Look page, beside Colour, Character and Layout.
     expect(mainKeys("general")).toEqual(["app.openAtLogin", "island.show", "island.peekOnHover", "island.openForQuestions", "island.display", "home.escStops", "guide.on", "secondLook.on", "files.on", "watch.on"]);
     expect(mainKeys("look")).toEqual(["look.colour", "look.character", "look.layout", "display.textSize"]);

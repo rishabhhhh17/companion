@@ -126,9 +126,18 @@ describe("the shipped list of settings", () => {
       "spend.warnAt": "80", "review.ignore": [], "review.modeHere": "same", "app.openAtLogin": false, "undo.keepSize": "2", "undo.keepAge": "any",
       "privacy.neverSend": [], "review.send": "wordsAndChecks", "quiet.on": false, "quiet.from": 22, "quiet.to": 7, "review.stopKinds": [],
       "review.whenNothing": "leave", "review.maxFiles": "200",
+      // M75: the cost pause (at 3 times a usual task), the look for pages that should need a sign in, and choices for a
+      // vague ask. Each is on, each only asks or tells: nothing runs by itself.
+      "spend.pauseAt": "3", "check.privatePages": true, "ask.choices": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
+  });
+  test("M75: the cost pause, the private pages look and the vague ask choices", () => {
+    expect(defOf("spend.pauseAt")).toMatchObject({ section: "spending", kind: "choice", default: "3", options: ["off", "3", "5"], scope: "app", applies: ["runner"] });
+    expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
+    expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
+    expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
   });
   test("M58: which AI you build with is an optional choice for the pages only, unset until picked, and only the six named answers", () => {
     expect(defOf("you.buildsWith")).toMatchObject({ section: "home", kind: "choice", default: "unset", options: ["unset", "lovable", "bolt", "replit", "cursor", "claudeCode", "other"], scope: "app", applies: ["pages"], store: "settings", live: true });

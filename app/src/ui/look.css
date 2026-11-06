@@ -192,6 +192,9 @@
 .hero-tag { display: inline-flex; align-items: center; min-height: var(--lh-caption); padding: 0 var(--space-1); border: var(--hair) solid var(--line-strong); border-radius: var(--r-stamp); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
 /* The one invitation under the ask box: room from the box's edge. */
 .home .askwrap .ask-hint { margin-top: var(--space-2); }
+/* M75: the choices for a vague ask, under the box, in the M73 chips' look. */
+.home .askwrap .vague-ask { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.home .askwrap .vague-row { flex-wrap: wrap; gap: var(--space-2); }
 /* In the tall Home the cards under the ask box keep a clear gap from it. */
 .home:not([data-side]) .askwrap { margin-bottom: var(--space-3); }
 /* A step that is done in Finish setting up: a tick and the word, never a pill that looks pressable. */

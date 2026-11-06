@@ -56,7 +56,14 @@ export const LIGHT_WORK: ReadonlySet<string> = new Set([
 const LIGHT_OWN_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/;
 
 /** What the project's own checks said (agent.ts checkForReview): a result, a reason it was not run, or stopped (null). */
-export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string } | { skip: string } | null;
+export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[] } | { skip: string } | null;
+/** M75: each private looking page that opened without a sign in is a Worth a look reason (never a stop: a page can be
+ *  public on purpose). A safe rating becomes worth a look; a stop stays a stop. */
+export function withOpenPages<T extends { rating: ReviewRating; reasons: Reason[] }>(rated: T, open: readonly string[]): T {
+  if (!open.length) return rated;
+  const add: Reason[] = open.slice(0, 5).map((route) => ({ kind: "open_private_page", say: `${clip(redact(route), 80)} opened without a sign in.` }));
+  return { ...rated, rating: rated.rating === "safe" ? "worth_a_look" : rated.rating, reasons: [...rated.reasons, ...add] };
+}
 type AgentStart = Extract<Command, { type: "agent.start" }>;
 type ReviewCmd = Extract<Command, { type: "review.now" | "review.dismiss" | "review.fix" }>;
 
@@ -87,6 +94,8 @@ export type ReviewDeps = {
   graceMs?: number;
   /** For tests: the quiet time in milliseconds, instead of review.quietSeconds. */
   quietMs?: () => number;
+  /** M75: the settle after the other tool's done signal (DONE_SETTLE_MS as usual). */
+  doneSettleMs?: number;
   modelTimeoutMs?: number;
   checkTimeoutMs?: number;
   /** M57 feature 7: the project's memory lines (What I remember), where "Don't flag this kind here again" is saved. */
@@ -114,6 +123,8 @@ type Held = { from: Promise<string | null>; to: Promise<string | null> | null; o
  *  rules, and the places of those that no longer hold. */
 type Reviewed = { batch: Batch; words: ReviewWords; rechecks: Recheck[]; fixed: Set<number> };
 
+/** M75: how long after the other tool's done signal the batch is said, for its last write to land. */
+export const DONE_SETTLE_MS = 1500;
 const SHOWN_FILES = 50;          // files named in an event
 const KEY_PLACES = 10;           // places the instant key warning names (M57 feature 5)
 const READ_FILES = 60;           // files whose text the rules and the model look at
@@ -323,6 +334,15 @@ export class ReviewService {
   }
   /** For tests: the quiet time in force now. */
   quietTimeMs(): number { return this.quietMs(); }
+  /** M75 (roadmap 19, F30): the other tool said "done in this folder" (donesignal.ts). For the project being watched, with
+   *  changes waiting, the batch is said after a short settle instead of the quiet time; anything else does nothing. The
+   *  signal carries no content: what is reviewed is read from the folder, as always. True when it moved a batch on. */
+  doneSignal(project: string): boolean {
+    let p: string;
+    try { p = resolve(project); } catch { return false; }
+    if (!this.batcher || p !== this.watching) return false;
+    return this.batcher.settle(this.deps.doneSettleMs ?? DONE_SETTLE_MS);
+  }
   private ownOf(p: string): number { return this.ownBy.get(p) ?? 0; }
 
   private startWatching(p: string): void {
@@ -815,6 +835,7 @@ export class ReviewService {
 
       // The project's own checks, only when asked (or automatic), never beside the engine's other work in the project.
       let checks: Checks = "not_run", checksNote: string | undefined;
+      let privateOpen: string[] = [];
       if (proof) {
         if (!this.deps.check) { checks = "unknown"; checksNote = "The project's checks cannot run here."; }
         else if (this.ownOf(b.project) > 0 || this.deps.busy?.(b.project)) { checks = "unknown"; checksNote = `${PRODUCT} is working on this project right now, so its checks were not run.`; }
@@ -826,7 +847,7 @@ export class ReviewService {
           catch { r = abort.signal.aborted ? null : { outcome: "unknown", reason: "The checks took too long, so they were stopped." }; }
           if (abort.signal.aborted || r === null) throw new Error("stopped");
           if ("skip" in r) { checks = "unknown"; checksNote = r.skip; }
-          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; }
+          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; }
           checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 200) : undefined;
         }
       }
@@ -873,6 +894,7 @@ export class ReviewService {
         } finally { abort.signal.removeEventListener("abort", endCall); }
       }
       if (words?.concern) rated = rate({ ...input, concern: true, concernSay: words.concernSay });
+      rated = withOpenPages(rated, privateOpen);
       // M57 feature 7: how strict. Smaller reasons may be left out (Quiet, or a kind the person said not to flag here);
       // a Fix this first, a key, a settings or key file and open data never are.
       const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));

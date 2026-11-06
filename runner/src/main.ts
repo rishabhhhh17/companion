@@ -42,6 +42,7 @@ import { MODELS } from "./models.ts";
 import { OWN_WORK, ReviewService } from "./review/service.ts";
 import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
+import { DoneSignals, type DonePlan } from "./donesignal.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -120,6 +121,12 @@ const review = new ReviewService({
     inflight.add(p);
   },
 });
+// M75 (roadmap 19, F30): the other tool's done signal. Only Squibby's own done folder is listened to; a marker for the project
+// being reviewed ends its quiet time at once. The hook is written only after the person's yes (donesignal.add, confirm).
+const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { review.doneSignal(p); } });
+doneSignals.start();
+const doneState = (project: string, tools: DonePlan[], problem?: string) =>
+  say({ type: "donesignal.state", project, tools: tools.map((t) => ({ tool: t.tool, on: t.on, file: t.rel, adds: t.adds, creates: t.creates, ...(t.problem ? { problem: t.problem } : {}) })), ...(problem ? { problem } : {}) });
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings, spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) } }) : null;
@@ -212,6 +219,13 @@ function dispatch(cmd: Command) {
     inflight.add(p);
     return;
   }
+  if (cmd.type === "donesignal.show" || cmd.type === "donesignal.add" || cmd.type === "donesignal.remove") {
+    try {
+      const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool) : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool) : null;
+      doneState(cmd.project, doneSignals.state(cmd.project), done?.problem);
+    } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
+    return;
+  }
   if (cmd.type === "review.now" || cmd.type === "review.dismiss" || cmd.type === "review.fix") { const p = review.handle(cmd).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   const c = cmd;
   const work = c.type.startsWith("walk.") ? walks.handle(c as never) : c.type.startsWith("assist.")
@@ -264,7 +278,7 @@ async function main() {
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
-  watches.stop(); watches.stopAll(); review.stop();
+  watches.stop(); watches.stopAll(); review.stop(); doneSignals.stop();
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
   void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
   void releaseShotDrive();

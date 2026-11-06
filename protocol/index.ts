@@ -109,6 +109,23 @@ export type ShipSignIn = Envelope & { type: "ship.signIn"; project: string; /** 
  *  copy (then the review looks at once, by its rules alone); fix: the fixed fix moves it to .env.local, with a safety copy
  *  first. Only in a practice copy of the key practice (runner/src/practicekey.ts); no model, no cost. */
 export type PracticeKey = Envelope & { type: "practice.key"; project: string; step: "write" | "fix" };
+/** M75 (roadmap 19, F30): the done signal of another AI tool in this project (runner/src/donesignal.ts). show: what is set
+ *  up and what would be written; add: the person said yes on the card that showed exactly that (confirm must be true);
+ *  remove: one press takes Squibby's own entry out again. */
+export const DONE_SIGNAL_TOOLS = ["claude", "codex"] as const;
+export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
+export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
+export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true };
+export type DoneSignalRemove = Envelope & { type: "donesignal.remove"; project: string; tool: DoneSignalTool };
+/** M75: the answer to the cost pause card. keep: go on (asked again only at twice the line); stop: end the task as a stop;
+ *  undo: end it, then put the files back to the task's own safety copy. */
+export const COST_CHOICES = ["keep", "stop", "undo"] as const;
+export type CostChoose = Envelope & { type: "cost.choose"; agent: string; choice: (typeof COST_CHOICES)[number] };
+/** M75 (M58 A4): the person's answer to a sign in wall in a task's check. open: open the visible window on the page;
+ *  continue: the person signed in there, check again with that sign in; skip: keep the gap; getBrowser: download the
+ *  visible browser first (only on this press). */
+export const SIGN_IN_CHOICES = ["open", "continue", "skip", "getBrowser"] as const;
+export type ProofSignIn = Envelope & { type: "proof.signIn"; agent: string; choice: (typeof SIGN_IN_CHOICES)[number] };
 export type AuthCheck = Envelope & { type: "auth.check" };
 export type MemoryAdd = Envelope & { type: "memory.add"; project: string; scope: MemoryScope; text: string; source: string };
 export type DoctorCheck = Envelope & { type: "doctor.check" };
@@ -212,7 +229,7 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // all its rows), key_in_page (a key that would reach the page every visitor loads), house_rule (a "never edit" rule of the
 // project's own .companion/rules.txt matched a changed file) and house_rule_ask (an "ask before editing" rule matched).
 // M74: chosen_stop, a change to a kind the person asked to always stop for (review.stopKinds: sign in, payments).
-export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop"] as const;
+export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
 /** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
  *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
@@ -258,7 +275,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -359,7 +376,9 @@ export type ProofStep = { rung: string; label: string; status: "running" | "pass
 // A problem with from "deploy" is the line the last Vercel deploy failed at, confirmed in this folder.
 export type ProblemFound = Envelope & { type: "problem.found"; project: string; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; label?: string; detail?: string; problem?: Problem; needs?: "browser"; note?: string };
 export type ProofStepEvent = Envelope & { type: "proof.step"; agent: string } & ProofStep;
-export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number; of?: number };
+export type ProofResult = Envelope & { type: "proof.result"; agent: string; verdict: "passed" | "passed_with_gaps" | "failed" | "nothing_to_check" | "cancelled"; steps: ProofStep[]; tries: number; of?: number;
+  /** M75: private looking pages that opened without a sign in (paths only), a Worth a look finding, never a failure. */
+  privateOpen?: string[] };
 
 export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval: string; agent: string; outcome: "allowed" | "denied" | "expired" | "cancelled" };
 
@@ -399,6 +418,17 @@ export type ShipCard = Envelope & { type: "ship.card"; project: string; url: str
  *  was already there). fixed: the key is in .env.local now; checkpoint is the safety copy Undo puts back, changed the files,
  *  clean whether the review's key rule now finds no key in the code. refused: nothing was written, with why. */
 export type PracticeKeyEvent = Envelope & { type: "practice.key"; project: string; step: "wrote" | "fixed" | "refused"; written?: boolean; checkpoint?: string; changed?: { file: string; kind: "added" | "modified" }[]; clean?: boolean; reason?: string };
+/** M75: each tool's done signal in a project. file: the hook file from the project down; adds: the exact text the card shows
+ *  before the yes; creates: the file is not there yet. problem: why the last add or remove wrote nothing. */
+export type DoneSignalState = Envelope & { type: "donesignal.state"; project: string; tools: { tool: DoneSignalTool; on: boolean; file: string; adds: string; creates: boolean; problem?: string }[]; problem?: string };
+/** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
+export type CostPause = Envelope & { type: "cost.pause"; agent: string; project: string };
+export type CostResolved = Envelope & { type: "cost.resolved"; agent: string; choice: (typeof COST_CHOICES)[number] };
+/** M75: where a sign in handover is. waiting: the card asks; needsBrowser: the visible browser is not on this Mac;
+ *  downloading: it is being fetched (percent); opened: the window is open; checking: the check runs with the sign in;
+ *  skipped, timedOut, failed: it ended with the gap kept (reason says why for failed). */
+export const SIGN_IN_STAGES = ["waiting", "needsBrowser", "downloading", "opened", "checking", "skipped", "timedOut", "failed"] as const;
+export type ProofSignInEvent = Envelope & { type: "proof.signIn"; agent: string; stage: (typeof SIGN_IN_STAGES)[number]; percent?: number; reason?: string };
 export type ShipSignInEvent = Envelope & { type: "ship.signIn"; project: string; stage: "opened" | "done" | "failed"; url?: string; reason?: string; lesson?: boolean };
 // scripts, checks, proofFile and launchFile: what the Settings rows for checking this project need (its own script names,
 // the checks it has, and its own .claude/proof.json and .claude/launch.json, which win over Settings).
@@ -511,7 +541,7 @@ export type ReviewResultEvent = Envelope & {
   /** M57: how many smaller reasons were left out by review.strictness or a "do not flag" line. Never a Fix this first. */
   hidden?: number;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent;
+export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -715,6 +745,12 @@ const COMMANDS: Record<string, Check[]> = {
   "ship.signIn": [str("project"), opt("stop", bool("stop"))],
   // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press.
   "practice.key": [str("project"), oneOf("step", ["write", "fix"])],
+  // M75: the done signal (only with the yes), the cost pause's answer and the sign in handover's answer.
+  "donesignal.show": [str("project")],
+  "donesignal.add": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (m.confirm === true ? null : 'adding a hook needs the person\'s yes, "confirm": true')],
+  "donesignal.remove": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS])],
+  "cost.choose": [str("agent"), oneOf("choice", [...COST_CHOICES])],
+  "proof.signIn": [str("agent"), oneOf("choice", [...SIGN_IN_CHOICES])],
 };
 
 const EVENTS: Record<string, Check[]> = {
@@ -801,7 +837,7 @@ const EVENTS: Record<string, Check[]> = {
   "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
-  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1'))],
+  "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1')), opt("privateOpen", textList("privateOpen"))],
   "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
   "assist.prompt.delta": [str("req"), str("text")],
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
@@ -810,6 +846,11 @@ const EVENTS: Record<string, Check[]> = {
   "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
   "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
+  // M75: the done signal per tool, the cost pause (no amount), and the sign in handover.
+  "donesignal.state": [str("project"), (m) => (Array.isArray(m.tools) && m.tools.every((t) => { const o = t as Record<string, unknown>; return !!o && typeof o === "object" && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool) && typeof o.on === "boolean" && typeof o.file === "string" && typeof o.adds === "string" && typeof o.creates === "boolean"; }) ? null : '"tools" must list each tool with on, file, adds and creates'), opt("problem", str("problem"))],
+  "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],
+  "cost.resolved": [str("agent"), oneOf("choice", [...COST_CHOICES])],
+  "proof.signIn": [str("agent"), oneOf("stage", [...SIGN_IN_STAGES]), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("reason", str("reason"))],
   // M58 (feature 9): the key practice's step. A refusal says why; a fix names its safety copy and what it changed.
   "practice.key": [str("project"), oneOf("step", ["wrote", "fixed", "refused"]), opt("written", bool("written")), opt("checkpoint", str("checkpoint")), opt("changed", filesListOk("changed")), opt("clean", bool("clean")), opt("reason", str("reason")),
     (m) => (m.step === "refused" && !(typeof m.reason === "string" && m.reason) ? 'a refusal says why in "reason"' : null), (m) => (m.step === "fixed" && (typeof m.checkpoint !== "string" || !m.checkpoint || typeof m.clean !== "boolean") ? 'a fix names its "checkpoint" and says "clean"' : null)],

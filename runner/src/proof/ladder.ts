@@ -5,7 +5,13 @@ import { redact } from "../redact.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
-import { browserCheck, knownSignIn, SIGN_IN_GAP, type BrowserOptions, type BrowserResult } from "./browser.ts";
+import { browserCheck, knownSignIn, openWithoutSignIn, SIGN_IN_GAP, type BrowserOptions, type BrowserResult } from "./browser.ts";
+import { privateRoutes } from "./privatepages.ts";
+/** M75: said on the browser step after the person's sign in carried the check past the wall. */
+export const SIGNED_IN_OK = "Checked again after your sign in.";
+const SIGNED_IN_AT = "After your sign in: ";
+/** M75: the browser step's line for private looking pages that opened with no sign in. */
+export const privateOpenLine = (routes: readonly string[]): string => `Worth a look: ${routes.slice(0, 3).join(", ")}${routes.length > 3 ? ` and ${routes.length - 3} more` : ""} opened without a sign in, though ${routes.length === 1 ? "it looks like a page" : "they look like pages"} that should need one.`;
 import { changesData, detectProject, withStartScript, type Detected } from "./detect.ts";
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
@@ -56,7 +62,7 @@ export type Verdict = "passed" | "passed_with_gaps" | "failed" | "nothing_to_che
 // (NO_ROOM). It says nothing about the project.
 export type Unclear = { rung: Rung; missing: boolean };
 export type CheckOutcome = { name: string; status: "passed" | "failed" | "missing" | "not_started" };
-export type LadderResult = { verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
+export type LadderResult = { /** M75: private looking pages that opened without a sign in. */ openPrivate?: string[]; verdict: Verdict; steps: Step[]; failedAt?: Step; serverUrl?: string; shot?: import("./browser.ts").PageShot; gaps?: string[]; unclear?: Unclear[]; checks?: CheckOutcome[]; noRoom?: true };
 export type Limits = { installMs: number; checkMs: number; testMs: number; startMs: number; browserMs: number };
 export const DEFAULT_LIMITS: Limits = { installMs: 5 * 60_000, checkMs: 5 * 60_000, testMs: 5 * 60_000, startMs: 60_000, browserMs: 30_000 };
 /** Time allowed for checks (check.time): today's limits times a factor (1, 2 or 4), for every rung. */
@@ -107,6 +113,14 @@ export type LadderOptions = {
   // Whether the project's commands run in the safety box for checks (box.ts): by default, whether it works on this Mac for
   // this project. Where it does not, nothing runs without a yes in this check, and with no way to ask nothing runs.
   box?: boolean;
+  /** M75 (M58 A4): a sign in wall hands over to the person. Called with the page while the server still runs; resolves with
+   *  the sign in from the window they used (in memory only), or null for Skip, no answer or Stop. Without it the wall is a
+   *  gap, as before. */
+  signIn?: (o: { url: string }) => Promise<{ storageState: unknown } | null>;
+  /** M75: after the page check passes, open the project's private looking pages with no sign in (privatepages.ts). Off
+   *  unless asked for (check.privatePages through agent.ts). probe: how they are opened (openWithoutSignIn by default). */
+  privatePages?: boolean;
+  probe?: (url: string, routes: string[], o: { signal?: AbortSignal; timeoutMs?: number }) => Promise<string[]>;
 };
 
 const LABELS: Record<Rung, string> = {
@@ -690,11 +704,36 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (i === 0 && b.shot) shot = b.shot;
       if (i < sizes.length - 1 && cancelled()) return result("cancelled", undefined, srv.url);
     }
+    // M75 (M58 A4): behind a sign in wall, the person may sign in in a visible window (the server still runs). Their sign in
+    // comes back in memory only, and the browser check runs once more with it. Skip, no answer or Stop keep the gap.
+    if (notDone.includes(SIGN_IN_GAP) && o.signIn && !cancelled()) {
+      emit("browser", "running", SIGN_IN_GAP, Date.now() - t0, "signIn");
+      const got = await o.signIn({ url: srv.url }).catch(() => null);
+      if (cancelled()) return result("cancelled", undefined, srv.url);
+      if (got) {
+        const b = await browser(srv.url, { ...hints, storageState: got.storageState, timeoutMs: limits.browserMs, ...(sizes[0] === "phone" ? { viewport: { ...VIEWPORTS.phone } } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+        if (cancelled()) return result("cancelled", undefined, srv.url);
+        if (!b.skipped && !(b.gaps ?? []).includes(SIGN_IN_GAP)) {
+          for (const list of [left, notDone]) { const i = list.indexOf(SIGN_IN_GAP); if (i >= 0) list.splice(i, 1); }
+          if (!b.ok) return result("failed", finish("browser", "failed", `${SIGNED_IN_AT}${b.problems.slice(0, 3).join(". ")}.`, t0, buttonProblem(b.problems) ?? locateProblem(b.problems.join("\n"), o.project, "browser")), srv.url);
+          for (const g of b.gaps ?? []) if (!left.includes(g)) { left.push(g); notDone.push(g); }
+          notDone.unshift(SIGNED_IN_OK);
+        }
+      }
+    }
+    // M75: private looking pages that open with no sign in: a Worth a look line, never a failure.
+    let openPrivate: string[] = [];
+    if (o.privatePages && !cancelled()) {
+      const routes = privateRoutes(o.project);
+      if (routes.length) openPrivate = await (o.probe ?? openWithoutSignIn)(srv.url, routes, { ...(o.signal ? { signal: o.signal } : {}), timeoutMs: limits.browserMs }).catch(() => []);
+      if (cancelled()) return result("cancelled", undefined, srv.url);
+      if (openPrivate.length) notDone.push(privateOpenLine(openPrivate));
+    }
     const opened = two ? "The page opened with no errors, at desktop and at phone size." : sizes[0] === "phone" ? "The page opened with no errors at phone size." : "The page opened with no errors.";
     // M58: behind a sign in wall (M67's detection, browser.ts) the page is the person's turn: the step says so, and the
     // result stays passed with gaps (left holds the gap). The check never types into the page.
     finish("browser", "passed", notDone.length ? `${opened} ${notDone.join(" ")}` : opened, t0, null, notDone.includes(SIGN_IN_GAP) ? "signIn" : undefined);
-    return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}) };
+    return { ...result("passed", undefined, srv.url), ...(shot ? { shot } : {}), ...(openPrivate.length ? { openPrivate } : {}) };
   } finally {
     if (srv.ok) await srv.stop();
     if (dbBefore) removeNewEmptyDatabases(o.project, dbBefore);

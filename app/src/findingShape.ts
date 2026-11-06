@@ -13,7 +13,7 @@ export type Level = "must" | "should" | "look";
 export const FINDING_LEVEL: Record<ReviewReasonKind, Level> = {
   secret_in_code: "must", key_in_page: "must", open_table: "must", removed_still_used: "must", house_rule: "must", checks_failed: "must", risky_with_failing_checks: "must", chosen_stop: "must",
   secret_file_changed: "should", touches_risky: "should", signed_in_open: "should", house_rule_ask: "should",
-  files_removed: "look", too_many: "look", model_concern: "look",
+  files_removed: "look", too_many: "look", model_concern: "look", open_private_page: "look",
 };
 const RANK: Record<Level, number> = { must: 0, should: 1, look: 2 };
 // review.ts keyWarned is a type guard; as a plain yes or no it does not narrow the card away after it.
@@ -47,6 +47,11 @@ export function shapeFindings(r: ReviewCard | null | undefined): Shaped[] {
   }
   // A stable sort: within a level, the review's own order stays.
   return out.map((x, n) => ({ x, n })).sort((a, b) => Number(a.x.fixed) - Number(b.x.fixed) || RANK[a.x.level] - RANK[b.x.level] || a.n - b.n).map((o) => o.x);
+}
+
+/** M75: private looking pages that opened with no sign in on a task's check, as Worth a look findings in the fixed shape. */
+export function privateOpenFindings(routes: readonly string[]): Shaped[] {
+  return routes.length ? [{ i: -1, kind: "open_private_page", level: "look", parts: findingParts("open_private_page", S.privateOpen.where(routes)), fixed: false }] : [];
 }
 
 export type Readiness = { kind: "ready" | "check" | "notSafe" | "none"; n: number; words: string; line: string };
