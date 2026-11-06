@@ -1,4 +1,4 @@
-import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type ReactNode } from "react";
+import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
@@ -38,6 +38,8 @@ import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
+import { homeKey } from "./homeKeys.ts";
+import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
 import { HomeCharacter } from "./homeCharacter.tsx";
 import { SetupList } from "./setupList.tsx";
 import { setupList } from "./setupList.ts";
@@ -51,9 +53,9 @@ import { RecentList } from "./recentList.tsx";
 import { FlowMini } from "./flowflowMini.tsx";
 import { barContext, barKeyChord, layoutOf, sideOn, sidePlaces, sideRecent, useMoreBelow } from "./homeLayout.ts";
 import { askChips, firstWayTip } from "./askChips.ts";
-import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows } from "./homeRest.ts";
+import { checkedAgo, lastFix, nowRows, restCards, restHero, restMainLabel, resultHero, sinceRows, workedFor } from "./homeRest.ts";
 import { ShotPair } from "./homeRest.tsx";
-import { heroMeaning, MEANING_COLOUR, PILL_MEANING, statusDot } from "./meaning.ts";
+import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, statusDot, type Colour } from "./meaning.ts";
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
@@ -93,9 +95,9 @@ import { aboutCopy, copyable, ehCopy, slCopy, explainCopy, receiptCopy, recapCop
 import { HISTORY_STATUSES, NO_FILTER, filterHistory, historyDays, historyFiltering, historyTime, historyUndo, type HistoryQuery, type HistoryStatus } from "./history.ts";
 import { SEEN_VERSION_KEY, whatsNew, type Release } from "./whatsnew.ts";
 import { DropList, useDrop } from "./dropRing.tsx";
-import { Icon } from "./icons.tsx";
+import { Icon, type IconName } from "./icons.tsx";
 import { FailingLine, lineOf } from "./failingLine.tsx";
-import { Button, Dot, EmptyRow, Group, KeyLabel, Lead, ListGroup, ListRow, Menu, PlaceButton, ProofChip, Row, Said, Switch, Tag, Toast, VerdictLine } from "./ui/parts.tsx";
+import { Button, Dot, EmptyRow, Group, KeyLabel, Lead, ListGroup, ListRow, Menu, PlaceButton, PlacesGlide, ProofChip, Row, Said, Swap, Switch, Tag, Tile, Toast, VerdictLine } from "./ui/parts.tsx";
 import { addFiles, addedLine, blocksDrop, carriesFiles, checkAttachments, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, DOC_LIMIT_KEY, docLimitBytes, type Attached, type FileLike } from "./attachfiles.ts";
 import { atLimit as atFreeLimit, lastFreeLine, proCovers, proTag } from "./plan.ts";
 import { LimitPanel, ProTag } from "./planCard.tsx";
@@ -374,7 +376,7 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
       {/* Nothing yet: what will appear here, and one way to start (spec 2.4), never a lone grey sentence. */}
       {items.length === 0 && (
         <ListGroup label={S.recentTitle}>
-          <EmptyRow icon="undo" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine}
+          <EmptyRow icon="undo" title={S.screens.historyEmptyTitle} line={S.screens.historyEmptyLine} example={{ colour: MEANING_COLOUR.proven, icon: "tick", ...S.screens.historyExample }}
             action={onPractice ? { label: S.screens.startPractice, colour: "purple", onClick: onPractice } : onAsk ? { label: S.screens.askFirst, onClick: onAsk, colour: "blue" } : null} />
         </ListGroup>
       )}
@@ -542,7 +544,10 @@ function Card() {
   const offNow = useRef(false);
   const keepDraft = (text: string) => { try { const d = draftToKeep(text, offNow.current); if (d === null) localStorage.removeItem(DRAFT_KEY); else localStorage.setItem(DRAFT_KEY, d); } catch { /* storage may be unavailable */ } };
   const fitBox = () => { const el = box.current; if (!el) return; el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
-  const setBox = (text: string) => { if (!box.current) return; box.current.value = text; fitBox(); keepDraft(text); };
+  // M73 (fluid, item 8): the words in the box for the list under it (palette.ts), and which row is lit.
+  const [palText, setPalText] = useState("");
+  const [palAt, setPalAt] = useState(0);
+  const setBox = (text: string) => { if (!box.current) return; box.current.value = text; fitBox(); keepDraft(text); setPalText(text); setPalAt(0); };
   const clearBox = () => setBox("");
   /** M69: an example chip's words in the box, the cursor at their end, ready to change or send. Never sent from here. */
   const fillBox = (words: string) => { setBox(words); keepDraft(words); setTimeout(() => { const b = box.current; if (!b) return; fitBox(); b.focus(); b.setSelectionRange(words.length, words.length); }, 0); };
@@ -1554,6 +1559,16 @@ function Card() {
   }, []);
   // Guided lessons: each step is pointed at once (the light comes on first), and the person's own click moves it on.
   const pickTab = (t: Tab) => homeDispatch({ type: "pick", tab: t });
+  // M73 (fluid, item 9): Up and Down move the keyboard between the rows of the one list on this place (never the example row).
+  const moveRow = (dir: 1 | -1): boolean => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".work .ui-mlist > li:not([data-ghost]) :is(button.ui-mrow-main, .ui-mrow-act)")).filter((b) => b.offsetParent !== null);
+    if (!rows.length) return false;
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    rows[at < 0 ? (dir > 0 ? 0 : rows.length - 1) : paletteMove(at, rows.length, dir)].focus();
+    return true;
+  };
+  // M73 (fluid, item 12): the fix just kept, while its "Kept. Undo" toast shows.
+  const [kept, setKept] = useState<{ checkpoint: string; n: number } | null>(null);
   // The gear: Settings in its own window; if the app cannot open it, Settings inside Home as before.
   // Settings lives inside Home (M20, the founder: not in a separate window): the gear, Command comma and the notch's
   // Settings button all open it here.
@@ -1971,6 +1986,35 @@ function Card() {
   // The glow round Flowflow in its pond, in the colour of its state (never a filter inside its masked box).
   const lookNow = lookState(m);
   const glow = lookNow === "needsYou" || lookNow === "done" ? lookNow : undefined;
+  // M73 (fluid, item 9): the places Command 1 to 4 open, in the order they are shown.
+  const navPlaces: Tab[] = side ? sidePlaces({ learnOn: learnShown() }) : ["now", ...barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() }).filter((t) => t !== "settings")];
+  // M73 (fluid, item 8): what the ask box's list can offer, each by the same arrival the notch's panel uses (so Undo asks
+  // first, as everywhere), and the places by name. Review and Undo only when there is something to review or undo.
+  const palActions: PaletteAction[] = [
+    { id: "find", label: S.notch.quick.check, words: ["test", "scan"] },
+    ...(reviewOn && changesWait(m.review) ? [{ id: "review", label: S.notch.quick.review }] : []),
+    ...(m.receipt && undoCan(m, project) ? [{ id: "undo", label: S.notch.quick.undo, words: ["revert", "back"] }] : []),
+    { id: "shipCheck", label: S.notch.quick.ship, words: ["ship", "publish", "online", "deploy"] },
+    ...navPlaces.filter((t) => t !== "now").map((t) => ({ id: t, label: S.home.places[t] })),
+    { id: "settings", label: S.home.places.settings, words: ["preferences", "options"] },
+  ];
+  const palRows: PaletteRow[] = home.tab === "now" && show("ask") && askMode !== "showme" ? paletteRows(palText, palActions, m.history.map((h) => taskName(h.label))) : [];
+  const palOn = paletteShown(palRows);
+  const palId = `${askId}-pal`;
+  const palLook = (r: PaletteRow): { colour: Colour; icon: IconName; words: string } =>
+    r.kind === "ask" ? { colour: "blue", icon: "send", words: S.look.palAsk(r.text) }
+    : r.kind === "past" ? { colour: "grey", icon: "undo", words: r.text }
+    : r.id in PLACE_COLOUR ? { colour: PLACE_COLOUR[r.id as Tab], icon: PLACE_ICON[r.id as Tab], words: r.label }
+    : { colour: r.id === "review" || r.id === "undo" ? "orange" : "blue", icon: r.id === "review" ? "eye" : r.id === "undo" ? "undo" : r.id === "shipCheck" ? "shield" : "find", words: r.label };
+  const runPal = (r: PaletteRow | undefined) => {
+    if (!r) return;
+    if (r.kind === "ask") { submit(); return; }
+    if (r.kind === "past") { fillBox(r.text); return; }
+    clearBox();
+    if (r.id === "find" || r.id === "shipCheck" || r.id === "review" || r.id === "undo") onArrival.current?.({ do: r.id });
+    else if (r.id === "settings") gear();
+    else pickTab(r.id as Tab);
+  };
   const places = side ? [] : barPlaces({ practiceDone: practiceRec.rows.some((r) => !!r.done), learnWaits: needNow?.tab === "learn", learnOpen: home.tab === "learn", learnOn: learnShown() });
   // Flowflow on Home's water follows how lively the person chose (M46); the water's drift stops with Still.
   const lively = livelinessOf(useSetting("character.lively"));
@@ -2246,7 +2290,14 @@ function Card() {
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
       onDrop={(e) => { setDragging(false); if (!carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); if (onboarded) addDropped(e.dataTransfer?.files); }}
-      onKeyDown={(e) => { if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
+      onKeyDown={(e) => {
+        // M73 (fluid, item 9): Home's own keys, only once it has the keyboard (homeKeys.ts): Command 1 to 4 the places, Up
+        // and Down the one list's rows (only from Home itself or a row: a menu, a field or a choice keeps its own arrows).
+        const t = e.target as HTMLElement;
+        const hk = homeKey({ key: e.key, meta: e.metaKey, ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, composing: composing(e) }, { inField: !(t === e.currentTarget || t.matches?.("button.ui-mrow-main, .ui-mrow-act")), places: navPlaces });
+        if (hk && "go" in hk) { e.preventDefault(); pickTab(hk.go); return; }
+        if (hk && "rows" in hk) { if (moveRow(hk.rows)) e.preventDefault(); return; }
+        if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
@@ -2280,6 +2331,8 @@ function Card() {
           </>}
           {/* In the wide Home the side list is the one Places landmark, so the bar's buttons are a plain group then (item 51). */}
           <PlacesBox side={side}>
+            {/* M73 (fluid, item 5): one highlight slides between the places of the tall Home's row (ui/parts.tsx PlacesGlide). */}
+            {!side && home.tab !== "settings" && <PlacesGlide k={`${home.tab}:${barStopCan(m, home.tab) ? 1 : 0}`} colour={PLACE_COLOUR[home.tab]} />}
             {/* While a job runs, Stop is one press away on every place, not only on Now (Now has its own, in the hero or the
                 working card). */}
             {barStopCan(m, home.tab) && <Button kind="secondary" size="sm" className="bar-stop" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
@@ -2329,20 +2382,20 @@ function Card() {
           {/* data-foot-says: the footer line already says this line (Checked 4 min ago), so Instrument shows it once. */}
           {/* M71: at rest and over a result, the outcome is the headline and the why the one line under it (homeRest.ts). */}
           {atRest
-            ? <><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline rest-head hero-swap" key={`r:${restWords.first}`}><span className="rest-first">{restWords.first}</span></h1>
-              {restWords.second && <p className="ui-lead-line subline rest-second hero-swap" key={`r2:${restWords.second}`}>{restWords.second}</p>}</>
+            ? <><Swap k={`r:${restWords.first}`}><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline rest-head"><span className="rest-first">{restWords.first}</span></h1></Swap>
+              {restWords.second && <Swap k={`r2:${restWords.second}`}><p className="ui-lead-line subline rest-second">{restWords.second}</p></Swap>}</>
             : resHero
-            ? <><h1 id="home-title" className="ui-lead-title headline rest-head hero-swap" key={`x:${resHero.first}`}><span className="rest-first">{resHero.first}</span></h1>
-              {resHero.second && <p className="ui-lead-line subline rest-second hero-swap" key={`x2:${resHero.second}`}>{resHero.second}</p>}</>
+            ? <><Swap k={`x:${resHero.first}`}><h1 id="home-title" className="ui-lead-title headline rest-head"><span className="rest-first">{resHero.first}</span></h1></Swap>
+              {resHero.second && <Swap k={`x2:${resHero.second}`}><p className="ui-lead-line subline rest-second">{resHero.second}</p></Swap>}</>
             : statusFirst
             ? <div className="status-head" data-foot-says={status.sub && !statusSubShown(status.sub, foot) ? "" : undefined}><div id={home.tab === "now" ? "home-title" : undefined} role="heading" aria-level={1}><VerdictLine verdict={status.verdict} size="headline" /></div>{status.sub && <p className="ui-lead-line subline status-sub">{status.sub}</p>}</div>
             : <>
-              {/* M66 fix 13: new words cross fade in by their key (ui/homeFlow.css hero-swap), the counting cost keeps its own. */}
+              {/* M66 fix 13, M73: new words cross fade by their key (ui/parts.tsx Swap: the old stay for their exit). */}
               {/* M71: a practice's tag says Practice ready, so its headline drops the "Practice:" in front of it. */}
-              <h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline hero-swap" key={`h:${leadHeadline}`}><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1>
+              <Swap k={`h:${leadHeadline}`}><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline"><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1></Swap>
               {/* M69 (F29): no cost counts up here any more; Squibby pays. */}
               {/* M69 step 3: while a fix works with its safety copy kept, that is said once, under the title (not in the card). */}
-              <p className={`ui-lead-line subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>
+              <Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p></Swap>
               {heroShown.detail && !compact && <p className="subline muted">{heroShown.detail}</p>}
             </>}
           {/* One main button: the way out of a block, Review the changes, the status's own, or the next step elsewhere. None
@@ -2374,12 +2427,19 @@ function Card() {
           <div className="ask">
             <span className="ask-mark" aria-hidden="true"><Icon name="sparkle" size={16} /></span>
             <textarea ref={box} id={askId} rows={1} autoComplete="off" spellCheck={false} placeholder={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-label={cardLeads ? S.homeNow.askAbout : S.home.ask} aria-describedby="ask-keys"
-              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
+              aria-controls={palOn ? palId : undefined} aria-activedescendant={palOn ? `${palId}-${palAt}` : undefined} aria-autocomplete={palOn ? "list" : undefined}
+              onInput={(e) => { fitBox(); keepDraft(e.currentTarget.value); setPalText(e.currentTarget.value); setPalAt(0); setVoiceHint(null); setAskHint(null); if (!e.currentTarget.value) fromVoice.current = false; }}
               onFocus={() => warmSoon()}
               onPaste={(e) => { const fs = pastedFiles(e.clipboardData); if (fs.length > 0) { e.preventDefault(); addDropped(fs); } }}
               onKeyDown={(e) => {
+                const plain = !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !composing(e);
+                // M73 (fluid, items 8 and 9): Up and Down move the list's light (it loops); Escape clears the words first, and
+                // only an empty box lets Escape close Home as before.
+                if (palOn && plain && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPalAt((i) => paletteMove(i, palRows.length, e.key === "ArrowDown" ? 1 : -1)); return; }
+                if (e.key === "Escape" && plain && e.currentTarget.value) { e.preventDefault(); e.stopPropagation(); clearBox(); return; }
                 if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
                 e.preventDefault();
+                if (palOn && askMode !== "showme" && palAt > 0) { runPal(palRows[palAt]); return; }
                 if (askMode === "showme") { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); setAskMode("task"); clearBox(); } } else submit();
               }} />
             {/* M69 (the YC benchmark spec 3.1): under the words, the open project as a token, up to three example chips from
@@ -2396,6 +2456,21 @@ function Card() {
               {buttonShown("start") && <Button kind="icon" className="send" label={S.look.send} title={S.look.send} disabled={working} onClick={submit}><Icon name="send" size={16} /></Button>}
             </div>
           </div>
+          {/* M73 (fluid, item 8): as you type, the ask with your words first (Return, as always), then the actions whose words
+              start with yours and your own past asks. The light follows the pointer and the arrows; a press runs the row the
+              way its own button does (anything that changes files still asks first). A past ask fills the box, never sends. */}
+          {palOn && <ul className="ask-pal" role="listbox" id={palId} aria-label={S.look.palLabel}>
+            {palRows.map((r, i) => {
+              const look = palLook(r);
+              return <li key={`${r.kind}:${"id" in r ? r.id : r.text}`} id={`${palId}-${i}`} role="option" aria-selected={i === palAt} className="ask-pal-row"
+                onPointerEnter={() => setPalAt(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => runPal(r)}>
+                <Tile colour={look.colour} icon={look.icon} size="btn" />
+                <span className="ask-pal-words">{look.words}</span>
+                {r.kind === "past" && <span className="ask-pal-note">{S.look.palPast}</span>}
+                <span className="ask-pal-key" aria-hidden="true">{S.look.palKey}</span>
+              </li>;
+            })}
+          </ul>}
           {/* Return with no project open (item 2): the words wait, and the person says which. The key notice stays as it was. */}
           {noProjectFor && !project && (
             <div className="line ask-choose" role="status">{S.home.noProjectAsk}{" "}
@@ -2755,6 +2830,9 @@ function Card() {
               <p className="run-count" aria-label={rl.say}><span aria-hidden="true">{S.home.steps[rl.at - 1]}{rl.counter ? ` · ${rl.counter}` : ""}</span></p>
               {stopCan(m) && <Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button>}
             </div>
+            {/* M73 (fluid, item 10): a 2 point line that grows only when a real step ends (the step under way, from the
+                engine's states, runList.ts), never on a timer. A picture: the step is said in words beside it. */}
+            <span className="run-line" aria-hidden="true" style={{ "--run": String(Math.max(0, Math.min(1, (rl.at - 1) / Math.max(1, rl.of)))) } as CSSProperties} />
             <RunRows rows={rl.rows} label={S.fixRun.label} under={live.kind === "files" ? <JobLive view={live} /> : null} />
             {/* The cost so far is the hero's line (the audit, item 53), so only the time is said here. M55: it ticks a second at
                 a time, and counts up to the time it is when Home comes back after being away, never jumping there. */}
@@ -2797,7 +2875,7 @@ function Card() {
           {/* M69 step 3: proven, Keep, Undo and Replay come first, right under the hero that says it (above the fold). */}
           {resHero?.pill === "proven" && (
             <div className="row result-actions receipt-top">
-              <Button kind="primary" label={S.fixRun.keepLabel} onClick={() => dispatch({ type: "ui.resultKept" })}>{S.homeNow.keep}</Button>
+              <Button kind="primary" label={S.fixRun.keepLabel} onClick={() => { const cp = m.receipt?.checkpoint; setKept(cp && undoCan(m, project) ? { checkpoint: cp, n: Date.now() } : null); dispatch({ type: "ui.resultKept" }); }}>{S.homeNow.keep}</Button>
               {undoCan(m, project) && undoButton(S.homeNow.undo)}
               <Replay m={m} id={`${undoId}-replay`} />
             </div>
@@ -2816,6 +2894,8 @@ function Card() {
           <div className="receipt-proof">
             <ProofTicks ticks={proofTicks(m)} title={undone ? S.checksBeforeUndo : S.fixRun.ticksLabel} led={!!failLead} />
           </div>
+          {/* M73 (fluid, item 10): how long it worked, once the engine has said when it started and ended (never guessed). */}
+          {!undone && (() => { const w = workedFor(m.history, m.receipt.checkpoint); return w ? <p className="line muted worked-for">{w}</p> : null; })()}
           {/* M58 (the shortlist, item 8): a sign in wall is the person's turn, never proven, and never typed for them. */}
           {!undone && signInTurn(m.task?.proof?.steps) && <div className="line" role="note">{signInTurn(m.task?.proof?.steps)}</div>}
           {m.receipt.picture && !m.receipt.visual && !undone && <div className="line muted">{S.receiptPicturing}</div>}
@@ -3132,6 +3212,9 @@ function Card() {
         </section>
       )}
 
+      {/* M73 (fluid, item 12): after Keep, "Kept" with Undo for ten seconds, inside Home. Undo still asks first (rule 13): it
+          opens History with that fix's Undo question under its row. */}
+      {kept && <Toast key={kept.n} text={S.homeNow.kept} action={S.homeNow.undo} onAction={() => { const cp = kept.checkpoint; setKept(null); dispatch({ type: "ui.undoAsked", checkpoint: cp }); pickTab("did"); }} onDone={() => setKept(null)} />}
       {show("toast") && m.toast && (
         <section className="panel" role="status" aria-label={S.memoryTitle}>
           <div className="line">{savedWords(m)}</div>

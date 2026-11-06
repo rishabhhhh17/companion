@@ -57,7 +57,7 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(page).not.toContain("FlowflowView");
     expect(page).toContain("<IslandPanel");
     // M68: the wings also stay out at rest (island.wings) and for the hello, which asks for the panel under them.
-    expect(page).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW \}\)/);
+    expect(page).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW, proven: ticking \}\)/);
   });
 });
 

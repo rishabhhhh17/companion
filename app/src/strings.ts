@@ -126,6 +126,12 @@ export const S = {
     // press says which keys to hold.
     askAbout: (name: string) => `Asking about ${name}`,
     micHint: (keys: string) => `Hold ${keys} to talk. The microphone only listens while you hold them.`,
+    /** M73 (fluid, item 8): the list under the ask box as you type. */
+    palLabel: "Suggestions",
+    palAsk: (words: string) => `Ask ${PRODUCT}: ${words}`,
+    palAskShort: `Ask ${PRODUCT}`,
+    palPast: "Asked before",
+    palKey: "Return",
     micLabel: "How to talk instead of typing",
     moreJobs: "Ways to ask",
     moreOptions: "For this request",
@@ -526,7 +532,7 @@ export const S = {
     "spend.dailyLimit": `${PRODUCT} stops and asks before spending more than this in a day.`,
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
-    "island.haptics": "A light tap on the trackpad when you open the notch. Off unless you turn it on.",
+    "island.haptics": "A light tap on the trackpad when you open the notch, and when a fix is proven. Off unless you turn it on.",
     "island.wings": "Small wings beside the notch show the lights and one short count. Off, the usual, the notch looks like the hardware.",
     "island.hello": "A short hello in the notch when you start, wake your Mac or come back after an hour. Off unless you turn it on.",
     "you.name": "Used only by the hello in the notch. Empty says Hi there.",
@@ -2113,7 +2119,7 @@ export const S = {
     "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: one thing worth knowing and a few buttons, such as Ask and Check my project. Each button opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
     "island.closeDelay": { label: "Close it after moving away for", help: "How long the status stays open after the pointer leaves the notch, so a small slip does not close it.", also: ["hover", "delay", "wait"] },
-    "island.haptics": { label: "Tap the trackpad when the notch opens", help: "A light tap you feel on the trackpad when the notch opens because you clicked it or pointed at it. Only on a Mac with a Force Touch trackpad, and only while your finger is on it. Never for anything that opens by itself.", also: ["haptic", "haptics", "vibrate", "feedback", "tap", "trackpad", "feel"] },
+    "island.haptics": { label: "Tap the trackpad when the notch opens or a fix is proven", help: "A light tap on the trackpad when the notch opens because you clicked or pointed at it, and once when your fix is proven. Only on a Mac with a Force Touch trackpad, and only while your finger is on it. Never for anything else that opens by itself.", also: ["haptic", "haptics", "vibrate", "feedback", "tap", "trackpad", "feel"] },
     "island.display": { label: "Display", help: "Follow you puts them on the display you are using. Built in keeps them on your Mac's own screen, or on the main display while the lid is closed. Main keeps them on the display with the menu bar.", also: ["Which display the notch and Home use", "monitor", "screen", "second screen", "external"], options: { follow: "Follow you", builtIn: "Built in", main: "Main" } },
     "island.followDelay": { label: "Move to another display after the pointer stays there for", help: "With Follow me, how long the pointer stays on another display before the notch moves there. A quick trip there does not move it.", also: ["monitor", "screen", "follow"] },
     "home.closeOnClickAway": { label: "Close Home when I click another app", help: "On, Home closes when you click another app, and a Home that opened by resting on the notch closes after you move away from it. Off, Home stays open until you close it, press Esc, or click the character again. It never closes by itself while you type or while something waits for you.", also: ["click away", "close", "keep open"] },
@@ -2800,6 +2806,8 @@ export const S = {
     before: "Before",
     after: "After",
     keep: "Keep",
+    /** M73 (fluid, item 12): after Keep, for ten seconds; its Undo opens History with that fix's Undo question. */
+    kept: "Kept",
     whereWasI: "Where was I?",
     // The Last fix card.
     lastFix: "Last fix",
@@ -2892,6 +2900,8 @@ export const S = {
     historyNone: (name: string) => `Nothing done in ${name} yet.`,
     historyEmptyTitle: "Your first fix",
     historyEmptyLine: "It shows up here with its proof.",
+    /** M73 (fluid, item 15): the example row drawn faintly over an empty History: exactly what a fix looks like here. */
+    historyExample: { title: "Fixed the sign up button", line: "Proven · 2 files changed", fact: "2:14 pm" },
     startPractice: "Start practice",
     filesChanged: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
     askFirst: "Ask for a first fix",
@@ -3007,6 +3017,10 @@ export const S = {
     replayDenied: (w: string) => `Not allowed: ${w}`,
     keep: "Keep",
     keepLabel: "Keep this fix and close",
+    /** M73 (fluid, item 10): on a finished result, from the engine's own times. */
+    workedFor: (time: string) => `Worked for ${time}`,
+    secs: (n: number) => `${n} s`,
+    mins: (m: number, s: number) => (s ? `${m} min ${s} s` : `${m} min`),
     thumb: "The page after the fix",
   },
 } as const;

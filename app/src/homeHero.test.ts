@@ -129,9 +129,10 @@ describe("the top says the job in big words", () => {
     // heroShown: the hero's own words, or what blocks Home or the changes to review (the audit, items 11 and 12).
     // M66 fix 13: new words cross fade in by their key (homeFlow.test.ts).
     // M71: the Lead's title; a practice's headline drops its "Practice:" (its tag says it).
-    expect(card).toContain('<h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline hero-swap" key={`h:${leadHeadline}`}><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1>');
+    // M73: the old words stay for their exit while the new ones rise in (ui/parts.tsx Swap).
+    expect(card).toContain('<Swap k={`h:${leadHeadline}`}><h1 id={home.tab === "now" ? "home-title" : undefined} className="ui-lead-title headline"><Said text={leadHeadline} friendly={heroShown.friendly?.headline} /></h1></Swap>');
     // M69 (F29): the line under it never counts a cost; Squibby pays.
-    expect(card).toContain('<p className={`ui-lead-line subline hero-swap${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`} key={`l:${heroLine}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p>');
+    expect(card).toContain('<Swap k={`l:${heroLine}`}><p className={`ui-lead-line subline${heroLine === safeSaid && safeSaid ? " hero-safe" : ""}`}>{heroLine === safeSaid && safeSaid ? safeSaid : <Said text={heroShown.line} friendly={heroShown.friendly?.line} />}</p></Swap>');
     const h = /\.headline \{([^}]*)\}/.exec(css)?.[1] ?? "";
     expect(h).toMatch(/font-size: var\(--t-display\)/);
     expect(tokens).toContain("--t-display: calc(22rem / 14);");

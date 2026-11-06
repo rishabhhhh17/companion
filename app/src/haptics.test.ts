@@ -18,7 +18,7 @@ describe("the haptic switch", () => {
   });
   test("says what it does in plain words, and search finds it by the words people use", () => {
     const w = (S.set as Record<string, { label: string; help: string; also?: readonly string[] }>)["island.haptics"];
-    expect(w.label).toBe("Tap the trackpad when the notch opens");
+    expect(w.label).toBe("Tap the trackpad when the notch opens or a fix is proven");
     for (const t of [w.label, w.help, (S.short as Record<string, string>)["island.haptics"]]) { expect(t).toBeTruthy(); expect(t).not.toContain("—"); }
     expect(w.also).toEqual(expect.arrayContaining(["haptic", "haptics", "vibrate", "feedback"]));
   });

@@ -2,7 +2,7 @@
 // (src-tauri/src/motion.rs) move on one table. These fail the moment the three disagree, and pin the interface spring.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { DUR, DUR_COUNT, DUR_FLASH, EASE_EXIT, EASE_EXIT_CSS, EASE_OUT, EASE_OUT_CSS, EXIT_MS, MOTION_SPRING, bezierAt, springLinear, springPath, springSettleSecs, transition } from "./motionTokens.ts";
+import { DUR, DUR_COUNT, DUR_FLASH, STAGGER_LIST_MS, STAGGER_ROWS, STAGGER_ROW_MS, EASE_EXIT, EASE_EXIT_CSS, EASE_OUT, EASE_OUT_CSS, EXIT_MS, MOTION_SPRING, bezierAt, springLinear, springPath, springSettleSecs, transition } from "./motionTokens.ts";
 import { TOKENS_CSS } from "./ui/cssFiles.ts";
 
 const tokens = TOKENS_CSS().replace(/\/\*[\s\S]*?\*\//g, "");
@@ -26,6 +26,11 @@ describe("the three copies of the table agree", () => {
     expect([rustNum("DUR_1_MS"), rustNum("DUR_2_MS"), rustNum("DUR_3_MS"), rustNum("DUR_4_MS")]).toEqual([DUR[1], DUR[2], DUR[3], DUR[4]]);
     expect([DUR[1], DUR[2], DUR[3], DUR[4]]).toEqual([120, 200, 240, 320]);
     expect([ms("--dur-count"), ms("--dur-flash")]).toEqual([DUR_COUNT, DUR_FLASH]);
+  });
+  test("M73: the rows' stagger and the list's wait after the lead, and the whole stagger stays under 100 ms", () => {
+    expect([ms("--stagger-row"), ms("--stagger-list")]).toEqual([STAGGER_ROW_MS, STAGGER_LIST_MS]);
+    expect(STAGGER_ROW_MS * (STAGGER_ROWS - 1)).toBeLessThan(100);
+    expect(STAGGER_LIST_MS).toBeLessThan(DUR[2]);
   });
   test("the exits, each shorter than what it closes", () => {
     expect({ menu: ms("--dur-exit-menu"), toast: ms("--dur-exit-toast"), sheet: ms("--dur-exit-sheet"), scrim: ms("--dur-1") }).toEqual({ ...EXIT_MS });

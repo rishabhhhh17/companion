@@ -194,6 +194,9 @@
 /* The open place in the wide Home's side list is on its own colour's soft fill (History orange, Memory pink), never the
    older accent tint. */
 :root:not(.x) .home[data-side] .side .sb-item[data-c][aria-current="page"] { background: var(--mc-soft); }
+/* M73 (fluid, item 5): with the sliding highlight (homeSide.tsx), the highlight is that fill, so the open place itself stays clear,
+   under the pointer too: one highlight, never two. */
+:root:not(.x) .home[data-side] .side .side-list[data-glide] .sb-item[data-c][aria-current="page"]:is(*, :hover, :active) { background: transparent; }
 .home .fr .fr-links { display: grid; justify-items: start; gap: var(--space-1); margin-top: var(--space-4); }
 .home[data-side] .fr[data-step="hello"] .fr-welcome .fr-title, .home[data-layout="wide"] .fr[data-step="hello"] .fr-welcome .fr-title { margin-top: 0; }
 /* The welcome's headline is the lead's own size (22 points), as every other place's lead; its one main button is flat. */

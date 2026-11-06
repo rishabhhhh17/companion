@@ -134,3 +134,21 @@ export function leaveThen(setLeaving: (on: boolean) => void, exitMs: number, the
   setLeaving(true);
   set(then, exitMs);
 }
+
+// ---------- M73, fluid ----------
+
+/** Swap (parts.tsx): whether the old words stay for their exit as new ones arrive. Only when the key really changed, and
+ *  never with Reduce motion or Less motion (the new words are simply there). */
+export function swapKeepsOld(prevKey: string, nextKey: string, reduced: boolean): boolean {
+  return !reduced && prevKey !== nextKey;
+}
+
+/** The tall Home's sliding highlight: the clip that shows only the place you are on, from that place's box inside the row
+ *  and the row's own size, in whole pixels (top, right, bottom, left, as inset() takes them). Never negative. */
+export function glideClip(on: { left: number; top: number; width: number; height: number }, box: { width: number; height: number }): { t: number; r: number; b: number; l: number } {
+  const n = (x: number) => Math.max(0, Math.round(x));
+  return { t: n(on.top), r: n(box.width - on.left - on.width), b: n(box.height - on.top - on.height), l: n(on.left) };
+}
+
+/** A key pressed inside Home (homeKeys.ts reads it): only plain Command with one more key, never while composing. */
+export type KeyIn = { key: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean; composing: boolean };

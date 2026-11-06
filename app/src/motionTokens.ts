@@ -15,6 +15,11 @@ export const DUR = { 1: 120, 2: 200, 3: 240, 4: 320 } as const;
 /** The listed exceptions: the cost counting up, and a setting's row flashing where a link landed. */
 export const DUR_COUNT = 300;
 export const DUR_FLASH = 1200;
+/** M73 (fluid): a list's rows rise in this far apart, the first STAGGER_ROWS only (the rest arrive with the last of them),
+ *  so a whole list is in within 100 ms; and Home's list arrives this long after its lead as Home opens. */
+export const STAGGER_ROW_MS = 24;
+export const STAGGER_ROWS = 4;
+export const STAGGER_LIST_MS = 40;
 
 /** Listed exceptions for drawing on (the overlay's hand drawn marks): a stroke drawing itself in, and the pen's own curve,
  *  which starts gently as a hand does (ink.ts penEase). Drawing is a stroke's reveal, like clip-path, never a layout. */

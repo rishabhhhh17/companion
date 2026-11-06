@@ -1,6 +1,8 @@
 //! M66: a light tap on the trackpad as the notch opens (the plan, Part 2 "Open", frame 0). Off unless the person turns it on
 //! (island.haptics, like sounds: rule 16), and only when the notch opens under their own click or pointing, never for
 //! anything that opens by itself, a key or the menu. macOS plays it only on a Force Touch trackpad with a finger on it.
+//! M73 (fluid, item 11): with the same switch, one tap as a fix the person started is proven (the notch shows its tick),
+//! once per result, never in a loop.
 
 /// The setting (protocol/settings.json).
 pub const KEY: &str = "island.haptics";
@@ -12,6 +14,12 @@ const POINTER_OPENS: [&str; 3] = ["island", "point", "character"];
 /// `was_open`: Home was already up, so nothing new opened.
 pub fn ticks(on: &serde_json::Value, source: &str, was_open: bool) -> bool {
     on.as_bool() == Some(true) && !was_open && POINTER_OPENS.contains(&source)
+}
+
+/// M73: does a fix turning proven tap the trackpad? `was` and `now`: whether a proven tick showed before and shows now.
+/// Only on the change to proven, so one result taps once.
+pub fn ticks_on_proven(on: &serde_json::Value, was: bool, now: bool) -> bool {
+    on.as_bool() == Some(true) && now && !was
 }
 
 /// One light tap, now. Main thread. Touches no window and takes no focus.
@@ -36,6 +44,13 @@ mod tests {
         assert!(!ticks(&json!(true), "island", true));
     }
     #[test]
+    fn a_proven_fix_taps_once_only_with_the_switch_on() {
+        assert!(ticks_on_proven(&json!(true), false, true), "turned proven: one tap");
+        assert!(!ticks_on_proven(&json!(true), true, true), "still the same proven result: no second tap");
+        assert!(!ticks_on_proven(&json!(true), true, false) && !ticks_on_proven(&json!(true), false, false));
+        for v in [json!(false), json!(null), json!("true"), json!(1)] { assert!(!ticks_on_proven(&v, false, true), "{v}"); }
+    }
+    #[test]
     fn the_setting_is_off_by_default_and_the_shells() {
         let d = crate::settings::registry().get(KEY).expect("island.haptics is in the registry");
         assert!(d.applies_to("shell") && d.store == "settings" && !d.project);
@@ -47,7 +62,12 @@ mod tests {
         let at = main.find("fn open_card_then(").expect("open_card_then");
         let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(body.contains("if haptic::ticks(&setting_now(haptic::KEY), &src, was_open) { haptic::tick(); }"), "{body}");
-        assert_eq!(main.matches("haptic::tick()").count(), 1, "one place taps");
+        // M73: and once as a fix is proven, from the island's own alert, on the main thread.
+        let at = main.find("fn island_alert(").expect("island_alert");
+        let alert = &main[at..at + main[at..].find("\n}\n").unwrap()];
+        assert!(alert.contains("if haptic::ticks_on_proven(&setting_now(haptic::KEY), was_proven, proven) { haptic::tick(); }"), "{alert}");
+        assert!(alert.find("run_on_main_thread").unwrap() < alert.find("haptic::tick()").unwrap(), "taps on the main thread");
+        assert_eq!(main.matches("haptic::tick()").count(), 2, "two places tap: the notch opening and a fix proven");
         assert!(main.contains("mod haptic;"));
     }
 }

@@ -2,7 +2,7 @@
 // values in ui/tokens.css, its words in strings.ts (S.ui), and its logic, where it has any, in ui/partsLogic.ts. A screen
 // never draws its own switch, menu or main button; it uses these. The props are typed and never spread onto a control, so
 // a11y.test.ts can read every name. Motion is CSS only, so the Mac's Reduce motion and Less motion stop it (style.css).
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from "react";
+import { cloneElement, Component, createRef, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type ReactElement, type ReactNode, type Ref } from "react";
 import { Icon, type IconName } from "../icons.tsx";
 import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
@@ -11,7 +11,7 @@ import type { Verdict } from "../verdict.ts";
 import { glanceDue, visorMotion, visorPose, type Ring } from "../characters.ts";
 import type { CharacterState } from "../model.ts";
 import { meterScales, VISOR_BAND, VISOR_BAND_VIEWBOX, VISOR_GLASS, VISOR_GLASS_GRADIENT, VISOR_METER, VISOR_NEEDS, VISOR_REST, VISOR_SCAN, VISOR_SMILE, VISOR_VIEWBOX, type Box } from "../visorArt.ts";
-import { clampTo, commitText, leaveThen, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
+import { clampTo, commitText, glideClip, leaveThen, swapKeepsOld, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
 import { EXIT_MS, VISOR_MS, type ExitKind } from "../motionTokens.ts";
 import { reducedMotion, watchReducedMotion } from "../motion.ts";
 import { colourOf, PLACE_COLOUR, PLACE_ICON, type Colour, type Meaning, type Place } from "../meaning.ts";
@@ -605,9 +605,12 @@ export function Sheet({ title, dirty, onSave, onClose, saveLabel = S.ui.save, in
 }
 
 export const TOAST_MS = 10_000;
-/** A short line at the foot of the panel, with one optional quiet action ("Undo"). It goes after ten seconds, and waits
- *  while the pointer is on it. */
-export function Toast({ text, action, onAction, onDone, ms = TOAST_MS }: { text: string; action?: string; onAction?: () => void; onDone: () => void; ms?: number }) {
+/** M73: a toast with nothing to press goes sooner (one with Undo keeps its ten seconds). */
+export const TOAST_SHORT_MS = 4_000;
+/** A short line at the foot of the panel, with one optional quiet action ("Undo"). It goes after ten seconds with an
+ *  action, four without (M73), and waits while the pointer is on it and while its window is hidden (M73: a toast never
+ *  runs out while nobody can see it). */
+export function Toast({ text, action, onAction, onDone, ms = action ? TOAST_MS : TOAST_SHORT_MS }: { text: string; action?: string; onAction?: () => void; onDone: () => void; ms?: number }) {
   const left = useRef(ms), since = useRef(0), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [leaving, setLeaving] = useState(false);
   // When its time is up it sinks and fades (M66 fix 9) before its owner takes it away.
@@ -616,6 +619,11 @@ export function Toast({ text, action, onAction, onDone, ms = TOAST_MS }: { text:
   const run = () => { if (going.current) return; since.current = Date.now(); timer.current = setTimeout(go, left.current); };
   const hold = () => { if (timer.current) clearTimeout(timer.current); timer.current = null; left.current = Math.max(0, left.current - (Date.now() - since.current)); };
   useEffect(() => { left.current = ms; going.current = false; setLeaving(false); run(); return hold; }, [text]);
+  useEffect(() => {
+    const seen = () => { if (document.hidden) hold(); else if (!timer.current) run(); };
+    document.addEventListener("visibilitychange", seen);
+    return () => document.removeEventListener("visibilitychange", seen);
+  }, []);
   return (
     <div className="ui-toast" role="status" data-leaving={leaving || undefined} onPointerEnter={hold} onPointerLeave={run}>
       <span className="ui-toast-text">{text}</span>
@@ -669,9 +677,11 @@ export type RowAction = { label: string; onClick: () => void; colour?: Colour; i
  *  an action (M72: a row with Undo still says when). `id` goes on the row's own button when it has one, so the keyboard can
  *  come back to it after Edit, Start over or Remove (M72, finding 3); `rowId` names the row itself (History scrolls to it).
  *  `expanded`: the row opens something under it (aria-expanded). `flash`: the row flashes once (History, from Now, F28). */
-export function ListRow({ colour, icon, mark, title, line, fact, factColour, onOpen, openLabel, action, id, rowId, expanded, flash }: {
+export function ListRow({ colour, icon, mark, title, line, fact, factColour, onOpen, openLabel, action, id, rowId, expanded, flash, ghost }: {
   colour: Colour; icon?: IconName; mark?: ReactNode; title: ReactNode; line?: ReactNode; fact?: ReactNode; factColour?: Colour;
   onOpen?: () => void; openLabel?: string; action?: RowAction | null; id?: string; rowId?: string; expanded?: boolean; flash?: boolean;
+  /** M73 (fluid, item 15): an example of what will appear, drawn faintly; a picture only (the empty row says it in words). */
+  ghost?: boolean;
 }) {
   const lineId = useId();
   const words = <>
@@ -680,7 +690,7 @@ export function ListRow({ colour, icon, mark, title, line, fact, factColour, onO
   </>;
   const factShown = fact != null && fact !== "" ? <span className="ui-mrow-fact" data-c={factColour}>{fact}</span> : null;
   return (
-    <li className="ui-mrow" id={onOpen ? rowId : rowId ?? id} data-open={onOpen ? "" : undefined} data-flash={flash || undefined}>
+    <li className="ui-mrow" id={onOpen ? rowId : rowId ?? id} data-open={onOpen ? "" : undefined} data-flash={flash || undefined} data-ghost={ghost || undefined} aria-hidden={ghost || undefined}>
       {onOpen
         ? <button type="button" className="ui-mrow-main" id={id} aria-label={openLabel} aria-describedby={openLabel && line ? lineId : undefined} aria-expanded={expanded} onClick={onOpen}>{words}{action ? null : factShown}</button>
         : <div className="ui-mrow-main">{words}{action ? null : factShown}</div>}
@@ -690,9 +700,14 @@ export function ListRow({ colour, icon, mark, title, line, fact, factColour, onO
   );
 }
 
-/** A list with nothing in it yet: what will appear there, and one action. */
-export function EmptyRow({ icon = "dash", title, line, action }: { icon?: IconName; title: ReactNode; line?: ReactNode; action?: RowAction | null }) {
-  return <ListRow colour="grey" icon={icon} title={title} line={line} action={action} />;
+/** A list with nothing in it yet: what will appear there, and one action. M73: with `example`, one faint row first that
+ *  shows exactly what will appear (a picture only, hidden from VoiceOver: the empty row says it in words). */
+export function EmptyRow({ icon = "dash", title, line, action, example }: { icon?: IconName; title: ReactNode; line?: ReactNode; action?: RowAction | null;
+  example?: { colour: Colour; icon?: IconName; title: string; line?: string; fact?: string } }) {
+  return <>
+    {example ? <ListRow ghost colour={example.colour} icon={example.icon} title={example.title} line={example.line} fact={example.fact} /> : null}
+    <ListRow colour="grey" icon={icon} title={title} line={line} action={action} />
+  </>;
 }
 
 /** The lead: one status tag, one headline (22 points, tight), one line under it, then one main button and at most one
@@ -728,4 +743,74 @@ export function PlaceButton({ place, label, on, waits, waitsWord, onClick, id }:
       {waits ? <><span className="ui-place-dot" aria-hidden="true" /><span className="sr">, {waitsWord}</span></> : null}
     </button>
   );
+}
+
+/** M73 (fluid, item 6): words that change in place cross fade. `children` is one element (a headline, a line); a change of
+ *  `k` is a change of words. The old words stay where they were for their exit (a copy laid over the same place, hidden
+ *  from VoiceOver, its ids taken off) while the new ones rise in, so the headline never blinks. No wrapper is added, so the
+ *  element keeps its place among its siblings for the stylesheets. With Reduce motion or Less motion the new words are
+ *  simply there. Its parent is the copy's frame (position: relative; ui/parts.css). */
+export class Swap extends Component<{ k: string; children: ReactElement<{ className?: string }> }> {
+  private el = createRef<HTMLElement>();
+  private copies: Element[] = [];
+  getSnapshotBeforeUpdate(prev: { k: string }): { node: Element; top: number; left: number; width: number } | null {
+    const el = this.el.current;
+    if (!el || !swapKeepsOld(prev.k, this.props.k, reducedMotion())) return null;
+    return { node: el.cloneNode(true) as Element, top: el.offsetTop, left: el.offsetLeft, width: el.offsetWidth };
+  }
+  componentDidUpdate(_p: unknown, _s: unknown, snap: { node: Element; top: number; left: number; width: number } | null) {
+    const parent = this.el.current?.parentElement;
+    if (!snap || !parent) return;
+    const copy = snap.node as HTMLElement;
+    copy.removeAttribute("id");
+    for (const e of copy.querySelectorAll("[id]")) e.removeAttribute("id");
+    copy.classList.remove("ui-swap-new");
+    copy.classList.add("ui-swap-old");
+    copy.setAttribute("aria-hidden", "true");
+    Object.assign(copy.style, { top: `${snap.top}px`, left: `${snap.left}px`, width: `${snap.width}px`, margin: "0" });
+    parent.appendChild(copy);
+    this.copies.push(copy);
+    setTimeout(() => { copy.remove(); this.copies = this.copies.filter((c) => c !== copy); }, EXIT_MS.toast);
+  }
+  componentWillUnmount() { for (const c of this.copies) c.remove(); this.copies = []; }
+  render() {
+    const c = this.props.children;
+    return cloneElement(c, { key: this.props.k, ref: this.el, className: c.props.className ? `${c.props.className} ui-swap-new` : "ui-swap-new" } as Record<string, unknown>);
+  }
+}
+
+/** M73 (fluid, item 5): the tall Home's row of places has one highlight, a strip of the open place's soft colour clipped to
+ *  that place, which slides (the clip moves) and fades its colour to the next place's when you switch. Only the clip and a
+ *  colour move; nothing is laid out again. It sits first in the row (its parent is the row's frame). `k` names what can
+ *  move the places (the place open, a Stop button showing). Its first place is set without motion. */
+export function PlacesGlide({ k, colour }: { k: string; colour: Colour | null }) {
+  const ref = useRef<HTMLSpanElement>(null), placed = useRef(false);
+  const [c, setC] = useState<{ t: number; r: number; b: number; l: number; still: boolean } | null>(null);
+  useLayoutEffect(() => {
+    const box = ref.current?.parentElement;
+    if (!box || !colour) { setC(null); placed.current = false; return; }
+    let id = 0;
+    // `move`: the place changed (it slides). A resize of the row (text size, a Stop button, the font arriving) puts it in
+    // place without motion.
+    const measure = (move: boolean) => {
+      const on = box.querySelector<HTMLElement>('.ui-place[aria-pressed="true"]');
+      if (!on) { setC(null); return; }
+      const still = !move || !placed.current || reducedMotion();
+      placed.current = true;
+      // Measured against the row itself (never offsetParent, which depends on what is positioned around it).
+      const r = on.getBoundingClientRect(), b = box.getBoundingClientRect();
+      setC({ ...glideClip({ left: r.left - b.left, top: r.top - b.top, width: r.width, height: r.height }, { width: b.width, height: b.height }), still });
+      cancelAnimationFrame(id);
+      if (still && !reducedMotion()) id = requestAnimationFrame(() => setC((x) => x && { ...x, still: false }));
+    };
+    measure(true);
+    // The observer's first call only reports the sizes it started with: the slide above is left alone.
+    let first = true;
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(() => { if (first) { first = false; return; } measure(false); }) : null;
+    ro?.observe(box);
+    for (const el of box.querySelectorAll(".ui-place")) ro?.observe(el);
+    return () => { ro?.disconnect(); cancelAnimationFrame(id); };
+  }, [k, colour]);
+  return <span ref={ref} className="ui-places-glide" aria-hidden="true" data-c={colour ?? undefined} data-still={c?.still || undefined} hidden={!c}
+    style={c ? { "--glide-t": `${c.t}px`, "--glide-r": `${c.r}px`, "--glide-b": `${c.b}px`, "--glide-l": `${c.l}px` } as CSSProperties : undefined} />;
 }

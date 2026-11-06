@@ -385,7 +385,7 @@ describe("the fun island", () => {
     expect(page).toContain("setTimeout(() => setNow(Date.now()), DONE_WINGS_MS)");
     expect(page).toContain("const wings = wingsAt(raw, doneSince, now);");
     expect(page).toContain("const out = wings !== null;");
-    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking })');
   });
   test("reduced motion: the shape is at its size at once, and every island animation stops", async () => {
     const { springStep, settled } = await import("./islandSpring.ts");
@@ -452,7 +452,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(CHEER_FOR_MS).toBeLessThan(1000);
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
-    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking })');
     const main = read("../src-tauri/src/main.rs");
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });

@@ -303,7 +303,9 @@ function Island() {
   // Home opening or a question arriving puts the hello away at once.
   useEffect(() => { if (homeUp || ask) setHello(null); }, [homeUp, ask]);
   const wingsOut = out || rest !== null || helloOn;
-  useEffect(() => { void invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW }).catch(() => {}); }, [wingsOut, panelH, cheering, ask, helloOn, wingW]);
+  // M73 (fluid, item 11): `proven` while a proven fix's tick shows, so the shell can tap the trackpad once as it lands
+  // (haptic.rs, only with island.haptics on).
+  useEffect(() => { void invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking }).catch(() => {}); }, [wingsOut, panelH, cheering, ask, helloOn, wingW, ticking]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;

@@ -112,3 +112,15 @@
 
 /* The line under the headline wraps in balanced lines, so "just now" never sits alone on a row (the review of 5 Nov). */
 .home .hero .hero-words > .subline { text-wrap: balance; }
+
+/* M73 (fluid, item 8): the list under the ask box as you type (card.tsx, palette.ts). It floats just above the box (the box
+   is pinned at the foot of Now), one row per choice, the lit one on the next surface with its key. It rises in and never
+   grows from smaller (words never scale). */
+.home .askwrap { position: relative; }
+.home .ask-pal { position: absolute; left: 0; right: 0; bottom: calc(100% + var(--space-2)); z-index: 6; margin: 0; padding: var(--space-1); list-style: none; border-radius: var(--r-list); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--edge), var(--shadow-float); animation: ui-row-in var(--dur-2) var(--ease-out) both; }
+.home .ask-pal-row { display: flex; align-items: center; gap: var(--space-2); min-height: var(--h-md); padding: 0 var(--space-2); border-radius: var(--r-control); color: var(--fg); font: var(--t-label) / var(--lh-label) var(--font); cursor: default; transition: background-color var(--dur-hover) var(--ease-out); }
+.home .ask-pal-row[aria-selected="true"] { background: var(--surface-2); }
+.home .ask-pal-words { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.home .ask-pal-note { flex: none; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.home .ask-pal-key { flex: none; padding: 0 var(--space-1); border-radius: var(--r-key); background: var(--key-fill); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
+.home .ask-pal-row[aria-selected="true"] .ask-pal-key { opacity: 1; }

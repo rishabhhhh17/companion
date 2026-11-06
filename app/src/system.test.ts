@@ -150,7 +150,8 @@ describe("type, tags, keys and elevation (spec 1.1, 1.6, 1.7)", () => {
   const root = block(":root");
   test("the hero is 28 on 32 at weight 500 with tight tracking, 22 on 27 in the tall Home; the tag 11 on 14, 600, open", () => {
     expect(root).toMatchObject({ "--t-hero": "calc(28rem / 14)", "--lh-hero": "calc(32rem / 14)", "--w-hero": "500", "--track-hero": "-0.022em" });
-    expect(root).toMatchObject({ "--t-hero-sm": "calc(22rem / 14)", "--lh-hero-sm": "calc(27rem / 14)", "--track-hero-sm": "-0.02em" });
+    // M73 (fluid, item 13): the tall headline on 26 (the design search: 22 on 26, tight).
+    expect(root).toMatchObject({ "--t-hero-sm": "calc(22rem / 14)", "--lh-hero-sm": "calc(26rem / 14)", "--track-hero-sm": "-0.02em" });
     expect(root).toMatchObject({ "--t-eyebrow": "calc(11rem / 14)", "--lh-eyebrow": "calc(14rem / 14)", "--w-eyebrow": "600", "--track-eyebrow": ".06em" });
     // No weight over 600 anywhere (spec 1.1).
     for (const m of ALL_CSS().matchAll(/font-weight:\s*(\d+)/g)) expect(Number(m[1])).toBeLessThanOrEqual(600);

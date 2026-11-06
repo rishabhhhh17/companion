@@ -89,3 +89,8 @@
 .hist-marks { display: flex; flex-wrap: wrap; gap: var(--space-1); color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
 .hist-mark { padding: 0 var(--space-2); border: var(--hair) solid var(--line); border-radius: var(--r-control); }
 .hist-hint { display: block; color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font); }
+
+/* M73 (fluid, item 10): the job's 2 point line under its step count: a faint track, and blue that grows (by transform, from
+   the left) only when a real step ends. */
+.job .run-line { position: relative; display: block; height: 2px; margin: var(--space-2) 0 0; border-radius: var(--r-pill); background: var(--edge); }
+.job .run-line::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-pill); background: var(--c-blue); transform-origin: left center; transform: scaleX(var(--run)); transition: transform var(--dur-3) var(--ease-out); }

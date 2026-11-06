@@ -589,6 +589,8 @@ thread_local! {
 }
 /// The wings widen for a moment when a fix is proven (island.tsx asks, island.rs cheered). Never with Reduce motion or Less motion.
 static ISLAND_CHEER: AtomicBool = AtomicBool::new(false);
+/// M73: a proven fix's tick shows on the island now (island.tsx tells), so the trackpad taps once as it lands.
+static ISLAND_PROVEN: AtomicBool = AtomicBool::new(false);
 /// M34: results finished while Home was closed, shown as a count on the notch (island::unseen_next).
 static UNSEEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 /// M52 (F30): changes another AI tool made, ready to review, said quietly on the notch (island::ReviewReady).
@@ -828,12 +830,16 @@ fn home_closed() {
 /// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX). M55: `wing`, how wide each
 /// wing must be to say a job's step in a word (measured; island.rs keeps it between WING and WING_MAX; none: the usual).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>, wing: Option<f64>) {
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>, wing: Option<f64>, proven: Option<bool>) {
     let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
     let wing = island::wing_w(wing.unwrap_or(0.0)).round() as u16;
     let cheer = cheer.unwrap_or(false) && on;
     let ask = ask.unwrap_or(false) && on;
+    let proven = proven.unwrap_or(false);
     let _ = app.run_on_main_thread(move || {
+        // M73 (fluid, item 11): one light tap on the trackpad as a fix is proven, only with the switch on (haptic.rs).
+        let was_proven = ISLAND_PROVEN.swap(proven, Ordering::SeqCst);
+        if haptic::ticks_on_proven(&setting_now(haptic::KEY), was_proven, proven) { haptic::tick(); }
         let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
         let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || s.wing != wing || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; s.wing = wing; c };
         if changed {

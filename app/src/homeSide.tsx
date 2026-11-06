@@ -7,7 +7,9 @@
 // without a badge (or with badges off in Settings) the mark of how it ended shows at the row's end instead. M51 polish (next
 // to HeyClicky): one line per task, its name cut with an ellipsis (the whole name is in its tooltip and what VoiceOver
 // reads, and History shows it in full), the badge or mark on the right, so the list holds about ten tasks, not three.
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { historyFacts, type HistoryItem } from "./model.ts";
+import { reducedMotion } from "./motion.ts";
 import { S } from "./strings.ts";
 import { verdictOf } from "./verdict.ts";
 import { tabId, type Tab } from "./home.ts";
@@ -32,10 +34,32 @@ type Props = {
 
 // M71: each place has its own colour tile (meaning.ts PLACE_COLOUR), so the gems of the old rooms are gone.
 
+/** M73 (fluid, item 5): one highlight behind the places, on the place you are on, moved by transform (ui/parts.css
+ *  .side-glide). It is placed from the open place's own row, so it follows a change of text size too. Its first place is
+ *  set without motion. */
+function useGlide(tab: Tab, places: readonly SidePlace[]) {
+  const list = useRef<HTMLUListElement>(null);
+  const [g, setG] = useState<{ y: number; h: number; still: boolean } | null>(null);
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    const row = list.current?.querySelector<HTMLElement>('[aria-current="page"]')?.closest("li");
+    if (!row || !(places as readonly string[]).includes(tab)) { setG(null); return; }
+    const still = !placed.current || reducedMotion();
+    placed.current = true;
+    setG({ y: row.offsetTop, h: row.offsetHeight, still });
+    // With Reduce motion or Less motion it stays still: it is simply on the new place.
+    if (still && !reducedMotion()) { const id = requestAnimationFrame(() => setG((x) => x && { ...x, still: false })); return () => cancelAnimationFrame(id); }
+  }, [tab, places.join(",")]);
+  return { list, g };
+}
+
 export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts }: Props) {
+  const { list, g } = useGlide(tab, places);
+  const on = (places as readonly string[]).includes(tab) ? (tab as SidePlace) : null;
   return (
     <nav className="side" aria-label={S.look.placesLabel}>
-      <ul className="side-list">
+      <ul className="side-list" ref={list} data-glide="">
+        {g && on && <li className="side-glide" role="presentation" aria-hidden="true" data-c={PLACE_COLOUR[on]} data-still={g.still || undefined} style={{ "--glide-y": `${g.y}px`, "--glide-h": `${g.h}px` } as CSSProperties} />}
         {places.map((t) => (
           <li key={t}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={PLACE_ICON[t]} colour={PLACE_COLOUR[t]} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} count={counts?.[t]} onClick={() => onPick(t)} /></li>
         ))}

@@ -199,3 +199,14 @@ export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; pr
   if (i.practice && !i.fix) rows.push({ id: "empty", meaning: "notChecked", icon: "dash", title: S.homeNow.noFixesTitle, line: S.homeNow.noFixesLine, fact: "", act: "open", action: null });
   return rows.slice(0, NOW_ROWS_MAX);
 }
+
+/** M73 (fluid, item 10): how long a finished fix worked, from the engine's own start and end times for the task whose undo
+ *  point this result has ("Worked for 14 s"). Null when the engine has not said both times, so it is never guessed. */
+export function workedFor(items: readonly Pick<HistoryItem, "checkpoint" | "startedAt" | "endedAt">[], checkpoint: string | null | undefined): string | null {
+  if (!checkpoint) return null;
+  const h = items.find((i) => i.checkpoint === checkpoint);
+  const a = Date.parse(h?.startedAt ?? ""), b = Date.parse(h?.endedAt ?? "");
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  const s = Math.max(1, Math.round((b - a) / 1000));
+  return S.fixRun.workedFor(s < 60 ? S.fixRun.secs(s) : S.fixRun.mins(Math.floor(s / 60), s % 60));
+}

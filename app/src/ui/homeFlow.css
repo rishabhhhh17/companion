@@ -8,11 +8,10 @@
 .ph-stream > p { margin: 0; overflow-wrap: anywhere; }
 
 /* Fix 13: new content on Now no longer makes the hero jump. While a job works, waits or has a result, the headline keeps
-   room for two lines (its words sit at the bottom of it), and new words cross fade in, 4 px up, instead of popping. At rest
+   room for two lines (its words sit at the bottom of it), and new words cross fade in, 4 px up, instead of popping (M73: ui/parts.tsx Swap). At rest
    and folded nothing is reserved, so the Instrument look is unchanged there. */
 .home .hero:not([data-compact]):is([data-mode="working"], [data-mode="result"], [data-mode="answer"], [data-mode="question"], [data-mode="needs"]) .headline { display: grid; align-content: end; min-height: 2lh; }
-.home .hero .hero-swap { animation: hero-swap var(--dur-2) var(--ease-out) both; }
-@keyframes hero-swap { from { opacity: 0; translate: 0 4px; } }
+/* M73: the words cross fade by their key in ui/parts.tsx Swap (the old ones stay for their exit, ui/parts.css). */
 
 /* Fix 17: the proven check's one landing, once per result (homeFlow.ts Landing): the tick draws in, then the card gives one
    soft glow. The glow is a layer of its own that rests unseen and fades in and out once, by opacity only. No score, no

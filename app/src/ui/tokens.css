@@ -204,6 +204,10 @@
   --hair: 1px; --hair-2: 1.5px;        /* a hairline; a thick line (switch off edge, picked picture) */
   --ring: 2px; --ring-offset: 2px;     /* the focus ring */
   --rise: 8px;                         /* how far a toast rises in */
+  --rise-words: 4px;                   /* M73: how far new words rise as they replace old ones in the same place (ui/parts.css Swap) */
+  --ghost: .4;                         /* M73: an empty list's example row, drawn at 40 percent */
+  /* M73: the sliding highlights' place, set on the highlight itself by its page (homeSide.tsx, parts.tsx PlacesGlide). */
+  --glide-y: 0px; --glide-h: 0px; --glide-t: 0px; --glide-r: 0px; --glide-b: 0px; --glide-l: 0px;
 
   /* ---------- Motion (M66 Part 1: one motion system) ----------
      The only place a stylesheet finds a time or a curve. The four durations, the exits, the two curves and the interface
@@ -244,6 +248,10 @@
   --dur-open: var(--dur-3);            /* Home's content arriving */
   --dur-close: var(--dur-2);           /* and going */
   --stagger: 90ms;                     /* rows that arrive one after another, this far apart */
+  /* M73 (fluid): a list's rows rise in this far apart, the first four only, so the whole list is in within 100 ms; Home's
+     list arrives this long after its lead as Home opens (motionTokens.ts STAGGER_ROW_MS, STAGGER_LIST_MS). */
+  --stagger-row: 24ms;
+  --stagger-list: 40ms;
   /* Sequences: one off motions with several beats, each named for what it is. */
   --seq-nod: 600ms; --seq-wince: 700ms; --seq-cheer: 900ms; --seq-party: 1400ms;   /* the character's reactions */
   --seq-surface: 160ms; --seq-settle: 220ms;   /* the character surfacing on a trip, and settling where it lands */
@@ -266,6 +274,7 @@
   --dur-visor-hop: 840ms; --dur-visor-glance: 2.4s;   /* the Visor's two moves that play once */
   --loop-tilt: 2.4s; --loop-drift: 1.4s; --loop-press: 1.4s; --loop-beat: 2800ms; --loop-run: 1.6s;
   --slide-place: 6px;                  /* how far a place rises as it comes in */
+  --rise-row: 6px;                     /* M73: how far a list's row rises as it comes in (never from a smaller size: words never scale) */
   --grow-from: .97;                    /* how small a card starts as it grows in, and ends as it folds away */
   --press-row: .985;                   /* a whole row in a list presses in less than a button */
   --press: .97;                        /* buttons only */
@@ -539,7 +548,7 @@
   /* Type (spec 1.1): the hero is 28 on 32 at weight 500 with tight tracking, 22 on 27 in the tall Home and on a review;
      the status tag 11 on 14, weight 600, uppercase, a little open. Numbers that change keep their width. */
   --t-hero: calc(28rem / 14);   --lh-hero: calc(32rem / 14);   --track-hero: -0.022em;
-  --t-hero-sm: calc(22rem / 14); --lh-hero-sm: calc(27rem / 14); --track-hero-sm: -0.02em;
+  --t-hero-sm: calc(22rem / 14); --lh-hero-sm: calc(26rem / 14); --track-hero-sm: -0.02em;
   --w-hero: 500;
   --t-eyebrow: calc(11rem / 14); --lh-eyebrow: calc(14rem / 14); --track-eyebrow: .06em; --w-eyebrow: 600;
   /* The second tone of a two tone headline (the why, after the outcome): the second words in Friendly, Instrument's third
@@ -612,8 +621,9 @@
   /* The parts' measures (ui/parts.css Tile, Tag, ListRow, Lead): a 28 point tile in a list, 20 in the places, 18 on a
      small button; the grouped list's 16 point corners, a button's 11, a tile's 8, 6 and 5. */
   --tile-row: 28px; --tile-place: 20px; --tile-btn: 18px; --dot-m: 7px; --dot-tag: 6px;
-  --r-list: 16px; --r-btn: 11px; --r-tile-lg: 8px; --r-tile-md: 6px; --r-tile-sm: 5px;
+  --r-list: 14px; --r-btn: 11px; --r-tile-lg: 7px; --r-tile-md: 6px; --r-tile-sm: 5px;
   --h-btn: 36px; --h-place: 30px; --h-list-row: 52px;
+  --track-row: -0.005em;               /* M73: a row's title, 13 on 18 at 600, a hair tight */
   --lead-char: 64px;                   /* the character beside the lead */
   --r-open: 24px;                      /* Home's open bottom corner, the shape's own (homeShape.ts OPEN_R) */
 
@@ -878,6 +888,9 @@
 @media (prefers-contrast: more) {
   :root { --line: rgba(255, 255, 255, .24); --line-strong: rgba(255, 255, 255, .4); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
   :root[data-theme="black"] { --line: rgba(255, 255, 255, .26); --line-strong: rgba(255, 255, 255, .42); --fg-2: #C7C7CC; --edge-control: rgba(255, 255, 255, .6); }
+  /* M73: the grouped list's own hairlines and the faint marks get stronger too (Increase contrast; no setting of our own). */
+  :root { --edge: rgba(255, 255, 255, .16); }
+  :root[data-theme="black"] { --fg-3: #A1A1A8; }
 
   :root { --fg-2-room: #D6D7DB; }
 }

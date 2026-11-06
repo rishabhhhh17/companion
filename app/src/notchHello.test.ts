@@ -157,7 +157,7 @@ describe("the page: wings and hello in the notch, black, non activating, quiet",
   const panel = read("./islandPanel.tsx");
   test("the wings at rest ask the app for the wings' size (island.rs Alert), so they grow on the notch springs", () => {
     expect(page).toContain("const wingsOut = out || rest !== null || helloOn;");
-    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking })');
   });
   test("the hello is asked as the panel under the wings, which the app never opens on a call or while hidden (island.rs mode)", () => {
     expect(page).toContain('invoke("quiet_now")');

@@ -271,7 +271,8 @@ describe("M71: one black look, colour for meaning only", () => {
   });
   test("colour paints no surface bigger than a tile, a tag, a button or a featured card: a meaning colour only fills the M71 parts", () => {
     // (.sw-*: Settings' small pictures of the look itself.)
-    const FILLS_OK = /\.ui-feature|\.ui-mtile|\.ui-mtag|\.ui-mdot|\.ui-mtag-dot|\.ui-place|\.ui-mrow-act|\.sb-item\[data-c\]|\.send|\.ask-token-dot|\.ui-place-dot|ip-act|\.sw-/;
+    // M73: the side list's sliding highlight is the open place's soft fill (as .sb-item[data-c] was), and the job's step line is 2 points tall.
+    const FILLS_OK = /\.ui-feature|\.side-glide|\.run-line|\.ui-mtile|\.ui-mtag|\.ui-mdot|\.ui-mtag-dot|\.ui-place|\.ui-mrow-act|\.sb-item\[data-c\]|\.send|\.ask-token-dot|\.ui-place-dot|ip-act|\.sw-/;
     const bad: string[] = [];
     for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) {
       if (/^background(-color)?$/.test(k) && /var\(--(c-(?!mark)|mc)/.test(v) && !FILLS_OK.test(r.sel)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);

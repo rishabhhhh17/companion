@@ -386,37 +386,37 @@ button, select, input, textarea { font: inherit; }
 /* ---------- M71, black with colour: Tile, Dot, Tag, the grouped list (ListGroup, ListRow, EmptyRow), Lead, PlaceButton ----------
    Each reads its colour from [data-c] (ui/tokens.css: --mc, --mc-tile, --mc-soft, --mc-text). No gradient, no glow, no halo,
    and never a card inside a card: the list is the one card, its rows are separated by hairlines. */
-.ui-mtile { display: inline-grid; place-items: center; flex: none; width: var(--tile-row); height: var(--tile-row); border-radius: var(--r-tile-lg); background: var(--mc-tile); color: var(--c-mark); font: var(--w-bold) var(--t-label) / 1 var(--font); font-variant-numeric: tabular-nums; }
+.ui-mtile { display: inline-grid; place-items: center; flex: none; width: var(--tile-row); height: var(--tile-row); border-radius: var(--r-tile-lg); background: var(--mc-tile); color: var(--c-mark); font: var(--w-bold) var(--t-label) / 1 var(--font); font-variant-numeric: tabular-nums; transition: background-color var(--dur-2) var(--ease-out); }
 .ui-mtile[data-size="place"] { width: var(--tile-place); height: var(--tile-place); border-radius: var(--r-tile-md); font-size: var(--t-caption); }
 .ui-mtile[data-size="btn"] { width: var(--tile-btn); height: var(--tile-btn); border-radius: var(--r-tile-sm); font-size: var(--t-caption); }
 .ui-mtile .ic * { stroke-width: 2.25; }
-.ui-mdot { display: inline-block; flex: none; width: var(--dot-m); height: var(--dot-m); border-radius: var(--r-round); background: var(--mc); }
-.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-bold) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; }
+.ui-mdot { display: inline-block; flex: none; width: var(--dot-m); height: var(--dot-m); border-radius: var(--r-round); background: var(--mc); transition: background-color var(--dur-2) var(--ease-out); }
+.ui-mtag { display: inline-flex; align-items: center; gap: var(--pill-gap); width: fit-content; min-height: var(--h-pill); box-sizing: border-box; margin: 0; padding: 0 var(--space-2); border-radius: var(--r-pill); background: var(--mc-soft); color: var(--mc-text); font: var(--w-bold) var(--t-eyebrow) / var(--lh-eyebrow) var(--font); letter-spacing: var(--track-eyebrow); text-transform: uppercase; transition: background-color var(--dur-2) var(--ease-out), color var(--dur-2) var(--ease-out); }
 .ui-mtag-tick { display: inline-grid; flex: none; color: var(--mc); }
 .ui-mtag-tick .ic * { stroke-width: 3; stroke-dasharray: 24; stroke-dashoffset: 0; animation: ui-tick-draw var(--dur-4) var(--ease-out) var(--dur-2) both; }
 @keyframes ui-tick-draw { from { stroke-dashoffset: 24; } }
-.ui-mtag-dot { flex: none; width: var(--dot-tag); height: var(--dot-tag); border-radius: var(--r-round); background: var(--mc); }
+.ui-mtag-dot { flex: none; width: var(--dot-tag); height: var(--dot-tag); border-radius: var(--r-round); background: var(--mc); transition: background-color var(--dur-2) var(--ease-out); }
 .ui-mlist { margin: 0; padding: 0; list-style: none; border-radius: var(--r-list); background: var(--surface-1); overflow: clip; }
-.ui-mrow { display: flex; align-items: center; gap: var(--space-2); min-height: var(--h-list-row); padding-inline-end: var(--space-4); }
+.ui-mrow { display: flex; align-items: center; gap: var(--space-2); min-height: var(--h-list-row); padding-inline-end: var(--space-4); animation: ui-row-in var(--dur-2) var(--ease-out) both; }
 .ui-mrow + .ui-mrow { box-shadow: inset 0 var(--hair) 0 var(--edge); }
 .ui-mrow-main { display: flex; align-items: center; gap: var(--space-3); flex: 1; min-width: 0; align-self: stretch; margin: 0; padding: var(--space-3) 0 var(--space-3) var(--space-4); border: 0; background: transparent; color: var(--fg); text-align: start; font: inherit; }
-button.ui-mrow-main { transition: background-color var(--dur-hover) var(--ease-out); }
+button.ui-mrow-main { transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-mrow-words { display: grid; flex: 1; min-width: 0; }
-.ui-mrow-title { color: var(--fg); font: var(--w-bold) var(--t-answer) / var(--lh-answer) var(--font); }
+.ui-mrow-title { color: var(--fg); font: var(--w-bold) var(--t-label) / var(--lh-label) var(--font); letter-spacing: var(--track-row); }
 .ui-mrow-line { color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .ui-mrow-fact { flex: none; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); font-variant-numeric: tabular-nums; }
 .ui-mrow-fact[data-c] { color: var(--mc-text); }
-.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out); }
+.ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-mrow-act:hover { background: var(--mc-soft); }
-.ui-mrow-act:active { transform: scale(var(--press)); }
+.ui-mrow-act:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .ui-lead { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; }
-.ui-lead-words { display: grid; justify-items: start; gap: var(--space-2); min-width: 0; }
+.ui-lead-words { display: grid; justify-items: start; gap: var(--space-2); min-width: 0; position: relative; }
 .ui-lead-title { margin: var(--space-1) 0 0; color: var(--fg); font: var(--w-bold) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); text-wrap: balance; }
 .ui-lead-line { margin: 0; color: var(--fg-2); font: var(--t-answer) / var(--lh-answer) var(--font); text-wrap: pretty; }
 .ui-lead-acts { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
 .ui-lead-char { display: grid; place-items: center; width: var(--lead-char); min-height: var(--lead-char); }
-.ui-place { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--h-place); margin: 0; padding: 0 var(--space-3) 0 var(--space-1); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out); }
+.ui-place { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--h-place); margin: 0; padding: 0 var(--space-3) 0 var(--space-1); border: 0; border-radius: var(--r-pill); background: transparent; color: var(--fg-2); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-place:hover { color: var(--fg); background: var(--surface-1); }
 .ui-place[aria-pressed="true"] { background: var(--mc-soft); color: var(--fg); }
 /* A sidebar item with a colour tile (M71): the open one on its colour's soft fill. */
@@ -428,3 +428,39 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 /* A featured card (M71: the practice at the top of Learn, the result at the top of Now): its colour at 12 percent on a
    card, nothing more, so it reads as that colour's card without becoming a coloured block. */
 .ui-lead.ui-feature { padding: var(--space-4); border-radius: var(--r-list); background: color-mix(in srgb, var(--mc) var(--feature-a), var(--surface-1)); }
+
+/* ---------- M73, fluid (docs/milestones/M73-fluid.md) ----------
+   Only opacity, transform, a clip and colours move (M66); Reduce motion and Less motion turn all of it into style.css's
+   plain fade. Words never scale: what carries words rises and fades in, it never grows from smaller. */
+/* 1. Every place, row and row action answers a press (their transitions are on their own rules above): in on --dur-press,
+   back on --dur-release. A row presses less than a button (it is wide). The fill steps to the next surface, never a colour.
+   2. A list's rows rise in (.ui-mrow above, ui-row-in) 24 ms apart. 6 and 11: a tag, dot or tile fades its colour. */
+.ui-place:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+button.ui-mrow-main:active { background: var(--surface-2); transform: scale(var(--press-row)); transition-duration: var(--dur-press); }
+/* 2. The first four rows only are staggered (the rest come with the fourth), so a list is in within 100 ms. They arrive as
+   they are drawn: a place opening, a row that is new. */
+.ui-mrow:nth-child(2) { animation-delay: var(--stagger-row); }
+.ui-mrow:nth-child(3) { animation-delay: calc(var(--stagger-row) * 2); }
+.ui-mrow:nth-child(n + 4) { animation-delay: calc(var(--stagger-row) * 3); }
+@keyframes ui-row-in { from { opacity: 0; translate: 0 var(--rise-row); } }
+/* 6. Swap (parts.tsx): the old words stay laid over the same place for their exit while the new ones rise in. */
+.ui-swap-old { position: absolute; margin: 0; pointer-events: none; animation: ui-swap-out var(--dur-exit-menu) linear both; }
+.ui-swap-new { animation: ui-swap-in var(--dur-2) var(--ease-out) var(--stagger-list) both; }
+@keyframes ui-swap-out { to { opacity: 0; } }
+@keyframes ui-swap-in { from { opacity: 0; translate: 0 var(--rise-words); } }
+/* 5. The side list's places: one highlight behind them, moved by transform to the place you are on, its colour fading
+   from one place's soft colour to the next (homeSide.tsx). The places are all one height, so only transform moves. */
+.side-list[data-glide] { position: relative; }
+.side-list[data-glide] > li:not(.side-glide) { position: relative; z-index: 1; }
+.side-list > .side-glide { position: absolute; top: 0; left: 0; right: 0; z-index: 0; height: var(--glide-h); border-radius: var(--r-control); background: var(--mc-soft); pointer-events: none; transform: translateY(var(--glide-y)); transition: transform var(--dur-3) var(--ease-spring), background-color var(--dur-3) var(--ease-out); }
+.side-list > .side-glide[data-still] { transition: none; }
+/* 5. The tall Home's row of places (parts.tsx PlacesGlide): one strip of the open place's soft colour, clipped to that place,
+   slides to the next (the clip moves) and fades its colour on the way. The open place's own fill steps aside for it. */
+.places:has(> .ui-places-glide:not([hidden])) { position: relative; }
+.places:has(> .ui-places-glide:not([hidden])) > :not(.ui-places-glide) { position: relative; z-index: 1; }
+.places:has(> .ui-places-glide:not([hidden])) > .ui-place[aria-pressed="true"] { background: transparent; }
+.ui-places-glide { position: absolute; inset: 0; z-index: 0; background: var(--mc-soft); pointer-events: none; clip-path: inset(var(--glide-t) var(--glide-r) var(--glide-b) var(--glide-l) round var(--r-pill)); transition: clip-path var(--dur-3) var(--ease-spring), background-color var(--dur-3) var(--ease-out); }
+.ui-places-glide[data-still] { transition: none; }
+/* 15. An empty list's example row: exactly what will appear, at 40 percent; a picture only, hidden from VoiceOver. */
+.ui-mrow[data-ghost] { opacity: var(--ghost); animation-name: ui-ghost-in; }
+@keyframes ui-ghost-in { from { opacity: 0; translate: 0 var(--rise-row); } to { opacity: var(--ghost); translate: 0 0; } }

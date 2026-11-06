@@ -2,6 +2,23 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Fluid: 6 Nov 2026 (in progress)
+
+- **Everything answers your press.** Places, list rows and their buttons sink a little when you press them, like the buttons already did.
+- **Lists arrive, they do not pop.** Rows rise in one after another, all of them within a tenth of a second.
+- **One highlight that slides.** Switching between Now, Learn, History and Memory slides one highlight to the new place and fades its colour, in both layouts.
+- **Headlines change smoothly.** When Now's headline changes, the old words fade out where they were as the new ones rise in. Tags and dots fade to their new colour, so a fix turning proven goes from blue to green.
+- **Home opens in order.** The headline arrives first and the list just after it.
+- **The notch remembers you were just there.** Point at it again within a second and a half of it folding and the small panel opens at once.
+- **The ask box suggests.** As you type, a short list shows above the box: your question first (Return still asks it), then matching actions such as Check my project, then things you asked before. Arrow keys move, Return runs, Escape clears.
+- **Keys inside Home.** Once you click into Home, Command 1 to 4 open the places and the arrow keys move between rows. Nothing new works outside Home.
+- **Fixing shows real progress.** A thin blue line under the step count grows only when a real step ends. A finished fix says how long it worked, from the engine's own times.
+- **A small proven moment.** If you turned on the trackpad tap, it taps once when your fix is proven.
+- **Kept, with Undo.** After Keep, "Kept" stays for ten seconds with Undo, which takes you to that fix in History and asks first, as always.
+- **Empty History shows what will come.** A faint example row shows what a fix looks like there.
+- **Calmer text.** List rows use a slightly smaller, tighter title, and corners are a touch tighter. Notes with no button go after four seconds and wait while Home is hidden.
+- **More contrast when the Mac asks for it.** With Increase contrast on, lines and faint marks get stronger.
+
 ## Make it work: 6 Nov 2026 (in progress)
 
 - **Your water character stays.** If you used the Friendly look and never picked a character, Home, the edge of your screen and Settings show the water character again, drawn whole beside the headline. Picking another character still works.

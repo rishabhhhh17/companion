@@ -676,6 +676,9 @@ pub fn peek_hover(shown: bool, act: PointDo) -> bool { shown && act == PointDo::
 /// unless Settings says otherwise (island.openDelay, island.closeDelay).
 pub const HOVER_IN_MS: u64 = 300;
 pub const HOVER_OUT_MS: u64 = 300;
+/// M73 (fluid, item 3): once what pointing opened has folded back, coming back onto the island within this long opens it
+/// again at once, with no rest (the "second tooltip" rule): the person is clearly still using it.
+pub const HOVER_WARM_MS: u64 = 1500;
 
 /// The waits in force, and whether resting on the island opens the status at all (island.peekOnHover; off, the island
 /// opens only on a click).
@@ -686,10 +689,10 @@ impl HoverTimes { pub const USUAL: HoverTimes = HoverTimes { in_ms: HOVER_IN_MS,
 /// The pointer on our own island. macOS tells us only when it enters and leaves that one window (a tracking area on it);
 /// nothing is read anywhere else.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Hover { inside: bool, since: u64, shown: bool, times: HoverTimes, dismissed: bool }
+pub struct Hover { inside: bool, since: u64, shown: bool, times: HoverTimes, dismissed: bool, hid: Option<u64> }
 impl Default for Hover { fn default() -> Self { Hover::new() } }
 impl Hover {
-    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false, times: HoverTimes::USUAL, dismissed: false } }
+    pub const fn new() -> Self { Hover { inside: false, since: 0, shown: false, times: HoverTimes::USUAL, dismissed: false, hid: None } }
     /// The waits from Settings (main.rs gives them each time the pointer comes or goes).
     pub fn set_times(&mut self, times: HoverTimes) { self.times = times; }
     pub fn enter(&mut self, t: u64) { if !self.inside { self.inside = true; self.since = t; } }
@@ -697,14 +700,23 @@ impl Hover {
     /// M66: what pointing opened was put away (Esc, a click elsewhere, Close) while the pointer is still on the island: it
     /// does not open again until the pointer has left once.
     #[cfg_attr(not(test), allow(dead_code))]
-    pub fn dismiss(&mut self) { if self.inside { self.dismissed = true; self.shown = false; } }
+    pub fn dismiss(&mut self) { if self.inside { self.dismissed = true; self.shown = false; self.hid = None; } }
     /// The pointer is on the island now (for the hover nudge, which answers at once).
     pub fn inside(&self) -> bool { self.inside && !self.dismissed }
-    fn need(&self) -> u64 { if self.inside { self.times.in_ms } else { self.times.out_ms } }
+    fn need(&self) -> u64 {
+        if !self.inside { return self.times.out_ms; }
+        // M73: back within HOVER_WARM_MS of it folding: at once.
+        if self.hid.is_some_and(|h| self.since >= h && self.since - h <= HOVER_WARM_MS) { return 0; }
+        self.times.in_ms
+    }
     /// Whether the line shows at time `t`. Never with the status on pointing turned off.
     pub fn at(&mut self, t: u64) -> bool {
         if !self.times.peek || self.dismissed { self.shown = false; return false; }
-        if self.inside != self.shown && t.saturating_sub(self.since) >= self.need() { self.shown = self.inside; }
+        if self.inside != self.shown && t.saturating_sub(self.since) >= self.need() {
+            // It folds back at the end of the grace: kept, for the quick reopen.
+            if self.shown { self.hid = Some(self.since.saturating_add(self.times.out_ms)); }
+            self.shown = self.inside;
+        }
         self.shown
     }
     /// How long until the answer may change, if it may.
@@ -1176,6 +1188,34 @@ mod tests {
         h.enter(4000); h.exit(4050);
         assert!(!h.at(4000 + HOVER_IN_MS + 10));
         assert!(!h.at(5000));
+    }
+    #[test]
+    fn coming_back_soon_after_it_folded_opens_it_at_once_and_later_waits_again() {
+        let mut h = Hover::default();
+        h.enter(0);
+        assert!(h.at(HOVER_IN_MS), "the first open waits its rest");
+        h.exit(1000);
+        assert!(!h.at(1000 + HOVER_OUT_MS), "folded at the end of the grace");
+        // Back within 1.5 s of folding: open at once, no rest.
+        let folded = 1000 + HOVER_OUT_MS;
+        h.enter(folded + 900);
+        assert_eq!(h.wait_ms(folded + 900), Some(0));
+        assert!(h.at(folded + 900), "the second open is at once");
+        // Folded again, and back much later: the usual rest again.
+        h.exit(5000);
+        assert!(!h.at(5000 + HOVER_OUT_MS));
+        h.enter(5000 + HOVER_OUT_MS + HOVER_WARM_MS + 1);
+        assert!(!h.at(5000 + HOVER_OUT_MS + HOVER_WARM_MS + 2), "too late for the quick reopen");
+        assert!(h.at(5000 + HOVER_OUT_MS + HOVER_WARM_MS + 1 + HOVER_IN_MS));
+        // A pass long after anything showed still never opens it.
+        let mut p = Hover::default();
+        p.enter(0); p.exit(50);
+        assert!(!p.at(60) && !p.at(10_000));
+        // After a dismiss, no quick reopen: the pointer must leave, and then the rest applies.
+        let mut d = Hover::default();
+        d.enter(0); assert!(d.at(HOVER_IN_MS)); d.dismiss(); d.exit(400); d.enter(500);
+        assert!(!d.at(501), "a dismiss is not a fold");
+        assert!(d.at(500 + HOVER_IN_MS));
     }
     #[test]
     fn crossing_the_notch_along_the_menu_bar_even_slowly_does_not_open_it() {

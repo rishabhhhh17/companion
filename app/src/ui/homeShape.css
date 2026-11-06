@@ -48,6 +48,11 @@
    the top once the shape is all but there, leaving first and fast. */
 .home-stage[data-told] .home-frame { position: absolute; left: var(--hx); top: var(--hy); width: var(--hw); height: var(--hh); overflow: hidden; contain: layout paint; background: transparent; border-radius: 0; transform-origin: top center; transform: var(--t-content); opacity: var(--o-content); transition: opacity var(--dur-exit-menu) linear, transform var(--dur-exit-menu) var(--ease-exit); }
 .home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame { transition: opacity var(--dur-2) var(--ease-out) var(--seq-notch-content-at), transform var(--dur-2) var(--ease-out) var(--seq-notch-content-at); }
+/* M73 (fluid, item 4): as Home opens, its lead arrives with the content and the one list 40 ms after it, so the eye lands on
+   the lead first. Opacity only (the content's frame already moves); it leaves with the content, at once. A list drawn
+   while Home is already open (a place opening) is not held: the value does not change, so nothing transitions. */
+.home-stage[data-told] .home-frame .ui-mlist { opacity: var(--o-content); transition: opacity var(--dur-exit-menu) linear; }
+.home-stage[data-told]:is([data-phase="opening"], [data-phase="open"]) .home-frame .ui-mlist { transition: opacity var(--dur-2) var(--ease-out) calc(var(--seq-notch-content-at) + var(--stagger-list)); }
 .home-stage:not([data-told]) .home-frame { position: absolute; inset: 0; }
 /* Before the shell's measures come (or if they were lost), a closed Home draws nothing over the screen. */
 .home-stage:not([data-told]):is([data-phase="closed"], [data-phase="closing"]) .home-frame { visibility: hidden; }
