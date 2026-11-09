@@ -572,7 +572,9 @@ mod tests {
         let mp = body("fn made_parent(");
         assert!(mp.contains("newfolder::parent_of(") && mp.contains("setting_now(\"make.folder\")"));
         let t = body("fn trash_made(");
-        assert!(t.contains("made::trash(") && t.contains("move_to_trash") && t.contains("forget_folder("), "{t}");
+        // M76: through leave_to_trash, which takes out Squibby's done signal hooks first, then uses the Mac's own Trash.
+        assert!(t.contains("made::trash(") && t.contains("leave_to_trash") && t.contains("forget_folder("), "{t}");
+        assert!(body("fn leave_to_trash(").contains("move_to_trash(p)"));
         assert!(t.contains("NEW_FOLDER.lock()"), "never while a new folder is being made");
         assert!(t.contains("updates::running_now()") && t.contains("current_project()"), "the shell knows a task runs and what is open, not only the page");
         assert!(body("async fn list_made(").contains("spawn_blocking"), "the count of sizes never runs on the main thread");

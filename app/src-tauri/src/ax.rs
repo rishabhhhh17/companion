@@ -456,3 +456,51 @@ fn clickable_el(x: f64, y: f64) -> Option<Cf> {
     }
     None
 }
+
+// ---------- M76: the typing boxes of the app in front (Show me where to paste) ----------
+
+/// The front window of an app: its frame, its title, and every typing box in it with what the box says about itself
+/// (placeholder, title, description, help). Never a box's value: what the person typed is not read. Only on the person's
+/// press, with the light already on (main.rs point_paste). An Electron or Chrome app shows its tree only after a wake; what
+/// was woken is switched off again by `let_apps_sleep`, which the caller always calls. At most 4000 elements are asked.
+pub fn text_boxes(pid: i32) -> Option<(crate::coords::R, String, Vec<crate::pastehere::Box_>)> {
+    if !trusted(false) { return None; }
+    let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;
+    quick(&app);
+    let window = attr(&app, "AXFocusedWindow").or_else(|| attr(&app, "AXMainWindow"))?;
+    let title = text_attr(&window, "AXTitle").unwrap_or_default();
+    let (x, y, w, h) = frame_of(&window)?;
+    let mut boxes = walk_boxes(&window);
+    if boxes.is_empty() {
+        for name in ["AXManualAccessibility", "AXEnhancedUserInterface"] {
+            wake(&app, pid, name);
+            std::thread::sleep(Duration::from_millis(450));
+            boxes = walk_boxes(&window);
+            if !boxes.is_empty() { break; }
+        }
+    }
+    Some((crate::coords::R { x, y, w, h }, title, boxes))
+}
+fn walk_boxes(root: &Cf) -> Vec<crate::pastehere::Box_> {
+    const ROLES: &[&str] = &["AXTextArea", "AXTextField", "AXComboBox"];
+    let mut out = vec![];
+    let mut queue: std::collections::VecDeque<(Cf, usize)> = children(root).into_iter().map(|c| (c, 1)).collect();
+    let mut asked = 0usize;
+    while let Some((el, depth)) = queue.pop_front() {
+        asked += 1;
+        if asked > 4000 { break; }
+        quick(&el);
+        let role = text_attr(&el, "AXRole").unwrap_or_default();
+        if ROLES.contains(&role.as_str()) {
+            if let Some((x, y, w, h)) = frame_of(&el) {
+                let subrole = text_attr(&el, "AXSubrole").unwrap_or_default();
+                let words: Vec<String> = ["AXPlaceholderValue", "AXTitle", "AXDescription", "AXHelp", "AXRoleDescription"].iter().filter_map(|a| text_attr(&el, a)).filter(|s| !s.trim().is_empty()).map(|s| s.chars().take(120).collect()).collect();
+                let enabled = attr(&el, "AXEnabled").map_or(true, |v| unsafe { v.0 != kCFBooleanFalse });
+                out.push(crate::pastehere::Box_ { role: role.clone(), subrole, words, rect: crate::coords::R { x, y, w, h }, editable: enabled });
+            }
+            continue;   // a box's own children are its text, never read
+        }
+        if depth < 60 { for c in children(&el) { queue.push_back((c, depth + 1)); } }
+    }
+    out
+}

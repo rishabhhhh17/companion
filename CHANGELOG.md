@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Features, batch two: 6 Nov 2026 (in progress)
+
+- **A report you can send a client.** On a proven fix, and on the checks before going live, Share report makes one plain page: "Is this safe to go live?", the answer, what was checked and how it went, what the review found, and what was not checked. It only says Ready when everything passed on this version. Keys and passwords are hidden, and code is left out unless you turn that on. Save it as a web page or a PDF wherever you pick. Nothing is sent anywhere.
+- **Show me where to paste.** After Copy for my AI, one press rings the chat box of the AI app in front: Cursor, the Claude app, ChatGPT, or Lovable in a browser. A solid ring means Squibby is sure; a dashed one says it is a guess; otherwise it tells you in words. It looks only when you press, with the light on first, and asks for Accessibility the first time. You paste it yourself. Squibby never types into another app.
+- **Walk me through it.** On a review or a fix, go through each changed place one at a time: where it is, what changed and why it matters in two plain lines, Open in my editor, Back and Next, and a one line summary at the end. The words come from the review and the fix, so it costs nothing extra.
+- **Delete everything now also takes out the done signal.** The small "done" hook Squibby added to a project's Claude Code or Codex settings goes when you delete everything, or when a project goes to the Trash from Squibby. Only Squibby's own line is taken out.
+- **Fixed: Home could stop drawing when the first review card arrived** while a review setting was read out of order. It now reads it the same way every time.
+
 ## Features, batch one: 6 Nov 2026 (in progress)
 
 - **Reviews start when your AI tool says it is done.** In Settings, Fixing, you can let Claude Code or Codex tell Squibby the moment it finishes in this project, so the review starts then instead of after a quiet spell. Squibby shows you exactly the lines it would add to that tool's own settings file first, adds them only when you say yes, and one press removes them. The signal carries nothing of what the tool said, only "done in this folder". Without it, reviews start after the quiet time as before.

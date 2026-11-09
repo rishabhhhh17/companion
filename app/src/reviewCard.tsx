@@ -6,7 +6,11 @@
 // (copies a ready message and says it is copied; nothing is ever typed into another app), and Looks fine (Skip this one
 // before any review has run). The gel pill
 // (the one glossy thing, beside Home's own main button) is kept for the final yes of Fix it.
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { showWherePaste } from "./pasteHere.ts";
+import { WalkThrough } from "./m76Panels.tsx";
+import { tourFromReview, type TourStep } from "./tour.ts";
+import { useSetting } from "./settingsStore.ts";
 import { ConfirmStep } from "./confirm.tsx";
 import { ChangesCard } from "./changesCard.tsx";
 import { keyFiles } from "./changeRows.ts";
@@ -43,22 +47,37 @@ type Props = {
   /** M69: when the card leads Now (reviewHead.ts), the character drawn at its top right, and the id its headline takes as
    *  the page's title (Home's own hero steps aside then: card.tsx). */
   mark?: ReactNode; titleId?: string;
+  /** M76: Circle it on a Walk me through it step (Point at the problem's own ring, on the person's press). */
+  onPoint?: (s: TourStep) => void;
 };
+
+/** M76 (roadmap 18): Walk me through it under a review that ran (tour.offer). */
+function ReviewWalk({ r, onPoint }: { r: ReviewCard; onPoint?: (s: TourStep) => void }) {
+  const on = useSetting("tour.offer") !== false;
+  if (!on || r.stage !== "reviewed") return null;
+  return <div className="row rv-walk"><WalkThrough tour={tourFromReview(r)} project={r.project} onCircle={onPoint} id={`${REVIEW_ID}-walk`} /></div>;
+}
 
 /** Send back to my AI: copies the engine's ready message (secrets hidden again) on a press, and says it is copied. The Mac
  *  side writes the clipboard (copy_text); the page's own clipboard is the fallback, only for text the Mac side would take. */
 export function SendBack({ text, onCopied, label = S.review.sendBack }: { text: string; onCopied?: () => void; label?: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  // M76 (roadmap 16): once copied, Show me where to paste is offered (paste.showWhere). It stays after the copied words go,
+  // until the text changes; a press only asks the shell to look, and the person pastes.
+  const [copied, setCopied] = useState(false);
+  const pasteOn = useSetting("paste.showWhere") !== false;
+  useEffect(() => setCopied(false), [text]);
   if (!text) return null;
   const copy = () => {
     setState("idle");
     const ok = copyable(text);
     if (ok === null) { setState("failed"); return; }
     void invoke("copy_text", { text: ok }).catch(() => navigator.clipboard?.writeText(ok) ?? Promise.reject(new Error("no clipboard")))
-      .then(() => { setState("copied"); onCopied?.(); setTimeout(() => setState("idle"), 4000); }).catch(() => setState("failed"));
+      .then(() => { setState("copied"); setCopied(true); onCopied?.(); setTimeout(() => setState("idle"), 4000); }).catch(() => setState("failed"));
   };
   return <>
     <button className="btn" type="button" title={S.review.sendBackHelp} onClick={copy}><Icon name="copy" size={14} />{label}</button>
+    {copied && pasteOn && <button className="btn paste-where" type="button" title={S.pasteHere.help} onClick={() => { void showWherePaste(); }}><Icon name="pointer" size={14} />{S.pasteHere.button}</button>}
     <span className={state === "idle" ? "sr" : "line review-copied"} role="status">{state === "copied" ? S.review.copied : state === "failed" ? S.copyFailed : ""}</span>
   </>;
 }
@@ -88,7 +107,7 @@ export function ReviewCardView(p: Props) {
  *  key shape, the reassurance under them, and Why does this matter? opening the review's own words. The other findings
  *  follow as one line cards (Then, Fine); See opens the files. Nothing of the older card is dropped: it sits behind Why and
  *  See. */
-function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, mark, titleId, head }: Props & { head: ReviewHead }) {
+function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, mark, titleId, head }: Props & { head: ReviewHead }) {
   const res = r.result;
   const [open, setOpen] = useState<"why" | "files" | null>(null);
   const toggle = (k: "why" | "files") => setOpen((o) => (o === k ? null : k));
@@ -143,6 +162,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <button className="btn quiet rv-whylink" type="button" aria-expanded={open === "why"} aria-controls={whyId} onClick={() => toggle("why")}>{S.homeNow.whyMatters}</button>
           </div>
         )}
+        {r.fix !== "sent" && <ReviewWalk r={r} onPoint={onPoint} />}
         {r.fix === "confirm" && (
           <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
             <div>{S.review.fixSure}</div>
@@ -226,7 +246,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
   );
 }
 
-function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, heroSays = false, heroHeadline }: Props) {
+function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, heroSays = false, heroHeadline }: Props) {
   const res = r.result;
   const look = res ? ratingLook(res.rating) : null;
   const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
@@ -316,6 +336,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
         </div>
       )}
+      {r.fix !== "sent" && <ReviewWalk r={r} onPoint={onPoint} />}
       {r.fix === "confirm" && (
         <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
           <div>{S.review.fixSure}</div>

@@ -20,6 +20,18 @@
 :root {
   color-scheme: dark;
 
+  /* ---------- M76: the go live report (goLiveReport.ts) ----------
+     A report is a file sent to a client and printed, so it is always light, whatever the look. The page reads these when it
+     saves one and writes them into the file, since a sent file cannot read this one. Words 4.5 to 1 on the paper. */
+  --report-paper: #FFFFFF;
+  --report-ink: #1A1A1A;
+  --report-muted: #5C5C5C;
+  --report-line: #E4E4E4;
+  --report-ok: #0F7B4F;
+  --report-bad: #B4232C;
+  --report-unsure: #8A5A00;
+  --report-skip: #5C5C5C;
+
   /* ---------- Colour, Night ---------- */
   --bg: #111111;                       /* the page: Home and Settings. Neutral on purpose: no tint, so every water sits well on it */
   --surface-1: #171717;                /* a card */

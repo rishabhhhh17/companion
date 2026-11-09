@@ -182,7 +182,7 @@ pub fn project_has_ours(project: &Path) -> bool {
 
 /// Writes a file next to `target` under a random name, then renames it over the target: a link planted at the temporary
 /// name is never written through, the file's permissions are kept, and a half written file is never left.
-fn replace_file(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn replace_file(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let mut tag = [0u8; 6];
@@ -245,6 +245,13 @@ pub fn run_helper(home: &Path, data: &Path, projects: &[PathBuf], with_projects:
         return vec![concat!(crate::product!(), " did not close in time").to_string()];
     }
     if with_projects { for p in projects { let _ = clean_project(p); } }
+    // M76: the done signal hooks (M75) are Squibby's machinery in another tool's settings, not notes, so they go whether or
+    // not the notes box was ticked: every project the engine's own index names, and the recent folders. This runs before the
+    // data folder goes, since the index that says which files Squibby made is in it (donehooks.rs).
+    let runner_data = data.join("runner");
+    let mut hooked = crate::donehooks::projects_with_hooks(&runner_data);
+    for p in projects { if !hooked.contains(p) { hooked.push(p.clone()); } }
+    for p in &hooked { let _ = crate::donehooks::remove(p, &runner_data); }
     let mut failed = vec![];
     for _ in 0..3 {
         failed = erase(home, data).1;
@@ -633,6 +640,20 @@ mod tests {
         // The contract at the top of this file says so too.
         let top = &include_str!("wipe.rs")[..2400];
         assert!(top.contains("Google connections") && top.contains("revoked") && !top.contains("are not touched here"), "{top}");
+    }
+    #[test]
+    fn delete_everything_takes_out_the_done_signal_hooks_even_with_the_notes_box_unticked() {
+        let m = mac("donehooks");
+        let p = m.root.join("site"); create_dir_all(p.join(".claude")).unwrap();
+        let cmd = format!("/usr/bin/touch -- '{}/done/0123456789abcdef01234567' 2>/dev/null; printf '{{}}'", m.data.join("runner").display());
+        let file = json!({ "hooks": { "Stop": [ { "hooks": [ { "type": "command", "command": "say done" } ] }, { "hooks": [ { "type": "command", "command": cmd } ] } ] } });
+        write(p.join(".claude/settings.local.json"), file.to_string()).unwrap();
+        write(m.data.join("runner/done-signals.json"), json!({ p.to_string_lossy().to_string(): { "token": "0123456789abcdef01234567", "made": [], "folders": [] } }).to_string()).unwrap();
+        let failed = run_helper(&m.home, &m.data, &[], false, &Helper { parent_gone: &|| true, delete_key: &|| true, delete_google: &|| true, relaunch: &|| {}, wait: &|| {} });
+        assert!(failed.is_empty(), "{failed:?}");
+        let after = fs::read_to_string(p.join(".claude/settings.local.json")).unwrap();
+        assert!(!after.contains("/usr/bin/touch") && after.contains("say done"), "{after}");
+        assert!(!m.data.join("runner/done-signals.json").exists(), "the index goes with everything else, after the hooks");
     }
     #[test]
     fn a_key_that_could_not_be_removed_is_never_reported_as_deleted() {

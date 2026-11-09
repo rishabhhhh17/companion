@@ -19,11 +19,13 @@ type GatesProps = {
   /** A practice copy: its own Fix it is on its own card, so the rows offer none here. */
   practice: boolean;
   onPutOnline: () => void; onFix: (g: Gate) => Promise<boolean>; onCheck: () => void; onConfirm: (id: string) => void; onClose: () => void;
+  /** M76: Share report, the go live report built from these gates, the last check and the review. */
+  share?: ReactNode;
 };
 
 /** The check before going live. Every gate passed: one main button, Put it online. A blocked gate: its own Fix it, which
  *  says Starting the fix at once and leaves the panel on screen until the task's first event takes its place. */
-export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onFix, onCheck, onConfirm, onClose }: GatesProps) {
+export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onFix, onCheck, onConfirm, onClose, share }: GatesProps) {
   const [fixing, setFixing] = useState<string | null>(null);
   // A new report (the check ran again) starts with no fix asked; a refused fix gives its row back at once.
   useEffect(() => setFixing(null), [ship]);
@@ -52,7 +54,7 @@ export function ShipGatesPanel({ ship, words, online, practice, onPutOnline, onF
           <div className="row"><button className="btn primary" type="button" onClick={onPutOnline}>{S.going.putOnline}</button></div>
         </div>
       )}
-      <div className="row"><button className="btn" type="button" onClick={onClose}>{S.shipClose}</button></div>
+      <div className="row">{share}<button className="btn" type="button" onClick={onClose}>{S.shipClose}</button></div>
     </section>
   );
 }

@@ -47,6 +47,9 @@ mod share;
 mod report;
 mod yourturn;
 mod wipe;
+mod donehooks;
+mod pastehere;
+mod golive;
 mod logexport;
 mod practice;
 mod names;
@@ -2687,7 +2690,7 @@ fn trash_made(window: tauri::WebviewWindow, app: AppHandle, name: String, git: b
     let moved = {
         let _g = NEW_FOLDER.lock().unwrap_or_else(|x| x.into_inner());   // never while a new folder is being made
         let (_, parent) = made_parent()?;
-        made::trash(&parent, &name, &current_project(), busy || updates::running_now(), git, move_to_trash)?
+        made::trash(&parent, &name, &current_project(), busy || updates::running_now(), git, leave_to_trash)?
     };
     log("made_trashed", json!({ "git": git }));
     forget_folder(&app, &moved);
@@ -3505,6 +3508,12 @@ fn practice_source(e: &practice::Entry) -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|_| "Could not find the practice project.".to_string())?;
     practice::source_of(&e.folder, &exe, std::env::var("COMPANION_SAMPLE_DIR").ok().as_deref()).ok_or("The practice project is missing from this copy of the app.".to_string())
 }
+/// M76: a project leaving Squibby (moved to the Trash from Home or Settings) first loses the done signal hooks Squibby added
+/// to it (M75), exactly as Remove does, so a folder put back from the Trash never brings one back (donehooks.rs).
+fn leave_to_trash(p: &std::path::Path) -> Result<(), String> {
+    let _ = donehooks::remove(p, &data_dir().join("runner"));
+    move_to_trash(p)
+}
 /// The Mac's own Trash (NSFileManager), so a removed copy can always be put back from there. Nothing is deleted outright.
 fn move_to_trash(p: &std::path::Path) -> Result<(), String> {
     use objc2_foundation::{NSFileManager, NSURL};
@@ -3585,7 +3594,7 @@ fn restart_practice(window: tauri::WebviewWindow, app: AppHandle, which: String,
         let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
         let (mut r, _) = practice_record();
         let home = PathBuf::from(home_dir());
-        let out = practice::restart(&mut r, e, &src, &home, &data_dir(), &current_project(), busy, &today(), move_to_trash)?;
+        let out = practice::restart(&mut r, e, &src, &home, &data_dir(), &current_project(), busy, &today(), leave_to_trash)?;
         let fresh = out.path.clone();
         practice::save_or_discard(|| save_practice(&r), || { let _ = move_to_trash(&fresh); }).map_err(|_| match &out.kept_old { None => "Could not save your practice progress. Your old copy is in the Trash, and the new one was not kept. Press Start for a fresh one.".to_string(), Some(_) => "Could not save your practice progress, so the new copy was not kept. Your old copy is still in your home folder.".to_string() })?;
         out
@@ -3603,7 +3612,7 @@ fn remove_practice(window: tauri::WebviewWindow, app: AppHandle, which: String, 
     let moved = {
         let _g = PRACTICE.lock().unwrap_or_else(|x| x.into_inner());
         let (mut r, _) = practice_record();
-        let moved = practice::remove(&mut r, &e.id, std::path::Path::new(&home_dir()), &current_project(), busy, move_to_trash)?;
+        let moved = practice::remove(&mut r, &e.id, std::path::Path::new(&home_dir()), &current_project(), busy, leave_to_trash)?;
         let _ = save_practice(&r);
         moved
     };
@@ -3628,7 +3637,7 @@ fn trash_practice_copies(current: &str, busy: bool) -> (Vec<PathBuf>, Vec<String
     let home = PathBuf::from(home_dir());
     let (mut moved, mut kept) = (vec![], vec![]);
     for (id, p) in practice::copies(&r, &home) {
-        match practice::remove(&mut r, &id, &home, current, busy, move_to_trash) { Ok(m) => moved.push(m), Err(_) => kept.push(p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()) }
+        match practice::remove(&mut r, &id, &home, current, busy, leave_to_trash) { Ok(m) => moved.push(m), Err(_) => kept.push(p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()) }
     }
     let _ = save_practice(&r);
     (moved, kept)
@@ -4041,6 +4050,99 @@ fn editor_installed(bundle: &str) -> bool {
     NSWorkspace::sharedWorkspace().URLForApplicationWithBundleIdentifier(&objc2_foundation::NSString::from_str(bundle)).is_some()
 }
 
+/// The open in editor path, shared by Point at the problem and Walk me through it (M76): the file must really be inside the
+/// project, and opens at its line in the editor picked in Settings (Open files in, pointat.editor), else the editor in front,
+/// else the first installed, else the Mac's default. Returns what is said, and the editor's bundle id when it is known.
+fn open_in_editor_at(project: &str, rel: &str, line: u32, column: Option<u32>) -> Result<(String, Option<String>), String> {
+    let file = pointat::file_in_project(std::path::Path::new(project), rel).map_err(|e| format!("I could not open that file: {e}."))?;
+    let short = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    // Open files in (pointat.editor): the editor in front unless another was picked; one not on this Mac falls back
+    // to that order, and the person is told.
+    let pick = pointat::choose_editor_for(setting_now("pointat.editor").as_str().unwrap_or(""), &front_id(), editor_installed);
+    let note = pick.missing.map(pointat::missing_words).unwrap_or_default();
+    let (ok, name, bundle) = match pick.editor.and_then(|i| pointat::editor_link(i, &file, line.max(1), column).map(|l| (i, l))) {
+        Some((i, link)) => (std::process::Command::new("/usr/bin/open").arg(&link).status().map(|s| s.success()).unwrap_or(false), pointat::EDITORS[i].2.to_string(), Some(pointat::EDITORS[i].0.to_string())),
+        None => (std::process::Command::new("/usr/bin/open").arg("-t").arg(&file).status().map(|s| s.success()).unwrap_or(false), "your text editor".to_string(), None),
+    };
+    log("point_open", json!({ "editor": name, "ok": ok, "fell_back": pick.missing.is_some() }));
+    if !ok { return Err(format!("{note}I could not open {short} in {name}.")); }
+    Ok((format!("{note}Opened {short} at line {line} in {name}.", line = line.max(1)), bundle))
+}
+
+/// M76 (roadmap 18): Open in my editor on a Walk me through it step. Only from Home, only on a press, only a file inside the
+/// project open now. It opens the file and does not look at the screen. Returns what is said.
+#[tauri::command]
+fn open_in_editor(window: tauri::WebviewWindow, project: String, file: String, line: u32) -> Result<String, String> {
+    settings::only_card(window.label())?;
+    let current = current_project();
+    if current.is_empty() || project != current { return Err("That change was in a different project folder, so I did not open anything.".into()); }
+    open_in_editor_at(&project, &file, line.max(1), None).map(|o| o.0)
+}
+
+/// M76 (roadmap 16): Show me where to paste, after Copy for my AI. Only on the person's press. The light comes on first, then
+/// the front app's typing boxes are read once through Accessibility (asked the first time, rule 8), and pastehere.rs decides:
+/// a solid ring on a confirmed chat box, a dashed one for a guess, or words only. The ring is Point at the problem's, clipped
+/// to the window and gone when it changes (rule 22). Squibby never types, pastes or presses in the other app.
+#[tauri::command]
+fn point_paste(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), String> {
+    settings::only_card(window.label())?;
+    showme_end_answer(&app);
+    point_cancel(); hide_overlay(&app);
+    let gen = POINT_GEN.load(std::sync::atomic::Ordering::SeqCst);
+    let alive = move || POINT_GEN.load(std::sync::atomic::Ordering::SeqCst) == gen;
+    std::thread::spawn(move || {
+        const WORDS: &str = "Paste it into your AI tool's chat box, then press Return.";
+        if light_unseen() { say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); return; }
+        if !ax::trusted(false) {
+            let _ = ax::trusted(true);   // macOS's own prompt, the first time only
+            say_showme(&app, "needs_permission", concat!("To find the chat box, allow Accessibility for ", crate::product!(), " in System Settings, then press Show me where to paste again. ", "Until then: paste it into your AI tool's chat box."), json!({}));
+            return;
+        }
+        // The light first (rule 5), then a short moment so it is seen before anything is read.
+        say_showme(&app, "looking", "Looking for the chat box", json!({}));
+        std::thread::sleep(Duration::from_millis(250));
+        if !alive() { return; }
+        let Some(front) = ax::front_app() else { say_showme(&app, "opened", WORDS, json!({})); return; };
+        let own = front.pid == std::process::id() as i32;
+        let read = if own { None } else { ax::text_boxes(front.pid) };
+        ax::let_apps_sleep();
+        if !alive() { return; }
+        let kind = pastehere::app_of(&front.bundle_id);
+        let (win, title, boxes) = read.unwrap_or((coords::R { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }, String::new(), vec![]));
+        let site = if kind == pastehere::App::Browser { pastehere::site_of(&title) } else { None };
+        let place = pastehere::decide(kind, site, (win.w > 0.0).then_some(win), &boxes, own);
+        let name = pastehere::name_of(kind, site, &front.name);
+        log("paste_where", json!({ "app": format!("{kind:?}"), "found": match place { pastehere::Where::Confirmed(_) => "confirmed", pastehere::Where::Guess(_) => "guess", pastehere::Where::Words => "words" } }));
+        let (rect, exact) = match place {
+            pastehere::Where::Confirmed(r) => (r, true),
+            pastehere::Where::Guess(r) => (r, false),
+            pastehere::Where::Words => { say_showme(&app, "opened", &if name.is_empty() { WORDS.to_string() } else { format!("Paste it into {name}'s chat box, then press Return.") }, json!({})); return; }
+        };
+        let cap = if exact { if name.is_empty() { "Paste here".to_string() } else { format!("Paste into {name} here") } } else { "Probably here. I am guessing, so check it is the chat box.".to_string() };
+        let Some(d) = display_of(&app, rect) else { say_showme(&app, "opened", WORDS, json!({})); return; };
+        let under = anchor_for(rect);
+        let Some((watched, ring)) = draw_pointer_with(&app, d, rect, &cap, exact, false, Look::default(), under, gen) else { return; };
+        say_showme(&app, if exact { "pointing" } else { "pointing_roughly" }, &cap, json!({}));
+        watch_ring(&app, rect, watched, ring, None);
+    });
+    Ok(())
+}
+
+/// The display a rect (global top-left points) is on, in the same points. Asked on the main thread, where AppKit answers.
+fn display_of(app: &AppHandle, rect: coords::R) -> Option<coords::R> {
+    let c = rect.center();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = app.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else { let _ = tx.send(None); return };
+        let screens = NSScreen::screens(mtm);
+        let primary_h = screens.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let found = screens.iter().map(|s| s.frame()).map(|f| coords::R { x: f.origin.x, y: primary_h - f.origin.y - f.size.height, w: f.size.width, h: f.size.height })
+            .find(|d| c.x >= d.x && c.x < d.x + d.w && c.y >= d.y && c.y < d.y + d.h);
+        let _ = tx.send(found);
+    });
+    rx.recv_timeout(Duration::from_millis(1500)).ok().flatten()
+}
+
 /// Opens the failing file at its line (in the editor in front, or the first one installed, or the Mac's default),
 /// waits for it to come forward, then looks once (light first) and circles the line. Nothing is sent to a model.
 #[tauri::command]
@@ -4063,19 +4165,10 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
             let rel = problem.get("file").and_then(Value::as_str).unwrap_or("");
             let line = problem.get("line").and_then(Value::as_u64).unwrap_or(0) as u32;
             let column = problem.get("column").and_then(Value::as_u64).map(|c| c as u32);
-            let file = match pointat::file_in_project(std::path::Path::new(&project), rel) { Ok(f) => f, Err(e) => { say_showme(&app, "error", &format!("I could not open that file: {e}."), json!({})); return; } };
-            let short = file.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-            // Open files in (pointat.editor): the editor in front unless another was picked; one not on this Mac falls back
-            // to that order, and the person is told.
-            let pick = pointat::choose_editor_for(setting_now("pointat.editor").as_str().unwrap_or(""), &front_id(), editor_installed);
-            let note = pick.missing.map(pointat::missing_words).unwrap_or_default();
-            let (ok, name, bundle) = match pick.editor.and_then(|i| pointat::editor_link(i, &file, line.max(1), column).map(|l| (i, l))) {
-                Some((i, link)) => (std::process::Command::new("/usr/bin/open").arg(&link).status().map(|s| s.success()).unwrap_or(false), pointat::EDITORS[i].2.to_string(), Some(pointat::EDITORS[i].0.to_string())),
-                None => (std::process::Command::new("/usr/bin/open").arg("-t").arg(&file).status().map(|s| s.success()).unwrap_or(false), "your text editor".to_string(), None),
-            };
-            log("point_open", json!({ "editor": name, "ok": ok, "fell_back": pick.missing.is_some() }));
-            if !ok { say_showme(&app, "error", &format!("{note}I could not open {short} in {name}."), json!({})); return; }
-            opened = Some((format!("{note}Opened {short} at line {line} in {name}."), bundle));
+            match open_in_editor_at(&project, rel, line, column) {
+                Ok(o) => opened = Some(o),
+                Err(e) => { say_showme(&app, "error", &e, json!({})); return; }
+            }
         }
         // Give the editor a moment to come forward and draw the line.
         if let Some((_, Some(bundle))) = &opened {
@@ -4169,6 +4262,32 @@ fn save_share_card(image: String, title: String) -> Result<String, String> {
     let mut f = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(|e| format!("could not save it ({e})"))?;
     std::io::Write::write_all(&mut f, &bytes).map_err(|e| format!("could not save it ({e})"))?;
     log("share_card_saved", json!({}));
+    Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// M76: Save the go live report (golive.rs). Only from Home, only on a press: the Mac's own save dialog opens in another
+/// process (so Squibby never takes the keyboard), the person picks where, and the checked bytes are written there. Nothing is
+/// sent anywhere and the report is never logged. Returns the saved file's name, or "" when the person cancelled.
+#[tauri::command]
+async fn save_report(window: tauri::WebviewWindow, kind: String, name: String, data: String) -> Result<String, String> {
+    use base64::Engine;
+    settings::only_card(window.label())?;
+    let kind = golive::Kind::of(&kind).ok_or("that is not a report")?;
+    if data.len() > golive::MAX_BYTES.div_ceil(3) * 4 + 4 { return Err("the report is too big".into()); }
+    let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "that is not a report".to_string())?;
+    golive::check(kind, &bytes).map_err(String::from)?;
+    let offered = golive::script_text(&golive::offered_name(&name, kind));
+    let dialog = NativeDialog::open();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let script = format!("POSIX path of (choose file name with prompt \"Save the go live report\" default name \"{offered}\" default location (path to downloads folder))");
+        std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).env_clear().env("PATH", "/usr/bin:/bin").output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).await.unwrap_or(None);
+    drop(dialog);
+    let Some(picked) = picked.filter(|p| !p.is_empty()) else { return Ok(String::new()) };   // cancelled: nothing written
+    let path = golive::chosen_path(&picked, kind).ok_or("that place cannot be saved to")?;
+    golive::write(&path, &bytes).map_err(|e| format!("could not save it ({e})"))?;
+    log("report_saved", json!({ "kind": kind.ext() }));
     Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
@@ -5267,7 +5386,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, point_paste, open_in_editor]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

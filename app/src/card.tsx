@@ -71,6 +71,8 @@ import { isVague, vagueChoices, vagueStateOf, type VagueChoice } from "./vagueAs
 import type { ShipFlow } from "./model.ts";
 import { changesWait, CLOSE_QUIETLY_MS, closesQuietly, dismissHow, keyWarned, reviewShown, silenceCommand } from "./review.ts";
 import { sendBackCopy } from "./review.ts";
+import { ShareReport, WalkThrough } from "./m76Panels.tsx";
+import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
@@ -1133,7 +1135,10 @@ function Card() {
   const reviewOn = reviewShown(m.review, project, reviewMode, groups.on("review"));
   // M74 (review.whenNothing): with Close it quietly, a review that found nothing closes by itself after a few seconds,
   // and its History row says so (never "you said it looks fine").
-  const quietBatch = reviewOn && closesQuietly(m.review, useSetting("review.whenNothing")) ? m.review!.batch : null;
+  // M76: read on every render (a hook behind reviewOn && changed the hook order when the first review card came, and Home
+  // stopped drawing: "Cannot read properties of null (reading 'getSnapshot')").
+  const whenNothing = useSetting("review.whenNothing");
+  const quietBatch = reviewOn && closesQuietly(m.review, whenNothing) ? m.review!.batch : null;
   useEffect(() => {
     if (!quietBatch || !project) return;
     const t = setTimeout(() => {
@@ -1144,6 +1149,8 @@ function Card() {
     return () => clearTimeout(t);
   }, [quietBatch, project]);
   const reviewHandlers = {
+    // M76: Circle it on a Walk me through it step: Point at the problem's own ring on that line, on the person's press.
+    onPoint: (st: TourStep) => { const r = nowModel.current.review; if (r && project && st.line && st.lineText) pointAt(pointChange(project, { file: st.file, line: st.line, lineText: st.lineText }, st.what)); },
     onReview: (proof: boolean) => {
       const r = nowModel.current.review;
       if (!r || !project) return;
@@ -2853,7 +2860,8 @@ function Card() {
         // M58 UI 6: the readiness line, each gate's own next step (Fix it, Check again, I checked this myself), and Put it
         // online as the one main button once every gate passed (shipPanels.tsx; shipFinish.ts decides).
         <ShipGatesPanel ship={m.ship as { gates: Gate[]; canShip: boolean }} words={shipWords(m)} online={putOnlineShown(m.ship as { gates: Gate[]; canShip: boolean }, m.practice?.project === project)} practice={m.practice?.project === project}
-          onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })} />
+          onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })}
+          share={project ? <ShareReport id="ship-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null} />
       )}
 
       {show("research") && m.research && (
@@ -2954,6 +2962,13 @@ function Card() {
               <Button kind="primary" label={S.fixRun.keepLabel} onClick={() => { const cp = m.receipt?.checkpoint; setKept(cp && undoCan(m, project) ? { checkpoint: cp, n: Date.now() } : null); dispatch({ type: "ui.resultKept" }); }}>{S.homeNow.keep}</Button>
               {undoCan(m, project) && undoButton(S.homeNow.undo)}
               <Replay m={m} id={`${undoId}-replay`} />
+            </div>
+          )}
+          {/* M76: on a proven result, Share report (the go live report) and Walk me through it (the tour of the fix). */}
+          {resHero?.pill === "proven" && project && !undone && (
+            <div className="row result-more">
+              <ShareReport id="result-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship ?? null }} />
+              {setting("tour.offer") !== false && <WalkThrough id="result-walk" tour={tourFromReceipt(m.receipt, m.explain)} project={project} onCircle={(st) => { if (st.line && st.lineText) pointAt(pointChange(project, { file: st.file, line: st.line, lineText: st.lineText }, st.what)); }} />}
             </div>
           )}
           {!resHero && (() => { const v = receiptVerdict(m)!, said = v.line || proofSentence(m, v.proven); return (m.receipt.changed.length > 0 || v.kind !== "noChange") && (

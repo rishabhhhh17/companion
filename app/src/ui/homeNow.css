@@ -124,3 +124,24 @@
 .home .ask-pal-note { flex: none; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .home .ask-pal-key { flex: none; padding: 0 var(--space-1); border-radius: var(--r-key); background: var(--key-fill); color: var(--fg-2); font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); opacity: 0; transition: opacity var(--dur-hover) var(--ease-out); }
 .home .ask-pal-row[aria-selected="true"] .ask-pal-key { opacity: 1; }
+
+/* M76: Share report and Walk me through it, inside a result, a review and the go live checks. Inset like a field, so they read
+   as part of the card they open in; the step crossfades in with the M66 enter time (say-in) and reduced motion drops it. */
+.home .result-more, .home .rv-walk { margin-top: var(--space-2); }
+.home .golive, .home .tour { flex: 1 1 100%; display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-2); padding: var(--space-3); border: var(--hair) solid var(--line-strong); border-radius: var(--r-card); }
+.home .golive-head, .home .tour-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-1) var(--space-2); font: var(--t-small) / var(--lh-small) var(--font); }
+.home .golive-head b, .home .tour-head b { color: var(--fg); font-weight: var(--w-strong); }
+.home .golive-head .muted, .home .tour-head .muted { color: var(--fg-2); }
+.home .golive-answer { display: flex; flex-direction: column; gap: var(--space-1); padding-left: var(--space-2); border-left: var(--hair) solid var(--line-strong); }
+.home .golive-answer[data-answer="ready"] { border-left-color: var(--ok); }
+.home .golive-answer[data-answer="notReady"] { border-left-color: var(--bad); }
+.home .golive-answer b { font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); color: var(--fg); }
+.home .golive-answer span { font: var(--t-small) / var(--lh-small) var(--font); color: var(--fg-2); }
+.home .golive-switch { display: flex; align-items: center; gap: var(--space-2); font: var(--t-small) / var(--lh-small) var(--font); color: var(--fg-2); }
+.home .tour-step { display: flex; flex-direction: column; gap: var(--space-1); animation: say-in var(--dur-enter) var(--ease-out) both; }
+.home .tour-place { font: var(--t-small) / var(--lh-small) var(--font-code); color: var(--fg-2); overflow-wrap: anywhere; }
+.home .tour-code { margin: 0; padding: var(--space-1) var(--space-2); border-radius: var(--r-control); background: var(--surface-1); font: var(--t-small) / var(--lh-small) var(--font-code); color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; }
+.home .tour-what { margin: 0; font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); color: var(--fg); }
+.home .tour-why { margin: 0; font: var(--t-body) / var(--lh-body) var(--font); }
+.home .tour-nav { justify-content: flex-start; }
+@media (prefers-reduced-motion: reduce) { .home .tour-step { animation: none; } }

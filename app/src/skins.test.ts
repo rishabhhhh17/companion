@@ -85,6 +85,8 @@ describe("the chrome does not read a skin", () => {
       "--tint-sky", "--tint-sky-ink", "--tint-mint", "--tint-mint-ink", "--tint-rose", "--tint-rose-ink", "--tint-sun", "--tint-sun-ink", "--tint-lilac", "--tint-lilac-ink",
       // M51 polish: Settings' picture of the Deep theme, in Deep's own blues (a picture of a theme, never the chrome).
       "--sw-deep-bg", "--sw-deep-card", "--sw-deep-line", "--sw-deep-ink",
+      // M76: the go live report's marks (passed, failed, not sure), printed on white in a file sent to a client.
+      "--report-ok", "--report-bad", "--report-unsure",
       // The brand language (1 Nov 2026): each group's element is the light of its room, its gem and its one gel pill, never the
       // chrome (the list, the words, the dividers and the secondary keys stay grey). Flow's is the usual room, on :root.
       // element.test.ts measures every element's contrast.
