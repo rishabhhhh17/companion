@@ -114,9 +114,14 @@ export type PracticeKey = Envelope & { type: "practice.key"; project: string; st
  *  remove: one press takes Squibby's own entry out again. */
 export const DONE_SIGNAL_TOOLS = ["claude", "codex"] as const;
 export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
+/** M77 (the safety net): which hook. done: the Stop hook (M75). guard: Claude Code's PreToolUse hook on Bash, so Squibby can
+ *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the
+ *  notch can say Claude is waiting for the person. Absent means done. */
+export const HOOK_KINDS = ["done", "guard", "waiting"] as const;
+export type HookKind = (typeof HOOK_KINDS)[number];
 export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
-export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true };
-export type DoneSignalRemove = Envelope & { type: "donesignal.remove"; project: string; tool: DoneSignalTool };
+export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true; hook?: HookKind };
+export type DoneSignalRemove = Envelope & { type: "donesignal.remove"; project: string; tool: DoneSignalTool; hook?: HookKind };
 /** M75: the answer to the cost pause card. keep: go on (asked again only at twice the line); stop: end the task as a stop;
  *  undo: end it, then put the files back to the task's own safety copy. */
 export const COST_CHOICES = ["keep", "stop", "undo"] as const;
@@ -229,7 +234,10 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // all its rows), key_in_page (a key that would reach the page every visitor loads), house_rule (a "never edit" rule of the
 // project's own .companion/rules.txt matched a changed file) and house_rule_ask (an "ask before editing" rule matched).
 // M74: chosen_stop, a change to a kind the person asked to always stop for (review.stopKinds: sign in, payments).
-export const REVIEW_REASONS = ["secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page"] as const;
+// M77: weakened_check (a test skipped or narrowed, an assertion deleted, a coverage threshold lowered, a CI or lint check
+// told to pass anyway; runner/src/review/weakened.ts) comes before every other reason; claimed_passed (the words say the
+// checks pass, the checks did not run or failed).
+export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
 /** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
  *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
@@ -328,6 +336,8 @@ export type Receipt = Envelope & {
    *  "failed"; absent from older engines. `ended` keeps its four words (groups, F20). */
   endedWhy?: "check_failed" | "spending_limit" | "daily_limit" | "turns" | "no_connection" | "claude_busy" | "error";
   mode?: "drive" | "rescue" | "research" | "ship";   // the mode the task ran in
+  /** M77: the task's last words claimed the checks pass, but the proof says they did not run or failed. */
+  claimedPassed?: boolean;
   said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
 };
@@ -400,6 +410,14 @@ export type LoopStuck = Envelope & { type: "loop.stuck"; agent: string; index: n
 // (undone stays set: nothing was checked since).
 /** failedCheck (M72): the rung of the check that failed (install, checks, tests, start, browser, review), for a failed task. */
 export type TaskSummary = { id: number; label: string; status: string; usd: number; startedAt: string; endedAt: string | null; checkpoint: string | null; changed: number | null; proof: string | null; undone?: boolean; back?: boolean; lastWorking?: boolean; star?: boolean; name?: string; failedCheck?: string };
+/** M77: a saved copy taken the instant before the person's own AI tool ran a destructive command (runner/src/guard.ts), as
+ *  its own row in History: never a task, so no verdict is read from it. command: the short, redacted command (60
+ *  characters). undone: an Undo went back to this copy or an earlier one. */
+export type SavedRowView = { id: number; at: string; checkpoint: string; command: string; undone: boolean };
+/** M77: what the safety net caught in the last seven days, from real rows only (rule 16: a count, never praise). falseDones:
+ *  reviews whose checks failed or whose words claimed a pass that did not run. keys: keys found in code. weakened: checks a
+ *  change weakened. saved: saved copies an Undo went back to. undone: tasks put back with Undo. */
+export type CaughtView = { since: string; falseDones: number; keys: number; weakened: number; saved: number; undone: number };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
  *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
 /** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary
@@ -407,7 +425,7 @@ export type TaskSummary = { id: number; label: string; status: string; usd: numb
  *  no_longer_applies: a newer change made every reason go away). */
 export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies", "closed_quietly"] as const;
 export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
-export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string } };
+export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string }; saved?: SavedRowView[]; caught?: CaughtView };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 // before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; before?: string; caption: string; circles: number; file?: string };
@@ -420,7 +438,13 @@ export type ShipCard = Envelope & { type: "ship.card"; project: string; url: str
 export type PracticeKeyEvent = Envelope & { type: "practice.key"; project: string; step: "wrote" | "fixed" | "refused"; written?: boolean; checkpoint?: string; changed?: { file: string; kind: "added" | "modified" }[]; clean?: boolean; reason?: string };
 /** M75: each tool's done signal in a project. file: the hook file from the project down; adds: the exact text the card shows
  *  before the yes; creates: the file is not there yet. problem: why the last add or remove wrote nothing. */
-export type DoneSignalState = Envelope & { type: "donesignal.state"; project: string; tools: { tool: DoneSignalTool; on: boolean; file: string; adds: string; creates: boolean; problem?: string }[]; problem?: string };
+export type DoneSignalState = Envelope & { type: "donesignal.state"; project: string; tools: { tool: DoneSignalTool; hook?: HookKind; on: boolean; file: string; adds: string; creates: boolean; problem?: string }[]; problem?: string };
+/** M77: a saved copy was taken the instant before the person's own AI tool ran a destructive command. command: short and
+ *  redacted (60 characters), the same words as the History row. */
+export type GuardSaved = Envelope & { type: "guard.saved"; project: string; checkpoint: string; command: string };
+/** M77: Claude Code is waiting for the person in this project (a permission or its idle prompt), or no longer is. message:
+ *  Claude Code's own short notification (120 characters, redacted), never the question itself. */
+export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string };
 /** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
 export type CostPause = Envelope & { type: "cost.pause"; agent: string; project: string };
 export type CostResolved = Envelope & { type: "cost.resolved"; agent: string; choice: (typeof COST_CHOICES)[number] };
@@ -540,8 +564,13 @@ export type ReviewResultEvent = Envelope & {
   ruleFiles?: string[];
   /** M57: how many smaller reasons were left out by review.strictness or a "do not flag" line. Never a Fix this first. */
   hidden?: number;
+  /** M77: what the changes did not tell you, from the review's own data (no model call): files changed beyond the usual
+   *  code (tests, CI and lint config, settings, dependencies, settings and key files), at most 5 named and how many more;
+   *  TODO or FIXME lines added; whether the checks ran and whether they failed. The pages make at most three lines of it. */
+  untold?: ReviewUntold;
 };
-export type Event = ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent;
+export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
+export type Event = GuardSaved | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -651,6 +680,28 @@ const reviewRowsOk: Check = (m) => {
   });
   return ok ? null : '"reviews" must be a list of review rows: id, at, count, files (names), rating, touches, checks, did and summary';
 };
+// M77: the saved copies History shows (at most 50, each a checkpoint, when, and a short command), and the week's count.
+const savedRowsOk: Check = (m) => {
+  const rows = m.saved;
+  const ok = Array.isArray(rows) && rows.length <= 50 && rows.every((x) => {
+    const o = x as Record<string, unknown> | null;
+    return !!o && typeof o === "object" && !Array.isArray(o) && Number.isInteger(o.id) && typeof o.at === "string" && !Number.isNaN(Date.parse(o.at as string))
+      && typeof o.checkpoint === "string" && /^cp_/.test(o.checkpoint as string) && typeof o.command === "string" && Array.from(o.command as string).length <= 80 && typeof o.undone === "boolean";
+  });
+  return ok ? null : '"saved" must be a list of saved copies: id, at, checkpoint, a short command and undone';
+};
+const caughtOk: Check = (m) => {
+  const c = m.caught as Record<string, unknown> | null;
+  const ok = !!c && typeof c === "object" && !Array.isArray(c) && typeof c.since === "string" && ["falseDones", "keys", "weakened", "saved", "undone"].every((k) => Number.isInteger(c[k]) && (c[k] as number) >= 0);
+  return ok ? null : '"caught" must count falseDones, keys, weakened, saved and undone from a since date';
+};
+// M77: what the changes did not tell you: file names (at most 5) and counts.
+const untoldOk: Check = (m) => {
+  const u = m.untold as Record<string, unknown> | null;
+  const ok = !!u && typeof u === "object" && !Array.isArray(u) && Array.isArray(u.beyond) && (u.beyond as unknown[]).length <= 5 && (u.beyond as unknown[]).every((f) => typeof f === "string" && f.length > 0)
+    && Number.isInteger(u.beyondMore) && (u.beyondMore as number) >= 0 && Number.isInteger(u.todos) && (u.todos as number) >= 0 && (REVIEW_CHECKS as readonly string[]).includes(u.checks as string);
+  return ok ? null : '"untold" must name at most 5 files beyond the usual, how many more, how many TODO lines and what the checks said';
+};
 const reviewOk: Check = (m) => {
   if (m.ok !== true) return typeof m.reason === "string" && m.reason.length > 0 ? null : 'a review that did not run says why in "reason"';
   if (typeof m.batch !== "string" || !m.batch) return 'a review names its "batch"';
@@ -747,8 +798,8 @@ const COMMANDS: Record<string, Check[]> = {
   "practice.key": [str("project"), oneOf("step", ["write", "fix"])],
   // M75: the done signal (only with the yes), the cost pause's answer and the sign in handover's answer.
   "donesignal.show": [str("project")],
-  "donesignal.add": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (m.confirm === true ? null : 'adding a hook needs the person\'s yes, "confirm": true')],
-  "donesignal.remove": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS])],
+  "donesignal.add": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), (m) => (m.confirm === true ? null : 'adding a hook needs the person\'s yes, "confirm": true'), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
+  "donesignal.remove": [str("project"), oneOf("tool", [...DONE_SIGNAL_TOOLS]), opt("hook", oneOf("hook", [...HOOK_KINDS]))],
   "cost.choose": [str("agent"), oneOf("choice", [...COST_CHOICES])],
   "proof.signIn": [str("agent"), oneOf("choice", [...SIGN_IN_CHOICES])],
 };
@@ -758,13 +809,13 @@ const EVENTS: Record<string, Check[]> = {
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
   "review.started": [str("project"), str("batch"), bool("proof")],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), reviewOk],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
     (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
-  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk), opt("lastWorking", (m) => { const w = m.lastWorking as Record<string, unknown>; return w && typeof w === "object" && typeof w.checkpoint === "string" && /^cp_/.test(w.checkpoint) && typeof w.at === "string" ? null : '"lastWorking" needs a checkpoint and when'; })],
+  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk), opt("lastWorking", (m) => { const w = m.lastWorking as Record<string, unknown>; return w && typeof w === "object" && typeof w.checkpoint === "string" && /^cp_/.test(w.checkpoint) && typeof w.at === "string" ? null : '"lastWorking" needs a checkpoint and when'; }), opt("saved", savedRowsOk), opt("caught", caughtOk)],
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   // answers: the id of the command this state answers; refused: why that command could not do what it asked.
@@ -834,7 +885,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1')), opt("privateOpen", textList("privateOpen"))],
@@ -847,7 +898,11 @@ const EVENTS: Record<string, Check[]> = {
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
   "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
   // M75: the done signal per tool, the cost pause (no amount), and the sign in handover.
-  "donesignal.state": [str("project"), (m) => (Array.isArray(m.tools) && m.tools.every((t) => { const o = t as Record<string, unknown>; return !!o && typeof o === "object" && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool) && typeof o.on === "boolean" && typeof o.file === "string" && typeof o.adds === "string" && typeof o.creates === "boolean"; }) ? null : '"tools" must list each tool with on, file, adds and creates'), opt("problem", str("problem"))],
+  "donesignal.state": [str("project"), (m) => (Array.isArray(m.tools) && m.tools.every((t) => { const o = t as Record<string, unknown>; return !!o && typeof o === "object" && (DONE_SIGNAL_TOOLS as readonly unknown[]).includes(o.tool) && (o.hook === undefined || (HOOK_KINDS as readonly unknown[]).includes(o.hook)) && typeof o.on === "boolean" && typeof o.file === "string" && typeof o.adds === "string" && typeof o.creates === "boolean"; }) ? null : '"tools" must list each tool with on, file, adds and creates'), opt("problem", str("problem"))],
+  // M77: the saved copy names its project, checkpoint and the short command (never over 80 characters); the waiting mark
+  // names its project, and its message is Claude Code's own short notification (never over 120 characters).
+  "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
+  "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters'))],
   "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],
   "cost.resolved": [str("agent"), oneOf("choice", [...COST_CHOICES])],
   "proof.signIn": [str("agent"), oneOf("stage", [...SIGN_IN_STAGES]), opt("percent", (m) => (typeof m.percent === "number" && m.percent >= 0 && m.percent <= 100 ? null : '"percent" must be a number from 0 to 100')), opt("reason", str("reason"))],

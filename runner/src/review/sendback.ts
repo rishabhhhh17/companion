@@ -10,7 +10,11 @@
 import { clip, redact } from "../redact.ts";
 import { listWords, touchWords, type FileChange, type Rating, type Reason, type Touch } from "./rate.ts";
 
-export type ReviewWords = { rating: Rating; reasons: Reason[]; touches: Touch[]; files: FileChange[]; count: number; summary: string; notes: string[] };
+export type ReviewWords = { rating: Rating; reasons: Reason[]; touches: Touch[]; files: FileChange[]; count: number; summary: string; notes: string[];
+  /** M77: a key is in the code and the project has a git remote, so a push would make it public. */
+  pushRisk?: boolean };
+/** M77: the fixed closing line when a key could be pushed (the engine's own words, outside the quote). */
+const REMOVE_KEY_FIRST = "Remove the key from the code before any commit or push, and tell the person to rotate it (make a new one and stop the old one), since it may already have been seen. A key that is pushed is public.";
 
 const RATING_WORDS: Record<Rating, string> = { safe: "safe", worth_a_look: "worth a look", stop: "stop, something needs fixing first" };
 const KIND_WORDS: Record<FileChange["kind"], string> = { added: "added", modified: "changed", deleted: "removed" };
@@ -84,6 +88,7 @@ export function sendBackText(r: ReviewWords): string {
     problems.length
       ? "Fix only these problems and keep the rest of the change as it is. Do not write keys or passwords into the code; read them from a settings file such as .env. When you are done, run the project's build and tests and show that they pass."
       : "If this is what was meant, nothing needs to change. Run the project's build and tests and show that they pass.",
+    r.pushRisk ? REMOVE_KEY_FIRST : "",
   ], [3, 1, 0, 2]);
 }
 
@@ -101,5 +106,6 @@ export function fixPrompt(r: ReviewWords): string {
     { title: "Also worth checking:", lines: notes },
   ], [
     "Keep the person's other changes as they are. Never write a key or password into the code: read it from a settings file such as .env, and do not open or change that file. Prove the fix with the project's own build and tests.",
+    r.pushRisk ? REMOVE_KEY_FIRST : "",
   ], [3, 1, 0, 2]);
 }

@@ -43,6 +43,7 @@ import { OWN_WORK, ReviewService } from "./review/service.ts";
 import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 import { DoneSignals, type DonePlan } from "./donesignal.ts";
+import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -123,10 +124,22 @@ const review = new ReviewService({
 });
 // M75 (roadmap 19, F30): the other tool's done signal. Only Squibby's own done folder is listened to; a marker for the project
 // being reviewed ends its quiet time at once. The hook is written only after the person's yes (donesignal.add, confirm).
-const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { review.doneSignal(p); } });
+const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); review.doneSignal(p); } });
 doneSignals.start();
+// M77 (the safety net): the guard and waiting hooks write into Squibby's own guard folder (guard.ts). A destructive command
+// of the person's own Claude Code gets a shadow snapshot first (its own History row, never git), then the hook lets the
+// command go; a waiting note is said for the notch. The snapshot changes no file, so it is not wrapped as the engine's own
+// work: the review's batches go on as before. Nothing is blocked or changed, whatever happens here.
+const guard = new HookGuard(doneSignals.guardFolder, {
+  projectOf: (t) => doneSignals.projectOf(t),
+  snapshot: (p, label) => runner.checkpointsFor(p).snapshot(label),
+  emit: (e) => say(e),
+  row: (r) => { if (r.label.startsWith(SAVED_LABEL)) taskLog.saved(r); },
+  waitingMinutes: () => waitingMinutesOf(runnerSettings.get("notch.waitingMinutes")),
+});
+guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
-  say({ type: "donesignal.state", project, tools: tools.map((t) => ({ tool: t.tool, on: t.on, file: t.rel, adds: t.adds, creates: t.creates, ...(t.problem ? { problem: t.problem } : {}) })), ...(problem ? { problem } : {}) });
+  say({ type: "donesignal.state", project, tools: tools.map((t) => ({ tool: t.tool, hook: t.hook, on: t.on, file: t.rel, adds: t.adds, creates: t.creates, ...(t.problem ? { problem: t.problem } : {}) })), ...(problem ? { problem } : {}) });
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings, spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) } }) : null;
@@ -221,7 +234,7 @@ function dispatch(cmd: Command) {
   }
   if (cmd.type === "donesignal.show" || cmd.type === "donesignal.add" || cmd.type === "donesignal.remove") {
     try {
-      const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool) : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool) : null;
+      const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool, cmd.hook ?? "done") : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool, cmd.hook ?? "done") : null;
       doneState(cmd.project, doneSignals.state(cmd.project), done?.problem);
     } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
     return;
@@ -278,7 +291,7 @@ async function main() {
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
-  watches.stop(); watches.stopAll(); review.stop(); doneSignals.stop();
+  watches.stop(); watches.stopAll(); review.stop(); doneSignals.stop(); guard.stop();
   void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
   void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
   void releaseShotDrive();

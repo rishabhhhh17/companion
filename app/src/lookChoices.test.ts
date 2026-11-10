@@ -136,7 +136,7 @@ describe("the choices are real settings, with their words and one place in Setti
     for (const k of RETIRED_LOOK_KEYS) expect(placeOf(k), k).toBeNull();
     expect(PAGES.general.more.some((t) => t.id === "more.general.look")).toBe(false);
     // Home's topic keeps only how Home behaves and its size, and (M55, adapts to you) what its main button and More ways follow.
-    expect(PAGES.general.more.find((t) => t.id === "more.general.home")!.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", { fixed: "usedOften" }]);
+    expect(PAGES.general.more.find((t) => t.id === "more.general.home")!.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", { fixed: "usedOften" }]);
   });
   test("a theme saved before M51 still works: night reads as Graphite, in the row and on the page, and is not offered twice", () => {
     expect(HIDDEN_OPTIONS["look.theme"]).toEqual(["night"]);

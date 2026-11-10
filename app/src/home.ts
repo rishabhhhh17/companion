@@ -78,6 +78,8 @@ export function need(m: Model): Need | null {
   if (m.agentsAsk) return { key: "agents", tab: "now", why: S.agentsTitle, question: true };
   if (m.stuck) return { key: `stuck:${m.stuck.index}:${m.stuck.title}`, tab: "now", why: S.stuckTitle, question: true };
   if (m.costPause) return { key: `cost:${m.costPause.agent}`, tab: "now", why: S.costPause.title, question: true };
+  // M77: the person's own Claude Code waits for them (the waiting hook): the amber mark, and the line names the project.
+  if (m.claudeWaiting) return { key: `claudeWaiting:${m.claudeWaiting.project}`, tab: "now", why: S.guard.waitingWhy(m.claudeWaiting.project.split("/").filter(Boolean).at(-1) ?? ""), question: true };
   if (m.signIn) return { key: `signIn:${m.signIn.agent}:${m.signIn.stage}`, tab: "now", why: S.signInTurn.title, question: true };
   if (m.paused) return { key: `paused:${m.paused.reason}`, tab: "now", why: S.pausedTitle, question: true };
   if (m.plan) return { key: `plan:${m.plan.agent}:${m.plan.steps.length}`, tab: "now", why: S.planTitle, question: true };
@@ -211,7 +213,7 @@ export function stepsAside(m: Model, onboarding: boolean, on: boolean): boolean 
 
 export const ISLAND_LINE_MAX = 64;
 const cut = (t: string) => (t.length <= ISLAND_LINE_MAX ? t : `${t.slice(0, ISLAND_LINE_MAX - 1).trimEnd()}…`);
-const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approvals.length > 0 || !!m.agentsAsk || !!m.stuck || !!m.paused || !!m.plan);
+const waiting = (m: Model) => !!need(m) && need(m)!.tab === "now" && (m.approvals.length > 0 || !!m.agentsAsk || !!m.stuck || !!m.paused || !!m.plan || !!m.claudeWaiting);
 
 /** The small live mark on the right wing. dots: thinking. arc: working or checking. look: looking at the screen (a still
  *  light, rule 5, M46). bars: listening (the microphone's light, rule 5). amber: something waits for the person. tick: just
@@ -296,13 +298,19 @@ export function characterShows(m: Model, markTab: boolean, islandShown: boolean)
 /** The one line shown when the pointer rests on the island, or "" when there is nothing real to say: then the island shows
  *  only Flowflow peeking, never "Ready". `update`: the version a check found ready to install (the shell's "update-ready").
  *  With nothing else going on it says what is next: connect Claude first (Not connected yet), then the update waiting. */
-export function islandLine(m: Model, o: { update?: string | null; group?: string | null } = {}): string {
+export function islandLine(m: Model, o: { update?: string | null; group?: string | null; now?: number } = {}): string {
   const line = islandLineBase(m, o);
   // With Show the working group on the island (groups.islandName) and a group at work, its name starts the line (F20 item 5).
   return line && o.group && m.runnerUp ? cut(S.groups.islandGroup(o.group, line)) : line;
 }
-function islandLineBase(m: Model, o: { update?: string | null }): string {
+/** M77: how long the notch says a copy was saved before Claude's command. */
+export const SAVED_LINE_MS = 10_000;
+function islandLineBase(m: Model, o: { update?: string | null; now?: number }): string {
   if (!m.runnerUp) return S.islandOff;
+  // M77: a saved copy before a destructive command of the person's own Claude Code, said once, for a few seconds, unless
+  // something that needs the person comes first (below).
+  const savedFresh = !!m.guardSaved && (o.now ?? Date.now()) - m.guardSaved.at < SAVED_LINE_MS && !m.approvals.length && !waiting(m);
+  if (savedFresh && m.voice?.stage !== "listening" && !looksAtScreen(m)) return S.guard.savedNotice;
   if (m.voice?.stage === "listening") return S.islandListening;
   if (looksAtScreen(m)) return S.islandLooking;
   // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.

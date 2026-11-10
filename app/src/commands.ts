@@ -193,7 +193,7 @@ export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" 
 export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });
 // M75: the other tool's done signal (the add only after the card's yes), the cost pause's answer and the sign in handover's.
 export const showDoneSignal = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.show", project });
-export const addDoneSignal = (project: string, tool: "claude" | "codex"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true });
-export const removeDoneSignal = (project: string, tool: "claude" | "codex"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool });
+export const addDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
+export const removeDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
 export const chooseCost = (agent: string, choice: "keep" | "stop" | "undo"): Command => ({ v: 1, id: id(), type: "cost.choose", agent, choice });
 export const answerSignIn = (agent: string, choice: "open" | "continue" | "skip" | "getBrowser"): Command => ({ v: 1, id: id(), type: "proof.signIn", agent, choice });

@@ -74,6 +74,8 @@ import { sendBackCopy } from "./review.ts";
 import { ShareReport, WalkThrough } from "./m76Panels.tsx";
 import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
+import { projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
+import type { CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
 import { verdictMark } from "./ui/partsLogic.ts";
@@ -331,8 +333,11 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { 
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
-function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
+function HistoryPanel({ items, reviews = [], saved = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
+  // M77: the week's count, one line under the lead, only when the setting is on and there is something (read on every render).
+  const weekOn = useSetting("history.thisWeek") !== false;
+  const weekLine = thisWeekLine(caught, weekOn);
   const filtering = historyFiltering(q);
   const shown = filtering ? filterHistory(items, q) : items.slice(0, 20);
   const undoId = useId();
@@ -357,17 +362,23 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
         {u!.stage === "failed" && <div className="line" role="alert">{u!.note}</div>}
         {u!.stage === "done" && <div className="line" role="status">{u!.yours?.length ? undoneExcept(u!.yours) : S.undone}{u!.recovered ? ` ${S.undoRecovered}` : ""}{u!.large ? ` ${S.undoLarge}` : ""}</div>}
       </div>); };
-  // Tasks and reviews in one list, newest first (a task by when it ended or started, a review by when it ran).
-  const byTime = (tasks: HistoryItem[], rs: ReviewRowView[]) => [
+  // Tasks, reviews and (M77) saved copies in one list, newest first (a task by when it ended or started, a review by when
+  // it ran, a saved copy by when it was taken).
+  const byTime = (tasks: HistoryItem[], rs: ReviewRowView[], sv: SavedRowView[]) => [
     ...tasks.map((h, i) => ({ kind: "task" as const, h, i, at: Date.parse(h.endedAt ?? h.startedAt) || 0 })),
     ...rs.map((x) => ({ kind: "review" as const, x, at: Date.parse(x.at) || 0 })),
+    ...sv.map((x) => ({ kind: "saved" as const, x, at: Date.parse(x.at) || 0 })),
   ].sort((a, b) => b.at - a.at);
+  const running = items.some((x) => x.status === "running");
+  // M77: the Undo question for a saved copy, right under its row (the same words as a task's).
+  const savedAsking = u && project ? saved.find((x) => x.checkpoint === u.checkpoint) ?? null : null;
   const when = (h: HistoryItem) => { const day = historyDays([h], now, S.screens)[0]; return day && day.label !== S.screens.today ? day.label : historyTime(h, now) ?? agoWords(h.endedAt ?? h.startedAt, now); };
   return (
     <section className="panel bare hist" aria-label={S.recentTitle}>
       <h2 className="sr">{S.recentTitle}</h2>
       <Lead className="hist-lead" title={<p className="ui-lead-title" role="heading" aria-level={2}>{S.screens.historyLead}</p>}
         line={<p className="ui-lead-line">{items.length ? S.screens.historyCount(items.length, name) : S.screens.historyNone(name)}{explainWhy ? ` ${S.screens.undoCaption}` : ""}</p>} />
+      {weekLine && <div className="line hist-week" role="status">{weekLine}</div>}
       {items.length > 0 && (
         <div className="row hist-search" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
@@ -389,11 +400,30 @@ function HistoryPanel({ items, reviews = [], q, setQ, undoState: u, project, kee
       {/* M72 (the engineer's low list: one list per screen): the reviews of changes (M57 feature 1) are rows of the same
           list, by time, each with its rating's colour, the rating in words, what was done with it and the files by name only.
           Not searched with the tasks, so a search shows tasks only. */}
-      {(shown.length > 0 || (reviews.length > 0 && !filtering)) && (
+      {(shown.length > 0 || ((reviews.length > 0 || saved.length > 0) && !filtering)) && (
         <ListGroup label={S.recentTitle}>
-          {byTime(shown, filtering ? [] : reviews).map((row) => { if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
+          {byTime(shown, filtering ? [] : reviews, filtering ? [] : saved).map((row) => { if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
             <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
           ); }
+            // M77: a saved copy before a destructive command of the person's own AI tool, with Undo (the shadow copy, never git).
+            if (row.kind === "saved") { const x = row.x, l = savedRowLook(x, { running, undoing: !!u }); const backId = `${undoId}-saved-${x.id}`; return (
+              <Fragment key={`saved-${x.id}`}>
+                <ListRow rowId={`saved-${x.id}`} colour={x.undone ? "orange" : "blue"} icon={x.undone ? "undo" : "shield"} title={l.title} line={`${l.line} · ${agoWords(x.at, now)}`} fact={l.mark}
+                  action={l.undo && project ? { id: backId, label: S.historyUndo, colour: "orange", ariaLabel: `${S.historyUndo}: ${l.title}`, onClick: () => dispatch({ type: "ui.undoAsked", checkpoint: x.checkpoint }) } : null} />
+                {savedAsking?.id === x.id && u && <li className="ui-mrow hist-extra-row"><div className="hist-extra">
+                  {u.stage === "confirm" && (
+                    <ConfirmStep className="line" label={S.undoSure} back={backId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine([])}</div>
+                      <div className="row">
+                        <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, x.checkpoint)); }}>{S.undoYes}</button>
+                        <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
+                      </div></ConfirmStep>
+                  )}
+                  {u.stage === "working" && <div className="line" role="status">{S.undoWorking}</div>}
+                  {u.stage === "failed" && <div className="line" role="alert">{u.note}</div>}
+                  {u.stage === "done" && <div className="line" role="status">{u.yours?.length ? undoneExcept(u.yours) : S.undone}{u.recovered ? ` ${S.undoRecovered}` : ""}{u.large ? ` ${S.undoLarge}` : ""}</div>}
+                </div></li>}
+              </Fragment>
+            ); }
             const h = row.h, i = row.i;
             const backId = `${undoId}-${h.id}`, task = taskName(h.label), meaning = historyMeaning(h);
             const v = h.status === "running" ? null : verdictOf(historyFacts(h));
@@ -746,6 +776,8 @@ function Card() {
   // changed and the turn are not about what is in the files (M45). Put my fix back on a turn is not an Undo.
   const undone = receiptUndone(m.receipt) || (m.undo?.stage === "done" && !m.undo.back);
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
+  // M77: the week's count on Now and in History (read on every render, never behind a condition).
+  const weekOn = useSetting("history.thisWeek") !== false;
   // M66 fix 17: a proven result lands once, the first time it is seen on Now (homeFlow.ts Landing), for long enough to
   // play; after that, and on any return to it, it is simply there.
   const landing = useRef(new Landing()), landedAt = useRef<{ id: string; at: number } | null>(null);
@@ -2206,7 +2238,7 @@ function Card() {
       </>) : null;
     // M71: Now's one list (homeRest.ts nowRows): the last fix and how its check went, then what happened since, at most
     // three rows, each in its meaning's colour. It fills the room under the lead, so Now never has a big empty gap.
-    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !u, now: clock });
+    const rows = nowRows({ fix: restFix, since: restFix ? restSince : [], practice: practiceRow, undo: fixUndo === "undo" && !u, now: clock, caught: weekOn && project ? m.caught ?? null : null });
     const act = (r: (typeof rows)[number]) => {
       if (r.act === "practice") beginPractice(FIRST_PRACTICE);
       else if (r.act === "open" && r.item) openRecent(r.item);
@@ -2634,6 +2666,9 @@ function Card() {
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
       {/* M69 (F29, spec 3.11): the not connected line is the setup list's first step now, never a second message or an Add your key. */}
       {m.notice && m.notice !== S.notConnectedNotice && <div className="notice" role="status">{m.notice}</div>}
+      {/* M77: the person's own Claude Code waits for them (the waiting hook): the same line as the notch, with Claude Code's own
+          short notice under it, never the question. */}
+      {m.claudeWaiting && <div className="notice" role="status" data-kind="claude-waiting"><b>{S.guard.waitingWhy(shortProjectName(m.claudeWaiting.project))}.</b> {m.claudeWaiting.message ? `${m.claudeWaiting.message}. ` : ""}{S.guard.waitingLine}</div>}
       {updateReady && (
         <div className="notice" role="status">
           <span>{S.homeUpdateReady(updateReady)}</span>{" "}
@@ -3010,6 +3045,8 @@ function Card() {
               {/* M39: the result in its own words, as a paragraph; what kind of answer it is, small above it. */}
               <div className="answer-lead">{w.lead}</div>
               <p className="answer-words">{plainPath(w.words, project)}</p>
+              {/* M77: words that claim a pass the checks did not give, said plainly under them (rule 14: done means proven). */}
+              {m.receipt?.claimedPassed && <div className="line rv-untold">{S.guard.claimedPassed}</div>}
               {w.help && <div className="muted">{w.help}</div>}
             </div>
           ); })()}
@@ -3346,7 +3383,7 @@ function Card() {
           {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>

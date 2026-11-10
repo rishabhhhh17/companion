@@ -3,7 +3,8 @@
 // Squibby already holds for the open project (its task log, its review rows, whether files changed since the last check),
 // never a guess, never a made up number, and never who changed a file (M57: Squibby cannot tell another tool's edits from
 // the person's own). Plain code, tested in homeRest.test.ts; homeRest.tsx and card.tsx only draw what this says.
-import type { ReviewRowView } from "../../protocol/index.ts";
+import type { CaughtView, ReviewRowView } from "../../protocol/index.ts";
+import { caughtParts } from "./safetyNet.ts";
 import { historyFacts, type HistoryItem } from "./model.ts";
 import { verdictOf } from "./verdict.ts";
 import { agoWords, type HomeStatus } from "./homeHero.ts";
@@ -173,8 +174,11 @@ export const NOW_ROWS_MAX = 3;
 const FIX_ICON: Record<FixTag, IconName> = { proven: "tick", undone: "undo", failed: "cross", partly: "half", unchecked: "dash" };
 const SINCE_MEANING: Record<SinceRow["kind"], Meaning> = { files: "review", unchecked: "review", task: "stopped" };
 
-export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; practice: boolean; undo: boolean; now: number }): NowRow[] {
+export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; practice: boolean; undo: boolean; now: number; caught?: CaughtView | null }): NowRow[] {
   const rows: NowRow[] = [];
+  // M77: what the safety net caught this week, only when there is something (rule 16: a count, never praise). A press opens History.
+  const parts = caughtParts(i.caught);
+  if (parts.length) rows.push({ id: "caught", meaning: "review", icon: "shield", title: S.guard.caughtTitle, line: parts.join(", "), fact: "", act: "look", action: null });
   if (i.practice) rows.push({ id: "practice", meaning: "practice", icon: "learn", title: S.homeNow.practiceTitle, line: S.homeNow.practiceLine, fact: "", act: "practice", action: "start" });
   if (i.fix) {
     const f = i.fix, it = f.item;
@@ -197,7 +201,7 @@ export function nowRows(i: { fix: LastFix | null; since: readonly SinceRow[]; pr
     });
   }
   if (i.practice && !i.fix) rows.push({ id: "empty", meaning: "notChecked", icon: "dash", title: S.homeNow.noFixesTitle, line: S.homeNow.noFixesLine, fact: "", act: "open", action: null });
-  return rows.slice(0, NOW_ROWS_MAX);
+  return rows.slice(0, NOW_ROWS_MAX + (parts.length ? 1 : 0));
 }
 
 /** M73 (fluid, item 10): how long a finished fix worked, from the engine's own start and end times for the task whose undo

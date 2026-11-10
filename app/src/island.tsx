@@ -4,7 +4,7 @@ import { setting, settingsReady, startSettings, useSetting } from "./settingsSto
 import { hushReview, quietNow } from "./review.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { invoke, listen } from "./tauri.ts";
-import { DONE_WINGS_MS, ISLAND_MODES, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
+import { DONE_WINGS_MS, ISLAND_MODES, SAVED_LINE_MS, wingMarkShown, islandLine, islandName, islandParts, islandWings, wingsAt, type IslandMode, type Wings } from "./home.ts";
 import { readyVersion } from "./updates.ts";
 import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, openness, springFor, springStep, tuckHoldMs, type Spring } from "./islandSpring.ts";
 import { latched, rowMarkShown } from "./notchQuick.ts";
@@ -174,7 +174,14 @@ function Island() {
   const drop = useDrop();
   const g = activeGroup(m, running(drop.s));
   const showGroup = useSetting("groups.islandName") !== false;
-  const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null });
+  // M77: the saved copy's line (home.ts SAVED_LINE_MS) goes away by itself: one tick when its time is up.
+  const [, savedTick] = useState(0);
+  useEffect(() => {
+    if (!m.guardSaved) return;
+    const id = setTimeout(() => savedTick((n) => n + 1), Math.max(0, m.guardSaved.at + SAVED_LINE_MS - Date.now()) + 50);
+    return () => clearTimeout(id);
+  }, [m.guardSaved]);
+  const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null, now: Date.now() });
   // The wings, and the done tick put away after a few seconds. With When something needs me set to only mark the tab
   // (home.goToNeeds), anything that needs the person shows the amber mark too.
   const raw = islandWings(m, useSetting("home.goToNeeds") === "markTab");

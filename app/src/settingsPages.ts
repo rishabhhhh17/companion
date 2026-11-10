@@ -51,10 +51,10 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
-      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes"] },
       // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
       { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
-      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", f("usedOften")] },
+      { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", f("usedOften")] },
       { id: "more.general.tools", items: ["flow.on", "drawIt.on", "groups.islandName", "groups.showUntried", "secondLook.searches"] },
       { id: "more.general.showme", parent: "guide.on", items: ["showme.allScreens", "showme.askWorked", "showme.waitForPage", "showme.everydayTutor", "showme.listen", "point.ringSeconds", "point.yourTurnSeconds", "point.colour", "point.fly", "point.style", "point.dropSize", "point.caption", "point.lettering", "point.guesses", "point.pace", "point.everyday", "point.everydayWhy", "point.fixWith", "drawIt.seconds", "teach.startWhereYouAre", "teach.yourTurn"] },
       { id: "more.general.files", parent: "files.on", items: ["drop.on", "drop.imageFormat", "drop.docFormat", "drop.audioFormat", "drop.videoFormat", "drop.resizeTo", "drop.quality", "drop.sampleRate", "drop.saveTo", "attach.docLimit"] },
@@ -85,7 +85,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "fixing.undo", items: ["undo.protectMyEdits"] },
     ],
     more: [
-      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays"] },
+      { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks"] },
       { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after", "ask.choices", "paste.showWhere", "tour.offer", "report.codeLines"] },
       { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun", "check.privatePages"] },
     ],

@@ -300,7 +300,7 @@ describe("every control has a name VoiceOver reads (part 1)", () => {
   test("the island says what it is and its state in one line", () => {
     const island = read("./island.tsx");
     // The update a check found is part of the same one line (home.ts islandLine), so VoiceOver hears what the eye sees.
-    expect(island).toContain("const line = islandLine(m, { update, group: showGroup && g && g !== \"core\" ? S.groups.names[g] : null });");
+    expect(island).toContain("const line = islandLine(m, { update, group: showGroup && g && g !== \"core\" ? S.groups.names[g] : null, now: Date.now() });");
     // Idle nothing is written on it, and its name still says the state in words (home.ts islandName).
     expect(island).toContain("aria-label={islandName(line)}");
     expect(S.islandQuiet).not.toMatch(/Ready/);

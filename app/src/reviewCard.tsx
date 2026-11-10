@@ -18,6 +18,7 @@ import { copyable } from "./copytext.ts";
 import { Icon } from "./icons.tsx";
 import { canFix, checksLook, keyWarned, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
 import type { ReviewReasonKind } from "../../protocol/index.ts";
+import { untoldLines } from "./safetyNet.ts";
 import { S } from "./strings.ts";
 import { invoke } from "./tauri.ts";
 import { ProofChip, Said } from "./ui/parts.tsx";
@@ -128,6 +129,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         {/* M72 (the walkthrough, item 2): the decision comes first, right under the headline, so Fix it, Copy for my AI and
             Looks fine are in view without scrolling, never under the ask box. The evidence follows: the readiness line, the
             finding's parts and the line pointed at. */}
+        {/* M77: what the changes did not tell you, up to three plain lines at the top, from the review's own data. */}
+        {untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
         {r.note && <div className="line" role="status">{r.note}</div>}
         {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
         {/* m67 bug 12: Fix it on a key warning runs the review first; the card says it is running, as the plain card does. */}
@@ -298,6 +301,8 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           review sat over What changed). */}
       <h2 id={`${REVIEW_ID}-title`} className={look || heroSays ? "sr" : undefined}>{S.review.title}{look && <span className="sr">: {look.words}</span>}</h2>
       <div className="sr" role="status">{look ? S.review.arrived(look.words, look.line) : ""}</div>
+      {/* M77: what the changes did not tell you, up to three plain lines at the top. */}
+      {untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
       {/* Before a review, Home's top already says how much changed (M65 step 4: it was said three times), so the card goes
           straight to its presses and its list of files. */}
       {(res || !heroSays) && (res?.summary || S.review.lead(r.count)) !== heroHeadline && (

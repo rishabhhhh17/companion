@@ -1,8 +1,9 @@
 //! M76 (closing M75's gap): Delete everything, and a project leaving (moved to the Trash from Home or Settings), take out
 //! the done signal hooks Squibby added to that project's own tool settings, exactly as Remove does in
 //! runner/src/donesignal.ts:
-//! - only Squibby's own Stop entry goes: a command that starts with `/usr/bin/touch -- ` and names Squibby's own `done`
-//!   folder in its data folder. Every other key and hook stays, in the order it was in.
+//! - only Squibby's own entries go: under Stop, a command that starts with `/usr/bin/touch -- ` and names Squibby's own
+//!   `done` folder in its data folder; under PreToolUse and Notification (M77, the guard and waiting hooks), a command that
+//!   opens with `d='<Squibby's guard folder>';`. Every other key and hook stays, in the order it was in.
 //! - a file that is not plain JSON, or a link, is left exactly as it was.
 //! - a file Squibby made (recorded in its own `done-signals.json`) that holds nothing else is removed, and its folder too if
 //!   Squibby made that and it is empty. A file the person had is kept, even when empty.
@@ -14,6 +15,8 @@ use std::path::{Path, PathBuf};
 pub const HOOK_FILES: &[(&str, &str)] = &[("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json")];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
 pub const INDEX: &str = "done-signals.json";
+/// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77).
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -90,11 +93,15 @@ fn get<'a>(o: &'a [(String, J)], k: &str) -> Option<&'a J> { o.iter().find(|(x, 
 
 // ---------- Squibby's own entries ----------
 
-/// Whether a Stop entry is a Squibby signal of this data folder (donesignal.ts anyOurs).
-fn ours(entry: &J, done_dir: &str) -> bool {
+/// A path inside single quotes for /bin/sh, as donesignal.ts shQuote writes it.
+fn sh_quote(s: &str) -> String { format!("'{}'", s.replace('\'', "'\\''")) }
+/// Whether an entry is a Squibby hook of this data folder (donesignal.ts anyOurs): the done signal's touch of the done
+/// folder, or a guard or waiting command that opens with the guard folder.
+fn ours(entry: &J, done_dir: &str, guard_dir: &str) -> bool {
     let J::Obj(o) = entry else { return false };
     let Some(J::Arr(hooks)) = get(o, "hooks") else { return false };
-    hooks.iter().any(|h| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/")))))
+    let guard_open = format!("d={};", sh_quote(guard_dir));
+    hooks.iter().any(|h| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open))))
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -115,10 +122,11 @@ pub fn projects_with_hooks(runner_data: &Path) -> Vec<PathBuf> {
     index(runner_data).keys().map(PathBuf::from).filter(|p| p.is_absolute() && fs::symlink_metadata(p).is_ok_and(|m| m.is_dir())).collect()
 }
 
-/// Takes Squibby's own Stop entries out of one project's hook files. Returns the files it changed or removed, by their
-/// path from the project folder down.
+/// Takes Squibby's own entries (Stop, PreToolUse, Notification) out of one project's hook files. Returns the files it
+/// changed or removed, by their path from the project folder down.
 pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
     let done_dir = runner_data.join("done").to_string_lossy().to_string();
+    let guard_dir = runner_data.join("guard").to_string_lossy().to_string();
     let rec = rec_of(runner_data, project);
     let mut said = vec![];
     for (tool, rel) in HOOK_FILES {
@@ -129,11 +137,16 @@ pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
         let Some(J::Obj(mut top)) = parse(&text) else { continue };   // not plain JSON: never changed
         let Some(pos) = top.iter().position(|(k, _)| k == "hooks") else { continue };
         let J::Obj(mut hooks) = top[pos].1.clone() else { continue };
-        let Some(sp) = hooks.iter().position(|(k, _)| k == "Stop") else { continue };
-        let J::Arr(stop) = hooks[sp].1.clone() else { continue };
-        let kept: Vec<J> = stop.iter().filter(|e| !ours(e, &done_dir)).cloned().collect();
-        if kept.len() == stop.len() { continue; }   // nothing of Squibby's here
-        if kept.is_empty() { hooks.remove(sp); } else { hooks[sp].1 = J::Arr(kept); }
+        let mut changed = false;
+        for event in EVENTS {
+            let Some(sp) = hooks.iter().position(|(k, _)| k == event) else { continue };
+            let J::Arr(list) = hooks[sp].1.clone() else { continue };
+            let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir)).cloned().collect();
+            if kept.len() == list.len() { continue; }   // nothing of Squibby's under this event
+            changed = true;
+            if kept.is_empty() { hooks.remove(sp); } else { hooks[sp].1 = J::Arr(kept); }
+        }
+        if !changed { continue; }
         if hooks.is_empty() { top.remove(pos); } else { top[pos].1 = J::Obj(hooks); }
         if top.is_empty() && rec.made.iter().any(|t| t == tool) {
             if fs::remove_file(&file).is_ok() {
@@ -184,6 +197,29 @@ mod tests {
         assert!(order.windows(2).all(|w| w[0] < w[1]), "the keys keep their order: {after}");
         assert!(serde_json::from_str::<serde_json::Value>(&after).is_ok());
         // Removing again changes nothing.
+        assert!(remove(&t.project, &t.data).is_empty());
+    }
+    fn guard_cmd(data: &Path) -> String { format!("d='{}/guard'; p=$(cat \"$d/pid\" 2>/dev/null) && kill -0 \"$p\" 2>/dev/null || exit 0; r=\"$d/0123456789abcdef01234567.$$\"; exit 0", data.display()) }
+    #[test]
+    fn m77_the_guard_and_waiting_entries_go_with_the_stop_entry_and_the_persons_own_pretooluse_stays() {
+        let t = t("guard");
+        create_dir_all(t.project.join(".claude")).unwrap();
+        let theirs = r#"{ "matcher": "Bash", "hooks": [ { "type": "command", "command": "echo hi" } ] }"#;
+        let guard = format!("{{ \"matcher\": \"Bash\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 10 }} ] }}", serde_json::to_string(&guard_cmd(&t.data)).unwrap());
+        let waiting = format!("{{ \"matcher\": \"permission_prompt|idle_prompt\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 5 }} ] }}", serde_json::to_string(&guard_cmd(&t.data).replace("r=", "n=")).unwrap());
+        let text = format!("{{\n  \"hooks\": {{\n    \"Stop\": [ {} ],\n    \"PreToolUse\": [ {theirs}, {guard} ],\n    \"Notification\": [ {waiting} ]\n  }},\n  \"model\": \"x\"\n}}\n", ours_entry(&t.data));
+        fwrite(t.project.join(".claude/settings.local.json"), &text).unwrap();
+        index_with(&t, &[], &[]);
+        assert_eq!(remove(&t.project, &t.data), vec![".claude/settings.local.json"]);
+        let after = fs::read_to_string(t.project.join(".claude/settings.local.json")).unwrap();
+        assert!(!after.contains("/guard'") && !after.contains("/usr/bin/touch"), "{after}");
+        assert!(after.contains("echo hi") && after.contains("PreToolUse") && !after.contains("Notification") && !after.contains("\"Stop\""), "{after}");
+        assert!(after.find("\"hooks\"").unwrap() < after.find("\"model\"").unwrap(), "the keys keep their order: {after}");
+        let v: serde_json::Value = serde_json::from_str(&after).unwrap();
+        assert_eq!(v["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
+        // Another data folder's guard hook stays.
+        let other = format!("{{ \"matcher\": \"Bash\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"d='/tmp/elsewhere/guard'; exit 0\" }} ] }}");
+        fwrite(t.project.join(".claude/settings.local.json"), format!("{{ \"hooks\": {{ \"PreToolUse\": [ {other} ] }} }}")).unwrap();
         assert!(remove(&t.project, &t.data).is_empty());
     }
     #[test]
@@ -262,5 +298,7 @@ mod tests {
         let ts = include_str!("../../../runner/src/donesignal.ts");
         assert!(ts.contains("h.command.startsWith(\"/usr/bin/touch -- \")") && ts.contains("`${dir}/`"), "the runner finds its entries the same way");
         assert!(ts.contains("claude: \".claude/settings.local.json\", codex: \".codex/hooks.json\"") && ts.contains("DONE_INDEX = \"done-signals.json\""));
+        // M77: the same three events and the same guard folder opening on both sides.
+        assert!(ts.contains("done: \"Stop\", guard: \"PreToolUse\", waiting: \"Notification\"") && ts.contains("GUARD_DIR = \"guard\"") && ts.contains("h.command.startsWith(`d=${shQuote(guardDir)};`)"), "the runner finds its guard entries the same way");
     }
 }

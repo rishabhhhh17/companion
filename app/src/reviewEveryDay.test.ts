@@ -118,7 +118,7 @@ describe("feature 1: a closed review says how, and History shows each review wit
     expect(m.reviewHistory).toEqual([]);
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain("reviewRowLook(");
-    expect(card).toContain("byTime(shown, filtering ? [] : reviews).map(");
+    expect(card).toContain("byTime(shown, filtering ? [] : reviews, filtering ? [] : saved).map(");
     expect(card).not.toContain("S.history.reviewsTitle");
   });
   test("Copy for my AI is counted as a beta number, and the numbers say counts only", () => {
@@ -150,7 +150,7 @@ describe("UI 12: the review settings where people look", () => {
     expect(PAGES.fixing.groups[0]).toEqual({ id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] });
     expect(mainKeys("fixing")[0]).toBe("review.mode");
     const more = PAGES.fixing.more.find((t) => t.id === "more.fixing.review")!;
-    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays"]);
+    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks"]);   // M77
     for (const k of ["review.mode", "review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"]) {
       expect(moreKeys("general"), k).not.toContain(k);
       expect(placeOf(k)!.page === "fixing" || placeOf(k)!.topic === "more.fixing.review", k).toBe(true);

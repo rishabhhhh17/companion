@@ -11,6 +11,7 @@ import { S } from "./strings.ts";
 export type Level = "must" | "should" | "look";
 /** Must fix is the engine's own Fix this first kinds (runner/src/review/look.ts STOP_KINDS, pinned by the test). */
 export const FINDING_LEVEL: Record<ReviewReasonKind, Level> = {
+  weakened_check: "must", claimed_passed: "must",
   secret_in_code: "must", key_in_page: "must", open_table: "must", removed_still_used: "must", house_rule: "must", checks_failed: "must", risky_with_failing_checks: "must", chosen_stop: "must",
   secret_file_changed: "should", touches_risky: "should", signed_in_open: "should", house_rule_ask: "should",
   files_removed: "look", too_many: "look", model_concern: "look", open_private_page: "look",

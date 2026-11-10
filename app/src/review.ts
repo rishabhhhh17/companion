@@ -4,8 +4,9 @@
 // that found something (stop, worth a look) is never replaced before the person closes it: newer changes wait behind it
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
-import { REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch } from "../../protocol/index.ts";
+import { REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
+import { untoldOf } from "./safetyNet.ts";
 import { hasKeyShape, redact } from "../../runner/src/redact.ts";
 import type { IconName } from "./icons.tsx";
 import type { Stamp } from "./itemLook.ts";
@@ -33,6 +34,8 @@ export type ReviewDone = {
   hidden?: number;
   /** M57: the places of reasons that no longer hold, checked again after a newer change ("Changed since"). */
   fixed?: number[];
+  /** M77: what the changes did not tell you (files beyond the usual, TODO lines, the checks), from the review's own data. */
+  untold?: ReviewUntold;
 };
 /** The card. stage: ready (changes wait to be reviewed), reviewing, or reviewed (result is there). asked: Review them was
  *  pressed and the engine has not started yet. fix: Fix it's question is open, or its task was asked for. note: one plain
@@ -116,7 +119,9 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   const lane = (REVIEW_LANES as readonly string[]).includes(e.lane as string) ? (e.lane as ReviewDone["lane"]) : "none";
   const checksNote = str(e.checksNote), note = str(e.note);
   const ruleFiles = strings(e.ruleFiles, 10), hidden = whole(e.hidden);
+  const untold = untoldOf(e.untold);
   return {
+    ...(untold ? { untold } : {}),
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
     ...(checksNote ? { checksNote } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
     ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),

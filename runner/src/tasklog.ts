@@ -8,7 +8,17 @@ import { clip, redact } from "./redact.ts";
 import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch } from "../../protocol/index.ts";
 
 /** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
-export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string };
+export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string;
+  /** M77: the kinds of the review's reasons (names only, never their words), for the week's count. */
+  kinds?: string[] };
+/** M77: a saved copy taken before a destructive command of the person's own AI tool (guard.ts): its own row, never a task.
+ *  command: the short, redacted command from the label. undone: an Undo went back to this copy or an earlier one. */
+export type SavedRow = { id: number; at: string; checkpoint: string; command: string; undone: boolean };
+/** M77: what the safety net caught in the last seven days, from real rows. Shown only when above zero (rule 16). */
+export type Caught = { since: string; falseDones: number; keys: number; weakened: number; saved: number; undone: number };
+const GUARD_MODE = "guard";
+const SAVED_PREFIX = "Before Claude ran: ";
+const WEEK_MS = 7 * 86_400_000;
 export type ReviewDid = (typeof REVIEW_DID)[number];
 /** The most file names a row keeps, and how long its summary may be. */
 const ROW_FILES = 20;
@@ -61,6 +71,9 @@ export class TaskLog {
     this.db.run(`CREATE TABLE IF NOT EXISTS reviews (
       id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL, batch TEXT NOT NULL, at TEXT NOT NULL, files TEXT NOT NULL,
       count INTEGER NOT NULL, rating TEXT NOT NULL, touches TEXT NOT NULL, checks TEXT NOT NULL, did TEXT NOT NULL DEFAULT 'open', summary TEXT NOT NULL)`);
+    // M77: the kinds of each review's reasons (names only), for the week's count.
+    const rhave = (this.db.query("PRAGMA table_info(reviews)").all() as { name: string }[]).map((c) => c.name);
+    if (!rhave.includes("kinds")) this.db.run("ALTER TABLE reviews ADD COLUMN kinds TEXT NOT NULL DEFAULT '[]'");
     // A task still marked "running" when the log opens was cut short by a crash or a forced quit.
     this.db.run("UPDATE tasks SET status = 'interrupted', ended_at = COALESCE(ended_at, started_at) WHERE status = 'running'");
   }
@@ -69,6 +82,36 @@ export class TaskLog {
   start(r: { project: string; agent: string; mode: string; label: string; startedAt: string; checkpoint?: string }): number {
     const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, checkpoint) VALUES (?, ?, ?, ?, 'running', ?, ?)");
     return Number(q.run(r.project, r.agent, r.mode, r.label, r.startedAt, r.checkpoint ?? null).lastInsertRowid);
+  }
+  /** M77: a saved copy before a destructive command, as its own finished row (mode guard, status saved). It is never in
+   *  list(): nothing reads a verdict from it. */
+  saved(r: { project: string; label: string; checkpoint: string; at: string }): number {
+    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, checkpoint, changed) VALUES (?, 'guard', ?, ?, 'saved', ?, ?, ?, NULL)");
+    return Number(q.run(r.project, GUARD_MODE, clip(redact(r.label), 120), r.at, r.at, r.checkpoint).lastInsertRowid);
+  }
+  /** M77: the project's saved copies, newest first. */
+  savedRows(project: string, limit = 50): SavedRow[] {
+    const rows = this.db.query("SELECT id, label, started_at, checkpoint, undone_by FROM tasks WHERE project = ? AND mode = ? AND checkpoint IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT ?").all(project, GUARD_MODE, limit) as any[];
+    return rows.map((r) => ({ id: r.id, at: r.started_at, checkpoint: r.checkpoint, command: String(r.label).startsWith(SAVED_PREFIX) ? String(r.label).slice(SAVED_PREFIX.length) : String(r.label), undone: r.undone_by != null }));
+  }
+  /** M77: what was caught in the last seven days, counted from real rows only. */
+  caught(project: string, now: Date = new Date()): Caught {
+    const since = new Date(now.getTime() - WEEK_MS).toISOString();
+    const n = (sql: string, ...args: unknown[]): number => { try { return Number((this.db.query(sql).get(...(args as never[])) as { n: number } | null)?.n ?? 0); } catch { return 0; } };
+    const reviews = (() => { try { return this.db.query("SELECT checks, kinds FROM reviews WHERE project = ? AND at >= ?").all(project, since) as { checks: string; kinds: string }[]; } catch { return []; } })();
+    const kindsOf = (t: string): string[] => { try { const v = JSON.parse(t); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
+    let falseDones = 0, keys = 0, weakened = 0;
+    for (const r of reviews) {
+      const k = kindsOf(r.kinds);
+      if (r.checks === "failed" || k.includes("claimed_passed")) falseDones++;
+      if (k.includes("secret_in_code") || k.includes("key_in_page")) keys++;
+      if (k.includes("weakened_check")) weakened++;
+    }
+    return {
+      since, falseDones, keys, weakened,
+      saved: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode = ? AND undone_by IS NOT NULL AND started_at >= ?", project, GUARD_MODE, since),
+      undone: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode != ? AND undone_by IS NOT NULL AND COALESCE(ended_at, started_at) >= ?", project, GUARD_MODE, since),
+    };
   }
   finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string }) {
     const failed = receipt?.proof === "failed" && receipt.failedCheck && RUNGS.includes(receipt.failedCheck) ? receipt.failedCheck : null;
@@ -109,8 +152,9 @@ export class TaskLog {
       const touches = r.touches.filter((t) => (REVIEW_TOUCHES as readonly string[]).includes(t));
       const rating = (REVIEW_RATINGS as readonly string[]).includes(r.rating) ? r.rating : "worth_a_look";
       const checks = (REVIEW_CHECKS as readonly string[]).includes(r.checks) ? r.checks : "unknown";
-      const q = this.db.query("INSERT INTO reviews (project, batch, at, files, count, rating, touches, checks, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-      return Number(q.run(r.project, r.batch, r.at, JSON.stringify(files), Math.max(0, Math.floor(r.count)), rating, JSON.stringify(touches), checks, clip(redact(r.summary).replace(/\s+/g, " ").trim(), ROW_SUMMARY)).lastInsertRowid);
+      const kinds = (r.kinds ?? []).filter((k) => typeof k === "string" && /^[a-z_]{1,40}$/.test(k)).slice(0, 40);
+      const q = this.db.query("INSERT INTO reviews (project, batch, at, files, count, rating, touches, checks, summary, kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      return Number(q.run(r.project, r.batch, r.at, JSON.stringify(files), Math.max(0, Math.floor(r.count)), rating, JSON.stringify(touches), checks, clip(redact(r.summary).replace(/\s+/g, " ").trim(), ROW_SUMMARY), JSON.stringify(kinds)).lastInsertRowid);
     } catch { return 0; }
   }
   /** What the person did with a review (or that a newer change made it go away). Only the first close is kept. */
@@ -135,9 +179,10 @@ export class TaskLog {
   }
   // Newest first. Pass a project to see only its tasks.
   list(project?: string, limit = 200): TaskRow[] {
+    // M77: a saved copy (mode guard) is its own kind of row (savedRows), never a task here.
     const rows = (project === undefined
-      ? this.db.query("SELECT * FROM tasks ORDER BY id DESC LIMIT ?").all(limit)
-      : this.db.query("SELECT * FROM tasks WHERE project = ? ORDER BY id DESC LIMIT ?").all(project, limit)) as any[];
+      ? this.db.query("SELECT * FROM tasks WHERE mode != ? ORDER BY id DESC LIMIT ?").all(GUARD_MODE, limit)
+      : this.db.query("SELECT * FROM tasks WHERE project = ? AND mode != ? ORDER BY id DESC LIMIT ?").all(project, GUARD_MODE, limit)) as any[];
     return rows.map((r) => ({
       id: r.id, project: r.project, agent: r.agent, mode: r.mode, label: r.label, status: r.status, usd: r.usd, startedAt: r.started_at, endedAt: r.ended_at,
       checkpoint: r.checkpoint ?? null, changed: r.changed ?? null, proof: r.proof ?? null, undone: r.undone_by != null, back: r.undone_by != null && r.brought_back === 1,

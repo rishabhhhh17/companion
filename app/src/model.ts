@@ -11,6 +11,8 @@ import { webLink } from "./links.ts";
 import { everydayReduce, everydaySettle, type Everyday } from "./everyday.ts";
 import type { ReviewRowView, WatchView, WhereNext } from "../../protocol/index.ts";
 import { reviewRowsOf } from "./reviewHistory.ts";
+import { caughtOf, savedRowsOf } from "./safetyNet.ts";
+import type { CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { validView } from "./watch.ts";
 import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } from "./plan.ts";
 import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
@@ -42,6 +44,8 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 // itself back, so the files are as checked (undone stays true for the same reason). earlierUndone: "Which task broke it"
 // undid an earlier task after this one: this task's files stay, but the engine no longer follows its conversation up.
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string; added?: number; removed?: number; was?: number }[]; askWords?: number; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; before?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
+  /** M77: the task's last words claimed the checks pass, but its proof says they did not run or failed. */
+  claimedPassed?: boolean;
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
   undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
   // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
@@ -257,6 +261,14 @@ export type Model = {
   lastWorking?: { checkpoint: string; at: string };
   /** M57 feature 1: the reviews of changes to the open project, as History's own rows (names of files only). */
   reviewHistory?: ReviewRowView[];
+  /** M77: the saved copies taken before a destructive command of the person's own AI tool (their own rows, with Undo). */
+  savedRows?: SavedRowView[];
+  /** M77: what the safety net caught in the last seven days; null when nothing (never shown then). */
+  caught?: CaughtView | null;
+  /** M77: Claude Code is waiting for the person in this project (the waiting hook): the notch's amber mark and its line. */
+  claudeWaiting?: { project: string; message?: string } | null;
+  /** M77: a saved copy was just taken before a destructive command (guard.saved): the notch's line for a few seconds. */
+  guardSaved?: { project: string; at: number } | null;
   runnerUp: boolean;
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
@@ -780,7 +792,7 @@ function reduceRest(m: Model, e: Ev): Model {
       const back = Object.entries(m.workIn).find(([a, w]) => to && w.project === to && away[a] === undefined && !["idle", "done", "error"].includes(m.agents[a] ?? ""));
       const task: Task | null = back ? { agent: back[0], project: to, ...(back[1].checkpoint ? { checkpoint: back[1].checkpoint } : {}), label: back[1].label, lines: [], costUsd: 0 } : null;
       m = { ...m, folder: to || null, away, driveAway: plan && plan !== to ? plan : null, currentCheckpoint: task?.checkpoint };
-      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], reviewHistory: [], followUp: "idle", error: null, notice: null, task };
+      return { ...m, bisect: null, eh: null, spending: null, browser: browserFresh(m.browser), undo: null, lessons: null, walk: null, walkWant: null, practice: m.practice && e.project === m.practice.project ? m.practice : null, diagram: null, about: null, install: null, cloneNote: null, point: null, where: null, ship: null, shipFlow: null, research: null, rescue: null, plan: null, drive: null, stuck: null, paused: null, receipt: null, explain: null, stepExplains: [], planCheckpoints: [], teach: null, recap: null, memory: null, memoryNote: null, exported: null, toast: null, agentsAsk: null, history: [], reviewHistory: [], savedRows: [], caught: null, claudeWaiting: null, guardSaved: null, followUp: "idle", error: null, notice: null, task };
     }
     case "app.showme": {
       if (e.stage === "done") return { ...m, showme: null };
@@ -867,6 +879,14 @@ function reduceRest(m: Model, e: Ev): Model {
       return { ...m, task: { ...m.task, files: withLiveFile(m.task.files ?? [], f, kind) } };
     }
     case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval) };
+    // M77: a saved copy before a destructive command of the person's own AI tool: said once (Now's notice and the notch's
+    // line); its row comes with the next tasks.list. Claude waiting: the notch's amber mark and line, cleared by the engine.
+    case "guard.saved": return typeof e.project === "string" ? { ...m, notice: S.guard.savedNotice, guardSaved: { project: e.project, at: Date.now() } } : m;
+    case "hook.waiting": {
+      if (typeof e.project !== "string") return m;
+      if (e.waiting !== true) return m.claudeWaiting && m.claudeWaiting.project === e.project ? { ...m, claudeWaiting: null } : m;
+      return { ...m, claudeWaiting: { project: e.project, ...(typeof e.message === "string" && e.message ? { message: e.message.slice(0, 120) } : {}) } };
+    }
     case "cost.pause": return m.away[e.agent] !== undefined ? m : { ...m, costPause: { agent: String(e.agent) } };
     case "cost.resolved": return m.costPause?.agent === e.agent ? { ...m, costPause: null, ...(e.choice !== "keep" ? { notice: S.costPause.resolved[e.choice as "stop" | "undo"] } : {}) } : m;
     case "proof.signIn": {
@@ -1017,7 +1037,7 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     case "drive.done": if (m.driveAway !== null) return { ...m, driveAway: null };
       return { ...m, plan: null, stuck: null, paused: null, receipt: wholePlanReceipt(m.receipt, m.drive?.whole, e.usdEstimate), drive: { index: m.drive?.index ?? 0, total: e.total, title: m.drive?.title ?? "", status: "finished", completed: e.completed, finished: { status: e.status, completed: e.completed, total: e.total }, ...(m.drive?.whole ? { whole: m.drive.whole } : {}) } };
-    case "tasks.list": return { ...m, lastWorking: e.lastWorking && typeof e.lastWorking.checkpoint === "string" && typeof e.lastWorking.at === "string" ? { checkpoint: e.lastWorking.checkpoint, at: e.lastWorking.at } : undefined, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
+    case "tasks.list": return { ...m, lastWorking: e.lastWorking && typeof e.lastWorking.checkpoint === "string" && typeof e.lastWorking.at === "string" ? { checkpoint: e.lastWorking.checkpoint, at: e.lastWorking.at } : undefined, history: Array.isArray(e.tasks) ? e.tasks : [], reviewHistory: reviewRowsOf((e as { reviews?: unknown }).reviews), savedRows: savedRowsOf((e as { saved?: unknown }).saved), caught: caughtOf((e as { caught?: unknown }).caught), sinceCheck: typeof e.project === "string" && (e.sinceCheck === "same" || e.sinceCheck === "changed") ? { project: e.project, changed: e.sinceCheck === "changed" } : undefined };
     // The picture arrives a little after the receipt; it belongs only to the receipt it was made for.
     case "receipt.visual": return m.receipt && (m.receipt.checkpoint === e.checkpoint || m.receipt.wholePlan?.last === e.checkpoint) && m.away[e.agent] === undefined && (!m.folder || e.project === m.folder) ? { ...m, receipt: { ...m.receipt, visual: e.made === true && typeof e.image === "string" ? { image: e.image, ...(typeof e.before === "string" && e.before ? { before: e.before } : {}), caption: String(e.caption ?? "") } : { caption: "" } } } : m;
     // M69 step 3: Keep on a result closes it (Home goes back to rest, where the Last fix card shows it). Never while an Undo
@@ -1039,7 +1059,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
       // What the engine said about the files since the last check is older than this result: it is asked again.
-      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e) } };
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.

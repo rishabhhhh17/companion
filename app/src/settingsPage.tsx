@@ -19,7 +19,7 @@ import { takeIfLost } from "./focus.ts";
 import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, reviewKeepLine, reviewStartLine, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { addDoneSignal, eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, removeDoneSignal, showDoneSignal, showSpending } from "./commands.ts";
-import { doneAsk, doneStateFrom, type DoneState, type DoneTool } from "./doneSignal.ts";
+import { doneAsk, doneStateFrom, hookLabel, type DoneRow, type DoneState } from "./doneSignal.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
@@ -760,7 +760,7 @@ function DoneSignalRows() {
   const c = useCtx();
   const project = c.project;
   const [st, setSt] = useState<DoneState | null>(null);
-  const [asking, setAsking] = useState<DoneTool | null>(null);
+  const [asking, setAsking] = useState<Pick<DoneRow, "tool" | "hook"> | null>(null);
   const [said, setSaid] = useState("");
   useEffect(() => {
     setSt(null); setAsking(null); setSaid("");
@@ -771,22 +771,25 @@ function DoneSignalRows() {
   }, [project]);
   if (!project) return <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={S.doneSignal.noProject} />;
   const rows = st?.tools ?? [];
-  const ask = asking ? rows.find((r) => r.tool === asking) : undefined;
+  const ask = asking ? rows.find((r) => r.tool === asking.tool && r.hook === asking.hook) : undefined;
+  const rowId = (r: Pick<DoneRow, "tool" | "hook">) => `done-set-${r.tool}${r.hook === "done" ? "" : `-${r.hook}`}`;
+  // M77: the two more Claude Code hooks (a saved copy before a destructive command, Claude is waiting for you) sit in the
+  // same group, each with the same card and the same one press Remove.
   return (<>
     <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback}`} />
-    {rows.map((r) => (
-      <Row key={r.tool} indent label={S.doneSignal.tool[r.tool]} description={r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}
+    {rows.map((r) => { const l = hookLabel(r); return (
+      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${l.line ? `${l.line} ` : ""}${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}`}
         control={r.on
-          ? <Button size="sm" onClick={() => { setSaid(S.doneSignal.removed(S.doneSignal.tool[r.tool])); void send(removeDoneSignal(project, r.tool)); }}>{S.doneSignal.remove}</Button>
-          : <Button size="sm" id={`done-set-${r.tool}`} onClick={() => { setSaid(""); setAsking(r.tool); }}>{S.doneSignal.setUp}</Button>} />
-    ))}
+          ? <Button size="sm" onClick={() => { setSaid(S.doneSignal.removed(l.label)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button>
+          : <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.setUp}</Button>} />
+    ); })}
     {ask && (() => { const w = doneAsk(ask); return (
-      <ConfirmStep className="set-confirm done-ask" label={w.title} back={`done-set-${ask.tool}`} onCancel={() => setAsking(null)}>
+      <ConfirmStep className="set-confirm done-ask" label={w.title} back={rowId(ask)} onCancel={() => setAsking(null)}>
         <p><b>{w.title}</b></p>
         <p>{w.where}</p>
         <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>
         {w.notes.map((n) => <p key={n}>{n}</p>)}
-        <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool; setAsking(null); void send(addDoneSignal(project, t)); }}>{S.doneSignal.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
+        <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool, h = ask.hook; setAsking(null); void send(addDoneSignal(project, t, h)); }}>{S.doneSignal.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
       </ConfirmStep>
     ); })()}
     <Note text={st?.problem ?? said} live />

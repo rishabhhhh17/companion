@@ -252,7 +252,7 @@ describe("the settings", () => {
     expect(def("home.usedOftenFirst")).toMatchObject({ kind: "switch", default: true, applies: ["pages"], scope: "app" });
     expect(S.set["home.usedOftenFirst"].help).toContain("only from your own presses");
     const topic = PAGES.general.more.find((t) => t.id === "more.general.home")!;
-    expect(topic.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", { fixed: "usedOften" }]);
+    expect(topic.items).toEqual(["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", { fixed: "usedOften" }]);   // M77: the week's count
     expect(S.setFixed.usedOften.also).toContain("reset");
   });
   test("plain words: no em dashes and nothing in capitals (AI is a name, said as it is everywhere)", () => {

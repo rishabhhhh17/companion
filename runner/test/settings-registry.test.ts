@@ -132,6 +132,9 @@ describe("the shipped list of settings", () => {
       // M76: Show me where to paste after Copy for my AI, and Walk me through it, both on (each only offers a button); code
       // lines in the go live report off, so a report sent to a client carries no code unless the person chose it.
       "paste.showWhere": true, "tour.offer": true, "report.codeLines": false,
+      // M77 (the safety net): weakened checks flagged first (on), the notch's waiting mark cleared after 15 minutes, and the
+      // week's count shown (on, only when above zero).
+      "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -141,6 +144,12 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
+    expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
+    expect(defOf("notch.waitingMinutes")).toMatchObject({ section: "home", kind: "choice", default: "15", options: ["5", "15", "60"], scope: "app", applies: ["runner"] });
+    expect(validate(defOf("notch.waitingMinutes")!, "0").ok).toBe(false);
+    expect(defOf("history.thisWeek")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
   });
   test("M76: Show me where to paste, Walk me through it and code lines in reports are the pages' own switches", () => {
     expect(defOf("paste.showWhere")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });

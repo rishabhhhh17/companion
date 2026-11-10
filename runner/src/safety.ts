@@ -71,7 +71,7 @@ const homeSpelling = (file: string): string => {
   const m = /^(?:~|\$HOME|\$\{HOME\})(?=\/|$)/.exec(file);
   return m ? homedir() + file.slice(m[0].length) : file;
 };
-function whereIs(project: string, file: string, cwd?: string): Where {
+export function whereIs(project: string, file: string, cwd?: string): Where {
   const root = resolveLinks(project);
   file = homeSpelling(file);
   const abs = resolveLinks(isAbsolute(file) ? file : join(cwd ?? project, file));

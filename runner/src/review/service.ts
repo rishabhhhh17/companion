@@ -38,6 +38,7 @@ import { applyStrictness, houseRuleReasons, keysInPage, lineHash, MIGRATION, ope
 import { importersOf, maxFilesOf, needsStrongModel, rate, stopTouchesOf, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
 import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
+import { claimedPassedReason, hasGitRemote, untoldOf, weakenedChecks, withPushRisk, type FileDelta } from "./weakened.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -105,7 +106,7 @@ export type ReviewDeps = {
 };
 /** M57 feature 1: a review's row in History. Names of files only, never their text (TaskLog.addReview keeps nothing else). */
 export type ReviewHistory = {
-  add(row: { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string }): void;
+  add(row: { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string; kinds?: string[] }): void;
   did(project: string, batch: string, did: "looks_fine" | "sent_back" | "fix" | "no_longer_applies" | "closed_quietly"): void;
 };
 
@@ -806,11 +807,17 @@ export class ReviewService {
       const hunks = taskHunks(readable, before, after);
       const lines: FileLines[] = [];
       const added: AddedLine[] = [];
+      // M77: the same lines with their numbers in each version, for the weakened check rule and the untold lines.
+      const deltas: FileDelta[] = [];
       for (const h of hunks) {
         let l = lines.find((x) => x.file === h.file);
         if (!l) { l = { file: h.file, added: [], removed: [] }; lines.push(l); }
         l.added.push(...h.after); l.removed.push(...h.before);
         h.after.forEach((text, i) => added.push({ file: h.file, line: h.afterAt + i, text }));
+        let d = deltas.find((x) => x.file === h.file);
+        if (!d) { d = { file: h.file, added: [], removed: [] }; deltas.push(d); }
+        h.after.forEach((text, i) => d!.added.push({ line: h.afterAt + i, text }));
+        h.before.forEach((text, i) => d!.removed.push({ line: h.beforeAt + i, text }));
       }
       // M57 feature 2: Ship's own checks on the changed files only. A key in a published folder, or a secret setting read
       // under a name the build makes public, is said as a key that reaches the page; other keys Ship's scan knows join the
@@ -827,7 +834,9 @@ export class ReviewService {
         : [];
       // M57 feature 3: the project's own "never edit" and "ask before editing" rules, against every changed path.
       const house = houseRuleReasons(loadRules(b.project).rules, b.files);
-      const found: Reason[] = [...page.page, ...open.map((x) => x.reason), ...house];
+      // M77: a check the change weakened comes first of all (review.weakenedChecks, on as usual).
+      const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas);
+      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
       const touches = touchesOf(b.files, lines, b.secretFiles);
@@ -893,24 +902,31 @@ export class ReviewService {
           lane = "none"; note = "Claude could not be reached, so these are the rules' own words.";
         } finally { abort.signal.removeEventListener("abort", endCall); }
       }
-      if (words?.concern) rated = rate({ ...input, concern: true, concernSay: words.concernSay });
+      // M77: words that claim the checks pass when they did not run or failed are a Fix this first of their own.
+      const claimed = words ? claimedPassedReason([words.summary, ...words.notes], checks) : null;
+      if (words?.concern || claimed) rated = rate({ ...input, ...(claimed ? { found: [...found, claimed] } : {}), ...(words?.concern ? { concern: true, concernSay: words.concernSay } : {}) });
       rated = withOpenPages(rated, privateOpen);
+      // M77: a key in code in a project with a git remote says what pushing means (read only: .git/config is never written).
+      const pushRisk = rated.reasons.some((r) => r.kind === "secret_in_code" || r.kind === "key_in_page") && hasGitRemote(b.project);
+      rated = { ...rated, reasons: withPushRisk(rated.reasons, pushRisk) };
       // M57 feature 7: how strict. Smaller reasons may be left out (Quiet, or a kind the person said not to flag here);
       // a Fix this first, a key, a settings or key file and open data never are.
       const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));
       const summary = words?.summary ?? plainSummary(b.files, b.count);
       const notes = (words?.notes ?? []).map((n) => clip(redact(n), 200));
-      const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes };
+      const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes, ...(pushRisk ? { pushRisk: true } : {}) };
+      // M77: what the changes did not tell you, from this review's own data (no model call).
+      const untold = untoldOf(b.files, deltas, checks);
       const ruleFiles = lane !== "none" ? ruleNotes.map((n) => n.name) : [];
       if (gen !== this.gen || abort.signal.aborted) throw new Error("stopped");
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
-        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}),
+        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold,
       });
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
-      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400) }); } catch { /* the row is a nicety */ }
+      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))] }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
       this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set() });
       // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind

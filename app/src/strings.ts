@@ -531,6 +531,10 @@ export const S = {
   short: {
     // M75
     "spend.pauseAt": "A task that uses far more than a usual one here stops and asks before it goes on.",
+    // M77
+    "review.weakenedChecks": "A test skipped, a check told to pass anyway or a lint rule turned off is the first thing a review says.",
+    "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
+    "history.thisWeek": "History and Now show what was caught in the last seven days, only when there is something.",
     "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
     "paste.showWhere": "After you copy words for your AI tool, a button rings its chat box. You paste them yourself.",
     "tour.offer": "Reviews and fixes offer a walk through each changed place.",
@@ -596,6 +600,8 @@ export const S = {
   setSeg: {
     // M75
     "spend.pauseAt": { off: "Off", "3": "3 times", "5": "5 times" },
+    // M77
+    "notch.waitingMinutes": { "5": "5 min", "15": "15 min", "60": "1 hour" },
     // M74
     "spend.warnAt": { off: "Off", "50": "At half", "80": "Near limit" },
     "review.send": { wordsAndChecks: "With words", checksOnly: "Checks only" },
@@ -674,7 +680,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
-    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner"] },
+    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
@@ -1725,9 +1731,13 @@ export const S = {
       too_many: "Look at the most important files first, or undo it and ask for smaller changes.",
       model_concern: "Read why, then try that part yourself.",
       open_private_page: "Put the page behind your sign in, the way your other private pages are. Then check it again.",
+      weakened_check: "Put the check back as it was and fix the code it was catching. If the test really was wrong, change the test on purpose, not to make it quiet.",
+      claimed_passed: "Press Review changes to run the checks here, or run them yourself. Trust the checks, not the words.",
     } as Record<string, string>,
     // Left out for a Must fix that is never fine on purpose (a key in the code, open data, failing checks).
     fineFor: {
+      weakened_check: "If the test was wrong and you changed it on purpose, with a note saying why.",
+      claimed_passed: "If you ran the checks yourself and saw them pass. Run them here too to be sure.",
       removed_still_used: "If you are removing the code that uses it too.",
       house_rule: "If you changed your mind about that rule. Then change the rule too.",
       secret_file_changed: "If you added or changed a key there yourself.",
@@ -1773,8 +1783,53 @@ export const S = {
     where: (routes: readonly string[]) => `Opened without a sign in: ${routes.slice(0, 3).join(", ")}${routes.length > 3 ? ` and ${routes.length - 3} more` : ""}.`,
   },
   // M75 (roadmap 19, F30): the done signal of another AI tool.
+  // M77 (the safety net): the words the pages use. Honest words: never "Claude did"; a saved copy is Squibby's own shadow copy.
+  guard: {
+    // The History row of a saved copy, and its Undo.
+    savedRow: (command: string) => `Before Claude ran ${command}`,
+    savedMark: "Saved copy",
+    savedLine: "A copy of the project from the moment before the command. Undo puts the files back to it.",
+    savedUsed: "Undo went back to it",
+    // A task's receipt whose words claim a pass the checks did not give.
+    claimedPassed: "These words say the checks pass, but the checks did not run or did not pass here. Nothing is proven yet.",
+    // Said once on Now and in the notch when a copy was saved.
+    savedNotice: `${PRODUCT} saved a copy before Claude's command.`,
+    // The notch and Now while Claude Code waits for the person.
+    waitingWhy: (project: string) => (project ? `Claude is waiting for you in ${project}` : "Claude is waiting for you"),
+    waitingLine: "Answer it in Claude Code. The notch clears when Claude moves on.",
+    // The week's count: a plain count from real rows, shown only above zero, never a streak or praise (rule 16).
+    thisWeek: (parts: string[]) => `This week: ${parts.join(", ")}.`,
+    caughtTitle: `What ${PRODUCT} caught`,
+    caughtPart: {
+      falseDones: (n: number) => (n === 1 ? "1 done that was not done" : `${n} dones that were not done`),
+      keys: (n: number) => (n === 1 ? "1 key in code" : `${n} keys in code`),
+      weakened: (n: number) => (n === 1 ? "1 weakened check" : `${n} weakened checks`),
+      saved: (n: number) => (n === 1 ? "1 saved copy used" : `${n} saved copies used`),
+      undone: (n: number) => (n === 1 ? "1 Undo" : `${n} Undos`),
+    },
+    caughtLine: "From your own rows in the last seven days.",
+    // What the changes did not tell you: up to three lines at the top of the review card.
+    untold: {
+      beyond: (files: string, more: number) => `Also changed, beyond the usual files: ${files}${more ? ` and ${more} more` : ""}.`,
+      skippedChecks: "Skipped: the project's checks were not run on these changes.",
+      skippedTodos: (n: number) => (n === 1 ? "Skipped: 1 TODO or not implemented line was added." : `Skipped: ${n} TODO or not implemented lines were added.`),
+      skippedBoth: (n: number) => (n === 1 ? "Skipped: the checks were not run, and 1 TODO line was added." : `Skipped: the checks were not run, and ${n} TODO lines were added.`),
+      broken: "Left broken: the project's own checks fail after these changes.",
+    },
+  },
   doneSignal: {
     title: "When Claude Code or Codex says it is done",
+    // M77: the two more Claude Code hooks, in the same group, each after its own yes.
+    hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Save a copy before Claude runs a destructive command", waiting: "Tell me in the notch when Claude is waiting for me" } as { done: (tool: string) => string; guard: string; waiting: string },
+    hookLine: {
+      guard: `When Claude Code is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as Claude Code decided. Nothing is blocked or changed. Undo in History puts the files back.`,
+      waiting: `When Claude Code waits for a permission or for you to type, the notch's mark goes amber and says Claude is waiting for you. Only Claude Code's own short notice travels, never the question.`,
+    } as Record<"guard" | "waiting", string>,
+    askTitleFor: { guard: "Add the saved copy signal for Claude Code?", waiting: "Add the waiting signal for Claude Code?" } as Record<"guard" | "waiting", string>,
+    askWhatFor: {
+      guard: `Before each shell command, Claude Code hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs; if ${PRODUCT} is closed or slow, Claude Code goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
+      waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
+    } as Record<"guard" | "waiting", string>,
     line: `${PRODUCT} can start a review the moment Claude Code or Codex finishes, instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
     tool: { claude: "Claude Code", codex: "Codex" } as Record<"claude" | "codex", string>,
     on: "On",
@@ -2366,6 +2421,10 @@ export const S = {
     "review.quietSeconds": { label: "Wait before a review", help: `How long your project's files must stay unchanged before ${PRODUCT} treats them as one finished change. Longer suits a tool that pauses while it works.`, also: ["review", "wait", "quiet", "seconds", "debounce"] },
     "review.autoQuietSeconds": { label: "Wait before an automatic review", help: `With reviews on Automatic, how long your project's files must stay unchanged before ${PRODUCT} reviews them by itself. Longer means a tool that pauses while it works is not reviewed half way through.`, also: ["review", "automatic", "wait", "quiet", "seconds"] },
     // M57 feature 5: the one check that runs without a press. Its help says so plainly (it changes M52's "nothing runs until asked").
+    // M77 (the safety net)
+    "review.weakenedChecks": { label: "Flag tests or checks a change weakens", help: `A skipped test, a run narrowed to one test, or checks removed from a test. A lower coverage threshold, a step told to pass anyway, or a lint rule turned off. The review says it first, as Fix this first, with the file and line. Plain rules on this Mac, no model.`, also: ["test", "skip", "it.skip", "only", "coverage", "lint", "eslint", "ci", "weakened", "quiet", "pass anyway", "ts-ignore"] },
+    "notch.waitingMinutes": { label: "Clear \"Claude is waiting for you\" after", help: `Needs the waiting signal (Fixing, Start reviews sooner). When Claude Code asks for a permission or waits for input, the notch's mark goes amber and says Claude is waiting for you. It clears when Claude Code moves on, or after this long.`, also: ["notch", "waiting", "permission", "claude code", "amber", "needs you", "clear", "timeout"], options: { "5": "After 5 minutes", "15": "After 15 minutes", "60": "After 1 hour" } },
+    "history.thisWeek": { label: "Show what was caught this week", help: `One line in History and one row on Now. It counts false dones, keys, weakened checks, saved copies used and Undos in the last seven days, from your own rows. It shows only when the count is above zero.`, also: ["history", "week", "caught", "count", "catch rate", "undo", "keys", "false done"] },
     "review.keyWarning": { label: "Warn at once about a key in the code", help: `Off unless you turn it on. When on, and a change adds what looks like a key or password to your code, ${PRODUCT} says so at once, without asking first. Only that one check runs, on this Mac, with no model and nothing sent anywhere. Everything else still waits until you ask for a review.`, also: ["review", "key", "secret", "password", "token", "api key", "warning", "Cursor", "Codex", "Claude Code"] },
     // M57 feature 1: how long History keeps its review rows (names of files only, never their text).
     "review.keepDays": { label: "Keep reviews in History for", help: `Each review is one row in History: when, which files by name, what it found and what you did. ${PRODUCT} never keeps the text of your files. Older rows are removed, and Delete everything removes them all.`, also: ["review", "history", "keep", "days", "retention", "delete"], options: { "30": "30 days", "90": "90 days", "180": "180 days", "365": "A year" } },
@@ -3000,6 +3059,9 @@ export const S = {
       house_rule: ["A file you said never to edit was changed.", "Your house rules say to leave it alone."],
       house_rule_ask: ["A file you wanted to be asked about was changed.", "Your house rules say to ask before editing it."],
       chosen_stop: ["A part you asked to stop for changed.", "You chose to stop for every change to sign in or payments."],
+      // M77: a check the change weakened, and words that claim a pass the checks did not give. Both Fix this first.
+      weakened_check: ["A test or check was weakened.", "A check that cannot fail no longer proves anything."],
+      claimed_passed: ["The words say the checks pass, but they did not.", "Nothing is proven, so it may still be broken."],
       // M75: a private looking page opened with no sign in. Worth a look, never a stop: a page can be public on purpose.
       open_private_page: ["This page should need a sign in but does not.", "Anyone with the address can open it without signing in."],
     } as Record<string, readonly [string, string]>,
@@ -3016,6 +3078,8 @@ export const S = {
       key_in_page: "Everything sent to the browser can be read by anyone who visits. A secret has to stay on the server.",
       open_table: "Without a rule on the table, anyone can read or change what is in it, including other people's details.",
       removed_still_used: "A page that uses the removed file stops working when someone opens it.",
+      weakened_check: "A skipped test, a lowered threshold or a rule turned off makes a failure go quiet instead of going away. The problem it caught is still there.",
+      claimed_passed: "Words are not proof. Only the checks running here, on these files, show whether the project still works.",
     } as Record<string, string>,
     // Copy for my AI on a key warning, before any review: fixed words, the place only, never the code or the value.
     keyCopy: (places: string) => `My project has a secret password written into the code: ${places}. Move it into a settings file such as .env that is not shared, read it from there, and never print it. Then run the project's build and tests and show that they pass.`,

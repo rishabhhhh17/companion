@@ -2,6 +2,7 @@
 // stop at the spending limit, and finish with a receipt. The engine (real Claude or a
 // scripted stand in) only supplies turns; everything safe happens here.
 
+import { claimsPassed } from "./review/weakened.ts";
 import { parseSketch, sketchRequest } from "./sketch.ts";
 import { runCommand, shq, type RunOptions, type RunResult } from "./proof/exec.ts";
 import { createHash, randomBytes } from "node:crypto";
@@ -865,7 +866,11 @@ export class AgentRunner {
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
         const reviews = this.o.log.reviews(resolve(cmd.project), 50, { keepDays: Number(this.setting("review.keepDays")) });
-        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}) } as never);
+        // M77: the saved copies taken before a destructive command of the person's own AI tool (their own rows), and what
+        // the safety net caught in the last seven days, from real rows (said only when something is above zero).
+        let saved: ReturnType<TaskLog["savedRows"]> = [], caught: ReturnType<TaskLog["caught"]> | null = null;
+        try { saved = this.o.log.savedRows(resolve(cmd.project), 50); const c = this.o.log.caught(resolve(cmd.project)); if (c.falseDones + c.keys + c.weakened + c.saved + c.undone > 0) caught = c; } catch { /* the rows are a nicety */ }
+        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}), ...(saved.length ? { saved } : {}), ...(caught ? { caught } : {}) } as never);
         return;
       }
       // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.
@@ -1411,7 +1416,7 @@ export class AgentRunner {
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
     const moved = headMovedLine(headBefore, headOf(cmd.project));
     if (moved) notUndoable.push(moved);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);

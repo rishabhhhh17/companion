@@ -167,7 +167,10 @@ export type RateInput = {
   /** M74: the most files one batch may have before it is too many to look at one by one (review.maxFiles, usual 200). */
   maxFiles?: number;
 };
-const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule"]);
+const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule", "weakened_check", "claimed_passed"]);
+/** M77: the reasons that come before every other, even a key: a check the change weakened, and words that claim a pass
+ *  the checks did not give (the research's moment 3: tests rewritten to pass are the quiet failure). */
+const FIRST: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed"]);
 
 const TOUCH_WORDS: Record<Touch, string> = { sign_in: "sign in", payments: "payments", data: "your data", settings: "settings", secrets: "secrets and keys", dependencies: "the packages it uses", look_only: "the look only" };
 /** The plain words for a touch, for sentences the engine writes (the pages have their own, in strings.ts). */
@@ -189,10 +192,11 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  *  too big to read, or the model's worry. Otherwise safe. */
 export function rate(i: RateInput): { rating: Rating; reasons: Reason[] } {
   const stop: Reason[] = [], look: Reason[] = [];
+  for (const f of i.found ?? []) if (FIRST.has(f.kind)) stop.push(f);
   for (const s of i.secrets.slice(0, 5)) stop.push({ kind: "secret_in_code", file: s.file, line: s.line, say: `A key or password is written into ${s.file} at line ${s.line}. It belongs in a settings file such as .env, not in the code.` });
   // The place named is the line that still uses the removed file, in the file that is still there: the removed one has no
   // lines any more.
-  for (const f of i.found ?? []) if (FOUND_STOP.has(f.kind)) stop.push(f);
+  for (const f of i.found ?? []) if (FOUND_STOP.has(f.kind) && !FIRST.has(f.kind)) stop.push(f);
   for (const u of i.stillUsed.slice(0, 5)) stop.push({ kind: "removed_still_used", file: u.by, line: u.line, say: `${u.file} was removed, but ${u.by} still uses it at line ${u.line}, so the project may not start.` });
   const chosen = (i.stopTouches ?? []).filter((t) => CHOOSABLE_STOPS.includes(t) && i.touches.includes(t));
   if (chosen.length) stop.push({ kind: "chosen_stop", say: `It touches ${listWords(chosen.map(touchWords))}, and you asked to stop for every change there.` });
