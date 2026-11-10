@@ -135,6 +135,8 @@ describe("the shipped list of settings", () => {
       // M77 (the safety net): weakened checks flagged first (on), the notch's waiting mark cleared after 15 minutes, and the
       // week's count shown (on, only when above zero).
       "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
+      // M78 (memory that is never lost): a fix that ended not proven leaves a tried and failed line (on).
+      "memory.triedAndFailed": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -150,6 +152,9 @@ describe("the shipped list of settings", () => {
     expect(defOf("notch.waitingMinutes")).toMatchObject({ section: "home", kind: "choice", default: "15", options: ["5", "15", "60"], scope: "app", applies: ["runner"] });
     expect(validate(defOf("notch.waitingMinutes")!, "0").ok).toBe(false);
     expect(defOf("history.thisWeek")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M78: a tried and failed line is the runner's own switch, on as usual", () => {
+    expect(defOf("memory.triedAndFailed")).toMatchObject({ section: "memory", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
   });
   test("M76: Show me where to paste, Walk me through it and code lines in reports are the pages' own switches", () => {
     expect(defOf("paste.showWhere")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });

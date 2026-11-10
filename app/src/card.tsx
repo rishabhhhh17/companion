@@ -2,6 +2,7 @@ import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, us
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
+import { NotesBackupRows, StartBlockPart } from "./memoryStart.tsx";
 import { SharedFilesRow } from "./sharedFilesRow.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn, voiceHint as talkKeysLine } from "./settings.ts";
@@ -13,7 +14,7 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
-import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, restoreMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
 // M58 area A: the fixed ladder, Last working and save marks, the sign in turn.
 import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
@@ -3372,6 +3373,8 @@ function Card() {
           {m.memory.paused && <div className="line"><b>{S.memoryPaused}</b></div>}
           {m.memory.problems.map((p, i) => <div className="line blocked" key={i}>{p}</div>)}
           {m.memoryNote && <div className="line blocked" role="alert">{m.memoryNote}</div>}
+          {/* M78: exactly what Claude Code is handed as a session starts, each line with its source and Forget. */}
+          <StartBlockPart start={m.memory.start ?? null} project={project} send={send} onSettings={(place) => { setSetPlace(place); pickTab("settings"); }} />
           <MemoryList title={S.screens.aboutProject(projectName)} eraseLabel={S.screens.eraseProject(projectName)} scope="project" lines={m.memory.projectLines} project={project} />
           <MemoryList title={S.screens.aboutYou} eraseLabel={S.screens.eraseYou} scope="profile" lines={m.memory.profileLines} project={project} />
           <SharedFilesRow project={project} refresh={m.notice} send={send} />
@@ -3379,10 +3382,10 @@ function Card() {
               Close that sat on a place). Each section keeps its own one Erase all. */}
           <Group title={S.memorySettingsTitle}>
             <Row label={S.memoryLearning} description={S.memoryLearningHelp} control={<Switch checked={!m.memory.paused} label={S.memoryLearning} onChange={(on) => void changeSetting("memory.paused", !on)} />} />
-            <Row label={S.memoryExport} description={S.memoryExportHelp} control={<Button size="sm" label={S.memoryExport} onClick={() => void send(exportMemory(project))}>{S.memoryShow}</Button>} />
+            {/* M78: export every note to one plain file, and restore from it (memoryStart.tsx). */}
+            <NotesBackupRows project={project} projectName={projectName} send={send} exportCommand={() => exportMemory(project)} restoreCommand={(t) => restoreMemory(project, t)} />
             <Row label={S.agentsRemove} description={S.agentsRemoveHelp} control={<Button size="sm" label={S.agentsRemove} onClick={() => void send(answerAgents(project, "remove"))}>{S.memoryRemove}</Button>} />
           </Group>
-          {m.exported && <textarea className="export" readOnly value={m.exported} aria-label={S.memoryExport} rows={8} />}
         </section>
       )}
       {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}

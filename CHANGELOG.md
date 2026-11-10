@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Memory that is never lost: 10 Nov 2026 (in progress)
+
+- **Claude Code gets your notes as each session starts.** In Settings, Fixing, under Start reviews sooner, you can let Squibby hand Claude Code a short block of notes when a session starts in your project: your house rules, decisions with their reason, and fixes that did not work. At most 30 lines, only what your code does not show. It stays the same for the whole session. It is added only after your yes, and Remove takes it out.
+- **See exactly what Claude is told.** The top of the Memory page shows the block line by line, each with where it came from and Forget. House rules link to Settings, where you change them.
+- **Fixes that did not work are remembered.** When a fix ends without proof, or the loop breaker stops it, Squibby keeps one line: what was tried and the check that still failed. You can forget it, or turn this off in Settings.
+- **Claude can search the rest.** Notes that do not fit in the block stay searchable with one command on your Mac. Claude Code asks you the first time Claude runs it. Nothing is sent anywhere.
+- **Export and restore.** Export notes saves every note, about the project and about you, plus the house rules, in one plain file you keep where you like. Restore from a file puts them back after a yes. Nothing is removed, and lines you asked to forget stay forgotten. Your notes are never lost: export them any time.
+- **The shared AGENTS.md block stays small.** It holds at most 30 lines, most useful first. The rest stays in your notes file.
+
 ## What the real run found: 10 Nov 2026 (in progress)
 
 We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes worked 8 of 8 times. These are the things it got wrong, now put right.

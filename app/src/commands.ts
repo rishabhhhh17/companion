@@ -85,6 +85,8 @@ export const editLine = (project: string, scope: "project" | "profile", line: st
 export const pauseMemory = (project: string, paused: boolean): Command => ({ v: 1, id: id(), type: "memory.pause", project, paused });
 export const eraseMemory = (project: string, scope: "project" | "profile"): Command => ({ v: 1, id: id(), type: "memory.erase", project, scope });
 export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
+// M78: put back a notes export the person chose, after their yes on the page (the engine refuses it without confirm).
+export const restoreMemory = (project: string, text: string): Command => ({ v: 1, id: id(), type: "memory.restore", project, text, confirm: true });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
 // Watch routines and Where was I (F21). Each names the project, so the shell holds it to the folder the person chose.
@@ -193,7 +195,7 @@ export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" 
 export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });
 // M75: the other tool's done signal (the add only after the card's yes), the cost pause's answer and the sign in handover's.
 export const showDoneSignal = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.show", project });
-export const addDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
-export const removeDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
+export const addDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
+export const removeDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
 export const chooseCost = (agent: string, choice: "keep" | "stop" | "undo"): Command => ({ v: 1, id: id(), type: "cost.choose", agent, choice });
 export const answerSignIn = (agent: string, choice: "open" | "continue" | "skip" | "getBrowser"): Command => ({ v: 1, id: id(), type: "proof.signIn", agent, choice });

@@ -15,6 +15,9 @@
 //  - waiting: a Notification hook for permission_prompt and idle_prompt. It hands Claude Code's own short notification
 //    (message and type) to the same folder and exits 0. Squibby keeps only a short, redacted message (guard.ts).
 //  Both start by checking that Squibby's engine is alive (its guard/pid file) and exit 0 at once when it is not.
+// M78 (memory that is never lost): a fourth, start, a SessionStart hook for Claude Code (matcher startup|clear|compact). It
+// prints <data>/start/<token>.md, the start block Squibby wrote earlier (memory/sessionstart.ts), and exits 0. Claude Code adds
+// a SessionStart hook's plain stdout to Claude's context. It reads nothing else and needs no running engine.
 // Nothing here runs git or writes the person's git (rule 10). Every other line of the file is kept as it was, a file that is
 // not plain JSON is refused and left alone, and Remove takes out only Squibby's own entry (found by its marker path).
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmdirSync, rmSync, statSync, watch as fsWatch } from "node:fs";
@@ -25,15 +28,18 @@ import { PRODUCT } from "./names.ts";
 
 export const DONE_TOOLS = ["claude", "codex"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
-/** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. */
-export const HOOK_KINDS = ["done", "guard", "waiting"] as const;
+/** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
+ *  only: the start block (memory/startblock.ts) printed as a session starts. */
+export const HOOK_KINDS = ["done", "guard", "waiting", "start"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 /** The event each kind sits under in the tool's hooks file. */
-export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification" };
+export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", guard: "PreToolUse", waiting: "Notification", start: "SessionStart" };
 /** The matcher of each kind (Stop has none). */
-export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash", waiting: "permission_prompt|idle_prompt" };
+/** M78: SessionStart matches on how the session started. resume is left out: a resumed conversation already holds its
+ *  block, and printing it again would change the start of the conversation ([verify] on a real Mac). */
+export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
 /** The hooks each tool may have. Codex's PreToolUse and Notification contracts are not checked, so only done ([verify]). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting"], codex: ["done"] };
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done"] };
 /** Where each tool's project hook file lives, from the project folder down. */
 export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json" };
 /** The folder in Squibby's data folder the hooks touch, and the file that names each project's token. */
@@ -46,6 +52,9 @@ export const GUARD_PID = "pid";
 export const GUARD_WAIT_TENTHS = 50;
 export const GUARD_TIMEOUT_S = 10;
 export const WAITING_TIMEOUT_S = 5;
+/** M78: the folder of start blocks (one <token>.md per project), and the start hook's Claude Code timeout (seconds). */
+export const START_DIR = "start";
+export const START_TIMEOUT_S = 5;
 const TOKEN = /^[0-9a-f]{24}$/;
 
 /** A path inside single quotes for /bin/sh: a quote in it is closed, escaped and opened again. */
@@ -65,6 +74,12 @@ export const guardCommand = (guardDir: string, token: string): string =>
 export const waitingCommand = (guardDir: string, token: string): string =>
   `${guardOpening(guardDir)} n="$d/${token}.$$.note"; cat >"$n.tmp" 2>/dev/null && mv "$n.tmp" "$n" 2>/dev/null || rm -f "$n.tmp"; exit 0`;
 /** M77: the entry added under PreToolUse (guard) or Notification (waiting). */
+/** M78: the start hook's command: it prints the project's start block, a file Squibby wrote earlier, and always ends with 0.
+ *  It reads nothing else and needs no running engine, so the block reaches Claude while Squibby is closed too. Claude Code
+ *  adds a SessionStart hook's plain stdout to Claude's context (code.claude.com/docs/en/hooks). */
+export const startCommand = (startDir: string, token: string): string =>
+  `s=${shQuote(startDir)}; f="$s/${token}.md"; [ -f "$f" ] && /bin/cat -- "$f" 2>/dev/null; exit 0`;
+export const startEntry = (startDir: string, token: string) => ({ matcher: HOOK_MATCHER.start, hooks: [{ type: "command", command: startCommand(startDir, token), timeout: START_TIMEOUT_S }] });
 export const guardEntry = (guardDir: string, token: string) => ({ matcher: HOOK_MATCHER.guard, hooks: [{ type: "command", command: guardCommand(guardDir, token), timeout: GUARD_TIMEOUT_S }] });
 export const waitingEntry = (guardDir: string, token: string) => ({ matcher: HOOK_MATCHER.waiting, hooks: [{ type: "command", command: waitingCommand(guardDir, token), timeout: WAITING_TIMEOUT_S }] });
 
@@ -76,8 +91,8 @@ const commandsOf = (entry: unknown): string[] =>
 const ours = (entry: unknown, marker: string): boolean => commandsOf(entry).some((c) => c.includes(marker));
 /** Whether an entry is any Squibby signal of this data folder (any marker in it), for a token that changed: a done touch of
  *  the done folder, or a guard or waiting command that opens with the guard folder. */
-const anyOurs = (entry: unknown, dir: string, guardDir: string): boolean =>
-  isObj(entry) && Array.isArray(entry.hooks) && entry.hooks.some((h) => isObj(h) && typeof h.command === "string" && ((h.command.includes(`${dir}/`) && h.command.startsWith("/usr/bin/touch -- ")) || h.command.startsWith(`d=${shQuote(guardDir)};`)));
+const anyOurs = (entry: unknown, dir: string, guardDir: string, startDir: string): boolean =>
+  isObj(entry) && Array.isArray(entry.hooks) && entry.hooks.some((h) => isObj(h) && typeof h.command === "string" && ((h.command.includes(`${dir}/`) && h.command.startsWith("/usr/bin/touch -- ")) || h.command.startsWith(`d=${shQuote(guardDir)};`) || h.command.startsWith(`s=${shQuote(startDir)};`)));
 
 export const NOT_JSON = (file: string) => `${file} is not in a form ${PRODUCT} can change safely, so nothing was written. Nothing in it was changed.`;
 export const NOT_A_FOLDER = "That folder could not be found, so nothing was written.";
@@ -98,15 +113,19 @@ export type DonePlan = { tool: DoneTool; hook: HookKind; file: string; rel: stri
 export class DoneSignals {
   private dir: string;
   private guardDir: string;
+  private startDir: string;
   private index: string;
   private w: { close(): void } | null = null;
   constructor(private data: string, private o: { onDone?: (project: string) => void; watch?: typeof fsWatch } = {}) {
     this.dir = join(resolve(data), DONE_DIR);
     this.guardDir = join(resolve(data), GUARD_DIR);
+    this.startDir = join(resolve(data), START_DIR);
     this.index = join(resolve(data), DONE_INDEX);
   }
   /** M77: the folder the guard and waiting hooks write to (guard.ts watches it). */
   get guardFolder(): string { return this.guardDir; }
+  /** M78: the folder of start blocks the start hook prints (main.ts writes them). */
+  get startFolder(): string { return this.startDir; }
   private read(): Record<string, Rec> {
     try { const j = JSON.parse(readFileSync(this.index, "utf8")); return isObj(j) ? (j as never) : {}; } catch { return {}; }
   }
@@ -142,11 +161,13 @@ export class DoneSignals {
     const t = token ?? "<made when you say yes>";
     if (kind === "guard") return guardEntry(this.guardDir, t);
     if (kind === "waiting") return waitingEntry(this.guardDir, t);
+    if (kind === "start") return startEntry(this.startDir, t);
     return hookEntry(join(this.dir, t));
   }
   /** Whether an entry under an event is Squibby's own of this kind for this project. */
   private oursOf(entry: unknown, kind: HookKind, token: string): boolean {
     if (kind === "done") return ours(entry, join(this.dir, token));
+    if (kind === "start") return commandsOf(entry).some((c) => c.startsWith(`s=${shQuote(this.startDir)};`) && c.includes(`/${token}.md"`));
     return commandsOf(entry).some((c) => c.startsWith(`d=${shQuote(this.guardDir)};`) && c.includes(`/${token}.`));
   }
 
@@ -176,7 +197,7 @@ export class DoneSignals {
     const now = readHooks(file);
     if (now === "bad") return { ...this.plan(p, tool, hook), problem: NOT_JSON(rel) };
     const token = this.tokenFor(p)!;
-    try { mkdirSync(this.dir, { recursive: true, mode: 0o700 }); mkdirSync(this.guardDir, { recursive: true, mode: 0o700 }); } catch { /* start() makes them too */ }
+    try { mkdirSync(this.dir, { recursive: true, mode: 0o700 }); mkdirSync(this.guardDir, { recursive: true, mode: 0o700 }); mkdirSync(this.startDir, { recursive: true, mode: 0o700 }); } catch { /* start() makes them too */ }
     const j: Json = now ?? {};
     const hooks: Json = isObj(j.hooks) ? { ...j.hooks } : {};
     if (j.hooks !== undefined && !isObj(j.hooks)) return { ...this.plan(p, tool, hook), problem: NOT_JSON(rel) };
@@ -185,7 +206,7 @@ export class DoneSignals {
     // Already there: nothing to write. An older Squibby entry (a token made again after Delete everything) is replaced,
     // never left beside the new one.
     if (list.some((e) => this.oursOf(e, hook, token))) return this.plan(p, tool, hook);
-    hooks[event] = [...list.filter((e) => !anyOurs(e, this.dir, this.guardDir)), this.entryOf(hook, token)];
+    hooks[event] = [...list.filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir)), this.entryOf(hook, token)];
     const folder = join(p, rel.split("/")[0]!);
     const madeFolder = !existsSync(folder);
     mkdirSync(folder, { recursive: true });
@@ -206,7 +227,7 @@ export class DoneSignals {
     if (now && isObj(now.hooks) && Array.isArray(now.hooks[event])) {
       const hooks: Json = { ...now.hooks };
       // Every Squibby entry under this event goes (an older token's too), nothing of anyone else's.
-      const kept = (hooks[event] as unknown[]).filter((e) => !anyOurs(e, this.dir, this.guardDir));
+      const kept = (hooks[event] as unknown[]).filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir));
       if (kept.length) hooks[event] = kept; else delete hooks[event];
       const out: Json = { ...now };
       if (Object.keys(hooks).length) out.hooks = hooks; else delete out.hooks;

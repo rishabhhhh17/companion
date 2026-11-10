@@ -54,6 +54,9 @@ const ALLOWED: &[&str] = &[
     // M75: the other tool's done signal (show, add only with the yes the card asked for, remove), named by project; the cost
     // pause's answer and the sign in handover's answer, named by agent.
     "donesignal.show", "donesignal.add", "donesignal.remove", "cost.choose", "proof.signIn",
+    // M78: put back a notes export the person chose, after their yes on the page (the runner refuses it without
+    // "confirm": true). Names the project, so it is project bound.
+    "memory.restore",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -97,6 +100,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "ship.signIn",
     "practice.key",
     "donesignal.show", "donesignal.add", "donesignal.remove",
+    "memory.restore",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -871,6 +875,26 @@ mod tests {
             stages.push(e["stage"].as_str().unwrap_or("").to_string());
         }
         assert_eq!(stages, ["opened", "done", "failed"]);
+    }
+    #[test]
+    fn m78_a_restore_and_the_start_hook_pass_only_for_the_chosen_project_and_only_with_the_yes() {
+        // M78: the shared fixtures (read by the runner's suite too).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let mut seen = 0;
+        for line in fixtures.lines().filter(|l| l.contains("\"type\":\"memory.restore\"") || l.contains("\"hook\":\"start\"")) {
+            let v: Value = serde_json::from_str(line).unwrap();
+            assert!(check_command(&v).is_ok(), "{line}");
+            let project = v["project"].as_str().unwrap();
+            assert!(check_project(&v, project).is_ok(), "{line}");
+            assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+            assert!(check_project(&json!({ "v": 1, "id": "x", "type": v["type"], "project": NO_PROJECT }), "").is_err(), "{line}");
+            if v["type"] == "memory.restore" || v["type"] == "donesignal.add" { assert_eq!(v["confirm"], Value::Bool(true), "{line}"); }
+            seen += 1;
+        }
+        assert_eq!(seen, 3);
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        assert!(events.lines().any(|l| l.contains("\"type\":\"memory.restored\"")));
+        assert!(events.lines().any(|l| l.contains("\"type\":\"memory.state\"") && l.contains("\"start\":{")));
     }
     #[test]
     fn m75_the_done_signal_cost_pause_and_sign_in_answers_pass_and_the_hook_only_for_the_chosen_project() {

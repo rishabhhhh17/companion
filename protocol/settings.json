@@ -186,6 +186,7 @@
     { "key": "memory.learnFromFiles", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.learnFromWords", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.rememberGoals", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
+    { "key": "memory.triedAndFailed", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "memory.tellClaude", "section": "memory", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.recallLength", "section": "memory", "kind": "choice", "default": "normal", "options": ["short", "normal", "long"], "scope": "app", "applies": ["runner"], "store": "settings", "live": false },
     { "key": "memory.toastSeconds", "section": "memory", "kind": "choice", "default": "10", "options": ["5", "10", "20", "60", "untilClosed"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

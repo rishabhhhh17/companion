@@ -75,6 +75,13 @@ export type MemoryPause = Envelope & { type: "memory.pause"; project: string; pa
 export type MemoryErase = Envelope & { type: "memory.erase"; project: string; scope: MemoryScope };
 export type MemoryExport = Envelope & { type: "memory.export"; project: string };
 export type MemoryAgents = Envelope & { type: "memory.agents"; project: string; answer: "yes" | "no" | "remove" };
+/** M78: put back the lines of a notes export (memory.exported's text, saved by the person) after their yes on the page
+ *  that showed how many lines it holds. Nothing is removed; every line passes the memory filter again. */
+export type MemoryRestore = Envelope & { type: "memory.restore"; project: string; text: string; confirm: true };
+/** M78: the start block on the Memory page (memory.state.start): exactly what Claude Code is handed as a session starts,
+ *  each line with its kind and source, and the memory line's id for Forget (a house rule has none). */
+export const START_KINDS = ["rule", "decision", "failed", "note", "code"] as const;
+export type StartLine = { kind: (typeof START_KINDS)[number]; text: string; source: string; date: string; id?: string };
 export type RecapAsk = Envelope & { type: "recap.ask"; project: string; since: string };
 // Watch routines (F21): a watch is one project, one kind of read only check, a target and a schedule. They run only while
 // the engine runs and never call Claude. Every one names the project, so the app holds it to the folder the person chose.
@@ -118,7 +125,7 @@ export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
 /** M77 (the safety net): which hook. done: the Stop hook (M75). guard: Claude Code's PreToolUse hook on Bash, so Squibby can
  *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the
  *  notch can say Claude is waiting for the person. Absent means done. */
-export const HOOK_KINDS = ["done", "guard", "waiting"] as const;
+export const HOOK_KINDS = ["done", "guard", "waiting", "start"] as const;
 export type HookKind = (typeof HOOK_KINDS)[number];
 export type DoneSignalShow = Envelope & { type: "donesignal.show"; project: string };
 export type DoneSignalAdd = Envelope & { type: "donesignal.add"; project: string; tool: DoneSignalTool; confirm: true; hook?: HookKind };
@@ -284,7 +291,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -779,6 +786,7 @@ const COMMANDS: Record<string, Check[]> = {
   "memory.pause": [str("project"), bool("paused")],
   "memory.erase": [str("project"), oneOf("scope", ["project", "profile"])],
   "memory.export": [str("project")],
+  "memory.restore": [str("project"), (m) => (typeof m.text === "string" && m.text.length <= 1024 * 1024 ? null : '"text" must be the export, at most 1 MB'), (m) => (m.confirm === true ? null : 'restoring needs the person\'s yes, "confirm": true')],
   "memory.agents": [str("project"), oneOf("answer", ["yes", "no", "remove"])],
   "ship.check": [str("project")],
   "research.ask": [str("project"), str("agent"), str("question"), str("model"), num("budgetUsd")],
@@ -824,7 +832,8 @@ const EVENTS: Record<string, Check[]> = {
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   // answers: the id of the command this state answers; refused: why that command could not do what it asked.
-  "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems"), opt("answers", str("answers")), opt("refused", str("refused"))],
+  "memory.state": [str("project"), bool("paused"), list("projectLines"), list("profileLines"), list("problems"), opt("answers", str("answers")), opt("refused", str("refused")),
+    opt("start", (m) => { const st = m.start as Record<string, unknown> | null; return st && typeof st === "object" && typeof st.hook === "boolean" && typeof st.text === "string" && Array.isArray(st.lines) && st.lines.every((l) => { const o = l as Record<string, unknown>; return !!o && (START_KINDS as readonly unknown[]).includes(o.kind) && typeof o.text === "string" && typeof o.source === "string" && typeof o.date === "string" && (o.id === undefined || typeof o.id === "string"); }) ? null : '"start" must have hook, text and lines'; })],
   "memory.saved": [str("project"), oneOf("scope", ["project", "profile"]), str("line"), str("text"), str("source")],
   "ship.status": [str("project"), oneOf("stage", ["checking_gates", "not_signed_in", "deploying", "checking_preview", "ready", "failed", "refused", "live", "rolled_back"]), str("detail"), needsOk],
   "doctor.report": [list("items")],
@@ -875,6 +884,7 @@ const EVENTS: Record<string, Check[]> = {
   "memory.agents_written": [str("project"), list("files")],
   "memory.refused": [str("project"), str("reason")],
   "memory.exported": [str("project"), str("text")],
+  "memory.restored": [str("project"), num("added"), num("skipped"), num("forgotten"), num("refused"), opt("problem", str("problem"))],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],

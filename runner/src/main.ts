@@ -45,6 +45,7 @@ import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 import { DoneSignals, type DonePlan } from "./donesignal.ts";
 import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
+import { SessionStartNotes } from "./memory/sessionstart.ts";
 
 const SDK_VERSION = "0.3.293";
 const settings = readSettings(process.env);
@@ -79,7 +80,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // The plan gate (plan.ts, F25): nothing is gated until the shell says payments are on (plan.state). The free fix count lives
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
-const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),
@@ -127,6 +128,10 @@ const review = new ReviewService({
 // being reviewed ends its quiet time at once. The hook is written only after the person's yes (donesignal.add, confirm).
 const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); review.doneSignal(p); } });
 doneSignals.start();
+// M78: the start block Claude Code's SessionStart hook prints, and the project's notes search index. Both are copies of the
+// notes files, written only while the person has the start hook set up; copies left from a hook that is gone are removed.
+const sessionNotes = new SessionStartNotes({ data: settings.data, signals: doneSignals, memoryDir: settings.data });
+sessionNotes.sweep();
 // M77 (the safety net): the guard and waiting hooks write into Squibby's own guard folder (guard.ts). A destructive command
 // of the person's own Claude Code gets a shadow snapshot first (its own History row, never git), then the hook lets the
 // command go; a waiting note is said for the notch. The snapshot changes no file, so it is not wrapped as the engine's own
@@ -236,6 +241,9 @@ function dispatch(cmd: Command) {
   if (cmd.type === "donesignal.show" || cmd.type === "donesignal.add" || cmd.type === "donesignal.remove") {
     try {
       const done = cmd.type === "donesignal.add" ? doneSignals.add(cmd.project, cmd.tool, cmd.hook ?? "done") : cmd.type === "donesignal.remove" ? doneSignals.remove(cmd.project, cmd.tool, cmd.hook ?? "done") : null;
+      // M78: the start hook prints a file: it is written as the hook goes in, and removed with the index as it goes out.
+      if (cmd.type === "donesignal.add" && cmd.hook === "start") sessionNotes.refresh(cmd.project);
+      if (cmd.type === "donesignal.remove" && cmd.hook === "start") sessionNotes.forget(cmd.project);
       doneState(cmd.project, doneSignals.state(cmd.project), done?.problem);
     } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
     return;

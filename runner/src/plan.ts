@@ -52,7 +52,7 @@ export const NEVER_GATED = [
   "error.explain", "assist.prompt", "assist.locate", "assist.cancel", "assist.image",
   "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop", "research.ask", "diagram.ask",
   // everything else
-  "memory.add", "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents",
+  "memory.add", "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.restore",
   "tasks.list", "where.was.i", "spending.show", "spending.set", "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
   "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "bisect.start", "project.inspect", "project.install",
   "project.clone", "auth.check", "google.accounts", "engine.warm", "runner.ping", "loop.choose", "explain.set",

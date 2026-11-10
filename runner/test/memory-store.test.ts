@@ -2,6 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { exportNotes } from "../src/memory/backup.ts";
 import { MemoryStore } from "../src/memory/store.ts";
 
 const made: string[] = [];
@@ -151,7 +152,7 @@ describe("size caps", () => {
 describe("export", () => {
   test("export is one readable text with both parts and every source", () => {
     const { m } = rig(); m.add("project", "Uses React", "package.json", NOW); m.add("profile", "Prefers short answers", "you said shorter", NOW);
-    const out = m.exportText();
+    const out = exportNotes("", m, NOW);
     expect(out).toContain("Uses React"); expect(out).toContain("package.json"); expect(out).toContain("Prefers short answers"); expect(out).toContain("you said shorter");
   });
 });

@@ -4,8 +4,7 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { writeAtomic } from "../atomic.ts";
-import { screenLine } from "./filter.ts";
-import { readCompanionFile } from "../companionfile.ts";
+import { pickNotes, RULE_PREFIX, SHARED_LINES } from "./startblock.ts";
 import type { MemoryStore } from "./store.ts";
 import { NAMES, PRODUCT } from "../names.ts";
 
@@ -26,16 +25,23 @@ export function madeBySquibby(project: string): boolean {
   try { return inParent(realpathSync.native(plain)); } catch { return false; }
 }
 
-function ruleLines(project: string): string[] {
-  const r = readCompanionFile(project, "rules.txt");   // never through a link (companionfile.ts)
-  return r.state === "ok" ? r.text.split("\n").map((l) => l.trim()).filter((l) => l && !l.startsWith("#")).slice(0, 20) : [];
-}
-
+// M78: the block is capped like the start block (startblock.ts SHARED_LINES, its headings included): the same ranked pick,
+// house rules first, then decisions, tried and failed, the person's own lines and last the lines learned from the code. What
+// does not fit stays in .companion/project.md and in search, and the block's last line says so.
+export const MORE_NOTES = "More project notes are in .companion/project.md.";
 function section(project: string, m: MemoryStore): string | null {
-  const facts = m.list("project").entries.map((e) => e.text).filter((t) => screenLine(t).ok);
-  const rules = ruleLines(project).filter((t) => screenLine(t).ok);
+  const picked = pickNotes(project, m);
+  const rules = picked.filter((p) => p.text.startsWith(RULE_PREFIX)).map((p) => p.text.slice(RULE_PREFIX.length));
+  const facts = picked.filter((p) => !p.text.startsWith(RULE_PREFIX)).map((p) => p.text);
   if (!facts.length && !rules.length) return null;
-  return [BEGIN, `## Project notes (from ${PRODUCT})`, ...(facts.length ? facts.map((f) => `- ${f}`) : ["- Nothing yet."]), ...(rules.length ? ["", "## House rules", ...rules.map((r) => `- ${r}`)] : []), END].join("\n");
+  // Lines inside the markers: the notes heading, the rules part (an empty line, its heading, the rules) and, when anything
+  // was cut, an empty line and MORE_NOTES. House rules are at most 20 (houseRules), so they always fit.
+  const keepRules = rules.slice(0, 20);
+  const used = 1 + (keepRules.length ? 2 + keepRules.length : 0);
+  let keepFacts = facts.slice(0, SHARED_LINES - used);
+  if (keepFacts.length < facts.length) keepFacts = facts.slice(0, Math.max(0, SHARED_LINES - used - 2));
+  const more = keepFacts.length < facts.length;
+  return [BEGIN, `## Project notes (from ${PRODUCT})`, ...(keepFacts.length ? keepFacts.map((f) => `- ${f}`) : ["- Nothing yet."]), ...(keepRules.length ? ["", "## House rules", ...keepRules.map((r) => `- ${r}`)] : []), ...(more ? ["", MORE_NOTES] : []), END].join("\n");
 }
 
 type State = { kind: "absent" } | { kind: "text"; text: string } | { kind: "unreadable" } | { kind: "link" };

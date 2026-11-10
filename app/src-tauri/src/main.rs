@@ -50,6 +50,7 @@ mod wipe;
 mod donehooks;
 mod pastehere;
 mod golive;
+mod notesfile;
 mod logexport;
 mod practice;
 mod names;
@@ -4291,6 +4292,46 @@ async fn save_report(window: tauri::WebviewWindow, kind: String, name: String, d
     Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
+/// M78: Export notes, on a press on the Memory page: the engine's export (memory.exported) saved where the person picks,
+/// through the Mac's own save dialog. Only from Home. The text must be a notes export (notesfile.rs); it is never logged.
+#[tauri::command]
+async fn save_notes(window: tauri::WebviewWindow, name: String, text: String) -> Result<String, String> {
+    settings::only_card(window.label())?;
+    notesfile::check(&text).map_err(String::from)?;
+    let offered = golive::script_text(&notesfile::offered_name(&name));
+    let dialog = NativeDialog::open();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let script = format!("POSIX path of (choose file name with prompt \"Save your notes\" default name \"{offered}\" default location (path to documents folder))");
+        std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).env_clear().env("PATH", "/usr/bin:/bin").output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).await.unwrap_or(None);
+    drop(dialog);
+    let Some(picked) = picked.filter(|p| !p.is_empty()) else { return Ok(String::new()) };   // cancelled: nothing written
+    let path = notesfile::chosen_path(&picked).ok_or("that place cannot be saved to")?;
+    golive::write(&path, text.as_bytes()).map_err(|e| format!("could not save it ({e})"))?;
+    log("notes_saved", json!({}));
+    Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// M78: Restore from a file, on a press on the Memory page: the Mac's own open dialog, then the chosen file's text, only
+/// when it is a notes export (notesfile.rs). The page shows how many lines it holds and asks before memory.restore. Only
+/// from Home. A cancel reads nothing. The text is never logged.
+#[tauri::command]
+async fn open_notes_file(window: tauri::WebviewWindow) -> Result<String, String> {
+    settings::only_card(window.label())?;
+    let dialog = NativeDialog::open();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let script = "POSIX path of (choose file with prompt \"Choose your saved notes\" of type {\"public.plain-text\"} default location (path to documents folder))";
+        std::process::Command::new("/usr/bin/osascript").args(["-e", script]).env_clear().env("PATH", "/usr/bin:/bin").output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).await.unwrap_or(None);
+    drop(dialog);
+    let Some(picked) = picked.filter(|p| !p.is_empty()) else { return Ok(String::new()) };   // cancelled: nothing read
+    let text = notesfile::read(std::path::Path::new(&picked)).map_err(String::from)?;
+    log("notes_opened", json!({}));
+    Ok(text)
+}
+
 /// Copy link: only a web address, only on a press. The address as checked is what is copied.
 #[tauri::command]
 fn copy_link(url: String) -> Result<(), String> {
@@ -5386,7 +5427,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, point_paste, open_in_editor]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, point_paste, open_in_editor, save_notes, open_notes_file]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }

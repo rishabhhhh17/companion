@@ -203,12 +203,37 @@ export class MemoryStore {
     return out.join("\n");
   }
 
-  exportText(): string {
-    const fmt = (title: string, scope: Scope) => {
-      const e = this.list(scope).entries;
-      return [`## ${title}`, ...(e.length ? e.map((x) => `- ${x.text} (from ${x.source}${x.date ? `, ${x.date}` : ""})`) : ["- Nothing yet."])].join("\n");
-    };
-    return `# Everything ${PRODUCT} remembers\n\n${fmt("About this project", "project")}\n\n${fmt("How you like to work", "profile")}\n`;
+  // M78: every line of one part as the store writes it, so an export reads back exactly (backup.ts).
+  fileLines(scope: Scope): string[] {
+    return this.read(scope).raw.filter((r): r is Extract<Raw, { kind: "entry" }> => r.kind === "entry").map((r) => (r.hand ? `- ${r.entry.text}` : `- ${r.entry.text} — ${r.entry.source}, ${r.entry.date} {${r.entry.id}}`));
+  }
+
+  /** M78: lines brought back from an export the person chose (backup.ts). Each one goes through the same filter as a new
+   *  line, keeps its source and date, and is added only when it is not there yet. A line the person forgot stays forgotten.
+   *  Pause does not stop it: it is the person's own act, not learning. Nothing is removed. */
+  restoreLines(scope: Scope, lines: string[], now: Date = new Date()): { added: number; skipped: number; forgotten: number; refused: number; problem?: string } {
+    const out = { added: 0, skipped: 0, forgotten: 0, refused: 0 };
+    if (!lines.length) return out;
+    if (scope === "project" && !this.o.project) return { ...out, refused: lines.length, problem: "Choose a project first." };
+    const { raw, problem } = this.read(scope);
+    if (problem) return { ...out, refused: lines.length, problem };
+    const gone = new Set(this.prefs().forgotten[this.key(scope)] ?? []);
+    const have = new Set(raw.filter((r) => r.kind === "entry").map((r) => (r as Extract<Raw, { kind: "entry" }>).entry.text.toLowerCase()));
+    for (const line of lines) {
+      const m = LINE.exec(line), b = m ? null : /^- (.+?)\s*$/.exec(line);
+      const t = oneLine(m ? m[1] : b ? b[1] : "");
+      if (!t || !screenLine(t).ok || ownFormat(t)) { out.refused++; continue; }
+      if (gone.has(idFor(t))) { out.forgotten++; continue; }
+      if (have.has(t.toLowerCase())) { out.skipped++; continue; }
+      have.add(t.toLowerCase());
+      if (m) {
+        const src = oneLine(m[2]).replace(/[,{}]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || PRODUCT;
+        raw.push({ kind: "entry", hand: false, entry: { id: idFor(t), text: t, source: src, date: /^\d{4}-\d{2}-\d{2}$/.test(m[3]) ? m[3] : localDay(now) } });
+      } else raw.push({ kind: "entry", hand: true, entry: { id: idFor(t), text: t, source: "you wrote it", date: "" } });
+      out.added++;
+    }
+    if (out.added) this.write(scope, scope === "profile" ? trim(raw, PROFILE_CAP) : raw);
+    return out;
   }
 }
 

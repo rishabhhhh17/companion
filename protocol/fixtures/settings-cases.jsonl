@@ -79,6 +79,7 @@
 {"key": "memory.learnFromFiles", "value": false, "ok": true, "normalized": false}
 {"key": "memory.learnFromWords", "value": "no", "ok": false, "reason": "notSwitch"}
 {"key": "memory.rememberGoals", "value": false, "ok": true, "normalized": false}
+{"key": "memory.triedAndFailed", "value": false, "ok": true, "normalized": false}
 {"key": "memory.tellClaude", "value": 0, "ok": false, "reason": "notSwitch"}
 {"key": "memory.recallLength", "value": "long", "ok": true, "normalized": "long"}
 {"key": "memory.recallLength", "value": 3000, "ok": false, "reason": "notChoice"}

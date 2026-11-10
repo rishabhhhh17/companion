@@ -532,6 +532,8 @@ export const S = {
     // M75
     "spend.pauseAt": "A task that uses far more than a usual one here stops and asks before it goes on.",
     // M77
+    // M78
+    "memory.triedAndFailed": "A fix that ended without proof leaves one line saying what was tried and what still failed.",
     "review.weakenedChecks": "A test skipped, a check told to pass anyway or a lint rule turned off is the first thing a review says.",
     "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
     "history.thisWeek": "History and Now show what was caught in the last seven days, only when there is something.",
@@ -680,7 +682,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
-    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch"] },
+    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session", "start", "notes", "memory", "house rules", "decisions"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
@@ -1823,16 +1825,19 @@ export const S = {
   doneSignal: {
     title: "When Claude Code or Codex says it is done",
     // M77: the two more Claude Code hooks, in the same group, each after its own yes.
-    hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Save a copy before Claude runs a destructive command", waiting: "Tell me in the notch when Claude is waiting for me" } as { done: (tool: string) => string; guard: string; waiting: string },
+    hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Save a copy before Claude runs a destructive command", waiting: "Tell me in the notch when Claude is waiting for me", start: "Give Claude Code my notes as each session starts" } as { done: (tool: string) => string; guard: string; waiting: string; start: string },
     hookLine: {
       guard: `When Claude Code is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as Claude Code decided. Nothing is blocked or changed. Undo in History puts the files back.`,
       waiting: `When Claude Code waits for a permission or for you to type, the notch's mark goes amber and says Claude is waiting for you. Only Claude Code's own short notice travels, never the question.`,
-    } as Record<"guard" | "waiting", string>,
-    askTitleFor: { guard: "Add the saved copy signal for Claude Code?", waiting: "Add the waiting signal for Claude Code?" } as Record<"guard" | "waiting", string>,
+      // M78: the start block.
+      start: `When a Claude Code session starts here, it is handed up to 30 lines of ${PRODUCT_S} notes: house rules, decisions with their reason, and fixes that did not work. The notes stay the same for the whole session.`,
+    } as Record<"guard" | "waiting" | "start", string>,
+    askTitleFor: { guard: "Add the saved copy signal for Claude Code?", waiting: "Add the waiting signal for Claude Code?", start: "Give Claude Code your notes at the start?" } as Record<"guard" | "waiting" | "start", string>,
     askWhatFor: {
       guard: `Before each shell command, Claude Code hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs; if ${PRODUCT} is closed or slow, Claude Code goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
-    } as Record<"guard" | "waiting", string>,
+      start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
+    } as Record<"guard" | "waiting" | "start", string>,
     line: `${PRODUCT} can start a review the moment Claude Code or Codex finishes, instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
     tool: { claude: "Claude Code", codex: "Codex" } as Record<"claude" | "codex", string>,
     on: "On",
@@ -1932,7 +1937,6 @@ export const S = {
   memoryRemove: "Remove",
   memoryLearning: "Learning from your work",
   memoryLearningHelp: "New notes come only from what you do in this app, each with where it came from.",
-  memoryExportHelp: "Every note, as plain text you can copy.",
   agentsRemoveHelp: `Your other AI coding tools read ${PRODUCT_S} notes from a file in your project (AGENTS.md or CLAUDE.md). Remove takes ${PRODUCT_S} part out of that file, so they stop reading these notes. Your own lines in it stay.`,
   memoryEmpty: "Nothing yet.",
   memoryFrom: "from",
@@ -1947,7 +1951,6 @@ export const S = {
   memoryErase: "Erase all",
   memoryEraseSure: "Erase everything in this list? This cannot be undone.",
   memoryEraseYes: "Yes, erase it",
-  memoryExport: "Show everything as text",
   memoryClose: "Close",
   memoryUndo: "Undo",
   memorySeeAll: "See what I know",
@@ -2369,6 +2372,7 @@ export const S = {
     "memory.paused": { label: "Pause memory", help: `Stops new lines only. Saved lines are still used. To stop Claude being told them, turn off Tell Claude what ${PRODUCT} remembers. For all your projects.`, also: ["Pause learning", "learning", "remember", "memory", "stop"] },
     "memory.learnFromFiles": { label: "Learn about the project from its files", help: `${PRODUCT} reads package.json, the README, deploy files and the supabase folder. It keeps short lines about the project, each with its source. Pause memory still stops it.`, also: ["package.json", "readme", "project", "files", "learning"] },
     "memory.learnFromWords": { label: "Learn how I like to work from what I say", help: `When you ask for shorter answers or plain words, ${PRODUCT} keeps it as a line, with your words as its source. Health, money, relationships, moods, secrets and contact details are never kept.`, also: ["preferences", "profile", "words", "learning", "say"] },
+    "memory.triedAndFailed": { label: "Remember fixes that did not work", help: "When a fix ends without proof, or the loop breaker stops it, one line is kept: what was tried, and the check that still failed. With the start notes set up, Claude Code is handed this line as a session starts. You can forget it like any line.", also: ["tried", "failed", "loop", "fix", "not proven", "remember", "start block"] },
     "memory.rememberGoals": { label: "Remember the goals of plans I approve", help: "When you approve a plan, its goal is kept as a line, so later tasks know your aim.", also: ["goal", "plan", "drive", "remember"] },
     "memory.tellClaude": { label: `Tell Claude what ${PRODUCT} remembers`, help: `Claude is given the lines ${PRODUCT} keeps with each task, plan and Prompt help. Off, the lines are still kept, and you can read and change them, but Claude is not told them. A copy you allowed in your project's AGENTS.md and CLAUDE.md is still kept, and Claude may read it there. What I remember can remove it.`, also: ["memory", "context", "prompt help", "private", "share"] },
     "memory.recallLength": { label: "How much Claude is told from memory", help: "Short tells Claude up to 500 words with each task and 100 with Prompt help. Normal is 1500 and 300, long 3000 and 600. Longer can make each task a little slower.", also: ["words", "length", "context", "cost", "tokens", "money"], options: { short: "Short", normal: "Normal", long: "Long" } },
@@ -2673,6 +2677,40 @@ export const S = {
   setNextTask: "From the next task",
   setThisProject: (name: string) => `This project: ${name}`,
   setNeedsProject: "Choose a project folder to change this",
+  // M78 (memory that is never lost): the start block on the Memory page, and export and restore.
+  m78: {
+    startTitle: "What Claude Code is told at the start",
+    startOn: "Claude Code reads this once as each session starts in this project, and it stays the same for the whole session. Only what your code does not show is in it.",
+    startOff: "Not set up yet. Claude Code is told this only after you set it up.",
+    startSetUp: "Set up in Settings",
+    startEmpty: "Nothing to tell Claude yet. House rules, decisions with their reason, and fixes that did not work show here.",
+    startAsSeen: "Show it exactly as Claude sees it",
+    startSearch: "Claude can search the rest of the notes with one command. Claude Code asks you the first time it runs it.",
+    startRule: "Change",
+    startRuleLabel: (text: string) => `Change this house rule in Settings: ${text}`,
+    exportLabel: "Export notes",
+    exportHelp: "Saves every note, about this project and about you, and the house rules, in one plain file. You choose where it goes.",
+    exportButton: "Export",
+    exportSaving: "Saving",
+    exported: (name: string) => `Saved as ${name}.`,
+    restoreLabel: "Restore from a file",
+    restoreHelp: "Puts the notes from a saved file back. Lines already here stay, and lines you asked to forget stay forgotten.",
+    restoreButton: "Choose file",
+    restoreAsk: (n: number) => `Put back the ${n === 1 ? "line" : `${n} lines`} from this file? Nothing here is removed.`,
+    restoreNone: "That file has no notes in it.",
+    restoreYes: "Put them back",
+    restoreNo: "Cancel",
+    restored: (r: { added: number; skipped: number; forgotten: number; refused: number }) => [
+      r.added ? `Put back ${r.added === 1 ? "1 line" : `${r.added} lines`}.` : "Nothing new to put back.",
+      r.skipped ? `${r.skipped === 1 ? "1 was" : `${r.skipped} were`} already here.` : "",
+      r.forgotten ? `${r.forgotten === 1 ? "1 stays" : `${r.forgotten} stay`} forgotten, as you asked.` : "",
+      r.refused ? `${r.refused === 1 ? "1 was" : `${r.refused} were`} left out, because notes never keep that kind of line.` : "",
+    ].filter(Boolean).join(" "),
+    saveFailed: "The notes could not be saved there. Try another place.",
+    readFailed: "That file could not be read. Choose a notes file you exported.",
+    neverLost: "Your notes are never lost: export them any time.",
+    fileName: (project: string, day: string) => `${project || "notes"} notes ${day}`,
+  },
   // M74 (your way): the words Settings draws itself for the new settings.
   m74: {
     // Under Review changes: when a review starts, from the two waits (settings.ts reviewStartLine).

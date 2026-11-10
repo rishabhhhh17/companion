@@ -36,6 +36,9 @@ import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
 import { recallWords } from "./memory/recall.ts";
 import { madeBySquibby, removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
+import { exportNotes, restoreNotes } from "./memory/backup.ts";
+import type { StartView } from "./memory/sessionstart.ts";
+import { TRIED_SOURCE, triedLine } from "./memory/startblock.ts";
 import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
@@ -145,6 +148,9 @@ export type RunnerOptions = {
   now?: () => Date;
   // Where the person's own profile and memory settings live. Without it, memory is off.
   memoryDir?: string;
+  // M78: the start block for Claude Code sessions (memory/sessionstart.ts): written again whenever the notes may have
+  // changed, and shown on the Memory page. Without it, the page shows no start block.
+  startNotes?: { refresh(project: string, m?: MemoryStore): StartView };
   // Writes the "why" bullets after a task. Without it, Explain is off.
   // Putting a preview and then the live site up. Without it, shipping beyond the safety check is off.
   deployer?: Deployer;
@@ -435,6 +441,7 @@ export class AgentRunner {
       }
       // The shared files are written by work that changes the project, not by a question that only reads it.
       if (newProjectLines && share) this.syncShared(project, false);
+      if (newProjectLines) this.notesChanged(project);
     } catch { /* a memory problem is not worth stopping a task for */ }
   }
   // Keeps the shared AGENTS.md in step with project memory. A person's own files are only touched after a yes.
@@ -453,6 +460,23 @@ export class AgentRunner {
       if (r.status === "written") { this.noteShared(project, r.files); this.emit({ type: "memory.agents_written", project, files: r.files } as never); }
       if (r.status === "failed" && r.reason) this.fail(r.reason);
     } catch { /* sharing is never worth stopping a task for */ }
+  }
+  // M78: the start block's file and the search index, written again after the notes may have changed (only while the
+  // start hook is set up; memory/sessionstart.ts). Never worth stopping anything for.
+  private notesChanged(project: string): StartView | null {
+    if (!this.o.startNotes || !project || project === NO_PROJECT) return null;
+    try { return this.o.startNotes.refresh(resolve(project), this.memoryFor(project) ?? undefined); } catch { return null; }
+  }
+  // M78: "tried and failed". When the loop breaker stopped a task, or a fix ended not proven, one line with its proof and its
+  // source (memory.triedAndFailed, on as usual). Through the same filter and Pause as every line, shown with Undo, and
+  // forgettable. The shared AGENTS.md block is brought up to date only where Squibby already wrote it: a failed task never
+  // makes new files in the project.
+  private rememberTried(project: string, what: string, failure: { label: string; detail: string }, loopBroke: boolean) {
+    if (this.setting<boolean>("memory.triedAndFailed", project) === false) return;
+    const line = triedLine(what, failure);
+    if (!line) return;
+    this.remember(project, [{ scope: "project", text: line, source: loopBroke ? TRIED_SOURCE.loop : TRIED_SOURCE.unproven }], false);
+    this.ownWrite(() => this.syncShared(project, true));
   }
   // M77b (the 10 Nov real run, bug 5): each write of the shared notes files, counted per project, so a task's receipt can
   // say that the files changed while it ran stay after its Undo (they are memory, with their own Forget, not the fix).
@@ -478,6 +502,8 @@ export class AgentRunner {
     try {
       const files = this.setting<boolean>("memory.learnFromFiles", project), words = this.setting<boolean>("memory.learnFromWords", project);
       this.remember(project, [...(files ? projectFacts(project).map((f) => ({ scope: "project" as Scope, ...f })) : []), ...(words ? askSignals(said) : [])], share);
+      // M78: the start block is written again as a task starts, so a house rule changed in Settings reaches the next session.
+      this.notesChanged(project);
       const n = recallWords((k) => this.setting(k, project), "task");
       return n > 0 ? this.memoryFor(project)?.forAgent(n) ?? "" : "";
     } catch { return ""; }
@@ -593,9 +619,10 @@ export class AgentRunner {
     if (!m) return;
     const p = m.list("project"), u = m.list("profile");
     this.emit({ type: "explain.state", project, enabled: m.explainEnabled(), mode: m.explainMode() } as never);
-    this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems], ...(answers?.id ? { answers: answers.id } : {}), ...(answers?.refused ? { refused: answers.refused } : {}) } as never);
+    const start = this.notesChanged(project);
+    this.emit({ type: "memory.state", project, paused: m.isPaused(), projectLines: p.entries, profileLines: u.entries, problems: [...p.problems, ...u.problems], ...(answers?.id ? { answers: answers.id } : {}), ...(answers?.refused ? { refused: answers.refused } : {}), ...(start ? { start: { hook: start.hook, text: start.text, lines: start.lines.map((l) => ({ kind: l.kind, text: l.text, source: l.source, date: l.date, ...(l.id ? { id: l.id } : {}) })) } } : {}) } as never);
   }
-  private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" }>) {
+  private memoryCommand(cmd: Extract<Command, { type: "memory.list" | "memory.forget" | "memory.edit" | "memory.pause" | "memory.erase" | "memory.export" | "memory.agents" | "memory.restore" }>) {
     const m = this.memoryFor(cmd.project);
     if (!m) { this.fail("Memory is not available.", undefined); return; }
     // A refusal is said after the fresh memory.state, which clears any older note on the page, so its reason stays shown.
@@ -614,7 +641,15 @@ export class AgentRunner {
         break;
       }
       case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
-      case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: m.exportText() } as never); return;
+      // M78: every note of the project and the profile and the house rules, in one plain file the page saves on a tap.
+      case "memory.export": this.emit({ type: "memory.exported", project: cmd.project, text: exportNotes(cmd.project === NO_PROJECT ? "" : resolve(cmd.project), m, this.now()) } as never); return;
+      // M78: an export the person chose, put back after their yes. Nothing is removed; every line passes the filter again.
+      case "memory.restore": {
+        const r = restoreNotes(cmd.project === NO_PROJECT ? "" : resolve(cmd.project), m, cmd.text, this.now());
+        this.emit({ type: "memory.restored", project: cmd.project, added: r.added, skipped: r.skipped, forgotten: r.forgotten, refused: r.refused, ...(r.problem ? { problem: r.problem } : {}) } as never);
+        if (r.added) this.syncShared(cmd.project, true);
+        break;
+      }
     }
     this.memoryState(cmd.project, { id: cmd.id, ...(refused !== undefined ? { refused } : {}) });
     if (refused !== undefined) this.emit({ type: "memory.refused", project: cmd.project, reason: refused } as never);
@@ -812,10 +847,10 @@ export class AgentRunner {
         if (!m) { this.fail("Memory is not available.", undefined); return; }
         const r = this.ownWrite(() => m.add(cmd.scope, cmd.text, cmd.source, this.now()));
         if (!r.ok) this.emit({ type: "memory.refused", project: cmd.project, reason: r.reason } as never);
-        else this.emit({ type: "memory.saved", project: cmd.project, scope: cmd.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never);
+        else { this.emit({ type: "memory.saved", project: cmd.project, scope: cmd.scope, line: r.entry.id, text: r.entry.text, source: r.entry.source } as never); if (cmd.scope === "project") this.ownWrite(() => this.notesChanged(cmd.project)); }
         return;
       }
-      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": this.ownWrite(() => this.memoryCommand(cmd)); return;
+      case "memory.list": case "memory.forget": case "memory.edit": case "memory.pause": case "memory.erase": case "memory.export": case "memory.agents": case "memory.restore": this.ownWrite(() => this.memoryCommand(cmd)); return;
       case "drive.plan": return this.drivePlan(cmd);
       case "rescue.diagnose": return this.rescueDiagnose(cmd);
       case "problem.find": return this.problemFind(cmd);
@@ -1479,6 +1514,9 @@ export class AgentRunner {
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);
+    // M78: a fix that ended not proven (the loop breaker stopped it, or its checks still failed) leaves one "tried and failed"
+    // line with its proof. Never off the record, never for a practice copy, never after Stop.
+    if (proof === "failed" && lastFailure && status !== "interrupted" && !offRecord && !cmd.practice) this.rememberTried(cmd.project, lbl, lastFailure, stuckOffered);
     this.state(cmd.agent, status === "done" ? "done" : status === "needs_you" ? "needsYou" : status === "interrupted" ? "idle" : "error");
     this.sessions.delete(cmd.agent);
     // M58: Go back to the last working version, chosen on the stuck card after the page asked. The task has ended with its

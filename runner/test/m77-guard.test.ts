@@ -85,8 +85,8 @@ describe("the guard and waiting hooks Squibby adds, only after a yes", () => {
     expect(s.plan(p, "codex", "guard").problem).toBeTruthy();
     expect(s.add(p, "codex", "guard").problem).toBeTruthy();
     expect(existsSync(join(p, ".codex"))).toBe(false);
-    // The Settings rows: the two done signals, then Claude Code's guard and waiting.
-    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "codex:done", "claude:guard", "claude:waiting"]);
+    // The Settings rows: the two done signals, then Claude Code's guard and waiting, and (M78) its start block.
+    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "codex:done", "claude:guard", "claude:waiting", "claude:start"]);
   });
   test("adding keeps every other hook (the person's own PreToolUse too), adding twice adds once, and Remove takes out only Squibby's", () => {
     const data = tmp("data"), p = gitProject();

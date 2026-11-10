@@ -54,7 +54,7 @@ The rules that shape the split:
 |---|---|---|
 | **Characters** | One state machine per character, driven by agent events; cards with proof and controls | UI `characters`, `dock`, `cards`; Rust `windows`; states come from runner events plus three the shell adds itself (`off`, `seeingScreen`, `readingText`) |
 | **Agent engine** | Three lanes behind one `Engine` interface: agent sessions (Sonnet 5.5, Opus 5.5 for planning), fast lane (Haiku 4.5, no tools, warm), vision session (Sonnet 5.5, only `point_at`, `zoom`, `finish`). Every lane runs with `strictMcpConfig: true` | Runner `engine`, `agents`, `auth` |
-| **Memory** | Plain markdown files the user can read and edit, plus a local SQLite task log | Runner `memory`, `tasklog`; UI `memory-page` |
+| **Memory** | Plain markdown files the user can read and edit, plus a local SQLite task log. M78: a start block of at most 30 lines for each Claude Code session (a SessionStart hook after a yes), a search index over the notes (SQLite FTS5, a copy rebuilt from the files), tried and failed lines, export and restore | Runner `memory` (`store`, `startblock`, `notesindex`, `sessionstart`, `backup`), `donesignal`, `tasklog`; Shell `notesfile`, `donehooks`; UI `memory-page` (`memoryStart`) |
 | **Trust layer** | Safety hooks and deny rules, shadow snapshots, proof ladder, approvals, receipts, budgets; permissions and consent on the OS side; the kill switch | Runner `safety`, `checkpoints`, `proof`, `approvals`, `receipts`, `ledger`, `interrupts` (kill switch registry); Rust `permissions`, `hotkeys` and `supervisor` (kill switch) |
 
 ## 3. Modules

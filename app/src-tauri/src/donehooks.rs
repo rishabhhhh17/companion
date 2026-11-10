@@ -15,8 +15,9 @@ use std::path::{Path, PathBuf};
 pub const HOOK_FILES: &[(&str, &str)] = &[("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json")];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
 pub const INDEX: &str = "done-signals.json";
-/// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77).
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification"];
+/// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
+/// and the start block (M78).
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -96,12 +97,14 @@ fn get<'a>(o: &'a [(String, J)], k: &str) -> Option<&'a J> { o.iter().find(|(x, 
 /// A path inside single quotes for /bin/sh, as donesignal.ts shQuote writes it.
 fn sh_quote(s: &str) -> String { format!("'{}'", s.replace('\'', "'\\''")) }
 /// Whether an entry is a Squibby hook of this data folder (donesignal.ts anyOurs): the done signal's touch of the done
-/// folder, or a guard or waiting command that opens with the guard folder.
-fn ours(entry: &J, done_dir: &str, guard_dir: &str) -> bool {
+/// folder, a guard or waiting command that opens with the guard folder, or (M78) a start command that opens with the start
+/// folder.
+fn ours(entry: &J, done_dir: &str, guard_dir: &str, start_dir: &str) -> bool {
     let J::Obj(o) = entry else { return false };
     let Some(J::Arr(hooks)) = get(o, "hooks") else { return false };
     let guard_open = format!("d={};", sh_quote(guard_dir));
-    hooks.iter().any(|h| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open))))
+    let start_open = format!("s={};", sh_quote(start_dir));
+    hooks.iter().any(|h| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open) || c.starts_with(&start_open))))
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -127,6 +130,7 @@ pub fn projects_with_hooks(runner_data: &Path) -> Vec<PathBuf> {
 pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
     let done_dir = runner_data.join("done").to_string_lossy().to_string();
     let guard_dir = runner_data.join("guard").to_string_lossy().to_string();
+    let start_dir = runner_data.join("start").to_string_lossy().to_string();
     let rec = rec_of(runner_data, project);
     let mut said = vec![];
     for (tool, rel) in HOOK_FILES {
@@ -141,7 +145,7 @@ pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
         for event in EVENTS {
             let Some(sp) = hooks.iter().position(|(k, _)| k == event) else { continue };
             let J::Arr(list) = hooks[sp].1.clone() else { continue };
-            let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir)).cloned().collect();
+            let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir, &start_dir)).cloned().collect();
             if kept.len() == list.len() { continue; }   // nothing of Squibby's under this event
             changed = true;
             if kept.is_empty() { hooks.remove(sp); } else { hooks[sp].1 = J::Arr(kept); }
@@ -223,6 +227,22 @@ mod tests {
         assert!(remove(&t.project, &t.data).is_empty());
     }
     #[test]
+    fn m78_the_start_entry_goes_too_and_the_persons_own_session_start_hook_stays() {
+        let t = t("start");
+        create_dir_all(t.project.join(".claude")).unwrap();
+        let start = format!("s='{}/start'; f=\"$s/0123456789abcdef01234567.md\"; [ -f \"$f\" ] && /bin/cat -- \"$f\" 2>/dev/null; exit 0", t.data.display());
+        let ours = format!("{{ \"matcher\": \"startup|clear|compact\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {}, \"timeout\": 5 }} ] }}", serde_json::to_string(&start).unwrap());
+        let theirs = r#"{ "matcher": "startup", "hooks": [ { "type": "command", "command": "cat notes.md" } ] }"#;
+        fwrite(t.project.join(".claude/settings.local.json"), format!("{{\n  \"hooks\": {{\n    \"SessionStart\": [ {theirs}, {ours} ]\n  }}\n}}\n")).unwrap();
+        index_with(&t, &[], &[]);
+        assert_eq!(remove(&t.project, &t.data), vec![".claude/settings.local.json"]);
+        let after = fs::read_to_string(t.project.join(".claude/settings.local.json")).unwrap();
+        assert!(!after.contains("/start'") && after.contains("cat notes.md"), "{after}");
+        // Another data folder's start hook stays.
+        fwrite(t.project.join(".claude/settings.local.json"), r#"{ "hooks": { "SessionStart": [ { "hooks": [ { "type": "command", "command": "s='/tmp/elsewhere/start'; exit 0" } ] } ] } }"#).unwrap();
+        assert!(remove(&t.project, &t.data).is_empty());
+    }
+    #[test]
     fn another_data_folders_touch_hook_and_the_persons_own_touch_stay() {
         let t = t("others");
         create_dir_all(t.project.join(".codex")).unwrap();
@@ -300,5 +320,7 @@ mod tests {
         assert!(ts.contains("claude: \".claude/settings.local.json\", codex: \".codex/hooks.json\"") && ts.contains("DONE_INDEX = \"done-signals.json\""));
         // M77: the same three events and the same guard folder opening on both sides.
         assert!(ts.contains("done: \"Stop\", guard: \"PreToolUse\", waiting: \"Notification\"") && ts.contains("GUARD_DIR = \"guard\"") && ts.contains("h.command.startsWith(`d=${shQuote(guardDir)};`)"), "the runner finds its guard entries the same way");
+        // M78: the start hook under SessionStart, found by its start folder opening on both sides.
+        assert!(ts.contains("start: \"SessionStart\"") && ts.contains("START_DIR = \"start\"") && ts.contains("h.command.startsWith(`s=${shQuote(startDir)};`)"), "the runner finds its start entries the same way");
     }
 }

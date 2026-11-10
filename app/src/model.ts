@@ -1,5 +1,6 @@
 // What the character and cards show, decided here as plain code (no screen needed to test it).
 // Input: events from the runner (protocol) plus a few events from the app itself.
+import { startFrom, type StartState } from "./memoryStart.ts";
 import { reviewReduce, type ReviewCard } from "./review.ts";
 import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
 import { gateFinding, isExpected, keyPracticeReduce, practiceOf } from "./practice.ts";
@@ -86,7 +87,8 @@ const phOwn = (m: Model, req: unknown): boolean => !!m.ph?.req && req === m.ph.r
 export type ShipGate = { id: string; label: string; status: "passed" | "blocked" | "could_not_check" | "not_applicable"; detail: string; findings?: string[]; overridable?: boolean };
 export type ShipReport = { gates: ShipGate[]; canShip: boolean; blockedBy: string[]; needsYou: string[]; confirmed: string[] };
 export type MemoryLine = { id: string; text: string; source: string; date: string };
-export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[] };
+/** M78: start is the start block Claude Code is handed (memoryStart.ts), absent from an older engine. */
+export type MemoryState = { paused: boolean; projectLines: MemoryLine[]; profileLines: MemoryLine[]; problems: string[]; start?: StartState | null };
 export type Saved = { id: string; scope: "project" | "profile"; text: string };
 export type Explain = { checkpoint: string; bullets: string[]; question?: { text: string; options: string[]; correct: number } };
 // One Drive step's explanation, kept for the plan's card (each step's own receipt is replaced by the next step's).
@@ -1073,7 +1075,7 @@ function reduceRest(m: Model, e: Ev): Model {
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.
-    case "memory.state": if (e.project === NO_PROJECT) return m; return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [] }, memoryNote: null };
+    case "memory.state": if (e.project === NO_PROJECT) return m; return { ...m, memory: { paused: !!e.paused, projectLines: e.projectLines ?? [], profileLines: e.profileLines ?? [], problems: e.problems ?? [], start: startFrom(e.start) }, memoryNote: null };
     case "memory.refused": return { ...m, memoryNote: String(e.reason) };
     case "memory.exported": return { ...m, exported: String(e.text ?? "") };
     case "memory.saved": {
