@@ -2226,7 +2226,7 @@ function Card() {
     // Undo on the last fix is History's own (history.ts historyUndo), with the same question and words, under the list.
     const undoAsk = restFix && cp && u?.checkpoint === cp ? (<>
         {u.stage === "confirm" && (
-          <ConfirmStep className="line now-undo" label={S.undoSure} back={fixUndoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
+          <ConfirmStep className="line now-undo" label={S.undoSure} back={fixUndoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>{m.receipt?.checkpoint === cp && m.receipt.notesStay?.length ? <div>{S.guard.notesStay(m.receipt.notesStay)}</div> : null}
             <div className="row">
               <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, cp)); }}>{S.undoYes}</button>
               <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>
@@ -3056,6 +3056,8 @@ function Card() {
           {changeSz?.warn && <div className="line" role="status">{changeSz.warn}</div>}
           {m.receipt.changed.length === 0 ? <div className={receiptHeading(m.receipt) === S.answerTitle ? "line muted" : "line"}>{S.nothingChanged}</div> : <ChangesCard changed={m.receipt.changed} undone={undone} />}
           {m.receipt.notUndoable.length > 0 && <div className="line"><b>{undone ? S.stillThere : S.cannotUndo}:</b> {m.receipt.notUndoable.join("; ")}</div>}
+          {/* M77b: the notes for other AI tools that changed while the task ran are memory, not the fix: Undo leaves them. */}
+          {m.receipt.notesStay?.length ? <div className="line muted">{S.guard.notesStay(m.receipt.notesStay)}</div> : null}
           {blockedNote(m, project) && <div className="line"><b>{blockedNote(m, project)}</b></div>}
           {/* M69 (F29): Squibby pays for the model, so no cost line under a result. */}
           {m.receipt.gone && <div className="line">{S.receiptGone}</div>}
@@ -3070,7 +3072,7 @@ function Card() {
             </div>
           )}
           {m.undo?.stage === "confirm" && !m.undo.back && project && (
-            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div><div className="muted">{undoLimitsLine(m.receipt.notUndoable)}</div>
+            <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={() => dispatch({ type: "ui.undoCancelled" })}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>{m.receipt.notesStay?.length ? <div>{S.guard.notesStay(m.receipt.notesStay)}</div> : null}<div className="muted">{undoLimitsLine(m.receipt.notUndoable)}</div>
               <div className="row">
                 <button className="btn danger" type="button" onClick={() => { dispatch({ type: "ui.undoSent" }); void send(undo(project, m.undo!.checkpoint)); }}>{S.undoYes}</button>
                 <button className="btn" type="button" data-cancel onClick={() => dispatch({ type: "ui.undoCancelled" })}>{S.undoNo}</button>

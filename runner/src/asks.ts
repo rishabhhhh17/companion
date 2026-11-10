@@ -82,14 +82,31 @@ export function asksForWhatOnlyTheyHave(text: string): boolean {
 }
 
 /** The agent's last words as the receipt carries them: secrets hidden, spaces folded, clipped by whole characters. The
- *  question is the last line of the message, so words that ask the person keep their end ("…" then the tail, from a word
- *  start); any other message keeps its start. */
+ *  question is the last line of the message, so words that ask the person keep their end; any other message keeps its
+ *  start. M77b (the 10 Nov real run, bug 7): the end is kept in whole sentences, after the first sentence (which often says
+ *  the cause) when it fits, so the receipt never starts in the middle of a sentence. */
 export function saidLine(text: string): string {
   const flat = redact(String(text ?? "")).replace(/\s+/g, " ").trim();
   const chars = Array.from(flat);
   if (chars.length <= MAX_SAID_CHARS) return flat;
   if (!asksPerson(text)) return `${clip(flat, MAX_SAID_CHARS - 1).trimEnd()}…`;
-  const tail = chars.slice(chars.length - (MAX_SAID_CHARS - 1)).join("");
-  const space = tail.indexOf(" ");
-  return `…${(space >= 0 && space < 40 ? tail.slice(space + 1) : tail).trimStart()}`;
+  const len = (s: string) => Array.from(s).length;
+  const sentences = flat.split(/(?<=[.!?])\s+(?=\S)/);
+  const tail: string[] = [];
+  let used = 0;
+  for (let i = sentences.length - 1; i > 0; i--) {
+    const n = len(sentences[i]) + (tail.length ? 1 : 0);
+    if (used + n > MAX_SAID_CHARS - 2) break;
+    tail.unshift(sentences[i]); used += n;
+  }
+  if (tail.length) {
+    // The first sentence too, when it and the end fit together: dropping sentences next to the gap, never the question.
+    const first = sentences[0], fits = () => len(first) + 3 + len(tail.join(" ")) <= MAX_SAID_CHARS;
+    if (len(first) <= 200) { while (tail.length > 1 && !fits()) tail.shift(); if (fits()) return `${first} … ${tail.join(" ")}`; }
+    return `… ${tail.join(" ")}`;
+  }
+  // One sentence longer than the room: its end, from a word start, as before.
+  const end = chars.slice(chars.length - (MAX_SAID_CHARS - 1)).join("");
+  const space = end.indexOf(" ");
+  return `…${(space >= 0 && space < 40 ? end.slice(space + 1) : end).trimStart()}`;
 }

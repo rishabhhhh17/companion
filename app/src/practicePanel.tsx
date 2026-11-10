@@ -89,6 +89,7 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
   return (
     <div role="group" aria-label={S.practiceChanged}>
       {r.changed.length > 0 && <ChangesCard changed={r.changed} />}
+      {r.notesStay?.length ? <div className="line muted">{S.guard.notesStay(r.notesStay)}</div> : null}
       <div className="row">
         {r.changedAt && <button className="btn" type="button" onClick={() => act.showChanged(r.changedAt!)}>{S.showChanged}</button>}
         <button className="btn" type="button" onClick={act.showResult}>{S.practiceShowResult}</button>
@@ -96,7 +97,7 @@ function ResultBox({ r, undo, explain, act }: { r: PracticeResult; undo: UndoSta
       {/* Undo is a quiet button, never the loudest on a win (the review of 5 Nov): it still asks first. */}
       {r.changed.length > 0 && !mine && <div className="row"><button id={undoId} className="btn quiet" type="button" onClick={() => act.undoAsk(r.checkpoint)}>{S.undo}</button></div>}
       {mine?.stage === "confirm" && (
-        <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>
+        <ConfirmStep className="line" label={S.undoSure} back={undoId} onCancel={act.undoCancel}><div>{S.undoSure}</div><div>{keepsMine ? S.undoKeeps : S.undoReplaces}</div>{r.notesStay?.length ? <div>{S.guard.notesStay(r.notesStay)}</div> : null}
           <div className="row">
             <button className="btn danger" type="button" onClick={() => act.undoYes(r.checkpoint)}>{S.undoYes}</button>
             <button className="btn" type="button" data-cancel onClick={act.undoCancel}>{S.undoNo}</button>

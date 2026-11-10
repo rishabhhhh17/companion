@@ -46,6 +46,8 @@ export type Repeat = { first: ChangeAt; second: ChangeAt; was: string; now: stri
 export type Receipt = { proof?: string; checkpoint: string; changed: { file: string; kind: string; added?: number; removed?: number; was?: number }[]; askWords?: number; commands: number; notUndoable: string[]; usdEstimate: number; picture?: boolean; visual?: { image?: string; before?: string; caption: string }; changedAt?: ChangeAt; repeat?: Repeat; turnTaken?: boolean; undone?: boolean; said?: string; asks?: boolean; inPlan?: boolean; gone?: boolean;
   /** M77: the task's last words claimed the checks pass, but its proof says they did not run or failed. */
   claimedPassed?: boolean;
+  /** M77b: the notes for other AI tools (AGENTS.md, CLAUDE.md) that changed while the task ran, which Undo leaves. */
+  notesStay?: string[];
   end?: "done" | "stopped" | "limit" | "needsYou" | "failed"; limit?: "spending" | "daily" | "turns"; failWhy?: "check" | "noConnection" | "claudeBusy" | "error";
   undoSafety?: string; back?: boolean; backPartly?: boolean; fixKept?: boolean; earlierUndone?: boolean;
   // A plan's whole fix (must fix 7): its steps, and the last step's own undo point (its picture is made for that one). The
@@ -130,7 +132,9 @@ export type About = { project: string; about: string; origin: string; needsInsta
 // already fixed. previous: the folder in use before the practice, for Back to my project. A result's asks: the fix stopped
 // to ask the person something (the receipt's question, secrets hidden), so it is answered in the follow up box under the
 // result on Now, and that answer is still the practice's fix (it carries the practice id).
-export type PracticeResult = { checkpoint: string; proof?: string; changed: { file: string; kind: string }[]; usdEstimate: number; changedAt?: ChangeAt; protectedChanged?: string[]; asks?: string };
+export type PracticeResult = { checkpoint: string; proof?: string; changed: { file: string; kind: string }[]; usdEstimate: number; changedAt?: ChangeAt; protectedChanged?: string[]; asks?: string;
+  /** M77b: the notes for other AI tools that changed while the fix ran, which its Undo leaves. */
+  notesStay?: string[] };
 export type Practice = {
   kind: string; stage: "start" | "found" | "fixing" | "lesson" | "proving" | "done" | "failed" | "blocked"; project: string;
   where?: { file?: string; line?: number; message?: string }; problem?: Problem; label?: string; why?: string; block?: "couldNotRun" | "elsewhere" | "nothing";
@@ -413,6 +417,12 @@ const saidOf = (e: Ev): { said?: string; asks?: boolean } => {
   return said ? { said, ...(e.asks === true ? { asks: true, ...(e.inPlan === true ? { inPlan: true } : {}) } : {}) } : {};
 };
 
+// M77b: the shared notes files a receipt says stay after Undo: only these two names, each once, in a fixed order.
+const notesStayOf = (e: Ev): { notesStay?: string[] } => {
+  const named = Array.isArray(e.notesStay) ? ["AGENTS.md", "CLAUDE.md"].filter((f) => (e.notesStay as unknown[]).includes(f)) : [];
+  return named.length ? { notesStay: named } : {};
+};
+
 // ---- the practice projects (practice.ts has the catalog) ----
 
 const whereOf = (p: any) => ({ file: typeof p?.file === "string" ? p.file : undefined, line: Number.isInteger(p?.line) ? p.line : undefined, message: typeof p?.message === "string" ? p.message : undefined });
@@ -465,7 +475,7 @@ function practiceReceipt(pr: Practice | null, e: Ev): Practice | null {
   if (!pr || !entry || pr.stage !== "fixing" || e.practice !== pr.kind || (pr.checkpoint && e.checkpoint !== pr.checkpoint)) return pr;
   const changed = Array.isArray(e.changed) ? e.changed.filter((c: any) => c && typeof c.file === "string").map((c: any) => ({ file: String(c.file), kind: String(c.kind) })) : [];
   const touched = changed.filter((c) => entry.protect.includes(c.file)).map((c) => c.file);
-  const result: PracticeResult = { checkpoint: String(e.checkpoint), proof: typeof e.proof === "string" ? e.proof : undefined, changed, usdEstimate: Number(e.usdEstimate) || 0, ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(touched.length ? { protectedChanged: touched } : {}) };
+  const result: PracticeResult = { checkpoint: String(e.checkpoint), proof: typeof e.proof === "string" ? e.proof : undefined, changed, usdEstimate: Number(e.usdEstimate) || 0, ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(touched.length ? { protectedChanged: touched } : {}), ...notesStayOf(e) };
   // A fix that ended on a question waits for the answer: not passed, and the panel says what it asked and where to answer.
   const q = saidOf(e);
   if (q.asks && q.said) result.asks = q.said;
@@ -1059,7 +1069,7 @@ function reduceRest(m: Model, e: Ev): Model {
       if (e.inPlan === true && m.drive && !m.drive.finished && typeof e.checkpoint === "string") m = { ...m, drive: { ...m.drive, whole: addPlanStep(m.drive.whole, e) } };
       // A new receipt is built fresh, so undone, back, fixKept and undoSafety start cleared: this is the only place they are.
       // What the engine said about the files since the last check is older than this result: it is asked again.
-      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}) } };
+      return { ...m, sinceCheck: undefined, stuck: null, practice: practiceReceipt(m.practice, e), receipt: { proof: e.proof, checkpoint: e.checkpoint, changed: e.changed, ...(typeof e.askWords === "number" ? { askWords: e.askWords } : {}), commands: e.commands, notUndoable: e.notUndoable, usdEstimate: e.usdEstimate, ...(e.picture === true ? { picture: true } : {}), ...(placeOk(e.changedAt) ? { changedAt: e.changedAt } : {}), ...(repeatOk(e.repeat) ? { repeat: e.repeat } : {}), ...saidOf(e), ...endOf(e), ...(e.claimedPassed === true ? { claimedPassed: true } : {}), ...notesStayOf(e) } };
     }
     // With no folder chosen, Settings asks for the settings for every project (the stand in project): only those are read
     // from it (settingsStore.ts), never a project's memory for the Memory tab.

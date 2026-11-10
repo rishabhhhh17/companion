@@ -9,7 +9,8 @@ import { isIP } from "node:net";
 import { hostAllowed, isLocalName, parseTarget, resolvedAllowed } from "./watchaddress.ts";
 import { PRODUCT } from "./names.ts";
 
-export type CheckResult = { outcome: "ok" | "failing" | "unknown"; reason: string };
+/** detail (M77b): a failed check's own output, kept apart from the plain reason, for behind Details. */
+export type CheckResult = { outcome: "ok" | "failing" | "unknown"; reason: string; detail?: string };
 export type SiteResponse = { status: number; headers: { get(name: string): string | null }; body?: { cancel(): unknown } | null };
 /** address: the one already checked address of the name in the url. A fetcher connects to exactly that address (keeping the
  *  name for the Host header and the certificate), so a name that answers differently the second time cannot lead elsewhere. */

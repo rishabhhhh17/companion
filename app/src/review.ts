@@ -26,6 +26,8 @@ const FILE_KINDS = ["added", "modified", "deleted"];
 export type ReviewDone = {
   rating: ReviewRating; touches: ReviewTouch[]; summary: string; notes: string[]; reasons: ReviewReason[];
   checks: ReviewChecks; checksNote?: string; sendBack: string; lane: (typeof REVIEW_LANES)[number]; usdEstimate: number;
+  /** M77b: the failed checks' own output, secrets hidden again, only ever shown behind Details. */
+  checksDetail?: string;
   /** Why no model wrote the words (the day's limit, no Claude connected, Claude not reached). */
   note?: string;
   /** M57: the project's notes for AI tools the words were written with, by name (read as notes only). */
@@ -117,13 +119,13 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   const files = filesOf(e.files), reasons = reasonsOf(e.reasons), notes = strings(e.notes ?? [], MAX_NOTES), summary = str(e.summary), sendBack = str(e.sendBack, 20_000);
   if (!files || !reasons || !notes || summary === null || sendBack === null) return null;
   const lane = (REVIEW_LANES as readonly string[]).includes(e.lane as string) ? (e.lane as ReviewDone["lane"]) : "none";
-  const checksNote = str(e.checksNote), note = str(e.note);
+  const checksNote = str(e.checksNote), note = str(e.note), checksDetail = e.checks === "failed" ? str(e.checksDetail, 1500) : null;
   const ruleFiles = strings(e.ruleFiles, 10), hidden = whole(e.hidden);
   const untold = untoldOf(e.untold);
   return {
     ...(untold ? { untold } : {}),
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
-    ...(checksNote ? { checksNote } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
+    ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail: redact(checksDetail) } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
     ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),
     files, count: whole(e.count) ?? files.length, capped: e.capped === true, secretFiles: strings(e.secretFiles ?? [], MAX_SECRET_FILES) ?? [],
   };

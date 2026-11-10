@@ -2,6 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## What the real run found: 10 Nov 2026 (in progress)
+
+We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes worked 8 of 8 times. These are the things it got wrong, now put right.
+
+- **A test loosened to pass is caught.** When a change breaks the code and also swaps an exact check for a loose one ("the total is 13" became "the total is not negative"), or changes the expected answer to match the broken code, the review now says Fix this first, with the file and line, even though the checks passed. Before, it said "Nothing blocks it".
+- **The review no longer mistakes its own advice for a claim.** A review that said "run the checks again to confirm they pass" was read as saying the checks pass. Only what the change itself says counts now.
+- **Failed checks in plain words.** Instead of the test runner's own output, the review says which check failed, the first test that failed and where: "The tests did not pass. The test file test/price.test.js could not run, because of a problem in price.js, line 3." The output itself is still there, behind Details.
+- **Reviews, Explain and Prompt help book their whole cost.** The quick answers were counted before Claude had finished writing, so most of what they cost was missed. Your daily limit now sees the real amount.
+- **Undo says what it leaves.** Squibby's notes for other AI tools (AGENTS.md, CLAUDE.md) are memory, not the fix, so Undo leaves them. When they changed during a task, the result and the Undo question now say so.
+- **An open database table fix is proven by the database check.** A fix for a table anyone could read is called proven only when the database check passes again on the fixed copy. Otherwise it says it is only partly proven, and why.
+- **A result that ends on a question starts at the start of a sentence,** keeping the first sentence, which usually says what went wrong.
+- **Started inside another app's sandbox, Squibby says so.** Instead of "Claude could not be reached" and "Try again", it says the checks could not run because of that sandbox, and to open Squibby by itself.
+
 ## The safety net: 10 Nov 2026 (in progress)
 
 - **A copy saved the instant before Claude Code runs a destructive command.** In Settings, Fixing, under Start reviews sooner, you can let Claude Code tell Squibby before each shell command in this project. When the command would throw work away (git reset --hard, git checkout or restore on files, git clean, rm -rf inside the project, a database drop or reset), Squibby saves a copy of the project first, then the command runs exactly as Claude Code decided. Nothing is blocked or changed, and if Squibby is closed or slow Claude Code goes on without waiting. History shows "Before Claude ran git reset --hard" with Undo, which puts the files back from Squibby's own copy, never through git. Squibby shows you the exact lines first, adds them only when you say yes, and one press removes them. Delete everything and leaving a project remove them too.

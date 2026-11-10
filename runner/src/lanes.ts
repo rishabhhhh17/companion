@@ -84,10 +84,35 @@ export class FastLane {
     const prompt = req.raw ? (req.text.startsWith("/") ? `Input:\n${req.text}` : req.text) : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const q = (this.o.queryFn ?? realQuery)({ prompt, options: options as never });
     let streamed = "", full = "", cost = 0, apiError: ApiError | undefined;
+    // M77b (the 10 Nov real run, bug 4): the usage of the answer, the largest count of each kind seen so far. With partial
+    // messages on, the assistant message carries the usage of the moment its text block ended (1 to 8 output tokens for
+    // replies of 120 to 200), and the whole count comes with the message's last stream event (message_delta). So a raw
+    // answer is handed back only once that count is in (or the result, or a run that does not stream at all).
+    const used: Record<string, any> = {};
+    let streaming = false, counted = false;
+    const tally = (u: any) => {
+      if (!u || typeof u !== "object") return;
+      for (const [k, v] of Object.entries(u)) {
+        if (typeof v === "number" && Number.isFinite(v)) used[k] = Math.max(Number(used[k]) || 0, v);
+        else if (v && typeof v === "object" && k === "server_tool_use") used[k] = { web_search_requests: Math.max(Number(used[k]?.web_search_requests) || 0, Number((v as any).web_search_requests) || 0) };
+      }
+    };
+    const answered = (usd: number) => {
+      // The answer is complete: hand it back now and let the engine process end in the background.
+      onDelta(full);
+      setTimeout(() => ac.abort(), 0);
+      return { text: full, costUsd: round(usd) };
+    };
+    const estimate = () => (Object.keys(used).length ? estimateUsd(model, used) : 0.002);
     try {
       for await (const m of q as AsyncIterable<any>) {
         if (m.type === "stream_event" && m.event?.type === "content_block_delta" && m.event.delta?.type === "text_delta") {
           streamed += m.event.delta.text; onDelta(m.event.delta.text);
+        } else if (m.type === "stream_event" && m.event?.type === "message_start") {
+          streaming = true; tally(m.event.message?.usage);
+        } else if (m.type === "stream_event" && m.event?.type === "message_delta") {
+          tally(m.event.usage); counted = true;
+          if (req.raw && full) return answered(estimate());
         } else if (m.type === "assistant") {
           // A message with no text (a thinking block, which the 5.5 models send first) is not the answer.
           const text = (m.message?.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
@@ -95,24 +120,20 @@ export class FastLane {
           // request fails, named, when its result arrives (reach.ts).
           if (m.error) { apiError = { kind: String(m.error), text }; continue; }
           if (text) full = text;
-          if (req.raw && full) {
-            // The answer is complete: hand it back now and let the engine process end in the background. The cost is
-            // estimated from the tokens used at this model's price, because the run is not waited on.
-            const u = m.message?.usage;
-            cost = u ? estimateUsd(model, u) : 0.002;
-            onDelta(full);
-            setTimeout(() => ac.abort(), 0);
-            return { text: full, costUsd: round(cost) };
-          }
+          tally(m.message?.usage);
+          // Without partial messages the assistant message's usage is already the whole count.
+          if (req.raw && full && (!streaming || counted)) return answered(estimate());
         } else if (m.type === "result") {
           const stop = turnStop(m, apiError);
           if (stop) throw new Error(stop);
           cost = Number(m.total_cost_usd ?? 0);
+          if (req.raw && full) return answered(cost > 0 ? cost : estimate());
         }
       }
     } finally { signal.removeEventListener("abort", link); }
     if (!streamed && full) onDelta(full);
-    return { text: full || streamed, costUsd: round(cost) };
+    // A stream that ended before its last count (an engine that ended early): what was counted, never nothing.
+    return { text: full || streamed, costUsd: round(cost > 0 ? cost : req.raw && full ? estimate() : cost) };
   }
 }
 

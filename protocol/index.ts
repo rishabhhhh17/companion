@@ -13,7 +13,8 @@ export type AgentStart = Envelope & {
   prompt: string; model: string; budgetUsd: number; offTheRecord?: boolean;
   files?: { name: string; text: string }[]; images?: { name: string; mediaType: "image/png" | "image/jpeg"; base64: string }[];
   // practice: the practice project this task fixes (an id in app/sample/practices.json). The engine only echoes it on the
-  // task's checkpoint.created and receipt, so the page knows that receipt is the practice's own; it changes nothing else.
+  // task's checkpoint.created and receipt, so the page knows that receipt is the practice's own. M77b: in a project whose
+  // database had a table open before the task, it also has the proof run the database access check again.
   practice?: string;
 };
 // A follow up on the agent's last task (text: what is still wrong), or Try again (retry: the same request again, with
@@ -338,6 +339,8 @@ export type Receipt = Envelope & {
   mode?: "drive" | "rescue" | "research" | "ship";   // the mode the task ran in
   /** M77: the task's last words claimed the checks pass, but the proof says they did not run or failed. */
   claimedPassed?: boolean;
+  /** M77b: the shared notes for other AI tools that changed while the task ran (memory, not the fix): Undo leaves them. */
+  notesStay?: ("AGENTS.md" | "CLAUDE.md")[];
   said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
 };
@@ -557,6 +560,8 @@ export type ReviewResultEvent = Envelope & {
   type: "review.result"; project: string; batch?: string; ok: boolean; reason?: string;
   rating?: ReviewRating; touches?: ReviewTouch[]; summary?: string; notes?: string[]; reasons?: ReviewReason[]; files?: ReviewFile[]; count?: number; capped?: boolean;
   secretFiles?: string[]; checks?: ReviewChecks; checksNote?: string; sendBack?: string; lane?: (typeof REVIEW_LANES)[number]; usdEstimate: number;
+  /** M77b: when the checks failed, their own output (secrets hidden), shown only behind Details; checksNote stays the plain line. */
+  checksDetail?: string;
   /** One plain line about the words when no model wrote them: the day's limit reached, or no Claude connected. */
   note?: string;
   /** M57: the project's own notes for AI tools (AGENTS.md, CLAUDE.md, Cursor rules) the words were written with, by name.
@@ -809,7 +814,7 @@ const EVENTS: Record<string, Check[]> = {
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
   "review.started": [str("project"), str("batch"), bool("proof")],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), reviewOk],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
@@ -885,7 +890,7 @@ const EVENTS: Record<string, Check[]> = {
   "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
   "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), opt("notesStay", (m) => (Array.isArray(m.notesStay) && m.notesStay.length > 0 && m.notesStay.length <= 2 && m.notesStay.every((f: unknown) => f === "AGENTS.md" || f === "CLAUDE.md") ? null : '"notesStay" must name AGENTS.md or CLAUDE.md')), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1')), opt("privateOpen", textList("privateOpen"))],

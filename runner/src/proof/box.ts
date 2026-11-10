@@ -18,6 +18,7 @@ import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { cachePaths, ownDataPaths, sensitivePaths } from "../sandbox.ts";
+import { PRODUCT } from "../names.ts";
 
 export const SANDBOX_EXEC = "/usr/bin/sandbox-exec";
 /** "local": only this Mac's own addresses. "open": the internet too (an install, a build allowed to download). */
@@ -120,6 +121,26 @@ export function boxWorks(project: string, o: { home?: string; timeoutMs?: number
     child.on("exit", (code) => end(code === 0));
   });
 }
+
+/** M77b (the 10 Nov real run, bug 9): whether this engine was started inside another app's sandbox, where sandbox-exec
+ *  cannot start one of its own (macOS does not nest them: "sandbox_apply: Operation not permitted"). Then no check can run
+ *  in the safety box, and the words should say so instead of "Try again". Asked once, by starting the smallest box. */
+let nested: Promise<boolean> | null = null;
+export function nestedSandbox(): Promise<boolean> {
+  if (!boxReady()) return Promise.resolve(false);
+  return (nested ??= new Promise((resolve) => {
+    let said = "", done = false;
+    const end = (v: boolean) => { if (!done) { done = true; clearTimeout(t); resolve(v); } };
+    const child = spawn(SANDBOX_EXEC, ["-p", "(version 1)(allow default)", "/usr/bin/true"], { stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr?.on("data", (b) => { said += String(b); });
+    const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } end(false); }, 5000);
+    child.on("error", () => end(false));
+    child.on("exit", (code) => end(code !== 0 && /sandbox_apply|Operation not permitted/i.test(said)));
+  }));
+}
+/** What a review and a check say when that is the cause, instead of blaming Claude or the project. */
+export const SANDBOXED_CHECKS = `The checks could not run, because ${PRODUCT} was started inside another app's sandbox, and macOS does not let it open its own safety box for checks there. Open ${PRODUCT} by itself, not from inside another app, and review again.`;
+export const SANDBOXED_WORDS = `Claude could not be reached from inside another app's sandbox, where ${PRODUCT} was started, so these are the rules' own words.`;
 
 const LOCAL_NAME = /^(?:localhost|127(?:\.\d+){3}|::1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)$/i;
 /** Whether a command's output says the box itself stopped it, not the project: a write to a fixed temporary folder outside

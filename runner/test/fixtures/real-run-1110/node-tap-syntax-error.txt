@@ -1,0 +1,41 @@
+TAP version 13
+# Subtest: the right password lets you in
+ok 1 - the right password lets you in
+  ---
+  ...
+# Subtest: a wrong password does not
+ok 2 - a wrong password does not
+  ---
+  ...
+# {{project}}/price.js:3
+#   return items.reduce((sum, i) => sum + i.price * i.qty, 0;
+#                                                          ^
+# SyntaxError: missing ) after argument list
+#     at internalCompileFunction (node:internal/vm:76:18)
+#     at wrapSafe (node:internal/modules/cjs/loader:1283:20)
+#     at Module._compile (node:internal/modules/cjs/loader:1328:27)
+#     at Module._extensions..js (node:internal/modules/cjs/loader:1422:10)
+#     at Module.load (node:internal/modules/cjs/loader:1203:32)
+#     at Module._load (node:internal/modules/cjs/loader:1019:12)
+#     at Module.require (node:internal/modules/cjs/loader:1231:19)
+#     at require (node:internal/modules/helpers:177:18)
+#     at Object.<anonymous> ({{project}}/test/price.test.js:3:19)
+#     at Module._compile (node:internal/modules/cjs/loader:1364:14)
+# Node.js v18.20.8
+# Subtest: {{project}}/test/price.test.js
+not ok 2 - {{project}}/test/price.test.js
+  ---
+  location: '{{project}}/test/price.test.js:1:1'
+  failureType: 'testCodeFailure'
+  exitCode: 1
+  error: 'test failed'
+  code: 'ERR_TEST_FAILURE'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 2
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0

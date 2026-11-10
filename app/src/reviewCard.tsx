@@ -16,6 +16,7 @@ import { ChangesCard } from "./changesCard.tsx";
 import { keyFiles } from "./changeRows.ts";
 import { copyable } from "./copytext.ts";
 import { Icon } from "./icons.tsx";
+import { CheckDetail } from "./checkDetail.tsx";
 import { canFix, checksLook, keyWarned, ratingLook, sendBackCopy, silenceOffered, type ReviewCard } from "./review.ts";
 import type { ReviewReasonKind } from "../../protocol/index.ts";
 import { untoldLines } from "./safetyNet.ts";
@@ -239,6 +240,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
                 ? <span className="ui-chip" data-kind="notRun"><span className="ui-chip-mark" aria-hidden="true"><Icon name="dash" size={12} /></span><span>{checks.label}</span></span>
                 : <ProofChip kind={checks.kind} label={checks.label} />}
               {res?.checksNote && <span className="review-checks-note">{res.checksNote}</span>}
+              {res?.checksDetail && <CheckDetail parts={{ summary: "", place: "", raw: res.checksDetail }} />}
             </div>
         )}
         <ChangesCard changed={r.files} keys={keyFiles(r)} />
@@ -377,6 +379,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
             ? <span className="ui-chip" data-kind="plain"><span>{checks.label}</span></span>
             : <ProofChip kind={checks.kind} label={checks.label} />}
           {res?.checksNote && <span className="review-checks-note">{res.checksNote}</span>}
+              {res?.checksDetail && <CheckDetail parts={{ summary: "", place: "", raw: res.checksDetail }} />}
         </div>
       )}
       <ChangesCard changed={r.files} keys={keyFiles(r)} />

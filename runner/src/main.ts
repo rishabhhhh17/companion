@@ -29,6 +29,7 @@ import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
 import { newlyOff, offNow, refusal, stopGroupWork } from "./groups.ts";
 import { slowFactor } from "./proof/options.ts";
+import { nestedSandbox } from "./proof/box.ts";
 import { WATCH_FILE, WatchEngine } from "./watch.ts";
 import { GhCli } from "./connections.ts";
 import { makeChecks, makeEvidence } from "./watchwire.ts";
@@ -106,7 +107,7 @@ const review = new ReviewService({
   emit: (e) => say(e), setting: (k, p) => runnerSettings.get(k, p), store: (p) => runner.checkpointsFor(p),
   cheap: lanes && !settings.assistStub ? lanes.fast : null, strong: strongLane,
   spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) },
-  check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p),
+  check: (p, sig, o) => runner.checkForReview(p, sig, o), busy: (p) => runner.busyIn(p), sandboxed: nestedSandbox,
   // M57 feature 7: "Don't flag this kind here again" is a line in the project's memory (What I remember), read each review,
   // and it counts only when the person pressed for it (silences).
   silenced: (p) => silences.lines(p, projectLines(p)),

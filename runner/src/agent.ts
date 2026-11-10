@@ -29,6 +29,8 @@ import { checkDailyLimit, dailyLimitReason, DEFAULT_DAILY_LIMIT_USD, limitReache
 import { clip, label as makeLabel, redact, redactOutput } from "./redact.ts";
 import { diffText, needsReview, parseReview, reviewPrompt, type Review } from "./proof/review.ts";
 import { runGates, type ProofRecord } from "./ship/gates.ts";
+import { analyzeMigrations, detectSupabase, rlsGate } from "./ship/rls.ts";
+import { noTableOpen } from "./ship/opentables.ts";
 import { Ledger } from "./ledger.ts";
 import { MemoryStore, type Scope } from "./memory/store.ts";
 import { askSignals, projectFacts } from "./memory/learn.ts";
@@ -43,6 +45,8 @@ import { readDeployFailure } from "./ship/buildlog.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
+import { plainFailLine } from "./proof/failingtest.ts";
+import { nestedSandbox, SANDBOXED_CHECKS } from "./proof/box.ts";
 import { browserCheck, SIGN_IN_GAP, type SignInWindow } from "./proof/browser.ts";
 import { visibleWindow } from "./proof/browsersetup.ts";
 import { nextPauseAt, pauseAtUsd, usualTaskUsd, type CostChoice } from "./costpause.ts";
@@ -123,6 +127,8 @@ export type RunnerOptions = {
   /** Must fix 16: a quick look that Claude is in reach before each round with Claude Code (reach.ts claudeReachable). Only
    *  with the real Claude (main.ts); without it, nothing is looked up. */
   reachable?: () => Promise<boolean>;
+  /** M77b, for tests: whether the engine runs inside another app's sandbox (box.ts nestedSandbox as usual). */
+  sandboxed?: () => Promise<boolean>;
   log: TaskLog;
   emit: (e: Event) => void;
   executor?: ToolExecutor;
@@ -305,7 +311,29 @@ type PendingPlan = { project: string; model: string; budgetUsd: number; usd: num
 /** What the person reads when Squibby's own checker stopped (the raw reason is for the model only). */
 const CHECKER_STOPPED = "The checks could not run, so this is not proven yet. Try again.";
 /** The checks' steps as the pages get them: never what only the model is told (Step.forModel, a weakened check). */
-const forPerson = (steps: Step[]): Step[] => steps.map(({ forModel: _model, ...rest }) => rest);
+// M77b: the database access check (ship/rls.ts) run again in a fix's proof. A file of the project's database (a Supabase
+// migration, any .sql file) changed, or the task is a practice, and a table was open in the version before the task.
+const DATABASE_FILE = /(^|\/)supabase\/|\.sql$/i;
+const MIGRATION_FILE = /^supabase\/migrations\/[^/]+\.sql$/;
+async function databaseOpenAt(store: { readFiles(id: string, keep: (p: string) => boolean): Promise<Record<string, string>> }, id: string, project: string): Promise<boolean> {
+  try {
+    if (!detectSupabase(project)) return false;
+    const files = await store.readFiles(id, (p) => MIGRATION_FILE.test(p));
+    const byName = Object.fromEntries(Object.entries(files).map(([p, t]) => [p.split("/").pop()!, t]));
+    return analyzeMigrations(byName).withoutRls.length > 0;
+  } catch { return false; }
+}
+const DB_LABEL = "Database access is protected";
+async function withDatabaseCheck(res: LadderResult, project: string): Promise<LadderResult> {
+  const t0 = Date.now();
+  let open = true, why = "";
+  try { const g = await rlsGate({ project }); open = !noTableOpen(g); why = g.status === "blocked" ? "still finds a table open to anyone" : open ? "could not tell whether every table is protected" : ""; }
+  catch { why = "could not run"; }
+  if (!open) return { ...res, steps: [...res.steps, { rung: "checks", label: DB_LABEL, status: "passed", detail: "The database check ran again on the fixed copy and found no table open to anyone.", ms: Date.now() - t0 }] };
+  const line = `The database check ${why} on the fixed copy, so this fix is only partly proven.`;
+  return { ...res, verdict: "passed_with_gaps", gaps: [...(res.gaps ?? []), line], steps: [...res.steps, { rung: "checks", label: DB_LABEL, status: "skipped", detail: line, ms: Date.now() - t0 }] };
+}
+const forPerson = (steps: Step[]): Step[] => steps.map(({ forModel: _model, test: _test, testIsFile: _file, ...rest }) => rest);
 
 /** The tools that write one file by name; a file git ignores is kept before they change it (checkpoints.ts keepIgnored). */
 const EDIT_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -422,9 +450,24 @@ export class AgentRunner {
       const r = syncAgentsFiles(project, m, { approved: choice === "approved", declined: choice === "declined", onlyIfPresent });
       const key = resolve(project);
       if (r.status === "needs_ask" && !this.agentsAsked.has(key)) { this.agentsAsked.add(key); this.emit({ type: "memory.agents_ask", project, files: r.files } as never); }
-      if (r.status === "written") this.emit({ type: "memory.agents_written", project, files: r.files } as never);
+      if (r.status === "written") { this.noteShared(project, r.files); this.emit({ type: "memory.agents_written", project, files: r.files } as never); }
       if (r.status === "failed" && r.reason) this.fail(r.reason);
     } catch { /* sharing is never worth stopping a task for */ }
+  }
+  // M77b (the 10 Nov real run, bug 5): each write of the shared notes files, counted per project, so a task's receipt can
+  // say that the files changed while it ran stay after its Undo (they are memory, with their own Forget, not the fix).
+  private sharedWrites = new Map<string, { n: number; files: Set<string> }[]>();
+  private sharedCount = 0;
+  private noteShared(project: string, files: readonly string[]) {
+    const key = resolve(project);
+    const list = [...(this.sharedWrites.get(key) ?? []), { n: ++this.sharedCount, files: new Set(files) }];
+    this.sharedWrites.set(key, list.slice(-20));
+  }
+  private sharedMark(): number { return this.sharedCount; }
+  /** The shared notes files written since a mark, by name, in a fixed order. */
+  private sharedSince(project: string, mark: number): ("AGENTS.md" | "CLAUDE.md")[] {
+    const since = (this.sharedWrites.get(resolve(project)) ?? []).filter((w) => w.n > mark);
+    return (["AGENTS.md", "CLAUDE.md"] as const).filter((f) => since.some((w) => w.files.has(f)));
   }
   // What an agent is told. Nothing at all for an off the record task. Read as a task (or its planning) starts: what is
   // learned from the project's files and from the person's words (memory.learnFromFiles, memory.learnFromWords; Pause still
@@ -476,6 +519,8 @@ export class AgentRunner {
    *  check too (T07, F14). asked: the person pressed Review them, which is their yes to running the project's scripts in
    *  the safety box, never outside it. A review that runs by itself (review.mode automatic) runs only what they already
    *  allowed, and says so in a review's words. */
+  /** M77b: started inside another app's sandbox, where no check can run in the safety box (box.ts nestedSandbox). */
+  private sandboxed(): Promise<boolean> { return (this.o.sandboxed ?? nestedSandbox)().catch(() => false); }
   async checkForReview(project: string, signal: AbortSignal, o: { asked: boolean }): Promise<CheckResult | { skip: string } | null> {
     return this.checkLive(project, signal, o);
   }
@@ -500,10 +545,12 @@ export class AgentRunner {
       const askScripts = review?.asked ? async (_byTask: boolean, unboxed?: boolean) => unboxed !== true : undefined;
       let res: LadderResult;
       try { res = await (this.o.proof ?? runLadder)({ project, store, beforeId: "live", afterId: "live", onStep: () => {}, signal: run.abort.signal, noInstall: true, noServer: !review, run: (c, ro) => runCommand(c, { ...ro, endWithUs: true }), ...this.checkFor(project), approvals, ...(askScripts ? { askScripts } : {}), privatePages: !!review && this.setting<boolean>("check.privatePages", project) !== false }); }
-      catch { return { outcome: "unknown", reason: CHECKER_STOPPED }; }
+      catch { return { outcome: "unknown", reason: (await this.sandboxed()) ? SANDBOXED_CHECKS : CHECKER_STOPPED }; }
       if (run.abort.signal.aborted || res.verdict === "cancelled") return run.yielded && !signal.aborted ? { skip: "Your own work on this project came first." } : null;
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
-      if (res.verdict === "failed") return { outcome: "failing", reason: failed ? `${failed.label} did not pass: ${clip(redactOutput(failed.detail).replace(/\s+/g, " ").trim(), 140)}` : "The project's checks did not pass." };
+      // M77b (the 10 Nov real run, bug 3): the plain line (which check, the first failing test, where), and the check's own
+      // output apart, for behind Details.
+      if (res.verdict === "failed") return failed ? { outcome: "failing", reason: plainFailLine(failed), detail: clip(redactOutput(failed.detail).trim(), 1200) } : { outcome: "failing", reason: "The project's checks did not pass." };
       if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: `There is nothing in this project that ${PRODUCT} can check yet.` };
       if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
       if (review) {
@@ -514,7 +561,7 @@ export class AgentRunner {
       }
       return { outcome: "ok", reason: "All of the project's own checks passed." };
     } catch (e) {
-      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : `${PRODUCT} could not check the project. Try again.` };
+      return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : (await this.sandboxed()) ? SANDBOXED_CHECKS : `${PRODUCT} could not check the project. Try again.` };
     } finally { signal.removeEventListener("abort", stop); if (this.watchRuns.get(key) === run) this.watchRuns.delete(key); }
   }
 
@@ -563,7 +610,7 @@ export class AgentRunner {
         const dir = resolve(cmd.project);
         if (cmd.answer === "yes") { m.setAgentsChoice("approved"); this.syncShared(cmd.project, false); }
         else if (cmd.answer === "no") m.setAgentsChoice("declined");
-        else { m.setAgentsChoice("declined"); const gone = ["AGENTS.md", "CLAUDE.md"].filter((f) => removeSection(join(dir, f))); if (gone.length) this.emit({ type: "memory.agents_written", project: cmd.project, files: gone } as never); }
+        else { m.setAgentsChoice("declined"); const gone = ["AGENTS.md", "CLAUDE.md"].filter((f) => removeSection(join(dir, f))); if (gone.length) { this.noteShared(cmd.project, gone); this.emit({ type: "memory.agents_written", project: cmd.project, files: gone } as never); } }
         break;
       }
       case "memory.erase": { const r = m.eraseAll(cmd.scope); if (!r.ok) refuse(r.reason); else if (cmd.scope === "project") this.syncShared(cmd.project, true); break; }
@@ -1163,6 +1210,9 @@ export class AgentRunner {
     // Off the record, nothing of the request is kept in the label. A fix for an error the person selected in another app says
     // which app (its display name only, never the selected text); every other label has none of the engine's own words.
     const lbl = cmd.offTheRecord ? (isFixItRequest(cmd.prompt) ? errorFixLabel(this.errorApps.get(cmd.project) ?? this.errorApps.get("")) : OFF_RECORD_LABEL) : taskLabel(opts.label ?? cmd.prompt);
+    // M77b: the shared notes files written from here on (memory filled in as the task starts, or a yes to sharing it while
+    // it runs) are named on the receipt as staying after Undo.
+    const sharedFrom = this.sharedMark();
     const recalled = this.learnAndRecall(cmd.project, opts.said ?? cmd.prompt, cmd.offTheRecord);
     const goal = opts.goal ?? cmd.prompt, first = opts.first ?? goal;
     const abort = new AbortController();
@@ -1303,6 +1353,7 @@ export class AgentRunner {
     const askingTheirs = () => ok && stopOnQuestion && asksForWhatOnlyTheyHave(finalWords);
     // tries: this approach's tries, for the limit of three. checks: every check in this task, which is what the card is told,
     // so work that needed a different approach is never shown as a first try.
+    let dbOpenBefore: boolean | undefined;
     for (let tries = 1, checks = 1; ; tries++, checks++) {
       const after = await store.snapshot(`After: ${lbl.slice(0, 60)}`);
       lastAfter = after.id;
@@ -1336,6 +1387,12 @@ export class AgentRunner {
       // A check that Stop ended says nothing about the project: it is told as cancelled, and never kept as this version's
       // result (Put it online would refuse a version whose stopped check read as failed, and never check it again).
       if (abort.signal.aborted && res.verdict !== "cancelled") res = { ...res, verdict: "cancelled" };
+      // M77b (the 10 Nov real run, bug 6): a fix of a problem the database access check found is proven only when that
+      // check passes again on the fixed copy; the start and the browser say nothing about who may read a table.
+      if ((res.verdict === "passed" || res.verdict === "passed_with_gaps") && !abort.signal.aborted) {
+        dbOpenBefore ??= await databaseOpenAt(store, before.id, cmd.project);
+        if (dbOpenBefore && (cmd.practice || changed.some((c) => DATABASE_FILE.test(c.file)))) res = await withDatabaseCheck(res, cmd.project);
+      }
       // M58: "Try 1 of 3": the try, and this approach's limit (work.tries), so the card never guesses it.
       this.emit({ type: "proof.result", agent: cmd.agent, verdict: res.verdict, steps: forPerson(res.steps), tries: checks, of: MAX_TRIES, ...(res.openPrivate?.length ? { privateOpen: res.openPrivate } : {}) } as never);
       if (res.verdict !== "cancelled") this.setProven(cmd.project, { verdict: res.verdict, snapshot: after.id }, taskId);
@@ -1416,7 +1473,9 @@ export class AgentRunner {
     const lastSaid = saidLine(finalWords), asked = stopOnQuestion && (status === "needs_you" || status === "done") && asksPerson(finalWords);
     const moved = headMovedLine(headBefore, headOf(cmd.project));
     if (moved) notUndoable.push(moved);
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...practice } as never);
+    // Only those Undo leaves: a file the task's own change holds (it was written after the safe copy) goes back with Undo.
+    const notesStay = this.sharedSince(cmd.project, sharedFrom).filter((f) => !changed.some((c) => c.file === f));
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);

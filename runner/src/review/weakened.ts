@@ -34,8 +34,31 @@ const nameOnly = (f: string) => f.replace(/[\u0000-\u001f\u007f]/g, " ").replace
 const SKIP_WORDS = /\.only\b|\bfit\(|\bfdescribe\(|\bfcontext\(|\bftest\(/;
 const say = (what: string) => what;
 
-/** The weakened checks in a change, the most serious first, at most 8. Each names a file and a line; never a value. */
-export function weakenedChecks(deltas: readonly FileDelta[]): Reason[] {
+/** M77b (the 10 Nov real run): an assertion that checks one exact answer (equal to, the same as, this length). One that
+ *  only says "not" an answer is not exact. */
+const EXACT = /\bassert\.(?:strictEqual|equal|deepStrictEqual|deepEqual)\s*\(|\.(?:toBe|toEqual|toStrictEqual|toBeCloseTo|toHaveLength|toMatchObject|toMatchSnapshot|toMatchInlineSnapshot|toHaveBeenCalledWith|toHaveProperty)\s*\(\s*[^\s)]|\.to\.(?:deep\.)?(?:equal|eql|equals)\s*\(|\.to\.be\.equal\s*\(|\bassert(?:Equals?|StrictEquals?|Same|Identical)\s*\(|\bassert_(?:eq|equal)\b|\bt\.(?:equal|is|deepEqual|same|strictSame|strictEqual)\s*\(|\bassert\s+[^\n]*?[^=!<>]==(?!=)|\b(?:assert(?:\.ok)?|expect)\s*\([^\n]*?[^=!<>]===?(?!=)/;
+const NOT_EXACT = /\.not\.|\bassert\.not\w*\(|\bassertNot\w*\(|\bassert_ne\b|\bt\.not\w*\(/;
+const exact = (t: string) => ASSERT.test(t) && EXACT.test(t) && !NOT_EXACT.test(t);
+/** The literal values in a line (numbers, quoted text, true, false, null), in order. */
+const LITERAL = /(["'`])(?:\\.|(?!\1)[^\\\n])*\1|-?\b\d+(?:\.\d+)?\b|\b(?:true|false|null|undefined|None|True|False|nil)\b/g;
+const literals = (t: string) => t.match(LITERAL) ?? [];
+const skeleton = (t: string) => t.trim().replace(LITERAL, "#").replace(/\s+/g, " ");
+const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|cs|swift|php|vue|svelte)$/i;
+/** A file's name without its folder, its extension and its test marks: test/price.test.js and price.js are both "price". */
+const stemOf = (f: string) => (f.split("/").pop() ?? f).replace(/\.[^.]+$/, "").replace(/(?:[._-](?:test|spec))+$/i, "").replace(/^test_/i, "").replace(/_test$/i, "").replace(/(?:Test|Tests|Spec)$/, "").toLowerCase();
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Whether a code file is what a test file checks: the same name, or the test's own text brings it in by name. */
+function checks(testFile: string, codeFile: string, texts: Readonly<Record<string, string>>): boolean {
+  const stem = stemOf(codeFile);
+  if (!stem) return false;
+  if (stemOf(testFile) === stem) return true;
+  const text = texts[testFile];
+  return typeof text === "string" && new RegExp(`(?:require\\s*\\(|from\\s+|import\\s*\\(?)\\s*["'](?:[^"'\\n]*/)?${escapeRe(stem)}(?:\\.\\w+)?["']`, "i").test(text);
+}
+
+/** The weakened checks in a change, the most serious first, at most 8. Each names a file and a line; never a value.
+ *  texts: the changed files as they are after the change (by name), so a test can be matched to the code it brings in. */
+export function weakenedChecks(deltas: readonly FileDelta[], texts: Readonly<Record<string, string>> = {}): Reason[] {
   const out: Reason[] = [];
   const add = (file: string, line: number, text: string) => { if (out.length < 8) out.push({ kind: "weakened_check", file: nameOnly(file), line, say: text }); };
   for (const d of deltas) {
@@ -56,6 +79,31 @@ export function weakenedChecks(deltas: readonly FileDelta[]): Reason[] {
       if (lost > gained && d.added.length + d.removed.length > 0 && !(d.added.length === 0 && d.removed.length >= 40)) {
         const first = d.removed.find((r) => ASSERT.test(r.text))!;
         add(f, first.line, say(`${lost - gained} ${lost - gained === 1 ? "check was" : "checks were"} removed from ${f} (the first at line ${first.line} before the change). A test with fewer checks proves less.`));
+      }
+      // M77b: the same number of checks, but an exact one swapped for a loose one ("is 13" became "is not negative", "is
+      // defined", "is more than 0"). The count stays equal, so the rule above cannot see it. Only new lines count.
+      const exactLost = d.removed.filter((r) => exact(r.text)).length, exactGained = d.added.filter((a) => exact(a.text)).length;
+      const loose = d.added.filter((a) => ASSERT.test(a.text) && !exact(a.text) && !removedTexts.includes(a.text.trim()));
+      if (lost <= gained && exactLost > exactGained && loose.length) {
+        add(f, loose[0].line, say(`An exact check in ${f} was swapped for a looser one at line ${loose[0].line}. It now passes for many wrong answers, so it proves less.`));
+      }
+      // M77b: the expected answer of a check changed in the same change as the code that check tests. If the code is now
+      // wrong, the test was made to agree with it. Only the expected value (the last value on the line) may differ.
+      const code = deltas.filter((x) => x !== d && !isEnvFile(x.file) && !TEST_FILE.test(x.file) && CODE_FILE.test(x.file) && x.added.length + x.removed.length > 0 && checks(d.file, x.file, texts));
+      if (code.length) {
+        const used = new Set<number>();
+        for (const a of d.added) {
+          if (!exact(a.text) || removedTexts.includes(a.text.trim())) continue;
+          const la = literals(a.text);
+          const i = d.removed.findIndex((r, n) => !used.has(n) && exact(r.text) && skeleton(r.text) === skeleton(a.text) && (() => {
+            const lr = literals(r.text);
+            return lr.length === la.length && la.length > 0 && lr.at(-1) !== la.at(-1) && lr.slice(0, -1).every((v, k) => v === la[k]);
+          })());
+          if (i < 0) continue;
+          used.add(i);
+          add(f, a.line, say(`The expected answer in ${f} at line ${a.line} was changed in the same change as ${nameOnly(code[0].file)}, the code it checks. If that code is now wrong, the test was made to agree with it.`));
+          break;
+        }
       }
     }
     // A coverage threshold lowered: the same named threshold, a smaller number than before.
@@ -84,18 +132,22 @@ export function weakenedChecks(deltas: readonly FileDelta[]): Reason[] {
 
 /** Words that claim the checks pass: tests, checks, the build or lint, said to pass, be green or succeed. */
 const CLAIM = /\b(?:all\s+)?(?:\d+\s+)?(?:tests?|checks?|specs?|builds?|lint(?:ing)?|type\s*checks?|typecheck|ci|test\s+suite|suite)\b[^.!\n]{0,40}?\b(?:pass(?:es|ed|ing)?|green|succeed(?:s|ed)?|successful(?:ly)?|clean|ok|okay)\b|\b(?:pass(?:es|ed|ing)|green)\b[^.!\n]{0,20}?\b(?:tests?|checks?|build|lint)\b|\bno\s+(?:failing|failed)\s+tests?\b|\b(?:tests?|build)\s+(?:is|are|now)\s+(?:passing|green|fine|ok)\b/i;
-const NOT_CLAIM = /\b(?:should|would|will|once|when|if|after|before|until|make|need|needs|must|run|runs|running|let's|to)\s+(?:the\s+)?(?:tests?|checks?|build)\b|\b(?:tests?|checks?|build)\s+(?:should|would|will|must|need|needs|ought)\b|\b(?:once|if|when|after)\s+you\b|\bdid\s+not\b|\bdidn't\b|\bnot\s+(?:pass|run|green)|\bfail(?:s|ed|ing)?\b|\bcould\s+not\b|\bcouldn't\b|\bno\s+tests\s+(?:were\s+)?run\b|\bskipped\b/i;
+const NOT_CLAIM = /\b(?:should|would|will|once|when|if|after|before|until|make|need|needs|must|run|runs|running|let's|to)\s+(?:the\s+)?(?:tests?|checks?|build)\b|\b(?:tests?|checks?|build)\s+(?:should|would|will|must|need|needs|ought)\b|\b(?:once|if|when|after)\s+you\b|\bdid\s+not\b|\bdidn't\b|\bnot\s+(?:pass|run|green)|\bfail(?:s|ed|ing)?\b|\bcould\s+not\b|\bcouldn't\b|\bno\s+tests\s+(?:were\s+)?run\b|\bskipped\b|\bdo(?:es)?(?:\s+not|n't)\b|\b(?:is|are)(?:\s+not|n't)\b|\bno\s+longer\b/i;
+/** M77b: advice to run the checks, never a claim that they passed ("Once fixed, run the project's checks again to confirm
+ *  they pass", the 10 Nov real run): a sentence that tells someone to run, confirm or make sure, or starts as an instruction. */
+const ADVICE = /^\s*(?:please\s+)?(?:re-?run|run|confirm|make\s+sure|verify|ensure|try)\b|^\s*(?:please\s+)?check\b(?!\s+pass)|\b(?:re-?run|run)\b[^.!?\n]{0,60}\b(?:again|first|yourself)\b|\bto\s+(?:confirm|check|make\s+sure|verify|ensure|see\s+(?:if|whether))\b|\bonce\s+(?:it\s+is\s+|that\s+is\s+|this\s+is\s+)?(?:fixed|done|changed|put\s+back|back)\b/i;
 /** Whether some words claim the checks pass (and do not take it back in the same sentence). */
 export function claimsPassed(text: string | null | undefined): boolean {
   if (!text) return false;
   for (const sentence of text.split(/(?<=[.!?\n])\s+|\n+/)) {
     if (/\bno\s+(?:failing|failed)\s+tests?\b/i.test(sentence)) return true;
-    if (CLAIM.test(sentence) && !NOT_CLAIM.test(sentence)) return true;
+    if (CLAIM.test(sentence) && !NOT_CLAIM.test(sentence) && !ADVICE.test(sentence)) return true;
   }
   return false;
 }
 /** The reason for words that claim a pass the checks did not give: the checks did not run, or failed. Null when they passed
- *  (or nothing was claimed). */
+ *  (or nothing was claimed). words: only what the change or the task says it did (a task's last words, a review's summary
+ *  of the change), never Squibby's own advice (a review's notes), which may tell someone to run the checks. */
 export function claimedPassedReason(words: string[], checks: ReviewChecks): Reason | null {
   if (checks === "passed" || !words.some(claimsPassed)) return null;
   return { kind: "claimed_passed", say: checks === "failed" ? "The words say the checks pass, but the checks failed here." : "The words say the checks pass, but the checks did not run here." };

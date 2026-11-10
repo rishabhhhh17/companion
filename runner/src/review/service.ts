@@ -38,6 +38,7 @@ import { applyStrictness, houseRuleReasons, keysInPage, lineHash, MIGRATION, ope
 import { importersOf, maxFilesOf, needsStrongModel, rate, stopTouchesOf, secretsInCode, touchesOf, type AddedLine, type Checks, type FileChange, type FileLines, type Reason, type StillUsed } from "./rate.ts";
 import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
+import { SANDBOXED_WORDS } from "../proof/box.ts";
 import { claimedPassedReason, hasGitRemote, untoldOf, weakenedChecks, withPushRisk, type FileDelta } from "./weakened.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
@@ -57,7 +58,7 @@ export const LIGHT_WORK: ReadonlySet<string> = new Set([
 const LIGHT_OWN_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/;
 
 /** What the project's own checks said (agent.ts checkForReview): a result, a reason it was not run, or stopped (null). */
-export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[] } | { skip: string } | null;
+export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[]; /** M77b: a failed check's own output, for behind Details. */ detail?: string } | { skip: string } | null;
 /** M75: each private looking page that opened without a sign in is a Worth a look reason (never a stop: a page can be
  *  public on purpose). A safe rating becomes worth a look; a stop stays a stop. */
 export function withOpenPages<T extends { rating: ReviewRating; reasons: Reason[] }>(rated: T, open: readonly string[]): T {
@@ -99,6 +100,9 @@ export type ReviewDeps = {
   doneSettleMs?: number;
   modelTimeoutMs?: number;
   checkTimeoutMs?: number;
+  /** M77b: whether the engine runs inside another app's sandbox (box.ts nestedSandbox), so a Claude that could not be
+   *  reached is said with that cause. */
+  sandboxed?: () => Promise<boolean>;
   /** M57 feature 7: the project's memory lines (What I remember), where "Don't flag this kind here again" is saved. */
   silenced?: (project: string) => readonly string[];
   /** M57 feature 1: where each review that ran is kept as one row (the task log, tasklog.ts), and what was done with it. */
@@ -835,7 +839,7 @@ export class ReviewService {
       // M57 feature 3: the project's own "never edit" and "ask before editing" rules, against every changed path.
       const house = houseRuleReasons(loadRules(b.project).rules, b.files);
       // M77: a check the change weakened comes first of all (review.weakenedChecks, on as usual).
-      const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas);
+      const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas, after);
       const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
@@ -843,7 +847,7 @@ export class ReviewService {
       if (abort.signal.aborted) throw new Error("stopped");
 
       // The project's own checks, only when asked (or automatic), never beside the engine's other work in the project.
-      let checks: Checks = "not_run", checksNote: string | undefined;
+      let checks: Checks = "not_run", checksNote: string | undefined, checksDetail: string | undefined;
       let privateOpen: string[] = [];
       if (proof) {
         if (!this.deps.check) { checks = "unknown"; checksNote = "The project's checks cannot run here."; }
@@ -856,8 +860,8 @@ export class ReviewService {
           catch { r = abort.signal.aborted ? null : { outcome: "unknown", reason: "The checks took too long, so they were stopped." }; }
           if (abort.signal.aborted || r === null) throw new Error("stopped");
           if ("skip" in r) { checks = "unknown"; checksNote = r.skip; }
-          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; }
-          checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 200) : undefined;
+          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; checksDetail = r.outcome === "failing" && r.detail ? clip(redactOutput(r.detail).trim(), 1200) : undefined; }
+          checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 240) : undefined;
         }
       }
       const input = { changes: b.files, touches, secrets, stillUsed, secretFiles: b.secretFiles, checks, checksNote, count: b.count, capped: b.capped, found, stopTouches: stopTouchesOf(this.deps.setting("review.stopKinds")), maxFiles: this.maxFiles() };
@@ -899,11 +903,13 @@ export class ReviewService {
         } catch {
           call.abort();
           if (abort.signal.aborted) throw new Error("stopped");
-          lane = "none"; note = "Claude could not be reached, so these are the rules' own words.";
+          lane = "none"; note = (await this.deps.sandboxed?.().catch(() => false)) ? SANDBOXED_WORDS : "Claude could not be reached, so these are the rules' own words.";
         } finally { abort.signal.removeEventListener("abort", endCall); }
       }
-      // M77: words that claim the checks pass when they did not run or failed are a Fix this first of their own.
-      const claimed = words ? claimedPassedReason([words.summary, ...words.notes], checks) : null;
+      // M77: words that claim the checks pass when they did not run or failed are a Fix this first of their own. M77b: only
+      // the summary of what the change did is read, never the notes, which are the review's own advice ("run the project's
+      // checks again to confirm they pass" was read as a claim in the 10 Nov real run).
+      const claimed = words ? claimedPassedReason([words.summary], checks) : null;
       if (words?.concern || claimed) rated = rate({ ...input, ...(claimed ? { found: [...found, claimed] } : {}), ...(words?.concern ? { concern: true, concernSay: words.concernSay } : {}) });
       rated = withOpenPages(rated, privateOpen);
       // M77: a key in code in a project with a git remote says what pushing means (read only: .git/config is never written).
@@ -922,7 +928,7 @@ export class ReviewService {
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
-        checks, ...(checksNote ? { checksNote } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
+        checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
         ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold,
       });
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.

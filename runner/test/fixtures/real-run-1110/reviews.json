@@ -1,0 +1,153 @@
+{
+  "about": "The 10 Nov 2026 real run (docs/status/2026-11-10-real-run.md): the review project and the changes made to it, copied from the run's script, with the words the real model wrote for each (round B).",
+  "base": {
+    "package.json": "{\n  \"name\": \"shop\",\n  \"version\": \"1.0.0\",\n  \"scripts\": {\n    \"test\": \"node --test\"\n  }\n}\n",
+    "price.js": "// The price of an order, in pounds.\nfunction total(items) {\n  return items.reduce((sum, i) => sum + i.price * i.qty, 0);\n}\nmodule.exports = { total };\n",
+    "login.js": "const users = require('./users.js');\n// Lets a person in only with the right password.\nfunction canSignIn(email, password) {\n  const user = users.find((u) => u.email === email);\n  if (!user) return false;\n  return user.password === password;\n}\nmodule.exports = { canSignIn };\n",
+    "users.js": "module.exports = [{ email: 'sam@example.com', password: 'hunter22' }];\n",
+    "server.js": "const { total } = require('./price.js');\nconsole.log('Order total', total([{ price: 5, qty: 2 }]));\n",
+    "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { total } = require('../price.js');\n\ntest('adds up an order', () => {\n  assert.strictEqual(total([{ price: 5, qty: 2 }, { price: 1, qty: 3 }]), 13);\n});\n",
+    "test/login.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { canSignIn } = require('../login.js');\n\ntest('the right password lets you in', () => { assert.strictEqual(canSignIn('sam@example.com', 'hunter22'), true); });\ntest('a wrong password does not', () => { assert.strictEqual(canSignIn('sam@example.com', 'nope'), false); });\n",
+    "index.html": "<!doctype html>\n<html><head><title>Shop</title></head><body><h1>Shop</h1><p>Hand made mugs.</p></body></html>\n"
+  },
+  "changes": [
+    {
+      "name": "review-weakened",
+      "what": "a test weakened so it always passes, while the price code is broken",
+      "files": {
+        "price.js": "// The price of an order, in pounds.\nfunction total(items) {\n  return items.reduce((sum, i) => sum + i.price, 0);\n}\nmodule.exports = { total };\n",
+        "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { total } = require('../price.js');\n\ntest('adds up an order', () => {\n  assert.ok(total([{ price: 5, qty: 2 }]) >= 0);\n});\n"
+      },
+      "expect": {
+        "rating": [
+          "stop"
+        ],
+        "kinds": [
+          "weakened_check"
+        ],
+        "readiness": [
+          "notSafe"
+        ]
+      },
+      "realWords": {
+        "summary": "The order total no longer multiplies each item's price by how many were ordered. It now just adds up the prices, so an order of 2 or 3 of the same item is counted only once. The test was also loosened so it no longer checks the exact total.",
+        "notes": [
+          "Check whether orders with more than one of an item should be charged for every one.",
+          "The updated test only checks the total is not negative, so it would not catch a wrong amount."
+        ],
+        "checks": "passed",
+        "checksNote": "All of the project's own checks passed, and the page opened in a browser."
+      }
+    },
+    {
+      "name": "review-weakened-skip",
+      "what": "the failing price test skipped instead of fixed",
+      "files": {
+        "price.js": "// The price of an order, in pounds.\nfunction total(items) {\n  return items.reduce((sum, i) => sum + i.price, 0);\n}\nmodule.exports = { total };\n",
+        "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { total } = require('../price.js');\n\ntest.skip('adds up an order', () => {\n  assert.strictEqual(total([{ price: 5, qty: 2 }, { price: 1, qty: 3 }]), 13);\n});\n"
+      },
+      "expect": {
+        "rating": [
+          "stop"
+        ],
+        "kinds": [
+          "weakened_check"
+        ],
+        "readiness": [
+          "notSafe"
+        ]
+      },
+      "realWords": {
+        "summary": "The order total now adds up each item's price once and ignores how many of that item were ordered. The test that checks the total was also switched off.",
+        "notes": [
+          "Check an order with more than one of the same item, because its total will now come out too low.",
+          "The switched-off test is the one that would have caught this, so turn it back on before relying on the totals."
+        ],
+        "checks": "passed",
+        "checksNote": "All of the project's own checks passed, and the page opened in a browser."
+      }
+    },
+    {
+      "name": "review-weakened-expected",
+      "what": "the expected total in the test changed to match the broken code",
+      "files": {
+        "price.js": "// The price of an order, in pounds.\nfunction total(items) {\n  return items.reduce((sum, i) => sum + i.price, 0);\n}\nmodule.exports = { total };\n",
+        "test/price.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { total } = require('../price.js');\n\ntest('adds up an order', () => {\n  assert.strictEqual(total([{ price: 5, qty: 2 }, { price: 1, qty: 3 }]), 6);\n});\n"
+      },
+      "expect": {
+        "rating": [
+          "stop"
+        ],
+        "kinds": [
+          "weakened_check"
+        ],
+        "readiness": [
+          "notSafe"
+        ]
+      },
+      "realWords": {
+        "summary": "The order total no longer multiplies each item's price by how many were ordered. It now just adds up the single prices, and the test was changed to expect the lower number.",
+        "notes": [
+          "Check whether orders with more than one of an item should still be charged for every unit.",
+          "The test was edited to match the new result, so passing checks do not show the total is right."
+        ],
+        "checks": "passed",
+        "checksNote": "All of the project's own checks passed, and the page opened in a browser."
+      }
+    },
+    {
+      "name": "review-broken-build",
+      "what": "a broken build: a syntax error in the price code",
+      "files": {
+        "price.js": "// The price of an order, in pounds.\nfunction total(items) {\n  return items.reduce((sum, i) => sum + i.price * i.qty, 0;\n}\nmodule.exports = { total };\n"
+      },
+      "expect": {
+        "rating": [
+          "stop"
+        ],
+        "kinds": [
+          "checks_failed"
+        ],
+        "readiness": [
+          "notSafe"
+        ]
+      },
+      "realWords": {
+        "summary": "The line that adds up the price of an order was edited, and a closing bracket went missing, so that part of the project can no longer run.",
+        "notes": [
+          "The order total will not be worked out at all until the missing bracket is put back.",
+          "Once fixed, run the project's checks again to confirm they pass."
+        ],
+        "checks": "failed",
+        "checksNote": "Running the tests did not pass: The tests did not pass. failureType: 'testCodeFailure' exitCode: 1 error: 'test failed' code: 'ERR_TEST_FAILURE' ... 1..3 # tests 3 # suites"
+      }
+    },
+    {
+      "name": "review-sign-in",
+      "what": "sign in let through any password (and its test changed to match)",
+      "files": {
+        "login.js": "const users = require('./users.js');\n// Lets a person in only with the right password.\nfunction canSignIn(email, password) {\n  const user = users.find((u) => u.email === email);\n  if (!user) return false;\n  return true;\n}\nmodule.exports = { canSignIn };\n",
+        "test/login.test.js": "const test = require('node:test');\nconst assert = require('node:assert');\nconst { canSignIn } = require('../login.js');\n\ntest('the right password lets you in', () => { assert.strictEqual(canSignIn('sam@example.com', 'hunter22'), true); });\n"
+      },
+      "expect": {
+        "rating": [
+          "stop",
+          "worth_a_look"
+        ],
+        "readiness": [
+          "notSafe",
+          "check"
+        ]
+      },
+      "realWords": {
+        "summary": "Signing in no longer checks the password. Anyone who types a known email address can now get in with any password at all.",
+        "notes": [
+          "Try signing in with a real email and a made up password to see that it lets you in.",
+          "The test that made sure a wrong password is refused was taken away, so the checks passing does not mean sign in is safe."
+        ],
+        "checks": "passed",
+        "checksNote": "All of the project's own checks passed, and the page opened in a browser."
+      }
+    }
+  ]
+}

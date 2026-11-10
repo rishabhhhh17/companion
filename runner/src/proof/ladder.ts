@@ -2,7 +2,7 @@
 // install, build and checks, tests (and that they were not weakened), start the project, open it in a
 // hidden browser. Stops at the first rung that fails and says why in plain words.
 import { redact } from "../redact.ts";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import type { CheckpointStore } from "../checkpoints.ts";
 import { browserCheck, knownSignIn, openWithoutSignIn, SIGN_IN_GAP, type BrowserOptions, type BrowserResult } from "./browser.ts";
@@ -16,6 +16,9 @@ import { changesData, detectProject, withStartScript, type Detected } from "./de
 import { installMode, SKIPPABLE, VIEWPORTS, type CheckSettings, type SkipName } from "./options.ts";
 import { loadRules } from "../rules.ts";
 import { buttonProblem, locateProblem, type Problem } from "./locate.ts";
+import { firstFailingTest } from "./failingtest.ts";
+/** The project's folder as given and as it really is (/tmp is /private/tmp on a Mac), for reading paths in output. */
+const projectRoots = (p: string): string[] => { try { return [...new Set([p, realpathSync(p)])]; } catch { return [p]; } };
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { claudeReachable } from "../reach.ts";
 import { boxRefusal, boxWorks, type Net } from "./box.ts";
@@ -38,7 +41,9 @@ export type Rung = "install" | "checks" | "tests" | "start" | "browser" | "revie
 export type RunCommand = { command: string; exit: number };
 export type StepUpdate = { rung: Rung; label: string; status: "running" | "passed" | "failed" | "skipped"; detail: string; ms: number; needs?: "browser" | "signIn"; summary?: string; problem?: Problem; runs?: RunCommand[] };
 // A failed step may carry the place it failed: a line in the project, a button, or at least the error sentence.
-export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem; forModel?: string };
+// test (M77b): the first failing test's name, from the test runner's whole output (testIsFile: a test file that could not
+// load), for the plain line of a failed check (failingtest.ts plainFailLine). Never sent as it is: the engine says it in words.
+export type Step = StepUpdate & { status: "passed" | "failed" | "skipped"; problem?: Problem; forModel?: string; test?: string; testIsFile?: boolean };
 
 /** What the person reads when a change made a check check less (the model is told why, in its own words). */
 export const WEAKENED_SUMMARY = "The change weakened a check, so it was not accepted.";
@@ -357,9 +362,9 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
     return words;
   };
   const emit = (rung: Rung, status: StepUpdate["status"], detail = "", ms = 0, needs?: "browser" | "signIn") => o.onStep?.({ rung, label: LABELS[rung], status, detail: redact(detail), ms, ...(needs ? { needs } : {}) });
-  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser" | "signIn", more: { summary?: string; forModel?: string; runs?: RunCommand[] } = {}): Step => {
+  const finish = (rung: Rung, status: Step["status"], detail: string, t0: number, problem?: Problem | null, needs?: "browser" | "signIn", more: { summary?: string; forModel?: string; runs?: RunCommand[]; test?: { name: string; file: boolean } | null } = {}): Step => {
     const runs = more.runs?.length ? more.runs.map((r) => ({ command: redact(r.command), exit: r.exit })) : null;
-    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}), ...(runs ? { runs } : {}) };
+    const s: Step = { rung, label: LABELS[rung], status, detail: redact(detail), ms: Date.now() - t0, ...(problem ? { problem } : {}), ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(more.forModel ? { forModel: redact(more.forModel) } : {}), ...(runs ? { runs } : {}), ...(more.test ? { test: more.test.name, ...(more.test.file ? { testIsFile: true } : {}) } : {}) };
     steps.push(s); o.onStep?.({ rung, label: LABELS[rung], status, detail: s.detail, ms: s.ms, ...(needs ? { needs } : {}), ...(more.summary ? { summary: more.summary } : {}), ...(problem ? { problem } : {}), ...(runs ? { runs } : {}) });
     return s;
   };
@@ -567,7 +572,7 @@ async function runRungs(o: LadderOptions): Promise<LadderResult> {
       if (!left.includes(w)) left.push(w);
       finish("tests", "skipped", w, t0);
     }
-    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests"), undefined, { summary: TESTS_FAILED_SUMMARY, ...(r.timedOut || r.code === null ? {} : { runs: [{ command: det.tests.command, exit: r.code }] }) }));
+    else if (r.code !== 0 || r.timedOut) return result("failed", finish("tests", "failed", `The tests did not pass. ${gist(r, limits.testMs, nat ? withoutNoise : undefined)}`, t0, locateProblem(r.stdout + "\n" + r.stderr, o.project, "tests"), undefined, { summary: TESTS_FAILED_SUMMARY, test: r.timedOut ? null : firstFailingTest(r.stdout + "\n" + r.stderr, projectRoots(o.project)), ...(r.timedOut || r.code === null ? {} : { runs: [{ command: det.tests.command, exit: r.code }] }) }));
     else finish("tests", "passed", `The tests passed${guard.after ? ` (${guard.after} found)` : ""}.`, t0, null, undefined, { runs: [{ command: det.tests.command, exit: 0 }] });
   } else finish("tests", "skipped", (nat && nat.missing) || "This project has no tests to run.", t0);
 

@@ -1,0 +1,17 @@
+{"type": "system", "subtype": "init", "model": "claude-sonnet-5-5", "tools": []}
+{"type": "stream_event", "event": {"type": "message_start", "message": {"model": "claude-sonnet-5-5", "role": "assistant", "content": [], "usage": {"input_tokens": 2, "cache_creation_input_tokens": 1048, "cache_read_input_tokens": 0, "output_tokens": 1}}}}
+{"type": "stream_event", "event": {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "{\"summary\": \"The order total no longer m"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "ultiplies each item's price by how many "}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "were ordered. It now just adds up the pr"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "ices, so an order of 2 or 3 of the same "}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "item is counted only once.\", \"notes\": [\""}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Check whether orders with more than one "}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "of an item should be charged for every o"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "ne.\"], \"concern\": true, \"concernSay\": \"C"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "ustomers ordering several of the same it"}}}
+{"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "em will be charged too little.\"}"}}}
+{"type": "assistant", "message": {"model": "claude-sonnet-5-5", "role": "assistant", "content": [{"type": "text", "text": "{\"summary\": \"The order total no longer multiplies each item's price by how many were ordered. It now just adds up the prices, so an order of 2 or 3 of the same item is counted only once.\", \"notes\": [\"Check whether orders with more than one of an item should be charged for every one.\"], \"concern\": true, \"concernSay\": \"Customers ordering several of the same item will be charged too little.\"}"}], "usage": {"input_tokens": 2, "cache_creation_input_tokens": 1048, "cache_read_input_tokens": 0, "output_tokens": 1}}}
+{"type": "stream_event", "event": {"type": "content_block_stop", "index": 0}}
+{"type": "stream_event", "event": {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 118}}}
+{"type": "stream_event", "event": {"type": "message_stop"}}

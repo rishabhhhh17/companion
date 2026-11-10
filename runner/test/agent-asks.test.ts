@@ -381,7 +381,8 @@ describe("second audit: the receipt keeps the question", () => {
     expect(Array.from(text).length).toBeGreaterThan(MAX_SAID_CHARS);
     const s = saidLine(text);
     expect(Array.from(s).length).toBeLessThanOrEqual(MAX_SAID_CHARS);
-    expect(s.startsWith("…")).toBe(true);
+    // M77b: in whole sentences, after the first one (it often says the cause).
+    expect(s.startsWith("I built the signup page and wired up the form. … I built")).toBe(true);
     expect(s).toContain("Which email address should the messages go to?");
     expect(s.endsWith("?")).toBe(true);
   });

@@ -1790,6 +1790,9 @@ export const S = {
     savedMark: "Saved copy",
     savedLine: "A copy of the project from the moment before the command. Undo puts the files back to it.",
     savedUsed: "Undo went back to it",
+    // M77b: the receipt and the Undo confirm, when the notes for other AI tools changed while the task ran (memory, not
+    // the fix, so Undo leaves them).
+    notesStay: (files: readonly string[]) => `Your notes for other AI tools (${files.join(", ")}) stay.`,
     // A task's receipt whose words claim a pass the checks did not give.
     claimedPassed: "These words say the checks pass, but the checks did not run or did not pass here. Nothing is proven yet.",
     // Said once on Now and in the notch when a copy was saved.
