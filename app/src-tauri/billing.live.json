@@ -1,11 +1,12 @@
 {
-  "about": "Dodo Payments for release builds (live mode). Only values that are not secret: the hosts, the two Pro product ids and the business id. The founder fills in the ids after making the products in Dodo's live mode. Every address must be https, and none may be a test host. paymentsOn stays false until the founder switches payments on (F25).",
+  "about": "Dodo Payments for release builds (live mode). Only values that are not secret: the hosts, the two Pro product ids, the one time report's product id, the business id and the remote switch's address. The founder fills in the ids after making the products in Dodo's live mode. Every address must be https, and none may be a test host. paymentsOn stays false until the founder switches payments on (F25). Payments are on only when paymentsOn is true and the remote switch at remoteSwitchUrl says {\"payments\": true} (M79); empty means it is never asked and payments stay off.",
   "mode": "live",
   "paymentsOn": false,
   "apiHost": "https://live.dodopayments.com",
   "checkoutHost": "https://checkout.dodopayments.com",
   "portalHost": "https://customer.dodopayments.com",
   "businessId": "",
-  "products": { "monthly": "", "yearly": "" },
-  "redirectUrl": ""
+  "products": { "monthly": "", "yearly": "", "report": "" },
+  "redirectUrl": "",
+  "remoteSwitchUrl": ""
 }

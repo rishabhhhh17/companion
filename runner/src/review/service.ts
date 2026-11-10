@@ -40,6 +40,9 @@ import { fixPrompt, sendBackText, type ReviewWords } from "./sendback.ts";
 import { parseWords, plainSummary, wordsRequest, type Words } from "./words.ts";
 import { SANDBOXED_WORDS } from "../proof/box.ts";
 import { claimedPassedReason, hasGitRemote, untoldOf, weakenedChecks, withPushRisk, type FileDelta } from "./weakened.ts";
+import { changedPackages, isManifest } from "./packages.ts";
+import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
+import { dirname as dirOf } from "node:path";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -107,6 +110,9 @@ export type ReviewDeps = {
   silenced?: (project: string) => readonly string[];
   /** M57 feature 1: where each review that ran is kept as one row (the task log, tasklog.ts), and what was done with it. */
   history?: ReviewHistory;
+  /** M79 (T18): known serious problems of the packages a change added, on OSV.dev (osv.ts). Only names and versions are
+   *  sent, only while packages.check is on and the review may send more than the checks. Absent: never looked up. */
+  packages?: PackageLookup;
 };
 /** M57 feature 1: a review's row in History. Names of files only, never their text (TaskLog.addReview keeps nothing else). */
 export type ReviewHistory = {
@@ -226,7 +232,7 @@ function recheckOf(r: Reason, o: { b: Batch; added: AddedLine[]; stillUsed: Stil
     const t = o.open.find((x) => x.reason === r);
     return t ? { how: "table", table: t.table, open: t.open } : all;
   }
-  if ((r.kind === "house_rule" || r.kind === "house_rule_ask") && r.file) return { how: "files", files: [r.file] };
+  if ((r.kind === "house_rule" || r.kind === "house_rule_ask" || r.kind === "package_critical" || r.kind === "package_high") && r.file) return { how: "files", files: [r.file] };
   if (r.kind === "files_removed") {
     const gone = o.b.files.filter((f) => f.kind === "deleted" && !o.stillUsed.some((u) => u.file === f.file)).map((f) => f.file);
     return gone.length ? { how: "files", files: gone } : all;
@@ -791,6 +797,26 @@ export class ReviewService {
 
   // ---------- the review ----------
 
+  /** M79 (T18): the packages this batch added or moved, looked up on OSV.dev, as reasons and plain notes. Nothing is looked
+   *  up with packages.check off, for a practice that uses the rules alone, or when the review may send only its checks
+   *  (then a note says so). No answer from OSV is said as not checked, never as safe. */
+  private async packagesOf(b: Batch, store: CheckpointStore, signal: AbortSignal): Promise<{ reasons: Reason[]; notes: string[] }> {
+    const changed = b.files.map((f) => f.file).filter(isManifest);
+    if (!changed.length || !this.deps.packages || this.deps.setting("packages.check") === false || this.deps.rulesOnly?.(b.project) === true) return { reasons: [], notes: [] };
+    const dirs = new Set(changed.map((f) => dirOf(f)));
+    const want = (x: string) => isManifest(x) && dirs.has(dirOf(x));
+    const c = changedPackages(await store.readFiles(b.from, want), await store.readFiles(b.to, want));
+    const notes: string[] = [];
+    if (c.unresolved.length) notes.push(PACKAGE_NOTES.unresolved(c.unresolved.length));
+    if (c.more) notes.push(PACKAGE_NOTES.more(c.more));
+    if (!c.pkgs.length) return { reasons: [], notes };
+    if (this.deps.setting("review.send") === "checksOnly") return { reasons: [], notes: [...notes, PACKAGE_NOTES.checksOnly] };
+    const l = await this.deps.packages!.check(c.pkgs, signal).catch(() => ({ problems: [], checked: 0, notChecked: c.pkgs.length }));
+    if (signal.aborted) throw new Error("stopped");
+    if (l.notChecked) notes.push(l.checked === 0 ? PACKAGE_NOTES.offline : PACKAGE_NOTES.some(l.notChecked));
+    return { reasons: packageReasons(l), notes };
+  }
+
   /** stops: Stop everything's count when this review was asked for; a Stop since means it does not start. asked: the
    *  person pressed Review them (their yes to running the project's scripts in the safety box). */
   private async reviewBatch(b: Batch, proof: boolean, stops: number, asked: boolean): Promise<void> {
@@ -840,7 +866,9 @@ export class ReviewService {
       const house = houseRuleReasons(loadRules(b.project).rules, b.files);
       // M77: a check the change weakened comes first of all (review.weakenedChecks, on as usual).
       const weakened = this.deps.setting("review.weakenedChecks") === false ? [] : weakenedChecks(deltas, after);
-      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house];
+      // M79 (T18): known serious problems in the packages this change added (only names and versions leave the Mac).
+      const pk = await this.packagesOf(b, store, abort.signal);
+      const found: Reason[] = [...weakened, ...page.page, ...open.map((x) => x.reason), ...house, ...pk.reasons];
       const deleted = b.files.filter((f) => f.kind === "deleted").map((f) => f.file);
       const stillUsed = deleted.length ? importersOf(deleted, liveCode(b.project)) : [];
       const touches = touchesOf(b.files, lines, b.secretFiles);
@@ -919,7 +947,7 @@ export class ReviewService {
       // a Fix this first, a key, a settings or key file and open data never are.
       const shown = applyStrictness(rated, this.deps.setting("review.strictness") as ReviewStrictness, reviewSilenced(this.silencedLines(b.project)));
       const summary = words?.summary ?? plainSummary(b.files, b.count);
-      const notes = (words?.notes ?? []).map((n) => clip(redact(n), 200));
+      const notes = [...(words?.notes ?? []).map((n) => clip(redact(n), 200)), ...pk.notes];
       const review: ReviewWords = { rating: shown.rating, reasons: shown.reasons, touches, files: b.files, count: b.count, summary, notes, ...(pushRisk ? { pushRisk: true } : {}) };
       // M77: what the changes did not tell you, from this review's own data (no model call).
       const untold = untoldOf(b.files, deltas, checks);

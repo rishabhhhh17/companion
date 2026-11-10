@@ -76,6 +76,7 @@ import { ShareReport, WalkThrough } from "./m76Panels.tsx";
 import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
 import { projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
+import { WeekPart } from "./weekSummary.tsx";
 import type { CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
@@ -380,6 +381,8 @@ function HistoryPanel({ items, reviews = [], saved = [], caught = null, q, setQ,
       <Lead className="hist-lead" title={<p className="ui-lead-title" role="heading" aria-level={2}>{S.screens.historyLead}</p>}
         line={<p className="ui-lead-line">{items.length ? S.screens.historyCount(items.length, name) : S.screens.historyNone(name)}{explainWhy ? ` ${S.screens.undoCaption}` : ""}</p>} />
       {weekLine && <div className="line hist-week" role="status">{weekLine}</div>}
+      {/* M79: the weekly summary, on this row's press only. */}
+      {project && <WeekPart project={project} send={send} />}
       {items.length > 0 && (
         <div className="row hist-search" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}

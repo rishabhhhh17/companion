@@ -36,7 +36,7 @@ pub const FIRST_CHECK_SECS: u64 = 10;
 
 /// Why a command did not do what was asked. Only these words ever leave this module; the page turns each into the
 /// person's words (app/src/strings.ts). None of them carries the key.
-pub const REASONS: &[&str] = &["paymentsOff", "notReady", "keyShape", "notFound", "inactive", "limit", "wrongProduct", "unreachable", "keychain", "noKey", "trialUsed", "alreadyPro", "notCard", "portalNotReady", "browser"];
+pub const REASONS: &[&str] = &["paymentsOff", "notReady", "keyShape", "notFound", "inactive", "limit", "wrongProduct", "unreachable", "keychain", "noKey", "trialUsed", "alreadyPro", "notCard", "portalNotReady", "browser", "reportUsed", "reportNotBought"];
 
 // ---------- the build's billing settings (billing.test.json, billing.live.json) ----------
 
@@ -55,10 +55,12 @@ struct File {
     business_id: String,
     products: Products,
     redirect_url: String,
+    /// M79: where the remote payments switch is read (remoteswitch.rs). Empty: nothing is asked and payments stay off.
+    remote_switch_url: String,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Products { monthly: String, yearly: String }
+struct Products { monthly: String, yearly: String, /** M79: the one time go live report. */ report: String }
 
 /// The settings this build sells Pro with. Hosts are build settings, never a person's setting (section 5). Empty means
 /// not filled in yet: the founder makes the products in Dodo and copies the ids here.
@@ -73,16 +75,26 @@ pub struct Billing {
     pub monthly: String,
     pub yearly: String,
     pub redirect: String,
+    /// M79: the one time "Is this safe to go live" report's product id.
+    pub report: String,
+    /// M79: the remote switch's address (remoteswitch.rs); empty means it is never asked.
+    pub remote: String,
+    /// M79: whether the remote switch said yes, in so many words, this run. Off until it does.
+    pub(crate) remote_on: bool,
 }
 
 impl Billing {
     /// Payments off, nothing filled in: what a damaged or unsafe file gives.
     pub fn off(mode: Mode) -> Billing {
-        Billing { mode, switch_on: false, api: String::new(), checkout: String::new(), portal: String::new(), business_id: String::new(), monthly: String::new(), yearly: String::new(), redirect: String::new() }
+        Billing { mode, switch_on: false, api: String::new(), checkout: String::new(), portal: String::new(), business_id: String::new(), monthly: String::new(), yearly: String::new(), redirect: String::new(), report: String::new(), remote: String::new(), remote_on: false }
     }
-    /// Whether payments are on. On only when the founder switched them on and the file can sell Pro (an API host and at
-    /// least one product id). Anything less fails open: nobody is gated (section 14, payments switch).
-    pub fn payments_on(&self) -> bool { self.switch_on && !self.api.is_empty() && (!self.monthly.is_empty() || !self.yearly.is_empty()) }
+    /// Whether payments are on. On only when the founder switched them on in the file, the remote switch said yes (M79),
+    /// and the file can sell Pro (an API host and at least one product id). Anything less fails open: nobody is gated
+    /// (section 14, payments switch), and no checkout shows to anyone.
+    pub fn payments_on(&self) -> bool { self.switch_on && self.remote_on && !self.api.is_empty() && (!self.monthly.is_empty() || !self.yearly.is_empty()) }
+    /// M79: whether this build may ask the remote switch at all: the file's own switch is on, it names an address, and it
+    /// could sell. Otherwise nothing is asked anywhere.
+    pub fn asks_remote(&self) -> bool { self.switch_on && !self.remote.is_empty() && !self.api.is_empty() && (!self.monthly.is_empty() || !self.yearly.is_empty()) }
     /// The configured Pro product ids.
     pub fn pro_ids(&self) -> Vec<&str> { [self.monthly.as_str(), self.yearly.as_str()].into_iter().filter(|s| !s.is_empty()).collect() }
 }
@@ -128,25 +140,38 @@ pub fn parse_billing(text: &str, expect: Mode) -> Option<Billing> {
         let host = https_host(&redirect)?;
         if mode == Mode::Live && is_test_host(host) { return None; }
     }
-    let (business_id, monthly, yearly) = (f.business_id.trim().to_string(), f.products.monthly.trim().to_string(), f.products.yearly.trim().to_string());
-    if ![&business_id, &monthly, &yearly].iter().all(|s| id_ok(s)) { return None; }
-    Some(Billing { mode, switch_on: f.payments_on, api, checkout, portal, business_id, monthly, yearly, redirect })
+    let (business_id, monthly, yearly, report) = (f.business_id.trim().to_string(), f.products.monthly.trim().to_string(), f.products.yearly.trim().to_string(), f.products.report.trim().to_string());
+    if ![&business_id, &monthly, &yearly, &report].iter().all(|s| id_ok(s)) { return None; }
+    // M79: the remote switch's address: empty, or a plain https address; in a live build never a test host.
+    let remote = f.remote_switch_url.trim().to_string();
+    if !remote.is_empty() {
+        let host = https_host(&remote)?;
+        if mode == Mode::Live && is_test_host(host) { return None; }
+    }
+    Some(Billing { mode, switch_on: f.payments_on, api, checkout, portal, business_id, monthly, yearly, redirect, report, remote, remote_on: false })
 }
 
 pub const TEST_FILE: &str = include_str!("../billing.test.json");
 pub const LIVE_FILE: &str = include_str!("../billing.live.json");
 /// Development builds sell in Dodo's test mode, release builds in live mode.
 pub fn build_mode() -> Mode { if cfg!(debug_assertions) { Mode::Test } else { Mode::Live } }
-/// This build's settings, read once. A file that does not parse means payments off.
-pub fn billing() -> &'static Billing {
+/// This build's settings as the file says them, read once. A file that does not parse means payments off. The remote
+/// switch has not said yes in this copy (remote_on false).
+pub fn file_billing() -> &'static Billing {
     static B: std::sync::OnceLock<Billing> = std::sync::OnceLock::new();
     B.get_or_init(|| { let m = build_mode(); parse_billing(if m == Mode::Test { TEST_FILE } else { LIVE_FILE }, m).unwrap_or_else(|| Billing::off(m)) })
 }
+/// This build's settings in force: the file's, with the remote switch's answer of this run (remoteswitch.rs). Until it
+/// says yes in so many words, payments are off.
+pub fn billing() -> &'static Billing {
+    static ON: std::sync::OnceLock<Billing> = std::sync::OnceLock::new();
+    if crate::remoteswitch::said_yes() { ON.get_or_init(|| Billing { remote_on: true, ..file_billing().clone() }) } else { file_billing() }
+}
 
-/// Monthly or yearly, as Get Pro offers them (yearly first).
+/// Monthly or yearly, as Get Pro offers them (yearly first). M79: Report, the one time go live report.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Term { Yearly, Monthly }
-impl Term { pub fn from_word(w: &str) -> Option<Term> { match w { "yearly" => Some(Term::Yearly), "monthly" => Some(Term::Monthly), _ => None } } }
+pub enum Term { Yearly, Monthly, Report }
+impl Term { pub fn from_word(w: &str) -> Option<Term> { match w { "yearly" => Some(Term::Yearly), "monthly" => Some(Term::Monthly), "report" => Some(Term::Report), _ => None } } }
 
 fn enc(s: &str) -> String { s.bytes().map(|c| match c { b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (c as char).to_string(), _ => format!("%{c:02X}") }).collect() }
 
@@ -154,7 +179,7 @@ fn enc(s: &str) -> String { s.bytes().map(|c| match c { b'A'..=b'Z' | b'a'..=b'z
 /// page says checkout is not ready yet) while payments are off or the host or the id is not filled in.
 pub fn checkout_url(b: &Billing, term: Term) -> Result<String, &'static str> {
     if !b.payments_on() { return Err("paymentsOff"); }
-    let id = match term { Term::Yearly => &b.yearly, Term::Monthly => &b.monthly };
+    let id = match term { Term::Yearly => &b.yearly, Term::Monthly => &b.monthly, Term::Report => &b.report };
     if b.checkout.is_empty() || id.is_empty() { return Err("notReady"); }
     let mut u = format!("{}/buy/{}?quantity=1", b.checkout, enc(id));
     if !b.redirect.is_empty() { u.push_str(&format!("&redirect_url={}", enc(&b.redirect))); }
@@ -503,7 +528,7 @@ pub fn plan_from(b: &Billing, r: Result<&Read, ()>, last: &mut Option<(Value, De
 /// The status while the Keychain cannot say: nothing gated, nothing offered, Check again.
 pub fn keychain_status(b: &Billing) -> Value {
     json!({ "paymentsOn": true, "plan": "free", "state": "keychain", "key": null, "trial": null, "trialUsed": true,
-        "checkout": { "yearly": checkout_url(b, Term::Yearly).is_ok(), "monthly": checkout_url(b, Term::Monthly).is_ok() }, "portal": portal_url(b).is_ok() })
+        "checkout": { "yearly": checkout_url(b, Term::Yearly).is_ok(), "monthly": checkout_url(b, Term::Monthly).is_ok(), "report": checkout_url(b, Term::Report).is_ok() }, "portal": portal_url(b).is_ok() })
 }
 
 // ---------- what a page sees ----------
@@ -521,13 +546,13 @@ pub fn status_json(b: &Billing, key: Option<&Stored>, trial: Option<&crate::tria
         "key": key.map(|s| json!({ "last4": s.last4(), "email": mask_email(&s.email), "check": key_check(s, now).word(), "daysSinceCheck": s.now(now).saturating_sub(s.last_ok) / DAY })),
         "trial": trial.map(|t| json!({ "startedAt": iso(t.started_at), "endsAt": iso(t.ends_at()), "daysLeft": t.days_left(now), "ended": !t.active(now) })),
         "trialUsed": trial.is_some(),
-        "checkout": { "yearly": checkout_url(b, Term::Yearly).is_ok(), "monthly": checkout_url(b, Term::Monthly).is_ok() },
+        "checkout": { "yearly": checkout_url(b, Term::Yearly).is_ok(), "monthly": checkout_url(b, Term::Monthly).is_ok(), "report": checkout_url(b, Term::Report).is_ok() },
         "portal": portal_url(b).is_ok(),
     })
 }
 /// The status with payments off: no plan row, nothing read from the Keychain.
 pub fn off_status() -> Value {
-    json!({ "paymentsOn": false, "plan": "free", "state": "off", "key": null, "trial": null, "trialUsed": false, "checkout": { "yearly": false, "monthly": false }, "portal": false })
+    json!({ "paymentsOn": false, "plan": "free", "state": "off", "key": null, "trial": null, "trialUsed": false, "checkout": { "yearly": false, "monthly": false, "report": false }, "portal": false })
 }
 
 /// Seconds since 1970 as "2026-11-14T09:30:00Z".
@@ -638,7 +663,7 @@ pub mod tests {
 
     pub fn on() -> Billing {
         let mut b = parse_billing(TEST_FILE, Mode::Test).unwrap();
-        b.switch_on = true; b.monthly = "pdt_month".into(); b.yearly = "pdt_year".into(); b.business_id = "bus_1".into(); b.checkout = "https://test.checkout.dodopayments.com".into();
+        b.switch_on = true; b.remote_on = true; b.monthly = "pdt_month".into(); b.yearly = "pdt_year".into(); b.business_id = "bus_1".into(); b.checkout = "https://test.checkout.dodopayments.com".into();
         b
     }
     const KEY: &str = "SQB-1A2B-3C4D-5E6F-WXYZ";
@@ -1015,7 +1040,16 @@ pub mod tests {
         assert_eq!(v["key"]["last4"], "WXYZ");
         assert_eq!(v["key"]["email"], "r…@gmail.com");
         assert_eq!((v["plan"].as_str(), v["state"].as_str(), v["key"]["check"].as_str()), (Some("pro"), Some("pro"), Some("ok")));
-        assert_eq!(v["checkout"], json!({ "yearly": true, "monthly": true }));
+        // M79: the report's checkout is ready only once its product is filled in.
+        assert_eq!(v["checkout"], json!({ "yearly": true, "monthly": true, "report": false }));
+        let mut r = on(); r.report = "pdt_report".into();
+        assert_eq!(status_json(&r, Some(&s), None, T0 + DAY)["checkout"]["report"], true);
+        assert_eq!(checkout_url(&r, Term::Report).unwrap(), "https://test.checkout.dodopayments.com/buy/pdt_report?quantity=1");
+        // The remote switch not said yes: payments are off, whatever the file says, and no checkout shows.
+        let mut q = r.clone(); q.remote_on = false;
+        assert!(!q.payments_on());
+        assert_eq!(status_json(&q, Some(&s), None, T0 + DAY), off_status());
+        assert_eq!(checkout_url(&q, Term::Report), Err("paymentsOff"));
         assert_eq!(mask_email("nobody"), "");
         let t = crate::trial::Trial { started_at: T0, latest_seen: T0 };
         let v = status_json(&b, None, Some(&t), T0 + 5 * DAY);

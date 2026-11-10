@@ -46,7 +46,9 @@ export class SessionStartNotes {
       const store = m ?? new MemoryStore({ project, profileDir: this.o.memoryDir });
       const hook = this.hookOn(project);
       const token = this.o.signals.tokenFor(project, hook);
-      const view = { hook, ...startBlock(pickNotes(project, store), { shared: sharedForClaude(project), ...(token ? { search: this.index.command(token) } : {}) }) };
+      // M79 (the memory lab, 11 Nov 2026): no search line in the block. It cost about 100 tokens a session and was used in
+      // 0 of 18 sessions. The index is still rebuilt below, so the search command keeps working for anyone who calls it.
+      const view = { hook, ...startBlock(pickNotes(project, store), { shared: sharedForClaude(project) }) };
       if (token && hook) {
         mkdirSync(this.o.signals.startFolder, { recursive: true, mode: 0o700 });
         writeAtomic(this.fileOf(token), view.text, 0o600);

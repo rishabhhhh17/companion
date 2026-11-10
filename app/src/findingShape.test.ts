@@ -17,7 +17,8 @@ const reason = (kind: ReviewReasonKind, file = "a.js", line = 3) => ({ kind, say
 describe("every kind has a level and its parts", () => {
   test("Must fix is exactly the engine's own stop kinds; four named kinds are Should fix; the rest Worth a look", () => {
     for (const k of REVIEW_REASONS) {
-      const want: Level = STOP_KINDS.has(k as never) ? "must" : ["secret_file_changed", "touches_risky", "signed_in_open", "house_rule_ask"].includes(k) ? "should" : "look";
+      // M79: a package with a known high problem is Should fix too (critical is a stop kind, so Must fix).
+      const want: Level = STOP_KINDS.has(k as never) ? "must" : ["secret_file_changed", "touches_risky", "signed_in_open", "house_rule_ask", "package_high"].includes(k) ? "should" : "look";
       expect(FINDING_LEVEL[k], k).toBe(want);
     }
   });
@@ -28,7 +29,8 @@ describe("every kind has a level and its parts", () => {
     }
   });
   test("when it may be fine is said for every kind, except a Must fix that never is (a key, open data, failing checks)", () => {
-    const never = ["secret_in_code", "key_in_page", "open_table", "checks_failed", "risky_with_failing_checks"];
+    // M79: a package with a known critical problem is never fine on purpose either.
+    const never = ["secret_in_code", "key_in_page", "open_table", "checks_failed", "risky_with_failing_checks", "package_critical"];
     for (const k of REVIEW_REASONS) {
       const fine = findingParts(k, "").fine;
       if (never.includes(k)) expect(fine, k).toBeUndefined();

@@ -41,6 +41,7 @@ import { FreeFixes } from "./db.ts";
 import { PlanGate } from "./plan.ts";
 import { MODELS } from "./models.ts";
 import { OWN_WORK, ReviewService } from "./review/service.ts";
+import { OsvClient } from "./review/osv.ts";
 import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 import { DoneSignals, type DonePlan } from "./donesignal.ts";
@@ -116,6 +117,9 @@ const review = new ReviewService({
   rulesOnly: (p) => isKeyPractice(p),
   // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
   history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d) },
+  // M79 (T18): known serious problems in packages a change added, on OSV.dev. Names and versions only, a day's cache in
+  // this data folder, and packages.check turns it off. A stand in engine (tests) never reaches OSV.
+  ...(settings.engine === "sdk" && !settings.assistStub ? { packages: new OsvClient({ cacheFile: join(settings.data, "osv-cache.json") }) } : {}),
   fix: (start) => {
     const admitted = plan.admit(start);
     if (!admitted) return;

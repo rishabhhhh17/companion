@@ -301,16 +301,18 @@ describe("the page model: plan.usage and plan.limit", () => {
 });
 
 describe("Get Pro (section 4)", () => {
-  test("Yearly first, then Monthly, with the US prices line; nothing chosen for the person", () => {
+  test("Monthly at the price in prices.json ($15, the founder's call of 6 Nov 2026), no yearly until a yearly price is set, with the US prices line; nothing chosen for the person", () => {
     const g = getProSheet(on());
-    expect(g.choices.map((c) => [c.term, c.label, c.ready])).toEqual([["yearly", "Yearly, $96 a year (save $24)", true], ["monthly", "Monthly, $10 a month", true]]);
+    expect(g.choices.map((c) => [c.term, c.label, c.ready])).toEqual([["monthly", "Monthly, $15 a month", true]]);
+    // With a yearly price set in the one config, Yearly comes first again.
+    expect(getProSheet(on(), { symbol: "$", proMonthly: 15, proYearly: 150, reportOnce: 29 }).choices.map((c) => c.label)).toEqual(["Yearly, $150 a year", "Monthly, $15 a month"]);
     expect(g.lines).toEqual(["US prices. Your local price and tax show at checkout.", "Checkout opens in your browser. Dodo handles the payment, tax and receipts."]);
   });
   test("during a trial it says billing starts today", () => {
     expect(getProSheet(on({ plan: "trial", state: "trial", trial: TRIAL, trialUsed: true })).lines).toContain("Billing starts today if you buy now.");
   });
   test("with no product or checkout host filled in, it calmly says checkout is not ready yet", () => {
-    const g = getProSheet(on({ checkout: { yearly: false, monthly: false } }));
+    const g = getProSheet(on({ checkout: { yearly: false, monthly: false, report: false } }));
     expect(g.ready).toBe(false);
     expect(g.choices.every((c) => !c.ready)).toBe(true);
     expect(g.lines.at(-1)).toBe("Checkout is not ready yet. Nothing has been charged.");
@@ -380,8 +382,8 @@ describe("no card form, no web view, no network, no dollar amount and no clipboa
   test("no timer in the plan's page code: it waits for the shell's event", () => {
     for (const [f, src] of files) expect(code(src), f).not.toMatch(/setInterval|setTimeout|requestAnimationFrame/);
   });
-  test("no dollar amount outside strings.ts", () => {
-    for (const [f, src] of [...files, ["./card.tsx", read("./card.tsx")] as const, ["./settingsPage.tsx", read("./settingsPage.tsx")] as const]) {
+  test("no dollar amount outside prices.json (M79): not in logic, not in strings.ts", () => {
+    for (const [f, src] of [...files, ["./card.tsx", read("./card.tsx")] as const, ["./settingsPage.tsx", read("./settingsPage.tsx")] as const, ["./strings.ts", read("./strings.ts")] as const, ["./m76Panels.tsx", read("./m76Panels.tsx")] as const]) {
       expect(code(src), f).not.toMatch(/\$\s?\d|\d+\s?(?:USD|dollars)/);
     }
   });

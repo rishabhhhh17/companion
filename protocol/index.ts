@@ -245,7 +245,9 @@ export type ReviewTouch = (typeof REVIEW_TOUCHES)[number];
 // M77: weakened_check (a test skipped or narrowed, an assertion deleted, a coverage threshold lowered, a CI or lint check
 // told to pass anyway; runner/src/review/weakened.ts) comes before every other reason; claimed_passed (the words say the
 // checks pass, the checks did not run or failed).
-export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page"] as const;
+// M79 (T18): package_critical and package_high, a package the change added or moved to a new version has a known serious
+// problem on OSV.dev (runner/src/review/osv.ts): critical is Fix this first, high is worth a look.
+export const REVIEW_REASONS = ["weakened_check", "claimed_passed", "secret_in_code", "removed_still_used", "checks_failed", "risky_with_failing_checks", "secret_file_changed", "touches_risky", "files_removed", "too_many", "model_concern", "open_table", "signed_in_open", "key_in_page", "house_rule", "house_rule_ask", "chosen_stop", "open_private_page", "package_critical", "package_high"] as const;
 export type ReviewReasonKind = (typeof REVIEW_REASONS)[number];
 /** M74: the review mode in force for a project: its own choice (review.modeHere), or with Same as everywhere (or nothing
  *  valid) the app's review.mode. The engine, the shell (main.rs review_watched) and the pages all decide by this rule. */
@@ -291,7 +293,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -428,6 +430,19 @@ export type SavedRowView = { id: number; at: string; checkpoint: string; command
  *  reviews whose checks failed or whose words claimed a pass that did not run. keys: keys found in code. weakened: checks a
  *  change weakened. saved: saved copies an Undo went back to. undone: tasks put back with Undo. */
 export type CaughtView = { since: string; falseDones: number; keys: number; weakened: number; saved: number; undone: number };
+/** M79: the weekly summary for the open project, asked for on the person's press (a "This week" row in History), never
+ *  pushed. Counted from real rows of the seven days from since to until (rule 16: counts, never praise or a streak).
+ *  reviews and files: changes reviewed. caught: the M77 counts plus packages (reviews that found a package with a known
+ *  serious problem). proven: fixes whose checks passed. undone: tasks put back with Undo. saved: copies saved before a
+ *  destructive command; savedUsed: those an Undo went back to. decisions: the decisions and house rules Claude Code is
+ *  told at the start (memory), at most 10, as written. againstRules: reviews that found a change against a house rule. */
+export type WeekView = {
+  since: string; until: string; reviews: number; files: number;
+  caught: { keys: number; weakened: number; falseDones: number; packages: number };
+  proven: number; undone: number; saved: number; savedUsed: number; decisions: string[]; againstRules: number;
+};
+export type WeekShow = Envelope & { type: "week.show"; project: string };
+export type WeekSummary = Envelope & { type: "week.summary"; project: string; week: WeekView };
 /** sinceCheck (must fix 11): whether the project's files changed since the version its last passed check ran on ("same" or
  *  "changed"). Absent when no passed check is known this session, or a task is writing to the project. */
 /** M57 feature 1: a review that ran, as a row in History. Names of files only (at most 20), never their text; the summary
@@ -582,7 +597,7 @@ export type ReviewResultEvent = Envelope & {
   untold?: ReviewUntold;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent;
+export type Event = GuardSaved | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -707,6 +722,17 @@ const caughtOk: Check = (m) => {
   const ok = !!c && typeof c === "object" && !Array.isArray(c) && typeof c.since === "string" && ["falseDones", "keys", "weakened", "saved", "undone"].every((k) => Number.isInteger(c[k]) && (c[k] as number) >= 0);
   return ok ? null : '"caught" must count falseDones, keys, weakened, saved and undone from a since date';
 };
+/** M79: the weekly summary's counts, each a whole number from 0, two real dates, and at most 10 decisions as text. */
+const weekOk: Check = (m) => {
+  const w = m.week as Record<string, unknown> | null;
+  const n = (o: Record<string, unknown> | null, k: string) => !!o && Number.isInteger(o[k]) && (o[k] as number) >= 0;
+  const c = (w?.caught ?? null) as Record<string, unknown> | null;
+  const ok = !!w && typeof w === "object" && !Array.isArray(w) && typeof w.since === "string" && !Number.isNaN(Date.parse(w.since)) && typeof w.until === "string" && !Number.isNaN(Date.parse(w.until))
+    && ["reviews", "files", "proven", "undone", "saved", "savedUsed", "againstRules"].every((k) => n(w, k))
+    && !!c && typeof c === "object" && !Array.isArray(c) && ["keys", "weakened", "falseDones", "packages"].every((k) => n(c, k))
+    && Array.isArray(w.decisions) && w.decisions.length <= 10 && w.decisions.every((d) => typeof d === "string" && d.length > 0 && d.length <= 300);
+  return ok ? null : '"week" must count reviews, files, proven, undone, saved, savedUsed and againstRules, what was caught, and at most 10 decisions, from since to until';
+};
 // M77: what the changes did not tell you: file names (at most 5) and counts.
 const untoldOk: Check = (m) => {
   const u = m.untold as Record<string, unknown> | null;
@@ -786,6 +812,7 @@ const COMMANDS: Record<string, Check[]> = {
   "memory.pause": [str("project"), bool("paused")],
   "memory.erase": [str("project"), oneOf("scope", ["project", "profile"])],
   "memory.export": [str("project")],
+  "week.show": [str("project")],
   "memory.restore": [str("project"), (m) => (typeof m.text === "string" && m.text.length <= 1024 * 1024 ? null : '"text" must be the export, at most 1 MB'), (m) => (m.confirm === true ? null : 'restoring needs the person\'s yes, "confirm": true')],
   "memory.agents": [str("project"), oneOf("answer", ["yes", "no", "remove"])],
   "ship.check": [str("project")],
@@ -885,6 +912,8 @@ const EVENTS: Record<string, Check[]> = {
   "memory.refused": [str("project"), str("reason")],
   "memory.exported": [str("project"), str("text")],
   "memory.restored": [str("project"), num("added"), num("skipped"), num("forgotten"), num("refused"), opt("problem", str("problem"))],
+  // M79: the weekly summary.
+  "week.summary": [str("project"), weekOk],
   "ship.gates": [str("project"), bool("canShip"), list("gates"), list("blockedBy"), list("needsYou"), list("confirmed"), num("allowedCount")],
   "research.done": [str("agent"), str("title"), str("answer"), list("notes"), opt("file", str("file"))],
   "rescue.report": [str("agent"), str("summary"), list("works"), str("broken"), list("steps"), list("evidence"), num("estimateUsd")],

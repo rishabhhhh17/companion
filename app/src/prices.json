@@ -1,0 +1,8 @@
+{
+  "about": "M79: the only place prices live (F25 as changed by the founder on 6 Nov 2026: Pro $15 a month). US prices; the local price and tax show at Dodo's checkout. proYearly is null until the founder sets a yearly price, so no yearly choice shows. Payments stay off (billing.*.json paymentsOn and the remote switch), so none of this shows to anyone yet.",
+  "currency": "USD",
+  "symbol": "$",
+  "proMonthly": 15,
+  "proYearly": null,
+  "reportOnce": 29
+}

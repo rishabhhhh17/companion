@@ -57,6 +57,9 @@ const ALLOWED: &[&str] = &[
     // M78: put back a notes export the person chose, after their yes on the page (the runner refuses it without
     // "confirm": true). Names the project, so it is project bound.
     "memory.restore",
+    // M79: the weekly summary, on the person's press (the "This week" row in History). It only reads the engine's own
+    // rows and notes. Names the project, so it is project bound.
+    "week.show",
 ];
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
@@ -101,6 +104,7 @@ pub const PROJECT_BOUND: &[&str] = &[
     "practice.key",
     "donesignal.show", "donesignal.add", "donesignal.remove",
     "memory.restore",
+    "week.show",
 ];
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
@@ -875,6 +879,34 @@ mod tests {
             stages.push(e["stage"].as_str().unwrap_or("").to_string());
         }
         assert_eq!(stages, ["opened", "done", "failed"]);
+    }
+    #[test]
+    fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
+        // M79: the shared fixtures (read by the runner's suite and the pages too).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let lines: Vec<&str> = fixtures.lines().filter(|l| l.contains("\"type\":\"week.show\"")).collect();
+        assert_eq!(lines.len(), 1);
+        for line in lines {
+            let v: Value = serde_json::from_str(line).unwrap();
+            assert!(check_command(&v).is_ok(), "{line}");
+            let project = v["project"].as_str().unwrap();
+            assert!(check_project(&v, project).is_ok(), "{line}");
+            assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+            assert!(check_project(&json!({ "v": 1, "id": "x", "type": "week.show", "project": NO_PROJECT }), "").is_err(), "not before a folder is chosen");
+        }
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let weeks: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"week.summary\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(weeks.len(), 2);
+        for w in &weeks {
+            for k in ["reviews", "files", "proven", "undone", "saved", "savedUsed", "againstRules"] { assert!(w["week"][k].as_u64().is_some(), "{k}"); }
+            // Counts only: no amount, no streak, no score anywhere in the summary.
+            let text = w.to_string().to_lowercase();
+            for bad in ["usd", "streak", "score", "cost"] { assert!(!text.contains(bad), "{bad}"); }
+        }
+        let pk: Value = serde_json::from_str(events.lines().find(|l| l.contains("\"id\":\"m79e1\"")).unwrap()).unwrap();
+        let kinds: Vec<&str> = pk["reasons"].as_array().unwrap().iter().map(|r| r["kind"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["package_critical", "package_high"]);
+        assert!(pk["reasons"][0]["say"].as_str().unwrap().contains("This package has a known serious problem: GHSA-aaaa-bbbb-cccc, fixed in 4.17.21"));
     }
     #[test]
     fn m78_a_restore_and_the_start_hook_pass_only_for_the_chosen_project_and_only_with_the_yes() {

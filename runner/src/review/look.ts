@@ -24,10 +24,10 @@ import { PUBLIC_PREFIX, publicDir, scanFiles } from "../ship/scan.ts";
 import { importersOf, type AddedLine, type FileChange, type Rating, type Reason, type ReasonKind } from "./rate.ts";
 
 /** The reasons that make a review Fix this first. Strictness never hides one of these. */
-export const STOP_KINDS: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed", "secret_in_code", "key_in_page", "open_table", "removed_still_used", "house_rule", "checks_failed", "risky_with_failing_checks", "chosen_stop"]);
-/** Never left out by a "do not flag" line, even when smaller: keys, settings and key files, data open to people, and (M77)
- *  a check the change weakened. */
-const NEVER_SILENCED: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed", "secret_in_code", "key_in_page", "secret_file_changed", "open_table", "signed_in_open"]);
+export const STOP_KINDS: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed", "secret_in_code", "key_in_page", "open_table", "removed_still_used", "house_rule", "checks_failed", "risky_with_failing_checks", "chosen_stop", "package_critical"]);
+/** Never left out by a "do not flag" line, even when smaller: keys, settings and key files, data open to people, (M77)
+ *  a check the change weakened, and (M79) a package with a known serious problem. */
+const NEVER_SILENCED: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed", "secret_in_code", "key_in_page", "secret_file_changed", "open_table", "signed_in_open", "package_critical", "package_high"]);
 
 // ---------- feature 2: open data ----------
 

@@ -85,13 +85,13 @@ All six parts are built end to end with tests, temporary fixture folders and the
 **1. Search index: built.** `runner/src/memory/notesindex.ts` (FTS5 through `bun:sqlite`, one file per project token in `<data>/notes/`, rebuilt in full into a new file renamed over the old one, 0600). Profile lines are never indexed. Tests: `runner/test/m78-index.test.ts`.
 
 **2. Start block: built.** `runner/src/memory/startblock.ts` (the ranked pick, at most 30 lines and 6,000 characters, fixed order, lines from the code left out, lines AGENTS.md already gives Claude Code left out), `runner/src/memory/sessionstart.ts` (the file `<data>/start/<token>.md` and the index, written only while the hook is set up, removed with it, swept at the engine's start), the `start` hook kind in `donesignal.ts`, the same card and Remove in the "Start reviews sooner" group, `donehooks.rs` (Delete everything and leaving a project take the `SessionStart` entry out). The shared AGENTS.md block now uses the same pick and is capped at 30 lines with a last line pointing at `.companion/project.md`; lines from the code are kept there last, so other tools still get them. Tests: `m78-startblock.test.ts`, `m78-index.test.ts`, `donehooks.rs`, `m77-guard.test.ts` (the Settings rows now end with the start row).
-- [verify] Claude Code runs the project's SessionStart hook in the shape written and puts the plain stdout into Claude's context.
+- Confirmed by the memory lab (11 Nov 2026, 36 of 36 runs): Claude Code runs the project's SessionStart hook in the shape written and puts the plain stdout into Claude's context, byte for byte.
 - [verify] a resumed session keeps the block it started with (`resume` is not in the matcher), and a hook added during a session counts only from the next one.
 - [verify] the VS Code Claude extension runs the same project hook.
 
 **3. Tried and failed: built.** `triedLine` in `startblock.ts`, `AgentRunner.rememberTried` after the receipt (the loop breaker or a fix not proven; never off the record, a practice, after Stop, while paused, or with `memory.triedAndFailed` off). It goes into AGENTS.md only where Squibby's block is already there. Tests: `runner/test/m78-tried.test.ts`.
 
-**4. Search on demand: built, as a command line.** `<data>/notes/search.sh <token> words`, named on the start block's last line. Tested for real: it finds by meaning of the words (porter stemming), is read only, and quotes, semicolons and sqlite dot commands in the words do nothing. No config write was needed.
+**4. Search on demand: built, as a command line.** `<data>/notes/search.sh <token> words`. It was named on the start block's last line until M79 took that line out (the memory lab, below); the command, its script and its index stay. Tested for real: it finds by meaning of the words (porter stemming), is read only, and quotes, semicolons and sqlite dot commands in the words do nothing. No config write was needed.
 - [verify] Claude Code's permission prompt for the command, and whether Claude reaches for it on its own.
 
 **5. Export and restore: built.** `runner/src/memory/backup.ts` (the export in the store's own line form, profile and house rules included; restore filters every line again, skips what is there, keeps forgotten lines forgotten, removes nothing, adds rules only when they read as rules), `memory.restore` and `memory.restored` with fixtures, `save_notes` and `open_notes_file` in the shell (`notesfile.rs`: the save and open dialogs, only an export, 1 MB at most, never a link), the Export notes and Restore from a file rows on the Memory page (a restore asks first, saying how many lines the file holds). The old "Show everything as text" box is gone. Delete everything still removes the data folder with the index and start files. Tests: `runner/test/m78-backup.test.ts`, `notesfile.rs`, `app/src/m78.test.ts`.
@@ -100,3 +100,12 @@ All six parts are built end to end with tests, temporary fixture folders and the
 **6. The start block on the Memory page: built.** `app/src/memoryStart.ts` and `memoryStart.tsx`: "What Claude Code is told at the start", line by line with source and Forget (with the usual short Undo), house rules with Change (to Settings), Set up in Settings when the hook is off, and the block exactly as printed behind "Show it exactly as Claude sees it". The words "Your notes are never lost: export them any time." are on the Export row only.
 
 Not built: an MCP server for search (a command needs no config and works while Squibby is closed); Codex and Cursor start hooks (their contracts were not checked); a token measurement (the lab test, plan step 4). Squibby's own tasks still get the profile and project notes by word count as before (`memory.recallLength`); moving them to the start block waits for the lab test too.
+
+## The memory lab's verdict (11 Nov 2026)
+
+From `docs/status/2026-11-11-memory-lab.md`: 72 runs of plain Claude Code on the practice projects, $1.70 spent, the API key route only.
+- The hook works: in 36 of 36 runs Claude Code ran it and Claude got the block byte for byte. The [verify] above is settled.
+- Claude kept to the notes: every house rule, decision and tried and failed line, 36 of 36. Without notes it went against the decision in 5 of 6 reversed tasks, and every one of those still passed the checks.
+- About 2 to 3 fewer turns (15 of 16 pairs). No cost or time saving shown: the median cost was 0.93 times no notes, within the noise. A dump of every note in CLAUDE.md cost about 18% more.
+- The search line was used 0 of 18 times. M79 took it out of the block (about 100 tokens a session); the command stays.
+- What may be said: Claude Code gets your house rules and decisions at the start of each session and keeps to them. Not that it saves tokens, money or time.

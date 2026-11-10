@@ -65,6 +65,8 @@ export const NEVER_GATED = [
   // M75: the done signal's hook (Squibby's own settings work, no model), the cost pause's answer (keep, stop or undo: never
   // a new fix) and the sign in handover's answer (the check of a task already admitted).
   "donesignal.show", "donesignal.add", "donesignal.remove", "cost.choose", "proof.signIn",
+  // M79: the weekly summary only reads Squibby's own rows and notes.
+  "week.show",
 ] as const;
 
 type Listed = (typeof FIX_GATED)[number] | (typeof PRO_ONLY)[number] | (typeof NEVER_GATED)[number];

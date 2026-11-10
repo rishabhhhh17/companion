@@ -18,7 +18,10 @@ export const proCommands = {
   activate: (key: string) => invoke("license_activate", { key }),
   checkNow: () => invoke("license_check_now"),
   deactivate: () => invoke("license_deactivate"),
-  openCheckout: (term: "yearly" | "monthly") => invoke("plan_open_checkout", { term }),
+  openCheckout: (term: "yearly" | "monthly" | "report") => invoke("plan_open_checkout", { term }),
+  // M79: the one time go live report (reportkey.rs). With payments off the status says so and nothing else.
+  reportStatus: () => invoke("report_status"),
+  reportActivate: (key: string) => invoke("report_activate", { key }),
   openPortal: () => invoke("plan_open_portal"),
   startTrial: () => invoke("trial_start"),
 };

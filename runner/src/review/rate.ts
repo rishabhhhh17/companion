@@ -167,7 +167,7 @@ export type RateInput = {
   /** M74: the most files one batch may have before it is too many to look at one by one (review.maxFiles, usual 200). */
   maxFiles?: number;
 };
-const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule", "weakened_check", "claimed_passed"]);
+const FOUND_STOP: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["key_in_page", "open_table", "house_rule", "weakened_check", "claimed_passed", "package_critical"]);
 /** M77: the reasons that come before every other, even a key: a check the change weakened, and words that claim a pass
  *  the checks did not give (the research's moment 3: tests rewritten to pass are the quiet failure). */
 const FIRST: ReadonlySet<ReasonKind> = new Set<ReasonKind>(["weakened_check", "claimed_passed"]);

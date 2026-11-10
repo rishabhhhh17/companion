@@ -87,6 +87,8 @@ export const eraseMemory = (project: string, scope: "project" | "profile"): Comm
 export const exportMemory = (project: string): Command => ({ v: 1, id: id(), type: "memory.export", project });
 // M78: put back a notes export the person chose, after their yes on the page (the engine refuses it without confirm).
 export const restoreMemory = (project: string, text: string): Command => ({ v: 1, id: id(), type: "memory.restore", project, text, confirm: true });
+// M79: the weekly summary, on the press of History's "This week" row only.
+export const showWeek = (project: string): Command => ({ v: 1, id: id(), type: "week.show", project });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
 // Watch routines and Where was I (F21). Each names the project, so the shell holds it to the folder the person chose.

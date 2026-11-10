@@ -64,6 +64,7 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [T15](T15-connectors-and-scheduled-tasks.md) | Connectors, folder watching and scheduled tasks | M12 |
 | [T16](T16-settings-registry.md) | One settings registry (`protocol/settings.json`) read by the shell, the pages and the engine; `settings.json` kept by the shell only | M11 customize core; a real Mac check is still owed |
 | [T17](T17-pro-unlocks-with-a-dodo-license-key.md) | Pro unlocks with a Dodo license key, checked on the Mac (31 Oct 2026) | Dodo test mode; not yet proven |
+| [T18](T18-risky-packages-on-osv.md) | Risky packages are looked up on OSV.dev, names and versions only (11 Nov 2026) | Stand in network tests; a real OSV answer is not yet seen |
 
 Still pending, written in the T records as options only (nothing is built for them until the founder decides):
 - T12: what to do if Claude Code keeps received screenshots on disk (spike (e) checks).

@@ -8,6 +8,18 @@
 // Every word is in strings.ts; no dollar amount is written outside it.
 import { S } from "./strings.ts";
 import { WATERS } from "./lookfeel.ts";
+import PRICES_FILE from "./prices.json";
+
+/** M79: the prices, from prices.json only (never written in logic or in strings.ts). A yearly price of null means no
+ *  yearly choice is offered. Anything that is not a positive amount reads as not set. */
+export type Prices = { symbol: string; proMonthly: number | null; proYearly: number | null; reportOnce: number | null };
+const amount = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
+export function pricesFrom(v: unknown): Prices {
+  const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+  return { symbol: typeof o.symbol === "string" && o.symbol.length <= 3 ? o.symbol : "$", proMonthly: amount(o.proMonthly), proYearly: amount(o.proYearly), reportOnce: amount(o.reportOnce) };
+}
+export const PRICES: Prices = pricesFrom(PRICES_FILE);
+const money = (n: number, p: Prices = PRICES) => S.m79.money(p.symbol, n);
 
 /** The free fixes a month (the founder's call, 31 Oct 2026). The engine's plan.usage says the real number; this is only what
  *  the card says before that first arrives. */
@@ -25,13 +37,14 @@ export type PlanStatus = {
   key: { last4: string; email: string; check: "ok" | "overdue" | "offline" | "inactive"; daysSinceCheck: number } | null;
   trial: { startedAt: string; endsAt: string; daysLeft: number; ended: boolean } | null;
   trialUsed: boolean;
-  checkout: Record<Term, boolean>;
+  /** M79: report, the one time go live report's checkout. */
+  checkout: Record<Term | "report", boolean>;
   portal: boolean;
 };
 /** The engine's free fix count (plan.usage). everUsed: a free fix was proven on this Mac before. */
 export type Usage = { used: number; limit: number; resetsOn: string; everUsed: boolean };
 
-export const OFF: PlanStatus = { paymentsOn: false, plan: "free", state: "off", key: null, trial: null, trialUsed: false, checkout: { yearly: false, monthly: false }, portal: false };
+export const OFF: PlanStatus = { paymentsOn: false, plan: "free", state: "off", key: null, trial: null, trialUsed: false, checkout: { yearly: false, monthly: false, report: false }, portal: false };
 
 const STATES: readonly ProState[] = ["off", "free", "trial", "trialEnded", "pro", "proOverdue", "proOffline", "inactive", "keychain"];
 const CHECKS = ["ok", "overdue", "offline", "inactive"] as const;
@@ -54,7 +67,7 @@ export function statusFrom(v: unknown): PlanStatus {
     key: k ? { last4: str(k.last4).slice(-4), email: str(k.email), check: (CHECKS as readonly unknown[]).includes(k.check) ? (k.check as (typeof CHECKS)[number]) : "ok", daysSinceCheck: num(k.daysSinceCheck) } : null,
     trial: t ? { startedAt: str(t.startedAt), endsAt: str(t.endsAt), daysLeft: num(t.daysLeft), ended: t.ended === true } : null,
     trialUsed: o.trialUsed === true || !!t,
-    checkout: { yearly: c.yearly === true, monthly: c.monthly === true },
+    checkout: { yearly: c.yearly === true, monthly: c.monthly === true, report: c.report === true },
     portal: o.portal === true,
   };
 }
@@ -211,10 +224,11 @@ export const limitShown = (v: LimitView): boolean => v.reason !== "recaps";
 
 export type Choice = { term: Term; label: string; ready: boolean };
 /** Get Pro's two choices, Yearly first and nothing chosen for the person (section 4), and the lines under them. */
-export function getProSheet(s: PlanStatus): { choices: Choice[]; lines: string[]; ready: boolean } {
+export function getProSheet(s: PlanStatus, p: Prices = PRICES): { choices: Choice[]; lines: string[]; ready: boolean } {
+  // M79: a choice shows only with its price set in prices.json (today: monthly only, $15).
   const choices: Choice[] = [
-    { term: "yearly", label: S.plan.choose(S.plan.yearly, S.plan.yearlyPrice), ready: s.paymentsOn && s.checkout.yearly },
-    { term: "monthly", label: S.plan.choose(S.plan.monthly, S.plan.monthlyPrice), ready: s.paymentsOn && s.checkout.monthly },
+    ...(p.proYearly ? [{ term: "yearly" as const, label: S.plan.choose(S.plan.yearly, S.m79.perYear(money(p.proYearly, p))), ready: s.paymentsOn && s.checkout.yearly }] : []),
+    ...(p.proMonthly ? [{ term: "monthly" as const, label: S.plan.choose(S.plan.monthly, S.m79.perMonth(money(p.proMonthly, p))), ready: s.paymentsOn && s.checkout.monthly }] : []),
   ];
   const ready = choices.some((c) => c.ready);
   return { choices, ready, lines: [S.plan.usPrices, ...(s.plan === "trial" ? [S.plan.billingToday] : []), ready ? S.plan.opensBrowser : S.plan.notReady] };
@@ -249,3 +263,32 @@ export function deleteKeeps(p: ProInventory, turnOffPro: boolean): string[] {
 }
 /** What it deletes that is Pro's: the free fix count starts again (it lives with the engine's data). */
 export const deleteGoesPro = (p: ProInventory): string[] => (p?.fixCountResets ? [S.plan.fixCountGoes] : []);
+
+// ---------- M79: what each plan includes, and the one time report ----------
+
+export type Includes = { id: "free" | "pro" | "report"; title: string; price: string; lines: string[] };
+/** What Free, Pro and the report include: the one list (strings.ts S.m79.includes), each priced from prices.json. Shown
+ *  only while payments are on: with payments off it is empty, so no plan, price or checkout shows to anyone. */
+export function planIncludes(s: PlanStatus, p: Prices = PRICES): Includes[] {
+  if (!s.paymentsOn) return [];
+  const t = S.m79.includesTitle, l = S.m79.includes;
+  return [
+    { id: "free", title: t.free, price: "", lines: [...l.free] },
+    ...(p.proMonthly ? [{ id: "pro" as const, title: t.pro, price: S.m79.perMonth(money(p.proMonthly, p)), lines: [...l.pro] }] : []),
+    ...(p.reportOnce ? [{ id: "report" as const, title: t.report, price: S.m79.once(money(p.reportOnce, p)), lines: [...l.report] }] : []),
+  ];
+}
+
+/** The shell's report_status, read with care: anything odd reads as payments off (nothing offered, nothing gated). */
+export type ReportStatus = { paymentsOn: boolean; needed: boolean; checkout: boolean };
+export function reportStatusFrom(v: unknown): ReportStatus {
+  const o = v as Record<string, unknown> | null;
+  if (!o || typeof o !== "object" || o.paymentsOn !== true) return { paymentsOn: false, needed: false, checkout: false };
+  return { paymentsOn: true, needed: o.needed === true, checkout: o.checkout === true };
+}
+/** What the Share report panel offers about buying the report: nothing at all unless payments are on and the plan does
+ *  not include it. Then the answer stays free and only saving the file is offered for a price. */
+export function reportOffer(r: ReportStatus, p: Prices = PRICES): { show: boolean; line: string; buy: string; ready: boolean } {
+  if (!r.paymentsOn || !r.needed || !p.reportOnce) return { show: false, line: "", buy: "", ready: false };
+  return { show: true, line: S.m79.reportNeeded, buy: S.m79.reportBuy(S.m79.once(money(p.reportOnce, p))), ready: r.checkout };
+}

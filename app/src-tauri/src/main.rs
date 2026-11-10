@@ -37,6 +37,8 @@ mod frame;
 mod macos_see;
 mod keystore;
 mod license;
+mod remoteswitch;
+mod reportkey;
 mod trial;
 mod projects;
 mod redact;
@@ -3876,6 +3878,35 @@ fn plan_open_portal(window: tauri::WebviewWindow) -> Result<(), String> {
     open_in_browser(&license::portal_url(license::billing()).map_err(|w| if w == "notReady" { "portalNotReady" } else { w })?)
 }
 
+/// M79: whether the plan includes the report (Pro or its trial), and whether a report key covers the open project. A
+/// Keychain that cannot be read, or no plan decided yet, never blocks: both read as yes then.
+fn report_inputs() -> (bool, bool) {
+    if !license::billing().payments_on() { return (true, true); }
+    let plan = { let _one = pro_lock(); plan_now().1 };
+    let includes = plan.map_or(true, |d| d.plan != license::Plan::Free && reportkey::PRO_INCLUDES_REPORT);
+    let covered = reportkey::covered(&license::Keychain::new(), &current_project()).unwrap_or(true);
+    (includes, covered)
+}
+/// M79: what the Share report panel shows about buying the report. With payments off, only that they are off.
+#[tauri::command]
+async fn report_status(window: tauri::WebviewWindow) -> Result<Value, String> {
+    if settings::only_card(window.label()).is_err() { return Err("notCard".into()); }
+    Ok(tauri::async_runtime::spawn_blocking(|| { let (i, c) = report_inputs(); reportkey::status_json(license::billing(), i, c) }).await.unwrap_or_else(|_| json!({ "paymentsOn": false, "needed": false, "checkout": false })))
+}
+/// M79: turn on a pasted report key for the open project (only from Home). The key goes to Dodo on curl's standard input
+/// and into the Keychain, nowhere else; the project never leaves the Mac.
+#[tauri::command]
+async fn report_activate(window: tauri::WebviewWindow, key: String) -> Result<Value, String> {
+    if settings::only_card(window.label()).is_err() { return Err("notCard".into()); }
+    let r = tauri::async_runtime::spawn_blocking(move || {
+        reportkey::activate(license::billing(), &license::Curl, &license::Keychain::new(), &key, &current_project(), &license::instance_name(license::random4()), pro_secs())?;
+        let (i, c) = report_inputs();
+        Ok::<Value, &'static str>(reportkey::status_json(license::billing(), i, c))
+    }).await.unwrap_or(Err("unreachable"));
+    log("report_activate", json!({ "ok": r.is_ok(), "why": r.as_ref().err() }));
+    r.map_err(String::from)
+}
+
 fn open_in_browser(url: &str) -> Result<(), String> {
     if license::https_host(url).is_none() { return Err("notReady".into()); }
     let ok = std::process::Command::new("/usr/bin/open").arg(url).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
@@ -4273,6 +4304,10 @@ fn save_share_card(image: String, title: String) -> Result<String, String> {
 async fn save_report(window: tauri::WebviewWindow, kind: String, name: String, data: String) -> Result<String, String> {
     use base64::Engine;
     settings::only_card(window.label())?;
+    // M79: with payments on, saving the shareable report needs Pro or a report key for this project. With payments off
+    // (today) nothing is gated, and nothing is read for this.
+    let (includes, covered) = tauri::async_runtime::spawn_blocking(report_inputs).await.unwrap_or((true, true));
+    if !reportkey::save_allowed(license::billing().payments_on(), includes, covered) { return Err("reportNotBought".into()); }
     let kind = golive::Kind::of(&kind).ok_or("that is not a report")?;
     if data.len() > golive::MAX_BYTES.div_ceil(3) * 4 + 4 { return Err("the report is too big".into()); }
     let bytes = base64::engine::general_purpose::STANDARD.decode(data.as_bytes()).map_err(|_| "that is not a report".to_string())?;
@@ -5427,7 +5462,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, point_paste, open_in_editor, save_notes, open_notes_file]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, open_notes_file]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -5601,6 +5636,16 @@ fn main() {
             start_runner(app.handle());
             // Pro's key check (payments on and a key saved only; with payments off this starts nothing).
             start_plan_timer(app.handle());
+            // M79: the remote payments switch, asked once in the background only when the build's own file switch is on
+            // and names an address (today's files do neither, so nothing is asked). Only a plain yes turns payments on;
+            // then the pages and the engine hear the plan and the key check starts. Launch never waits for it.
+            if license::file_billing().asks_remote() {
+                let a = app.handle().clone();
+                std::thread::spawn(move || {
+                    if remoteswitch::ask(license::file_billing(), &remoteswitch::Curl) { plan_push(&a, true); start_plan_timer(&a); }
+                    log("payments_switch", json!({ "on": remoteswitch::said_yes() }));
+                });
+            }
             // The menu bar icon: Settings…, hide or show, stop everything, quit. Only Settings… opens anything: Home, on
             // Settings, at the page last viewed (the overhaul spec, 3.1), because the person clicked it.
             let settings = MenuItemBuilder::with_id("settings", "Settings…").build(app)?;

@@ -30,7 +30,9 @@ describe("the start block on the Memory page", () => {
   test("each line keeps its source; a memory line offers Forget, a house rule offers Change in Settings", () => {
     const v = startView(startFrom(fixture("m78e1").start));
     expect(v.rows.map((r) => [r.kind, r.action, r.source])).toEqual([["rule", "change", "your house rules"], ["decision", "forget", 'you said "we decided"'], ["failed", "forget", "a fix that was not proven"]]);
-    expect(v.setUp).toBe(false); expect(v.search).toBe(true); expect(v.line).toBe(S.m78.startOn);
+    // M79: the block carries no search line any more (the memory lab), so the page does not say Claude can search.
+    expect(v.setUp).toBe(false); expect(v.search).toBe(false); expect(v.line).toBe(S.m78.startOn);
+    expect(startView({ ...startFrom(fixture("m78e1").start)!, text: `${fixture("m78e1").start.text}More notes: run x\n` }).search).toBe(true);
     expect(placeOf(START_SETTINGS.rules)).not.toBeNull();
     expect(placeOf(START_SETTINGS.hook)).toMatchObject({ page: "fixing", group: "fixing.done" });
   });

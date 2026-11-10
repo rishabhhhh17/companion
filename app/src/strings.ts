@@ -535,6 +535,8 @@ export const S = {
     // M78
     "memory.triedAndFailed": "A fix that ended without proof leaves one line saying what was tried and what still failed.",
     "review.weakenedChecks": "A test skipped, a check told to pass anyway or a lint rule turned off is the first thing a review says.",
+    // M79
+    "packages.check": "A new package's name and version are looked up on OSV.dev for known serious problems. Never your code.",
     "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
     "history.thisWeek": "History and Now show what was caught in the last seven days, only when there is something.",
     "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
@@ -1735,6 +1737,8 @@ export const S = {
       open_private_page: "Put the page behind your sign in, the way your other private pages are. Then check it again.",
       weakened_check: "Put the check back as it was and fix the code it was catching. If the test really was wrong, change the test on purpose, not to make it quiet.",
       claimed_passed: "Press Review changes to run the checks here, or run them yourself. Trust the checks, not the words.",
+      package_critical: "Move the package to the fixed version named here, then run your checks again.",
+      package_high: "Move the package to the fixed version named here, then run your checks again.",
     } as Record<string, string>,
     // Left out for a Must fix that is never fine on purpose (a key in the code, open data, failing checks).
     fineFor: {
@@ -1751,6 +1755,7 @@ export const S = {
       too_many: "If you asked for a big change on purpose.",
       model_concern: "If it does what you meant when you try it.",
       open_private_page: "If the page is meant for everyone and shows nothing private, such as a demo.",
+      package_high: "If your app never uses the part of the package the problem is in. Moving to the fixed version is still the safe choice.",
     } as Record<string, string>,
   },
   // M75: the cost pause card. No amounts anywhere (F29, M69).
@@ -1830,7 +1835,7 @@ export const S = {
       guard: `When Claude Code is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as Claude Code decided. Nothing is blocked or changed. Undo in History puts the files back.`,
       waiting: `When Claude Code waits for a permission or for you to type, the notch's mark goes amber and says Claude is waiting for you. Only Claude Code's own short notice travels, never the question.`,
       // M78: the start block.
-      start: `When a Claude Code session starts here, it is handed up to 30 lines of ${PRODUCT_S} notes: house rules, decisions with their reason, and fixes that did not work. The notes stay the same for the whole session.`,
+      start: `When a Claude Code session starts here, it is handed up to 30 lines of ${PRODUCT_S} notes: house rules, decisions with their reason, and fixes that did not work. So Claude Code gets your house rules and decisions at the start of each session and keeps to them. The notes stay the same for the whole session.`,
     } as Record<"guard" | "waiting" | "start", string>,
     askTitleFor: { guard: "Add the saved copy signal for Claude Code?", waiting: "Add the waiting signal for Claude Code?", start: "Give Claude Code your notes at the start?" } as Record<"guard" | "waiting" | "start", string>,
     askWhatFor: {
@@ -2430,6 +2435,8 @@ export const S = {
     // M57 feature 5: the one check that runs without a press. Its help says so plainly (it changes M52's "nothing runs until asked").
     // M77 (the safety net)
     "review.weakenedChecks": { label: "Flag tests or checks a change weakens", help: `A skipped test, a run narrowed to one test, or checks removed from a test. A lower coverage threshold, a step told to pass anyway, or a lint rule turned off. The review says it first, as Fix this first, with the file and line. Plain rules on this Mac, no model.`, also: ["test", "skip", "it.skip", "only", "coverage", "lint", "eslint", "ci", "weakened", "quiet", "pass anyway", "ts-ignore"] },
+    // M79 (T18): the package check on OSV.dev.
+    "packages.check": { label: "Check new packages for known problems", help: `When a change adds a package or a new version, the review sends only its name and version to OSV.dev. OSV.dev is a free public list of known problems, run by Google. Never your code and never your files. A known serious problem is a Must fix or a Should fix. Answers are kept on this Mac for a day. If OSV.dev does not answer, the review says the packages were not checked. Off, nothing is looked up.`, also: ["packages", "dependencies", "npm", "pip", "cargo", "go", "vulnerability", "security", "osv", "cve", "lock file", "package.json", "requirements.txt"] },
     "notch.waitingMinutes": { label: "Clear \"Claude is waiting for you\" after", help: `Needs the waiting signal (Fixing, Start reviews sooner). When Claude Code asks for a permission or waits for input, the notch's mark goes amber and says Claude is waiting for you. It clears when Claude Code moves on, or after this long.`, also: ["notch", "waiting", "permission", "claude code", "amber", "needs you", "clear", "timeout"], options: { "5": "After 5 minutes", "15": "After 15 minutes", "60": "After 1 hour" } },
     "history.thisWeek": { label: "Show what was caught this week", help: `One line in History and one row on Now. It counts false dones, keys, weakened checks, saved copies used and Undos in the last seven days, from your own rows. It shows only when the count is above zero.`, also: ["history", "week", "caught", "count", "catch rate", "undo", "keys", "false done"] },
     "review.keyWarning": { label: "Warn at once about a key in the code", help: `Off unless you turn it on. When on, and a change adds what looks like a key or password to your code, ${PRODUCT} says so at once, without asking first. Only that one check runs, on this Mac, with no model and nothing sent anywhere. Everything else still waits until you ask for a review.`, also: ["review", "key", "secret", "password", "token", "api key", "warning", "Cursor", "Codex", "Claude Code"] },
@@ -2516,7 +2523,8 @@ export const S = {
   },
   // Pro and the Plan card (the payments spec, sections 3, 4, 6, 8 and 9a; T17: a Dodo license key, checked on this Mac).
   // Payments are off until the founder switches them on (F25): then the card says Early access and nothing else changes.
-  // No renewal date and no local price anywhere: Dodo's billing page has those. Every dollar amount lives here only.
+  // No renewal date and no local price anywhere: Dodo's billing page has those. M79: every dollar amount lives in
+  // prices.json only, never here and never in logic.
   plan: {
     earlyAccess: "Early access",
     nothingCharged: "Nothing is charged. You'll be told before that changes.",
@@ -2560,8 +2568,7 @@ export const S = {
     getProTitle: "Get Pro",
     yearly: "Yearly",
     monthly: "Monthly",
-    yearlyPrice: "$96 a year (save $24)",
-    monthlyPrice: "$10 a month",
+    // M79: the amounts live in prices.json only; S.m79.perMonth and perYear say them.
     choose: (name: string, price: string) => `${name}, ${price}`,
     usPrices: "US prices. Your local price and tax show at checkout.",
     opensBrowser: "Checkout opens in your browser. Dodo handles the payment, tax and receipts.",
@@ -2595,6 +2602,9 @@ export const S = {
       portalNotReady: "Billing is not ready to open yet. Your Pro key still works.",
       browser: "Your browser did not open. Try again.",
       notCard: `Open ${PRODUCT_S} Home and try again there.`,
+      // M79: the one time report.
+      reportUsed: "This report key is already used for another project.",
+      reportNotBought: "Saving this report to share is part of Pro, or one time for this project.",
       proUnreachable: `${PRODUCT} could not reach Dodo to turn off Pro, so nothing was deleted. Connect to the internet and try again, or leave Also turn off Pro off.`,
       proKeychain: `${PRODUCT} could not remove the Pro key from your Keychain, so nothing was deleted. Try again.`,
       other: "That didn't work. Try again.",
@@ -2710,6 +2720,59 @@ export const S = {
     readFailed: "That file could not be read. Choose a notes file you exported.",
     neverLost: "Your notes are never lost: export them any time.",
     fileName: (project: string, day: string) => `${project || "notes"} notes ${day}`,
+  },
+  // M79: the weekly summary, what each plan includes, and the one time report. Counts only, never praise or a streak
+  // (rule 16). Every limit is "with limits" until it is measured. No dollar amount is written here: prices.json has them.
+  m79: {
+    week: {
+      rowTitle: "This week",
+      rowLine: "What was reviewed, caught and proven in the last seven days. Opens when you press it.",
+      open: "Open",
+      openLabel: "Open this week's summary",
+      title: "This week",
+      range: (from: string, to: string) => `${from} to ${to}`,
+      counting: "Counting this week.",
+      empty: "Nothing happened in this project in the last seven days: no changes reviewed, nothing caught and no fixes.",
+      fromRows: "Counted from this project's own history on this Mac.",
+      reviewed: (reviews: number, files: number) => `${reviews === 1 ? "1 change" : `${reviews} changes`} reviewed, ${files === 1 ? "1 file" : `${files} files`} in all.`,
+      caughtTitle: "What was caught",
+      caughtNone: "Nothing was caught.",
+      caught: {
+        keys: (n: number) => (n === 1 ? "1 key written into the code" : `${n} keys written into the code`),
+        weakened: (n: number) => (n === 1 ? "1 test or check weakened" : `${n} tests or checks weakened`),
+        falseDones: (n: number) => (n === 1 ? "1 done that was not done" : `${n} dones that were not done`),
+        packages: (n: number) => (n === 1 ? "1 change with a risky package" : `${n} changes with a risky package`),
+      },
+      proven: (n: number) => (n === 1 ? "1 fix proven by its checks." : `${n} fixes proven by their checks.`),
+      undone: (n: number) => (n === 1 ? "1 Undo used." : `${n} Undos used.`),
+      saved: (n: number, used: number) => `${n === 1 ? "1 copy" : `${n} copies`} saved before a destructive command${used ? `, ${used === 1 ? "1 of them" : `${used} of them`} used by Undo` : ""}.`,
+      decisionsTitle: "Decisions Claude Code is told at the start",
+      decisionsNone: "No decisions or house rules are saved for this project yet.",
+      againstRules: (n: number) => (n === 1 ? "1 review found a change against your house rules." : `${n} reviews found a change against your house rules.`),
+      noneAgainstRules: "No review found a change against your house rules.",
+      close: "Close",
+    },
+    // What each plan includes: one list, in one place. Shown only while payments are on (Get Pro).
+    includesTitle: { free: "Free", pro: "Pro", report: "The go live report" } as Record<"free" | "pro" | "report", string>,
+    includes: {
+      free: ["Reviews of every change, with limits", "Fixes, with limits", "Every safety check, the browser check, Undo and Stop", "Prompt help, Show me how and voice, with limits"],
+      pro: ["Everything in Free", "Fixes and reviews, with higher limits", "Ship with rollback, recaps and every look", "The go live report for every project"],
+      report: ["One shareable Is this safe to go live report for one project", "Save it again whenever its checks change"],
+    } as Record<"free" | "pro" | "report", readonly string[]>,
+    // Undo and Stop are never held back by a limit.
+    alwaysWork: "Undo and Stop always work, at any limit.",
+    // Prices: the amount comes from prices.json; these only say how often.
+    money: (symbol: string, amount: number) => `${symbol}${amount}`,
+    perMonth: (price: string) => `${price} a month`,
+    perYear: (price: string) => `${price} a year`,
+    once: (price: string) => `${price} one time`,
+    // The one time report, on the Share report panel, only while payments are on and the plan does not include it.
+    reportNeeded: "Saving this report to share is part of Pro, or one time for this project. The answer above stays free.",
+    reportBuy: (price: string) => `Get this report, ${price}`,
+    reportHaveKey: "Already bought it? Paste the key from the email.",
+    reportKeyLabel: "Report key",
+    reportTurnOn: "Use this key",
+    reportOn: "This project's report can be saved now.",
   },
   // M74 (your way): the words Settings draws itself for the new settings.
   m74: {
@@ -3105,6 +3168,9 @@ export const S = {
       claimed_passed: ["The words say the checks pass, but they did not.", "Nothing is proven, so it may still be broken."],
       // M75: a private looking page opened with no sign in. Worth a look, never a stop: a page can be public on purpose.
       open_private_page: ["This page should need a sign in but does not.", "Anyone with the address can open it without signing in."],
+      // M79 (T18): a package the change added has a known serious problem on OSV.dev. Critical is Must fix, high Should fix.
+      package_critical: ["A new package has a known critical problem.", "People who know about it could use it against your app."],
+      package_high: ["A new package has a known serious problem.", "People who know about it could use it against your app."],
     } as Record<string, readonly [string, string]>,
     pointing: `${PRODUCT} is pointing here`,
     lineNo: (n: number) => `line ${n}`,

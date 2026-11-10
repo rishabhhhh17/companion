@@ -2,12 +2,19 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Risky packages, the week, and payments ready but off: 11 Nov 2026 (in progress)
+
+- **New packages are checked for known problems.** When a change adds a package or moves one to a new version, the review looks up only its name and version on OSV.dev, a free public list of known problems run by Google. Never your code and never your files. A known critical problem is a Must fix, a high one a Should fix, each with the fixed version to move to: "lodash 4.17.20: This package has a known serious problem: GHSA-..., fixed in 4.17.21." Works for npm, Python, Go and Rust package lists. If OSV.dev does not answer, the review says the packages were not checked, never that they are safe. Answers are kept on your Mac for a day. Turn it off in Settings, Fixing, More: Check new packages for known problems.
+- **This week, when you ask.** A "This week" row in History opens a plain page for the open project: changes reviewed, what was caught (keys, weakened tests, dones that were not done, risky packages), fixes proven, Undos used, copies saved before destructive commands, and the decisions Claude Code is told at the start. Only from your own history, only when you press it, never a notification. An empty week says so. No streaks, no praise.
+- **What we learned about memory.** We tested the start notes on real Claude Code sessions: Claude kept to your house rules and decisions every time, and without them it went against a decision in 5 of 6 tries. It did not make sessions cheaper or faster, so Squibby does not say it does. The notes no longer name the search command, which was never used. The command still works.
+- **Payments are built and switched off.** Pro is now $15 a month, and a one time "Is this safe to go live" report for one project is $29, both through Dodo. What Free and Pro include is one list, with limits written as "with limits" until they are measured. Undo and Stop always work, at any limit. Nothing is charged and no checkout shows to anyone: payments need both the build's own switch and a remote switch, and both are off.
+
 ## Memory that is never lost: 10 Nov 2026 (in progress)
 
 - **Claude Code gets your notes as each session starts.** In Settings, Fixing, under Start reviews sooner, you can let Squibby hand Claude Code a short block of notes when a session starts in your project: your house rules, decisions with their reason, and fixes that did not work. At most 30 lines, only what your code does not show. It stays the same for the whole session. It is added only after your yes, and Remove takes it out.
 - **See exactly what Claude is told.** The top of the Memory page shows the block line by line, each with where it came from and Forget. House rules link to Settings, where you change them.
 - **Fixes that did not work are remembered.** When a fix ends without proof, or the loop breaker stops it, Squibby keeps one line: what was tried and the check that still failed. You can forget it, or turn this off in Settings.
-- **Claude can search the rest.** Notes that do not fit in the block stay searchable with one command on your Mac. Claude Code asks you the first time Claude runs it. Nothing is sent anywhere.
+- **Claude can search the rest.** Notes that do not fit in the block stay searchable with one command on your Mac. Claude Code asks you the first time Claude runs it. Nothing is sent anywhere. (11 Nov: the block no longer names the command, since a test showed it was never used. The command still works.)
 - **Export and restore.** Export notes saves every note, about the project and about you, plus the house rules, in one plain file you keep where you like. Restore from a file puts them back after a yes. Nothing is removed, and lines you asked to forget stay forgotten. Your notes are never lost: export them any time.
 - **The shared AGENTS.md block stays small.** It holds at most 30 lines, most useful first. The rest stays in your notes file.
 

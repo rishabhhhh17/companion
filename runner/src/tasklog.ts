@@ -5,7 +5,7 @@ import { openDatabase } from "./db.ts";
 import { PRODUCT } from "./names.ts";
 import { CheckpointStore } from "./checkpoints.ts";
 import { clip, redact } from "./redact.ts";
-import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch } from "../../protocol/index.ts";
+import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewChecks, type ReviewRating, type ReviewRowView, type ReviewTouch, type WeekView } from "../../protocol/index.ts";
 
 /** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
 export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string;
@@ -111,6 +111,32 @@ export class TaskLog {
       since, falseDones, keys, weakened,
       saved: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode = ? AND undone_by IS NOT NULL AND started_at >= ?", project, GUARD_MODE, since),
       undone: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode != ? AND undone_by IS NOT NULL AND COALESCE(ended_at, started_at) >= ?", project, GUARD_MODE, since),
+    };
+  }
+  /** M79: the weekly summary's counts for the seven days before now, from real rows only (the decisions come from memory,
+   *  added by the caller). It reuses the M77 counts for keys, weakened checks and false dones. */
+  week(project: string, now: Date = new Date()): Omit<WeekView, "decisions"> {
+    const c = this.caught(project, now);
+    const since = c.since;
+    const n = (sql: string, ...args: unknown[]): number => { try { return Number((this.db.query(sql).get(...(args as never[])) as { n: number } | null)?.n ?? 0); } catch { return 0; } };
+    const reviews = (() => { try { return this.db.query("SELECT count, kinds FROM reviews WHERE project = ? AND at >= ?").all(project, since) as { count: number; kinds: string }[]; } catch { return []; } })();
+    const kindsOf = (t: string): string[] => { try { const v = JSON.parse(t); return Array.isArray(v) ? v.map(String) : []; } catch { return []; } };
+    let files = 0, packages = 0, againstRules = 0;
+    for (const r of reviews) {
+      files += Math.max(0, Number(r.count) || 0);
+      const k = kindsOf(r.kinds);
+      if (k.includes("package_critical") || k.includes("package_high")) packages++;
+      if (k.includes("house_rule") || k.includes("house_rule_ask")) againstRules++;
+    }
+    return {
+      since, until: now.toISOString(), reviews: reviews.length, files,
+      caught: { keys: c.keys, weakened: c.weakened, falseDones: c.falseDones, packages },
+      // A fix is proven when its checks passed on a change (a passed check that changed nothing fixed nothing, must fix 7).
+      proven: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode != ? AND proof = 'passed' AND COALESCE(changed, 0) > 0 AND COALESCE(ended_at, started_at) >= ?", project, GUARD_MODE, since),
+      undone: c.undone,
+      saved: n("SELECT COUNT(*) AS n FROM tasks WHERE project = ? AND mode = ? AND started_at >= ?", project, GUARD_MODE, since),
+      savedUsed: c.saved,
+      againstRules,
     };
   }
   finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string }) {

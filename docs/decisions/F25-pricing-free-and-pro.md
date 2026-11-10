@@ -21,5 +21,11 @@
 - **The earlier Plus at $8 in the product research** is replaced by this record.
 - **Payments stay off.** Nothing is charged until payments are switched on.
 
+## Changed by the founder, 6 Nov 2026 (built in M79, 11 Nov 2026)
+- **Pro is $15 a month** (the founder's answer of 6 Nov 2026, after F29 moved model costs to Squibby). No yearly price is set yet, so no yearly choice shows until the founder sets one.
+- **A one time "Is this safe to go live" report at $29** for one project, sold through Dodo like Pro and switched off with it. Pro includes it (to be confirmed by the founder).
+- Prices live in one config only, `app/src/prices.json`. What Free and Pro include is one list in `strings.ts` (`S.m79.includes`), with every limit written as "with limits" until it is measured.
+- Payments stay off: the build's own switch (`paymentsOn` in `billing.*.json`) and a remote switch (`remoteSwitchUrl`, empty today) must both say yes. Dodo test mode until the founder's account, lawyer and domain exist.
+
 ## Revisit only if
 The founder changes the price, or Anthropic's terms change what Squibby may pay for.

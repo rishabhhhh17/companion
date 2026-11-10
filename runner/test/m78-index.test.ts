@@ -158,8 +158,13 @@ describe("the start file is written only while the hook is set up", () => {
     expect(readFileSync(file, "utf8")).toBe(on.text);
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(on.text).toContain("payments go through Stripe");
-    expect(on.text).toContain(`/bin/sh '${join(data, "notes", "search.sh")}' ${token}`);
+    // M79 (the memory lab, 11 Nov 2026: about 100 tokens a session, used 0 of 18 times): the block no longer names the
+    // search command. The command, its script and the index stay and keep working for anyone who calls them.
+    expect(on.text).not.toContain("search.sh");
+    expect(on.text).not.toContain("More notes: run");
     expect(notes.index.search(token, "payments").length).toBe(1);
+    expect(sh([notes.index.script, token, "payments"]).stdout).toContain("payments go through Stripe");
+    expect(notes.index.command(token)).toBe(`/bin/sh '${join(data, "notes", "search.sh")}' ${token}`);
     // What the hook prints is exactly what the page shows.
     expect(sh(["-c", startCommand(join(data, START_DIR), token)]).stdout).toBe(on.text);
     // The hook removed: the copies go.

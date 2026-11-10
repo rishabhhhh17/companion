@@ -5,9 +5,10 @@ import { buildReport, readPalette, reportFileName, reportHtml, reportPdf, type R
 import { Icon } from "./icons.tsx";
 import { changeSetting, useSetting } from "./settingsStore.ts";
 import { S } from "./strings.ts";
-import { invoke } from "./tauri.ts";
+import { invoke, proCommands } from "./tauri.ts";
 import { tourMove, type Tour, type TourStep } from "./tour.ts";
-import { Switch } from "./ui/parts.tsx";
+import { Field, Switch } from "./ui/parts.tsx";
+import { planProblem, reportOffer, reportStatusFrom, tidyKey, type ReportStatus } from "./plan.ts";
 
 const css = (name: string) => (typeof document === "undefined" ? "" : getComputedStyle(document.documentElement).getPropertyValue(name));
 const b64 = (bytes: Uint8Array) => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -21,6 +22,19 @@ export function ShareReport({ input, id = "share-report" }: { input: Omit<Report
   const [busy, setBusy] = useState(false);
   const codeLines = useSetting("report.codeLines") === true;
   const doc = open ? buildReport({ ...input, when: new Date(), codeLines }) : null;
+  // M79: the one time report. Asked once as the panel opens; with payments off (today) nothing is offered and the saves
+  // stay exactly as they were. The answer above is never sold, only saving the file to share.
+  const [paid, setPaid] = useState<ReportStatus>({ paymentsOn: false, needed: false, checkout: false });
+  const [key, setKey] = useState("");
+  useEffect(() => { if (open) void proCommands.reportStatus().then((v) => setPaid(reportStatusFrom(v)), () => setPaid(reportStatusFrom(null))); }, [open]);
+  const offer = reportOffer(paid);
+  const turnOnKey = () => {
+    const k = tidyKey(key);
+    setKey("");   // emptied at once; nothing on the page keeps a copy
+    if (!k || busy) return;
+    setBusy(true); setSaid(null);
+    void proCommands.reportActivate(k).then((v) => { setPaid(reportStatusFrom(v)); setSaid(S.m79.reportOn); }, (e) => setSaid(planProblem(e))).finally(() => setBusy(false));
+  };
   const save = (kind: "html" | "pdf") => {
     if (!doc || busy) return;
     const palette = readPalette(css);
@@ -35,11 +49,23 @@ export function ShareReport({ input, id = "share-report" }: { input: Omit<Report
     <div className="golive" role="group" aria-labelledby={`${id}-title`}>
       <div className="golive-head"><b id={`${id}-title`}>{S.goLive.panelTitle}</b><span className="muted">{S.goLive.panelLine}</span></div>
       <div className="golive-answer" data-answer={doc!.answer}><b>{doc!.answerWords}</b><span>{doc!.answerLine}</span></div>
+      {offer.show ? (<>
+        <p className="line">{offer.line}</p>
+        <div className="row">
+          <button className="btn" type="button" disabled={busy || !offer.ready} onClick={() => { void proCommands.openCheckout("report").catch((e) => setSaid(planProblem(e))); }}>{offer.buy}</button>
+          <button className="btn" type="button" onClick={() => setOpen(false)}>{S.goLive.close}</button>
+        </div>
+        <p className="line muted">{S.m79.reportHaveKey}</p>
+        <div className="row">
+          <Field type="password" value={key} label={S.m79.reportKeyLabel} disabled={busy} wide onChange={setKey} onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) turnOnKey(); }} />
+          <button className="btn" type="button" disabled={busy || !key} onClick={turnOnKey}>{S.m79.reportTurnOn}</button>
+        </div>
+      </>) : (
       <div className="row">
         <button className="btn" type="button" disabled={busy} onClick={() => save("html")}>{S.goLive.saveHtml}</button>
         <button className="btn" type="button" disabled={busy} onClick={() => save("pdf")}>{S.goLive.savePdf}</button>
         <button className="btn" type="button" onClick={() => setOpen(false)}>{S.goLive.close}</button>
-      </div>
+      </div>)}
       <label className="golive-switch"><Switch checked={codeLines} label={S.goLive.codeLines} onChange={(on) => { void changeSetting("report.codeLines", on); }} /><span>{S.goLive.codeLines}</span></label>
       <span className={said || busy ? "line muted" : "sr"} role="status">{busy ? S.goLive.saving : said ?? ""}</span>
     </div>

@@ -15,6 +15,8 @@ export const FINDING_LEVEL: Record<ReviewReasonKind, Level> = {
   secret_in_code: "must", key_in_page: "must", open_table: "must", removed_still_used: "must", house_rule: "must", checks_failed: "must", risky_with_failing_checks: "must", chosen_stop: "must",
   secret_file_changed: "should", touches_risky: "should", signed_in_open: "should", house_rule_ask: "should",
   files_removed: "look", too_many: "look", model_concern: "look", open_private_page: "look",
+  // M79 (T18): a known serious problem in a new package, by its severity on OSV.dev.
+  package_critical: "must", package_high: "should",
 };
 const RANK: Record<Level, number> = { must: 0, should: 1, look: 2 };
 // review.ts keyWarned is a type guard; as a plain yes or no it does not narrow the card away after it.

@@ -137,6 +137,8 @@ describe("the shipped list of settings", () => {
       "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
       // M78 (memory that is never lost): a fix that ended not proven leaves a tried and failed line (on).
       "memory.triedAndFailed": true,
+      // M79 (T18): known serious problems in new packages looked up on OSV.dev, names and versions only (on).
+      "packages.check": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -152,6 +154,9 @@ describe("the shipped list of settings", () => {
     expect(defOf("notch.waitingMinutes")).toMatchObject({ section: "home", kind: "choice", default: "15", options: ["5", "15", "60"], scope: "app", applies: ["runner"] });
     expect(validate(defOf("notch.waitingMinutes")!, "0").ok).toBe(false);
     expect(defOf("history.thisWeek")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M79: the package check is the runner's own switch, on as usual", () => {
+    expect(defOf("packages.check")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
   });
   test("M78: a tried and failed line is the runner's own switch, on as usual", () => {
     expect(defOf("memory.triedAndFailed")).toMatchObject({ section: "memory", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });

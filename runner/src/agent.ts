@@ -38,7 +38,7 @@ import { recallWords } from "./memory/recall.ts";
 import { madeBySquibby, removeSection, syncAgentsFiles } from "./memory/agentsmd.ts";
 import { exportNotes, restoreNotes } from "./memory/backup.ts";
 import type { StartView } from "./memory/sessionstart.ts";
-import { TRIED_SOURCE, triedLine } from "./memory/startblock.ts";
+import { pickNotes, TRIED_SOURCE, triedLine } from "./memory/startblock.ts";
 import { explainPlain, explainRequest } from "./explain.ts";
 import { changeTarget, diffForExplain, repeatedChange, revertHunk, taskHunks, teachable, turnChange, type ChangeAt, type Hunk, type Repeat } from "./teach.ts";
 import { recapLines } from "./recap.ts";
@@ -953,6 +953,15 @@ export class AgentRunner {
         let saved: ReturnType<TaskLog["savedRows"]> = [], caught: ReturnType<TaskLog["caught"]> | null = null;
         try { saved = this.o.log.savedRows(resolve(cmd.project), 50); const c = this.o.log.caught(resolve(cmd.project)); if (c.falseDones + c.keys + c.weakened + c.saved + c.undone > 0) caught = c; } catch { /* the rows are a nicety */ }
         this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}), ...(saved.length ? { saved } : {}), ...(caught ? { caught } : {}) } as never);
+        return;
+      }
+      // M79: the weekly summary, on the person's press only. Counts from real rows, and the decisions and house rules
+      // Claude Code is told at the start (memory), as written.
+      case "week.show": {
+        const p = resolve(cmd.project);
+        let decisions: string[] = [];
+        try { const m = this.memoryFor(cmd.project); if (m) decisions = pickNotes(p, m).filter((x) => x.kind === "rule" || x.kind === "decision").map((x) => clip(x.text, 300)).slice(0, 10); } catch { /* memory is a nicety here */ }
+        this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, this.now()), decisions } } as never);
         return;
       }
       // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.

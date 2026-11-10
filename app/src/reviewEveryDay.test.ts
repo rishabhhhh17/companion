@@ -150,7 +150,7 @@ describe("UI 12: the review settings where people look", () => {
     expect(PAGES.fixing.groups[0]).toEqual({ id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] });
     expect(mainKeys("fixing")[0]).toBe("review.mode");
     const more = PAGES.fixing.more.find((t) => t.id === "more.fixing.review")!;
-    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks"]);   // M77
+    expect(more.items).toEqual(["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "packages.check"]);   // M77, M79
     for (const k of ["review.mode", "review.quietSeconds", "review.autoQuietSeconds", "review.strictness", "review.keyWarning", "review.keepDays"]) {
       expect(moreKeys("general"), k).not.toContain(k);
       expect(placeOf(k)!.page === "fixing" || placeOf(k)!.topic === "more.fixing.review", k).toBe(true);
