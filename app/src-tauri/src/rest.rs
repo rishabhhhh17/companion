@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn the_shell_works_rest_out_twice_a_second_and_tells_every_live_character_only_on_a_change() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(fn_body(main, "fn tick(").contains("rest_tick(app, mtm);"));
         let t = fn_body(main, "fn rest_tick(");
         assert!(t.contains("rest::rest_now(presentation_now().quiet_on_calls, q, rest::rest_low_power_on(&setting_now(\"character.restLowPower\")), rest::low_power())"), "{t}");

@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { RADIUS, RING_MAX, TARGET, WINDOW, actionIcon, arcSpots, ringChoices, showsWord } from "./dropmenu.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -109,7 +110,7 @@ describe("a dropped folder can be the project (M15)", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain('listen("home-find", (e) =>');
     expect(card).toContain("offDropFind.then((f) => f());");
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     const fn = main.slice(main.indexOf("fn drop_open_project("), main.indexOf("\n}\n", main.indexOf("fn drop_open_project(")));
     // Checked like any folder chosen, from the menu the shell made, only for one folder, never while a job runs.
     expect(fn).toContain("use_project_inner(app.clone(), path)?");

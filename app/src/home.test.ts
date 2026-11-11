@@ -7,6 +7,7 @@ import { PANEL_TAB, PLACES, TABS, characterShows, closesOnClickAway, homeReduce,
 import { S, PRODUCT } from "./strings.ts";
 import { EMPTY_LINE, liveLine, newsOf } from "./a11y.ts";
 import { PH_KEYS_MS } from "./keys.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -468,7 +469,7 @@ describe("When something needs me (home.goToNeeds)", () => {
     expect(fx).toContain("if (!phShown) { setPhKeysUp(false); clearTimeout(phKeysTimer.current); if (phArmedFor.current !== null) { phArmedFor.current = null;");
     expect(card).toContain('const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false);');
     // The page's minute and a half is the shell's own (main.rs arm_now).
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     const arm = main.slice(main.indexOf("fn arm_now("), main.indexOf("fn ph_consent"));
     expect(arm).toContain("Duration::from_secs(90)");
     expect(PH_KEYS_MS).toBe(90_000);
@@ -524,7 +525,7 @@ describe("Close Home when I click another app (home.closeOnClickAway)", () => {
     for (const m of [initial(), run(task()), run([...task(), approval()])]) expect(closesOnClickAway(m, false, false)).toBe(false);
     expect(card).toMatch(/listen\("home-click-away", [^\n]*closesOnClickAway\(nowModel\.current, onboardingNow\.current, setting\("home\.closeOnClickAway"\) === true, typingNow\(\)\)/);
     // The shell's watch reads the setting at each look and skips the click away while it is off (main.rs watch_home).
-    expect(read("../src-tauri/src/main.rs")).toContain("if !hs.click_away { w = island::ClickAway::new(is_down); continue; }");
+    expect(shellSource()).toContain("if !hs.click_away { w = island::ClickAway::new(is_down); continue; }");
   });
 });
 

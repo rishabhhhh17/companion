@@ -8,6 +8,7 @@ import { ATTACH, CLIPPED_NOTE, DOC_LIMIT_KEY, checkAttachments, toBase64 } from 
 import { addFiles, addedLine, blocksDrop, carriesFiles, chipLabel, forRequest, mergeAdded, pastedFiles, removeFile, shellReader, type DocRead, type FileLike } from "./attachfiles.ts";
 import { startTask } from "./commands.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const enc = (t: string) => new TextEncoder().encode(t);
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -18,7 +19,7 @@ const file = (name: string, bytes: Uint8Array, type = "", size = bytes.length) =
   return f;
 };
 const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-const shell = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+const shell = shellSource();
 
 describe("adding files to the ask box", () => {
   test("a text file becomes a chip; its secrets are hidden and the person is told", async () => {

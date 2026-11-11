@@ -13,6 +13,7 @@ import {
 import { WATERS } from "./lookfeel.ts";
 import { initial, reduce } from "./model.ts";
 import { PRODUCT, S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 
@@ -376,7 +377,7 @@ describe("no card form, no web view, no network, no dollar amount and no clipboa
     const tauri = read("./tauri.ts");
     for (const c of ["license_status", "license_activate", "license_check_now", "license_deactivate", "plan_open_checkout", "plan_open_portal", "trial_start"]) {
       expect(tauri, c).toContain(`invoke("${c}"`);
-      expect(read("../src-tauri/src/main.rs"), c).toMatch(new RegExp(`[ ,]${c}[,\\]]`));
+      expect(shellSource(), c).toMatch(new RegExp(`[ ,]${c}[,\\]]`));
     }
   });
   test("no timer in the plan's page code: it waits for the shell's event", () => {

@@ -3,9 +3,10 @@
 // app/src-tauri/src/island.rs; these read the shell's glue as text, because it needs a real Mac to run.
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const main = read("../src-tauri/src/main.rs");
+const main = shellSource();
 const fnBody = (name: string) => { const a = main.indexOf(`fn ${name}(`); expect(a, name).toBeGreaterThan(-1); return main.slice(a, main.indexOf("\n}\n", a)); };
 
 describe("opening Home again while it folds back", () => {

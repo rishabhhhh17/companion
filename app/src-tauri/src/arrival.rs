@@ -47,7 +47,7 @@ pub fn menu_settings() -> serde_json::Value { serde_json::json!({ "place": "sett
 #[cfg(test)]
 mod tests {
     use super::*;
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     fn body(name: &str) -> String { let at = MAIN.find(name).unwrap_or_else(|| panic!("{name}")); MAIN[at..at + MAIN[at..].find("\n}\n").unwrap()].to_string() }
 
     #[test]

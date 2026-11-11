@@ -8,6 +8,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { REDUCED, followLessMotion, lessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
 import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
 import { PRODUCT } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const here = new URL("./", import.meta.url).pathname;
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
@@ -206,9 +207,10 @@ describe("every animation and transition in the stylesheets stops with reduced m
 });
 
 describe("the shell reads the Mac's setting once, and the island never animates", () => {
-  const rs = readdirSync(new URL("../src-tauri/src/", import.meta.url).pathname).filter((f) => f.endsWith(".rs"));
-  const all = rs.map((f) => [f, read(`../src-tauri/src/${f}`)] as const);
-  const main = read("../src-tauri/src/main.rs");
+  // main.rs pulls the shell_*.rs files in (include!), so they are read as part of main.rs's text.
+  const rs = readdirSync(new URL("../src-tauri/src/", import.meta.url).pathname).filter((f) => f.endsWith(".rs") && !f.startsWith("shell_"));
+  const main = shellSource();
+  const all = rs.map((f) => [f, f === "main.rs" ? main : read(`../src-tauri/src/${f}`)] as const);
   test("one reader of the setting, and the character's trips take it", () => {
     // A Rust test that names it in quotes (to check this very rule) does not count.
     const calls = all.flatMap(([f, s]) => [...s.matchAll(/(?<!")accessibilityDisplayShouldReduceMotion\(\)/g)].map(() => f));

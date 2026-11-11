@@ -138,7 +138,7 @@ mod tests {
     use crate::keymap::{self, Action, Chord, Map};
     use serde_json::json;
 
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     const PROTOCOL: &str = include_str!("../../../protocol/index.ts");
     const SWITCHED: [(&str, &str); 5] = [("flow", "flow.on"), ("guide", "guide.on"), ("voice", "voice.on"), ("files", "files.on"), ("prompt", "prompt.on")];
     const ALL_OFF: [&str; 5] = ["flow.on", "guide.on", "voice.on", "files.on", "prompt.on"];
@@ -386,23 +386,23 @@ mod tests {
     #[test]
     fn main_asks_the_catalog_before_every_command_a_page_sends_and_before_the_engine_is_asked() {
         assert!(MAIN.contains("if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }"));
-        assert!(body(MAIN, "fn group_refusal(").contains("groups::refuse_command(&group_off, command)"));
-        assert!(body(MAIN, "fn send_command(").contains("groups::refuse_runner(&group_off, &cmd)"));
-        let send = body(MAIN, "fn send_command(");
+        assert!(body(&MAIN, "fn group_refusal(").contains("groups::refuse_command(&group_off, command)"));
+        assert!(body(&MAIN, "fn send_command(").contains("groups::refuse_runner(&group_off, &cmd)"));
+        let send = body(&MAIN, "fn send_command(");
         assert!(send.find("refuse_runner").unwrap() < send.find(".send(&cmd)").unwrap(), "the refusal comes before the engine is asked");
     }
     #[test]
     fn main_lets_go_of_a_groups_keys_through_the_key_map_at_launch_and_on_every_change() {
-        assert!(body(MAIN, "fn start_keys(").contains("keymap::start_held(&picked, &held,"));
-        assert!(body(MAIN, "fn start_keys(").contains("groups::hotkey_held(&group_off, a.id())"));
-        assert!(body(MAIN, "fn setting_applied(").contains("if groups::is_switch(key) { groups_applied(app); }"));
-        let g = body(MAIN, "fn groups_applied(");
+        assert!(body(&MAIN, "fn start_keys(").contains("keymap::start_held(&picked, &held,"));
+        assert!(body(&MAIN, "fn start_keys(").contains("groups::hotkey_held(&group_off, a.id())"));
+        assert!(body(&MAIN, "fn setting_applied(").contains("if groups::is_switch(key) { groups_applied(app); }"));
+        let g = body(&MAIN, "fn groups_applied(");
         assert!(g.contains("unregister(keymap::shortcut(c))") && g.contains("keymap::arm(a, key_using(a)"), "off lets go, on takes them again");
         assert!(g.contains("VoiceMsg::Cancel") && g.contains("showme_stop(app)") && g.contains("drop_stop_all()"), "a group just switched off stops its tools here");
         // Every place that decides whether a job's keys stay registered counts a held job.
         assert!(!MAIN.contains("keymap::keep_registered("), "main.rs asks key_keep, which counts the groups");
-        assert!(body(MAIN, "fn key_registered(").contains("!key_held(a)") || MAIN.contains(".filter(|_| !key_held(a))"));
-        assert!(body(MAIN, "fn arm_now(").contains("if on && key_held(accept) { return; }"));
+        assert!(body(&MAIN, "fn key_registered(").contains("!key_held(a)") || MAIN.contains(".filter(|_| !key_held(a))"));
+        assert!(body(&MAIN, "fn arm_now(").contains("if on && key_held(accept) { return; }"));
     }
     #[test]
     fn a_file_dropped_with_files_off_is_ignored_like_with_the_convert_setting_off() {
@@ -412,16 +412,16 @@ mod tests {
     fn the_shell_notes_the_uses_only_it_can_see_where_they_really_happen() {
         // Only a spoken answer (the page says `whole`) is a use of Spoken answers: the sample Settings plays to try a voice
         // sends no `whole`, so previewing a voice never counts.
-        assert!(body(MAIN, "fn speak(").contains(r#"if whole.is_some() { mark_tried(&app, "speak"); }"#));
-        assert!(!body(MAIN, "fn speak(").contains("\n    mark_tried(&app, \"speak\")"));
+        assert!(body(&MAIN, "fn speak(").contains(r#"if whole.is_some() { mark_tried(&app, "speak"); }"#));
+        assert!(!body(&MAIN, "fn speak(").contains("\n    mark_tried(&app, \"speak\")"));
         assert!(MAIN.contains(r#"say_voice(&app, "heard", "", mic); mark_tried(&app, "talk")"#));
-        assert!(body(MAIN, "fn practice_mark(").contains(r#"mark_tried(&app, "practice")"#));
+        assert!(body(&MAIN, "fn practice_mark(").contains(r#"mark_tried(&app, "practice")"#));
         let at = MAIN.find("let end = convert::end_news(id, &ended);").unwrap();
         assert!(MAIN[at..at + 400].contains(r#"if !ended.made.is_empty() { mark_tried(&app, "convert"); }"#), "only when files were really made");
         // The page's mark goes through the same check, from Home only, and only for what a page can see.
-        let m = body(MAIN, "fn tried_mark(");
+        let m = body(&MAIN, "fn tried_mark(");
         assert!(m.contains("only_card(window.label())") && m.contains("page_may_mark(&tool)"));
-        assert!(body(MAIN, "fn mark_tried(").contains("groups::tried_after(&current, tool, &group_off)"));
+        assert!(body(&MAIN, "fn mark_tried(").contains("groups::tried_after(&current, tool, &group_off)"));
     }
 
     // ---- tried: a real use only ----

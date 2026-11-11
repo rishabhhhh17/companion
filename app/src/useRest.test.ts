@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { restFrom } from "./useRest.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 
@@ -16,7 +17,7 @@ describe("rest reaches every live Flowflow", () => {
     const hook = read("./useRest.ts");
     expect(hook).toContain('invoke("flowflow_rest")');
     expect(hook).toContain('listen("flowflow-rest"');
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     expect(main).toContain("fn flowflow_rest() -> bool");
     expect(main).toContain('app.emit("flowflow-rest", json!({ "rest": rest }))');
   });

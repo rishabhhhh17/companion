@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { initial, receiptHeading, reduce, type Model } from "./model.ts";
 import { aboutCopy, copyable, ehCopy, explainCopy, MAX_COPY, receiptCopy, recapCopy, rescueCopy, researchCopy } from "./copytext.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, { v: 1, id: "e", ...e } as never), from);
 const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
@@ -88,7 +89,7 @@ describe("Copy on replies and receipts", () => {
     expect(btn).toContain('setState("failed")');
     expect(btn).toMatch(/onClick=\{copy\}/);
     // Only from Home, and the Mac side checks the text (share.rs copyable).
-    const shell = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const shell = shellSource();
     const cmd = shell.slice(shell.indexOf("fn copy_text("), shell.indexOf("fn copy_text(") + 600);
     expect(cmd).toContain('window.label() != "card"');
     expect(cmd).toContain("share::copyable(");

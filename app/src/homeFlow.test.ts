@@ -7,6 +7,7 @@ import { checksOnOpen, FrameBatch, Landing, mergeDeltas, onlyStreamChanged, reve
 import { changesFiles, MAX_CHIPS, resultChips, type ChipFacts } from "./resultChips.ts";
 import { reduce, initial } from "./model.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const src = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const delta = (text: string, req = "r1") => ({ type: "assist.prompt.delta", req, text });
@@ -235,7 +236,7 @@ describe("the fixed chips at the end of a result", () => {
 });
 
 describe("the hotkey is acknowledged at once, with the light first (rule 5)", () => {
-  const main = src("../src-tauri/src/main.rs");
+  const main = shellSource();
   const w = main.slice(main.indexOf("fn voice_worker("));
   const down = w.slice(w.indexOf("Ok(VoiceMsg::Down(t, mode)) => {"), w.indexOf("Ok(VoiceMsg::Up(t)) => {"));
   test("the light and the listening line come before the wait, and the wait before the microphone opens", () => {

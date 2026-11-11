@@ -7,6 +7,7 @@ import { ROAM_PHASES, roamFrom } from "./roam.ts";
 import { defOf } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
 import { bend, ease } from "./pointer.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -62,7 +63,7 @@ describe("Come to what it is about", () => {
     // With Put the character back in its usual place, in More options (Flowflow's Motion and placement).
     expect(page).toContain("<Row label={S.setResetPlace} description={S.dragHint}");
     expect(S.set["character.comeTo"].label).toBe(S.comeToSetting);
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     for (const c of ["settings_get", "settings_set"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
     for (const c of ["dock_settings", "set_come_to"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
   });

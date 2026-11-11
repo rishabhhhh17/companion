@@ -109,7 +109,7 @@ mod tests {
         assert_eq!(c, Projects { current: None, recent: vec![good_real.clone()] });
         let ok = Projects { current: Some(good_real.clone()), recent: vec![good_real.clone()] };
         assert_eq!(ok.checked(home.to_str().unwrap(), &data), ok);
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let start = &main[main.find("let saved = projects::load(").unwrap()..]; let start = &start[..start.find('\n').unwrap()];
         assert!(start.contains(".checked("), "{start}");
     }

@@ -1034,7 +1034,7 @@ mod tests {
 
     #[test]
     fn the_shell_wires_the_map_as_these_rules_say() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         // A damaged file is written back repaired, so the person is told once; the old hold to talk file goes only after
         // the new one is written.
@@ -1092,7 +1092,7 @@ mod tests {
         // goes away (Esc or Close, the island or the character clicked again, a full screen app, Hide in the menu bar)
         // orders the card out and then runs home_closed, which gives them back, so none of them can leave the keys taken
         // for a result nobody can see.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let closed = body("fn home_closed(");
         assert!(closed.contains("std::thread::spawn(move || arm_result_keys(&a, false))"), "home_closed gives the keys back, on its own thread: {closed}");

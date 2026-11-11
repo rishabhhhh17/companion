@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { applyLook, flowColours, hueTurn, livelinessOf, LIVELINESS, sizeOf, SIZE_SCALE, themeOf, waterOf, waterVars, WATERS, WATER_TINTS } from "./lookfeel.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const lum = (hex: string) => { const n = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((s) => (s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4)); return 0.2126 * n[0] + 0.7152 * n[1] + 0.0722 * n[2]; };
 const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
@@ -81,7 +82,7 @@ describe("the character's size", () => {
     expect(def("look.size")).toMatchObject({ default: "usual", options: ["small", "usual", "large"] });
     // The live water's canvas is 156 points wide at the usual size (style.css .character .flow); large stays inside 180.
     expect(156 * SIZE_SCALE.large).toBeLessThanOrEqual(180);
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     expect(main).toContain("const DOCK: (f64, f64) = (160.0, 160.0);");
   });
 });

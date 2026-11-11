@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { failLine } from "./failwords.ts";
 import { plainError, initial, reduce } from "./model.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -30,7 +31,7 @@ describe("a failure on a press reads in plain words", () => {
     ];
     for (const [f, re] of sites) expect(read(f), `${f} ${re}`).not.toMatch(re);
     // The raw words reach the log through the shell, which writes them as failure_detail.
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     expect(main).toMatch(/fn note_failure\(kind: String, detail: String\)/);
     expect(main).toMatch(/[ ,]note_failure[,\]]/);
   });

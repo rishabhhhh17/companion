@@ -83,7 +83,7 @@ mod tests {
     }
     #[test]
     fn the_login_item_changes_only_through_the_setting_and_never_at_launch() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         // Only the Settings change turns it on, before the value is saved (a refusal leaves the setting as it was); a reset
         // to the usual value only ever removes it.
         assert_eq!(main.matches("loginitem::set(").count(), 1, "one caller");

@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn nothing_about_a_document_is_logged_and_only_home_may_ask() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn read_document(").expect("the command");
         let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(!body.contains("log("), "no line about a document is logged: {body}");

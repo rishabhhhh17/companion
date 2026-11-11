@@ -598,7 +598,7 @@ mod tests {
     }
     #[test]
     fn the_wipe_removes_the_claude_key_the_pro_key_only_on_a_yes_and_never_the_trial() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let helper = &main[main.find("fn wipe_helper_mode()").unwrap()..]; let helper = &helper[..helper.find("\n}\n").unwrap()];
         assert!(helper.contains("keystore::delete_item(&keystore::service(), keystore::ACCOUNT)"), "the Claude key");
         for never in ["license::", "trial::", "pro-license", "pro-trial"] { assert!(!helper.contains(never), "the helper touches {never}"); }
@@ -633,7 +633,7 @@ mod tests {
     }
     #[test]
     fn the_wipe_helper_removes_the_google_connections_of_companions_own_google_service() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let helper = &main[main.find("fn wipe_helper_mode()").unwrap()..]; let helper = &helper[..helper.find("\n}\n").unwrap()];
         let g = &helper[helper.find("delete_google:").expect("a Google step")..];
         assert!(g.contains("google::forget_all(") && g.contains("google::REVOKE_URL") && g.contains("google::SERVICE"), "{g}");

@@ -414,7 +414,7 @@ mod tests {
         assert!(body("fn cancel_request(").contains("\"type\": \"assist.cancel\", \"req\": req"));
         let ready = body("pub fn ready(");
         assert!(ready.contains("-> bool") && ready.contains("rules::same_request(p.as_ref().map(|p| p.req.as_str()), req)"), "{ready}");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let r = &main[main.find("#[tauri::command] fn ph_ready(").unwrap()..]; let r = &r[..r.find("\n}\n").unwrap()];
         assert!(r.contains("req: String") && r.contains("if !card_visible() || !phelp::ready(text, handback == \"copy\", &req) { return None; }"), "{r}");
     }

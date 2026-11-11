@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { REGISTRY, PAGE_STORAGE_MARK } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
 import { _invokeForTests, _resetForTests, changedNow, engineEvent, MIGRATED_FLAG, migrateFromPageStorage, migrationValues, notHeard, resetAll, resetKeysWithUndo, resetSection, resetSetting, resetWithUndo, setting, settingsReady, startSettings, takeSnapshot, undoReset, undoValues, usualOf } from "./settingsStore.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 afterEach(() => { _resetForTests(); _invokeForTests(null); });
 const storage = (m: Record<string, string>) => ({ getItem: (k: string) => (k in m ? m[k] : null), setItem: (k: string, v: string) => { m[k] = v; } });
@@ -105,7 +106,7 @@ describe("the one migration from page storage", () => {
     expect(o).not.toMatch(/\binvoke\b/);
     expect(o).toContain("startSettings({ ask: false });");
     for (const ev of ["overlay-celebrate", "overlay-party"]) expect(o.slice(o.indexOf(`void listen("${ev}"`)).split("\n")[0], ev).toContain("takeSnapshot(p.settings)");
-    const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const rs = shellSource();
     expect(rs).toContain('"overlay-celebrate", json!({ "rect": r, "home": home, "settings": settings })');
     expect(rs).toContain("let settings = settings_snapshot(&[]);");
     expect(rs).toMatch(/"overlay-party", json!\(\{ "x": [^\n]*"settings": settings_snapshot\(&\[\]\) \}\)/);

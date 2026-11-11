@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { MAX_JOBS, PANEL_DO, islandJobs, panelNote, panelView } from "./islandPanel.ts";
 import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
 const run = (events: Record<string, unknown>[], from: Model = initial()) => events.reduce<Model>((m, e) => reduce(m, e as never), from);
@@ -126,7 +127,7 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     for (const k of ["panel.showHello", "panel.showButtons"]) expect(reg.find((d) => d.key === k)?.hidden, k).toBe(true);
     // With the greeting gone, nothing reads the Mac account's full name: the command is neither defined, registered nor
     // allowed (review, 31 Oct), so no page can ask for personal data that nothing needs.
-    const main = read("../src-tauri/src/main.rs"), groups = read("../../protocol/groups.json"), island = read("../src-tauri/src/island.rs");
+    const main = shellSource(), groups = read("../../protocol/groups.json"), island = read("../src-tauri/src/island.rs");
     for (const [name, src] of [["main.rs", main], ["groups.json", groups], ["island.rs", island]] as const) {
       expect(src, name).not.toMatch(/\bfirst_name\b/);
       expect(src, name).not.toContain("NSFullUserName");

@@ -407,7 +407,7 @@ mod tests {
         assert!(!model_ready(&dir), "the full check reads it and finds the wrong bytes");
         assert!(!model_ready_quick(&dir), "and the quick check then knows the full answer for this same file");
         let _ = std::fs::remove_dir_all(&dir);
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let key = &main[main.find("fn show_me_key(app: &AppHandle)").unwrap()..];
         let key = &key[..key.find("\n}\n").unwrap()];
         assert!(key.contains("model_ready: voice_mac::model_ready_quick(&data_dir()),") && !key.contains("voice_mac::model_ready(&"), "{key}");

@@ -7,9 +7,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { S, PRODUCT } from "./strings.ts";
 import { keyHints, TALK_DEFAULT } from "./settings.ts";
 import { chordLabel, JOBS, KEY_DEFAULTS, KEY_USUAL, KEYS_START, keyHint, withKeys, type Job, type Keys } from "./keys.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const main = read("../src-tauri/src/main.rs");
+const main = shellSource();
 const keymapRs = read("../src-tauri/src/keymap.rs");
 const talkRs = read("../src-tauri/src/talkkeys.rs");
 /** The part of a Rust file a person can meet: its tests name made up keys on purpose. */

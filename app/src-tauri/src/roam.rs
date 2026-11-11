@@ -624,7 +624,7 @@ mod tests {
         assert!(!r.pending(), "on its way");
         r.end();
         assert!(r.pending());
-        let kick = body(MAIN, "fn roam_kick(");
+        let kick = body(&MAIN, "fn roam_kick(");
         assert!(kick.find("pending()").unwrap() < kick.find("roam_blocked()").unwrap(), "checked before the pointer is read");
     }
     #[test]
@@ -776,52 +776,52 @@ mod tests {
         let s = &src[src.find(name).unwrap_or_else(|| panic!("{name} missing"))..];
         s[..s.find("\n}\n").unwrap()].to_string()
     }
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     #[test]
     fn every_ring_on_a_window_and_every_result_about_a_window_brings_the_character() {
-        let draw = body(MAIN, "fn draw_pointer_with(");
+        let draw = body(&MAIN, "fn draw_pointer_with(");
         assert!(draw.contains("roam_to(") && draw.contains("watched.window()"), "a ring in a confirmed window brings it; one with no window does not");
         // The arrow leaves from where the character is before it sets off (it follows the arrow to the window), never from
         // the spot it is heading to: that spot is empty until the trip ends, and the trip may be held back by the pointer.
         let (here, go) = (draw.find("roam::arrow_start(").expect("the arrow's start comes from the rule"), draw.find("roam_to(").unwrap());
         assert!(here < go, "read where the character is before it sets off");
         assert!(!draw.contains("spot"), "the arrow never starts from where the character is going");
-        assert!(!body(MAIN, "fn roam_to(").contains("-> Option<Rect>"), "roam_to does not hand back where it is going");
+        assert!(!body(&MAIN, "fn roam_to(").contains("-> Option<Rect>"), "roam_to does not hand back where it is going");
         for f in [include_str!("errhelp.rs"), include_str!("phelp.rs"), include_str!("seclook.rs")] { assert!(f.contains("crate::roam_beside_window_of(app, pid)"), "a result about a window brings it"); }
-        let to = body(MAIN, "fn roam_to(");
+        let to = body(&MAIN, "fn roam_to(");
         for gate in ["come_to", "HIDDEN_BY_US", "USER_HID", "roam::display_of(", "roam::plan("] { assert!(to.contains(gate), "{gate}"); }
     }
     #[test]
     fn the_shell_follows_the_rules_and_never_moves_it_under_the_pointer_or_while_dragged() {
-        assert!(body(MAIN, "fn tick(").contains("roam_tick("), "every tick checks the visit");
-        let rt = body(MAIN, "fn roam_tick(");
+        assert!(body(&MAIN, "fn tick(").contains("roam_tick("), "every tick checks the visit");
+        let rt = body(&MAIN, "fn roam_tick(");
         assert!(rt.contains(".tick(&roam::TickIn") && rt.contains("EndWhy::Hidden"), "hidden: home at once, with no trip");
         assert!(rt.contains("card_visible()") && rt.contains("overlay_busy()") && rt.contains("TURN.lock()"), "a ring or the card keeps it there");
-        assert!(body(MAIN, "fn roam_kick(").contains("next_move(roam_blocked())"));
+        assert!(body(&MAIN, "fn roam_kick(").contains("next_move(roam_blocked())"));
         // M66: the trip runs on the display link (trip.rs Fly, which uses roam::ease and roam::arc_at), and each frame
         // holds while the pointer is over it or it is dragged.
-        assert!(body(MAIN, "fn roam_fly(").contains("trip::Fly::new(from, to, ms, up)"));
-        assert!(body(MAIN, "fn trip_start(").contains("fly.frame(t, roam_blocked())"), "it pauses under the pointer");
+        assert!(body(&MAIN, "fn roam_fly(").contains("trip::Fly::new(from, to, ms, up)"));
+        assert!(body(&MAIN, "fn trip_start(").contains("fly.frame(t, roam_blocked())"), "it pauses under the pointer");
         let trip = include_str!("trip.rs");
         assert!(trip.contains("roam::arc_at(self.from, self.to, roam::ease(self.done / self.total), self.up)"), "it flies the arrow's arc");
-        let blocked = body(MAIN, "fn roam_blocked(");
+        let blocked = body(&MAIN, "fn roam_blocked(");
         assert!(blocked.contains("dragging()") && blocked.contains("macos_see::pointer()"));
-        assert!(body(MAIN, "fn drag_dock(").contains("DRAG_AT.store(now() as u64"));
-        assert!(body(MAIN, "fn drop_dock(").contains("DRAG_AT.store(0"));
-        let apply = body(MAIN, "fn apply_dock(");
+        assert!(body(&MAIN, "fn drag_dock(").contains("DRAG_AT.store(now() as u64"));
+        assert!(body(&MAIN, "fn drop_dock(").contains("DRAG_AT.store(0"));
+        let apply = body(&MAIN, "fn apply_dock(");
         assert!(apply.contains("docking::place(") && apply.contains("placed_home("), "a drag or a display change puts it home and ends any visit");
-        assert!(body(MAIN, "fn place_card(").contains("card_spot(") && body(MAIN, "fn card_spot(").contains("roamer().home()"), "Home is placed by card_spot: under the island, or by the character's home, never where it visits");
-        assert!(body(MAIN, "fn roam_animate(").contains("reduced"), "reduced motion appears in place");
+        assert!(body(&MAIN, "fn place_card(").contains("card_spot(") && body(&MAIN, "fn card_spot(").contains("roamer().home()"), "Home is placed by card_spot: under the island, or by the character's home, never where it visits");
+        assert!(body(&MAIN, "fn roam_animate(").contains("reduced"), "reduced motion appears in place");
         assert!(MAIN.contains("accessibilityDisplayShouldReduceMotion()"));
     }
     #[test]
     fn a_drag_is_followed_by_the_shell_itself_and_placed_once_on_the_let_go() {
         // M47 (the founder: "it cannot genuinely move freely in the middle. It just lags"): the page says once that a drag
         // began; the shell moves the window from the mouse watch it already has, setting its origin only.
-        let start = body(MAIN, "fn drag_dock(");
+        let start = body(&MAIN, "fn drag_dock(");
         assert!(start.contains("if window.label() != \"dock\" { return; }"), "only the character's own page begins one");
         assert!(start.contains("docking::Drag::begin(") && start.contains("ROAM_GEN.fetch_add(1"), "a trip under way stops where it is");
-        let follow = body(MAIN, "fn drag_follow(");
+        let follow = body(&MAIN, "fn drag_follow(");
         assert!(follow.contains("NSEventType::LeftMouseDragged") && follow.contains("drag.follow(") && follow.contains("setFrameOrigin("));
         assert!(follow.contains("std::ptr::eq(&*w, &**d as &NSWindow)"), "only a drag on the character's own window");
         assert!(follow.contains("if !drag.press_due(t) { return; }"), "the press goes to the page at most once a frame");
@@ -833,50 +833,50 @@ mod tests {
         assert_eq!(MAIN.matches("drag_follow(").count(), 2, "defined once, called from the local watch only");
         assert_eq!(MAIN.matches("addGlobalMonitorForEventsMatchingMask_handler(").count(), 1);
         // The let go: decided once (Drag::release takes the drag), saved once, placed once.
-        let drop = body(MAIN, "fn drop_dock(");
+        let drop = body(&MAIN, "fn drop_dock(");
         assert!(drop.contains("DRAG.lock().unwrap_or_else(|e| e.into_inner()).take()"), "a second let go finds no drag");
         assert_eq!(drop.matches("save_prefs();").count(), 1);
         assert_eq!(drop.matches("apply_dock(").count(), 1);
         // Nothing else may move it until it is at its new home: the drag ends after it is placed.
         assert!(drop.find("apply_dock(").unwrap() < drop.find("DRAG_LIVE.store(false").unwrap());
-        assert!(body(MAIN, "fn dragging(").contains("docking::drag_holds(DRAG_LIVE.load("));
+        assert!(body(&MAIN, "fn dragging(").contains("docking::drag_holds(DRAG_LIVE.load("));
         // Let go in the middle it stays: never peeks there (peek_apply), and its home for trips is that very place.
-        assert!(body(MAIN, "fn peek_apply(").contains("if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In }"));
-        let apply = body(MAIN, "fn apply_dock(");
+        assert!(body(&MAIN, "fn peek_apply(").contains("if HOME_FREE.load(Ordering::SeqCst) { peek::Pose::In }"));
+        let apply = body(&MAIN, "fn apply_dock(");
         assert!(apply.contains("docking::place_free(&target, DOCK, at, home_size())") && apply.contains("roamer().placed_home(f);"));
     }
     #[test]
     fn the_card_opening_or_growing_plans_the_visit_again_and_trips_keep_clear_of_its_tallest() {
-        let pc = body(MAIN, "fn place_card(");
+        let pc = body(&MAIN, "fn place_card(");
         assert!(pc.contains("roam_card_moved(") && pc.contains("home_size().max_h"), "every time the card opens or grows, checked against its tallest");
         assert!(pc.find("set_frame_moving(").unwrap() < pc.find("roam_card_moved(").unwrap(), "after the card is placed");
-        let moved = body(MAIN, "fn roam_card_moved(");
+        let moved = body(&MAIN, "fn roam_card_moved(");
         assert!(moved.contains(".card_moved(") && moved.contains("roam_kick("), "planned again by the rule, and the trip starts");
-        assert!(body(MAIN, "fn roam_to(").contains("card_room("), "planned clear of where the card can grow to");
+        assert!(body(&MAIN, "fn roam_to(").contains("card_room("), "planned clear of where the card can grow to");
         // The same size in force for both (home.size): the tallest the trips keep clear of is the tallest Home grows to.
-        assert!(body(MAIN, "fn card_room(").contains("home_size().max_h"));
-        assert!(body(MAIN, "fn resize_card(").contains("home_size()") && body(MAIN, "fn resize_card(").contains("hs.max_h"), "the card never grows past what the plan keeps clear of");
-        assert!(body(MAIN, "fn open_card(").contains("place_card("), "opening places the card, so it rechecks the visit");
+        assert!(body(&MAIN, "fn card_room(").contains("home_size().max_h"));
+        assert!(body(&MAIN, "fn resize_card(").contains("home_size()") && body(&MAIN, "fn resize_card(").contains("hs.max_h"), "the card never grows past what the plan keeps clear of");
+        assert!(body(&MAIN, "fn open_card(").contains("place_card("), "opening places the card, so it rechecks the visit");
         // M66: a content height never resizes Home's window; the visit is rechecked straight from the new height.
-        assert!(body(MAIN, "fn resize_card(").contains("roam_card_moved("), "growing rechecks the visit");
+        assert!(body(&MAIN, "fn resize_card(").contains("roam_card_moved("), "growing rechecks the visit");
     }
     #[test]
     fn moving_it_never_takes_focus_or_shows_a_window() {
         for name in ["fn roam_to(", "fn roam_kick(", "fn roam_animate(", "fn roam_fly(", "fn trip_start(", "fn roam_set(", "fn roam_tick(", "fn roam_beside_window_of(", "fn roam_home_now(", "fn roam_card_moved(", "fn card_room("] {
-            let b = body(MAIN, name);
+            let b = body(&MAIN, name);
             for bad in ["makeKey", "orderFront", "set_focus", "activate", ".show("] { assert!(!b.contains(bad), "{name} must not {bad}"); }
         }
     }
     #[test]
     fn the_setting_is_kept_by_the_app_changed_only_from_the_card_and_the_character_hides_from_sharing_too() {
         // Kept in dock.json, changed only through the registry (settings_set, card only, T16); off sends it home.
-        let set = body(MAIN, "fn come_to_set(");
+        let set = body(&MAIN, "fn come_to_set(");
         assert!(set.contains("save_prefs()") && set.contains("if !on { roam_end(app); }"));
-        assert!(body(MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"), "Home only");
-        assert!(body(MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
+        assert!(body(&MAIN, "fn settings_set(").contains("settings::only_card(window.label())?"), "Home only");
+        assert!(body(&MAIN, "fn setting_change(").contains("come_to_set(app, next.come_to)"));
         for c in ["settings_get", "settings_set", "settings_reset"] { assert!(MAIN.contains(&format!(", {c},")) || MAIN.contains(&format!(", {c}]")), "{c} is not a command"); }
         for c in ["dock_settings", "set_come_to"] { assert!(!MAIN.contains(&format!(", {c},")) && !MAIN.contains(&format!(", {c}]")), "{c} is still a command"); }
-        assert!(body(MAIN, "fn apply_sharing(").contains("dock.setSharingType(t)"), "F18: hiding from screen sharing applies to the character");
+        assert!(body(&MAIN, "fn apply_sharing(").contains("dock.setSharingType(t)"), "F18: hiding from screen sharing applies to the character");
     }
 
     #[test]
@@ -1013,8 +1013,8 @@ mod tests {
         assert_eq!(r.tick(&TickIn { linger_ms: 10_000, ..tin(0, false, &wins, EDITOR) }), None);
         r.end();
         assert_eq!(r.want(), Some(HOME_LEFT));
-        let stop = body(MAIN, "fn showme_stop_rest(");
+        let stop = body(&MAIN, "fn showme_stop_rest(");
         assert!(stop.contains("roam_end(app)"), "Stop everything sends it home");
-        assert!(body(MAIN, "fn roam_tick(").contains("linger_ms: home_set().linger_ms"), "each tick reads the wait in force");
+        assert!(body(&MAIN, "fn roam_tick(").contains("linger_ms: home_set().linger_ms"), "each tick reads the wait in force");
     }
 }

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { FIXED_GROUPS } from "./settingsRows.ts";
 import { canOpen, canTrash, madeFrom, marks, sizeWords, trashAsk, whenWords, type MadeFolder } from "./made.ts";
 import { NAMES, PRODUCT, PRODUCT_S, S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(join(import.meta.dir, p), "utf8");
 const CASES = read("../../protocol/fixtures/made-list.jsonl").split("\n").filter(Boolean).map((l) => JSON.parse(l) as { name: string; row: MadeFolder });
@@ -110,7 +111,7 @@ describe("the words", () => {
 });
 
 describe("the page asks the shell by a folder's name only", () => {
-  const panel = read("./madePanel.tsx"), settings = read("./settingsPage.tsx"), main = read("../src-tauri/src/main.rs");
+  const panel = read("./madePanel.tsx"), settings = read("./settingsPage.tsx"), main = shellSource();
   test("it is in Settings with the setting that says where new folders go, and waits while anything works", () => {
     // About, Help: What Squibby made opens a sheet with the panel, after Practice projects.
     expect(settings).toContain('<Sheet title={S.setRows.made} dirty={false} instant onSave={() => setOpen(false)} onClose={() => setOpen(false)}><MadePanel busy={c.practiceBusy} project={c.project} /></Sheet>');

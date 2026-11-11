@@ -87,7 +87,7 @@ mod tests {
         // Hide or show Companion is in the menu bar icon only, and that icon can be out of reach (behind the notch, or
         // turned off in macOS's menu bar settings). Opening Companion again (Finder, Spotlight, Launchpad) sends the copy
         // that runs a reopen: it shows what the person hid, the same way the menu does, or else opens Home. Never the keyboard.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let run = &main[main.find("app.run(|app, ev|").unwrap()..];
         assert!(run.contains("RunEvent::Reopen { .. } => reopened(app),"), "{run}");
         let f = &main[main.find("fn reopened(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];

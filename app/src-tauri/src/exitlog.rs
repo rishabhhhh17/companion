@@ -275,7 +275,7 @@ mod reopen_script_tests {
 /// How main.rs is wired, so no way out loses its line again.
 #[cfg(test)]
 mod wiring_tests {
-    fn main_rs() -> &'static str { include_str!("main.rs") }
+    fn main_rs() -> &'static str { crate::main_src() }
     fn run_loop() -> &'static str { main_rs().split("let ended = std::panic::catch_unwind(").nth(1).expect("the event loop runs inside catch_unwind").split("fn problem_note_now").next().unwrap() }
 
     #[test]

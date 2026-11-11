@@ -136,7 +136,7 @@ mod tests {
     }
     #[test]
     fn squibby_never_types_or_pastes_into_the_other_app() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn point_paste(").expect("point_paste")..]; let f = &f[..f.find("\n}\n").unwrap()];
         for bad in ["press_paste", "post_key", "press_at", "press_menu", "write_clipboard", "set_value", "AXPress", "select_all"] { assert!(!f.contains(bad), "{bad}"); }
         // The light first: the looking stage is said before Accessibility is read.

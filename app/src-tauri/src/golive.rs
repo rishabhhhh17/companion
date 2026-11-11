@@ -110,7 +110,7 @@ mod tests {
     }
     #[test]
     fn saving_is_only_from_home_on_a_press_and_never_logs_the_report() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn save_report(").expect("save_report")..]; let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("settings::only_card(window.label())"), "{f}");
         assert!(f.find("golive::check(").unwrap() < f.find("golive::write(").unwrap(), "checked before anything is written");

@@ -112,7 +112,7 @@ mod tests {
     }
     #[test]
     fn the_app_runs_these_steps_on_every_way_out() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         // The app's own exit, the menu's Quit, an update's restart and Delete everything.
         let exit = main.split("RunEvent::Exit =>").nth(1).expect("the exit handler").split("RunEvent::Reopen").next().unwrap();
         assert!(exit.contains("quit_now(app, quit::from(), quit::VOICE_WAIT)"), "{exit}");
@@ -153,7 +153,7 @@ mod tests {
     }
     #[test]
     fn the_exit_handler_relaunches_before_ending_at_once_on_an_update() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let exit = main.split("RunEvent::Exit =>").nth(1).expect("the exit handler").split("RunEvent::Reopen").next().unwrap();
         assert!(exit.contains("quit::ending(quit::hard(), quit::restarting())"), "{exit}");
         assert!(exit.contains("relaunch_now(app)"), "{exit}");

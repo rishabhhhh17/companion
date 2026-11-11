@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn the_mouse_watch_moves_the_ring_through_the_lead() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let a = main.find("fn follow_to_pointer(").unwrap();
         let body = &main[a..a + main[a..].find("\n}\n").unwrap()];
         assert!(body.contains("let (x, y) = follow_lead().place((m.x, m.y), follow::clock_s());"), "{body}");
@@ -331,7 +331,7 @@ mod tests {
 
     #[test]
     fn the_rings_thread_sleeps_with_no_timer_while_the_ring_is_not_shown() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = fn_body(main, "fn follow_loop(");
         assert!(body.contains("follow::shown(") && body.contains("follow::next("), "{body}");
         assert!(body.contains("setting_now(\"character.follow\")") && body.contains("setting_now(\"character.lively\")"));
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn the_shell_moves_it_only_when_wanted_and_hides_it_under_a_ring() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = fn_body(main, "fn follow_loop(");
         assert!(body.contains("overlay_busy()"), "it steps aside while a pointer ring is up");
         assert!(body.contains("macos_see::pointer()"));

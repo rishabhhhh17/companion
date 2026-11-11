@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, spokenSpeed, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type VoiceSettings } from "./voicesettings.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const sample: VoiceSettings = {
   voices: [{ id: "ava", name: "Ava", lang: "en-US", quality: 2 }, { id: "jamie", name: "Jamie", lang: "en-GB", quality: 3 }, { id: "lekha", name: "Lekha", lang: "hi-IN", quality: 1 }],
@@ -89,7 +90,7 @@ describe("voice settings in plain words", () => {
     expect(soundLine("muted")).toMatch(/muted/);
   });
   test("every reason the app can give for not saving is said in plain words", () => {
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     const rs = readFileSync(new URL("../src-tauri/src/voiceset.rs", import.meta.url), "utf8");
     const set = main.slice(main.indexOf("fn set_voice_settings("), main.indexOf("\n}\n", main.indexOf("fn set_voice_settings(")));
     const apply = rs.slice(rs.indexOf("pub fn apply("), rs.indexOf("\n}\n", rs.indexOf("pub fn apply(")));
@@ -115,7 +116,7 @@ describe("the Settings rows", () => {
     expect(rows).toContain("voiceSettingsFrom(");
     const row = card.slice(card.indexOf("function ItemRows"), card.indexOf("\n}\n", card.indexOf("function ItemRows")));
     expect(row).toContain('if (item === "talk.voice") return <VoiceRows parentOff={parentWords} />;');
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     for (const c of ["voice_settings", "set_voice_settings"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
   });
   test("every row is labelled for VoiceOver, and the lines about what is away are announced", () => {
@@ -139,7 +140,7 @@ describe("the Settings rows", () => {
     expect(S.set["talk.speak"].label).toBe(S.speakSetting);
     expect(S.set["talk.speakReplies"].label).toBe(S.speakRepliesSetting);
     // Turning either off silences at once: the shell does it when the setting changes (main.rs setting_applied).
-    const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const rs = shellSource();
     expect(rs).toContain('if (key == "talk.speak" || key == "talk.speakReplies") && off(key) { speech_off(app); }');
   });
 });
@@ -165,7 +166,7 @@ describe("the picked speed reaches the card's own timing", () => {
     const main = card.slice(card.indexOf("function Card()"));
     expect(main).toContain('void invoke("voice_speed").then((x) => noteSpeed(voiceSettingsFrom({ speed: x }))).catch(() => {});');
     expect(main.slice(0, main.indexOf("function VoiceRows") > 0 ? main.indexOf("function VoiceRows") : undefined)).not.toContain('invoke("voice_settings")');
-    const rs = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const rs = shellSource();
     const cmd = rs.slice(rs.indexOf("fn voice_speed("), rs.indexOf("\n}\n", rs.indexOf("fn voice_speed(")));
     expect(cmd).toContain('window.label() != "card"');
     expect(cmd).toContain("voice_now().speed");

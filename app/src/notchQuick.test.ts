@@ -13,6 +13,7 @@ import { arrivalFrom } from "./home.ts";
 import { restWings } from "./notchHello.ts";
 import { S } from "./strings.ts";
 import { fromOf, geomFrom, shapeRects } from "./homeShape.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const P = "/Users/me/my-shop";
@@ -129,7 +130,7 @@ describe("the quick actions (M70: chosen from state, fixed slots, at most three)
     expect(view).toContain('invoke("island_go", {})');
     const quick = view.slice(view.indexOf('className="ip-quick"'), view.indexOf("</nav>"));
     expect(quick).not.toContain("send_command");
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const go = main.slice(main.indexOf("fn island_go("), main.indexOf("fn island_go(") + 600);
     expect(go).toContain('open_card_then(&app, "notch_panel", false,');
     expect(go).toContain("arrival::arrival");
@@ -204,7 +205,7 @@ describe("the small panel never takes focus and goes on into Home (M70)", () => 
     for (const hint of ["⌘", "kbd", "keyHint"]) expect(quick).not.toContain(hint);
   });
   test("Home grows from the panel the island showed: the shell sends its size, the page starts the shape there", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const open = main.slice(main.indexOf("fn open_card_then("), main.indexOf("fn card_visible("));
     expect(open).toContain("island::panel_rect(");
     expect(open.indexOf("island::panel_rect(")).toBeLessThan(open.indexOf("reset_hover()"));
@@ -213,7 +214,7 @@ describe("the small panel never takes focus and goes on into Home (M70)", () => 
     expect(card).toContain("stageOpen.current(!!(e.payload as { instant?: boolean } | null)?.instant, fromOf(e.payload));");
   });
   test("Stop everything closes the panel: the hotkey and the menu fold Home and forget the hover", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const body = (n: string) => main.slice(main.indexOf(n), main.indexOf("\n}\n", main.indexOf(n)));
     expect(body("fn home_stop_now(")).toContain("home_fold(");
     expect(body("fn home_fold(")).toContain("home_closed();");

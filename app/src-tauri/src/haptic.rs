@@ -58,7 +58,7 @@ mod tests {
     }
     #[test]
     fn main_taps_once_as_a_new_opening_starts_never_in_a_loop() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn open_card_then(").expect("open_card_then");
         let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(body.contains("if haptic::ticks(&setting_now(haptic::KEY), &src, was_open) { haptic::tick(); }"), "{body}");

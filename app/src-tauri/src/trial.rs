@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn the_item_is_the_apps_own_service_and_account() {
         assert_eq!(ACCOUNT, "pro-trial");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("trial::start(&license::Keychain::new()"), "the trial lives under keystore::service()");
     }
 }

@@ -5,13 +5,14 @@
 import { TOKENS_CSS } from "./ui/cssFiles.ts";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { shellSource } from "../dom/sourceText.ts";
 
 import { characterWords, initial, motionFor, reduce, visualState, type Model } from "./model.ts";
 import { TABS, characterShows, homeReduce, homeStart, need, shownOn } from "./home.ts";
 import { S, PRODUCT } from "./strings.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const main = read("../src-tauri/src/main.rs");
+const main = shellSource();
 const fnBody = (name: string) => { const a = main.indexOf(`fn ${name}`); expect(a, name).toBeGreaterThan(-1); return main.slice(a, main.indexOf("\n}\n", a)); };
 
 describe("the island page", () => {
@@ -453,7 +454,7 @@ describe("the island's motion agrees with the app's timing", () => {
     const page = read("./island.tsx");
     expect(page).toContain("playful(reactionsOn(), reducedMotion())");
     expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking })');
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     expect(main).toContain("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion()");
   });
   test("the marks are drawn by hand: a turning arc, one breathing dot, and no grey", () => {
@@ -477,7 +478,7 @@ describe("the island's motion agrees with the app's timing", () => {
     expect(read("./islandPanel.tsx")).toContain('<span className="ip-dot" data-tone={j.tone} aria-hidden="true" />');
   });
   test("Home folds back into the notch on the page's clock, and the shell waits for it", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     expect(main).toContain('let _ = a.emit_to("card", "closing", json!({ "reduced": reduce_motion() }));');
     expect(main).toContain("if !card_visible() { home_fold(extra); return; }");
     expect(read("./homeStage.tsx")).toContain('void invoke("home_folded")');

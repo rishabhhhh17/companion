@@ -13,6 +13,7 @@ import { addCallApp, BUILT_IN_CALL_APPS, callAppRows, MAX_ADDED_CALL_APPS, toggl
 import { checkRegistry, defOf, validateKey } from "../../protocol/settings.ts";
 import { problemWords, rowModel, valueWords } from "./settingsRows.ts";
 import { S, PRODUCT } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const src = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 
@@ -32,7 +33,7 @@ describe("How long a ring stays (point.ringSeconds)", () => {
     const overlay = src("./overlay.ts");
     expect(overlay).toContain("setTimeout(clear, ringMsOf(p.ringMs))");
     expect(overlay).not.toContain("setTimeout(clear, RING_MS)");
-    expect(src("../src-tauri/src/main.rs")).toContain('"ringMs": ring');
+    expect(shellSource()).toContain('"ringMs": ring');
   });
 });
 
@@ -282,7 +283,7 @@ describe("Also say out loud (speak.alsoSay)", () => {
     expect(card).toContain('const also = alsoSayLines(m, project, (setting("speak.alsoSay") as string[] | undefined) ?? []);');
     expect(card).toContain("if (!speechOn()) { for (const l of also) alsoSaid.current.add(l.key); return; }");
     expect(card).toContain("alsoSaid.current.add(r.key);   // said whole as the answer: not again as a short line");
-    const main = src("../src-tauri/src/main.rs");
+    const main = shellSource();
     const speak = main.slice(main.indexOf("fn speak(app: AppHandle"), main.indexOf("// ---------- Voice settings"));
     expect(speak).toContain("speak::prepare(&text)");
     expect(speak).toContain("if quiet()");

@@ -196,7 +196,7 @@ mod tests {
     fn the_idle_rule_frees_both_copies_of_the_speech_model_and_a_let_go_waits_for_a_load_under_way() {
         // Must fix 17: after five idle minutes the preloaded copy goes too, not only the one in use; and a let go while the
         // helper is still loading waits for it instead of loading a second copy (which the helper's copy would then outlive).
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let w = &main[main.find("fn voice_worker(").unwrap()..];
         let w = &w[..w.find("\n}\n").unwrap()];
         let idle = w.lines().find(|l| l.contains("last_used.elapsed() > Duration::from_secs(300)")).expect("the idle rule");
@@ -270,7 +270,7 @@ mod tests {
         // The microphone's buffer holds the cap plus ten seconds: 70 seconds' room for a minute, as before.
         assert_eq!(buffer_samples(60_000), 16_000 * 4 * 70 * 2);
         assert!(buffer_samples(120_000) >= 16_000 * 4 * 130 * 2);
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let w = &main[main.find("fn voice_worker(").unwrap()..];
         let w = &w[..w.find("\n}\n").unwrap()];
         assert!(w.contains("voice::max_hold_ms(&setting_now(\"talk.maxHold\"))"), "read when the keys go down");
@@ -305,7 +305,7 @@ mod tests {
         // microphone opening (up to seconds for a Bluetooth one), or the words being turned into text. So Stop also counts
         // itself at once, and the worker looks at that count after each of those: the microphone never opens after a Stop,
         // and words heard before a Stop are dropped, never sent on to Show me or a task.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let rest = body("fn showme_stop_rest(");
         assert!(rest.find("VOICE_STOPS.fetch_add(1, Ordering::SeqCst);").expect("Stop counts itself") < rest.find("voice_send(app, VoiceMsg::Cancel)").unwrap(), "{rest}");
@@ -332,7 +332,7 @@ mod tests {
         // A second Download while one runs used to remove the first one's half written file, and each then threw the other's
         // away. A second press does nothing now, and holding the talk keys meanwhile says the download is still going
         // (with how far it got) instead of offering Download again.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let d = body("fn voice_download(");
         assert!(d.find("if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }").expect("one at a time") < d.find("std::thread::spawn(").unwrap(), "{d}");
@@ -344,7 +344,7 @@ mod tests {
     }
     #[test]
     fn both_ways_of_hiding_close_the_microphone_at_once() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let w = body("fn voice_worker(");
         assert!(w.contains("hold.must_close(now() as u64, companion_hidden())"), "every pass of the loop checks, whatever the keys are doing");

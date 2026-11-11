@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn the_trip_runs_on_the_display_link_never_on_a_sleeping_thread() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let a = main.find(name).unwrap_or_else(|| panic!("{name}")); &main[a..a + main[a..].find("\n}\n").unwrap()] };
         let fly = body("fn roam_fly(");
         assert!(fly.contains("trip::Fly::new(from, to, ms, up)"), "{fly}");

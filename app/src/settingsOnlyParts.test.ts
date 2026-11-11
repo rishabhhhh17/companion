@@ -3,6 +3,7 @@
 // is one Settings, inside Home (F28, T17): the separate window, its page and its commands are gone.
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const page = read("./settingsPage.tsx");
@@ -51,7 +52,7 @@ describe("one Settings, inside Home (F28, T17)", () => {
     for (const f of ["../settings.html", "./settingsWindow.tsx", "./settingsGroups.ts", "./openSettings.ts", "../src-tauri/src/settingswin.rs"]) expect(existsSync(new URL(f, import.meta.url)), f).toBe(false);
     expect(read("../vite.config.ts")).not.toContain("settings.html");
     expect(JSON.parse(read("../src-tauri/capabilities/default.json")).windows).not.toContain("settings");
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     for (const c of ["open_settings_window", "close_settings_window", "card_or_settings"]) expect(main, c).not.toContain(c);
     expect(read("../../protocol/groups.json")).not.toContain("settings_window");
     for (const f of ["./card.tsx", "./island.tsx", "./islandPanel.tsx", "./homeHero.ts"]) expect(read(f), f).not.toContain("open_settings_window");
@@ -62,7 +63,7 @@ describe("one Settings, inside Home (F28, T17)", () => {
     expect(card).toContain("const [setPlace, setSetPlace] = useState<string>(() => lastPage());");
     expect(card).toContain("<SettingsView place={setPlace} onPlace={setSetPlace}");
     expect(page).toContain("localStorage.setItem(LAST_PAGE, page)");
-    expect(read("../src-tauri/src/main.rs")).toContain('"settings" => open_card_then(app, "menu", true, Some(arrival::menu_settings())),');
+    expect(shellSource()).toContain('"settings" => open_card_then(app, "menu", true, Some(arrival::menu_settings())),');
     // In Settings the top bar is Back, its name and Close: the place buttons (Settings among them) step back.
     expect(card).toContain('{home.tab !== "settings" && places.map((t) => {');
     // M71: Settings is the grey gear at the end of the places; the others open their place.

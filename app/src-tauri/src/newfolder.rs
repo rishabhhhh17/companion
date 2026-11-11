@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn the_shell_checks_the_press_and_the_groups_before_it_makes_anything_and_chooses_the_folder_before_it_sends() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let s = &main[main.find("fn start_in_new_folder(").expect("start_in_new_folder")..];
         let body = &s[..s.find("\n}\n").unwrap()];
         let at = |w: &str| body.find(w).unwrap_or_else(|| panic!("{w}"));

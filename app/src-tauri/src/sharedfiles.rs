@@ -145,7 +145,7 @@ mod tests {
     }
     #[test]
     fn the_shared_files_command_is_card_only_takes_nothing_from_the_page_and_judges_the_open_project() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn shared_files_state(").expect("fn shared_files_state(");
         let rest = &main[at..]; let b = &rest[..rest.find("\n}\n").unwrap()];
         assert!(b.contains("settings::only_card(window.label())?") && b.contains("made_parent()") && b.contains("current_project()") && b.contains("sharedfiles::shared_files("), "{b}");

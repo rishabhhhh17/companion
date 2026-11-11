@@ -4,9 +4,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { STYLE_CSS, TOKENS_CSS, ALL_CSS } from "./ui/cssFiles.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
-const css = ALL_CSS(), card = read("./card.tsx"), dock = read("./dock.tsx"), main = read("../src-tauri/src/main.rs");
+const css = ALL_CSS(), card = read("./card.tsx"), dock = read("./dock.tsx"), main = shellSource();
 
 describe("the character floats on the desktop", () => {
   test("its page paints nothing: the dock page, like the island's, is see through", () => {

@@ -745,7 +745,7 @@ mod tests {
         assert!(plan_changed(&mut last, &plan_state_line(&Decision { plan: Plan::Pro, state: State::Pro, trial_ends_at: None }, true, "p3")));
         assert!(plan_changed(&mut last, &plan_state_line(&Decision { plan: Plan::Pro, state: State::Pro, trial_ends_at: None }, false, "p4")), "payments switched");
         // The engine is told the plan every time it says hello.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("if t == \"runner.hello\" { hand_key_over(&handle, None); google_push(&handle); plan_push(&handle, true); }"));
     }
     #[test]
@@ -949,7 +949,7 @@ mod tests {
             assert!(check_project(&v, "/somewhere/else").is_err());
             assert!(check_project(&v, "").is_err(), "not before a folder is chosen");
         }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("Some(\"practice.key\") && !practice_record().0.is_copy_of(\"key\", std::path::Path::new(&current_project()))"));
         // The events say the step, name the project, and never carry the key.
         let events = include_str!("../../../protocol/fixtures/events.jsonl");

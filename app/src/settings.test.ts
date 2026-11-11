@@ -1,6 +1,7 @@
 // The settings page: plain words for sizes and permissions, and the delete everything steps.
 import { describe, expect, test } from "bun:test";
 import { DELETE_PHRASE, deletableLines, formatBytes, permissionRow, type Inventory } from "./settings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 describe("sizes in plain words", () => {
   test("bytes, kilobytes, megabytes, gigabytes", () => {
@@ -89,7 +90,7 @@ describe("replacing and removing the key in Settings", () => {
   test("removing needs the exact words the app checks, and the app tells the engine it has no key", () => {
     const keystore = readFileSync(new URL("../src-tauri/src/keystore.rs", import.meta.url), "utf8");
     expect(keystore).toContain(`pub const REMOVE_PHRASE: &str = "${REMOVE_KEY_PHRASE}";`);
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     const remove = main.slice(main.indexOf("fn remove_api_key"), main.indexOf("\n}\n", main.indexOf("fn remove_api_key")));
     expect(remove).toContain("keystore::delete_item(");
     expect(remove).toContain("hand_key(None, false)");
@@ -142,7 +143,7 @@ describe("screen sharing and calls (rule 7)", () => {
   test("Settings shows both switches as registry rows, and the app keeps them (not the page)", () => {
     expect(S.set["sharing.hide"].label).toBe(S.hideFromSharingSetting);
     expect(S.set["calls.quiet"].label).toBe(S.quietOnCallsSetting);
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     for (const c of ["settings_set", "quiet_now", "showme_hide"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
     for (const c of ["presentation_settings", "set_presentation"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
     expect(main).toContain("fn presentation_set(app: &AppHandle, s: presentation::Settings)");
@@ -301,7 +302,7 @@ describe("the Keys section in Settings", () => {
     expect(panel).toContain('invoke("key_map")');
   });
   test("the app has the commands, only Home may try or change keys, and one change or check at a time", () => {
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     for (const c of ["key_map", "key_choices", "set_key", "reset_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(true);
     for (const c of ["talk_keys", "set_talk_keys"]) expect(new RegExp(`generate_handler!\\[[^\\]]*\\b${c}\\b`).test(main), c).toBe(false);
     const body = (name: string) => main.slice(main.indexOf(`fn ${name}(`), main.indexOf("\n}\n", main.indexOf(`fn ${name}(`)));

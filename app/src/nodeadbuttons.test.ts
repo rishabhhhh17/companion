@@ -3,9 +3,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+const main = shellSource();
 const errhelp = readFileSync(new URL("../src-tauri/src/errhelp.rs", import.meta.url), "utf8");
 const fnBody = (src: string, name: string) => { const a = src.indexOf(name); return a < 0 ? "" : src.slice(a, src.indexOf("\n  };\n", a)); };
 

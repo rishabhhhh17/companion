@@ -211,7 +211,7 @@ mod tests {
     }
     #[test]
     fn the_shell_gives_each_display_with_what_it_was_seen_to_keep_free() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let tick = &main[main.find("fn tick(").unwrap()..]; let tick = &tick[..tick.find("\n}\n").unwrap()];
         assert!(tick.contains("let areas: Vec<(Rect, Rect)> = screens_now(mtm).iter().map(|s| (s.frame, s.work)).collect();"), "{tick}");
         assert!(tick.contains("let displays = FS_SEEN.lock().unwrap_or_else(|e| e.into_inner()).look(&wins, front_pid, &areas);"), "{tick}");

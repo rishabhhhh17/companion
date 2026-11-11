@@ -661,7 +661,7 @@ mod tests {
     }
     #[test]
     fn the_shell_starts_a_practice_through_that_check_and_moves_copies_to_the_trash_only_once_the_engine_has_stopped() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |start: &str| { let s = &main[main.find(start).unwrap_or_else(|| panic!("{start}"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let c = body("fn create_practice(");
         assert!(c.contains("practice::create(") && !c.contains("practice::make("), "create_practice must refuse a practice whose copy is there");

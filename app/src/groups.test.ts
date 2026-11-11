@@ -14,6 +14,7 @@ import { islandLine } from "./home.ts";
 import { searchSettings } from "./settingsRows.ts";
 import { shownSettings } from "./modelChoice.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const names = (...xs: string[][]) => xs.flat();
@@ -62,7 +63,7 @@ describe("the catalog is complete and consistent", () => {
     expect(TOOLS.find((t) => t.hotkeys?.includes("stop"))!.group).toBe("core");
   });
   test("every shell command is in exactly one tool, and none is listed that does not exist", () => {
-    const src = read("../src-tauri/src/main.rs");
+    const src = shellSource();
     const body = src.slice(src.indexOf("generate_handler!["), src.indexOf("])", src.indexOf("generate_handler![")));
     const all = [...new Set(body.replace("generate_handler![", "").split(",").map((x) => x.trim()).filter(Boolean))];
     expect(all.length).toBeGreaterThan(70);

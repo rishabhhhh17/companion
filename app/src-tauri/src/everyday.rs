@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn the_hotkey_and_show_me_use_these_rules() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains(r#"app.emit("find-problem", json!({ "front": everyday::front_kind(&front_id()) }))"#), "the key tells the page the kind of app in front, never its id");
         assert!(main.contains("everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before)"), "Show me's question carries the mode and the code read before");
         assert!(main.contains("let front = everyday::app_for(mode, front_id);"), "an everyday look carries no app id; an ordinary question carries it");
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn the_shell_tells_home_the_kind_only_when_it_changes_and_when_home_opens() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains(r#"everyday::home_front(&setting_now("home.followFrontApp"), front_id)"#), "the tick asks the one rule");
         assert!(main.contains(r#"let _ = app.emit_to("card", "front-kind", v);"#), "only Home is told, and only the kind");
         assert!(main.contains(r#"opened["front"] = k;"#), "Home is told the kind as it opens");

@@ -5,6 +5,7 @@ import { parseCommand, serialize } from "../../protocol/index.ts";
 import { AGENT, followUp, retryTask } from "./commands.ts";
 import { canFollowUp, canRetry, initial, reduce, stuckWords, type Model } from "./model.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const P = "/Users/me/site";
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });
@@ -171,7 +172,7 @@ describe("following up by voice", () => {
     // Every way Home goes away (Esc, Close, a click elsewhere, the island or the character, a full screen app, Hide) goes
     // through the shell's home_closed, which tells the page: no pointerleave fires for a window that was just hidden.
     expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; })');
-    const main = require("node:fs").readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8") as string;
+    const main = shellSource();
     const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
     expect(closed).toContain('if let Some(a) = APP.get() {');
     expect(closed).toContain('let _ = a.emit_to("card", "closed", json!({}));');

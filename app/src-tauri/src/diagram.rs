@@ -90,7 +90,7 @@ mod tests {
         for odd in [serde_json::json!("5"), serde_json::json!(15), serde_json::json!(null), serde_json::json!("forever")] {
             assert_eq!(timing(&odd), timing(&serde_json::json!("15")), "{odd}");
         }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn show_diagram(").unwrap()..];
         let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("let chosen = setting_now(\"drawIt.seconds\");") && f.contains("diagram::timing(&chosen)"));
@@ -106,7 +106,7 @@ mod tests {
         // The same rule as a picture: nothing is drawn over what the person chose not to share (a full screen video or show,
         // or Companion hidden from the menu bar). The dock page still hears a task pass while it is hidden, so the shell
         // refuses, as the command comes in and again on the main thread just before drawing.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn celebrate(").unwrap()..];
         let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("if !free() || quiet() || companion_hidden() { return; }"), "{f}");
@@ -126,7 +126,7 @@ mod tests {
         assert!(holds_a_visit(true, false), "a ring or a timed picture");
         assert!(!holds_a_visit(true, true), "a picture kept until closed");
         assert!(!holds_a_visit(false, false) && !holds_a_visit(false, true), "nothing on the overlay");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn roam_tick(").unwrap()..];
         let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("let up = diagram::holds_a_visit(overlay_busy(), DIAGRAM_KEPT.load(SeqCst)) ||"), "roam_tick asks the rule");

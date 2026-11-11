@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 const fnBody = (src: string, head: string, end = "\n  };") => { const at = src.indexOf(head); expect(at, head).toBeGreaterThan(-1); return src.slice(at, src.indexOf(end, at)); };
@@ -24,7 +25,7 @@ describe("a right click or Control click on the character", () => {
 
 describe("Home's hover nudge after the shell forgets the hover", () => {
   test("reset_hover tells Home's page the hover is off", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const body = fnBody(main, "fn reset_hover() {", "\n}\n");
     expect(body).toContain('emit_to("card", "home-hover", json!({ "on": false }))');
   });

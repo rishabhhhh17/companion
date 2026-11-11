@@ -173,7 +173,7 @@ mod tests {
         let runner = include_str!("runner.rs");
         let publish = &runner[runner.find("pub fn publish(").unwrap()..]; let publish = &publish[..publish.find("\n    }\n").unwrap()];
         assert!(publish.contains("crate::updates::note_running(&v);"), "{publish}");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
         let busy = install.find("if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }").expect("a busy check");
         assert!(busy < install.find("PENDING_UPDATE").unwrap(), "asked before the update is taken, so it can be installed later");
@@ -212,14 +212,14 @@ mod tests {
     }
     #[test]
     fn install_update_takes_the_flight_before_anything_else_is_done() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
         let flight = install.find("updates::INSTALLING.try_start()").expect("takes the flight");
         assert!(flight < install.find(".download(").unwrap());
     }
     #[test]
     fn a_failed_download_keeps_the_update_so_install_can_be_pressed_again_and_a_task_started_meanwhile_is_not_cut_off() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let install = &main[main.find("async fn install_update(").unwrap()..]; let install = &install[..install.find("\n}\n").unwrap()];
         assert!(!install.contains(".take()"), "the update is only cloned, so a failed download does not use it up");
         let download = install.find(".download(").expect("a download on its own");
@@ -240,7 +240,7 @@ mod windows_and_permissions {
     // for events, for one) and the page silently does nothing. Found by the 15 Oct 2026 review: the overlay was missing, and
     // no test noticed because the page code never ran in a test.
     fn labels() -> Vec<String> {
-        let src = include_str!("main.rs");
+        let src = crate::main_src();
         let mut out = vec![];
         for marker in ["mk(\"", "WebviewWindowBuilder::new(app, \""] {
             let mut rest = src;

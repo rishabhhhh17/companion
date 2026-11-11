@@ -11,6 +11,7 @@ import { MOTION_TOKENS, MAX_FADES, MAX_SLIDE, countAt, counts, gone, msOf, onScr
 import { initial, reduce, type Model } from "./model.ts";
 import { heroWords, timeLine } from "./homeHero.ts";
 import { _resetForTests, takeSnapshot } from "./settingsStore.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const tokens = TOKENS_CSS(), css = ALL_CSS(), card = read("./card.tsx"), mod = read("./smoothMotion.ts");
@@ -240,7 +241,7 @@ describe("Home drops from the notch in one smooth motion", () => {
     expect(css).not.toMatch(/home-spring|home-roll-up|\.home\.springing|\.home\.closing/);
   });
   test("the shell waits for the page's fold, with a backstop longer than the fold itself", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const backstop = Number(/const HOME_FOLD_BACKSTOP_MS: u64 = (\d+);/.exec(main)?.[1]);
     // M66 step 5: the content leaves first (--dur-exit-menu), then the shape folds on CLOSE.
     expect(backstop).toBeGreaterThan(ms("--dur-exit-menu") + ms("--dur-notch-close") + 80);

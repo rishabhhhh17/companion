@@ -698,7 +698,7 @@ mod tests {
         assert!(j["micQuiet"].is_null());
         assert_eq!(j["lidOnly"], false);
         // The shell reads which microphones cannot hear with the list, off the main thread.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("static MIC_LIST: voiceset::Recent<(Vec<voiceset::Input>, Option<String>, Vec<String>)> = voiceset::Recent::new();"));
         assert!(main.contains("voiceset::state_json(set, voices, &speak::mac::mac_language(), &inputs, default_id.as_deref(), sound_reading(), &quiet)"));
     }
@@ -771,7 +771,7 @@ mod tests {
     }
 
     // ---- the wiring in main.rs and runner.rs (they are compiled with the rest, so a test reads their source) ----
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     fn body(sig: &str) -> &'static str {
         let at = MAIN.find(sig).unwrap_or_else(|| panic!("{sig} is gone"));
         let rest = &MAIN[at..];

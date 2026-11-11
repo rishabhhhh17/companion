@@ -909,7 +909,7 @@ mod tests {
         assert_eq!(reset_project_ok(Some("/a"), None), Err("projectChanged"));
         assert_eq!(reset_project_ok(None, Some("/b")), Ok(()), "a page that named none asks about none");
         assert_eq!(reset_project_ok(Some(""), Some("/b")), Ok(()));
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn settings_reset(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("settings::reset_project_ok(project.as_deref(), project_opt().as_deref())?;"));
         assert!(f.find("reset_project_ok").unwrap() < f.find("settings_snapshot(&[])").unwrap(), "before anything is read or changed");
@@ -1282,7 +1282,7 @@ mod tests {
         // migration sends the engine its settings again, as any other change it applies does.
         let d = registry().get("teach.yourTurn").unwrap();
         assert!(d.from_page.is_some() && needs_apply(d));
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn settings_migrate(").unwrap();
         let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(body.contains("if written.iter().any(|k| settings::registry().get(k).is_some_and(settings::needs_apply)) { send_settings(&app); }"), "{body}");
@@ -1329,7 +1329,7 @@ mod tests {
         assert!(only_card("card").is_ok());
         for w in ["dock", "overlay", "island", "", "Card"] { assert_eq!(only_card(w), Err("not_card"), "{w}"); }
         // Every command that changes settings checks the window first (main.rs).
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         for c in ["fn settings_set(", "fn settings_reset(", "fn front_app(", "fn app_names("] {
             let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing"));
             let body = &main[at..at + main[at..].find("\n}\n").unwrap()];
@@ -1353,7 +1353,7 @@ mod tests {
     }
     #[test]
     fn the_shell_resets_and_puts_back_only_through_these_rules() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |c: &str| { let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
         // Reset: what changes in the shell's own stores and the engine's is the plan (reset_plan, tested above), never a
         // decision of its own; settings.json is reset by reset(), tested above.
@@ -1406,7 +1406,7 @@ mod tests {
         assert_eq!(for_project(skip, None, Some("/b")), Ok(Some("/b")));
         assert_eq!(for_project(reactions, None, None), Ok(None));
         // The shell asks it for every change, and writes the rules file of the project the list came from.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let set = &main[main.find("fn settings_set(").unwrap()..];
         let set = &set[..set.find("\n}\n").unwrap()];
         assert!(set.contains("project: Option<String>"), "settings_set takes the project the page was shown");
@@ -1420,7 +1420,7 @@ mod tests {
     fn the_engine_and_every_window_are_told_whenever_the_project_changes() {
         // T16: settings.apply is sent again when the project folder changes, and every window is told what is in force.
         // A folder chosen, and the open practice copy removed (Companion then has no folder): both go through one place.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |c: &str| { let at = main.find(c).unwrap_or_else(|| panic!("{c} is missing")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
         let now = body("fn project_now(");
         for p in ["app.emit(\"project-changed\", folder)", "send_settings(app);", "settings_told(app, &[]);"] { assert!(now.contains(p), "{p}: {now}"); }

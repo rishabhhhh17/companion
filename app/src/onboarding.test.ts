@@ -6,6 +6,7 @@ import { OFF, planCard, type PlanStatus } from "./plan.ts";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 /** One step's part of the first run's page, from its `{step === "x" && (` to the next step's. */
@@ -412,7 +413,7 @@ describe("Home opens by itself at the very first launch", () => {
   test("the page asks once when the first run is not finished; the shell opens Home once per launch, without the keyboard", () => {
     const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
     expect(card).toContain('useEffect(() => { if (!onboarded) void invoke("first_run_open").catch(() => {}); }, []);');
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     const fn = main.slice(main.indexOf("fn first_run_open("), main.indexOf("\n}\n", main.indexOf("fn first_run_open(")));
     expect(fn).toContain('if window.label() != "card"');
     expect(fn).toContain("FIRST_RUN_OPENED.swap(true, Ordering::SeqCst)");

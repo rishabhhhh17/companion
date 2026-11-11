@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { peekFrom, PEEK_POSES } from "./peek.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 
@@ -39,7 +40,7 @@ describe("the character's page and peeking", () => {
     expect(css).toContain(':root[data-less-motion] .character[data-peek] { translate: none; transition: none; }');
   });
   test("the shell moves it through the one frame helper, brings it in at once for a light, and reads the setting each time", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const body = (n: string) => { const a = main.indexOf(`fn ${n}(`); expect(a, n).toBeGreaterThan(-1); return main.slice(a, main.indexOf("\n}\n", a)); };
     const apply = body("peek_apply");
     expect(apply).toContain("set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES)");

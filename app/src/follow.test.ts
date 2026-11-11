@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { RESTING_FRAME_MS, RING_FRAGMENT, rgb, ringNext, ringStretch, voiceEnvelope } from "./follow.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 describe("the water ring around the pointer (M37)", () => {
   test("it keeps its ring shape: no stretch when slow, a gentle one along the way it moves when fast, never more than a third", () => {
@@ -76,7 +77,7 @@ describe("the ring page stops when it is put away (M46)", () => {
     expect(page).toContain("if (lively && !calm) waves += dt;");
     expect(RING_FRAGMENT).toContain("sin(a * 3.0 + uW * 2.6)");
     expect(RING_FRAGMENT).toContain("uVoice * (0.018 * sin(a * 6.0 - uT * 9.0)");   // the voice still ripples it
-    const main = readFileSync(new URL("../src-tauri/src/main.rs", import.meta.url), "utf8");
+    const main = shellSource();
     expect(main).toContain('app.emit_to("follow", "follow-show", json!({ "water": water, "lively": lively }))');
     expect(main).toContain('app.emit_to("follow", "follow-hide", json!({}))');
   });

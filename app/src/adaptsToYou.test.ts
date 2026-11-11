@@ -13,10 +13,11 @@ import { MAX_USES, MIN_USES, notePress, orderWays, readCounts, resetUsed, risen,
 import { PAGES, placeOf } from "./settingsPages.ts";
 import { REGISTRY } from "../../protocol/settings.ts";
 import { S } from "./strings.ts";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
 const card = read("./card.tsx"), settingsPage = read("./settingsPage.tsx"), usedSrc = read("./usedOften.ts");
-const main = read("../src-tauri/src/main.rs"), everyday = read("../src-tauri/src/everyday.rs");
+const main = shellSource(), everyday = read("../src-tauri/src/everyday.rs");
 const P = "/Users/me/test-shop";
 const NOW = Date.parse("2026-11-03T12:00:00Z");
 const ev = (o: Record<string, unknown>) => ({ v: 1, id: "e", ...o });

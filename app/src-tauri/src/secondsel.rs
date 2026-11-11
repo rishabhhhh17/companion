@@ -93,7 +93,7 @@ mod tests {
     }
     #[test] fn the_selection_is_read_only_on_the_hotkey_light_first_and_never_when_switched_off() {
         let src = include_str!("seclook.rs");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let hot = &src[src.find("pub fn on_hotkey(").unwrap()..src.find("fn read_and_send(").unwrap()];
         // Off in Settings: checked before anything else, so nothing is read and no app is even looked at.
         let off = hot.find("secondsel::is_on(&crate::setting_now(\"secondLook.on\"))").expect("the switch is checked");

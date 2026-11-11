@@ -772,7 +772,7 @@ mod tests {
         }
         assert!(!HomeSize::STANDARD.fixed() && !HomeSize::LARGE.fixed(), "the tall Home grows with what it shows");
         // The page tells the shell (card.tsx), and every place the size is read goes through home_size (main.rs).
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
         assert!(main.contains("fn resize_card(app: AppHandle, height: f64, settings: Option<bool>) {"));
         assert!(!main.contains("hs.size.min_h"), "the size in force is home_size(), Settings included");
@@ -842,7 +842,7 @@ mod tests {
     }
     #[test]
     fn stop_everything_closes_the_small_panel_and_forgets_the_hover_until_the_pointer_leaves() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |n: &str| { let at = main.find(n).unwrap(); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
         assert!(body("fn home_stop_now(").contains("home_fold("));
         assert!(body("fn home_fold(").contains("home_closed();"));
@@ -1033,13 +1033,13 @@ mod tests {
         assert_eq!((CARD, CARD_MAX_H), ((688.0, 480.0), 480.0), "Home is 688 wide and 480 tall");
     }
     fn main_body(name: &str) -> String {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..];
         s[..s.find("\n}\n").unwrap()].to_string()
     }
     #[test]
     fn the_shell_has_one_place_for_home_and_one_tallest_height() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let spot = main_body("fn card_spot(");
         assert!(spot.contains("island::card_spot(") && spot.contains("ISLAND_ON") && spot.contains("roamer().home()"), "card_spot asks the rule, with the island's display and the character's home");
         assert_eq!(main.matches("island::home_frame(").count(), 0, "Home is placed only through card_spot");
@@ -1062,7 +1062,7 @@ mod tests {
     }
     #[test]
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let tick = main_body("fn tick(");
         let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "with_panels(place_card);", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
         let at: Vec<usize> = order.iter().map(|p| tick.find(p).unwrap_or_else(|| panic!("tick lost {p}"))).collect();
@@ -1126,7 +1126,7 @@ mod tests {
         assert!(POINTER_LEVEL < 101, "and below pop up menus");
         assert_eq!(home_level(false), HOME_LEVEL);
         assert!(home_level(true) < 8, "under the modal panel level (8) our osascript dialogs use");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main_body("fn make_overlay(").contains("p.setLevel(island::POINTER_LEVEL);"));
         assert!(!main.contains("card.setLevel(island::HOME_LEVEL)"), "Home's level is always home_level, never set around it");
         let lv = main_body("fn home_level_now(");
@@ -1141,7 +1141,7 @@ mod tests {
     fn a_press_off_homes_shape_is_never_homes() {
         assert!(home_can_key(true, false) && home_can_key(false, true));
         assert!(!home_can_key(false, false), "a press on the clear window never makes Home key");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         // The panel itself checks each press against the shape, at the moment of the press (not the 50 ms watch).
         let hp = &main[main.find("mod homepanel {").unwrap()..];
         let hp = &hp[..hp.find("\n}\n").unwrap()];
@@ -1301,7 +1301,7 @@ mod tests {
     #[test]
     fn the_remembered_display_is_kept_where_delete_everything_finds_it() {
         // The app reads and writes the file only through `path`, given its own data folder.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("fn island_path() -> PathBuf { island::path(&data_dir()) }"), "main.rs names the file through island::path");
         assert_eq!(main.matches("island::FILE").count(), 0, "and never builds the path itself");
         let tmp = std::env::temp_dir().join(format!("companion-island-{}", std::process::id()));
@@ -1438,7 +1438,7 @@ mod tests {
         // Wiring in main.rs (it needs a real Mac): a click opens, never closes (a Home that pointing just opened would
         // otherwise close under the click that meant to open it), with no wait; pointing opens through the same door,
         // never taking the keyboard (rule 9) until the person clicks into Home.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let at = main.find(name).unwrap_or_else(|| panic!("{name}")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
         let click = body("fn island_click(");
         assert!(click.contains("open_card(&app, \"island\", false)") && !click.contains("toggle_home"), "{click}");
@@ -1530,7 +1530,7 @@ mod tests {
     /// bottom corners float on the desktop instead of sitting in a white square, and no square shadow is drawn around it.
     #[test]
     fn home_floats_as_its_own_shape_on_a_see_through_panel() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains(r#"let b = if label == "dock" || label == "card" { b.transparent(true) } else { b };"#), "the web view paints nothing");
         let at = main.find("let card = make_panel(mtm, card_ns, true,").expect("Home's panel");
         let after = &main[at..at + 500];
@@ -1618,7 +1618,7 @@ mod tests {
         assert_eq!(p.body_h(9999.0), p.max_h);
         assert_eq!(p.body_h(f64::NAN), p.min_h);
         // The shell never makes the window from a content height (main.rs place_card reads only the sizes).
-        let _main = include_str!("main.rs");
+        let _main = crate::main_src();
         let pc = main_body("fn place_card(");
         assert!(pc.contains("island::home_panel(") && !pc.contains("CARD_H"), "{pc}");
         // A content height never places it again; only Settings opening or closing does, and that keeps the window (above).
@@ -1739,7 +1739,7 @@ mod tests {
     #[test]
     fn home_never_drops_from_a_gap_it_grows_out_of_the_notch_in_a_window_that_never_resizes() {
         // M66: no drop and no second clock; the old helpers are gone from the shell.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         for gone in ["home_drop", "OPEN_SECS", "island::DROP"] { assert!(!main.contains(gone), "{gone}"); }
     }
     // Found in review (19 Oct 2026): AppKit lets a running motion finish on its old target when the frame is then set at
@@ -1775,7 +1775,7 @@ mod tests {
     }
     #[test]
     fn every_frame_of_the_island_and_home_goes_through_the_one_helper() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let pc = body("fn place_card(");
         assert!(pc.contains("set_frame_moving(c, to_appkit(p.frame, ph), None, None, &CARD_MOVES)"), "a resize is at once, never a motion: {pc}");
@@ -1816,7 +1816,7 @@ mod tests {
 
     #[test]
     fn the_shell_keeps_the_island_quiet_on_a_call_and_when_hidden_and_looks_again_when_that_changes() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let b = &main[main.find(name).unwrap_or_else(|| panic!("{name}"))..]; b[..b.find("\n}\n").unwrap()].to_string() };
         assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0 }"));
         let place = body("fn place_island(");
@@ -1984,7 +1984,7 @@ mod tests {
         // Rule 16: the dot is said on the hover panel only, like the count of new results. No review event makes the
         // character peek or the wings open, and the shell plays no sound for one.
         for v in events() { assert!(crate::peek::news_of(&v).is_empty(), "{v}"); }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let at = main.find(name).unwrap_or_else(|| panic!("{name}")); main[at..at + main[at..].find("\n}\n").unwrap()].to_string() };
         let heard = body("pub(crate) fn review_heard(");
         assert!(heard.contains("run_on_main_thread") && heard.contains("HOME_OPEN.load(Ordering::SeqCst) && card_visible()"), "{heard}");
@@ -2055,7 +2055,7 @@ mod tests {
             assert_eq!(mode(State { wing, hover: true, ..base }), Mode::WingsPeek);
             assert_eq!(mode(State { wing, home_open: true, ..base }), Mode::Rest);
         }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn island_alert(").unwrap();
         let f = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(f.contains("wing: Option<f64>") && f.contains("island::wing_w(wing.unwrap_or(0.0))"), "{f}");
@@ -2148,7 +2148,7 @@ mod tests {
     }
     #[test]
     fn the_island_window_follows_the_pointer_against_its_shape_never_keys() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let moved = main_body("fn island_pointer_moved(");
         assert!(moved.contains("island::island_pass(") && moved.contains("setIgnoresMouseEvents("), "{moved}");
         assert!(moved.contains("NSEvent::mouseLocation()"), "only where the pointer is");

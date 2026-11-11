@@ -261,7 +261,7 @@ mod tests {
     fn the_shell_watches_every_ring_that_does_not_wait_for_a_click() {
         // Wiring: a step of a multi step answer and Point at the problem's line or error ring both start the watch, with or
         // without a window under them (no window: the app in front is watched).
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         assert!(body("fn showme_aim(").contains("watch_ring("), "showme_aim must watch a step that does not wait");
         assert!(body("fn point_problem(").contains("watch_ring("), "point_problem must watch its ring when it does not wait");

@@ -335,7 +335,7 @@ mod tests {
     }
     #[test]
     fn a_project_leaving_for_the_trash_loses_its_hooks_first() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn leave_to_trash(").unwrap()..]; let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.find("donehooks::remove(").unwrap() < f.find("move_to_trash(p)").unwrap(), "{f}");
         for caller in ["fn trash_made(", "fn remove_practice(", "fn trash_practice_copies(", "fn restart_practice("] {

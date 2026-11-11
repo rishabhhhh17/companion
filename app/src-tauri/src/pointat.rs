@@ -236,7 +236,7 @@ mod tests {
         // Anything else is today's choice.
         assert_eq!(choose_editor_for("emacs", "com.exafunction.windsurf", all), Pick { editor: Some(2), missing: None });
         assert_eq!(missing_words("Cursor"), "Cursor is not on this Mac, so I used another editor. ");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         // M76: the open in editor path is shared by Point at the problem and Walk me through it (open_in_editor_at).
         let pp = &main[main.find("fn point_problem(").unwrap()..];
         assert!(pp[..pp.find("\n}\n").unwrap()].contains("open_in_editor_at("));

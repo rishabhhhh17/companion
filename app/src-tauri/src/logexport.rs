@@ -338,7 +338,7 @@ mod tests {
         assert!(file.lines().all(|l| l.chars().count() <= 400));
         assert!(compose(&f, "", None, HOME, &n(&["sam"]), &[]).contains("No messages from the engine."));
         // The app's export reads engine.log.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("logexport::compose_all(&facts, &activity, &engine,"));
     }
     #[test]
@@ -351,7 +351,7 @@ mod tests {
         let out = compose(&f, r#"{"run":"1-2","seq":1,"ev":"launch","commit":"1a2b3c4d5e6f","t":1,"ms":0}"#, None, HOME, &n(&["sam"]), &[]);
         assert!(out.contains(concat!(crate::product!(), " version: 0.1.0 (commit 1a2b3c4d5e6f)")), "{out}");
         assert!(out.contains("\"commit\":\"1a2b3c4d5e6f\""), "the launch line keeps its commit: {out}");
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         assert!(main.contains("version: logexport::version_label(env!(\"CARGO_PKG_VERSION\"), logexport::BUILD_COMMIT)"), "the support file uses it");
         assert!(main.contains("log(\"launch\", json!({ \"commit\": logexport::BUILD_COMMIT }))"), "the launch line logs it");
         assert!(main.contains("\"commit\": logexport::BUILD_COMMIT"), "About is told it");

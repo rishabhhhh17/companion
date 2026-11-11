@@ -75,7 +75,7 @@ mod tests {
     }
     #[test]
     fn the_shell_reads_only_while_in_view_and_never_keeps_it() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let tick = body(main, "fn gaze_tick(");
         assert!(tick.contains("GAZE_WANTED.load("), "nothing is read unless the eyes follow the pointer now");
         assert!(tick.contains("peek::Pose::Hidden"));
@@ -89,7 +89,7 @@ mod tests {
     }
     #[test]
     fn in_still_and_gentle_the_thread_sleeps_with_no_timer_and_never_asks_the_main_thread() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("fn gaze_loop(").expect("the eyes' thread is its own function");
         let thread = body(main, "fn gaze_loop(");
         let (load, hop) = (thread.find("GAZE_WANTED.load(").expect("it reads whether it is wanted"), thread.find("run_on_main_thread").expect("it asks the main thread"));

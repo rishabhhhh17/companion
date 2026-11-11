@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn the_shell_commands_are_card_only_work_out_the_folder_themselves_and_move_to_the_trash_through_this_check() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |s: &str| { let at = main.find(s).unwrap_or_else(|| panic!("{s}")); let rest = &main[at..]; rest[..rest.find("\n}\n").unwrap()].to_string() };
         for f in ["fn list_made(", "fn open_made(", "fn reveal_made(", "fn trash_made("] {
             let b = body(f);

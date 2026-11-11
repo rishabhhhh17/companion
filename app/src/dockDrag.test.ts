@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { shellSource } from "../dom/sourceText.ts";
 
 const read = (f: string) => readFileSync(new URL(f, import.meta.url), "utf8");
 
@@ -22,14 +23,14 @@ describe("dragging the character", () => {
     expect(body).toContain('if (p?.dragging) void invoke("drop_dock");');
     expect(body, "a lost press opens nothing").not.toContain("toggle_card");
     expect(body).toContain("press.current = null;");
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const begin = main.slice(main.indexOf("fn drag_dock("), main.indexOf("\n}\n", main.indexOf("fn drag_dock(")));
     const clear = begin.indexOf("*DRAG.lock().unwrap_or_else(|e| e.into_inner()) = None;");
     expect(clear).toBeGreaterThan(-1);
     expect(clear, "cleared before the drag is said to be live").toBeLessThan(begin.indexOf("DRAG_LIVE.store(true"));
   });
   test("the shell moves the window from its own mouse watch, setting only where it is", () => {
-    const main = read("../src-tauri/src/main.rs");
+    const main = shellSource();
     const at = main.indexOf("fn drag_follow(");
     const body = main.slice(at, main.indexOf("\n}\n", at));
     expect(body).toContain("setFrameOrigin(");

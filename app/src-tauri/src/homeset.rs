@@ -155,12 +155,12 @@ mod tests {
 /// shell modules check their wiring.
 #[cfg(test)]
 mod wiring {
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     fn body_in(src: &str, name: &str) -> String {
         let at = src.find(name).unwrap_or_else(|| panic!("{name} is missing"));
         src[at..at + src[at..].find("\n}\n").unwrap()].to_string()
     }
-    fn body(name: &str) -> String { body_in(MAIN, name) }
+    fn body(name: &str) -> String { body_in(&MAIN, name) }
 
     #[test]
     fn each_setting_is_read_where_it_is_used_so_a_change_takes_effect_at_once() {

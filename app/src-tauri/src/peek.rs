@@ -457,7 +457,7 @@ mod tests {
         assert!(OUT_SECS < IN_SECS);
         // The shell uses the curve for the way it goes, and tells the page how long the move takes (dock.tsx no longer
         // guesses 320 and 450 ms).
-        let src = include_str!("main.rs");
+        let src = crate::main_src();
         assert!(src.contains("fn spring_timing(ctx: &objc2_app_kit::NSAnimationContext) { curve_timing(ctx, peek::curve(PEEK_IN.load(Ordering::SeqCst))); }"));
         assert!(src.contains("PEEK_IN.store(peek::coming_in(was, pose), Ordering::SeqCst);"));
         assert!(src.contains("\"ms\": secs.map(|s| (s * 1000.0).round() as u64).unwrap_or(0)"));
@@ -647,7 +647,7 @@ mod tests {
 /// How main.rs applies this (it needs a real Mac to see), read as text, the way the other shell modules check their wiring.
 #[cfg(test)]
 mod wiring {
-    const MAIN: &str = include_str!("main.rs");
+    static MAIN: std::sync::LazyLock<&str> = std::sync::LazyLock::new(crate::main_src);
     fn body(name: &str) -> String {
         let at = MAIN.find(name).unwrap_or_else(|| panic!("{name} is missing"));
         MAIN[at..at + MAIN[at..].find("\n}\n").unwrap()].to_string()

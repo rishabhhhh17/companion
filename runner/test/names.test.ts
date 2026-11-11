@@ -120,7 +120,7 @@ export function stripRustComments(src: string): string {
 
 /** The few places the old product name is meant to stay. Every entry says why; a new entry needs a real reason. */
 const ALLOWED: { file: RegExp; line: RegExp; why: string }[] = [
-  { file: /^(runner\/src\/(sandbox|engines|proof\/browser)\.ts|runner\/test\/(sandbox|proof-sandbox)\.test\.ts|app\/src-tauri\/src\/(main|wipe)\.rs)$/, line: /Application Support\/Companion|"Application Support", "Companion"/, why: "the data folder's name: renaming it would lose the person's saved data (a separate decision with a migration, F24)" },
+  { file: /^(runner\/src\/(sandbox|engines|proof\/browser)\.ts|runner\/test\/(sandbox|proof-sandbox)\.test\.ts|app\/src-tauri\/src\/(main|shell_data|wipe)\.rs)$/, line: /Application Support\/Companion|"Application Support", "Companion"/, why: "the data folder's name: renaming it would lose the person's saved data (a separate decision with a migration, F24)" },
   { file: /^runner\/src\/(sandbox|engines)\.ts$/, line: /Companion-test-claude|COMPANION_DATA/, why: "the data folder's name, and a dev test folder, as above" },
   { file: /^app\/src-tauri\/src\/wipe\.rs$/, line: /companion:begin \(kept up to date by Companion/, why: "a block written under the earlier name, which Delete everything must still find and remove" },
   { file: /^runner\/test\/(sandbox|memory-agentsmd)\.test\.ts$/, line: /companion:begin \(kept up to date by Companion|Project notes \(from Companion\)|not\.toContain\("Companion"\)/, why: "a block written under the earlier name must still be found and updated, and the update must not keep the old name" },

@@ -190,7 +190,7 @@ mod tests {
         assert_eq!(reg("appId"), Vec::<String>::new());
         assert!(!reg("email").is_empty(), "an unknown shape is caught");
         // Only the id of the app in front is compared: quiet() in main.rs gives it the list from the setting.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let q = &main[main.find("fn quiet() -> bool").unwrap()..];
         let q = &q[..q.find('\n').unwrap()];
         assert!(q.contains("presentation::quiet_with(&presentation_now(), &presentation::call_apps_from(&setting_now(\"calls.apps\")), &front_id()"), "{q}");
@@ -233,7 +233,7 @@ mod tests {
         // on all day. Until then the Settings words do not mention the microphone.
         assert!(!MIC_CHECK_ON);
         assert!(!include_str!("../../src/strings.ts").contains("or another app is using the microphone"));
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let q = &main[main.find("fn quiet() -> bool").unwrap()..];
         let q = &q[..q.find('\n').unwrap()];
         assert!(q.contains("|| presentation::MIC_CHECK_ON && presentation::mac::mic_in_use_by_another_app()"), "{q}");

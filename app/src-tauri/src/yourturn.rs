@@ -163,7 +163,7 @@ mod tests {
         for odd in [serde_json::json!(15), serde_json::json!(301), serde_json::json!(86_400), serde_json::json!("90"), serde_json::json!(null)] {
             assert_eq!(wait_ms(&odd), WAIT_MS, "{odd}");
         }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let f = &main[main.find("fn your_turn(").unwrap()..];
         let f = &f[..f.find("\n}\n").unwrap()];
         assert!(f.contains("yourturn::wait_ms(&setting_now(\"point.yourTurnSeconds\"))"), "read when the ring goes up");
@@ -249,7 +249,7 @@ mod tests {
     }
     #[test]
     fn the_words_when_it_will_not_press_say_signing_in_too() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let at = main.find("const SELF: &str = ").expect("the message is in main.rs");
         let line = &main[at..at + main[at..].find('\n').unwrap()];
         assert!(line.contains("signs in"), "{line}");

@@ -343,7 +343,7 @@ mod tests {
             assert!(said_in_words(exact, window, &serde_json::json!("wordsOnly")));
             assert!(!said_in_words(exact, window, &serde_json::json!("solid")), "an odd value is the usual");
         }
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
         assert!(body("fn draw_pointer_with(").contains("showme::solid(exact, watched.window().is_some())"));
         for f in ["fn showme_aim(", "fn point_problem("] {
@@ -355,7 +355,7 @@ mod tests {
     fn words_only_and_the_ring_come_from_one_look_at_the_window() {
         // The window under the target is looked up once, and both the words only choice and the ring use that one reading,
         // so a window that comes or goes in between can never bring a soft ring back under Words only.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap()..]; s[..s.find("\n}\n").unwrap()].to_string() };
         for f in ["fn showme_aim(", "fn point_problem("] {
             let b = body(f);
@@ -741,7 +741,7 @@ mod tests {
     fn the_shell_sends_the_request_with_every_show_me_ring() {
         // Found 16 Oct 2026: the ring's message carried no request, so a lesson step or a walkthrough never moved on by
         // itself after the person's click (the page waits for its own request's "your turn done").
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let aim = &main[main.find("fn showme_aim(").unwrap()..];
         let aim = &aim[..aim.find("\n}\n").unwrap()];
         assert!(aim.contains("showme::pointing_extra(&req"), "showme_aim must say which request it points for");
@@ -751,7 +751,7 @@ mod tests {
         // Finding what is clickable under the point asks the app under it, through Accessibility, which a busy app can hold
         // for seconds. That must never freeze the main thread (the hotkeys, Stop everything, the island, Home), so the
         // command runs on the thread pool, and the questions to that app are short.
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         assert!(main.contains("#[tauri::command(async)]\n#[allow(clippy::too_many_arguments)]\nfn showme_aim("), "showme_aim runs off the main thread");
         // Off the main thread, Stop everything or a newer question can come in while it aims: then nothing is drawn. The
@@ -869,7 +869,7 @@ mod tests {
     }
     #[test]
     fn the_shell_ends_an_answer_when_the_card_closes_on_hold_to_talk_and_on_point_at_the_problem() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let hush = body("fn card_closed_hush(");
         assert!(hush.contains("speech_off(app)") && hush.contains("showme_end_answer(app)") && hush.contains("emit(\"hush\""), "closing the card silences it and ends an answer still playing");
@@ -995,7 +995,7 @@ mod tests {
         // Rule 5: the light is the character, the island and Home. Hidden (from the menu bar, or for a full screen app) with
         // Home closed, none of it can be seen, so no look starts, and a look already under the light takes no picture.
         assert!(HIDDEN_WORDS.starts_with(concat!(crate::product!(), " is hidden right now, so I did not look at your screen.")) && !HIDDEN_WORDS.contains('\u{2014}'));
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let body = |name: &str| { let s = &main[main.find(name).unwrap_or_else(|| panic!("{name} missing"))..]; s[..s.find("\n}\n").unwrap()].to_string() };
         let unseen = body("fn light_unseen(");
         assert!(unseen.contains("companion_hidden()") && unseen.contains("!HOME_OPEN.load("), "{unseen}");
@@ -1035,7 +1035,7 @@ mod tests {
     }
     #[test]
     fn a_stopped_look_says_nothing_and_point_at_the_problem_never_waits() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
         assert!(b.contains("Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, \"error\", showme::HIDDEN_WORDS, json!({})); } }"), "a look ended by Stop or a newer question says nothing; only one ended by hiding says why: {b}");
         assert!(b.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "{b}");
@@ -1044,7 +1044,7 @@ mod tests {
     }
     #[test]
     fn the_shell_waits_only_when_the_page_asks_and_stop_ends_the_wait() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let b = &main[main.find("fn showme_start(").unwrap()..]; let b = &b[..b.find("\n}\n").unwrap()];
         assert!(b.contains("settle: Option<bool>"), "{b}");
         assert!(b.contains(".settling(settle.unwrap_or(false))"), "{b}");

@@ -1076,7 +1076,7 @@ pub mod tests {
     fn body_of<'a>(src: &'a str, head: &str) -> &'a str { let b = &src[src.find(head).unwrap_or_else(|| panic!("{head}"))..]; &b[..b.find("\n}\n").unwrap()] }
     #[test]
     fn with_payments_off_the_shell_starts_no_timer_reads_nothing_and_asks_nothing_on_delete_everything() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let timer = body_of(main, "fn start_plan_timer(");
         assert!(timer.contains("if !license::billing().payments_on() || PRO_TIMER.swap(true, SeqCst) { return; }"), "{timer}");
         assert!(timer.find("payments_on()").unwrap() < timer.find("std::thread::spawn").unwrap(), "no thread with payments off");
@@ -1093,7 +1093,7 @@ pub mod tests {
     }
     #[test]
     fn only_home_may_change_pro_and_every_command_is_registered() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         for cmd in ["async fn license_activate(", "async fn license_check_now(", "async fn license_deactivate(", "fn plan_open_checkout(", "fn plan_open_portal(", "async fn trial_start("] {
             let b = body_of(main, cmd);
             let gate = b.find("if settings::only_card(window.label()).is_err() { return Err(\"notCard\".into()); }").unwrap_or_else(|| panic!("{cmd}: no window check"));
@@ -1210,7 +1210,7 @@ pub mod tests {
     }
     #[test]
     fn the_shell_keeps_keychain_errors_apart_pushes_in_order_and_says_the_trial_end() {
-        let main = include_str!("main.rs");
+        let main = crate::main_src();
         let pro = &main[main.find("// ---------- Pro: the license key").unwrap()..main.find("// ---------- Draw it for me").unwrap()];
         assert!(!pro.contains(".ok().flatten()"), "a failed Keychain look is never taken for no key or no trial");
         let push = body_of(main, "fn plan_push(");
