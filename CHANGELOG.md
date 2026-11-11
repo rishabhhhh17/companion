@@ -7,6 +7,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Codex, Cursor, the VS Code agent and Antigravity get the safety net too.** Before, only Claude Code could tell Squibby to save a copy before it ran a command that throws work away. Now each of these tools can, from its own settings in your project, after your yes. The command still runs exactly as your tool decides; Squibby only saves a copy first, and Undo in History brings the files back.
 - **Reviews start the moment any of them says done.** The same done signal Claude Code and Codex had now works for Cursor, the VS Code agent and Antigravity.
 - **The Claude extension in VS Code** already used the Claude Code rows, since it runs Claude Code itself.
+- **Small fixes from walking the app as a new person.** In Settings, each tool's row now says what it does ("Cursor: save a copy before a destructive command") instead of repeating the same paragraph, and its state comes first. On a review card, How to fix it is the same size as the rest, and Why does this matter sits with the buttons. The faint sample row in an empty History says Example, so it never reads as something that happened.
 - **Not yet claimed:** Xcode. Its Claude Agent and Codex may pick up the same project settings; that is checked on a real Mac first.
 
 ## Foundations: 11 Nov 2026 (in progress)

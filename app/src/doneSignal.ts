@@ -32,9 +32,15 @@ export function doneAsk(row: DoneRow): { title: string; where: string; what: str
   const toolNote = row.tool === "codex" ? S.doneSignal.askCodex : row.tool === "claude" ? null : S.doneSignal.askTool[row.tool];
   return { title, where: S.doneSignal.askWhere(row.file, row.creates), what: row.adds, notes: [what, S.doneSignal.askGit, ...(toolNote ? [toolNote] : [])] };
 }
+/** M80 walk: what Remove says, by the kind of row. */
+export function removedLine(row: Pick<DoneRow, "tool" | "hook">): string {
+  const tool = S.doneSignal.tool[row.tool];
+  return row.hook === "done" ? S.doneSignal.removed(tool) : row.hook === "guard" ? S.doneSignal.removedGuard(tool) : S.doneSignal.removedOther;
+}
 /** M77: a row's label and its line in Settings: the done signal rows are named by tool, the others by what they do. */
 export function hookLabel(row: Pick<DoneRow, "tool" | "hook">): { label: string; line: string | null } {
-  if (row.hook === "done") return { label: S.doneSignal.tool[row.tool], line: null };
-  if (row.hook === "guard" && row.tool !== "claude") { const tool = S.doneSignal.tool[row.tool]; return { label: S.doneSignal.guardOther.title(tool), line: S.doneSignal.guardOther.line(tool) }; }
+  // M80 walk: each row says what it does in its label; the saved copy is explained once, in the group's own line.
+  if (row.hook === "done") return { label: S.doneSignal.guardOther.doneRow(S.doneSignal.tool[row.tool]), line: null };
+  if (row.hook === "guard") return { label: row.tool === "claude" ? S.doneSignal.hookTitle.guard : S.doneSignal.guardOther.title(S.doneSignal.tool[row.tool]), line: null };
   return { label: S.doneSignal.hookTitle[row.hook], line: S.doneSignal.hookLine[row.hook] };
 }

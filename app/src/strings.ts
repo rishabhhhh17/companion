@@ -1830,7 +1830,7 @@ export const S = {
   doneSignal: {
     title: "When your AI tool says it is done",
     // M77: the two more Claude Code hooks, in the same group, each after its own yes.
-    hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Save a copy before Claude runs a destructive command", waiting: "Tell me in the notch when Claude is waiting for me", start: "Give Claude Code my notes as each session starts" } as { done: (tool: string) => string; guard: string; waiting: string; start: string },
+    hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Claude Code: save a copy before a destructive command", waiting: "Tell me in the notch when Claude is waiting for me", start: "Give Claude Code my notes as each session starts" } as { done: (tool: string) => string; guard: string; waiting: string; start: string },
     hookLine: {
       guard: `When Claude Code is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as Claude Code decided. Nothing is blocked or changed. Undo in History puts the files back.`,
       waiting: `When Claude Code waits for a permission or for you to type, the notch's mark goes amber and says Claude is waiting for you. Only Claude Code's own short notice travels, never the question.`,
@@ -1843,11 +1843,13 @@ export const S = {
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
       start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
     } as Record<"guard" | "waiting" | "start", string>,
-    line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, the VS Code agent or Antigravity), instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
+    line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, the VS Code agent or Antigravity), instead of waiting for your files to be quiet. It can also save a copy of the project before your AI tool runs a command that throws work away: the command still runs as your tool decides, and Undo in History brings the files back. Each adds one line to that tool's own settings in this project, only after you say yes.`,
     tool: { claude: "Claude Code", codex: "Codex", cursor: "Cursor", copilot: "VS Code (Copilot)", antigravity: "Antigravity" } as Record<"claude" | "codex" | "cursor" | "copilot" | "antigravity", string>,
     // M80: the saved copy before a destructive command, for the other tools, named by tool.
     guardOther: {
-      title: (tool: string) => `Save a copy before ${tool} runs a destructive command`,
+      title: (tool: string) => `${tool}: save a copy before a destructive command`,
+      // M80 walk: a done row names what it does, not only the tool.
+      doneRow: (tool: string) => `${tool}: start a review when it is done`,
       line: (tool: string) => `When ${tool} is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as ${tool} decided. Nothing is blocked or changed. Undo in History puts the files back.`,
       askTitle: (tool: string) => `Add the saved copy signal for ${tool}?`,
       askWhat: (tool: string) => `Before each shell command, ${tool} hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs as ${tool} decided; if ${PRODUCT} is closed or slow, ${tool} goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
@@ -1870,6 +1872,8 @@ export const S = {
     yes: "Add it",
     no: "Not now",
     removed: (tool: string) => `Removed. ${tool} no longer tells ${PRODUCT} when it is done here.`,
+    removedGuard: (tool: string) => `Removed. ${tool} no longer tells ${PRODUCT} before a destructive command here.`,
+    removedOther: "Removed.",
     fallback: "Without it, a review still starts once your files have been quiet for a while.",
   },
   // M75 (shortlist 10): choices when an ask is vague. Nothing runs until one is tapped.
@@ -3227,7 +3231,7 @@ export const S = {
     historyEmptyTitle: "Your first fix",
     historyEmptyLine: "It shows up here with its proof.",
     /** M73 (fluid, item 15): the example row drawn faintly over an empty History: exactly what a fix looks like here. */
-    historyExample: { title: "Fixed the sign up button", line: "Proven · 2 files changed", fact: "2:14 pm" },
+    historyExample: { title: "Fixed the sign up button", line: "Proven · 2 files changed", fact: "Example" },
     startPractice: "Start practice",
     filesChanged: (n: number) => (n === 1 ? "1 file changed" : `${n} files changed`),
     askFirst: "Ask for a first fix",

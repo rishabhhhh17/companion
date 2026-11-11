@@ -42,7 +42,8 @@
 
 /* The presses in one key shape, Why does this matter? on the right, the reassurance under them. */
 .home .rv-actions { flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-4); }
-.home .rv-actions > .rv-whylink { margin-inline-start: auto; }
+/* The walk-through: the "why" link sits with the buttons, never alone at the far right when the row wraps. */
+.home .rv-actions > .rv-whylink { margin-inline-start: 0; }
 .home .rv-reassure { margin: var(--space-3) 0 0; color: var(--fg-2); font: var(--t-small) / var(--lh-small) var(--font); }
 .home .rv-more { margin-top: var(--space-4); padding-top: var(--space-3); border-top: var(--hair) solid var(--line); }
 .home .rv-more .review-touches-list { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-2) 0 0; padding: 0; list-style: none; }
@@ -103,7 +104,7 @@
 .finding-group { display: grid; gap: var(--space-1); margin: var(--space-2) 0 0; }
 .finding-level { margin: 0; color: var(--fg-2); font: var(--w-bold) var(--t-small) / var(--lh-body) var(--font); }
 .finding-wrong { font-weight: var(--w-strong); }
-.finding-parts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-desc) var(--space-2); margin: var(--space-1) 0 0; }
+.finding-parts { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-desc) var(--space-2); margin: var(--space-1) 0 0; font: var(--w-regular) var(--t-body) / var(--lh-body) var(--font); }
 .finding-parts dt { color: var(--fg-2); }
 .finding-parts dd { margin: 0; }
 @media (max-width: 420px) { .finding-parts { grid-template-columns: 1fr; } }

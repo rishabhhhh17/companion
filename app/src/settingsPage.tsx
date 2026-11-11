@@ -19,7 +19,7 @@ import { takeIfLost } from "./focus.ts";
 import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, droppedLine, googleParts, keyChangedLine, keyRows, pickerLines, resetLine, talkCost, DELETE_PHRASE, deletableLines, numbersLines, type NumbersSummary, permissionLesson, permissionRow, REMOVE_KEY_PHRASE, reviewKeepLine, reviewStartLine, spendingLine, submitKey, type Inventory, type PermissionKind, type PermissionState } from "./settings.ts";
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { addDoneSignal, eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, removeDoneSignal, showDoneSignal, showSpending } from "./commands.ts";
-import { doneAsk, doneStateFrom, hookLabel, type DoneRow, type DoneState } from "./doneSignal.ts";
+import { doneAsk, doneStateFrom, hookLabel, removedLine, type DoneRow, type DoneState } from "./doneSignal.ts";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
@@ -778,9 +778,9 @@ function DoneSignalRows() {
   return (<>
     <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback}`} />
     {rows.map((r) => { const l = hookLabel(r); return (
-      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${l.line ? `${l.line} ` : ""}${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}`}
+      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}`}
         control={r.on
-          ? <Button size="sm" onClick={() => { setSaid(S.doneSignal.removed(l.label)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button>
+          ? <Button size="sm" onClick={() => { setSaid(removedLine(r)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button>
           : <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.setUp}</Button>} />
     ); })}
     {ask && (() => { const w = doneAsk(ask); return (

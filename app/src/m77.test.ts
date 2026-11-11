@@ -137,7 +137,7 @@ describe("the Settings rows for the two more hooks", () => {
       { tool: "claude", hook: "nope", on: true, file: "x", adds: "{}", creates: false },
     ] }, "/p")!;
     expect(st.tools.map((t) => t.hook)).toEqual(["done", "guard", "waiting"]);
-    expect(hookLabel(st.tools[0]!)).toEqual({ label: "Claude Code", line: null });
+    expect(hookLabel(st.tools[0]!)).toEqual({ label: "Claude Code: start a review when it is done", line: null });
     expect(hookLabel(st.tools[1]!).label).toBe(S.doneSignal.hookTitle.guard);
     expect(hookLabel(st.tools[2]!).line).toContain("amber");
     const g = doneAsk(st.tools[1]!);
