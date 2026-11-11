@@ -187,7 +187,7 @@ describe("protocol", () => {
     expect(c({ type: "donesignal.show", project: "/p" }).ok).toBe(true);
     expect(c({ type: "donesignal.add", project: "/p", tool: "claude", confirm: true }).ok).toBe(true);
     expect(c({ type: "donesignal.add", project: "/p", tool: "claude" }).ok).toBe(false);
-    expect(c({ type: "donesignal.add", project: "/p", tool: "cursor", confirm: true }).ok).toBe(false);
+    expect(c({ type: "donesignal.add", project: "/p", tool: "windsurf", confirm: true }).ok).toBe(false);   // M80: Cursor is a known tool now
     expect(c({ type: "donesignal.remove", project: "/p", tool: "codex" }).ok).toBe(true);
     const e = parseEvent(JSON.stringify({ v: 1, id: "e1", type: "donesignal.state", project: "/p", tools: [{ tool: "claude", on: false, file: ".claude/settings.local.json", adds: "{}", creates: true }] }));
     expect(e.ok).toBe(true);

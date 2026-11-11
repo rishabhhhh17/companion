@@ -12,12 +12,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 /// Each tool's project hook file, as donesignal.ts HOOK_FILE says.
-pub const HOOK_FILES: &[(&str, &str)] = &[("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json")];
+pub const HOOK_FILES: &[(&str, &str)] = &[
+    ("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json"),
+    // M80: Cursor, the VS Code agent (GitHub Copilot) and Antigravity.
+    ("cursor", ".cursor/hooks.json"), ("copilot", ".github/hooks/companion.json"), ("antigravity", ".agents/hooks.json"),
+];
+/// M80: Antigravity's file holds named hooks at the top level; these are Squibby's (donesignal.ts ANTIGRAVITY_KEY).
+pub const ANTIGRAVITY_KEYS: &[&str] = &["companion-done", "companion-guard"];
+/// M80: the files whose version line does not count as content (donesignal.ts VERSIONED).
+const VERSIONED: &[&str] = &["cursor", "copilot"];
 /// The index of tokens and what Squibby made, in the engine's data folder (donesignal.ts DONE_INDEX).
 pub const INDEX: &str = "done-signals.json";
 /// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
 /// and the start block (M78).
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart"];
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -101,14 +109,19 @@ fn sh_quote(s: &str) -> String { format!("'{}'", s.replace('\'', "'\\''")) }
 /// folder.
 fn ours(entry: &J, done_dir: &str, guard_dir: &str, start_dir: &str) -> bool {
     let J::Obj(o) = entry else { return false };
-    let Some(J::Arr(hooks)) = get(o, "hooks") else { return false };
     let guard_open = format!("d={};", sh_quote(guard_dir));
     let start_open = format!("s={};", sh_quote(start_dir));
-    hooks.iter().any(|h| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open) || c.starts_with(&start_open))))
+    let is_ours = |h: &J| matches!(h, J::Obj(ho) if matches!(get(ho, "command"), Some(J::Str(c)) if (c.starts_with("/usr/bin/touch -- ") && c.contains(&format!("{done_dir}/"))) || c.starts_with(&guard_open) || c.starts_with(&start_open)));
+    match get(o, "hooks") {
+        Some(J::Arr(hooks)) => hooks.iter().any(is_ours),
+        // M80: Cursor's and the VS Code agent's entries hold the command themselves.
+        None => is_ours(entry),
+        _ => false,
+    }
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
-struct Rec { made: Vec<String>, folders: Vec<String> }
+struct Rec { made: Vec<String>, folders: Vec<String>, /** M80: the highest folder Squibby made, per tool */ dirs: Vec<(String, String)> }
 
 fn index(runner_data: &Path) -> serde_json::Map<String, serde_json::Value> {
     fs::read_to_string(runner_data.join(INDEX)).ok().and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok()).and_then(|v| v.as_object().cloned()).unwrap_or_default()
@@ -117,7 +130,8 @@ fn rec_of(runner_data: &Path, project: &Path) -> Rec {
     let all = index(runner_data);
     let Some(r) = all.get(&project.to_string_lossy().to_string()).and_then(|v| v.as_object()) else { return Rec::default() };
     let list = |k: &str| r.get(k).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
-    Rec { made: list("made"), folders: list("folders") }
+    let dirs = r.get("dirs").and_then(|v| v.as_object()).map(|m| m.iter().filter_map(|(k, v)| v.as_str().map(|d| (k.clone(), d.to_string()))).collect()).unwrap_or_default();
+    Rec { made: list("made"), folders: list("folders"), dirs }
 }
 
 /// The projects Squibby's index names (where a hook may have been added). Only absolute paths that are folders now.
@@ -139,23 +153,43 @@ pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
         if !fs::symlink_metadata(&file).is_ok_and(|m| m.is_file()) { continue; }
         let Ok(text) = fs::read_to_string(&file) else { continue };
         let Some(J::Obj(mut top)) = parse(&text) else { continue };   // not plain JSON: never changed
-        let Some(pos) = top.iter().position(|(k, _)| k == "hooks") else { continue };
-        let J::Obj(mut hooks) = top[pos].1.clone() else { continue };
+        // The objects that hold event lists: `hooks`, and (M80, Antigravity) Squibby's own named hooks at the top.
+        let holders: Vec<&str> = if *tool == "antigravity" { ANTIGRAVITY_KEYS.to_vec() } else { vec!["hooks"] };
         let mut changed = false;
-        for event in EVENTS {
-            let Some(sp) = hooks.iter().position(|(k, _)| k == event) else { continue };
-            let J::Arr(list) = hooks[sp].1.clone() else { continue };
-            let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir, &start_dir)).cloned().collect();
-            if kept.len() == list.len() { continue; }   // nothing of Squibby's under this event
+        for key in holders {
+            let Some(pos) = top.iter().position(|(k, _)| k == key) else { continue };
+            let J::Obj(mut hooks) = top[pos].1.clone() else { continue };
+            let mut here = false;
+            for event in EVENTS {
+                let Some(sp) = hooks.iter().position(|(k, _)| k == event) else { continue };
+                let J::Arr(list) = hooks[sp].1.clone() else { continue };
+                let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir, &start_dir)).cloned().collect();
+                if kept.len() == list.len() { continue; }   // nothing of Squibby's under this event
+                here = true;
+                if kept.is_empty() { hooks.remove(sp); } else { hooks[sp].1 = J::Arr(kept); }
+            }
+            if !here { continue; }
             changed = true;
-            if kept.is_empty() { hooks.remove(sp); } else { hooks[sp].1 = J::Arr(kept); }
+            if hooks.is_empty() { top.remove(pos); } else { top[pos].1 = J::Obj(hooks); }
         }
         if !changed { continue; }
-        if hooks.is_empty() { top.remove(pos); } else { top[pos].1 = J::Obj(hooks); }
-        if top.is_empty() && rec.made.iter().any(|t| t == tool) {
+        let left = top.iter().filter(|(k, _)| !(k == "version" && VERSIONED.contains(tool))).count();
+        if left == 0 && rec.made.iter().any(|t| t == tool) {
             if fs::remove_file(&file).is_ok() {
                 said.push(rel.to_string());
-                if rec.folders.iter().any(|t| t == tool) { let _ = fs::remove_dir(project.join(rel.split('/').next().unwrap_or(""))); }   // only if empty
+                // From the file's own folder up to the highest one Squibby made, each only when empty.
+                let made_dir = rec.dirs.iter().find(|(t, _)| t == tool).map(|(_, d)| d.clone())
+                    .or_else(|| rec.folders.iter().any(|t| t == tool).then(|| rel.split('/').next().unwrap_or("").to_string()));
+                if let Some(top_dir) = made_dir {
+                    let parts: Vec<&str> = rel.split('/').collect();
+                    let parts = &parts[..parts.len() - 1];
+                    let stop = top_dir.split('/').count();
+                    let mut i = parts.len();
+                    while i >= stop && i > 0 {
+                        if fs::remove_dir(project.join(parts[..i].join("/"))).is_err() { break; }   // only if empty
+                        i -= 1;
+                    }
+                }
             }
         } else if crate::wipe::replace_file(&file, format!("{}\n", write(&J::Obj(top))).as_bytes()).is_ok() {
             said.push(rel.to_string());
@@ -309,6 +343,32 @@ mod tests {
             let body = &main[at..]; let body = &body[..body.find("\n}\n").unwrap()];
             assert!(!body.contains(", move_to_trash)"), "{caller} moves a project away through leave_to_trash");
         }
+    }
+    #[test]
+    fn m80_the_other_tools_lose_only_squibbys_lines_and_the_folders_it_made() {
+        let t = t("m80");
+        let g = guard_cmd(&t.data);
+        // Cursor: flat entries; the person's own hook and the version line stay.
+        create_dir_all(t.project.join(".cursor")).unwrap();
+        fwrite(t.project.join(".cursor/hooks.json"), format!("{{\n  \"version\": 1,\n  \"hooks\": {{\n    \"beforeShellExecution\": [ {{ \"command\": \"./mine.sh\" }}, {{ \"command\": {}, \"timeout\": 10 }} ],\n    \"stop\": [ {{ \"command\": {} }} ]\n  }}\n}}\n", serde_json::to_string(&g).unwrap(), serde_json::to_string(&cmd(&t.data)).unwrap())).unwrap();
+        // The VS Code agent: a file and a folder Squibby made inside the person's .github.
+        create_dir_all(t.project.join(".github/hooks")).unwrap();
+        create_dir_all(t.project.join(".github/workflows")).unwrap();
+        fwrite(t.project.join(".github/hooks/companion.json"), format!("{{ \"version\": 1, \"hooks\": {{ \"PreToolUse\": [ {{ \"type\": \"command\", \"command\": {}, \"timeoutSec\": 10 }} ] }} }}", serde_json::to_string(&g).unwrap())).unwrap();
+        // Antigravity: Squibby's named hooks go, the person's stays.
+        create_dir_all(t.project.join(".agents")).unwrap();
+        fwrite(t.project.join(".agents/hooks.json"), format!("{{ \"my-linter\": {{ \"PostToolUse\": [ {{ \"matcher\": \"run_command\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./lint.sh\" }} ] }} ] }}, \"companion-guard\": {{ \"PreToolUse\": [ {{ \"matcher\": \"run_command\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ] }} }}", serde_json::to_string(&g).unwrap())).unwrap();
+        fwrite(t.data.join(INDEX), format!("{{ {}: {{ \"token\": \"0123456789abcdef01234567\", \"made\": [\"copilot\"], \"folders\": [], \"dirs\": {{ \"copilot\": \".github/hooks\" }} }} }}", serde_json::to_string(&t.project.to_string_lossy()).unwrap())).unwrap();
+        let said = remove(&t.project, &t.data);
+        assert_eq!(said, vec![".cursor/hooks.json", ".github/hooks/companion.json", ".agents/hooks.json"]);
+        let cursor: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".cursor/hooks.json")).unwrap()).unwrap();
+        assert_eq!(cursor, serde_json::json!({ "version": 1, "hooks": { "beforeShellExecution": [ { "command": "./mine.sh" } ] } }));
+        assert!(!t.project.join(".github/hooks").exists(), "the folder Squibby made goes");
+        assert!(t.project.join(".github/workflows").exists(), "the person's own folder stays");
+        let ag: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".agents/hooks.json")).unwrap()).unwrap();
+        assert_eq!(ag.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["my-linter"]);
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\" }") && ts.contains("new Set([\"cursor\", \"copilot\"])"), "the runner writes the same files and keys");
     }
     #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {

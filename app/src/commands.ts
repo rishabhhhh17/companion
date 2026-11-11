@@ -1,4 +1,5 @@
 // Builds the commands the pages send. Rust checks each one again before it reaches the runner.
+import type { DoneTool } from "./doneSignal.ts";
 import { MAX_REQUEST_CHARS, type Command, type NewFolderKind, type Problem, type ShellCommand, type WatchKind } from "../../protocol/index.ts";
 import { fixFoundPrompt, PRACTICE_BUDGET_USD } from "../../runner/src/fixfound.ts";
 // Model ids live in one place, with the runner's (T10).
@@ -197,7 +198,7 @@ export const warmEngine = (): Command => ({ v: 1, id: id(), type: "engine.warm" 
 export const practiceKey = (project: string, step: "write" | "fix"): Command => ({ v: 1, id: id(), type: "practice.key", project, step });
 // M75: the other tool's done signal (the add only after the card's yes), the cost pause's answer and the sign in handover's.
 export const showDoneSignal = (project: string): Command => ({ v: 1, id: id(), type: "donesignal.show", project });
-export const addDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
-export const removeDoneSignal = (project: string, tool: "claude" | "codex", hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
+export const addDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.add", project, tool, confirm: true, ...(hook !== "done" ? { hook } : {}) });
+export const removeDoneSignal = (project: string, tool: DoneTool, hook: "done" | "guard" | "waiting" | "start" = "done"): Command => ({ v: 1, id: id(), type: "donesignal.remove", project, tool, ...(hook !== "done" ? { hook } : {}) });
 export const chooseCost = (agent: string, choice: "keep" | "stop" | "undo"): Command => ({ v: 1, id: id(), type: "cost.choose", agent, choice });
 export const answerSignIn = (agent: string, choice: "open" | "continue" | "skip" | "getBrowser"): Command => ({ v: 1, id: id(), type: "proof.signIn", agent, choice });

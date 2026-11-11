@@ -116,3 +116,6 @@
 {"v":1,"id":"m78c2","type":"donesignal.remove","project":"p_9f2c","tool":"claude","hook":"start"}
 {"v":1,"id":"m79c1","type":"week.show","project":"p_9f2c"}
 {"v":1,"id":"m78c3","type":"memory.restore","project":"p_9f2c","confirm":true,"text":"# Everything Squibby remembers\n\nSquibby notes export, version 1. Saved 2026-11-10.\n\n## About this project\n- Decided: payments go through Stripe, because the client already has an account — you said \"we decided\", 2026-11-08 {m_1a2b3c4d}\n\n## How you like to work\n\n## House rules\n- never edit pricing.txt\n"}
+{"v":1,"id":"m80d1","type":"donesignal.add","project":"p_9f2c","tool":"cursor","confirm":true,"hook":"guard"}
+{"v":1,"id":"m80d2","type":"donesignal.add","project":"p_9f2c","tool":"antigravity","confirm":true}
+{"v":1,"id":"m80d3","type":"donesignal.remove","project":"p_9f2c","tool":"copilot","hook":"guard"}

@@ -684,7 +684,7 @@ export const S = {
     acknowledgements: { title: "Acknowledgements", also: ["licence", "license", "open source", "legal"] },
     google: { title: "Google connections", also: ["google", "sign in", "gmail", "email", "calendar", "drive", "connect"] },
     preview: { title: "Preview the character", also: ["preview", "resting", "working", "done", "character"] },
-    doneSignal: { title: "When Claude Code or Codex says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session", "start", "notes", "memory", "house rules", "decisions"] },
+    doneSignal: { title: "When your AI tool says it is done", also: ["done", "finished", "signal", "Claude Code", "Codex", "Cursor", "VS Code", "Copilot", "Antigravity", "Xcode", "settings.local.json", "review", "quiet time", "faster", "sooner", "snapshot", "saved copy", "destructive", "reset", "delete", "waiting", "notch", "session", "start", "notes", "memory", "house rules", "decisions"] },
     reviewKeep: { title: "How long reviews stay in History", also: ["review", "history", "keep", "days", "privacy", "retention", "delete"] },
     usedOften: { title: "Ways you use most", also: ["reset", "order", "most used", "more ways to ask", "forget", "learned", "habit"] },
   },
@@ -1828,7 +1828,7 @@ export const S = {
     },
   },
   doneSignal: {
-    title: "When Claude Code or Codex says it is done",
+    title: "When your AI tool says it is done",
     // M77: the two more Claude Code hooks, in the same group, each after its own yes.
     hookTitle: { done: (tool: string) => `${tool} says it is done`, guard: "Save a copy before Claude runs a destructive command", waiting: "Tell me in the notch when Claude is waiting for me", start: "Give Claude Code my notes as each session starts" } as { done: (tool: string) => string; guard: string; waiting: string; start: string },
     hookLine: {
@@ -1843,8 +1843,20 @@ export const S = {
       waiting: `When Claude Code waits for you, it hands its own short notice to ${PRODUCT_S} own folder. Only that notice travels. Nothing is blocked.`,
       start: `As a session starts, Claude Code shows Claude a file of notes ${PRODUCT} keeps in its own folder: the same lines the Memory page shows under What Claude Code is told at the start. Nothing is read from Claude Code and nothing is sent anywhere. It works while ${PRODUCT} is closed too.`,
     } as Record<"guard" | "waiting" | "start", string>,
-    line: `${PRODUCT} can start a review the moment Claude Code or Codex finishes, instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
-    tool: { claude: "Claude Code", codex: "Codex" } as Record<"claude" | "codex", string>,
+    line: `${PRODUCT} can start a review the moment your AI tool finishes (Claude Code, Codex, Cursor, the VS Code agent or Antigravity), instead of waiting for your files to be quiet. It adds one line to that tool's own settings in this project, only after you say yes.`,
+    tool: { claude: "Claude Code", codex: "Codex", cursor: "Cursor", copilot: "VS Code (Copilot)", antigravity: "Antigravity" } as Record<"claude" | "codex" | "cursor" | "copilot" | "antigravity", string>,
+    // M80: the saved copy before a destructive command, for the other tools, named by tool.
+    guardOther: {
+      title: (tool: string) => `Save a copy before ${tool} runs a destructive command`,
+      line: (tool: string) => `When ${tool} is about to run a command that throws work away (a reset of files, a delete of files or of a database), it tells ${PRODUCT} first. ${PRODUCT} saves a copy of the project, then the command runs as ${tool} decided. Nothing is blocked or changed. Undo in History puts the files back.`,
+      askTitle: (tool: string) => `Add the saved copy signal for ${tool}?`,
+      askWhat: (tool: string) => `Before each shell command, ${tool} hands the command to ${PRODUCT_S} own folder and waits up to 5 seconds for an answer. ${PRODUCT} saves a copy first when the command is destructive, then answers. The command always runs as ${tool} decided; if ${PRODUCT} is closed or slow, ${tool} goes on without waiting. The command's words are read once and not kept, apart from a short form in the History row's name.`,
+    },
+    askTool: {
+      cursor: `This is new in Cursor. If ${PRODUCT} does not react, check Cursor's settings for this project.`,
+      copilot: `This is for the agent built into VS Code (GitHub Copilot), and works while VS Code's agent settings allow it. The Claude extension in VS Code runs Claude Code, so it uses the Claude Code rows.`,
+      antigravity: "Antigravity lists it in its Customizations settings, where you can also turn it off.",
+    } as Record<"cursor" | "copilot" | "antigravity", string>,
     on: "On",
     off: "Not set up",
     setUp: "Set up",

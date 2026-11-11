@@ -82,11 +82,12 @@ describe("the guard and waiting hooks Squibby adds, only after a yes", () => {
     expect(wj.hooks.Notification[0].hooks[0]).toMatchObject({ type: "command", timeout: 5 });
     expect(existsSync(join(p, ".claude"))).toBe(false);
     // Codex has only the done signal.
-    expect(s.plan(p, "codex", "guard").problem).toBeTruthy();
-    expect(s.add(p, "codex", "guard").problem).toBeTruthy();
+    // M80: Codex has the guard now; its waiting hook is still not offered.
+    expect(s.plan(p, "codex", "waiting").problem).toBeTruthy();
+    expect(s.add(p, "codex", "waiting").problem).toBeTruthy();
     expect(existsSync(join(p, ".codex"))).toBe(false);
     // The Settings rows: the two done signals, then Claude Code's guard and waiting, and (M78) its start block.
-    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "codex:done", "claude:guard", "claude:waiting", "claude:start"]);
+    expect(s.state(p).map((x) => `${x.tool}:${x.hook}`)).toEqual(["claude:done", "claude:guard", "claude:waiting", "claude:start", "codex:done", "codex:guard", "cursor:done", "cursor:guard", "copilot:done", "copilot:guard", "antigravity:done", "antigravity:guard"]);
   });
   test("adding keeps every other hook (the person's own PreToolUse too), adding twice adds once, and Remove takes out only Squibby's", () => {
     const data = tmp("data"), p = gitProject();

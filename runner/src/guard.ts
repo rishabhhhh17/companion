@@ -253,16 +253,37 @@ export class HookGuard {
   }
 }
 
-/** The request as the engine reads it: tool_name Bash and a command, or null for anything else. */
+/** M80: the shell tools whose calls the guard reads, by the name each AI tool gives them: Claude Code and Codex (Bash), the
+ *  VS Code agent (run_in_terminal, or bash and shell in the Copilot runtime) and Antigravity (run_command). Cursor's
+ *  beforeShellExecution has no tool name: its command is at the top. */
+const SHELL_TOOLS = new Set(["Bash", "run_in_terminal", "runInTerminal", "bash", "shell", "run_command"]);
+const objOf = (v: unknown): Record<string, unknown> | null => {
+  if (typeof v === "string") { try { v = JSON.parse(v); } catch { return null; } }
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+};
+const textOf = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
+
+/** The request as the engine reads it: a shell command and its folder, in any of the tools' shapes, or null for anything
+ *  else. Only the tool's name, the command and the folder are looked at. */
 export function parseRequest(text: string): { command: string; cwd?: string } | null {
-  let j: unknown;
-  try { j = JSON.parse(text); } catch { return null; }
-  if (!j || typeof j !== "object") return null;
-  const o = j as Record<string, unknown>;
-  if (o.tool_name !== "Bash") return null;
-  const input = o.tool_input;
-  if (!input || typeof input !== "object") return null;
-  const command = (input as Record<string, unknown>).command;
-  if (typeof command !== "string" || !command.trim()) return null;
-  return { command, ...(typeof o.cwd === "string" ? { cwd: o.cwd } : {}) };
+  const o = objOf(text);
+  if (!o) return null;
+  const out = (command: string | null, cwd: unknown) => (command ? { command, ...(typeof cwd === "string" && cwd ? { cwd } : {}) } : null);
+  // Antigravity: toolCall.name and toolCall.args, with CommandLine and Cwd; the first workspace path otherwise.
+  const call = objOf(o.toolCall);
+  if (call) {
+    if (call.name !== "run_command") return null;
+    const args = objOf(call.args);
+    const ws = Array.isArray(o.workspacePaths) ? o.workspacePaths.find((w) => typeof w === "string") : undefined;
+    return args ? out(textOf(args.CommandLine), args.Cwd ?? ws) : null;
+  }
+  // Claude Code, Codex and the VS Code agent: tool_name and tool_input, or toolName and toolArgs (an object or JSON text).
+  const name = o.tool_name ?? o.toolName;
+  if (name !== undefined) {
+    if (typeof name !== "string" || !SHELL_TOOLS.has(name)) return null;
+    const input = objOf(o.tool_input ?? o.toolArgs);
+    return input ? out(textOf(input.command), o.cwd ?? input.cwd) : null;
+  }
+  // Cursor's beforeShellExecution: the command and its folder at the top.
+  return out(textOf(o.command), o.cwd);
 }

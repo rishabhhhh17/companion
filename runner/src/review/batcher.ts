@@ -12,7 +12,7 @@ import { coveredBy } from "../pathglob.ts";
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", "dist", "build", ".next", ".nuxt", "out", "target", "coverage", ".cache", ".turbo", ".venv", "venv",
-  "__pycache__", ".claude", ".codex", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
+  "__pycache__", ".claude", ".codex", ".cursor", ".agents", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
   ".build", ".idea", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".expo", ".angular", ".docusaurus", ".yarn", ".pnpm-store",
 ]);
 /** Scratch files editors write while saving (vim's swap and test files, emacs' locks and backups), the Finder's notes,
@@ -27,6 +27,8 @@ export function ignoredPath(rel: string, own: readonly RegExp[] = []): boolean {
   const parts = rel.split("/");
   if (parts.some((p) => p === "..")) return true;
   if (parts.some((p) => IGNORED_DIRS.has(p))) return true;
+  // M80: the VS Code agent's hook file Squibby adds sits beside the person's own workflows, so only it is left out.
+  if (rel === ".github/hooks/companion.json") return true;
   return SCRATCH.test(rel) || coveredBy(rel, own);
 }
 
