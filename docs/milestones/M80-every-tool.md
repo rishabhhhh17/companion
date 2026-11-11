@@ -15,6 +15,8 @@ In Settings, Fixing, under "When your AI tool says it is done", each tool now ha
 | Cursor | `.cursor/hooks.json` | stop, beforeShellExecution |
 | VS Code agent (GitHub Copilot) | `.github/hooks/companion.json` | Stop, PreToolUse |
 | Antigravity | `.agents/hooks.json` (named `companion-done`, `companion-guard`) | Stop, PreToolUse on run_command |
+| Gemini CLI (M81) | `.gemini/settings.json` | AfterAgent, BeforeTool on run_shell_command |
+| Windsurf, as part of Devin (M81) | `.devin/hooks.v1.json` | Stop, PreToolUse on exec |
 
 Xcode 26.3 runs Claude Agent and Codex. Squibby does not write Xcode's own settings. Whether those agents read the project's Claude Code and Codex files is checked on the real Mac before Squibby claims it.
 

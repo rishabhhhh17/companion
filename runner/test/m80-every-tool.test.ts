@@ -23,11 +23,11 @@ const commandsIn = (v: unknown): string[] => {
 
 describe("every tool's own file, event and shape", () => {
   test("the tools and their files", () => {
-    expect([...DONE_TOOLS]).toEqual(["claude", "codex", "cursor", "copilot", "antigravity"]);
+    expect([...DONE_TOOLS]).toEqual(["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"]);
     expect(HOOK_FILE.cursor).toBe(".cursor/hooks.json");
     expect(HOOK_FILE.copilot).toBe(".github/hooks/companion.json");
     expect(HOOK_FILE.antigravity).toBe(".agents/hooks.json");
-    for (const t of ["codex", "cursor", "copilot", "antigravity"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard"]);
+    for (const t of ["codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const) expect([...TOOL_HOOKS[t]]).toEqual(["done", "guard"]);
     expect(eventOf("cursor", "guard")).toBe("beforeShellExecution");
     expect(eventOf("cursor", "done")).toBe("stop");
     expect(eventOf("codex", "guard")).toBe("PreToolUse");
@@ -188,4 +188,50 @@ test("the review never counts the new tools' own hook files as a change, and the
   for (const f of [".cursor/hooks.json", ".agents/hooks.json", ".github/hooks/companion.json"]) expect(ignoredPath(f)).toBe(true);
   expect(ignoredPath(".github/workflows/ci.yml")).toBe(false);
   expect(ignoredPath(".github/hooks/theirs.json")).toBe(false);
+});
+
+describe("M81: Gemini CLI and Windsurf (Devin)", () => {
+  test("Gemini CLI: .gemini/settings.json, BeforeTool on run_shell_command in milliseconds, AfterAgent; the person's own settings stay", () => {
+    const data = tmp("data"), p = tmp("proj"), s = new DoneSignals(data);
+    mkdirSync(join(p, ".gemini"));
+    writeFileSync(join(p, ".gemini/settings.json"), JSON.stringify({ theme: "Dracula", hooks: { BeforeTool: [{ matcher: "write_file", hooks: [{ type: "command", command: "./mine.sh" }] }] } }, null, 2));
+    expect(eventOf("gemini", "guard")).toBe("BeforeTool");
+    expect(eventOf("gemini", "done")).toBe("AfterAgent");
+    s.add(p, "gemini", "guard"); s.add(p, "gemini", "done");
+    const j = read(join(p, ".gemini/settings.json"));
+    expect(j.theme).toBe("Dracula");
+    expect(j.hooks.BeforeTool).toHaveLength(2);
+    expect(j.hooks.BeforeTool[1].matcher).toBe("run_shell_command");
+    expect(j.hooks.BeforeTool[1].hooks[0]).toMatchObject({ name: "companion-guard", type: "command", timeout: 10000 });
+    expect(j.hooks.AfterAgent[0].hooks[0]).toMatchObject({ name: "companion-done", type: "command" });
+    s.remove(p, "gemini", "guard"); s.remove(p, "gemini", "done");
+    expect(read(join(p, ".gemini/settings.json"))).toEqual({ theme: "Dracula", hooks: { BeforeTool: [{ matcher: "write_file", hooks: [{ type: "command", command: "./mine.sh" }] }] } });
+  });
+  test("Windsurf (Devin): .devin/hooks.v1.json holds the events at the top, PreToolUse on exec in seconds, Stop", () => {
+    const data = tmp("data"), p = tmp("proj"), s = new DoneSignals(data);
+    expect(HOOK_FILE.windsurf).toBe(".devin/hooks.v1.json");
+    s.add(p, "windsurf", "guard"); s.add(p, "windsurf", "done");
+    const j = read(join(p, ".devin/hooks.v1.json"));
+    expect(Object.keys(j)).toEqual(["PreToolUse", "Stop"]);
+    expect(j.PreToolUse[0].matcher).toBe("exec");
+    expect(j.PreToolUse[0].hooks[0]).toMatchObject({ type: "command", timeout: 10 });
+    expect(s.plan(p, "windsurf", "guard").on).toBe(true);
+    s.remove(p, "windsurf", "guard"); s.remove(p, "windsurf", "done");
+    expect(existsSync(join(p, ".devin"))).toBe(false);
+  });
+  test("both hooks end with exit 0 and print nothing when Squibby is closed", () => {
+    for (const t of ["gemini", "windsurf"] as const) {
+      const data = tmp("data"), p = tmp("proj");
+      mkdirSync(join(data, GUARD_DIR), { recursive: true });
+      const r = runHook(guardCommand(join(data, GUARD_DIR), "0123456789abcdef01234567", t), "{}", p);
+      expect({ code: r.exitCode, out: r.stdout.toString() }).toEqual({ code: 0, out: "" });
+    }
+  });
+  test("the guard reads Gemini CLI's run_shell_command and Devin's exec", () => {
+    expect(parseRequest(JSON.stringify({ hook_event_name: "BeforeTool", tool_name: "run_shell_command", tool_input: { command: "git reset --hard", description: "x" }, cwd: "/p" }))).toEqual({ command: "git reset --hard", cwd: "/p" });
+    expect(parseRequest(JSON.stringify({ hook_event_name: "PreToolUse", tool_name: "exec", tool_input: { command: "rm -rf dist" }, session_id: "s" }))).toEqual({ command: "rm -rf dist" });
+  });
+  test("the review never counts their folders as a change", () => {
+    for (const f of [".gemini/settings.json", ".devin/hooks.v1.json"]) expect(ignoredPath(f)).toBe(true);
+  });
 });

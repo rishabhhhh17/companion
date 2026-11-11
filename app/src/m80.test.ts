@@ -5,7 +5,7 @@ import { S } from "./strings.ts";
 
 const row = (tool: string, hook: string, file: string) => ({ tool, hook, on: false, file, adds: "{}", creates: true });
 describe("the other tools' rows", () => {
-  const st = doneStateFrom({ type: "donesignal.state", project: "/p", tools: [row("cursor", "guard", ".cursor/hooks.json"), row("copilot", "done", ".github/hooks/companion.json"), row("antigravity", "guard", ".agents/hooks.json"), row("windsurf", "done", "x")] }, "/p")!;
+  const st = doneStateFrom({ type: "donesignal.state", project: "/p", tools: [row("cursor", "guard", ".cursor/hooks.json"), row("copilot", "done", ".github/hooks/companion.json"), row("antigravity", "guard", ".agents/hooks.json"), row("zed", "done", "x")] }, "/p")!;
   test("every known tool is read, and an unknown one is dropped", () => {
     expect(st.tools.map((t) => t.tool)).toEqual(["cursor", "copilot", "antigravity"]);
   });
@@ -28,6 +28,12 @@ describe("the other tools' rows", () => {
   test("Remove says what stopped, in a whole sentence", () => {
     expect(removedLine({ tool: "cursor", hook: "guard" })).toBe("Removed. Cursor no longer tells Squibby before a destructive command here.");
     expect(removedLine({ tool: "antigravity", hook: "done" })).toBe("Removed. Antigravity no longer tells Squibby when it is done here.");
+  });
+  test("M81: Gemini CLI and Windsurf rows name their tool and carry their own note", () => {
+    const st2 = doneStateFrom({ type: "donesignal.state", project: "/p", tools: [row("gemini", "guard", ".gemini/settings.json"), row("windsurf", "done", ".devin/hooks.v1.json")] }, "/p")!;
+    expect(hookLabel(st2.tools[0]!).label).toBe("Gemini CLI: save a copy before a destructive command");
+    expect(hookLabel(st2.tools[1]!).label).toBe("Windsurf: start a review when it is done");
+    expect(doneAsk(st2.tools[0]!).notes).toContain(S.doneSignal.askTool.gemini);
   });
   test("plain words: no em dashes", () => {
     const all = [S.doneSignal.title, S.doneSignal.line, ...Object.values(S.doneSignal.askTool), S.doneSignal.guardOther.line("Cursor"), S.doneSignal.guardOther.askWhat("Cursor")];

@@ -119,3 +119,5 @@
 {"v":1,"id":"m80d1","type":"donesignal.add","project":"p_9f2c","tool":"cursor","confirm":true,"hook":"guard"}
 {"v":1,"id":"m80d2","type":"donesignal.add","project":"p_9f2c","tool":"antigravity","confirm":true}
 {"v":1,"id":"m80d3","type":"donesignal.remove","project":"p_9f2c","tool":"copilot","hook":"guard"}
+{"v":1,"id":"m81d1","type":"donesignal.add","project":"p_9f2c","tool":"gemini","confirm":true,"hook":"guard"}
+{"v":1,"id":"m81d2","type":"donesignal.remove","project":"p_9f2c","tool":"windsurf"}

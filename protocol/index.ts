@@ -120,7 +120,7 @@ export type PracticeKey = Envelope & { type: "practice.key"; project: string; st
 /** M75 (roadmap 19, F30): the done signal of another AI tool in this project (runner/src/donesignal.ts). show: what is set
  *  up and what would be written; add: the person said yes on the card that showed exactly that (confirm must be true);
  *  remove: one press takes Squibby's own entry out again. */
-export const DONE_SIGNAL_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity"] as const;
+export const DONE_SIGNAL_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
 export type DoneSignalTool = (typeof DONE_SIGNAL_TOOLS)[number];
 /** M77 (the safety net): which hook. done: the Stop hook (M75). guard: Claude Code's PreToolUse hook on Bash, so Squibby can
  *  take a snapshot before a destructive command (runner/src/guard.ts). waiting: Claude Code's Notification hook, so the

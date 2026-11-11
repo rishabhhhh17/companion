@@ -40,7 +40,7 @@ import { randomBytes } from "node:crypto";
 import { writeAtomic } from "./atomic.ts";
 import { PRODUCT } from "./names.ts";
 
-export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity"] as const;
+export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: the kinds of hook. done: the Stop hook (both tools). guard and waiting: Claude Code only. M78: start, Claude Code
  *  only: the start block (memory/startblock.ts) printed as a session starts. */
@@ -54,15 +54,17 @@ export const HOOK_EVENT: Readonly<Record<HookKind, string>> = { done: "Stop", gu
 export const HOOK_MATCHER: Readonly<Partial<Record<HookKind, string>>> = { guard: "Bash", waiting: "permission_prompt|idle_prompt", start: "startup|clear|compact" };
 /** The hooks each tool may have. M80: the other tools have the done signal and the guard (their waiting and start contracts
  *  differ or are missing, so those stay Claude Code's). */
-export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"] };
+export const TOOL_HOOKS: Readonly<Record<DoneTool, readonly HookKind[]>> = { claude: ["done", "guard", "waiting", "start"], codex: ["done", "guard"], cursor: ["done", "guard"], copilot: ["done", "guard"], antigravity: ["done", "guard"], gemini: ["done", "guard"], windsurf: ["done", "guard"] };
 /** M80: the event a hook sits under in each tool. Cursor names its own; the rest use Claude Code's names. */
 export const eventOf = (tool: DoneTool, hook: HookKind): string =>
-  tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : "stop") : HOOK_EVENT[hook];
+  tool === "cursor" ? (hook === "guard" ? "beforeShellExecution" : "stop")
+  : tool === "gemini" ? (hook === "guard" ? "BeforeTool" : "AfterAgent")
+  : HOOK_EVENT[hook];
 /** M80: Antigravity's file holds named hooks at the top level; Squibby's are named with the internal name (never the product
  *  name, which changes: protocol/names.json). */
 export const ANTIGRAVITY_KEY: Readonly<Record<"done" | "guard", string>> = { done: "companion-done", guard: "companion-guard" };
 /** Where each tool's project hook file lives, from the project folder down. */
-export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json", cursor: ".cursor/hooks.json", copilot: ".github/hooks/companion.json", antigravity: ".agents/hooks.json" };
+export const HOOK_FILE: Readonly<Record<DoneTool, string>> = { claude: ".claude/settings.local.json", codex: ".codex/hooks.json", cursor: ".cursor/hooks.json", copilot: ".github/hooks/companion.json", antigravity: ".agents/hooks.json", gemini: ".gemini/settings.json", windsurf: ".devin/hooks.v1.json" };
 /** M80: the files that start with a version line when Squibby makes them (Cursor needs it; the Copilot format has it). */
 const VERSIONED: ReadonlySet<DoneTool> = new Set(["cursor", "copilot"]);
 /** The folder in Squibby's data folder the hooks touch, and the file that names each project's token. */
@@ -90,7 +92,7 @@ export const hookEntry = (marker: string) => ({ hooks: [{ type: "command", comma
  *  Remove finds Squibby's entries by this opening. */
 const guardOpening = (guardDir: string, go = "exit 0") => `d=${shQuote(guardDir)}; p=$(cat "$d/${GUARD_PID}" 2>/dev/null) && kill -0 "$p" 2>/dev/null || { ${go}; };`;
 /** M80: how each tool's guard ends, on every path: the tool's own "go on", never a block and never an approval. */
-export const GUARD_GO: Readonly<Record<DoneTool, string>> = { claude: "exit 0", codex: "exit 0", copilot: "exit 0", cursor: "exit 1", antigravity: `printf '{"decision":"allow"}'; exit 0` };
+export const GUARD_GO: Readonly<Record<DoneTool, string>> = { claude: "exit 0", codex: "exit 0", copilot: "exit 0", cursor: "exit 1", antigravity: `printf '{"decision":"allow"}'; exit 0`, gemini: "exit 0", windsurf: "exit 0" };
 /** M77: the guard hook's command. Its input (the tool call's JSON) goes to <guardDir>/<token>.<pid> through a temporary
  *  name, then it waits for <that>.ok up to GUARD_WAIT_TENTHS tenths of a second, removes both and exits 0. */
 export const guardCommand = (guardDir: string, token: string, tool: DoneTool = "claude"): string => {
@@ -116,6 +118,9 @@ export const guardEntryFor = (tool: DoneTool, guardDir: string, token: string): 
   if (tool === "cursor") return { command, timeout: GUARD_TIMEOUT_S };
   if (tool === "copilot") return { type: "command", command, timeoutSec: GUARD_TIMEOUT_S };
   if (tool === "antigravity") return { matcher: "run_command", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
+  // M81: Gemini CLI names each hook (its /hooks panel lists them by name) and counts the timeout in milliseconds.
+  if (tool === "gemini") return { matcher: "run_shell_command", hooks: [{ name: "companion-guard", type: "command", command, timeout: GUARD_TIMEOUT_S * 1000 }] };
+  if (tool === "windsurf") return { matcher: "exec", hooks: [{ type: "command", command, timeout: GUARD_TIMEOUT_S }] };
   return guardEntry(guardDir, token);
 };
 /** M80: the done entry in each tool's own shape (the same command: touch the marker, print {}, exit 0). */
@@ -123,6 +128,7 @@ export const doneEntryFor = (tool: DoneTool, marker: string): Json => {
   const command = hookCommand(marker);
   if (tool === "cursor") return { command };
   if (tool === "copilot" || tool === "antigravity") return { type: "command", command };
+  if (tool === "gemini") return { hooks: [{ name: "companion-done", type: "command", command }] };
   return hookEntry(marker);
 };
 
@@ -220,16 +226,18 @@ export class DoneSignals {
   }
   /** M80: the key of the object that holds a hook's event lists: `hooks` for most tools, or Squibby's own named hook at the
    *  top of Antigravity's file. */
-  private holderKey(tool: DoneTool, hook: HookKind): string { return tool === "antigravity" ? ANTIGRAVITY_KEY[hook as "done" | "guard"] : "hooks"; }
-  /** That object, null when it is not there, or "bad" when it is there but is not an object. */
+  private holderKey(tool: DoneTool, hook: HookKind): string { return tool === "antigravity" ? ANTIGRAVITY_KEY[hook as "done" | "guard"] : tool === "windsurf" ? "" : "hooks"; }
+  /** That object, null when it is not there, or "bad" when it is there but is not an object. M81: Windsurf's
+   *  hooks.v1.json is the event lists itself, with no key around them (""). */
   private holder(j: Json, tool: DoneTool, hook: HookKind): Json | null | "bad" {
+    if (this.holderKey(tool, hook) === "") return j;
     const v = j[this.holderKey(tool, hook)];
     return v === undefined ? null : isObj(v) ? v : "bad";
   }
   /** The lines that would be added, in the file's own shape, for the card. */
   private addsOf(tool: DoneTool, hook: HookKind, token: string | null): string {
     const inner = { [eventOf(tool, hook)]: [this.entryOf(tool, hook, token)] };
-    const shape = tool === "antigravity" ? { [this.holderKey(tool, hook)]: inner } : { ...(VERSIONED.has(tool) ? { version: 1 } : {}), hooks: inner };
+    const shape = tool === "antigravity" ? { [this.holderKey(tool, hook)]: inner } : tool === "windsurf" ? inner : { ...(VERSIONED.has(tool) ? { version: 1 } : {}), hooks: inner };
     return JSON.stringify(shape, null, 2);
   }
 
@@ -276,7 +284,8 @@ export class DoneSignals {
     let madeDir: string | null = null;
     for (let i = 1; i <= parts.length; i++) { const d = parts.slice(0, i).join("/"); if (!existsSync(join(p, d))) { madeDir = d; break; } }
     mkdirSync(join(p, ...parts), { recursive: true });
-    const out: Json = { ...(VERSIONED.has(tool) && now === null ? { version: 1 } : {}), ...j, [this.holderKey(tool, hook)]: hooks };
+    const k0 = this.holderKey(tool, hook);
+    const out: Json = k0 === "" ? hooks : { ...(VERSIONED.has(tool) && now === null ? { version: 1 } : {}), ...j, [k0]: hooks };
     writeAtomic(file, JSON.stringify(out, null, 2) + "\n", "keep");
     // Remember what Squibby made itself, so Remove can take away a file or folder that held nothing else.
     const all = this.read(), rec = all[p]!;
@@ -302,9 +311,9 @@ export class DoneSignals {
       // Every Squibby entry under this event goes (an older token's too), nothing of anyone else's.
       const kept = (hooks[event] as unknown[]).filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir));
       if (kept.length) hooks[event] = kept; else delete hooks[event];
-      const out: Json = { ...now };
       const k = this.holderKey(tool, hook);
-      if (Object.keys(hooks).length) out[k] = hooks; else delete out[k];
+      let out: Json = { ...now };
+      if (k === "") out = hooks; else if (Object.keys(hooks).length) out[k] = hooks; else delete out[k];
       const all = this.read(), rec = all[p];
       // A file Squibby made that holds nothing else (its own version line aside) goes.
       const left = Object.keys(out).filter((x) => !(x === "version" && VERSIONED.has(tool)));

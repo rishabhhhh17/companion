@@ -3,7 +3,7 @@
 import { S } from "./strings.ts";
 
 /** M80: Cursor, the VS Code agent (GitHub Copilot) and Antigravity have the done signal and the guard too. */
-export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity"] as const;
+export const DONE_TOOLS = ["claude", "codex", "cursor", "copilot", "antigravity", "gemini", "windsurf"] as const;
 export type DoneTool = (typeof DONE_TOOLS)[number];
 /** M77: which hook a row is: the done signal (M75), or Claude Code's guard (a snapshot before a destructive command) and
  *  waiting (Claude is waiting for you) hooks. M78: start (Claude Code is given the start block of notes as a session

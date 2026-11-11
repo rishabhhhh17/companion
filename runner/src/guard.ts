@@ -254,9 +254,10 @@ export class HookGuard {
 }
 
 /** M80: the shell tools whose calls the guard reads, by the name each AI tool gives them: Claude Code and Codex (Bash), the
- *  VS Code agent (run_in_terminal, or bash and shell in the Copilot runtime) and Antigravity (run_command). Cursor's
+ *  VS Code agent (run_in_terminal, or bash and shell in the Copilot runtime), Antigravity (run_command), and (M81) Gemini CLI
+ *  (run_shell_command) and Windsurf and Devin (exec). Cursor's
  *  beforeShellExecution has no tool name: its command is at the top. */
-const SHELL_TOOLS = new Set(["Bash", "run_in_terminal", "runInTerminal", "bash", "shell", "run_command"]);
+const SHELL_TOOLS = new Set(["Bash", "run_in_terminal", "runInTerminal", "bash", "shell", "run_command", "run_shell_command", "exec"]);
 const objOf = (v: unknown): Record<string, unknown> | null => {
   if (typeof v === "string") { try { v = JSON.parse(v); } catch { return null; } }
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;

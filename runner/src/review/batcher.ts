@@ -12,7 +12,7 @@ import { coveredBy } from "../pathglob.ts";
 /** Folders nobody writes by hand: git's, installed packages, build output and caches, the engine's own and Claude's. */
 const IGNORED_DIRS = new Set([
   ".git", "node_modules", "dist", "build", ".next", ".nuxt", "out", "target", "coverage", ".cache", ".turbo", ".venv", "venv",
-  "__pycache__", ".claude", ".codex", ".cursor", ".agents", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
+  "__pycache__", ".claude", ".codex", ".cursor", ".agents", ".gemini", ".devin", ".vite", ".parcel-cache", ".svelte-kit", ".output", ".vercel", ".netlify", ".companion", ".gradle",
   ".build", ".idea", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".expo", ".angular", ".docusaurus", ".yarn", ".pnpm-store",
 ]);
 /** Scratch files editors write while saving (vim's swap and test files, emacs' locks and backups), the Finder's notes,

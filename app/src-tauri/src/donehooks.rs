@@ -16,6 +16,8 @@ pub const HOOK_FILES: &[(&str, &str)] = &[
     ("claude", ".claude/settings.local.json"), ("codex", ".codex/hooks.json"),
     // M80: Cursor, the VS Code agent (GitHub Copilot) and Antigravity.
     ("cursor", ".cursor/hooks.json"), ("copilot", ".github/hooks/companion.json"), ("antigravity", ".agents/hooks.json"),
+    // M81: Gemini CLI (its settings file, under hooks) and Windsurf as part of Devin (the events at the top of the file).
+    ("gemini", ".gemini/settings.json"), ("windsurf", ".devin/hooks.v1.json"),
 ];
 /// M80: Antigravity's file holds named hooks at the top level; these are Squibby's (donesignal.ts ANTIGRAVITY_KEY).
 pub const ANTIGRAVITY_KEYS: &[&str] = &["companion-done", "companion-guard"];
@@ -25,7 +27,7 @@ const VERSIONED: &[&str] = &["cursor", "copilot"];
 pub const INDEX: &str = "done-signals.json";
 /// The events Squibby's hooks sit under (donesignal.ts HOOK_EVENT): the done signal, the guard and the waiting hook (M77),
 /// and the start block (M78).
-pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution"];
+pub const EVENTS: &[&str] = &["Stop", "PreToolUse", "Notification", "SessionStart", "stop", "beforeShellExecution", "BeforeTool", "AfterAgent"];
 
 // ---------- a small JSON reader and writer that keeps the order of keys ----------
 // The app's serde_json sorts the keys of an object, which would reorder the person's file. This keeps them as written.
@@ -154,8 +156,19 @@ pub fn remove(project: &Path, runner_data: &Path) -> Vec<String> {
         let Ok(text) = fs::read_to_string(&file) else { continue };
         let Some(J::Obj(mut top)) = parse(&text) else { continue };   // not plain JSON: never changed
         // The objects that hold event lists: `hooks`, and (M80, Antigravity) Squibby's own named hooks at the top.
-        let holders: Vec<&str> = if *tool == "antigravity" { ANTIGRAVITY_KEYS.to_vec() } else { vec!["hooks"] };
+        let holders: Vec<&str> = if *tool == "antigravity" { ANTIGRAVITY_KEYS.to_vec() } else if *tool == "windsurf" { vec![] } else { vec!["hooks"] };
         let mut changed = false;
+        // M81: Windsurf's hooks.v1.json holds the event lists at the top, with no key around them.
+        if *tool == "windsurf" {
+            for event in EVENTS {
+                let Some(sp) = top.iter().position(|(k, _)| k == event) else { continue };
+                let J::Arr(list) = top[sp].1.clone() else { continue };
+                let kept: Vec<J> = list.iter().filter(|e| !ours(e, &done_dir, &guard_dir, &start_dir)).cloned().collect();
+                if kept.len() == list.len() { continue; }
+                changed = true;
+                if kept.is_empty() { top.remove(sp); } else { top[sp].1 = J::Arr(kept); }
+            }
+        }
         for key in holders {
             let Some(pos) = top.iter().position(|(k, _)| k == key) else { continue };
             let J::Obj(mut hooks) = top[pos].1.clone() else { continue };
@@ -369,6 +382,22 @@ mod tests {
         assert_eq!(ag.as_object().unwrap().keys().collect::<Vec<_>>(), vec!["my-linter"]);
         let ts = include_str!("../../../runner/src/donesignal.ts");
         assert!(ts.contains("cursor: \".cursor/hooks.json\", copilot: \".github/hooks/companion.json\", antigravity: \".agents/hooks.json\"") && ts.contains("{ done: \"companion-done\", guard: \"companion-guard\" }") && ts.contains("new Set([\"cursor\", \"copilot\"])"), "the runner writes the same files and keys");
+    }
+    #[test]
+    fn m81_gemini_cli_and_windsurf_lose_only_squibbys_lines() {
+        let t = t("m81");
+        let g = guard_cmd(&t.data);
+        create_dir_all(t.project.join(".gemini")).unwrap();
+        fwrite(t.project.join(".gemini/settings.json"), format!("{{ \"theme\": \"Dracula\", \"hooks\": {{ \"BeforeTool\": [ {{ \"matcher\": \"write_file\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"./mine.sh\" }} ] }}, {{ \"matcher\": \"run_shell_command\", \"hooks\": [ {{ \"name\": \"companion-guard\", \"type\": \"command\", \"command\": {} }} ] }} ] }} }}", serde_json::to_string(&g).unwrap())).unwrap();
+        create_dir_all(t.project.join(".devin")).unwrap();
+        fwrite(t.project.join(".devin/hooks.v1.json"), format!("{{ \"PreToolUse\": [ {{ \"matcher\": \"exec\", \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ], \"Stop\": [ {{ \"hooks\": [ {{ \"type\": \"command\", \"command\": {} }} ] }} ] }}", serde_json::to_string(&g).unwrap(), serde_json::to_string(&cmd(&t.data)).unwrap())).unwrap();
+        fwrite(t.data.join(INDEX), format!("{{ {}: {{ \"token\": \"0123456789abcdef01234567\", \"made\": [\"windsurf\"], \"folders\": [\"windsurf\"], \"dirs\": {{ \"windsurf\": \".devin\" }} }} }}", serde_json::to_string(&t.project.to_string_lossy()).unwrap())).unwrap();
+        assert_eq!(remove(&t.project, &t.data), vec![".gemini/settings.json", ".devin/hooks.v1.json"]);
+        let gem: serde_json::Value = serde_json::from_str(&fs::read_to_string(t.project.join(".gemini/settings.json")).unwrap()).unwrap();
+        assert_eq!(gem, serde_json::json!({ "theme": "Dracula", "hooks": { "BeforeTool": [ { "matcher": "write_file", "hooks": [ { "type": "command", "command": "./mine.sh" } ] } ] } }));
+        assert!(!t.project.join(".devin").exists(), "the file and folder Squibby made go");
+        let ts = include_str!("../../../runner/src/donesignal.ts");
+        assert!(ts.contains("gemini: \".gemini/settings.json\", windsurf: \".devin/hooks.v1.json\""), "the runner writes the same files");
     }
     #[test]
     fn this_file_never_runs_git_and_the_runners_rule_is_the_same() {
