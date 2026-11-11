@@ -309,14 +309,14 @@ mod tests {
     fn at_rest_the_whole_window_is_past_the_right_edge_and_a_peek_shows_about_half() {
         let s = mac();
         let h = home(&s, Edge::Right);
-        let rest = frame(h, Edge::Right, &s, &[s.clone()], Pose::Hidden);
+        let rest = frame(h, Edge::Right, &s, std::slice::from_ref(&s), Pose::Hidden);
         assert_eq!(rest[1], h[1], "along the edge it stays exactly where it was");
         assert_eq!((rest[2], rest[3]), (160.0, 160.0));
         assert_eq!(shown(rest, &s, Edge::Right), 0.0, "tucked away: none of it shows");
         assert_eq!(rest[0], 1512.0, "not even its see through margin is left on screen to catch a click");
-        let peek = frame(h, Edge::Right, &s, &[s.clone()], Pose::Peek);
+        let peek = frame(h, Edge::Right, &s, std::slice::from_ref(&s), Pose::Peek);
         assert_eq!(shown(peek, &s, Edge::Right), 56.0, "half of 112");
-        assert_eq!(frame(h, Edge::Right, &s, &[s.clone()], Pose::In), h, "fully in is its usual place");
+        assert_eq!(frame(h, Edge::Right, &s, std::slice::from_ref(&s), Pose::In), h, "fully in is its usual place");
         assert_eq!(shown(h, &s, Edge::Right), 112.0);
         assert!(rest[0] > peek[0] && peek[0] > h[0], "rest, peek and in, each further into the screen");
     }
@@ -326,8 +326,8 @@ mod tests {
         let s = mac();
         for e in [Edge::Left, Edge::Bottom] {
             let h = home(&s, e);
-            let rest = frame(h, e, &s, &[s.clone()], Pose::Hidden);
-            let peek = frame(h, e, &s, &[s.clone()], Pose::Peek);
+            let rest = frame(h, e, &s, std::slice::from_ref(&s), Pose::Hidden);
+            let peek = frame(h, e, &s, std::slice::from_ref(&s), Pose::Peek);
             let len = if e == Edge::Left { 112.0 } else { 80.0 };
             assert_eq!(shown(rest, &s, e), 0.0, "{e:?}");
             assert_eq!(shown(peek, &s, e), len * PEEK_SHOWN, "{e:?}");
@@ -341,10 +341,10 @@ mod tests {
         let bare = screen("800x600@0,0", [0.0, 0.0, 800.0, 600.0], [0.0, 0.0, 800.0, 600.0], None);
         for e in [Edge::Left, Edge::Right, Edge::Top, Edge::Bottom] {
             let h = home(&bare, e);
-            let rest = frame(h, e, &bare, &[bare.clone()], Pose::Hidden);
+            let rest = frame(h, e, &bare, std::slice::from_ref(&bare), Pose::Hidden);
             assert!(!docking::overlaps(rest, bare.frame), "{e:?}: {rest:?}");
             for p in [Pose::Peek, Pose::In] {
-                let (w, ht) = body_on_screen(frame(h, e, &bare, &[bare.clone()], p), &bare);
+                let (w, ht) = body_on_screen(frame(h, e, &bare, std::slice::from_ref(&bare), p), &bare);
                 assert!(w >= MIN_SHOWN && ht >= MIN_SHOWN, "{e:?} {p:?}: {w} by {ht}");
             }
         }
@@ -355,7 +355,7 @@ mod tests {
         let s = mac();
         let h = home(&s, Edge::Right);
         let mid = h[1] + 80.0;
-        let call = |x: f64, y: f64| at_edge(h, Edge::Right, &s, &[s.clone()], (x, y));
+        let call = |x: f64, y: f64| at_edge(h, Edge::Right, &s, std::slice::from_ref(&s), (x, y));
         assert!(call(1511.0, mid), "the last column of points, beside it");
         assert!(call(1512.0 - EDGE_STRIP, mid));
         assert!(!call(1512.0 - EDGE_STRIP - 1.0, mid), "a little way in is just using the Mac");
@@ -363,14 +363,14 @@ mod tests {
         assert!(!call(1511.0, h[1] - 1.0) && !call(1511.0, h[1] + h[3]), "not above or below it (scroll bars, other corners)");
         // The other edges.
         let l = home(&s, Edge::Left);
-        assert!(at_edge(l, Edge::Left, &s, &[s.clone()], (0.0, l[1] + 10.0)));
-        assert!(!at_edge(l, Edge::Left, &s, &[s.clone()], (1511.0, l[1] + 10.0)));
+        assert!(at_edge(l, Edge::Left, &s, std::slice::from_ref(&s), (0.0, l[1] + 10.0)));
+        assert!(!at_edge(l, Edge::Left, &s, std::slice::from_ref(&s), (1511.0, l[1] + 10.0)));
         // Where it may not hide (another display beside it, the Dock there), it is in view anyway: no strip.
         let both = [s.clone(), right_of_mac()];
         assert!(!at_edge(h, Edge::Right, &s, &both, (1511.0, mid)));
         let d = mac_dock_bottom();
         let hb = home(&d, Edge::Bottom);
-        assert!(!at_edge(hb, Edge::Bottom, &d, &[d.clone()], (hb[0] + 10.0, 981.0)));
+        assert!(!at_edge(hb, Edge::Bottom, &d, std::slice::from_ref(&d), (hb[0] + 10.0, 981.0)));
     }
 
     #[test]
@@ -378,13 +378,13 @@ mod tests {
         // The top of a notched Mac: the menu bar and the notch are there, so it stays fully in.
         let s = mac();
         let h = home(&s, Edge::Top);
-        for p in [Pose::Hidden, Pose::Peek] { assert_eq!(frame(h, Edge::Top, &s, &[s.clone()], p), h, "{p:?}"); }
+        for p in [Pose::Hidden, Pose::Peek] { assert_eq!(frame(h, Edge::Top, &s, std::slice::from_ref(&s), p), h, "{p:?}"); }
         assert!(!may_hide(&s, Edge::Top));
         // The Dock showing at the bottom: the bottom edge stays in, the sides still hide.
         let d = mac_dock_bottom();
         assert!(!may_hide(&d, Edge::Bottom) && may_hide(&d, Edge::Right) && may_hide(&d, Edge::Left));
         let hb = home(&d, Edge::Bottom);
-        assert_eq!(frame(hb, Edge::Bottom, &d, &[d.clone()], Pose::Hidden), hb);
+        assert_eq!(frame(hb, Edge::Bottom, &d, std::slice::from_ref(&d), Pose::Hidden), hb);
         // The Dock on the right of the other display: its right edge stays in.
         let r = right_of_mac();
         assert!(!may_hide(&r, Edge::Right));
@@ -392,7 +392,7 @@ mod tests {
         let no_menu = screen("1512x982@0,0", [0.0, 0.0, 1512.0, 982.0], [0.0, 0.0, 1512.0, 982.0], Some(Notch { x: 661.0, w: 190.0, h: 38.0 }));
         for pct in [0.0, 0.3, 0.5, 0.7, 1.0] {
             let h = place(&no_menu, DOCK, Edge::Top, pct, HomeSize::STANDARD);
-            let r = frame(h, Edge::Top, &no_menu, &[no_menu.clone()], Pose::Hidden);
+            let r = frame(h, Edge::Top, &no_menu, std::slice::from_ref(&no_menu), Pose::Hidden);
             assert!(!docking::overlaps(r, docking::notch_zone(&no_menu)), "{pct}: {r:?}");
         }
     }
@@ -414,7 +414,7 @@ mod tests {
         let lower = screen("1920x1080@0,982", [0.0, 982.0, 1920.0, 1080.0], [0.0, 982.0, 1920.0, 1080.0], None);
         let hb = home(&m, Edge::Bottom);
         assert_eq!(frame(hb, Edge::Bottom, &m, &[m.clone(), lower.clone()], Pose::Hidden), hb, "the Mac's bottom touches the display below");
-        assert_ne!(frame(hb, Edge::Bottom, &m, &[m.clone()], Pose::Hidden), hb);
+        assert_ne!(frame(hb, Edge::Bottom, &m, std::slice::from_ref(&m), Pose::Hidden), hb);
     }
 
     #[test]

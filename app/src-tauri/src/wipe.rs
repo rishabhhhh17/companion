@@ -533,7 +533,7 @@ mod tests {
         let m = mac("helper");
         let p = m.root.join("site6"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
         let log = RefCell::new(Vec::<String>::new()); let polls = RefCell::new(0);
-        let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
+        let failed = run_helper(&m.home, &m.data, std::slice::from_ref(&p), true, &Helper {
             parent_gone: &|| { *polls.borrow_mut() += 1; *polls.borrow() > 3 }, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| { log.borrow_mut().push("google".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| {},
         });
         assert!(failed.is_empty());
@@ -547,7 +547,7 @@ mod tests {
         let m = mac("helper-wait");
         let p = m.root.join("site7"); create_dir_all(p.join(".companion")).unwrap(); write(p.join(".companion/project.md"), "x").unwrap();
         let log = RefCell::new(Vec::<String>::new()); let waits = RefCell::new(0);
-        let failed = run_helper(&m.home, &m.data, &[p.clone()], true, &Helper {
+        let failed = run_helper(&m.home, &m.data, std::slice::from_ref(&p), true, &Helper {
             parent_gone: &|| false, delete_key: &|| { log.borrow_mut().push("key".into()); true }, delete_google: &|| { log.borrow_mut().push("google".into()); true }, relaunch: &|| log.borrow_mut().push("relaunch".into()), wait: &|| *waits.borrow_mut() += 1,
         });
         assert_eq!(failed, vec![concat!(crate::product!(), " did not close in time").to_string()]);

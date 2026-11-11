@@ -28,7 +28,7 @@ pub fn relative(pointer: (f64, f64), frame: [f64; 4]) -> (f64, f64) {
 
 /// Whether a new place is worth sending: the first one, or one that moved at least `MOVED` points.
 pub fn worth_sending(last: Option<(f64, f64)>, now: (f64, f64)) -> bool {
-    last.map_or(true, |l| (l.0 - now.0).hypot(l.1 - now.1) >= MOVED)
+    last.is_none_or(|l| (l.0 - now.0).hypot(l.1 - now.1) >= MOVED)
 }
 
 #[cfg(test)]

@@ -79,7 +79,7 @@ describe("Home's place", () => {
     const pc = fnBody("place_card");
     expect(pc).toContain("island::grown_from(");
     expect(pc).toContain("ISLAND_STATE.lock()");
-    expect(fnBody("island_alert")).toContain("with_panels(|d, c| place_card(d, c));");
+    expect(fnBody("island_alert")).toContain("with_panels(place_card);");
   });
 });
 

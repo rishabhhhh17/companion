@@ -129,7 +129,7 @@ mod tests {
         // The worker lets both models go and answers whether any is still loading.
         let worker = main.split("fn voice_worker").nth(1).unwrap();
         let quit_arm = worker.split("Ok(VoiceMsg::Quit(ack)) =>").nth(1).expect("the worker answers Quit").split("Ok(VoiceMsg::").next().unwrap();
-        assert!(quit_arm.contains("speech = None") && quit_arm.contains("= None;") && quit_arm.contains("ack.send(") && quit_arm.contains("break"), "{quit_arm}");
+        assert!(quit_arm.contains("drop(speech.take())") && quit_arm.contains("= None;") && quit_arm.contains("ack.send(") && quit_arm.contains("break"), "{quit_arm}");
     }
     #[test]
     fn an_update_restart_that_must_end_at_once_starts_the_new_copy_first() {

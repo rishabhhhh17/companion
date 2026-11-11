@@ -525,7 +525,7 @@ mod tests {
     }
     #[test]
     fn the_newest_folder_is_first_then_by_name() {
-        let mut rows = vec![row("b"), row("a"), row("c"), row("none")];
+        let mut rows = [row("b"), row("a"), row("c"), row("none")];
         rows[0].made_ms = Some(300); rows[1].made_ms = Some(300); rows[2].made_ms = Some(900); rows[3].made_ms = None;
         rows.sort_by(newest_first);
         assert_eq!(rows.iter().map(|r| r.name.as_str()).collect::<Vec<_>>(), ["c", "a", "b", "none"]);

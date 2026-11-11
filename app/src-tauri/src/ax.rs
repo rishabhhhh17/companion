@@ -495,7 +495,7 @@ fn walk_boxes(root: &Cf) -> Vec<crate::pastehere::Box_> {
             if let Some((x, y, w, h)) = frame_of(&el) {
                 let subrole = text_attr(&el, "AXSubrole").unwrap_or_default();
                 let words: Vec<String> = ["AXPlaceholderValue", "AXTitle", "AXDescription", "AXHelp", "AXRoleDescription"].iter().filter_map(|a| text_attr(&el, a)).filter(|s| !s.trim().is_empty()).map(|s| s.chars().take(120).collect()).collect();
-                let enabled = attr(&el, "AXEnabled").map_or(true, |v| unsafe { v.0 != kCFBooleanFalse });
+                let enabled = attr(&el, "AXEnabled").is_none_or(|v| unsafe { v.0 != kCFBooleanFalse });
                 out.push(crate::pastehere::Box_ { role: role.clone(), subrole, words, rect: crate::coords::R { x, y, w, h }, editable: enabled });
             }
             continue;   // a box's own children are its text, never read

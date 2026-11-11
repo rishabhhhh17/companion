@@ -79,7 +79,7 @@ pub fn notch_from(screen_w: f64, safe_top: f64, left_w: f64, right_w: f64) -> Op
     // Written so that a NaN fails every check.
     if !(screen_w > 0.0 && safe_top > 0.0 && safe_top <= 80.0 && left_w > 0.0 && right_w > 0.0) { return None; }
     let w = screen_w - left_w - right_w;
-    if !(w >= MIN_NOTCH_W && w <= MAX_NOTCH_W) { return None; }
+    if !(MIN_NOTCH_W..=MAX_NOTCH_W).contains(&w) { return None; }
     Some(Notch { x: left_w, w, h: safe_top })
 }
 
@@ -590,7 +590,7 @@ impl ReviewReady {
         let t = v.get("type").and_then(serde_json::Value::as_str).unwrap_or("");
         if t == "runner.hello" || t == "app.runner_down" { return self.clear(); }
         if t != "review.batch" && t != "review.result" { return false; }
-        if !v.get("project").and_then(serde_json::Value::as_str).map_or(false, |p| same_folder(p, project)) { return false; }
+        if !v.get("project").and_then(serde_json::Value::as_str).is_some_and(|p| same_folder(p, project)) { return false; }
         let Some(id) = review_batch(v) else { return false };
         if t == "review.result" {
             // A review that could not be done is nothing new to look at; a finished one is, unless Home shows it now.
@@ -1064,7 +1064,7 @@ mod tests {
     fn a_change_of_displays_puts_the_character_the_island_and_home_back_and_both_features_keep_their_wiring() {
         let main = include_str!("main.rs");
         let tick = main_body("fn tick(");
-        let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "with_panels(|d, c| place_card(d, c));", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
+        let order = ["apply_dock(mtm, \"screens_changed\", false)", "place_island(mtm, false, \"screens_changed\")", "with_panels(place_card);", "follow_pointer(mtm)", "roam_tick(app, &wins, front_pid)"];
         let at: Vec<usize> = order.iter().map(|p| tick.find(p).unwrap_or_else(|| panic!("tick lost {p}"))).collect();
         assert!(at.windows(2).all(|w| w[0] < w[1]), "in this order: {order:?}");
         // The character's displays carry the notch, read once the same way as the island's.
@@ -1426,10 +1426,10 @@ mod tests {
         // The island's own size stays the bare notch (or the wings) while Home opens below it: hover is only said to the
         // island when the status line is what pointing does.
         let rest = State::default();
-        assert_eq!(peek_hover(true, PointDo::OpenHome), false);
-        assert_eq!(peek_hover(true, PointDo::Status), true);
-        assert_eq!(peek_hover(false, PointDo::Status), false);
-        assert_eq!(peek_hover(true, PointDo::Nothing), false);
+        assert!(!peek_hover(true, PointDo::OpenHome));
+        assert!(peek_hover(true, PointDo::Status));
+        assert!(!peek_hover(false, PointDo::Status));
+        assert!(!peek_hover(true, PointDo::Nothing));
         assert_eq!(mode(State { hover: peek_hover(true, on_point(rest, PointOpens::Home)), ..rest }), Mode::Rest);
         assert_eq!(mode(State { hover: peek_hover(true, on_point(rest, PointOpens::Status)), ..rest }), Mode::Peek);
     }
@@ -1471,7 +1471,7 @@ mod tests {
         assert_eq!(pick_where(&both, Where::BuiltIn, Some(&mac.id), &ext.id, on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((mac.id.clone(), "built_in")));
         // With the lid closed (or a Mac with no screen of its own) there is no built in display: the main one.
         let main_ext = Display { primary: true, ..ext.clone() };
-        assert_eq!(pick_where(&[main_ext.clone()], Where::BuiltIn, None, "", on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((ext.id.clone(), "main")));
+        assert_eq!(pick_where(std::slice::from_ref(&main_ext), Where::BuiltIn, None, "", on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((ext.id.clone(), "main")));
         assert_eq!(pick_where(&[main_ext], Where::BuiltIn, Some(&mac.id), "", on_ext, true).map(|(_, w)| w), Some("main"), "a built in display that is not there");
         // Main: the display with the menu bar (the first macOS lists), even with the pointer on the other one.
         assert_eq!(pick_where(&both, Where::Main, Some(&mac.id), &ext.id, on_ext, true).map(|(d, w)| (d.id.clone(), w)), Some((mac.id.clone(), "main")));
@@ -1618,7 +1618,7 @@ mod tests {
         assert_eq!(p.body_h(9999.0), p.max_h);
         assert_eq!(p.body_h(f64::NAN), p.min_h);
         // The shell never makes the window from a content height (main.rs place_card reads only the sizes).
-        let main = include_str!("main.rs");
+        let _main = include_str!("main.rs");
         let pc = main_body("fn place_card(");
         assert!(pc.contains("island::home_panel(") && !pc.contains("CARD_H"), "{pc}");
         // A content height never places it again; only Settings opening or closing does, and that keeps the window (above).
@@ -1666,7 +1666,7 @@ mod tests {
         assert!(spot_fn.contains("let w = if on.is_some() { size.w } else { home_sizes(&hs).iter().map(|s| s.w).fold(0.0, f64::max) };"), "{spot_fn}");
         assert!(main_body("fn place_card(").contains("island::home_panel(on.as_ref(), &sizes, home_size(), spot)"));
         // Settings opened or closed: placed again, so the page is told the new body width (the window stays as it is).
-        assert!(main_body("fn resize_card(").contains("if was != open { with_panels(|d, c| place_card(d, c)); }"));
+        assert!(main_body("fn resize_card(").contains("if was != open { with_panels(place_card); }"));
     }
     #[test]
     fn the_hit_test_follows_the_shape_its_round_corners_and_the_slack() {
@@ -1811,7 +1811,7 @@ mod tests {
         assert_eq!(q(false, true, false), Mode::Alert, "listening (or needs you) while quiet: the wings with the light");
         assert_eq!(q(false, false, false), Mode::Rest);
         assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true, wing: 0 }), Mode::Rest, "Home open");
-        assert_eq!(State::default().quiet, false);
+        assert!(!State::default().quiet);
     }
 
     #[test]
@@ -1851,7 +1851,7 @@ mod tests {
     /// The shared fixtures (protocol/fixtures, read by the runner's suite too), with their project put as the one open here.
     fn review_lines(file: &str) -> Vec<serde_json::Value> {
         file.lines().filter(|l| !l.trim().is_empty()).map(|l| serde_json::from_str::<serde_json::Value>(l).expect("a fixture is JSON"))
-            .filter(|v| v["type"].as_str().map_or(false, |t| t.starts_with("review."))).collect()
+            .filter(|v| v["type"].as_str().is_some_and(|t| t.starts_with("review."))).collect()
     }
     fn events() -> Vec<serde_json::Value> { review_lines(include_str!("../../../protocol/fixtures/events.jsonl")) }
     fn commands() -> Vec<serde_json::Value> { review_lines(include_str!("../../../protocol/fixtures/commands.jsonl")) }
@@ -2072,7 +2072,7 @@ mod tests {
         let mut kinds = Vec::new();
         for v in &lines {
             assert_eq!(v["v"].as_i64(), Some(1));
-            assert!(v["agent"].as_str().map_or(false, |a| !a.is_empty()), "{v}");
+            assert!(v["agent"].as_str().is_some_and(|a| !a.is_empty()), "{v}");
             let f = v["file"].as_str().unwrap_or("");
             assert!(!f.is_empty() && !f.starts_with('/') && !f.split('/').any(|p| p == ".." || p.is_empty()), "{v}");
             assert!(v.get("detail").is_none(), "{v}");

@@ -79,7 +79,7 @@ pub fn looks_same(a: &Frame, b: &Frame) -> bool {
     if a.w != b.w || a.h != b.h || a.rgba.len() != b.rgba.len() { return false; }
     let n = (a.w as usize) * (a.h as usize);
     if n == 0 { return false; }
-    let changed = a.rgba.chunks_exact(4).zip(b.rgba.chunks_exact(4)).filter(|(p, q)| p[..3].iter().zip(&q[..3]).any(|(x, y)| x.abs_diff(*y) > 24)).count();
+    let changed = a.rgba.as_chunks::<4>().0.iter().zip(b.rgba.chunks_exact(4)).filter(|(p, q)| p[..3].iter().zip(&q[..3]).any(|(x, y)| x.abs_diff(*y) > 24)).count();
     changed * 1000 <= n * 3
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1040,7 +1040,7 @@ mod tests {
         assert!(b.contains("Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, \"error\", showme::HIDDEN_WORDS, json!({})); } }"), "a look ended by Stop or a newer question says nothing; only one ended by hiding says why: {b}");
         assert!(b.contains(".while_wanted(Box::new(move || current() && !light_unseen()))"), "{b}");
         let see = include_str!("macos_see.rs");
-        assert!(see.contains("fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }"));
+        assert!(see.contains("fn still_wanted(&self) -> bool { self.wanted.as_ref().is_none_or(|w| w()) }"));
     }
     #[test]
     fn the_shell_waits_only_when_the_page_asks_and_stop_ends_the_wait() {

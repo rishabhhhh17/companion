@@ -473,7 +473,7 @@ mod tests {
         assert!(std::process::Command::new("say").args(["-o"]).arg(&aiff).arg("How do I deploy this website to the internet").status().unwrap().success());
         assert!(std::process::Command::new("afconvert").args(["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"]).arg(&aiff).arg(&wav).status().unwrap().success());
         let bytes = std::fs::read(&wav).unwrap();
-        let samples: Vec<f32> = bytes[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        let samples: Vec<f32> = bytes[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
         let t_load = std::time::Instant::now();
         let ctx = load(&model_path(&data)).unwrap();
         eprintln!("model loaded in {:?}", t_load.elapsed());
@@ -501,7 +501,7 @@ mod tests {
         assert!(std::process::Command::new("say").args(["-o"]).arg(&aiff).arg("Why does use auth fail when I sign up with supabase, and how do I deploy it to vercel").status().unwrap().success());
         assert!(std::process::Command::new("afconvert").args(["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"]).arg(&aiff).arg(&wav).status().unwrap().success());
         let bytes = std::fs::read(&wav).unwrap();
-        let samples: Vec<f32> = bytes[44..].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        let samples: Vec<f32> = bytes[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
         let ctx = load(&model_path(&data)).unwrap();
         let words = crate::voicewords::prompt(&["supabase".to_string(), "vercel".to_string(), "useAuth".to_string(), "next".to_string()]);
         let plain = crate::voice::clean_transcript(&transcribe_with(&ctx, &samples, "", None).unwrap());

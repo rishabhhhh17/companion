@@ -116,7 +116,7 @@ pub fn find_text(boxes: &[OcrBox], want: &str) -> Option<Found> {
     let mut best: Option<(f64, R)> = None;
     for b in boxes {
         let s = text_score(&b.text, want);
-        if s >= ENOUGH && best.map_or(true, |(bs, _)| s > bs) { best = Some((s, b.rect)); }
+        if s >= ENOUGH && best.is_none_or(|(bs, _)| s > bs) { best = Some((s, b.rect)); }
     }
     best.map(|(_, r)| Found { rect: pad(r), exact: true })
 }
@@ -303,7 +303,7 @@ mod tests {
             if ok { lines += 1; if f.unwrap().exact { exact += 1 } else { rough += 1 } } else if f.is_some() { wrong += 1; }
             let m = find_text(&fast, c["message"].as_str().unwrap()).or_else(|| find_text(&boxes, c["message"].as_str().unwrap())).is_some_and(|f| inside(&f, &c["messageTruth"]));
             if m { msgs += 1; }
-            if !ok && std::env::var("COMPANION_POINT_DEBUG").is_ok() { let want = c["lineText"].as_str().unwrap(); for b in boxes.iter().filter(|b| text_score(&b.text, want) > 0.5 || b.text.trim() == c["line"].to_string()) { println!("   seen {:?} at ({:.0},{:.0},{:.0}) score {:.2} numbered {}", b.text, b.rect.x, b.rect.y, b.rect.w, text_score(&b.text, want), numbered(&boxes, &b.rect, c["line"].as_u64().unwrap() as u32)); } println!("   truth {}", c["truth"]); }
+            if !ok && std::env::var("COMPANION_POINT_DEBUG").is_ok() { let want = c["lineText"].as_str().unwrap(); for b in boxes.iter().filter(|b| text_score(&b.text, want) > 0.5 || b.text.trim() == c["line"]) { println!("   seen {:?} at ({:.0},{:.0},{:.0}) score {:.2} numbered {}", b.text, b.rect.x, b.rect.y, b.rect.w, text_score(&b.text, want), numbered(&boxes, &b.rect, c["line"].as_u64().unwrap() as u32)); } println!("   truth {}", c["truth"]); }
             if !ok || !m { println!("MISS {} line {} {:?} found={:?} message_ok={} ({} ms)", c["id"], c["line"], c["lineText"].as_str().unwrap(), f.map(|f| (f.rect.x.round(), f.rect.y.round(), f.exact)), m, ms); }
         }
         let n = cases.len();

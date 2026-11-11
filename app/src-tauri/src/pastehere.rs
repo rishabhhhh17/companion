@@ -60,7 +60,7 @@ pub fn decide(app: App, site: Option<&str>, window: Option<R>, boxes: &[Box_], o
     if own || boxes.iter().any(|b| b.subrole == "AXSecureTextField" && b.editable) && boxes.iter().all(|b| !typing(b)) { return Where::Words; }
     let known = !matches!(app, App::Other) && !(app == App::Browser && site.is_none());
     if !known { return Where::Words; }
-    let inside = |b: &&Box_| window.map_or(true, |w| { let c = b.rect.center(); c.x >= w.x && c.x <= w.x + w.w && c.y >= w.y && c.y <= w.y + w.h });
+    let inside = |b: &&Box_| window.is_none_or(|w| { let c = b.rect.center(); c.x >= w.x && c.x <= w.x + w.w && c.y >= w.y && c.y <= w.y + w.h });
     let cands: Vec<&Box_> = boxes.iter().filter(|b| typing(b)).filter(inside).collect();
     if cands.is_empty() { return Where::Words; }
     let words = chat_words(app, site);
@@ -70,7 +70,7 @@ pub fn decide(app: App, site: Option<&str>, window: Option<R>, boxes: &[Box_], o
     // they do not overlap in doubt (they are separate boxes the app itself labelled).
     if let Some(b) = confirmed.iter().max_by(|a, b| (a.rect.y + a.rect.h).total_cmp(&(b.rect.y + b.rect.h))) { return Where::Confirmed(b.rect); }
     // No label: a guess, only a wide box in the lower half of the window (where chat boxes sit).
-    let lower = |b: &&&Box_| window.map_or(true, |w| b.rect.y + b.rect.h / 2.0 >= w.y + w.h * 0.45) && window.map_or(true, |w| b.rect.w >= w.w * 0.25);
+    let lower = |b: &&&Box_| window.is_none_or(|w| b.rect.y + b.rect.h / 2.0 >= w.y + w.h * 0.45) && window.is_none_or(|w| b.rect.w >= w.w * 0.25);
     cands.iter().filter(lower).max_by(|a, b| (a.rect.w * a.rect.h).total_cmp(&(b.rect.w * b.rect.h))).map(|b| Where::Guess(b.rect)).unwrap_or(Where::Words)
 }
 

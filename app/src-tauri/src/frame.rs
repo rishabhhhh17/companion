@@ -49,7 +49,7 @@ impl Frame {
     /// A compressed picture, in memory.
     pub fn to_jpeg(&self, quality: u8) -> Result<Vec<u8>, String> {
         let mut rgb = Vec::with_capacity((self.w as usize) * (self.h as usize) * 3);
-        for px in self.rgba.chunks_exact(4) { rgb.extend_from_slice(&px[..3]); }
+        for px in self.rgba.as_chunks::<4>().0 { rgb.extend_from_slice(&px[..3]); }
         let mut out = Vec::new();
         let enc = jpeg_encoder::Encoder::new(&mut out, quality.clamp(30, 95));
         enc.encode(&rgb, self.w.min(65535) as u16, self.h.min(65535) as u16, jpeg_encoder::ColorType::Rgb).map_err(|e| e.to_string())?;

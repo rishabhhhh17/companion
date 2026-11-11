@@ -37,6 +37,7 @@ impl Trial {
 
 /// The trial as kept, with the latest clock time noted (written back at most once an hour). Err: the Keychain could not
 /// be read, which is never taken for "no trial yet". An item that cannot be read as a trial counts as a used one.
+#[cfg(test)]
 pub fn load(v: &dyn crate::license::Vault, now: u64) -> Result<Option<Trial>, ()> {
     let Some(mut t) = peek(v)? else { return Ok(None) };
     if t.seen(now) { let _ = v.set(ACCOUNT, &t.to_json()); }

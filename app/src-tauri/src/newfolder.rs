@@ -407,7 +407,7 @@ mod tests {
         let home = tmp("inside");
         fs::create_dir_all(home.join("Documents")).unwrap();
         let docs = home.join("Documents").to_string_lossy().to_string();
-        assert!(mk(&home, "documents", "Website", &[docs.clone()]).is_err(), "Documents is one of their projects");
+        assert!(mk(&home, "documents", "Website", std::slice::from_ref(&docs)).is_err(), "Documents is one of their projects");
         assert!(!exists_at(&home.join(concat!("Documents/", crate::new_folder_parent!()))));
         fs::create_dir_all(home.join(crate::new_folder_parent!())).unwrap();
         let parent = home.join(crate::new_folder_parent!()).to_string_lossy().to_string();

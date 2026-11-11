@@ -29,7 +29,7 @@ pub struct Tool {
     pub id: String, pub group: String, pub switch: Option<String>, pub hotkeys: Vec<String>, pub tried: Option<String>, pub commands: Vec<String>,
     pub runner: Vec<String>, pub agent_modes: Vec<String>, pub stays: Vec<String>, pub settings: Vec<String>,
 }
-impl Tool { pub fn settings_has(&self, key: &str) -> bool { self.settings.iter().any(|s| s == key) } }
+impl Tool { #[cfg(test)] pub fn settings_has(&self, key: &str) -> bool { self.settings.iter().any(|s| s == key) } }
 #[derive(Debug)]
 pub struct Catalog {
     pub off_line: String, pub groups: Vec<Group>, pub tools: Vec<Tool>,

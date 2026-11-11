@@ -50,7 +50,7 @@ fn parsed(s: &str) -> Option<tauri::Url> {
     let u = tauri::Url::parse(s).ok()?;
     // A name and password before the site ("https://paypal.com@evil.example") hides where the link really goes.
     if !matches!(u.scheme(), "https" | "http") || !u.username().is_empty() || u.password().is_some() { return None; }
-    if u.host_str().map_or(true, str::is_empty) { return None; }
+    if u.host_str().is_none_or(str::is_empty) { return None; }
     Some(u)
 }
 

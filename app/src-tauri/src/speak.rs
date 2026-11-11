@@ -24,7 +24,7 @@ fn cut_to(text: &str, max: usize) -> Option<(String, bool)> {
     if cut {
         // Cut at a word, preferring the end of a sentence, never mid word.
         let head: String = line.chars().take(max).collect();
-        let at = head.rfind(|c| c == '.' || c == '!' || c == '?').filter(|&i| i > max / 3).map(|i| i + 1)
+        let at = head.rfind(['.', '!', '?']).filter(|&i| i > max / 3).map(|i| i + 1)
             .or_else(|| head.rfind(' ')).unwrap_or(head.len());
         line = head[..at].trim_end_matches(|c: char| c == ',' || c == ';' || c.is_whitespace()).to_string();
     }
@@ -51,7 +51,7 @@ pub fn caption_pages(line: &str) -> Vec<String> {
     let mut rest = line.trim().to_string();
     while rest.chars().count() > CAPTION_CHARS {
         let head: String = rest.chars().take(CAPTION_CHARS).collect();
-        let at = head.rfind(|c| c == '.' || c == '!' || c == '?').filter(|&i| i >= CAPTION_CHARS / 3).map(|i| i + 1)
+        let at = head.rfind(['.', '!', '?']).filter(|&i| i >= CAPTION_CHARS / 3).map(|i| i + 1)
             .or_else(|| head.rfind(' ')).filter(|&i| i > 0).unwrap_or(head.len());
         out.push(head[..at].trim().to_string());
         rest = rest[at..].trim().to_string();

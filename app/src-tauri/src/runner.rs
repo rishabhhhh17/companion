@@ -45,7 +45,7 @@ pub fn check_command(v: &Value) -> Result<(), String> {
     if o.get("v").and_then(Value::as_i64) != Some(PROTOCOL_VERSION) {
         return Err("unsupported protocol version".into());
     }
-    if o.get("id").and_then(Value::as_str).map_or(true, str::is_empty) {
+    if o.get("id").and_then(Value::as_str).is_none_or(str::is_empty) {
         return Err("a command needs an id".into());
     }
     let t = o.get("type").and_then(Value::as_str).ok_or("a command needs a type")?;
@@ -852,7 +852,7 @@ mod tests {
         let mut stages = Vec::new();
         for l in events.lines().filter(|l| l.contains("\"type\":\"ship.signIn\"")) {
             let e: Value = serde_json::from_str(l).unwrap();
-            assert!(e["project"].as_str().map_or(false, |p| !p.is_empty()), "{l}");
+            assert!(e["project"].as_str().is_some_and(|p| !p.is_empty()), "{l}");
             assert!(e.get("detail").is_none(), "{l}");
             if let Some(u) = e["url"].as_str() { assert!(u.starts_with("https://vercel.com/"), "{l}"); }
             stages.push(e["stage"].as_str().unwrap_or("").to_string());
@@ -956,7 +956,7 @@ mod tests {
         let mut steps = Vec::new();
         for l in events.lines().filter(|l| l.contains("\"type\":\"practice.key\"")) {
             let e: Value = serde_json::from_str(l).unwrap();
-            assert!(e["project"].as_str().map_or(false, |p| !p.is_empty()), "{l}");
+            assert!(e["project"].as_str().is_some_and(|p| !p.is_empty()), "{l}");
             assert!(!l.contains("sk_practice_"), "{l}");
             steps.push(e["step"].as_str().unwrap_or("").to_string());
         }
@@ -994,11 +994,11 @@ mod tests {
             let t = v["type"].as_str().unwrap_or("");
             if !t.starts_with("review.") { continue; }
             assert_eq!(v["v"].as_i64(), Some(PROTOCOL_VERSION), "{line}");
-            assert!(v["project"].as_str().map_or(false, |p| !p.is_empty()), "{line}");
+            assert!(v["project"].as_str().is_some_and(|p| !p.is_empty()), "{line}");
             assert!(v.get("detail").is_none(), "{line}");
             if t == "review.result" && v["ok"] == json!(true) {
                 assert!(["safe", "worth_a_look", "stop"].contains(&v["rating"].as_str().unwrap_or("")), "{line}");
-                assert!(v["sendBack"].as_str().map_or(false, |s| !s.is_empty()), "{line}");
+                assert!(v["sendBack"].as_str().is_some_and(|s| !s.is_empty()), "{line}");
             }
             kinds.push(t.to_string());
         }
@@ -1586,6 +1586,6 @@ mod tests {
         }
         assert_eq!(seen, 4);
         let events = include_str!("../../../protocol/fixtures/events.jsonl");
-        assert_eq!(events.lines().filter(|l| l.contains("\"id\":\"em58a")).map(|l| serde_json::from_str::<Value>(l).expect("JSON")).count(), 4);
+        assert_eq!(events.lines().filter(|l| l.contains("\"id\":\"em58a")).map(|l| serde_json::from_str::<Value>(l).expect("JSON")).collect::<Vec<_>>().len(), 4);
     }
 }

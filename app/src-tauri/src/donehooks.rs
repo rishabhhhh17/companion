@@ -256,7 +256,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&after).unwrap();
         assert_eq!(v["hooks"]["PreToolUse"].as_array().unwrap().len(), 1);
         // Another data folder's guard hook stays.
-        let other = format!("{{ \"matcher\": \"Bash\", \"hooks\": [ {{ \"type\": \"command\", \"command\": \"d='/tmp/elsewhere/guard'; exit 0\" }} ] }}");
+        let other = "{ \"matcher\": \"Bash\", \"hooks\": [ { \"type\": \"command\", \"command\": \"d='/tmp/elsewhere/guard'; exit 0\" } ] }".to_string();
         fwrite(t.project.join(".claude/settings.local.json"), format!("{{ \"hooks\": {{ \"PreToolUse\": [ {other} ] }} }}")).unwrap();
         assert!(remove(&t.project, &t.data).is_empty());
     }

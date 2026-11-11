@@ -240,7 +240,7 @@ impl Transport for Curl {
 /// SSL_CERT_FILE, CURL_HOME and the proxy variables, set for the person's session by another program, never see the key.
 pub fn post_json_with(program: &str, url: &str, body: &str) -> Option<(u16, String)> {
     use std::io::Write;
-    if https_host(url).is_none() { return None; }
+    https_host(url)?;
     let mut child = std::process::Command::new(program).args(curl_args(url)).env_clear().env("PATH", "/usr/bin:/bin")
         .stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn().ok()?;
     child.stdin.take()?.write_all(body.as_bytes()).ok()?;
@@ -896,7 +896,7 @@ pub mod tests {
     fn regular_checks_come_every_12_hours_with_up_to_half_an_hour_either_way() {
         for r in [0u32, 1, 1800, 3600, u32::MAX, 123_456] {
             let n = next_check_at(T0, r);
-            assert!(n >= T0 + CHECK_EVERY - JITTER && n <= T0 + CHECK_EVERY + JITTER, "{r}");
+            assert!((T0 + CHECK_EVERY - JITTER..=T0 + CHECK_EVERY + JITTER).contains(&n), "{r}");
         }
         let s = stored(T0);
         assert!(check_due(&s, T0, 0), "the first check after launch");

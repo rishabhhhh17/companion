@@ -212,7 +212,7 @@ mod wiring {
         let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         assert_eq!(conf["bundle"]["macOS"]["minimumSystemVersion"], "14.0", "if this moves to 26 or later, the property may be used");
         let b = body("fn builtin_display(");
-        assert!(b.contains("screen_number(&s)") && b.contains("objc2_core_graphics::CGDisplayIsBuiltin("), "{b}");
+        assert!(b.contains("screen_number(s)") && b.contains("objc2_core_graphics::CGDisplayIsBuiltin("), "{b}");
         let n = body("fn screen_number(");
         assert!(n.contains("s.deviceDescription()") && n.contains("NSString::from_str(\"NSScreenNumber\")") && n.contains("downcast::<NSNumber>()"), "{n}");
     }

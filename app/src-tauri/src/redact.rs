@@ -19,7 +19,7 @@ fn card_number(text: &str) -> bool {
     while i < chars.len() {
         let c = chars[i];
         if let Some(d) = c.to_digit(10) { run.push(d); }
-        else if (c == ' ' || c == '-') && !run.is_empty() && chars.get(i + 1).map_or(false, |n| n.is_ascii_digit()) { /* inside a number */ }
+        else if (c == ' ' || c == '-') && !run.is_empty() && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit()) { /* inside a number */ }
         else if flush(&mut run) { return true; }
         i += 1;
     }

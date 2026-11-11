@@ -269,7 +269,7 @@ describe("the island and Home open with a short motion", () => {
     expect(fnBody("resize_card")).not.toContain("set_frame_moving");
     // Only Settings opening or closing places it again (M66 step 6: the body's width in force); the window keeps its frame.
     expect(fnBody("resize_card").split("place_card").length - 1).toBe(1);
-    expect(fnBody("resize_card")).toContain("if was != open { with_panels(|d, c| place_card(d, c)); }");
+    expect(fnBody("resize_card")).toContain("if was != open { with_panels(place_card); }");
     expect(fnBody("place_card")).toContain("set_frame_moving(c, to_appkit(p.frame, ph), None, None, &CARD_MOVES)");
     // The close: no Rust sleep in step with a CSS time; the page's fold, with a longer backstop only.
     expect(main).not.toContain("HOME_CLOSE_MS");

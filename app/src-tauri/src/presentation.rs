@@ -80,6 +80,7 @@ pub fn to_json(s: &Settings) -> Value { json!({ "hideFromSharing": s.hide_from_s
 
 /// Whether Companion stays quiet right now. `camera_in_use` is asked only when the setting is on and no call app is in
 /// front (so the camera is not even looked at when there is no need).
+#[cfg(test)]
 pub fn quiet(s: &Settings, front_bundle: &str, camera_in_use: impl FnOnce() -> bool) -> bool {
     s.quiet_on_calls && (is_call_app(front_bundle) || camera_in_use())
 }

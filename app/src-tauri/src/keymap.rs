@@ -381,6 +381,7 @@ fn try_keys(p: Option<Chord>, d: Option<Chord>, mut register: impl FnMut(Chord) 
 
 /// At launch, for each job: the keys picked, else the usual ones. Keys that work stay registered, except use a
 /// suggestion's, which are let go again at once (`keep_registered`): they are taken only while a result shows.
+#[cfg(test)]
 pub fn start(picked: &Map, register: impl FnMut(Action, Chord) -> bool, unregister: impl FnMut(Chord)) -> [Started; N] {
     start_held(picked, &[false; N], register, unregister)
 }

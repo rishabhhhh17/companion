@@ -78,7 +78,7 @@ pub fn snap(a: &Ask) -> Snapped {
         if d > FUZZY_REACH { continue; }
         let sim = similarity(&b.text, a.target_text);
         if sim < FUZZY_MIN { continue; }
-        if best.map_or(true, |(_, s, bd)| sim > s || (sim == s && d < bd)) { best = Some((b, sim, d)); }
+        if best.is_none_or(|(_, s, bd)| sim > s || (sim == s && d < bd)) { best = Some((b, sim, d)); }
     }
     if let Some((b, _, _)) = best { return Snapped { rect: b.rect, how: How::FuzzyText, exact: confirmed(a, &b.rect) }; }
     // Nothing real to hold on to: a wide ring, kept inside the display.

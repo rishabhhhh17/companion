@@ -187,7 +187,7 @@ impl Platform for MacPlatform {
     fn element_at(&self, p: Pt) -> Option<R> { crate::ax::clickable_at(p.x, p.y).map(|(x, y, w, h)| R { x, y, w, h }) }
     fn send_image(&self, screen: usize, jpeg: &[u8], w: u32, h: u32) { (self.send_image)(screen, jpeg, w, h) }
     fn ask(&self, question: &str, pics: &[Pic], c: &[Cand]) { (self.ask)(question, pics, c) }
-    fn still_wanted(&self) -> bool { self.wanted.as_ref().map_or(true, |w| w()) }
+    fn still_wanted(&self) -> bool { self.wanted.as_ref().is_none_or(|w| w()) }
     /// Waits for the page to stop changing (showme::wait_to_settle), only when the page asked for it (`settling`).
     fn settle(&self) -> crate::showme::Settle {
         if !self.settles { return crate::showme::Settle::NotAsked; }

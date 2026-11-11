@@ -171,7 +171,7 @@ static FS_LAST_RAW: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static PANELS: RefCell<Option<(Retained<NSPanel>, Retained<NSPanel>)>> = const { RefCell::new(None) };
-    static LAST: RefCell<(bool, String, bool)> = RefCell::new((false, String::new(), false));
+    static LAST: RefCell<(bool, String, bool)> = const { RefCell::new((false, String::new(), false)) };
     static LAST_STATE: RefCell<String> = const { RefCell::new(String::new()) };
     /// M55, adapts to you: the kind of app in front Home was told last (everyday.rs home_front), so it is told only a change.
     static FRONT_KIND_SENT: RefCell<String> = const { RefCell::new(String::new()) };
@@ -685,7 +685,7 @@ fn displays_now(mtm: MainThreadMarker) -> Vec<island::Display> {
 fn builtin_display(mtm: MainThreadMarker) -> Option<String> {
     let list = NSScreen::screens(mtm);
     let primary_h = list.iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
-    list.iter().find(|s| screen_number(&s).is_some_and(|id| objc2_core_graphics::CGDisplayIsBuiltin(id))).map(|s| { let f = from_appkit(s.frame(), primary_h); format!("{}x{}@{},{}", f[2], f[3], f[0], f[1]) })
+    list.iter().find(|s| screen_number(s).is_some_and(|id| objc2_core_graphics::CGDisplayIsBuiltin(id))).map(|s| { let f = from_appkit(s.frame(), primary_h); format!("{}x{}@{},{}", f[2], f[3], f[0], f[1]) })
 }
 
 /// A screen's display id, from its device description (NSScreenNumber), which every macOS Companion runs on has. Never
@@ -860,7 +860,7 @@ fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool
         if changed {
             if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); }
             // M66 step 5: Home grows from (and folds back into) the wings the island shows; its page hears when they change.
-            with_panels(|d, c| place_card(d, c));
+            with_panels(place_card);
         }
     });
 }
@@ -1591,7 +1591,7 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
             let size = key == "home.size" || key == "look.layout";
             let _ = app.run_on_main_thread(move || {
                 let Some(mtm) = MainThreadMarker::new() else { return };
-                let hs = home_set();
+                let _hs = home_set();
                 let now = home_size();
                 CARD_H.store((CARD_H.load(Ordering::SeqCst) as f64).clamp(now.min_h, now.max_h) as u64, Ordering::SeqCst);
                 reset_hover();
@@ -1600,7 +1600,7 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
                 island_show(!USER_HID.load(Ordering::SeqCst) && !HIDDEN_BY_US.load(Ordering::SeqCst));
                 // Home's size: the character's own place keeps clear of Home at the new size (docking.rs dock_zone).
                 if size { apply_dock(mtm, "setting", true); }
-                with_panels(|d, c| place_card(d, c));
+                with_panels(place_card);
             });
         }
         // The status on pointing: what shows now is put back, and the next pointing uses the new waits.
@@ -2353,7 +2353,7 @@ fn resize_card(app: AppHandle, height: f64, settings: Option<bool>) {
     // character's room follow the new height.
     let _ = app.run_on_main_thread(move || {
         // M66 step 6: Settings opened or closed: placed again for the body's width in force (the window keeps its frame).
-        if was != open { with_panels(|d, c| place_card(d, c)); }
+        if was != open { with_panels(place_card); }
         home_rects_now();
         if card_visible() { if let Some(mtm) = MainThreadMarker::new() { if let Some((room, _)) = with_panels(|d, _| card_spot(mtm, d, home_size().max_h)).flatten() { roam_card_moved(mtm, room); } } }
     });
@@ -2375,7 +2375,7 @@ fn list_projects() -> Vec<String> { projects::load(&projects_path()).checked(&ho
 #[tauri::command]
 fn use_project(app: AppHandle, path: String) -> Result<String, String> {
     // From a web page, only a folder that is already on the person's list of projects (new ones come from the folder chooser or a link).
-    if !projects::load(&projects_path()).recent.iter().any(|r| *r == path) { return Err("Pick a folder from your list, or choose a new one with the folder button.".into()); }
+    if !projects::load(&projects_path()).recent.contains(&path) { return Err("Pick a folder from your list, or choose a new one with the folder button.".into()); }
     use_project_inner(app, path)
 }
 fn use_project_inner(app: AppHandle, path: String) -> Result<String, String> {
@@ -3376,7 +3376,7 @@ fn speak_stop(app: AppHandle) { speech_off(&app); }
 fn speech_word(part: Option<f64>) {
     if let Some(app) = APP.get() { let _ = app.emit_to("overlay", "speech-word", json!({ "part": part })); }
 }
-fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(|| speak::mac::silence()); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
+fn speech_off(app: &AppHandle) { let _ = app.run_on_main_thread(speak::mac::silence); let _ = app.emit_to("overlay", "overlay-caption-end", ()); }
 
 /// Opens the licence notices that ship inside the app, in the person's default text app. Fixed file, no input.
 #[tauri::command]
@@ -3883,7 +3883,7 @@ fn plan_open_portal(window: tauri::WebviewWindow) -> Result<(), String> {
 fn report_inputs() -> (bool, bool) {
     if !license::billing().payments_on() { return (true, true); }
     let plan = { let _one = pro_lock(); plan_now().1 };
-    let includes = plan.map_or(true, |d| d.plan != license::Plan::Free && reportkey::PRO_INCLUDES_REPORT);
+    let includes = plan.is_none_or(|d| d.plan != license::Plan::Free && reportkey::PRO_INCLUDES_REPORT);
     let covered = reportkey::covered(&license::Keychain::new(), &current_project()).unwrap_or(true);
     (includes, covered)
 }
@@ -4245,7 +4245,7 @@ fn point_problem(app: AppHandle, project: String, problem: Value) {
         for attempt in 0..2 {
             if attempt > 0 { std::thread::sleep(Duration::from_millis(800)); }
             if !alive() { return; }
-            match showme::look_for(&plat, &find) {
+            match showme::look_for(&plat, find) {
                 Ok((d, hit)) => { display = Some(d); found = hit; if found.is_some() { break; } }
                 Err(showme::Refusal::SecureInput) => { say_showme(&app, "error", format!("{said} A password box is active, so I did not look at your screen.").trim(), json!({})); return; }
                 Err(showme::Refusal::CaptureFailed(e)) | Err(showme::Refusal::PictureFailed(e)) => { log("failure_detail", json!({ "what": "capture", "detail": e.to_string() })); say_showme(&app, "error", format!("{said} I could not look at your screen just now. Try again in a moment.").trim(), json!({})); return; }
@@ -4983,7 +4983,7 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
             Ok(VoiceMsg::Quit(ack)) => {
                 if let Some(r) = rec.take() { let _ = r.finish(); }
                 listening(false);
-                speech = None;
+                drop(speech.take());
                 *preload.lock().unwrap_or_else(|e| e.into_inner()) = None;
                 let _ = ack.send(std::sync::Arc::strong_count(&preload) == 1);
                 break;
@@ -5085,11 +5085,11 @@ fn tick(app: &AppHandle) {
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.
     let sig = signature(&screens_now(mtm));
     // The island and Home go back on their display too, and Home is placed again if it is open.
-    if { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } } {
+    let res = { let mut g = SIG.lock().unwrap(); if *g != sig { *g = sig; true } else { false } }; if res {
         apply_dock(mtm, "screens_changed", false);
         place_island(mtm, false, "screens_changed");
         // M66: Home's window goes with it, and a Home that was open closes without motion (its display changed under it).
-        with_panels(|d, c| place_card(d, c));
+        with_panels(place_card);
         if card_visible() { home_stop_now("screens_changed"); }
     }
     // With more than one display, the island moves to the one the person has been using for a few seconds.
@@ -5400,7 +5400,10 @@ fn main() {
                         if e.state == ShortcutState::Pressed {
                             let (result, screen) = { let h = ESC.lock().unwrap_or_else(|e| e.into_inner()); (h.has(esc::RESULT), h.has(esc::SCREEN)) };
                             let a = app.clone();
-                            std::thread::spawn(move || { if result { arm_result_keys(&a, false); phelp::dismiss(&a); } if screen { esc_take_back(&a); } });
+                            std::thread::spawn(move || {
+                                if result { arm_result_keys(&a, false); phelp::dismiss(&a); }
+                                if screen { esc_take_back(&a); }
+                            });
                         }
                         return;
                     }
@@ -5451,7 +5454,7 @@ fn main() {
                             let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
                             peek_heard(app, &stop);
                             let _ = app.emit("runner-event", stop);
-                            showme_stop(&app);
+                            showme_stop(app);
                             // M66 (rule 11): Home closes at once too, no fold.
                             let _ = app.run_on_main_thread(|| home_stop_now("stop_everything"));
                         }
@@ -5666,7 +5669,7 @@ fn main() {
                         let stop = json!({ "v": 1, "id": "app-kill", "type": "app.stop_everything" });
                         peek_heard(app, &stop);
                         let _ = app.emit("runner-event", stop);
-                        showme_stop(&app);
+                        showme_stop(app);
                         let _ = app.run_on_main_thread(|| home_stop_now("stop_everything"));
                     }
                     "quit" => { quit::mark(quit::MENU); app.exit(0) }

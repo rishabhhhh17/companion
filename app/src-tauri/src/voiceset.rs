@@ -542,7 +542,7 @@ mod tests {
         assert_eq!(open_at_start(Some(&named("coreaudio:usb", "Blue Yeti", "")), &list, None, &[], |i| { opened.set(opened.get() + 1); Some(i) }, || true), (Reopen::Stopped, None));
         assert_eq!(opened.get(), 0);
         // No microphone listed: nothing to open here (the recorder then asks the Mac for its default itself).
-        assert_eq!(open_at_start(None, &[], None, &[], |i| Some(i), || false).0, Reopen::NoneOpened);
+        assert_eq!(open_at_start(None, &[], None, &[], Some, || false).0, Reopen::NoneOpened);
     }
     #[test]
     fn a_stop_is_seen_whether_it_was_sent_or_the_recorder_went_away_and_is_not_seen_otherwise() {

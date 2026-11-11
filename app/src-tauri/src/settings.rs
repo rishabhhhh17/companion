@@ -540,7 +540,7 @@ pub fn reset_targets<'a>(r: &'a Registry, which: Which) -> Result<Vec<&'a Def>, 
 /// the registry's for every other setting, as on the page (settingsStore.ts usualOf).
 pub fn reset_plan(r: &Registry, which: Which, values: &Map<String, Value>, usual: &Map<String, Value>, engine: &[String]) -> Result<Vec<String>, &'static str> {
     Ok(reset_targets(r, which)?.into_iter().filter(|d| {
-        if d.runner_store() { return engine.iter().any(|k| *k == d.key); }
+        if d.runner_store() { return engine.contains(&d.key); }
         let u = if d.kind == Kind::Custom { usual.get(&d.key).unwrap_or(&d.default) } else { &d.default };
         values.get(&d.key).is_some_and(|v| !same(v, u))
     }).map(|d| d.key.clone()).collect())

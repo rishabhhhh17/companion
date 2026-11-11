@@ -132,7 +132,7 @@ pub fn next(shown: bool, busy_left_ms: Option<u64>, ring_otherwise_wanted: bool)
 pub const RESHOW_MS: u64 = 1_500;
 pub const RESHOW_EVERY: u64 = 12;
 pub fn reshow(shown: bool, tick: u64, since_load_ms: Option<u64>) -> bool {
-    shown && tick % RESHOW_EVERY == 0 && since_load_ms.is_some_and(|ms| ms <= RESHOW_MS)
+    shown && tick.is_multiple_of(RESHOW_EVERY) && since_load_ms.is_some_and(|ms| ms <= RESHOW_MS)
 }
 
 /// M46: after a Your turn click, the drop flies back to the character and confetti may play only in Lively with Little

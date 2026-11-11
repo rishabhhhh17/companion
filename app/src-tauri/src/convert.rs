@@ -330,6 +330,7 @@ pub fn offer(paths: &[PathBuf], caps: &Caps, prefs: &Prefs) -> Offer {
 }
 
 /// Whether `sips --formats` lists this extension as one it can write.
+#[cfg(test)]
 pub fn writable(formats: &str, ext: &str) -> bool {
     formats.lines().any(|l| { let t: Vec<&str> = l.split_whitespace().collect(); t.len() >= 3 && t[1] == ext && t[2] == "Writable" })
 }
@@ -1439,7 +1440,7 @@ fn one_unit(u: &Unit, i: usize, of: usize, dest: &dyn Fn(&Unit) -> Option<PathBu
     // for a link, since the drop. The tools read the copy taken here.
     for input in &u.inputs {
         if let Some(d) = input.copy.parent() { if std::fs::DirBuilder::new().recursive(true).mode(0o700).create(d).is_err() { return Flow::End(Failure::Failed("noWork")); } }
-        let real_max = input.real.then(|| if u.unzip { UNZIP_LIMITS.bytes } else { FOLDER_LIMITS.bytes });
+        let real_max = input.real.then_some(if u.unzip { UNZIP_LIMITS.bytes } else { FOLDER_LIMITS.bytes });
         match take_input(&input.from, &input.copy, real_max, job) {
             Ok(()) => {}
             Err("stopped") => return Flow::End(Failure::Stopped),

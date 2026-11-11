@@ -40,7 +40,7 @@ fn replace_boundary(text: &str, needle: &str, repl: &str) -> String {
     while i + nb.len() <= tb.len() {
         if text.is_char_boundary(i) && tb[i..i + nb.len()].eq_ignore_ascii_case(nb) && text.is_char_boundary(i + nb.len()) {
             let next = text[i + nb.len()..].chars().next();
-            if next.map_or(true, |c| !(c.is_alphanumeric() || c == '_' || c == '-' || c == '.')) || needle.ends_with('/') {
+            if next.is_none_or(|c| !(c.is_alphanumeric() || c == '_' || c == '-' || c == '.')) || needle.ends_with('/') {
                 out.push_str(&text[last..i]); out.push_str(repl); i += nb.len(); last = i; continue;
             }
         }
@@ -211,7 +211,7 @@ pub fn latest_crash(dir: &Path, now: std::time::SystemTime) -> Option<(String, S
         let Ok(t) = m.modified() else { continue };
         if t > now + std::time::Duration::from_secs(86_400) { continue; }
         if now.duration_since(t).map(|d| d.as_secs() > CRASH_DAYS * 86_400).unwrap_or(false) { continue; }
-        if best.as_ref().map_or(true, |(bt, _)| t > *bt) { best = Some((t, e.path())); }
+        if best.as_ref().is_none_or(|(bt, _)| t > *bt) { best = Some((t, e.path())); }
     }
     let (_, p) = best?;
     let mut buf = Vec::new();
@@ -303,7 +303,7 @@ mod tests {
     }
     #[test]
     fn a_crash_report_loses_the_list_of_other_software_and_ends_on_a_whole_line() {
-        let t = format!("Exception: SIGSEGV\nThread 0 crashed\n  0 main\nBinary Images:\n  0x1 com.1password.app\n");
+        let t = "Exception: SIGSEGV\nThread 0 crashed\n  0 main\nBinary Images:\n  0x1 com.1password.app\n".to_string();
         assert_eq!(crash_part(&t), "Exception: SIGSEGV\nThread 0 crashed\n  0 main\n");
         let ips = concat!("{\"app_name\":\"", crate::product!(), "\"}\n{\"exception\":\"x\",\"usedImages\":[{\"path\":\"/Applications/Zoom.app\"}]}");
         assert!(!crash_part(ips).contains("Zoom"));
@@ -393,7 +393,7 @@ mod tests {
         let activity = [data.join("events.jsonl.1"), data.join("events.jsonl")].iter().filter_map(|p| fs::read_to_string(p).ok()).collect::<Vec<_>>().join("\n");
         let crash = latest_crash(&Path::new(&home).join("Library/Logs/DiagnosticReports"), SystemTime::now());
         let f = Facts { version: "v".into(), macos: "m".into(), arch: "a".into(), permissions: vec![], key_saved: false, speech_ready: false, browser_installed: false, kept: vec![] };
-        let out = compose(&f, &activity, crash.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &home, &[user.clone()], &[format!("{home}/Developer/companion"), format!("{home}/Developer/companion-playground")]);
+        let out = compose(&f, &activity, crash.as_ref().map(|(n, t)| (n.as_str(), t.as_str())), &home, std::slice::from_ref(&user), &[format!("{home}/Developer/companion"), format!("{home}/Developer/companion-playground")]);
         eprintln!("activity bytes {}, kept lines {}, crash report {}, output bytes {}", activity.len(), safe_activity(&activity).lines().count(), crash.as_ref().map(|c| c.0.as_str()).unwrap_or("none"), out.len());
         assert!(!out.contains(&home) && !out.contains(&format!("/Users/{user}")), "the home folder survived");
         assert!(!out.contains("sk-ant-") && !out.contains("companion-playground") && !out.to_lowercase().contains(&user.to_lowercase()));
