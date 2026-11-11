@@ -2,6 +2,8 @@
 // person ends as "needs you": no automatic fix round buries the question (or spends more of the person's money), and the
 // agent's last words reach the card on the receipt (`said`, secrets hidden and clipped), with `asks` set.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -222,7 +224,7 @@ describe("a task that ends on a question needs you", () => {
     writeFileSync(join(project, "a.txt"), "x");
     const events: Event[] = [];
     const engine = { executesTools: false, async *start(): AsyncGenerator<any, void, any> { yield { text: "Which file should I change?", costUsd: 0 }; throw new Error("the engine crashed"); } };
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e) });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e) });
     await runner.handle({ v: 1, id: "c1", type: "agent.start", project, agent: "b1", mode: "drive", prompt: "x", model: "m", budgetUsd: 1 });
     const rec = of(events, "receipt")[0];
     expect(rec.said).toBe("Which file should I change?");

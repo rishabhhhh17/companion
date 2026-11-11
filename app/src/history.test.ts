@@ -106,18 +106,8 @@ describe("Undo in What I did", () => {
     expect(historyUndo([], row(1, "done", 1), null)).toBeNull();
     expect(historyUndo([row(1, "done", 1)], row(1, "done", 1), null)).toBe("undo");
   });
-  test("the page draws the button and the question on the item, and keeps the receipt's own button", () => {
-    const card = readFileSync(new URL("./card.tsx", import.meta.url), "utf8");
-    const panel = card.slice(card.indexOf("function HistoryPanel("), card.indexOf("function MemoryList("));
-    expect(panel).toContain("historyUndo(items, h,");
-    expect(panel).toContain("S.historyUndo");
-    expect(panel).toContain('type: "ui.undoAsked", checkpoint: h.checkpoint');
-    // Only after a yes, and through the same command as the receipt's Undo (the engine refuses it while a task works).
-    expect(panel).toContain("S.undoSure"); expect(panel).toContain("send(undo(project, h.checkpoint!))");
-    // The receipt's own Undo lives in the result card (F28, the overhaul spec 4.2): same id, same question, same checkpoint.
-    expect(card).toContain("<Button id={undoId} onClick={() => { if (m.receipt) dispatch({ type: \"ui.undoAsked\", checkpoint: m.receipt.checkpoint }); }}>");
-    expect(card).toContain('dispatch({ type: "ui.undoAsked", checkpoint: m.receipt.checkpoint })');
-  });
+  // The page drawing the button and asking first (History's row and the receipt's own Undo, each restoring its own save)
+  // is clicked through since M59: app/dom/history.test.tsx and app/dom/home.test.tsx.
   test("its words are in the strings file and say why only the newest task has it", () => {
     expect(S.historyUndoWhy).toContain("newest");
     expect(S.historyUndoWhy).not.toContain("—");

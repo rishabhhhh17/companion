@@ -12,55 +12,25 @@ use tauri::{AppHandle, Emitter};
 
 pub const PROTOCOL_VERSION: i64 = 1;
 
+/// Must fix 30 (M59): the one command list, protocol/commands.json, read into the app at build time. Each row says whether a
+/// page may send the command (page) and whether it may name only the folder the person chose (project). The runner and the
+/// pages read the same file (protocol/commands.ts); protocol/commands.test.ts and the tests below check they agree.
+///
+/// Why some commands have no page flag: assist.prompt, assist.locate, assist.image and assist.cancel are sent only by the
+/// shell (Prompt help after its hotkey, Show me after its light): from a page, assist.prompt could name any folder and
+/// assist.image could hand in any picture outside a Show me press (rule 5). memory.pause, explain.set, spending.set and
+/// metrics.set are settings (settings.rs, T16): the page asks the shell (settings_set), the shell checks the value and sends
+/// the engine's own command itself; settings.apply and plan.state are the shell's own lines. error.explain and
+/// secondlook.check are sent only by their hotkey flows (errhelp.rs, seclook.rs). practice.key is let through only for that
+/// practice's own recorded copy (main.rs send_command).
+const COMMAND_TABLE: &str = include_str!("../../../protocol/commands.json");
+static TABLE: std::sync::LazyLock<Value> = std::sync::LazyLock::new(|| serde_json::from_str(COMMAND_TABLE).expect("protocol/commands.json is valid JSON"));
+fn commands_where(flag: &str) -> Vec<&'static str> {
+    let table: &'static Value = &TABLE;
+    table["commands"].as_object().map(|rows| rows.iter().filter(|(_, r)| r.get(flag) == Some(&Value::Bool(true))).map(|(k, _)| k.as_str()).collect()).unwrap_or_default()
+}
 /// The commands a web page may send. Everything else is refused here, in Rust.
-const ALLOWED: &[&str] = &[
-    "agent.start", "agent.send", "agent.interrupt", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "checkpoint.putBack",
-    // Not here: assist.prompt, assist.locate, assist.image and assist.cancel. Only the shell sends them (Prompt help after its
-    // hotkey, Show me after its light), straight to the engine: from a page, assist.prompt could name any folder and
-    // assist.image could hand in any picture outside a Show me press (rule 5).
-    "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check",
-    // Not here: memory.pause, explain.set, spending.set and metrics.set. Those are settings (settings.rs, T16): the page asks
-    // the shell (settings_set), the shell checks the value and sends the engine's own command itself. settings.apply is
-    // the shell's own line too.
-    "memory.list", "memory.forget", "memory.edit", "memory.erase", "memory.export", "memory.agents", "recap.ask", "ship.preview", "ship.live", "ship.rollback", "auth.check", "doctor.check", "memory.add", "problem.find", "project.inspect", "project.install", "diagram.ask",
-    "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop",
-    "metrics.note", "metrics.show", "metrics.erase",
-    // The browser check's one time download, on the person's press, and asking whether it is set up. They name no folder
-    // or address (the engine always downloads Playwright's own browser into Companion's own folder), so not project bound.
-    "browser.check", "browser.install",
-    "spending.show",
-    // Which task broke it: checks earlier saved versions in a private copy, then undoes just that task on a yes. Both name the
-    // project, so both are project bound. error.explain and secondlook.check are not here: only their hotkey flows (errhelp.rs,
-    // seclook.rs) send them.
-    "bisect.start", "bisect.undo",
-    // Your turn: after a fix, the person asks to make the second of two identical changes themselves, then to check it.
-    "teach.try", "teach.check",
-    // Watch routines and Where was I (F21). All name the project, so all are project bound. The engine reads only the person's
-    // own tools and the address they typed, and only while Companion is open. watch.fix asks for the evidence; the page then
-    // starts an ordinary task, on the person's press.
-    "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
-    // The zero cost warm up when Home opens or the ask box gets the keyboard (runner/src/warm.ts). Names nothing.
-    "engine.warm",
-    // M52 (F30): the review of a change another AI tool made: review it now (optionally with its checks), close its card,
-    // or Fix it (an ordinary task with its safety copy). All name the project, so all are project bound.
-    "review.now", "review.dismiss", "review.fix",
-    // M58: star or name a save point (the shadow store's own notes, never the project, never git). Names the project.
-    "checkpoint.mark",
-    // M58 (UI 13): Sign in to Vercel, on the person's press: their own `vercel login` as a visible step. Names the project.
-    "ship.signIn",
-    // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press. Names the project, and the
-    // shell lets it through only for that practice's own recorded copy (main.rs send_command).
-    "practice.key",
-    // M75: the other tool's done signal (show, add only with the yes the card asked for, remove), named by project; the cost
-    // pause's answer and the sign in handover's answer, named by agent.
-    "donesignal.show", "donesignal.add", "donesignal.remove", "cost.choose", "proof.signIn",
-    // M78: put back a notes export the person chose, after their yes on the page (the runner refuses it without
-    // "confirm": true). Names the project, so it is project bound.
-    "memory.restore",
-    // M79: the weekly summary, on the person's press (the "This week" row in History). It only reads the engine's own
-    // rows and notes. Names the project, so it is project bound.
-    "week.show",
-];
+pub static ALLOWED: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| commands_where("page"));
 
 /// Ends the engine and everything it started in its group (Claude Code and its helpers), not just the engine itself.
 fn kill_group(c: &mut Child) {
@@ -89,23 +59,9 @@ pub fn check_command(v: &Value) -> Result<(), String> {
 /// The stand in project for lessons that need none (see runner/src/walk.ts).
 pub const NO_PROJECT: &str = "no-project";
 /// Every command that works on a project folder may name only the folder the person chose (a page could otherwise ask the
-/// engine to work on any folder on the Mac). Not here: commands that name no project, and the stand in for lessons that need none.
-pub const PROJECT_BOUND: &[&str] = &[
-    "project.inspect", "project.install", "problem.find", "diagram.ask", "walk.list", "walk.start",
-    "agent.start", "agent.send", "drive.plan", "rescue.diagnose", "research.ask", "ship.check", "ship.preview", "ship.live", "ship.rollback",
-    "checkpoint.restore", "checkpoint.putBack", "tasks.list", "recap.ask", "explain.set",
-    "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.add",
-    "spending.show", "spending.set", "teach.try", "teach.check",
-    "bisect.start", "bisect.undo",
-    "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "watch.fix", "where.was.i",
-    "review.now", "review.dismiss", "review.fix",
-    "checkpoint.mark",
-    "ship.signIn",
-    "practice.key",
-    "donesignal.show", "donesignal.add", "donesignal.remove",
-    "memory.restore",
-    "week.show",
-];
+/// engine to work on any folder on the Mac): the rows with project in protocol/commands.json. Not there: commands that name
+/// no project, and the stand in for lessons that need none.
+pub static PROJECT_BOUND: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| commands_where("project"));
 pub fn check_project(v: &Value, current: &str) -> Result<(), String> {
     let t = v.get("type").and_then(Value::as_str).unwrap_or("");
     if !PROJECT_BOUND.contains(&t) { return Ok(()); }
@@ -733,6 +689,29 @@ mod tests {
     }
 
 
+    /// Must fix 30 (M59): the shell's lists are the rows of protocol/commands.json, the same file the runner and the pages
+    /// read; every page command that names a project in the shared fixtures is project bound.
+    #[test]
+    fn the_shells_lists_come_from_the_one_command_list() {
+        let rows = TABLE["commands"].as_object().expect("a commands object");
+        assert!(rows.len() >= 80, "{}", rows.len());
+        assert!(ALLOWED.len() >= 60 && PROJECT_BOUND.len() >= 45);
+        for t in ALLOWED.iter().chain(PROJECT_BOUND.iter()) { assert!(rows.contains_key(*t), "{t}"); }
+        for (t, r) in rows {
+            let gate = r.get("gate").and_then(Value::as_str).unwrap_or("");
+            assert!(["fix", "pro", "never"].contains(&gate), "{t} has gate {gate:?}");
+            assert_eq!(ALLOWED.contains(&t.as_str()), r.get("page") == Some(&Value::Bool(true)), "{t}");
+        }
+        for l in include_str!("../../../protocol/fixtures/commands.jsonl").lines().filter(|l| !l.trim().is_empty()) {
+            let v: Value = serde_json::from_str(l).unwrap();
+            let t = v["type"].as_str().unwrap_or("");
+            if ALLOWED.contains(&t) && v.get("project").is_some() { assert!(PROJECT_BOUND.contains(&t), "{t} names a project from a page, so it must be project bound"); }
+        }
+        // What only the shell sends stays off the page list, whatever the table says next.
+        for t in ["plan.state", "settings.apply", "assist.prompt", "assist.image", "assist.locate", "assist.cancel", "error.explain", "secondlook.check", "memory.pause", "spending.set", "metrics.set", "explain.set"] {
+            assert!(!ALLOWED.contains(&t), "{t}");
+        }
+    }
     #[test]
     fn allows_the_commands_pages_need() {
         for t in ["agent.start", "agent.interruptAll", "approval.resolve", "checkpoint.restore", "tasks.list", "drive.plan", "drive.approve", "loop.choose", "drive.pause", "drive.resume", "rescue.diagnose", "research.ask", "ship.check", "spending.show", "memory.list", "metrics.show"] {

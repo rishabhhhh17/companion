@@ -18,21 +18,13 @@ describe("item 1: Back keeps a found problem", () => {
     expect(backPress("project", { fold: false, more: false, found: false })).toEqual({ to: "hello" });
     expect(backPress("hello", { fold: false, more: false, found: false })).toBeNull();
   });
-  test("the page uses it, and a problem found before Back is offered again on the project screen, never checked again", () => {
-    const ui = read("./onboarding.tsx");
-    expect(ui).toContain("backPress(step, { fold: open !== null, more, found })");
-    expect(ui).toContain("S.fr.seeProblem");
-    expect(typeof S.fr.seeProblem).toBe("string");
-    // The project screen's main button goes back to the finding without a new check while one was found.
-    expect(ui).toContain('found ? main(S.fr.seeProblem, () => go("check"))');
-  });
+  // The page using it (a problem found before Back is offered again, never checked again) is clicked through since M59:
+  // app/dom/firstRun.test.tsx.
 });
 
 describe("item 17: the found screen shows what it already has", () => {
-  test("the failing line is drawn as the pointed code (file, line and the line itself) under the plain reason", () => {
-    const ui = read("./onboarding.tsx");
-    expect(ui).toContain('<FailingLine problem={point.problem as never} pointed />');
-  });
+  // The failing line drawn as the pointed code (file, line and the line itself) is checked on the rendered first run since
+  // M59: app/dom/firstRun.test.tsx.
 });
 
 describe("item 18: no large empty band in the tall first run", () => {

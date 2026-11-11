@@ -3,6 +3,8 @@
 // the person as an approval card about an "unknown tool" (HeyClicky v1.0.53 parity, M11). The real run harness checks
 // system/init against the same lists.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -96,7 +98,7 @@ describe("the runner tells the engine which tools each flow gets", () => {
     const project = tmp("p");
     const got: string[] = [];
     const engine = { executesTools: false, async *start(): AsyncGenerator<any, void, any> { const r: any = yield { tool: { name: "AskUserQuestion", input: { questions: [] } }, costUsd: 0 }; got.push(String(r?.output ?? "")); yield { text: '["Add the prices section"]', costUsd: 0 }; } };
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), emit: () => {} });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), emit: () => {} });
     await runner.handle({ v: 1, id: "c", type: "drive.plan", project, agent: "a1", goal: "add prices", model: "m", budgetUsd: 1 } as never);
     expect(got[0]).toMatch(/final message/);
     expect(got[0]).not.toMatch(/only look/);
@@ -180,7 +182,7 @@ describe("Let tasks search the web (work.webSearch)", () => {
     const settings = new RunnerSettings();
     settings.apply({ v: 1, id: "s", type: "settings.apply", values: { "work.webSearch": false } } as never);
     const events: Event[] = [];
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), settings, emit: (e) => events.push(e) });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: engine as never, log: new TaskLog(":memory:"), settings, emit: (e) => events.push(e) });
     await runner.handle({ v: 1, id: "c", type: "agent.start", project, agent: "a1", mode: "drive", prompt: "look it up", model: "m", budgetUsd: 1 });
     expect(seen[0].tools).not.toContain("WebSearch");
     expect(got[0]).toMatch(/Web search is turned off for tasks/);

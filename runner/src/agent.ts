@@ -112,7 +112,8 @@ const CI_EVIDENCE = "Your latest GitHub run";
 /** The saved receipt picture's file name. Checkpoint numbers repeat from one project to the next, so the project is part of the name. */
 export const receiptPictureName = (project: string, checkpoint: string): string => `${createHash("sha1").update(resolve(project)).digest("hex").slice(0, 8)}-${checkpoint}.jpg`;
 
-export type ToolExecutor = (call: ToolUse, ctx: { project: string }) => Promise<ToolResult>;
+export type { ToolExecutor } from "./engine.ts";
+import type { ToolExecutor } from "./engine.ts";
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
@@ -272,35 +273,20 @@ export function approvalKey(tool: ToolUse, v: Verdict): string {
   return JSON.stringify([tool.name, what, v.risk ?? "", v.reason]);
 }
 
-// The default executor really does the work: file edits through the file system, commands
-// through a shell with the account switching variables removed.
-export const defaultExecutor: ToolExecutor = async (call, { project }) => {
-  const i = call.input;
-  try {
-    if (call.name === "Write") {
-      const f = resolve(project, String(i.file_path));
-      mkdirSync(dirname(f), { recursive: true });
-      writeFileSync(f, String(i.content ?? ""));
-      return { ok: true, output: `wrote ${String(i.file_path)}` };
-    }
-    if (call.name === "Edit") {
-      const f = resolve(project, String(i.file_path));
-      const text = readFileSync(f, "utf8");
-      const from = String(i.old_string ?? "");
-      if (!text.includes(from)) return { ok: false, output: "the text to replace was not found" };
-      writeFileSync(f, text.replace(from, String(i.new_string ?? "")));
-      return { ok: true, output: `edited ${String(i.file_path)}` };
-    }
-    if (call.name === "Bash") {
-      const r = await runCommand(String(i.command), { cwd: project, timeoutMs: 120_000, });
-      const code = r.code;
-      return { ok: code === 0, output: (r.stdout + r.stderr).slice(0, 20_000) };
-    }
-    return { ok: true, output: "" };
-  } catch (e) {
-    return { ok: false, output: String((e as Error).message) };
-  }
-};
+// Must fix 29 (M59): the runner has no tool runner of its own for real work. An engine either runs tools itself (the real
+// Claude Code, executesTools, under its sandbox, hooks and deny rules) or is given one: a test passes its own, and the
+// scripted test engine carries the plain test runner (engine.ts testToolRunner, no sandbox, for fixture folders only).
+// Anything else (an engine of our own loop, F29) cannot be built without a sandboxed executor: the constructor refuses it,
+// and this stand in throws if it is ever reached.
+export const NO_EXECUTOR = "Nothing can run here yet: this way of working has no safe, sandboxed place to run its tools, so nothing was started.";
+export const noExecutor: ToolExecutor = async () => { throw new Error(NO_EXECUTOR); };
+/** The executor a runner uses: the one it was given, else the scripted test engine's own; never a silent fallback. */
+export function executorFor(o: { executor?: ToolExecutor; engine: Engine }): ToolExecutor {
+  if (o.executor) return o.executor;
+  if (o.engine.executesTools === true) return noExecutor;   // the engine runs its own tools: none are run here
+  if (o.engine.testToolRunner) return o.engine.testToolRunner;
+  throw new Error(NO_EXECUTOR);
+}
 
 const summary = (c: ToolUse): string => {
   if (c.name === "Bash") return `Running: ${clip(redact(String(c.input.command)), 200)}`;
@@ -401,7 +387,9 @@ export class AgentRunner {
   private counter = 0;
   private ledger: Ledger;
   private dailyLimitUsd: number;
-  constructor(private o: RunnerOptions) { this.ledger = o.ledger ?? new Ledger(":memory:"); this.dailyLimitUsd = o.dailyCeilingUsd ?? DEFAULT_DAILY_LIMIT_USD; if (o.pictures) sweepWork(o.pictures.workDir); if (o.bisect) sweepBisect(o.bisect.workDir); }
+  /** Must fix 29: the tool runner for an engine that does not run tools itself, settled once (executorFor). */
+  private readonly exec: ToolExecutor;
+  constructor(private o: RunnerOptions) { this.exec = executorFor(o); this.ledger = o.ledger ?? new Ledger(":memory:"); this.dailyLimitUsd = o.dailyCeilingUsd ?? DEFAULT_DAILY_LIMIT_USD; if (o.pictures) sweepWork(o.pictures.workDir); if (o.bisect) sweepBisect(o.bisect.workDir); }
 
   // Companion's own notes are not the person taking the wheel: the watchers treat these writes as the agent's own.
   private ownWrite<T>(fn: () => T): T {
@@ -819,6 +807,24 @@ export class AgentRunner {
    *  find the task that broke it, and the pictures and explanations of a task. Prompt help (split out of Voice): the error
    *  explainer and Second Look; Second Look and Draw it, switched off on their own, only theirs. Research and Ship
    *  have no switch, so a group going off never ends them. What a task already made stays; Undo of it still works. */
+  /** Must fix 28: each of this runner's lists of running work, by its name in the Stop registry (interrupts.ts STOP_PARTS).
+   *  Stop everything calls every one; nothing running here is left out of them. */
+  stopParts(): Record<"tasks" | "drives" | "finds" | "findWaits" | "installs" | "pictures" | "watchRuns" | "costPauses" | "signInWaits", () => void> {
+    return {
+      // M75: a cost pause and a sign in handover end as a stop (the session's abort ends them too; named here so neither
+      // depends on the other).
+      costPauses: () => { for (const end of [...this.costAnswers.values()]) end("stop"); },
+      signInWaits: () => { for (const end of [...this.signInAnswers.values()]) end("stop"); },
+      pictures: () => { for (const p of this.picturing) p.abort(); },
+      installs: () => { for (const a of this.installing.values()) a.abort(); },
+      finds: () => { for (const f of this.finding.values()) f.abort.abort(); },
+      findWaits: () => { for (const w of this.findWaits) w.abort.abort(); },
+      watchRuns: () => { for (const w of this.watchRuns.values()) w.abort.abort(); },
+      drives: () => { for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } },
+      tasks: () => { for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } },
+    };
+  }
+
   async stopGroup(group: Owner): Promise<void> {
     // A tool with its own switch is part of its group: Draw it goes with Flow, Second Look with Prompt help.
     const ends = (o: string | undefined) => o === group || (group === "flow" && o === "drawIt") || (group === "prompt" && o === "secondLook");
@@ -889,7 +895,9 @@ export class AgentRunner {
         if (!running) this.release(cmd.agent);
         return;
       }
-      case "agent.interruptAll": { for (const p of this.picturing) p.abort(); for (const a of this.installing.values()) a.abort(); for (const f of this.finding.values()) f.abort.abort(); for (const w of this.findWaits) w.abort.abort(); for (const w of this.watchRuns.values()) w.abort.abort(); for (const a of this.driving) { this.driveStop.add(a); this.answerChoice(a, "interrupt"); this.resumers.get(a)?.("interrupt"); this.planAllowed.get(a)?.clear(); } for (const s of this.sessions.values()) { s.abort.abort(); this.cancelPending(s.agent); } return; }
+      // Must fix 28: the same parts the Stop registry (interrupts.ts) calls by name; main.ts sends Stop everything through
+      // the registry, and this case stays for a runner used on its own (tests, the stand in engine).
+      case "agent.interruptAll": { for (const stop of Object.values(this.stopParts())) stop(); return; }
       case "spending.show": this.spendingState(cmd.project); return;
       case "spending.set": this.setDailyLimit(cmd); return;
       case "approval.resolve": {
@@ -1301,7 +1309,7 @@ export class AgentRunner {
     // Where the person's git is now, read from its files only (githead.ts): a commit an agent's command makes is told on the
     // receipt with the command that takes it back (F13). Companion never runs it.
     const headBefore = headOf(cmd.project);
-    const exec = this.o.executor ?? defaultExecutor;
+    const exec = this.exec;
     let sessionId: string | undefined = opts.resumeSession;
     let said = "";
     // The agent's last words in the latest round: its text after its last tool, the message it ended on (asks.ts).
@@ -1646,7 +1654,7 @@ export class AgentRunner {
     const st = { usd: 0, sessionId: undefined as string | undefined, abort };
     let booked = 0;
     const book = () => { this.addSpend(spec.project, st.usd - booked); booked = st.usd; };
-    const exec = this.o.executor ?? defaultExecutor;
+    const exec = this.exec;
     const allowed = spec.allow ?? READ_ONLY_TOOLS;
     // ExitPlanMode is how plan mode hands back its plan: it changes nothing, so it is let through, and the plan in its input is
     // what the flow reads as the answer (the model may give nothing else). Taken as text only; clipped, secrets hidden.

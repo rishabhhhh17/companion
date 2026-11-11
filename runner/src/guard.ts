@@ -132,6 +132,8 @@ export class HookGuard {
   private inFlight = new Map<string, Promise<unknown>>();
   private waitingTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private waitingNow = new Set<string>();
+  /** Guard requests waiting for their snapshot: Stop everything lets each command go at once (the snapshot still finishes). */
+  private releases = new Set<() => void>();
   constructor(private dir: string, private o: GuardDeps) {
     this.dir = resolve(dir);
     this.pid = join(this.dir, GUARD_PID);
@@ -204,7 +206,11 @@ export class HookGuard {
     });
     snap.catch(() => undefined);
     // The command goes after SNAPSHOT_WAIT_MS at most; a slow snapshot still finishes on its own.
-    await Promise.race([snap, new Promise<void>((r) => setTimeout(r, this.o.snapshotWaitMs ?? SNAPSHOT_WAIT_MS))]);
+    let release!: () => void, timer: ReturnType<typeof setTimeout> | undefined;
+    const stopped = new Promise<void>((r) => { release = r; });
+    this.releases.add(release);
+    try { await Promise.race([snap, stopped, new Promise<void>((r) => { timer = setTimeout(r, this.o.snapshotWaitMs ?? SNAPSHOT_WAIT_MS); })]); }
+    finally { if (timer) clearTimeout(timer); this.releases.delete(release); }
   }
   /** A waiting note: Claude Code is waiting for the person (a permission or its idle prompt). Said once per note. */
   private note(project: string, text: string): void {
@@ -227,6 +233,16 @@ export class HookGuard {
     t.unref?.();
     this.waitingTimers.set(project, t);
   }
+  /** Must fix 28, Stop everything (rule 11): every guard request still waiting for its snapshot lets its command go now,
+   *  and every Claude is waiting mark ends (said as waiting: false) with its timer. The folder is still watched; a new
+   *  request or note after the stop is answered as usual. */
+  stopWaits(): void {
+    for (const r of [...this.releases]) r();
+    this.releases.clear();
+    for (const p of [...this.waitingNow, ...this.waitingTimers.keys()]) this.clear(p);
+  }
+  /** For tests: how many waits are running now (guard requests and waiting marks). */
+  waits(): { requests: number; marks: number; timers: number } { return { requests: this.releases.size, marks: this.waitingNow.size, timers: this.waitingTimers.size }; }
   /** The next hook event for a project (a guard request, the done marker) ends its waiting mark. */
   activity(project: string): void { this.clear(resolve(project)); }
   private clear(project: string): void {

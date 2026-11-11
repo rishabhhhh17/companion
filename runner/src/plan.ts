@@ -17,6 +17,7 @@
 import { randomBytes } from "node:crypto";
 import { basename, resolve } from "node:path";
 import type { Command, PlanLimitReason, PlanName, PlanState } from "../../protocol/index.ts";
+import { commandsWhere } from "../../protocol/commands.ts";
 import { defOf } from "../../protocol/settings.ts";
 import { NAMES } from "./names.ts";
 
@@ -24,58 +25,20 @@ import { NAMES } from "./names.ts";
 export const FREE_FIXES_PER_MONTH = 3;
 
 // ---------- the command lists (spec section 2a) ----------
-// Every type of protocol/index.ts's Command union is in exactly one of these three. The compile time checks under them fail
-// for a type in none, or a name that is not a type; runner/test/plan.test.ts fails for a type in two, or one the protocol's
-// checks know and these do not.
-
-/** Gated as a counted fix (the Free limit). How each is gated is in PlanGate.admit. */
-export const FIX_GATED = ["agent.start", "drive.plan", "drive.approve", "watch.fix", "rescue.diagnose", "agent.send", "review.fix"] as const;
-/** Gated as Pro only. settings.apply only for a water colour that is not the usual one; every other setting is never gated. */
-/** Must fix 20 (F25: every safety feature on Free): ship.check, the check before going live, runs only checks on the Mac
- *  and costs nothing, so it is never gated. Putting it online (ship.preview, ship.live) is Pro. */
-export const PRO_ONLY = ["ship.preview", "ship.live", "recap.ask", "settings.apply"] as const;
+// Must fix 30 (M59): each command's gate is its row in protocol/commands.json (gate: fix, pro or never), so every type is in
+// exactly one list by the file's shape, and protocol/commands.ts fails to compile for a type with no row. Why each command
+// sits where it does:
+//  - fix: a counted fix (the Free limit); how each is gated is in PlanGate.admit.
+//  - pro: Pro only. settings.apply only for a water colour that is not the usual one; every other setting is never gated.
+//    Must fix 20 (F25: every safety feature on Free): ship.check, the check before going live, runs only checks on the Mac
+//    and costs nothing, so it is never gated. Putting it online (ship.preview, ship.live) is Pro.
+//  - never: stopping, Undo and restore, starring a save point, approvals, every check and proof, help, lessons, memory,
+//    the review's own Review now and close, signing in to Vercel, the key practice, the done signal, the cost pause's and the
+//    sign in handover's answers, the weekly summary: on any plan, at any count.
+export const FIX_GATED: readonly string[] = commandsWhere((r) => r.gate === "fix");
+export const PRO_ONLY: readonly string[] = commandsWhere((r) => r.gate === "pro");
 /** Never gated, on any plan, at any count. */
-export const NEVER_GATED = [
-  // the plan itself
-  "plan.state",
-  // stopping
-  "agent.interrupt", "agent.interruptAll", "drive.pause", "drive.resume",
-  // Undo and restore
-  "checkpoint.restore", "checkpoint.putBack", "bisect.undo", "ship.rollback",
-  // M58: starring or naming a save point (the store's own notes)
-  "checkpoint.mark",
-  // approvals
-  "approval.resolve",
-  // checks and proof
-  "browser.check", "browser.install", "doctor.check", "problem.find", "secondlook.check", "teach.try", "teach.check", "ship.check",
-  // help
-  "error.explain", "assist.prompt", "assist.locate", "assist.cancel", "assist.image",
-  "walk.list", "walk.start", "walk.acted", "walk.answer", "walk.skip", "walk.stop", "research.ask", "diagram.ask",
-  // everything else
-  "memory.add", "memory.list", "memory.forget", "memory.edit", "memory.pause", "memory.erase", "memory.export", "memory.agents", "memory.restore",
-  "tasks.list", "where.was.i", "spending.show", "spending.set", "metrics.set", "metrics.note", "metrics.show", "metrics.erase",
-  "watch.add", "watch.list", "watch.remove", "watch.pause", "watch.check", "bisect.start", "project.inspect", "project.install",
-  "project.clone", "auth.check", "google.accounts", "engine.warm", "runner.ping", "loop.choose", "explain.set",
-  // M52: reviewing a change and closing its card (a review spends only against the daily limit, like Explain).
-  "review.now", "review.dismiss",
-  // M58 (UI 13): signing in to Vercel costs nothing and is the person's own login.
-  "ship.signIn",
-  // M58 (feature 9): the key practice uses no model and costs nothing, so it is never a counted fix.
-  "practice.key",
-  // M75: the done signal's hook (Squibby's own settings work, no model), the cost pause's answer (keep, stop or undo: never
-  // a new fix) and the sign in handover's answer (the check of a task already admitted).
-  "donesignal.show", "donesignal.add", "donesignal.remove", "cost.choose", "proof.signIn",
-  // M79: the weekly summary only reads Squibby's own rows and notes.
-  "week.show",
-] as const;
-
-type Listed = (typeof FIX_GATED)[number] | (typeof PRO_ONLY)[number] | (typeof NEVER_GATED)[number];
-type Unlisted = Exclude<Command["type"], Listed>;
-type NotACommand = Exclude<Listed, Command["type"]>;
-// A Command type in none of the lists, or a listed name that is no Command type, makes these fail to compile.
-const everyCommandIsListed: [Unlisted] extends [never] ? true : Unlisted = true;
-const everyNameIsACommand: [NotACommand] extends [never] ? true : NotACommand = true;
-void everyCommandIsListed; void everyNameIsACommand;
+export const NEVER_GATED: readonly string[] = commandsWhere((r) => r.gate === "never");
 
 // ---------- months, in this Mac's local time ----------
 
@@ -159,7 +122,7 @@ export class PlanGate implements FixCounter {
   /** The command to run, or null when the plan does not cover it (plan.limit was said). Only a settings.apply can come back
    *  changed: without the water colour Free does not have. */
   admit(cmd: Command): Command | null {
-    if ((NEVER_GATED as readonly string[]).includes(cmd.type)) return cmd;
+    if (NEVER_GATED.includes(cmd.type)) return cmd;
     const metered = this.metered();
     switch (cmd.type) {
       // Pro only.

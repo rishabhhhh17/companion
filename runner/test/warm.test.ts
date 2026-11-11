@@ -64,6 +64,9 @@ describe("the warm up", () => {
     expect(parseCommand(JSON.stringify({ v: 1, id: "w1", type: "engine.warm" })).ok).toBe(true);
     const main = readFileSync(new URL("../src/main.ts", import.meta.url), "utf8");
     expect(main).toContain('cmd.type === "engine.warm"');
-    expect(main).toMatch(/agent\.interruptAll[^\n]*warmer\.stop\(\)/);
+    // Must fix 28: Stop everything goes through the one Stop registry, where the warm up is registered (interrupts.test.ts
+    // checks every part is, and that Stop ends each one).
+    expect(main).toContain('interrupts.register("warm", { stop: () => warmer.stop() });');
+    expect(main).toMatch(/agent\.interruptAll[^\n]*interrupts\.stopEverything\(\)/);
   });
 });

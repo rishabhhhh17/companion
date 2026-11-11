@@ -6,6 +6,7 @@
 // A tool may also have a switch of its own (F28: Second Look secondLook.on, Type by voice talk.dictate, Draw it drawIt.on):
 // it is refused while its group or its own switch is off.
 import catalog from "../../protocol/groups.json";
+import { Interrupts, type StopGroup } from "./interrupts.ts";
 
 type Tool = { id: string; group: string; switch?: string; runner: string[]; agentModes?: string[]; stays?: string[] };
 type Group = { id: string; switch: string | null };
@@ -62,10 +63,36 @@ export type Parts = {
   /** Watch routines (F21) belong to Flow: a running check ends, the schedule setting stays as it is. */
   watches?: { stopAll(): void } | null;
 };
+/** Must fix 28: which groups' stops apply when these were switched off. Prompt help's stop already ends Second Look's work,
+ *  and Flow's ends Draw it's, so neither is stopped twice. */
+export function stopGroupsFor(groups: readonly string[]): StopGroup[] {
+  const out: StopGroup[] = [];
+  if (groups.includes("flow")) out.push("flow");
+  if (groups.includes("guide")) out.push("guide");
+  if (groups.includes("prompt")) out.push("prompt");
+  else if (groups.includes("secondLook")) out.push("secondLook");
+  if (groups.includes("drawIt") && !groups.includes("flow")) out.push("drawIt");
+  return out;
+}
+
+/** Each engine part's stop for a group switched off, as registered in the Stop registry (interrupts.ts). */
+export function groupStops(p: Parts): { tasks: Partial<Record<StopGroup, () => unknown>>; browser: Partial<Record<StopGroup, () => unknown>>; watches: Partial<Record<StopGroup, () => unknown>>; walks: Partial<Record<StopGroup, () => unknown>>; assist: Partial<Record<StopGroup, () => unknown>> } {
+  return {
+    tasks: { flow: () => p.runner.stopGroup("flow"), prompt: () => p.runner.stopGroup("prompt"), secondLook: () => p.runner.stopGroup("secondLook"), drawIt: () => p.runner.stopGroup("drawIt") },
+    browser: { flow: () => p.browser.stop() },
+    watches: { flow: () => p.watches?.stopAll() },
+    walks: { guide: () => p.walks.stopAll() },
+    assist: { guide: () => p.assist?.cancel("guide"), prompt: () => p.assist?.cancel("prompt") },
+  };
+}
+
+/** A group switched off, through a Stop registry of these parts alone (the engine itself uses its one registry, main.ts). */
 export function stopGroupWork(groups: string[], p: Parts): void {
-  if (groups.includes("flow")) { void p.runner.stopGroup("flow"); void p.browser.stop(); p.watches?.stopAll(); }
-  if (groups.includes("guide")) { p.walks.stopAll(); p.assist?.cancel("guide"); }
-  if (groups.includes("prompt")) { p.assist?.cancel("prompt"); void p.runner.stopGroup("prompt"); }
-  else if (groups.includes("secondLook")) void p.runner.stopGroup("secondLook");
-  if (groups.includes("drawIt") && !groups.includes("flow")) void p.runner.stopGroup("drawIt");
+  const reg = new Interrupts(), g = groupStops(p), none = () => undefined;
+  reg.register("tasks", { stop: none, groups: g.tasks });
+  reg.register("walks", { stop: none, groups: g.walks });
+  reg.register("browser", { stop: none, groups: g.browser });
+  reg.register("watches", { stop: none, groups: g.watches });
+  reg.register("assist", { stop: none, groups: g.assist });
+  reg.stopGroups(stopGroupsFor(groups));
 }

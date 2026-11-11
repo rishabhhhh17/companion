@@ -1,6 +1,8 @@
 // The agent runner, tested with a stand in for Claude that plays back a script.
 // Free, fast and repeatable. Real Claude runs come later.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -285,7 +287,7 @@ describe("M45: the receipt says why it failed", () => {
   const run = async (engine: Engine, proof: (ctx: any) => Promise<LadderResult>, budgetUsd = 3) => {
     const project = tmp("proj"); writeFileSync(join(project, "a.txt"), "original");
     const events: Event[] = [];
-    const runner = new AgentRunner({ shadowRoot: tmp("shadow"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("shadow"), engine, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof });
     await runner.handle(start(project, { budgetUsd }));
     return receipt(events);
   };

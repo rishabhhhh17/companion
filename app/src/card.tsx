@@ -508,7 +508,7 @@ function MemoryList({ title, scope, lines, project, eraseLabel }: { title: strin
   );
 }
 
-function Card() {
+export function Card() {
   const [m, dispatch] = useModel();
   // Pro (the payments spec, T17): the plan on this Mac, from the shell. With payments off it is { paymentsOn: false } and
   // nothing on Home changes: no tag, no limit card, no line under Fix it.
@@ -897,7 +897,7 @@ function Card() {
     if (open?.kind === id) {
       const to = backTo(open.previous, recent, practiceRec);
       dispatch({ type: "ui.practiceClosed" });
-      if (to) useFolder(to);
+      if (to) openFolder(to);
     }
     setPracticeNote(S.practiceRemoved(String(n)));
     loadRecent();
@@ -971,7 +971,8 @@ function Card() {
     const mark = markFor(was, now);
     if (mark && now) void invoke("practice_mark", { which: now.kind, stage: mark }).then(loadPractice).catch(() => {});
   }, [m.practice]);
-  const useFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
+  // Not a hook (M59, the rules of hooks lint): it asks the shell to open a folder, from presses and events.
+  const openFolder = (path: string) => void invoke("use_project", { path }).catch((e) => setFolderNote(failNote(e, "folder")));
   const pickFolder = () => void invoke("pick_project").catch((e) => { if (String(e)) setFolderNote(failNote(e, "folder")); });
   // About this project: asked each time a folder is opened (reads files only).
   useEffect(() => { if (project) void sendQuiet(inspectProject(project)); }, [project]);
@@ -979,7 +980,7 @@ function Card() {
   useEffect(() => {
     const off = listen("runner-event", (e) => {
       const ev = e.payload as { type?: string; ok?: boolean; path?: string };
-      if (ev.type === "project.cloned") { setCopying(false); if (ev.ok && ev.path) useFolder(ev.path); }
+      if (ev.type === "project.cloned") { setCopying(false); if (ev.ok && ev.path) openFolder(ev.path); }
     });
     return () => { off.then((f) => f()); };
   }, []);
@@ -2114,7 +2115,7 @@ function Card() {
   // The project menu in the top bar: change the folder, open one from a link, or one used before.
   const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },
     ...recent.filter((r) => r !== project).map((r) => ({ id: `r:${r}`, label: r.split("/").filter(Boolean).slice(-2).join("/") }))];
-  const pickFromFolderMenu = (id: string) => { if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) useFolder(id.slice(2)); };
+  const pickFromFolderMenu = (id: string) => { if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) openFolder(id.slice(2)); };
   // A recent fix opens its own receipt: the one on Now when it is the last task, else its row in History.
   const [historyFocus, setHistoryFocus] = useState<number | null>(null);
   useEffect(() => { if (home.tab !== "did") setHistoryFocus(null); }, [home.tab]);
@@ -2731,7 +2732,7 @@ function Card() {
             remove: () => removePractice(pr.kind),
             next: (id) => beginPractice(id),
             // Back to my project: the folder used before the practice, else the newest of the person's own, else the chooser.
-            back: () => { const to = backTo(pr.previous, recent, practiceRec); dispatch({ type: "ui.practiceClosed" }); if (to) useFolder(to); else pickFolder(); },
+            back: () => { const to = backTo(pr.previous, recent, practiceRec); dispatch({ type: "ui.practiceClosed" }); if (to) openFolder(to); else pickFolder(); },
           }} />;
       })()}
       {/* The recorded first run, again on a press (it costs nothing and changes nothing; firstLook.ts). */}
@@ -3430,7 +3431,9 @@ startSettings();
 applyTextSize(textSize());
 // Less motion (character.motion) stops Home's own animations too.
 followLessMotion();
-createRoot(document.getElementById("root")!).render(<StrictMode><Card /></StrictMode>);
+// The page mounts itself in its window; the DOM tests (app/dom) import Card and render it themselves, with no #root.
+const rootEl = typeof document === "undefined" ? null : document.getElementById("root");
+if (rootEl) createRoot(rootEl).render(<StrictMode><Card /></StrictMode>);
 
 /** Anthropic's Claude on this Mac (M22): its state from the shell, kept in step with the download. Read once by Home, so
  *  the hero can say Claude is missing (the audit, item 12) and the notice under the ask box can show the progress. */

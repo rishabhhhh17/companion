@@ -34,7 +34,7 @@ export const loadCases = (): ReviewCase[] => JSON.parse(readFileSync(join(import
 
 /** Keeps every prompt an engine is given, so a run can show what the reviewer was shown. */
 export function tap(inner: Engine, prompts: string[]): Engine {
-  return { executesTools: inner.executesTools, start: (o: EngineOptions) => { prompts.push(o.prompt); return inner.start(o); } };
+  return { executesTools: inner.executesTools, testToolRunner: inner.testToolRunner, start: (o: EngineOptions) => { prompts.push(o.prompt); return inner.start(o); } };
 }
 
 export type ReviewContext = { mode: "dry" | "spend"; meter: CaseMeter; harness?: EvalHarness; models: Record<ModelRole, string>; reviewer?: Engine; timeoutMs?: number; signal?: AbortSignal };

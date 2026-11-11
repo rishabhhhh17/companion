@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { REGISTRY, defOf } from "../../protocol/settings.ts";
+import { PAGE_COMMANDS } from "../../protocol/commands.ts";
 import {
   ASK_BUTTONS, GROUPS, SWITCHED, TOOLS, askButtons, buttonShown, groupOf, groupOn, groupLook, groupView, invitation, learnShown, offLine, permissionNeeded,
   toolById, toolOn, triedList, untriedIn, usedBy, activeGroup, switchKey, followPendingAfter, refusalNotice, type GroupId, type ToolId, NEEDS_FINISHED,
@@ -88,8 +89,9 @@ describe("the catalog is complete and consistent", () => {
     for (const s of allStays) expect(s).toMatch(/restore|undo|stop|dismiss|disarm|close|reveal|remove/);
   });
   test("the runner's page list and the catalog agree about what a page may send", () => {
-    const rs = read("../src-tauri/src/runner.rs");
-    const allowed = [...rs.slice(rs.indexOf("const ALLOWED"), rs.indexOf("];", rs.indexOf("const ALLOWED"))).matchAll(/"([a-z]+(?:\.[A-Za-z]+)+)"/g)].map((m) => m[1]);
+    // Must fix 30 (M59): the page list is the rows with page in protocol/commands.json (the shell reads the same file).
+    const allowed = PAGE_COMMANDS as readonly string[];
+    expect(allowed.length).toBeGreaterThan(60);
     const known = new Set(TOOLS.flatMap((t) => t.runner).concat(["agent.start"]));
     for (const a of allowed) expect(known.has(a), a).toBe(true);
   });

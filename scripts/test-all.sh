@@ -13,6 +13,8 @@ echo "== eval sets, dry (the whole pipeline on stand ins: no model, no cost, no 
 echo "== rust shell"; (cd app/src-tauri && cargo test)
 echo "== permissions (rule 8: nothing asks at launch, each ask only where its feature is first used)"; sh app/scripts/lint-permissions.sh
 echo "== pages"; (cd app && bun run typecheck && bun test --timeout 30000 ./src)
+echo "== pages, rendered and clicked through (happy-dom and Testing Library, each file in its own fresh page)"; (cd app && bun test --timeout 30000 --isolate --preload ./dom/setup.ts ./dom)
+echo "== the rules of hooks (React's hooks lint, as errors)"; (cd app && bun run scripts/lint-hooks.ts)
 echo "== release scripts (offline: parse, dry run, refuse without credentials)"; (cd app && bun test --timeout 30000 ./scripts)
 echo "== acknowledgements (licence notices match the dependencies)"; python3 scripts/make-acknowledgements.py --check
 sh scripts/tested-mark.sh write

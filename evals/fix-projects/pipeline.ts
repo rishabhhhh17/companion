@@ -114,7 +114,7 @@ export async function runFixCase(c: LoadedCase, ctx: FixContext): Promise<CaseRe
   const inner = ctx.agent ?? (ctx.mode === "dry" ? dryAgent(c, flow) : ctx.harness!.agent());
   // What the engine is told, as the runner sent it (a stale error case checks that the rule to look first reached it).
   const told: string[] = [];
-  const noting: Engine = { executesTools: inner.executesTools, start: (o) => { told.push(o.prompt); return inner.start(o); } };
+  const noting: Engine = { executesTools: inner.executesTools, testToolRunner: inner.testToolRunner, start: (o) => { told.push(o.prompt); return inner.start(o); } };
   const engine = ctx.meter.engine(noting);
   const reviewer = ctx.review ? ctx.meter.engine(ctx.mode === "dry" ? scripted([[{ text: '{"verdict":"approve","concerns":[]}', costUsd: 0 }]]) : ctx.harness!.reviewer(), "reviewer") : undefined;
   const s = new EvalSession({ project: dir, engine, reviewer, reviewModel: ctx.models.review, approvals: ctx.approvals ?? "settings", onStuck: ctx.onStuck ?? "different", signal: ctx.signal });

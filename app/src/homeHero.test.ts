@@ -76,7 +76,7 @@ describe("no side list, no title bar: quiet buttons with words at the top (F28, 
   test("the project's name is a menu: change the folder, open one from a link, or one used before (no buttons at the foot)", () => {
     expect(card).toContain("<Menu id={linkId} value=\"\" size=\"sm\" label={S.folderLabel}");
     expect(card).toContain('const folderOptions = [{ id: "change", label: S.home.changeFolder }, { id: "link", label: S.home.openLink },');
-    expect(card).toContain('if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) useFolder(id.slice(2));');
+    expect(card).toContain('if (id === "change") pickFolder(); else if (id === "link") setLinkOpen(true); else if (id.startsWith("r:")) openFolder(id.slice(2));');
     expect(card).not.toContain("{S.folderChange}</button>");
     expect(card).not.toContain("<select aria-label={S.folderRecent}");
   });

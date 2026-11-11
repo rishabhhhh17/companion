@@ -1,6 +1,8 @@
 // The parts every eval set shares, and above all the spending stops: a dry run spends nothing, a case stops at its cap, and
 // the run stops starting cases at its total. The real run harness itself (what --spend builds) is tested in real.test.ts.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: the SDK shaped stand in does not run tools itself, so the test passes the test tool runner in.
+import { testToolRunner } from "../../runner/src/engine.ts";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { AgentRunner } from "../../runner/src/agent.ts";
@@ -115,7 +117,7 @@ describe("spending stops", () => {
         const project = tmp("p"), shadow = tmp("s");
         const inner = ctx.harness!.agent() as SdkShaped; engines.push(inner);
         const events: any[] = [];
-        const runner = new AgentRunner({ shadowRoot: shadow, engine: ctx.meter.engine(inner), log: new TaskLog(":memory:"), emit: (e) => events.push(e) });
+        const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: shadow, engine: ctx.meter.engine(inner), log: new TaskLog(":memory:"), emit: (e) => events.push(e) });
         await runner.handle({ v: 1, id: "s", type: "agent.start", project, agent: "a", mode: "drive", prompt: "x", model: "m", budgetUsd: ctx.meter.capUsd } as never);
         seen.push({ id: c.id, usd: ctx.meter.usd, capped: ctx.meter.capped, receipt: events.find((e) => e.type === "receipt")?.usdEstimate ?? -1 });
         return { id: c.id, outcome: "fine", costUsd: ctx.meter.usd, turns: ctx.meter.turns, tokens: { ...ctx.meter.tokens }, ms: 1, notes: [] };

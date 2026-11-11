@@ -121,6 +121,8 @@ export class CaseMeter {
 class MeteredEngine implements Engine {
   constructor(private inner: Engine, private meter: CaseMeter, private count: (t: Turn, planOnly: boolean) => void) {}
   get executesTools() { return this.inner.executesTools; }
+  // Must fix 29: a scripted engine's test tool runner passes through the meter (a real engine runs its own tools and has none).
+  get testToolRunner() { return this.inner.testToolRunner; }
   async *start(opts: EngineOptions): AsyncGenerator<Turn, void, ToolResult | undefined> {
     if (this.meter.over()) this.meter.refuse();
     // The real engine is told the smaller of the task's budget and what this case has left (the SDK's maxBudgetUsd).

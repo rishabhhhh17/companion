@@ -4,6 +4,8 @@
 // is_error set, and the task ended as done with nothing changed. These use a fake `query`: they prove the wiring, not what
 // Claude Code really sends with the Wi-Fi off ([verify] on a real Mac, which costs nothing: no request reaches Anthropic).
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -176,7 +178,7 @@ describe("flows with no Try again say ask again", () => {
     const project = tmp("p");
     writeFileSync(join(project, "package.json"), JSON.stringify({ name: "x", scripts: { test: "node -e 0" } }));
     const events: Event[] = [];
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: thrower(msg) as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict: "passed", steps: [] }) });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: thrower(msg) as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e), proof: async () => ({ verdict: "passed", steps: [] }) });
     await runner.handle(cmd(project));
     return (events.filter((e) => e.type === "protocol.error") as any[]).map((e) => String(e.reason));
   };
@@ -194,7 +196,7 @@ describe("flows with no Try again say ask again", () => {
   });
   const withExplainer = (msg: string) => {
     const events: Event[] = [];
-    const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: thrower(msg) as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e), explainer: async () => { throw new Error(msg); } });
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: thrower(msg) as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e), explainer: async () => { throw new Error(msg); } });
     return { runner, events };
   };
   test("the error explainer names it, so the card says it plainly", async () => {

@@ -771,6 +771,6 @@ describe("removing the practice copy that is open", () => {
   test("Home goes back to the folder from before, else the newest folder of the person's own", () => {
     const f = card.slice(card.indexOf("const removePractice = "), card.indexOf("// A recorded copy opened again"));
     expect(f).toContain("backTo(open.previous, recent, practiceRec)");
-    expect(f.indexOf("backTo(")).toBeLessThan(f.indexOf("useFolder(to)"));
+    expect(f.indexOf("backTo(")).toBeLessThan(f.indexOf("openFolder(to)"));
   });
 });

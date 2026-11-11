@@ -2,6 +2,8 @@
 // failure (A26) or let the hidden browser run on after Stop (A27). Commands, the server and the browser are stand ins:
 // nothing real runs.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -322,7 +324,7 @@ describe("an empty record starts with the project as it was before any agent wro
     put(project, { "package.json": pkg({ dev: "vite", test: "vitest" }), "node_modules/.keep": "" });
     const events: { type: string }[] = [], ran: string[] = [], asked: boolean[] = [];
     let checks = 0;
-    const runner = new AgentRunner({ shadowRoot: tmp(), engine: writesThenBreaks as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e as never),
+    const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp(), engine: writesThenBreaks as never, log: new TaskLog(":memory:"), emit: (e) => events.push(e as never),
       proof: (ctx) => { checks++; return runLadder({ ...ctx, run: (async (c: string) => { ran.push(c); return res(); }) as never, browser: okBrowser as never, server: okServer, ...(ctx.askScripts ? { askScripts: async (byTask: boolean) => { asked.push(byTask); return false; } } : {}) }); } });
     const cmd = (c: Record<string, unknown>) => runner.handle({ v: 1, id: `c${Math.random()}`, project, ...c } as never);
     return { project, events, ran, asked, cmd, checks: () => checks };

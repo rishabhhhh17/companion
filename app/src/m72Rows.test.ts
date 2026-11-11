@@ -82,14 +82,5 @@ describe("History (the walkthrough, item 9, and one list per screen)", () => {
   });
 });
 
-describe("item 10: Forget confirms with a short line and an Undo for a few seconds", () => {
-  const card = read("./card.tsx");
-  test("the note leaves the list at once, the line says it was forgotten, and Undo keeps it (nothing is sent until the time is up)", () => {
-    expect(card).toContain("<Toast text={S.memoryForgotten(pending.text)} action={S.memoryUndo} onAction={() => setPending(null)} onDone={commitForget} ms={FORGET_MS} />");
-    expect(card).toContain("lines.filter((l) => l.id !== pending?.id)");
-    expect(card).toContain("onClick: () => forgetSoon(l)");
-  });
-  test("a second Forget, or leaving the page, sends the one waiting first, so nothing is lost or kept by accident", () => {
-    expect(card).toContain("useEffect(() => () => { if (waiting.current) void send(forgetLine(project, scope, waiting.current.id)); }, []);");
-  });
-});
+// item 10 (Forget confirms with a short line and an Undo for a few seconds) is clicked through on the rendered page since
+// M59: app/dom/memory.test.tsx (Undo sends nothing, a second Forget or leaving the page sends the one waiting).

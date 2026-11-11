@@ -27,7 +27,8 @@ import { SPENDING_FILE, SpendingStore, startingLimit } from "./spending.ts";
 import { Warmer } from "./warm.ts";
 import { resolveClaudeBinary } from "./sdkEngine.ts";
 import { RunnerSettings } from "./settings.ts";
-import { newlyOff, offNow, refusal, stopGroupWork } from "./groups.ts";
+import { groupStops, newlyOff, offNow, refusal, stopGroupsFor } from "./groups.ts";
+import { Interrupts } from "./interrupts.ts";
 import { slowFactor } from "./proof/options.ts";
 import { nestedSandbox } from "./proof/box.ts";
 import { WATCH_FILE, WatchEngine } from "./watch.ts";
@@ -161,6 +162,27 @@ const inflight = new Set<Promise<unknown>>();
 const warmer = new Warmer({ binary: () => (settings.engine === "sdk" ? resolveClaudeBinary(settings.claudeBin, settings.claudeBinId) : null) });
 const browser = new BrowserSetup({ emit: say, timeoutMs: () => 15 * 60_000 * slow(), ...(settings.browserStubMs ? pretendInstaller(settings.browserStubMs) : {}), ...(settings.browserStubInstaller ? { installer: settings.browserStubInstaller } : {}) });
 
+// Must fix 28: the one Stop registry (interrupts.ts). Every long running part of the engine is registered here by name, and
+// Stop everything, a group switched off and the engine closing all go through it. Its list (STOP_PARTS) names every part
+// that must be here; one missing is said in the log at start, and runner/test/interrupts.test.ts fails on it.
+const interrupts = new Interrupts();
+{
+  const g = groupStops({ runner, walks, browser, assist, watches });
+  for (const [name, stop] of Object.entries(runner.stopParts())) interrupts.register(name as keyof ReturnType<typeof runner.stopParts>, { stop, ...(name === "tasks" ? { groups: g.tasks } : {}) });
+  interrupts.register("walks", { stop: () => walks.stopAll(), groups: g.walks });
+  interrupts.register("browser", { stop: () => browser.stop(), groups: g.browser });
+  interrupts.register("warm", { stop: () => warmer.stop() });
+  interrupts.register("watches", { stop: () => watches.stopAll(), groups: g.watches, close: () => watches.stop() });
+  interrupts.register("review", { stop: () => review.stopAll(), close: () => review.stop() });
+  interrupts.register("assist", { stop: () => assist?.cancelAll(), groups: g.assist });
+  interrupts.register("guard", { stop: () => guard.stopWaits(), close: () => guard.stop() });
+  // The hooks are the person's own Claude Code's: Stop everything ends nothing of theirs, and the engine closing stops
+  // listening to them (the start files stay for the next session, M78).
+  interrupts.register("doneSignals", { stop: () => undefined, close: () => doneSignals.stop() });
+  const missing = interrupts.missing();
+  if (missing.length) process.stderr.write(`stop registry: not registered: ${missing.join(", ")}\n`);
+}
+
 // The app closing its end of the pipe is how we are told to stop; writing to a closed pipe must not look like a crash.
 process.stdout.on("error", () => process.exit(0));
 say({ type: "runner.hello", runnerVersion: "0.0.1", sdk: SDK_VERSION });
@@ -181,7 +203,7 @@ process.on("uncaughtException", survive("uncaughtException"));
 /** A group that has just been switched off stops its tools here: Flow ends the tasks and checks that are running, Guide the
  *  lessons and Show me, Voice what Prompt help, the error explainer and Second Look were reading. (The shell stops its own: the
  *  microphone, speech, the pointer, a conversion.) What they made stays, and Undo of it still works. */
-function stopGroups(groups: string[]) { stopGroupWork(groups, { runner, walks, browser, assist, watches }); }
+function stopGroups(groups: string[]) { interrupts.stopGroups(stopGroupsFor(groups)); }
 
 function dispatch(cmd: Command) {
   // The app asks "are you alive?" and the Stop key depends on the answer, so this is answered before anything else.
@@ -229,7 +251,8 @@ function dispatch(cmd: Command) {
   // Watch routines: the schedule and the checks live in watch.ts; the group switch was checked above.
   if (cmd.type.startsWith("watch.")) { const p = Promise.resolve(watches.handle(cmd)).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   metrics.observeCommand(cmd);
-  if (cmd.type === "agent.interruptAll") { walks.stopAll(); void browser.stop(); warmer.stop(); watches.stopAll(); review.stopAll(); }
+  // Stop everything (rule 11): every part in the one registry, the runner's own included. Nothing else is started for it.
+  if (cmd.type === "agent.interruptAll") { const p = interrupts.stopEverything().finally(() => inflight.delete(p)); inflight.add(p); return; }
   // M58 (feature 9): the key practice's pretend AI (not the engine's own work, so the review looks at it) and its fixed fix
   // (the engine's own work, with a safety copy first). No model, no cost.
   if (cmd.type === "practice.key") {
@@ -257,7 +280,6 @@ function dispatch(cmd: Command) {
   const work = c.type.startsWith("walk.") ? walks.handle(c as never) : c.type.startsWith("assist.")
     ? (assist ? assist.handle(c) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", c.type) })))
     : OWN_WORK.has(c.type) ? ownWork(ownProject(c), () => runner.handle(c), c.type) : runner.handle(c);
-  if (cmd.type === "agent.interruptAll" && assist) assist.cancelAll();
   // M57 feature 7: a press of "Don't flag this kind here again" is recorded once its line is in memory; a line forgotten,
   // edited or erased ends its silence.
   if ((c.type === "memory.add" || c.type === "memory.forget" || c.type === "memory.edit" || c.type === "memory.erase") && c.scope === "project") {
@@ -304,9 +326,10 @@ async function main() {
     }
   }
   // The app closed the pipe: stop everything, let receipts finish, then exit.
-  watches.stop(); watches.stopAll(); review.stop(); doneSignals.stop(); guard.stop();
-  void runner.handle({ v: 1, id: "shutdown", type: "agent.interruptAll", reason: "app closed" });
-  void browser.stop();   // a real download runs in its own process group, so it is ended and waited for, never left behind
+  // Everything in the Stop registry stops, then closes what it watches (a real download runs in its own process group, so
+  // it is ended and waited for, never left behind).
+  const closing = interrupts.shutdown();
+  inflight.add(closing);
   void releaseShotDrive();
   await Promise.allSettled([...inflight]);
   await runner.background();   // pictures being made stop their servers and delete their private copies first

@@ -2,6 +2,8 @@
 // with payments off nothing at all changes. Temporary folders and in memory databases only; nothing here reaches Dodo or
 // any other service, and no real project is touched.
 import { afterEach, describe, expect, test } from "bun:test";
+// Must fix 29: an engine that does not run tools itself is given the test tool runner by the test, never by default.
+import { testToolRunner } from "../src/engine.ts";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -348,7 +350,7 @@ function world(o: { limit?: number; ladder?: (ctx: any) => Promise<LadderResult>
   const log = new TaskLog(":memory:");
   const store = new FreeFixes(log.database);
   const gate = new PlanGate({ fixes: () => store, emit: (e) => events.push(e), now: o.now ?? (() => OCT_31_LATE), limit: o.limit ?? FREE_FIXES_PER_MONTH });
-  const runner = new AgentRunner({ shadowRoot: tmp("s"), engine: o.engine ?? writer(), log, emit: (e) => events.push(e), proof: async (ctx) => (o.ladder ?? (async () => pass))(ctx), fixes: gate });
+  const runner = new AgentRunner({ executor: testToolRunner, shadowRoot: tmp("s"), engine: o.engine ?? writer(), log, emit: (e) => events.push(e), proof: async (ctx) => (o.ladder ?? (async () => pass))(ctx), fixes: gate });
   // What main.ts dispatch does: the gate first, then the runner.
   const send = async (cmd: Command) => { const a = gate.admit(cmd); if (a) await runner.handle(a); return a !== null; };
   const fixIt = (n: number) => send({ v: 1, id: `fix${n}`, type: "agent.start", project, agent: "builder-1", mode: "drive", prompt: `fix ${n}`, model: "m", budgetUsd: 1 } as Command);

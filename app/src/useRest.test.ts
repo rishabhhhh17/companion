@@ -30,7 +30,10 @@ describe("rest reaches every live Flowflow", () => {
     expect(view).toContain("ctl.current?.setLiveliness(liveliness ?? \"still\")");
   });
   test("every live Flowflow takes How lively; the notch's small one works at its own steady pace", () => {
-    for (const f of ["./dock.tsx", "./flowflowMini.tsx", "./homeCharacter.tsx"]) expect(read(f), f).toMatch(/livelinessOf\(useSetting\("character\.lively"\)\)/);
+    for (const f of ["./dock.tsx", "./flowflowMini.tsx"]) expect(read(f), f).toMatch(/livelinessOf\(useSetting\("character\.lively"\)\)/);
+    // M59 (the rules of hooks lint): Home's character reads the setting on every render first, then takes How lively from it.
+    expect(read("./homeCharacter.tsx")).toContain('const livelySetting = useSetting("character.lively");');
+    expect(read("./homeCharacter.tsx")).toContain("livelinessOf(livelySetting)");
     expect(read("./flowflowMini.tsx")).toContain("liveliness={mode} resting={resting} small");
     expect(read("./dock.tsx")).not.toContain("livelyOf");
     // The dock forwards the pointer to the eyes only in Lively.

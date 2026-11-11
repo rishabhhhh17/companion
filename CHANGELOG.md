@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Foundations: 11 Nov 2026 (in progress)
+
+Mostly under the hood, so the next big pieces stand on solid ground.
+
+- **Stop everything stops everything, by one list.** Every long running thing in Squibby's engine (tasks, checks, downloads, screenshots of the app being built, lessons, waits for you, the cost pause, the sign in step) is now on one list, and Stop everything, switching a group off and closing Squibby all use it. Before, the same list was kept by hand in several places. Stop everything now also lets a destructive command of your own Claude Code go at once instead of waiting for its safety copy, and clears "Claude is waiting".
+- **No tool runs without its safety.** Outside the tests, the engine has no plain way left to run a tool outside Claude Code's sandbox. Any future engine that runs tools itself must bring a sandboxed one, or it does not start.
+- **One list of what each command may do.** Which commands a page may send, which may only name the project you chose, which count as a fix and which are Squibby's own work now come from one file that every part reads.
+- **The pages are tested the way you use them.** Home, a review card, Fix it to proven to Undo, Stop, History, Memory, Settings, the first run and the notch panel are now drawn and clicked through in the tests.
+- **A small fix you may notice.** The character's liveliness setting is now read the same way on every draw.
+
 ## Risky packages, the week, and payments ready but off: 11 Nov 2026 (in progress)
 
 - **New packages are checked for known problems.** When a change adds a package or moves one to a new version, the review looks up only its name and version on OSV.dev, a free public list of known problems run by Google. Never your code and never your files. A known critical problem is a Must fix, a high one a Should fix, each with the fixed version to move to: "lodash 4.17.20: This package has a known serious problem: GHSA-..., fixed in 4.17.21." Works for npm, Python, Go and Rust package lists. If OSV.dev does not answer, the review says the packages were not checked, never that they are safe. Answers are kept on your Mac for a day. Turn it off in Settings, Fixing, More: Check new packages for known problems.

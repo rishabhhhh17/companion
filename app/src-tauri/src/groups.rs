@@ -139,7 +139,6 @@ mod tests {
     use serde_json::json;
 
     const MAIN: &str = include_str!("main.rs");
-    const RUNNER: &str = include_str!("runner.rs");
     const PROTOCOL: &str = include_str!("../../../protocol/index.ts");
     const SWITCHED: [(&str, &str); 5] = [("flow", "flow.on"), ("guide", "guide.on"), ("voice", "voice.on"), ("files", "files.on"), ("prompt", "prompt.on")];
     const ALL_OFF: [&str; 5] = ["flow.on", "guide.on", "voice.on", "files.on", "prompt.on"];
@@ -223,10 +222,10 @@ mod tests {
     }
     #[test]
     fn what_a_page_may_send_is_all_known_and_what_stays_on_names_its_own_commands() {
-        let at = RUNNER.find("const ALLOWED").unwrap();
-        let list = &RUNNER[at..at + RUNNER[at..].find("];").unwrap()];
+        // Must fix 30: the page commands are the rows with page in protocol/commands.json (runner.rs reads it).
         let known: Vec<&String> = catalog().tools.iter().flat_map(|t| t.runner.iter()).collect();
-        for w in list.split('"').skip(1).step_by(2).filter(|w| w.contains('.')) {
+        assert!(crate::runner::ALLOWED.len() > 50);
+        for &w in crate::runner::ALLOWED.iter() {
             assert!(w == "agent.start" || known.iter().any(|k| *k == w), "{w} is allowed from a page but is in no tool");
         }
         for t in &catalog().tools { for s in &t.stays { assert!(t.commands.contains(s) || t.runner.contains(s), "{}: {s}", t.id); } }

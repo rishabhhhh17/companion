@@ -19,6 +19,7 @@
 // cannot be told apart from the task's own: the task's receipt lists it, with Undo.
 // Stop everything (rule 11) ends a review that runs, and no review that was about to start begins after it.
 import { lstatSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { commandsWhere } from "../../../protocol/commands.ts";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { reviewModeOf, reviewSilenced, type Command, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
@@ -47,17 +48,11 @@ import { dirname as dirOf } from "node:path";
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
  *  tool's. Commands that only read are not here, so they never move the starting point on. */
-export const OWN_WORK: ReadonlySet<string> = new Set([
-  "agent.start", "agent.send", "drive.plan", "drive.approve", "rescue.diagnose", "research.ask", "problem.find", "bisect.start", "bisect.undo",
-  "checkpoint.restore", "checkpoint.putBack", "teach.try", "teach.check", "project.install", "ship.check", "ship.preview", "ship.live", "ship.rollback",
-  "memory.add", "memory.forget", "memory.edit", "memory.erase", "memory.agents", "watch.check",
-]);
+// Must fix 30 (M59): the row's own field in protocol/commands.json (own: edits or light).
+export const OWN_WORK: ReadonlySet<string> = new Set(commandsWhere((r) => !!r.own));
 /** The engine's own work that never edits the person's code: what it writes is build output (ignored), a lock file or the
  *  memory notes (LIGHT_OWN_FILE). Anything else that changes while it runs is the other tool's, and is reviewed. */
-export const LIGHT_WORK: ReadonlySet<string> = new Set([
-  "research.ask", "problem.find", "teach.check", "project.install", "ship.check", "ship.preview", "ship.live", "ship.rollback",
-  "memory.add", "memory.forget", "memory.edit", "memory.erase", "memory.agents", "watch.check",
-]);
+export const LIGHT_WORK: ReadonlySet<string> = new Set(commandsWhere((r) => r.own === "light"));
 const LIGHT_OWN_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/;
 
 /** What the project's own checks said (agent.ts checkForReview): a result, a reason it was not run, or stopped (null). */

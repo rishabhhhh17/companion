@@ -52,7 +52,9 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   const [liveFailed, setLiveFailed] = useState(false);
   const live = liveOn && !liveFailed && !orb;
   // M46 (F28): how lively it is, and the shell's rest (a call, Low Power Mode).
-  const mode = liveliness ?? livelinessOf(useSetting("character.lively"));
+  // Read on every render (M59, the rules of hooks lint): behind `liveliness ??` it was skipped while a page passed its own.
+  const livelySetting = useSetting("character.lively");
+  const mode = liveliness ?? livelinessOf(livelySetting);
   const resting = useRest() || !!rest;
   // M55: its small moves for what happens (character.reacts, on unless turned off).
   const reacts = useSetting("character.reacts") !== false;
