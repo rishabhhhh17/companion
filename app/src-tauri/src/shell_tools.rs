@@ -226,6 +226,84 @@ fn point_paste(window: tauri::WebviewWindow, app: AppHandle) -> Result<(), Strin
     Ok(())
 }
 
+// ---------- M82: Your AI tools, and Put it in ----------
+
+/// M82, Your AI tools: which of the tools on the one list (protocol/aitools.json) are on this Mac. Only when the screen
+/// opens (the page asks), only from Home. Read only (aitools.rs): installed app ids, program files found by name, and the
+/// project's tool folders. Nothing is run and no file is read. The log holds counts only.
+#[tauri::command]
+fn ai_tools_find(window: tauri::WebviewWindow) -> Result<aitools::Found, String> {
+    settings::only_card(window.label())?;
+    let project = current_project();
+    let path = std::env::var("PATH").unwrap_or_default();
+    let found = aitools::find(aitools::list(), &path, std::path::Path::new(&home_dir()), (!project.is_empty()).then(|| std::path::Path::new(&project)), editor_installed);
+    log("ai_tools_found", json!({ "apps": found.apps.len(), "programs": found.programs.len(), "folders": found.folders.len() }));
+    Ok(found)
+}
+
+/// M82, hand Squibby the job: Have my AI do it's clear prompt is Prompt help's own rewrite (assist.prompt), sent by the shell
+/// as the Prompt help key's is, never by a page (runner.rs): only for the project open in Home, so its house rules come along
+/// and no other folder can be named. Only from Home, on the person's press. The words are not logged.
+#[tauri::command]
+fn handoff_prompt(window: tauri::WebviewWindow, app: AppHandle, tool: String, text: String, req: String) -> Result<(), String> {
+    settings::only_card(window.label())?;
+    if aitools::tool(&tool).is_none() { return Err("unknownTool".into()); }
+    let req: String = req.chars().filter(|c| c.is_ascii_alphanumeric()).take(40).collect();
+    let text = text.trim();
+    if req.is_empty() || text.is_empty() || text.chars().count() > 8000 { return Err("noText".into()); }
+    let project = current_project();
+    if project.is_empty() { return Err("noProject".into()); }
+    let target = if tool == "claude" { "claude_code" } else { "other" };
+    let cmd = json!({ "v": 1, "id": format!("ho{}", now()), "type": "assist.prompt", "req": req, "app": format!("handoff.{tool}"), "target": target, "text": text, "style": prompthelp::style_of(&setting_now("ph.style")), "noQuestion": true, "project": project });
+    app.state::<runner::Runner>().send(&cmd)
+}
+
+/// M82, hand Squibby the job: Put it in <tool>, on the person's press only. The light first (rule 5), then Accessibility
+/// (asked the first time, rule 8), then the tool's app is brought to the front (the one deliberate bring to front, rule 9)
+/// and the prompt goes into its own chat box through Type by voice's paste (the clipboard saved and put back, a password
+/// box refused). Return is never pressed: the person sends it (rule 13). Anything else copies the prompt and says why, and
+/// the page offers Show me where to paste. Returns the stage (aitools.rs STAGES). The prompt is never logged.
+#[tauri::command]
+async fn handoff_put_in(window: tauri::WebviewWindow, app: AppHandle, tool: String, text: String, looking: String) -> Result<String, String> {
+    settings::only_card(window.label())?;
+    let Some(t) = aitools::tool(&tool) else { return Err("unknownTool".into()) };
+    if text.trim().is_empty() || text.len() > 40_000 { return Err("noText".into()); }
+    let bundles = t.apps.clone();
+    let looking: String = looking.chars().take(60).collect();
+    tauri::async_runtime::spawn_blocking(move || handoff_put_in_now(app, bundles, text, looking)).await.map_err(|_| "failed".to_string())
+}
+fn handoff_put_in_now(app: AppHandle, bundles: Vec<String>, text: String, looking: String) -> String {
+    use std::sync::atomic::Ordering::SeqCst;
+    let stops_at = VOICE_STOPS.load(SeqCst);
+    let stopped = || VOICE_STOPS.load(SeqCst) != stops_at;
+    if light_unseen() { ax::write_clipboard(&text); return "hidden".into(); }
+    say_showme(&app, "looking", &looking, json!({}));
+    std::thread::sleep(Duration::from_millis(250));
+    let done = |stage: &str| { say_showme(&app, "done", "", json!({})); log("handoff_put_in", json!({ "stage": stage, "chars": text.chars().count() })); stage.to_string() };
+    if stopped() { return done("stopped"); }
+    if !ax::trusted(false) { let _ = ax::trusted(true); ax::write_clipboard(&text); return done("needsPermission"); }
+    let Some(pid) = ax::running_pid(&bundles) else { ax::write_clipboard(&text); return done(aitools::Step::NotOpen.stage()); };
+    if stopped() { return done("stopped"); }
+    let in_front = ax::ensure_front(pid);
+    let read = if in_front { ax::text_boxes(pid) } else { None };
+    let front = ax::front_app();
+    let (bundle, name) = front.as_ref().filter(|f| f.pid == pid).map(|f| (f.bundle_id.clone(), f.name.clone())).unwrap_or_default();
+    let kind = pastehere::app_of(&bundle);
+    let (win, _title, boxes) = read.unwrap_or((coords::R { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }, String::new(), vec![]));
+    let place = pastehere::decide(kind, None, (win.w > 0.0).then_some(win), &boxes, false);
+    let focused_box = match &place { pastehere::Where::Confirmed(r) if in_front => ax::focus_box(pid, *r), _ => false };
+    ax::let_apps_sleep();
+    let focus = if focused_box { ax::focused(pid) } else { None };
+    let ok = focus.as_ref().is_some_and(|f| dictate::target_verdict(&f.role, &f.subrole, ax::secure_input_enabled(), &bundle, &prompthelp::Denylist::empty()).is_ok());
+    let step = aitools::put_in_step(true, in_front, &place, !focused_box || ok);
+    let step = if step == aitools::Step::Paste && !focused_box { aitools::Step::NoBox } else { step };
+    if step != aitools::Step::Paste { ax::write_clipboard(&text); return done(step.stage()); }
+    let Some(f) = focus else { ax::write_clipboard(&text); return done(aitools::Step::NoBox.stage()); };
+    let target = dictate::Target { pid, bundle, name, element: f.element.id() };
+    let (stage, _line) = dictate::insert_at_cursor(&target, &text, stopped);
+    done(match stage { "typed" => "typed", "idle" => "stopped", _ => "copied" })
+}
+
 /// The display a rect (global top-left points) is on, in the same points. Asked on the main thread, where AppKit answers.
 fn display_of(app: &AppHandle, rect: coords::R) -> Option<coords::R> {
     let c = rect.center();

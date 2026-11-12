@@ -481,7 +481,33 @@ pub fn text_boxes(pid: i32) -> Option<(crate::coords::R, String, Vec<crate::past
     }
     Some((crate::coords::R { x, y, w, h }, title, boxes))
 }
-fn walk_boxes(root: &Cf) -> Vec<crate::pastehere::Box_> {
+fn walk_boxes(root: &Cf) -> Vec<crate::pastehere::Box_> { walk_box_elements(root).into_iter().map(|(_, b)| b).collect() }
+
+/// M82, Put it in: gives the keyboard to the typing box of the app's front window at `rect` (the one pastehere.rs confirmed
+/// as the chat box), through Accessibility's own focus, the way a click would. Nothing is typed or read here: only what the
+/// boxes say about themselves is asked again, to find the same one. True when the box took the focus.
+pub fn focus_box(pid: i32, rect: crate::coords::R) -> bool {
+    if !trusted(false) { return false; }
+    let Some(app) = Cf::new(unsafe { AXUIElementCreateApplication(pid) }) else { return false };
+    quick(&app);
+    let Some(window) = attr(&app, "AXFocusedWindow").or_else(|| attr(&app, "AXMainWindow")) else { return false };
+    let near = |a: f64, b: f64| (a - b).abs() <= 1.0;
+    let Some((el, _)) = walk_box_elements(&window).into_iter().find(|(_, b)| near(b.rect.x, rect.x) && near(b.rect.y, rect.y) && near(b.rect.w, rect.w) && near(b.rect.h, rect.h)) else { return false };
+    set_true(&el, "AXFocused");
+    for _ in 0..10 {
+        std::thread::sleep(Duration::from_millis(50));
+        if focused(pid).is_some_and(|f| f.element.id() == el.id()) { return true; }
+    }
+    false
+}
+
+/// M82, Put it in: the process of an open app with one of these bundle ids, the first found. Only whether it runs.
+pub fn running_pid(bundles: &[String]) -> Option<i32> {
+    use objc2_app_kit::NSRunningApplication;
+    bundles.iter().find_map(|b| NSRunningApplication::runningApplicationsWithBundleIdentifier(&cfstr(b)).firstObject().map(|a| a.processIdentifier()))
+}
+
+fn walk_box_elements(root: &Cf) -> Vec<(Cf, crate::pastehere::Box_)> {
     const ROLES: &[&str] = &["AXTextArea", "AXTextField", "AXComboBox"];
     let mut out = vec![];
     let mut queue: std::collections::VecDeque<(Cf, usize)> = children(root).into_iter().map(|c| (c, 1)).collect();
@@ -496,7 +522,7 @@ fn walk_boxes(root: &Cf) -> Vec<crate::pastehere::Box_> {
                 let subrole = text_attr(&el, "AXSubrole").unwrap_or_default();
                 let words: Vec<String> = ["AXPlaceholderValue", "AXTitle", "AXDescription", "AXHelp", "AXRoleDescription"].iter().filter_map(|a| text_attr(&el, a)).filter(|s| !s.trim().is_empty()).map(|s| s.chars().take(120).collect()).collect();
                 let enabled = attr(&el, "AXEnabled").is_none_or(|v| unsafe { v.0 != kCFBooleanFalse });
-                out.push(crate::pastehere::Box_ { role: role.clone(), subrole, words, rect: crate::coords::R { x, y, w, h }, editable: enabled });
+                out.push((el, crate::pastehere::Box_ { role: role.clone(), subrole, words, rect: crate::coords::R { x, y, w, h }, editable: enabled }));
             }
             continue;   // a box's own children are its text, never read
         }

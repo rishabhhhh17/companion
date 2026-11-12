@@ -1,0 +1,13 @@
+{
+  "about": "M82: the one list of the AI tools the Your AI tools screen looks for, and how each is found. The shell reads it (app/src-tauri/src/aitools.rs: only whether an app with that bundle id is installed, whether a program file with that name is in one of the folders, and whether the project has that folder; it never runs a program and never reads any file's contents) and so do the pages (app/src/aiTools.ts: which tools are on this Mac). The ids are the done signal's tools (runner/src/donesignal.ts DONE_TOOLS). apps: bundle ids, also the app Put it in brings to the front. programs: command line program names. folders: the tool's own folder in a project. binFolders: where programs are looked for besides the app's own PATH (~ is the home folder). [verify] the bundle ids of Antigravity and the Codex app on a real Mac.",
+  "tools": [
+    { "id": "claude", "apps": [], "programs": ["claude"], "folders": [".claude"] },
+    { "id": "codex", "apps": ["com.openai.codex"], "programs": ["codex"], "folders": [".codex"] },
+    { "id": "cursor", "apps": ["com.todesktop.230313mzl4w4u92"], "programs": [], "folders": [".cursor"] },
+    { "id": "copilot", "apps": ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"], "programs": [], "folders": [".vscode"] },
+    { "id": "antigravity", "apps": ["com.google.antigravity", "com.google.antigravity-ide"], "programs": ["agy"], "folders": [".agent"] },
+    { "id": "gemini", "apps": [], "programs": ["gemini"], "folders": [".gemini"] },
+    { "id": "windsurf", "apps": ["com.exafunction.windsurf"], "programs": ["devin"], "folders": [".windsurf", ".devin"] }
+  ],
+  "binFolders": ["~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "~/.npm-global/bin", "~/.claude/local", "~/.bun/bin"]
+}

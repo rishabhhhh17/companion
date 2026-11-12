@@ -33,8 +33,8 @@ allow() {
 
 # Accessibility: macOS's question is defined in ax.rs (trusted) and asked only on the first press of a feature that needs it.
 allow 'AXIsProcessTrustedWithOptions|kAXTrustedCheckOptionPrompt' "the Accessibility question" "ax.rs:AXIsProcessTrustedWithOptions ax.rs:trusted"
-# M76: Show me where to paste asks on its first press (rule 8), never before.
-allow 'trusted[(]true[)]' "Accessibility" "phelp.rs:on_hotkey seclook.rs:on_hotkey errhelp.rs:press shell_showme.rs:do_it_for_me shell_voice.rs:voice_worker shell_tools.rs:point_paste"
+# M76: Show me where to paste asks on its first press (rule 8), never before. M82: so does Put it in (the hand off).
+allow 'trusted[(]true[)]' "Accessibility" "phelp.rs:on_hotkey seclook.rs:on_hotkey errhelp.rs:press shell_showme.rs:do_it_for_me shell_voice.rs:voice_worker shell_tools.rs:point_paste shell_tools.rs:handoff_put_in_now"
 # Screen Recording: defined in macos_see.rs, asked the first time Show me how (or point at the problem) is used.
 allow 'CGRequestScreenCaptureAccess[(]' "the Screen Recording question" "macos_see.rs:request_screen_recording"
 allow 'request_screen_recording[(][)]' "Screen Recording" "macos_see.rs:request_screen_recording shell_showme.rs:showme_start shell_tools.rs:point_problem"

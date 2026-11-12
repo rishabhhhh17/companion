@@ -8,7 +8,7 @@ import type { Colour } from "./meaning.ts";
 
 export type PageId = "account" | "general" | "look" | "fixing" | "flowflow" | "keys" | "privacy" | "about" | "more";
 /** The parts that are not settings. Each is drawn by the page (settingsPage.tsx) and found by search. */
-export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep" | "doneSignal";
+export type Fixed = "plan" | "key" | "setup" | "permissions" | "kept" | "danger" | "updates" | "replay" | "practice" | "made" | "logs" | "acknowledgements" | "google" | "preview" | "usedOften" | "reviewKeep" | "doneSignal" | "aiTools";
 export type Item = string | { fixed: Fixed };
 /** A Group on a page: its anchor (#account.plan) is its id; its words are S.setGroupTitles[id] and S.setGroupFoot[id]. */
 export type GroupDef = { id: string; items: readonly Item[] };
@@ -78,6 +78,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       // M74: how strict and the key warning beside the mode, and this project's own choice (a project setting).
       { id: "fixing.review", items: ["review.mode", "review.modeHere", "review.strictness", "review.keyWarning"] },
       // M75 (roadmap 19): when Claude Code or Codex says it is done, one row per tool, beside the review it starts.
+      // M82: Your AI tools, one Connect per tool found on this Mac, above the rows of each hook.
+      { id: "fixing.tools", items: [f("aiTools")] },
       { id: "fixing.done", items: [f("doneSignal")] },
       { id: "fixing.tries", items: ["work.tries"] },
       { id: "fixing.rules", items: ["rules.house", "check.install"] },
@@ -86,7 +88,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       { id: "more.fixing.review", items: ["review.quietSeconds", "review.autoQuietSeconds", "review.ignore", "review.stopKinds", "review.whenNothing", "review.maxFiles", "review.keepDays", "review.weakenedChecks", "packages.check"] },
-      { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after", "ask.choices", "paste.showWhere", "tour.offer", "report.codeLines"] },
+      { id: "more.fixing.run", items: ["work.maxTurns", "work.askOnAnyFailure", "work.tryAgain", "work.stopOnQuestion", "work.webSearch", "drive.maxSteps", "make.folder", "approval.waitMinutes", "pointat.editor", "explain.after", "ask.choices", "handoff.improve", "aiTools.nowRow", "paste.showWhere", "tour.offer", "report.codeLines"] },
       { id: "more.fixing.checks", items: ["check.mustSee", "check.press", "check.afterPress", "check.start", "check.skip", "check.time", "net.slow", "pictures.make", "pictures.keep", "rescue.readDeployLog", "rescue.readCiRun", "check.privatePages"] },
     ],
   },

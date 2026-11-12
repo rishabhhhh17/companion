@@ -1,3 +1,4 @@
+import { AiToolsScreen } from "./aiToolsScreen.tsx";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ApprovalCard, DoctorItem, Model } from "./model.ts";
 import type { Command } from "../../protocol/index.ts";
@@ -56,7 +57,7 @@ const yoursNow = (): Pick<Yours, "name" | "lively" | "edge"> & { you: string } =
   return { name: typeof name === "string" ? name : "", lively: livelinessOf(getSetting("character.lively")), edge: EDGES.includes(edge as Edge) ? (edge as Edge) : null, you: typeof you === "string" ? you : "" };
 };
 const folderName = (p: string) => p.split("/").filter(Boolean).pop() ?? p;
-type Fold = "how" | "yours" | "powers" | "keys" | "questions";
+type Fold = "how" | "yours" | "powers" | "keys" | "questions" | "tools";
 
 export function Onboarding({ doctor, connected, keyTested, project, send, pickFolder, startPractice, onDone, point, approvals, usage, firstCheck, answer, cloneLink, copying, cloneNote, why, fixFound }: Props) {
   const [step, setStep] = useState<Step>("hello");
@@ -230,6 +231,8 @@ export function Onboarding({ doctor, connected, keyTested, project, send, pickFo
             <ListRow colour="blue" icon="file" title={folderName(project)} line={project} action={{ label: S.fr.otherFolder, onClick: pickFolder, colour: "blue" }} />
           </ListGroup>
           <p className="fr-small" role="status">{S.fr.checkWhat} {S.fr.checkPromise}</p>
+          {/* M82: once a project is picked, its AI tools can be connected here (optional; the screen looks only when opened). */}
+          <div className="fr-folds">{fold("tools", S.m82.firstRun, open === "tools" ? <AiToolsScreen project={project} /> : null)}</div>
         </>) : (<>
           <ListGroup label={S.fr.folderTitle}>
             <ListRow colour="blue" icon="file" title={S.fr.pickFolder} line={S.fr.pickFolderLine} onOpen={pickFolder} openLabel={S.fr.pickFolder} />

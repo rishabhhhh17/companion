@@ -95,6 +95,8 @@ import { activeGroup, buttonShown, followPendingAfter, invitation, learnShown, o
 import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
+import { HandoffCard } from "./handoffCard.tsx";
+import { AiToolsNowRow } from "./aiToolsScreen.tsx";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { shapeAsk } from "./settingsFit.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -1809,6 +1811,8 @@ export function Card() {
   };
   // M75 (shortlist 10): a vague ask gets choices first; nothing runs until one is tapped (rule 13).
   const [vague, setVague] = useState<VagueChoice[] | null>(null);
+  // M82: the words handed to the hand off card (a new press opens a new card).
+  const [handoff, setHandoff] = useState<{ words: string; n: number } | null>(null);
   const sendTask = (prompt: string) => {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
@@ -2527,6 +2531,8 @@ export function Card() {
           {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main ui-lead-acts"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
       </Lead>
       {setup && home.tab === "now" && <SetupList rows={setup} blocker={blocker} onAct={setupAct} />}
+      {/* M82: while no AI tool is connected in this project, one row opens Your AI tools (aiTools.nowRow). */}
+      {!setup && project && home.tab === "now" && setting("aiTools.nowRow") !== false && <AiToolsNowRow project={project} shown={atRest} onOpen={() => { setSetPlace("fixing.tools"); pickTab("settings"); }} />}
       {/* The wide Home at rest (M51 polish): the sea goes on down to the ask box, so there is no dead band under the status. */}
       {/* M71: the sea that filled the work under the status is retired (Home is black). */}
           {/* The one ask field, under the status (27 Oct 2026, F28). Only hidden on the other places, never taken away: a draft,
@@ -2560,6 +2566,8 @@ export function Card() {
                 ? <span className="ask-token" title={S.review.at(rvHead.pointed.file, rvHead.pointed.line)} role="note" aria-label={S.look.askAbout(S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line))}><span className="ask-token-dot" aria-hidden="true" />{S.homeNow.tokenLine(rvHead.pointed.file, rvHead.pointed.line)}</span>
                 : <span className="ask-token" data-c={statusDot(status.kind)} title={project} role="note" aria-label={S.look.askAbout(projectName)}><span className="ask-token-dot" aria-hidden="true" />{projectName}</span>)}
               {askChipList.map((c) => <button type="button" className="ask-chip" key={c.id} onClick={() => fillBox(c.words)}>{c.words}</button>)}
+              {/* M82: hand the job to your AI tool. The words go to the hand off card below; nothing is sent until a press there. */}
+              {project && <button type="button" className="ask-chip ask-handoff" title={S.m82.haveAiHelp} onClick={() => { const w = box.current?.value.trim() ?? ""; if (!w) { needWords(S.m82.needWords); return; } setVague(null); setHandoff({ words: w, n: Date.now() }); clearBox(); }}>{S.m82.haveAi}</button>}
               {/* A click may never open the microphone (rule 5): the press says which keys to hold, and the tooltip too. */}
               {groups.on("talk") && keys.using.talk && <Button kind="icon" className="ask-mic" label={S.look.micLabel} title={talkKeysLine(keys)} onClick={() => setAskHint(S.look.micHint(chordLabel(keys.using.talk!)))}><Icon name="mic" size={16} /></Button>}
               {/* While a job works the arrow stays, greyed, so the box keeps its shape (M51 polish); Stop is on the job's card. */}
@@ -2598,6 +2606,9 @@ export function Card() {
               </div>
             </div>
           )}
+          {/* M82: the hand off card (handoffCard.tsx): the clear prompt, then Run it (Claude Code) or Put it in and Copy (another tool). */}
+          {handoff && project && <HandoffCard key={handoff.n} project={project} words={handoff.words} onClose={() => setHandoff(null)}
+            onRun={(prompt) => { setHandoff(null); if (working) { setBox(prompt); needWords(S.askBusy); return; } if (!toolOn("drive")) { setBox(prompt); dispatch({ type: "app.notice", message: offLine() }); return; } sendTask(prompt); }} />}
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
           {dragging && <div className="line drop-line" role="status">{S.attachDrop}</div>}

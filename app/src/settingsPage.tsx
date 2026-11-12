@@ -20,6 +20,7 @@ import { forgetStart, FORGET_WAIT_MS, forgetOutcome, forgetStep, cutNoticeLine, 
 import { VOICE_START, languageLabel, micDefaultLabel, micLine, noteSpeed, soundLine, speedLabel, voiceAsk, voiceLabel, voiceLine, voiceProblem, voiceSettingsFrom, type Sound, type VoiceSettings } from "./voicesettings.ts";
 import { addDoneSignal, eraseMemory, inspectProject, listMemory, metricsErase, metricsShow, NO_PROJECT, removeDoneSignal, showDoneSignal, showSpending } from "./commands.ts";
 import { doneAsk, doneStateFrom, hookLabel, removedLine, type DoneRow, type DoneState } from "./doneSignal.ts";
+import { AiToolsScreen } from "./aiToolsScreen.tsx";
 import { addRule, afterPressShown, factsFrom, installNote, picturesGoing, picturesResetGoing, proofLines, removeRule, ruleKindOptions, skipItems, startOptions, type CheckFacts } from "./checkRows.ts";
 import type { Spending } from "./model.ts";
 import { CUSTOM_KEYS, canPick, choicesFrom, chordLabel, customChord, keyProblem, keysFrom, setKeysNow, type Choices, type Job, type Keys, type Ticked } from "./keys.ts";
@@ -747,12 +748,16 @@ function FixedRows({ fixed }: { fixed: Fixed }) {
     case "usedOften": return <UsedOftenRow />;
     case "reviewKeep": return <ReviewKeepRow />;
     case "doneSignal": return <DoneSignalRows />;
+    case "aiTools": return <AiToolsRows />;
     // An account already connected always shows, to be seen and disconnected; connecting a new one needs watch routines on.
     case "google": return placeShown("google") ? <GoogleSection connecting={setting("watch.on") === true} /> : null;
     default: return null;
   }
 }
 const fixedAnchor = (fx: Fixed): string => `set-fixed-${fx}`;
+
+/** M82: Your AI tools (aiToolsScreen.tsx), for the project open in Home. */
+function AiToolsRows() { const c = useCtx(); return <AiToolsScreen project={c.project} />; }
 
 /** M75 (roadmap 19, F30): the other tool's done signal, one row per tool. Set up opens the card that shows exactly what is
  *  written where, and only its yes sends the add; Remove is one press. What is set up is read from the files themselves. */

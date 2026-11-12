@@ -176,6 +176,8 @@
     { "key": "history.thisWeek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "check.privatePages", "section": "checks", "kind": "switch", "default": true, "scope": "project", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "ask.choices", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "handoff.improve", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "aiTools.nowRow", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "paste.showWhere", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "tour.offer", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "report.codeLines", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

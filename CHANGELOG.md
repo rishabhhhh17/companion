@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Connect your AI tools, and hand Squibby the job: 12 Nov 2026
+
+- **Your AI tools.** A new screen lists the AI tools Squibby finds on this Mac, and only those: Claude Code, Codex, Cursor, VS Code (with Copilot), Antigravity, Gemini CLI and Windsurf. Each has one button, Connect. One card shows every file and every line it will add, and one yes adds them: Squibby then saves a copy before that tool runs a destructive command, and starts a review the moment it is done. Disconnect takes the lines out again. Tools that are not on this Mac are folded away under Not on this Mac. Find it in Settings, Fixing, in the first run after you pick a project, and on Now while no tool is connected.
+- **How Squibby finds them.** Only when you open the screen, and only by name: is the app installed, is there a program with that name in the usual folders, does the project have that tool's folder. It never runs a program and never reads what is in a file.
+- **Have my AI do it.** A new choice in the ask box. Squibby turns your words into a clear prompt with this project's house rules, shows you what changed, and lets you change it. Then Claude Code runs it here, with a safety copy first and proof after. For any other tool, Put it in Cursor brings Cursor to the front and puts the prompt in its chat box; you press Return yourself. Or press Copy. If the chat box cannot be found, the prompt is copied and Show me where to paste is one press away.
+- **Then Squibby waits for your tool, and checks.** The card says it is waiting for the tool to finish. With the tool connected, the review starts the moment it says it is done; without, once your files are quiet, and the card says which. Stop everything ends the wait.
+- **Two new settings,** both on: Write a clear prompt first, and Offer to connect your AI tools on Now. Squibby remembers the tool you last used in each project.
+- **Not yet claimed:** that Put it in finds the chat box in every one of these apps, and the app ids of Antigravity and the Codex app. Those are checked on a real Mac first.
+
 ## The safety net in every AI tool: 11 Nov 2026 (in progress)
 
 - **Codex, Cursor, the VS Code agent and Antigravity get the safety net too.** Before, only Claude Code could tell Squibby to save a copy before it ran a command that throws work away. Now each of these tools can, from its own settings in your project, after your yes. The command still runs exactly as your tool decides; Squibby only saves a copy first, and Undo in History brings the files back.
