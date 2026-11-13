@@ -2,6 +2,7 @@
 // unmounts it and passes the app's state in; the animation itself never goes through React state.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CharacterState } from "../model.ts";
+import type { Reaction } from "../moods.ts";
 import type { Liveliness } from "../lookfeel.ts";
 import { FlowflowController } from "./controller.ts";
 import { flowflowPool } from "./pool.ts";
@@ -42,7 +43,18 @@ export type FlowflowViewProps = {
    *  compiles a drawing then: it shows `placeholder` (its still picture) until a warm one is ready, made in an idle moment. */
   waitForWarm?: boolean;
   placeholder?: ReactNode;
+  /** M83: the reaction in force (useMood.ts, from a real event), or null. */
+  mood?: Reaction | null;
 };
+
+/** M83: the way from the middle of the canvas to the middle of the screen it is on, in points (y down), or null. Reads only
+ *  where the window and the canvas are, never anything on the screen. */
+export function towardScreenMiddle(from: Element): { dx: number; dy: number } | null {
+  const a = from.getBoundingClientRect(), sc = window.screen;
+  if (!(a.width > 0) || !sc || !(sc.width > 0)) return null;
+  const left = (sc as Screen & { availLeft?: number }).availLeft ?? 0, top = (sc as Screen & { availTop?: number }).availTop ?? 0;
+  return { dx: left + sc.width / 2 - (window.screenX + a.left + a.width / 2), dy: top + sc.height / 2 - (window.screenY + a.top + a.height / 2) };
+}
 
 /** M55: the way from the middle of the canvas to the middle of an element, in points (y down), or null if either is not laid
  *  out. Reads only where the two boxes are, never what is in them. */
@@ -56,7 +68,7 @@ const ASK_MEASURE_MS = 400;
 /** The card is measured again once it has grown in (smoothMotion.ts, --dur-enter and a little). */
 const LEAN_SETTLED_MS = 450;
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo, waitForWarm, placeholder }: FlowflowViewProps) {
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo, waitForWarm, placeholder, mood = null }: FlowflowViewProps) {
   // M66: the canvas is the pool's (pool.ts), put into this host and taken out again on close; the host has no box of its
   // own (display: contents), so the canvas is styled and placed as if it were here directly.
   const host = useRef<HTMLSpanElement>(null);
@@ -64,7 +76,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(() => !waitForWarm || flowflowPool().ready > 0);
-  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small, className, waitForWarm });
+  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small, className, waitForWarm, mood });
 
   // Waiting for a warm drawing: asked for in an idle moment, and kept warm from then on for the next open.
   useEffect(() => {
@@ -92,11 +104,19 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
     ctl.current = made; if (controllerRef) controllerRef.current = made;
     made.setLiveliness(i.liveliness ?? "still");
     made.setState(i.state);
+    if (i.mood === "watching") { const w = towardScreenMiddle(c); if (w) made.watchToward(w.dx, w.dy); }
+    made.setReaction(i.mood);
     if (i.resting) made.setResting(true);
     return () => { made.dispose(); giveBack(); canvas.current = null; ctl.current = null; if (controllerRef) controllerRef.current = null; };
   }, [controllerRef, ready]);
 
   useEffect(() => { ctl.current?.setState(state); }, [state]);
+  // M83: the reaction, and where the middle of the screen is while it watches (measured when watching starts).
+  useEffect(() => {
+    const c = canvas.current, made = ctl.current; if (!made) return;
+    if (mood === "watching" && c) { const w = towardScreenMiddle(c); if (w) made.watchToward(w.dx, w.dy); }
+    made.setReaction(mood);
+  }, [mood, ctl.current]);
   useEffect(() => { ctl.current?.setLiveliness(liveliness ?? "still"); }, [liveliness]);
   useEffect(() => { ctl.current?.setResting(!!resting); }, [resting, ctl.current]);
   useEffect(() => { ctl.current?.setReduced(!!reduced); }, [reduced]);

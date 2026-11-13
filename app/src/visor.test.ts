@@ -221,7 +221,7 @@ describe("its stylesheet", () => {
     expect(VISOR_MS).toMatchObject({ blink: 4600, scan: 1300, lean: 2600, hop: 840, glance: 2400 });
     // The hop and the glance play once, the lean twice on arriving at needs you, the blink three times and then rests (re
     // armed by something new): only what says a working state (the scan, the listening pulse) loops.
-    const runs: Record<string, string> = { "visor-hop": "1", "visor-glance": "1", "visor-lean": "2", "visor-blink": "3" };
+    const runs: Record<string, string> = { "visor-hop": "1", "visor-glance": "1", "visor-lean": "2", "visor-blink": "3", "visor-exhale": "1" };   // M83: relieved breathes out once
     for (const m of visorRules.matchAll(/animation: (visor-[\w-]+)[^;]*;/g)) {
       const n = runs[m[1]];
       expect(m[0].includes("infinite"), m[0]).toBe(n === undefined);

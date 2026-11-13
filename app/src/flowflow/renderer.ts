@@ -53,7 +53,7 @@ export class FlowflowRenderer {
         uPose: { value: new Vector4() }, uMove: { value: [1, 0, 0] }, uEyes: { value: new Vector4() }, uOpen: { value: 1 },
         uCloud: { value: 0 }, uGlow: { value: 0 }, uTime: { value: 0 }, uPour: { value: 0 }, uSurf: { value: new Vector4() }, uPress: { value: 0 }, uColA: { value: asWritten(AQUA) }, uColB: { value: asWritten(OCEAN) },
         uSway: { value: 0 }, uSwayTime: { value: 0 }, uAmber: { value: 0 }, uEnvBase: { value: new Color(0, 0, 0) },
-        uOrb: { value: ORB_RADIUS / BODY_SCALE }, uFace: { value: [1, 0] }, uBub: { value: new Vector4() }, uBubZR: { value: new Vector4() }, uHaloK: { value: 1 },
+        uOrb: { value: ORB_RADIUS / BODY_SCALE }, uFace: { value: [1, 0] }, uFace2: { value: [1, 0, 0, 0] }, uFace3: { value: [0, 1, 0, 0] }, uSweat: { value: -1 }, uBub: { value: new Vector4() }, uBubZR: { value: new Vector4() }, uHaloK: { value: 1 },
       },
     });
     // One quad over the whole canvas: the orb, its eyes and its two bubbles are worked out per pixel (shaders.ts).
@@ -122,6 +122,10 @@ export class FlowflowRenderer {
     (u.uEyes.value as Vector4).set(eyes.lx, eyes.ly, eyes.rx, eyes.ry);
     u.uOpen.value = Math.max(0, eyes.open);
     u.uFace.value = [look.eyeArc, look.eyeDot];
+    // M83: each reaction's marks, and worried's sweat drop.
+    u.uFace2.value = [look.eyeSize, look.glint, look.brow, look.mouth];
+    u.uFace3.value = [look.lid, look.reach, look.zz, look.blinkSlow];
+    u.uSweat.value = s.sweat ?? -1;
     u.uCloud.value = look.cloud; u.uGlow.value = look.glow + 0.5 * s.pulse;
     // M37c: the surface it clings to, as a plane in the drop's own units (shaders.ts drop).
     const sf = s.surface, sv = u.uSurf.value as Vector4;

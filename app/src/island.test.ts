@@ -412,8 +412,8 @@ describe("the fun island", () => {
   test("the island page draws Flowflow from the character's poses, never from a skin directly", () => {
     const page = read("./island.tsx");
     // M24: one Flowflow everywhere, the live water, with the character's pose as its picture fallback.
-    expect(page).toContain('<FlowMini className="island-flow" state={w.state} band />');   // the working agent in the wings (M68: the Visor's band alone); nothing peeks on hover
-    expect(read("./flowflowMini.tsx")).toContain("poseUrl(poseFor(state))");
+    expect(page).toContain('<FlowMini className="island-flow" state={w.state} band mood={mood} />');   // the working agent in the wings (M68: the Visor's band alone); nothing peeks on hover
+    expect(read("./flowflowMini.tsx")).toContain("poseUrl(poseFor(state, { mood }))");
     expect(read("./flowflowMini.tsx")).not.toContain("skins.ts");
     expect(page).not.toContain("skins.ts");
     // Its name says the state in words even while nothing is written on it.

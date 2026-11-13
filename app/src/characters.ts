@@ -3,13 +3,14 @@
 import type { CharacterState } from "./model.ts";
 import { SKIN, poseFile } from "./skins.ts";
 import { VISOR_MS } from "./motionTokens.ts";
+import type { Reaction } from "./moods.ts";
 
 export const POSES = ["look", "glance", "wave", "splash", "idea", "laptop", "magnify", "sleep", "swim", "peek", "worry"] as const;
 export type Pose = (typeof POSES)[number];
 
 const FOR_STATE: Record<CharacterState, Pose> = {
   off: "sleep",
-  idle: "look",
+  idle: "peek",   // M83: awake at rest, soft open eyes; the happy closed eyes ("look") are a reaction now
   listening: "glance",   // turned toward you; the lit ring is what says it is listening
   thinking: "idea",
   working: "laptop",
@@ -21,13 +22,19 @@ const FOR_STATE: Record<CharacterState, Pose> = {
 
 /** The pose for a state. A trip across the screen and a cheer show only while the character is otherwise idle, so they
  *  never hide that something waits for you, that the screen is being looked at, or that it is off. */
-export function poseFor(state: CharacterState, ctx: { roam?: string; react?: string } = {}): Pose {
+export function poseFor(state: CharacterState, ctx: { roam?: string; react?: string; mood?: Reaction | null } = {}): Pose {
   if (state === "idle") {
     if (ctx.roam === "travel" || ctx.roam === "return") return "swim";
     if (ctx.react === "cheer" || ctx.react === "party") return "splash";
+    if (ctx.mood) return MOOD_POSE[ctx.mood];
   }
+  if (state === "done" && ctx.mood === "proud") return MOOD_POSE.proud;
   return FOR_STATE[state];
 }
+/** M83 (moods.ts): each reaction in the pictures. Proud splashes, worried is the worry pose, relieved closes its eyes softly
+ *  (the happy closed eyes) and opens them again as it settles back, watching glances aside, hello opens its eyes wide with a
+ *  small lift (the page's touch), sleepy sleeps. */
+export const MOOD_POSE: Readonly<Record<Reaction, Pose>> = { proud: "splash", worried: "worry", relieved: "look", watching: "glance", hello: "peek", sleepy: "sleep" };
 
 /** Where the page finds a pose (a relative address, so the built app finds it next to the page). */
 export const poseUrl = (p: Pose): string => poseFile(SKIN, p);
@@ -78,6 +85,22 @@ export function visorPose(state: CharacterState, ring: Ring | null): VisorPose {
     case "working": return { lights: "scan", tone: "light" };
     default: return { lights: "rest", tone: "light" };
   }
+}
+
+/** M83 (moods.ts): a reaction in the Visor's own art. Proud is its smile (and the hop, where hops may play); every other
+ *  reaction is a shape of its two rest lights (ui/parts.css [data-react]): wide open when worried, closing and opening
+ *  again when relieved, turned toward the middle of the screen while watching, lifted for hello, half closed when sleepy.
+ *  Only over its plain rest pose, so the meaning colours (amber, red) are never changed by a reaction. */
+export function visorReaction(p: VisorPose, mood: Reaction | null): { pose: VisorPose; react: Reaction | null } {
+  if (!mood || p.lights !== "rest" || p.tone !== "light") return { pose: p, react: null };
+  if (mood === "proud") return { pose: { lights: "smile", tone: "light" }, react: "proud" };
+  return { pose: p, react: mood };
+}
+/** M83: a reaction on the glass orb. Proud shows the proven ring (a fix proven, a check passing); every other reaction is a
+ *  small move of the orb itself (ui/parts.css), never a ring: worry, relief, watching, hello and sleep are not meanings. */
+export function orbReaction(ring: Ring | null, mood: Reaction | null): { ring: Ring | null; react: Reaction | null } {
+  if (!mood || ring !== null) return { ring, react: null };
+  return mood === "proud" ? { ring: "proven", react: "proud" } : { ring, react: mood };
 }
 
 /** Which of the Visor's moves may run. The blink and the glance are its liveliness (Still: neither; Gentle: the blink;

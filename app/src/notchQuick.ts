@@ -7,7 +7,9 @@
 // approvals, snapshots and receipts apply unchanged. None of them takes the keyboard (rule 9).
 import { receiptVerdict, type Model } from "./model.ts";
 import type { IslandMode, WingMark } from "./home.ts";
-import { homeStatus, notchStatusLine } from "./homeHero.ts";
+import { clockWords, homeStatus, lastResult, notchStatusLine } from "./homeHero.ts";
+import { connection } from "./aiTools.ts";
+import { DONE_TOOLS, type DoneState } from "./doneSignal.ts";
 import type { ToolId } from "./groups.ts";
 import type { PanelView } from "./islandPanel.ts";
 import { cleanName, helloLine } from "./notchHello.ts";
@@ -43,9 +45,10 @@ export type PanelLayout = "quick" | "job" | "question" | "result";
 /** The layout for what the panel shows (islandPanel.ts panelView): a question and a result keep today's cards. */
 export const panelLayout = (v: PanelView): PanelLayout => (v.kind === "questions" ? "question" : v.kind === "job" ? "job" : v.kind === "result" ? "result" : "quick");
 /** The fixed heights of the two new layouts (island.rs PANEL_MIN to PANEL_MAX), so a fact changing never moves anything.
- *  Two rows each (M70 step 4): the fact with Settings and Open, then the buttons or the running job with Stop. The question
+ *  Three rows each (M83): the fact with Settings and Open, the row of short facts, then the buttons or the running job with
+ *  Stop. The facts row keeps its place when it has no fact, so a fact coming or going never moves anything. The question
  *  and the result keep their measured card heights. ui/notch.css pins the same numbers. */
-export const LAYOUT_H = { quick: 96, job: 96 } as const;
+export const LAYOUT_H = { quick: 128, job: 128 } as const;
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";
@@ -163,4 +166,94 @@ export function quickActions(m: Model, o: { now: number; layout: PanelLayout; on
   }
   const on = o.on ?? (() => true);
   return QUICK_SLOTS.filter((id) => { const t = QUICK_TOOL[id]; return want.has(id) && (t === null || on(t)); }).slice(0, QUICK_MAX);
+}
+
+// ---------- M83: a wider panel that says more (docs/milestones/M83-notch-and-reactions.md) ----------
+
+/** M83: the panel's width (island.rs PANEL_W, style.css .island-panel), about 1.4 times the old 400. Pinned on both sides. */
+export const PANEL_W = 560;
+/** At most this many short facts in the row under the head. */
+export const NOTCH_FACTS_MAX = 3;
+export type NotchFactId = "job" | "check" | "changes" | "tools" | "caught";
+/** One short fact: its words, its meaning's colour (null: no colour, a plain fact), and where a press opens Home. */
+export type NotchFact = { id: NotchFactId; words: string; colour: Colour | null; go: { then?: Record<string, string> };
+  /** M83: the same fact as Home's status strip says it, a small caption over a short value. */
+  label: string; value: string };
+/** Where each fact opens Home (island_go arrivals; arrival.rs and home.ts arrivalFrom allow exactly these). Opening Home is
+ *  all a press does: the review opens on the review card, the tools on Settings' Your AI tools, the rest on Now. */
+export const FACT_GO: Record<NotchFactId, { then?: Record<string, string> }> = {
+  job: {}, check: {}, changes: { then: { do: "review" } }, tools: { then: { set: "fixing.tools" } }, caught: {},
+};
+
+/** A time as the facts say it: the clock today ("2:14 pm"), the weekday and clock within the week ("Tue 2:14 pm"), else
+ *  the date ("Nov 3"). Nothing for a time that is missing or makes no sense (the fact is then left out). */
+export function whenWords(iso: string | null | undefined, now: number): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t) || t > now + 60_000) return "";
+  const d = new Date(t), n = new Date(now);
+  const clock = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(/\s+/g, " ");
+  if (d.toDateString() === n.toDateString()) return clock;
+  if (now - t < 6 * 86_400_000) return `${d.toLocaleDateString("en-US", { weekday: "short" })} ${clock}`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** The AI tools connected in the project (M82, aiTools.ts connection), in the list's order; null when the engine has not
+ *  said (the fact is left out, never guessed). */
+export function connectedTools(st: DoneState | null): ToolName[] | null {
+  if (!st) return null;
+  return DONE_TOOLS.filter((t) => connection(st, t) === "on");
+}
+type ToolName = DoneState["tools"][number]["tool"];
+
+export type FactInput = {
+  now: number;
+  /** The engine's hook state for the project (donesignal.state), or null until it answers. */
+  tools?: DoneState | null;
+  /** A job at work: its step (0 to 3) and how long the panel has seen it run. */
+  job?: { step: number; ms: number } | null;
+  /** Which fact the head already says (quickFactKind), so the row never says the same thing twice. */
+  head?: FactKind;
+  /** At most this many (NOTCH_FACTS_MAX in the panel; Home's strip has room for four). */
+  max?: number;
+  /** Whether "No AI tool connected" is said (Home leaves it to its own Connect your AI tools row). */
+  noneTool?: boolean;
+};
+
+/** M83: up to three short facts under the head, each from data the pages already hold, the most useful first: the job's
+ *  step and time, the last check (its result and when), changes waiting for a review, the AI tools connected, and what the
+ *  safety net caught this week. A fact with no data is left out, and so is one the head line already says. */
+export function notchFacts(m: Model, o: FactInput): NotchFact[] {
+  if (!m.runnerUp || m.connected === "none") return [];
+  const project = projectOf(m);
+  if (!nameOf(project)) return [];
+  const out: NotchFact[] = [];
+  const F = S.notch.facts;
+  const add = (id: NotchFactId, words: string, colour: Colour | null, value = words) => { if (words) out.push({ id, words, colour, go: FACT_GO[id], label: F.labels[id], value }); };
+  if (o.job) add("job", F.job(S.home.steps[Math.max(0, Math.min(S.home.steps.length - 1, o.job.step))], clockWords(o.job.ms)), MEANING_COLOUR.working);
+  const s = homeStatus(m, project, o.now);
+  const last = lastResult(m, project);
+  const when = whenWords(last?.at, o.now);
+  const headSaysCheck = o.head === "passed" || o.head === "failing";
+  if (when && !headSaysCheck && !o.job) {
+    if (s.kind === "works") add("check", F.checkedWorking(when), MEANING_COLOUR.proven, F.checkValue.works(when));
+    else if (s.kind === "failing") add("check", F.checkFailed(when), MEANING_COLOUR.problem, F.checkValue.failing(when));
+    else if (s.kind === "changed") add("check", F.changedSince(when), MEANING_COLOUR.review, F.checkValue.changed(when));
+  }
+  const rv = m.review;
+  if (rv && rv.stage !== "reviewed" && rv.count > 0 && o.head !== "changes") add("changes", F.filesChanged(rv.count, rv.capped), MEANING_COLOUR.review);
+  const tools = connectedTools(o.tools ?? null);
+  if (tools?.length) { const names = tools.map((t) => S.doneSignal.tool[t]); add("tools", F.toolsConnected(names), MEANING_COLOUR.working, F.toolNames(names)); }
+  else if (tools && o.noneTool !== false) add("tools", F.noTool, null, F.noToolShort);
+  const c = m.caught;
+  const caught = c ? c.falseDones + c.keys + c.weakened : 0;
+  if (caught > 0) add("caught", F.caughtWeek(caught), MEANING_COLOUR.ready, F.caughtShort(caught));
+  return out.slice(0, o.max ?? NOTCH_FACTS_MAX);
+}
+
+/** M83: Home's status strip under the lead, from the same facts: the last check with its clock time (the lead says how it
+ *  is; the strip says when), changes waiting, the AI tools connected and what was caught this week. At most four, none
+ *  made up, and "No AI tool connected" left to Home's own Connect your AI tools row. No job: the lead is the job then. */
+export const HOME_FACTS_MAX = 4;
+export function homeFacts(m: Model, o: { now: number; tools?: DoneState | null }): NotchFact[] {
+  return notchFacts(m, { now: o.now, tools: o.tools, max: HOME_FACTS_MAX, noneTool: false });
 }

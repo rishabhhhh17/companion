@@ -299,7 +299,8 @@ describe("the faceless orb's ring says the state, in a meaning's colour", () => 
   });
   test("the orb is a picture beside words: hidden from VoiceOver, its ring set from the state", () => {
     const tsx = read("./ui/parts.tsx");
-    expect(tsx).toContain('<span className="ui-orb" data-ring={ring ?? undefined} aria-hidden="true">');
+    // M83: the ring comes through orbReaction (proud shows the proven ring only over no ring), with the reaction's own move.
+    expect(tsx).toContain('<span className="ui-orb" data-ring={o.ring ?? undefined} data-react={o.react && o.react !== "proud" ? o.react : undefined} data-calm={reduced ? "" : undefined} aria-hidden="true">');
     expect(S.ui.status).toEqual({ needs: "Needs you", proven: "Proven", notChecked: "Not checked yet", working: "Working", stop: "Not fixed yet", fixFirst: "Fix this first" });
     expect(S.ui.fileDiff(12, 3)).toBe("12 lines added, 3 lines taken away");
     expect(S.ui.fileDiff(0, 1)).toBe("1 line taken away");

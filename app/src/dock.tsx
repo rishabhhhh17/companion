@@ -16,6 +16,8 @@ import { useCharacterLook } from "./flowflowMini.tsx";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb, Visor } from "./ui/parts.tsx";
 import { useModel } from "./useModel.ts";
+import { useMood } from "./useMood.ts";
+import { useFlight } from "./dockFlight.ts";
 import { roamFrom, type Roam } from "./roam.ts";
 import { usePeek } from "./peek.ts";
 import { followLessMotion, playful, reducedMotion, watchReducedMotion } from "./motion.ts";
@@ -144,13 +146,17 @@ function Dock() {
   const live = !orb && liveOn && !liveFailed;
   // The state's motion: none for the orb, whose ring and words say the state (chromeLook.ts orbMotion).
   const motionFor = (s: CharacterState, r: boolean) => orbMotion(charLook, stateMotion(s, r));
-  const pose = poseFor(state, { roam: roam.phase, react: react?.r });
+  // M83: what it reacts to now (moods.ts): proud, worried, relieved, watching, hello or sleepy, each from a real event.
+  const button = useRef<HTMLButtonElement>(null);
+  const mood = useMood(m, { state, host: button });
+  // M83 Part D: on a trip it stretches, leans, grows a little at mid flight and lands with a soft squash (dockFlight.ts).
+  useFlight(button, (vx, vy) => vel(vx, vy));
+  const pose = poseFor(state, { roam: roam.phase, react: react?.r, mood });
   const flow = useFlow({ pose, state, calm: reduced, off: shows !== "picture" });
   // M66: every pose shown stays on the page and the one in force fades in over the last (dockStates.ts), so a state
   // change is a cross fade, never a new picture loading in place of the old one.
   const kept = useRef<typeof pose[]>([]);
   kept.current = posesKept(kept.current, pose);
-  const button = useRef<HTMLButtonElement>(null);
   const centre = () => { const r = button.current?.getBoundingClientRect(); return r ? { x: r.left + r.width / 2, y: r.top + r.height * 0.5 } : { x: 80, y: 66 }; };
   // A click opens or closes the card; dragging moves the character anywhere on the screen, or to any edge or corner. M47:
   // the page says once that a drag began and the shell moves the window itself from then on (main.rs drag_follow), so it
@@ -237,6 +243,12 @@ function Dock() {
     else if (react.r === "cheer") flow.api.touchAt(0.5, 0.6, 0.8);
     else { const c = centre(); flow.api.big(c.x, c.y); }
   }, [react?.id]);
+  // M83: in the pictures, hello is a small lift from below and relieved a soft press from above (none with less motion).
+  useEffect(() => {
+    if (shows !== "picture" || !playful(reactionsOn(), reducedMotion())) return;
+    if (mood === "hello") flow.api.touchAt(0.5, 0.9, 0.5);
+    else if (mood === "relieved") flow.api.touchAt(0.5, 0.2, 0.4);
+  }, [mood]);
   // The water pointer (M17): a drop splits off the side facing the target, and lands back on top when it comes home.
   // None with reactions off or less motion.
   // Sounds (M19, sound.ts): only when turned on, and never while a call app is in front (the shell says only whether to be quiet).
@@ -264,15 +276,15 @@ function Dock() {
   }, [state]);
   return (
     <main className="dock" data-drop={dropMark} data-character={charLook}>
-      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-character={charLook} data-flow={flow.ready && !orb ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={orb ? undefined : pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={orb ? undefined : react?.r}
+      <button ref={button} className="character" type="button" style={{ ...skinVars(SKIN), "--char-scale": String(SIZE_SCALE[sizeOf(sizeSet)]) } as React.CSSProperties} data-character={charLook} data-flow={flow.ready && !orb ? "on" : undefined} data-live={live ? "on" : undefined} data-state={state} data-motion={live ? undefined : motionFor(state, reduced)} data-pose={orb ? undefined : pose} data-group={look.group ?? undefined} data-group-state={look.group ? look.state : undefined} data-react={orb ? undefined : react?.r} data-mood={mood ?? undefined}
         data-roam={roam.phase} data-toward={roam.toward ?? undefined} data-drop={dropMark} data-peek={peek.pose} data-peek-edge={peek.edge}
         aria-label={spoken}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={lost} onLostPointerCapture={lost}
         onClick={(e) => { if (e.detail === 0) void invoke("toggle_card"); /* keyboard or VoiceOver press; a mouse press is handled on release */ }}>
-        {shows === "visor" ? <Visor state={state} ring={ringFor(state, waiting)} lively={liveliness} reacts={reacts} still={shellRest || peek.pose === "hidden"} glance={react?.id ?? null} toward={toward} />
-          : orb ? <Orb src={orbSrc} ring={ringFor(state, waiting)} />
+        {shows === "visor" ? <Visor state={state} ring={ringFor(state, waiting)} lively={liveliness} reacts={reacts} still={shellRest || peek.pose === "hidden"} glance={react?.id ?? null} toward={toward} mood={waiting ? null : mood} />
+          : orb ? <Orb src={orbSrc} ring={ringFor(state, waiting)} mood={waiting ? null : mood} />
           : live
-          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} onFallback={() => setLiveFailed(true)} /></Suspense>
+          ? <Suspense fallback={<img className="pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.3} controllerRef={ffCtl} colours={colours} liveliness={liveliness} resting={shellRest || peek.pose === "hidden"} reacts={reacts} mood={mood} onFallback={() => setLiveFailed(true)} /></Suspense>
           : <>
             {!flow.failed && <canvas ref={flow.canvasRef} className="flow" aria-hidden="true" />}
             <span className={`pose-stack${flow.ready ? " flow-ready" : ""}`}>

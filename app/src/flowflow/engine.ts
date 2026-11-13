@@ -1,6 +1,7 @@
 // The whole character without a screen: mood, soft body, eyes, droplets and ripples, wired together. The renderer only reads
 // what this produces (a "snapshot"); everything that decides what Flowflow does is here, so it can be tested without a GPU.
 import type { CharacterState } from "../model.ts";
+import type { Reaction } from "../moods.ts";
 import type { Liveliness } from "../lookfeel.ts";
 import { Behavior, type BehaviorState, type Look } from "./behavior.ts";
 import { Face, rng, type Eyes } from "./face.ts";
@@ -9,6 +10,8 @@ import { type BodyPose, SoftBody, Spring, type Tuning, clampTuning, frameDelta }
 
 /** How long after the pointer last moved the eyes keep looking at it, and the body keeps following (seconds). */
 export const LOOK_HOLD = 3;
+/** M83: how long worried's sweat drop takes to slide down once (seconds). */
+export const SWEAT_S = 1.8;
 export const FOLLOW_HOLD = 1.4;
 /** M60 (2 Nov 2026, the orb): the orb's radius (world units; the frame is 2.2 high). The renderer draws it at this size. */
 export const ORB_RADIUS = 0.656;
@@ -61,6 +64,8 @@ const ATTEND_EYES = 0.95, LEAN_EYES = 0.8;
 
 export type Snapshot = {
   pose: BodyPose; look: Look; eyes: Eyes; state: BehaviorState; tuning: Tuning; time: number;
+  /** M83: worried's one sweat drop, how far it has slid (0 to 1), or -1 for none. */
+  sweat?: number;
   /** M37c: the surface it clings to, and how hard it is pressed into it. */
   surface: Surface;
   /** The float added on top of the body's height (a slow bob). */
@@ -117,6 +122,10 @@ export class FlowflowEngine {
   private leanX = 0; private leanY = 0; private leaning = false;
   /** Until when (its own clock) it is dipping after a failure. */
   private dipUntil = -Infinity;
+  /** M83: the way to the middle of the screen (the eyes' units, y up), where it watches while your AI tool works. */
+  private watchX = 0; private watchY = -0.6;
+  /** M83: when worried began (its own clock), for its one sweat drop. */
+  private sweatFrom = -Infinity;
   /** Where the pointer last asked the eyes to look (Lively). */
   private lookX = 0; private lookY = 0;
   /** Where the body rests now (world units, from the frame's middle): (0, 0) unless it is reacting. */
@@ -148,6 +157,17 @@ export class FlowflowEngine {
 
   /** The app's state changed. Only a real change does anything: success is never made up. */
   applyApp(s: CharacterState): void { this.behavior.applyApp(s); }
+
+  /** M83: the reaction in force (moods.ts), only over rest. */
+  applyReaction(r: Reaction | null): void { this.behavior.applyReaction(r); }
+  /** M83: the middle of the screen lies `dx, dy` points from the middle of the character (y down): where it watches. */
+  watchToward(dx: number, dy: number): void {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) return;
+    const d = Math.hypot(dx, dy); if (d < 1e-6) { this.watchX = 0; this.watchY = 0; return; }
+    // A whole turn of the eyes that way, mostly to the side (the face is small; looking down reads as sad, not watching).
+    this.watchX = dx / d; this.watchY = Math.max(-0.35, Math.min(0.35, -dy / d));
+    if (Math.abs(this.watchX) < 0.7) this.watchX = (this.watchX < 0 ? -1 : 1) * 0.7;
+  }
 
   /** The pointer, in the frame's own units (-1 to 1 across and up). Called whenever it moves. Only in Lively (M46). */
   pointer(nx: number, ny: number): void {
@@ -245,7 +265,15 @@ export class FlowflowEngine {
     if (this.reacts && this.mode !== "still" && this.time < this.attendUntil) { this.face.setTarget(this.attendX, this.attendY); return 1; }
     if (this.time - this.lastLook < LOOK_HOLD) { this.face.setTarget(this.lookX, this.lookY); return 2; }
     if (this.reacts && this.leaning && this.behavior.base !== "curious") { this.face.setTarget(this.leanX * LEAN_EYES, this.leanY * LEAN_EYES); return 3; }
+    // M83: while your AI tool works, the eyes rest on the middle of the screen (a held look, so a still frame shows it too).
+    const held = this.heldGaze(); if (held) { this.face.setTarget(held[0], held[1]); return 3; }
     return 0;
+  }
+
+  /** M83: where a reaction holds the eyes: on the middle of the screen while watching, a little up when worried. */
+  private heldGaze(): [number, number] | null {
+    const st = this.behavior.state;
+    return st === "watching" ? [this.watchX, this.watchY] : st === "worried" ? [0, 0.7] : null;
   }
 
   /** A touch at a point on the body (world units, from the body's centre). It squishes there and ripples out. */
@@ -264,10 +292,15 @@ export class FlowflowEngine {
   still(react = false): Snapshot {
     this.behavior.snap();
     if (react) this.aimHome(false); else { this.hx = 0; this.hy = 0; this.body.setLean(0); this.face.center(); }
+    // M83: watching is a held look, so even the still frame of less motion shows the eyes on the middle of the screen.
+    const held = this.heldGaze(), watching = held !== null;
+    if (held) { const g = this.behavior.look.gazeGain; this.face.place(held[0] * g, held[1] * g); this.face.setTarget(held[0], held[1]); }
     this.body.reset(this.hx, this.hy); this.pressSpring.x = this.pressTo; this.pressSpring.v = 0; this.surface.press = this.pressTo;
-    this.face.wander = react && this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, react && this.aimEyes() !== 0);
+    this.face.wander = react && this.mode === "lively"; this.face.update(1 / 60, this.behavior.look, (react && this.aimEyes() !== 0) || watching);
     this.followers.place(this.followFrame());   // M60: at rest beside it, never mid orbit or popped
-    const s = this.snapshot(); s.pulse = 0; return s;   // a still frame holds needs you's amber, with no pulse
+    const s = this.snapshot(); s.pulse = 0;   // a still frame holds needs you's amber, with no pulse
+    if (this.behavior.state === "worried") s.sweat = 0.3;   // M83: and worried's sweat drop beside it, part way down
+    return s;
   }
 
   /** M46: the press spring has come to rest (a frame loop may park only then). */
@@ -329,6 +362,11 @@ export class FlowflowEngine {
     if (s === "success") { this.followers.celebrate(); this.body.impulse("burst", 0.8); this.ripples.add(p.x, p.y, 1.2 * Math.max(0.3, g)); }
     else if (s === "error") { this.body.impulse("land", 0.45); this.ripples.add(p.x, p.y - 0.2, 0.5 * Math.max(0.3, g)); if (this.reacts) this.dipUntil = this.time + DIP_S; }   // M55: and a small dip
     else if (s === "curious") { this.face.glance(0, 0.5, 0.8); this.body.impulse("poke", 0.25, 0, 0.3); }
+    // M83: hello, a small lift; relieved, a soft out breath as the eyes close (the look reopens them as it settles back).
+    else if (s === "hello" && this.reacts) { this.body.impulse("poke", 0.35, 0, -0.35); this.face.glance(0, 0.25, 0.6); }
+    else if (s === "relieved" && this.reacts) this.body.impulse("land", 0.25);
+    else if (s === "worried" && this.reacts) this.body.impulse("poke", 0.15, 0, 0.2);
+    if (s === "worried") this.sweatFrom = this.time;
   }
 
   /** M60: what the bubbles follow now: the mood of the work underneath any touch or flash, the way the trail leaves the
@@ -372,6 +410,8 @@ export class FlowflowEngine {
     const s = this.snap ?? (this.snap = { pose: this.body.pose, look: this.behavior.look, eyes: this.face.eyes, state: "idle", tuning: this.tuning, time: 0, float: 0, sway: 0, swayTime: 0, pulse: 0, droplets: this.droplets, ripples: this.ripples, surface: this.surface, followers: this.followers, restY: REST_Y });
     s.state = this.behavior.state; s.tuning = this.tuning; s.time = this.time;
     s.sway = this.swayK; s.swayTime = this.swayT; s.pulse = this.behavior.pulse; s.restY = this.restY;
+    // M83: the sweat drop slides down once while worried (SWEAT_S), then is gone.
+    s.sweat = this.behavior.state === "worried" ? Math.min(1, Math.max(0, (this.time - this.sweatFrom) / SWEAT_S)) : -1;
     s.float = this.behavior.look.floatAmp * this.swayK * Math.sin(this.swayT * 0.9);
     return s;
   }

@@ -3,8 +3,10 @@
 // renderer read. The current look slides toward the state's look, so a change is never a snap, and any change can interrupt
 // any other.
 import type { CharacterState } from "../model.ts";
+import type { Reaction } from "../moods.ts";
+import { MOOD_MS } from "../motionTokens.ts";
 
-export const BEHAVIOR_STATES = ["idle", "curious", "following", "working", "success", "error", "sleeping", "interacting", "needsYou"] as const;
+export const BEHAVIOR_STATES = ["idle", "curious", "following", "working", "success", "error", "sleeping", "interacting", "needsYou", "worried", "relieved", "watching", "hello", "sleepy"] as const;
 export type BehaviorState = (typeof BEHAVIOR_STATES)[number];
 
 export type Look = {
@@ -31,27 +33,61 @@ export type Look = {
   eyeArc: number;
   /** M60: 0 closed arcs, 1 open soft round eyes (listening, needs you). */
   eyeDot: number;
+  /** M83: how big the eyes are (1 usual; hello and worried open them wide). */
+  eyeSize: number;
+  /** M83: a white catch light in each open eye (0 the usual tiny one, 1 a clear one). */
+  glint: number;
+  /** M83: two small slanted brow strokes above the eyes, tilted inward (worried). */
+  brow: number;
+  /** M83: a small happy mouth curve (hello). */
+  mouth: number;
+  /** M83: heavy lids: the top of each eye flat (sleepy). */
+  lid: number;
+  /** M83: how far the eyes may turn toward what they look at (1 usual; watching turns them right to the side). */
+  reach: number;
+  /** M83: small bubbles drifting up from the top, like z's (sleepy). */
+  zz: number;
+  /** M83: blinks are slow (watching). */
+  blinkSlow: number;
 };
-export const LOOK_KEYS = ["eyeOpen", "gazeGain", "breathAmp", "breathRate", "floatAmp", "cloud", "glow", "wobbleGain", "expand", "rippleGain", "droplets", "amber", "eyeArc", "eyeDot"] as const;
+export const LOOK_KEYS = ["eyeOpen", "gazeGain", "breathAmp", "breathRate", "floatAmp", "cloud", "glow", "wobbleGain", "expand", "rippleGain", "droplets", "amber", "eyeArc", "eyeDot", "eyeSize", "glint", "brow", "mouth", "lid", "reach", "zz", "blinkSlow"] as const;
+/** M83: the face's marks at rest (none); each look below starts from these. */
+const FACE = { eyeSize: 1, glint: 0, brow: 0, mouth: 0, lid: 0, reach: 1, zz: 0, blinkSlow: 0 } as const;
 
 export const LOOKS: Readonly<Record<BehaviorState, Look>> = {
-  idle:        { eyeOpen: 1,    gazeGain: 0.6, breathAmp: 0.035, breathRate: 0.32, floatAmp: 0.035, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2, amber: 0, eyeArc: 1,    eyeDot: 0 },
-  curious:     { eyeOpen: 1.12, gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.50, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1,   expand: 0.03, rippleGain: 0.8, droplets: 0.3, amber: 0, eyeArc: 0.4,  eyeDot: 1 },
-  following:   { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 1.1, expand: 0,    rippleGain: 0.7, droplets: 0.6, amber: 0, eyeArc: 1,    eyeDot: 0 },
-  working:     { eyeOpen: 0.82, gazeGain: 0.3, breathAmp: 0.015, breathRate: 0.90, floatAmp: 0,    cloud: 0.05, glow: 0.05, wobbleGain: 0.6, expand: 0,    rippleGain: 0.4, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
-  success:     { eyeOpen: 1.05, gazeGain: 0.5, breathAmp: 0.035, breathRate: 0.50, floatAmp: 0.03, cloud: 0,    glow: 1,   wobbleGain: 1,   expand: 0.07, rippleGain: 1.2, droplets: 0.8, amber: 0, eyeArc: 1.5,  eyeDot: 0 },
-  error:       { eyeOpen: 0.8,  gazeGain: 0.3, breathAmp: 0.01,  breathRate: 0.25, floatAmp: 0,    cloud: 0.8,  glow: 0,   wobbleGain: 0.7, expand: -0.02, rippleGain: 0.5, droplets: 0, amber: 0, eyeArc: -0.75, eyeDot: 0 },
-  sleeping:    { eyeOpen: 0,    gazeGain: 0,   breathAmp: 0.035, breathRate: 0.12, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 0.3, expand: 0,    rippleGain: 0.2, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
-  interacting: { eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.60, floatAmp: 0,    cloud: 0,    glow: 0.15, wobbleGain: 1.4, expand: 0,    rippleGain: 1.3, droplets: 0.5, amber: 0, eyeArc: 1.2,  eyeDot: 0 },
+  // M83 (the founder, 12 Nov 2026: "it always has the same reaction"): at rest it looks awake, soft open round eyes. The happy
+  // closed arcs are kept for a reaction (proud, a touch), never the resting face.
+  idle:        { ...FACE, eyeOpen: 0.9,  gazeGain: 0.6, breathAmp: 0.035, breathRate: 0.32, floatAmp: 0.035, cloud: 0,    glow: 0,   wobbleGain: 1,   expand: 0,    rippleGain: 0.6, droplets: 0.2, amber: 0, eyeArc: 0.3,  eyeDot: 0.85 },
+  curious:     { ...FACE, eyeOpen: 1.12, gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.50, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1,   expand: 0.03, rippleGain: 0.8, droplets: 0.3, amber: 0, eyeArc: 0.4,  eyeDot: 1 },
+  following:   { ...FACE, eyeOpen: 0.9,  gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 1.1, expand: 0,    rippleGain: 0.7, droplets: 0.6, amber: 0, eyeArc: 0.3,  eyeDot: 0.85 },
+  working:     { ...FACE, eyeOpen: 0.82, gazeGain: 0.3, breathAmp: 0.015, breathRate: 0.90, floatAmp: 0,    cloud: 0.05, glow: 0.05, wobbleGain: 0.6, expand: 0,    rippleGain: 0.4, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
+  success:     { ...FACE, eyeOpen: 1.05, gazeGain: 0.5, breathAmp: 0.035, breathRate: 0.50, floatAmp: 0.03, cloud: 0,    glow: 1,   wobbleGain: 1,   expand: 0.07, rippleGain: 1.2, droplets: 0.8, amber: 0, eyeArc: 1.5,  eyeDot: 0 },
+  error:       { ...FACE, eyeOpen: 0.8,  gazeGain: 0.3, breathAmp: 0.01,  breathRate: 0.25, floatAmp: 0,    cloud: 0.8,  glow: 0,   wobbleGain: 0.7, expand: -0.02, rippleGain: 0.5, droplets: 0, amber: 0, eyeArc: -0.75, eyeDot: 0 },
+  sleeping:    { ...FACE, eyeOpen: 0,    gazeGain: 0,   breathAmp: 0.035, breathRate: 0.12, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 0.3, expand: 0,    rippleGain: 0.2, droplets: 0, amber: 0, eyeArc: 0,    eyeDot: 0 },
+  interacting: { ...FACE, eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.03,  breathRate: 0.60, floatAmp: 0,    cloud: 0,    glow: 0.15, wobbleGain: 1.4, expand: 0,    rippleGain: 1.3, droplets: 0.5, amber: 0, eyeArc: 1.2,  eyeDot: 0 },
   // M46: it needs you. An amber core, the eyes straight out toward you, never following anything; it pulses three times
   // (Behavior.pulse), then holds steady.
-  needsYou:    { eyeOpen: 1.05, gazeGain: 0,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0.1, wobbleGain: 0.8, expand: 0.02, rippleGain: 0.6, droplets: 0, amber: 1, eyeArc: 0.4,  eyeDot: 1 },
+  needsYou:    { ...FACE, eyeOpen: 1.05, gazeGain: 0,   breathAmp: 0.02,  breathRate: 0.40, floatAmp: 0.01, cloud: 0,    glow: 0.1, wobbleGain: 0.8, expand: 0.02, rippleGain: 0.6, droplets: 0, amber: 1, eyeArc: 0.4,  eyeDot: 1 },
+  // M83, the reactions (moods.ts), each only over rest, each with its own mark so it reads at a glance at 64 points: hello's
+  // big bright eyes and small smile, watching's eyes turned right to the side, worried's brows, wide eyes and sweat drop,
+  // sleepy's flat heavy lids and rising bubbles. Worried: wide open eyes, still, no red and no cloud (a review said Not
+  // safe yet, or a key was caught). Relieved: the eyes close softly with a slow out breath, then open again as it settles
+  // back to rest (an Undo done). Watching: the eyes on the middle of the screen while your AI tool works. Hello: a small lift
+  // and open eyes as the pointer comes to rest on it. Sleepy: eyes half closed, a slower breath, after long quiet.
+  worried:     { ...FACE, eyeOpen: 1.1,  gazeGain: 1, breathAmp: 0.015, breathRate: 0.55, floatAmp: 0,    cloud: 0,    glow: 0,   wobbleGain: 0.7, expand: -0.05, rippleGain: 0.5, droplets: 0, amber: 0, eyeArc: 0.2,  eyeDot: 1, eyeSize: 1.3, glint: 1, brow: 1 },
+  relieved:    { ...FACE, eyeOpen: 1,    gazeGain: 0,   breathAmp: 0.05,  breathRate: 0.22, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 0.9, expand: -0.015, rippleGain: 0.6, droplets: 0, amber: 0, eyeArc: 1.1,  eyeDot: 0, mouth: 0.8 },
+  watching:    { ...FACE, eyeOpen: 1,    gazeGain: 1,   breathAmp: 0.02,  breathRate: 0.36, floatAmp: 0.01, cloud: 0,    glow: 0,   wobbleGain: 0.9, expand: 0,    rippleGain: 0.5, droplets: 0, amber: 0, eyeArc: 0.3,  eyeDot: 0.9, reach: 2.6, blinkSlow: 1 },
+  hello:       { ...FACE, eyeOpen: 1.1,  gazeGain: 0.6, breathAmp: 0.03,  breathRate: 0.45, floatAmp: 0.02, cloud: 0,    glow: 0.1, wobbleGain: 1.1, expand: 0.03, rippleGain: 0.9, droplets: 0.2, amber: 0, eyeArc: 0.4,  eyeDot: 1, eyeSize: 1.35, glint: 1, mouth: 1 },
+  sleepy:      { ...FACE, eyeOpen: 0.9,  gazeGain: 0,   breathAmp: 0.04,  breathRate: 0.16, floatAmp: 0.015, cloud: 0,   glow: 0,   wobbleGain: 0.5, expand: 0,    rippleGain: 0.3, droplets: 0, amber: 0, eyeArc: 0.3,  eyeDot: 0.85, lid: 1, zz: 1, eyeSize: 1.25 },
 };
 
+/** M83: the look each reaction takes (proud is the success look: the big happy arcs and the glow). */
+export const REACT_STATE: Readonly<Record<Reaction, BehaviorState>> = { proud: "success", worried: "worried", relieved: "relieved", watching: "watching", hello: "hello", sleepy: "sleepy" };
+
 /** How long a look takes to slide in (seconds): quick to cheer, slow to fall asleep. */
-const TAU: Readonly<Record<BehaviorState, number>> = { idle: 0.3, curious: 0.18, following: 0.2, working: 0.3, success: 0.12, error: 0.35, sleeping: 0.8, interacting: 0.08, needsYou: 0.2 };
+const TAU: Readonly<Record<BehaviorState, number>> = { idle: 0.3, curious: 0.18, following: 0.2, working: 0.3, success: 0.12, error: 0.35, sleeping: 0.8, interacting: 0.08, needsYou: 0.2, worried: 0.15, relieved: 0.45, watching: 0.25, hello: 0.1, sleepy: 1.2 };
 /** How long a flash lasts before the base state returns (seconds). */
-export const FLASH_SECONDS = { success: 2.4, interacting: 0.9 } as const;
+export const FLASH_SECONDS = { success: MOOD_MS.proud / 1000, interacting: 0.9 } as const;
 /** M46: needs you pulses this many times, each this long (seconds), then holds steady (the notch's amber does the same). */
 export const NEEDS_PULSES = 3;
 export const PULSE_SECONDS = 1.2;
@@ -77,13 +113,25 @@ export class Behavior {
   private flashLeft = 0;
   private entered: BehaviorState | null = null;
   private lastApp: CharacterState | null = null;
+  /** M83: the reaction the page says is in force (moods.ts), shown only over rest. */
+  private react: Reaction | null = null;
   /** How long it has needed you (seconds): the pulses run for the first NEEDS_PULSES of PULSE_SECONDS. */
   private needT = 0;
   readonly look: Look = { ...LOOKS.idle };
 
   /** The state in force: a running flash, else the app's state (or following, when idle and the pointer is moving). */
   get state(): BehaviorState { return this.flashState ?? this.base; }
-  get base(): BehaviorState { return this.app === "idle" && this.follow ? "following" : this.app; }
+  get base(): BehaviorState {
+    if (this.app === "idle" && this.react) return REACT_STATE[this.react];
+    return this.app === "idle" && this.follow ? "following" : this.app;
+  }
+  /** M83: the reaction in force, or null (moods.ts decides when, from a real event). Only a real change counts. */
+  applyReaction(r: Reaction | null): void {
+    if (r === this.react) return;
+    const before = this.state;
+    this.react = r;
+    if (this.state !== before) this.entered = this.state;
+  }
 
   /** Tell it the app's state. Only a real change counts: the same state again does nothing, and success is never invented. */
   applyApp(next: CharacterState): void {

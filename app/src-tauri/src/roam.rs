@@ -23,6 +23,9 @@ pub const LINGER_MS: u64 = 1500;
 /// How long the named states that do not travel last.
 pub const SURFACE_MS: u64 = 160;
 pub const SETTLE_MS: u64 = 220;
+/// M83 Part D: with Reduce motion a trip is a plain fade out and in, this long each way (the motion table's DUR_2, the
+/// page's flight.ts FLIGHT.fadeMs).
+pub const FADE_MS: u64 = crate::motion::DUR_2_MS;
 
 /// Which side of the window it sits on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -159,10 +162,10 @@ pub fn arc_at(from: Rect, to: Rect, e: f64, up: bool) -> Rect {
 
 /// The named states (F18 item 4). The founder's art follows these; the placeholder dot only hints at them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Phase { Home, Surface, Travel, Settle, Visiting, Return }
+pub enum Phase { Home, Surface, Travel, Settle, Visiting, Return, Fade }
 impl Phase {
     pub fn name(self) -> &'static str {
-        match self { Phase::Home => "home", Phase::Surface => "surface", Phase::Travel => "travel", Phase::Settle => "settle", Phase::Visiting => "visiting", Phase::Return => "return" }
+        match self { Phase::Home => "home", Phase::Surface => "surface", Phase::Travel => "travel", Phase::Settle => "settle", Phase::Visiting => "visiting", Phase::Return => "return", Phase::Fade => "fade" }
     }
 }
 
@@ -173,7 +176,7 @@ pub fn facing(phase: Phase, from: Rect, to: Rect, side: Option<Side>, home: Edge
     match phase {
         Phase::Home => inward,
         Phase::Settle | Phase::Visiting => match side { Some(Side::Left) => "right", Some(Side::Right) => "left", Some(Side::Above) => "down", Some(Side::Below) => "up", None => inward },
-        Phase::Surface | Phase::Travel | Phase::Return => {
+        Phase::Surface | Phase::Travel | Phase::Return | Phase::Fade => {
             let (dx, dy) = (to[0] - from[0], to[1] - from[1]);
             if dx.abs() >= dy.abs() { if dx >= 0.0 { "right" } else { "left" } } else if dy >= 0.0 { "down" } else { "up" }
         }
@@ -186,8 +189,9 @@ pub fn steps(out: bool, reduced: bool, travel: u64) -> Vec<(Phase, u64)> {
     match (out, reduced) {
         (true, false) => vec![(Phase::Surface, SURFACE_MS), (Phase::Travel, travel), (Phase::Settle, SETTLE_MS), (Phase::Visiting, 0)],
         (false, false) => vec![(Phase::Return, travel), (Phase::Home, 0)],
-        (true, true) => vec![(Phase::Visiting, 0)],
-        (false, true) => vec![(Phase::Home, 0)],
+        // M83 Part D: with Reduce motion nothing flies: the page fades the character out, it is put there, and fades back in.
+        (true, true) => vec![(Phase::Fade, FADE_MS), (Phase::Visiting, 0)],
+        (false, true) => vec![(Phase::Fade, FADE_MS), (Phase::Home, 0)],
     }
 }
 
@@ -297,7 +301,7 @@ mod tests {
     // The card's real size (one definition, island.rs): 600 wide, at most 640 tall.
     use crate::island::{CARD, CARD_MAX_H};
 
-    const PHASES: [Phase; 6] = [Phase::Home, Phase::Surface, Phase::Travel, Phase::Settle, Phase::Visiting, Phase::Return];
+    const PHASES: [Phase; 7] = [Phase::Home, Phase::Surface, Phase::Travel, Phase::Settle, Phase::Visiting, Phase::Return, Phase::Fade];
     const SIZE: (f64, f64) = (160.0, 160.0);
     const OURS: i32 = 1;
     const EDITOR: i32 = 200;
@@ -319,7 +323,9 @@ mod tests {
         // Room: left 100, right 512, above 67, below 182: the right.
         let (spot, side) = go(plan(&ask(&s, [100.0, 100.0, 900.0, 700.0], [300.0, 300.0, 100.0, 30.0], &[], HOME_LEFT)));
         assert_eq!(side, Side::Right);
-        assert_eq!(spot, [1000.0 + GAP, 315.0 - 80.0, 160.0, 160.0]);
+        // M83: the notch's clear zone is wider for the 560 wide hover panel (docking.rs NOTCH_CLEAR, 580 by 280), and this
+        // spot level with the target would reach into it, so it goes just below the zone instead (33 + 280 + half a point).
+        assert_eq!(spot, [1000.0 + GAP, 313.5, 160.0, 160.0]);
         // The same window moved right: now the left has the room.
         let (spot, side) = go(plan(&ask(&s, [600.0, 100.0, 800.0, 700.0], [900.0, 500.0, 100.0, 30.0], &[], HOME_RIGHT)));
         assert_eq!(side, Side::Left);
@@ -495,14 +501,16 @@ mod tests {
         let names = |v: Vec<(Phase, u64)>| v.into_iter().map(|(p, _)| p.name()).collect::<Vec<_>>();
         assert_eq!(names(steps(true, false, 500)), ["surface", "travel", "settle", "visiting"]);
         assert_eq!(names(steps(false, false, 500)), ["return", "home"]);
-        assert_eq!(names(steps(true, true, 500)), ["visiting"]);
-        assert_eq!(names(steps(false, true, 500)), ["home"]);
+        // M83 Part D: reduced motion is a plain fade, then it is there; it never travels.
+        assert_eq!(names(steps(true, true, 500)), ["fade", "visiting"]);
+        assert_eq!(names(steps(false, true, 500)), ["fade", "home"]);
+        assert_eq!(steps(true, true, 500)[0].1, FADE_MS);
         let out = steps(true, false, 480);
         assert_eq!(out[0].1, SURFACE_MS);
         assert_eq!(out[1].1, 480);
         assert_eq!(out[2].1, SETTLE_MS);
         let all: std::collections::BTreeSet<&str> = PHASES.iter().map(|p| p.name()).collect();
-        assert_eq!(all.len(), 6);
+        assert_eq!(all.len(), 7);
     }
     #[test]
     fn the_art_is_told_which_way_to_face() {

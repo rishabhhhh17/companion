@@ -104,9 +104,11 @@ describe("needs you (M46)", () => {
 // M60 (2 Nov 2026, the orb): two soft closed arc eyes. Each state shapes them: done lifts the arcs, working holds them
 // flat, failed turns them down, and listening and needs you open them into soft round eyes.
 describe("the eyes' shape (M60)", () => {
-  test("at rest the eyes are soft closed arcs; each state shapes them its own way", () => {
+  // M83 (the founder, 12 Nov 2026: "it always has the same reaction"): at rest the eyes are now soft open round eyes; the
+  // happy closed arcs are proud's (success) and a touch's, a reaction and no longer the resting face.
+  test("at rest the eyes are soft open round eyes; each state shapes them its own way", () => {
     expect(LOOK_KEYS).toContain("eyeArc"); expect(LOOK_KEYS).toContain("eyeDot");
-    expect(LOOKS.idle.eyeArc).toBe(1); expect(LOOKS.idle.eyeDot).toBe(0);
+    expect(LOOKS.idle.eyeArc).toBe(0.3); expect(LOOKS.idle.eyeDot).toBe(0.85);
     expect(LOOKS.success.eyeArc).toBeGreaterThan(LOOKS.idle.eyeArc);
     expect(LOOKS.working.eyeArc).toBe(0); expect(LOOKS.working.eyeDot).toBe(0);
     expect(LOOKS.error.eyeArc).toBeLessThan(0); expect(LOOKS.error.eyeDot).toBe(0);
@@ -114,8 +116,9 @@ describe("the eyes' shape (M60)", () => {
     for (const st of BEHAVIOR_STATES) { expect(Math.abs(LOOKS[st].eyeArc), st).toBeLessThanOrEqual(1.6); expect(LOOKS[st].eyeDot, st).toBeGreaterThanOrEqual(0); expect(LOOKS[st].eyeDot, st).toBeLessThanOrEqual(1); }
   });
   test("a change of shape slides in, never snaps", () => {
-    const b = new Behavior(); settle(b); b.applyApp("listening"); b.update(1 / 60);
-    expect(b.look.eyeDot).toBeGreaterThan(0); expect(b.look.eyeDot).toBeLessThan(0.3);
-    settle(b, 2); expect(b.look.eyeDot).toBeGreaterThan(0.95);
+    const b = new Behavior(); settle(b); b.applyApp("working"); b.update(1 / 60);
+    expect(b.look.eyeDot).toBeLessThan(0.85); expect(b.look.eyeDot).toBeGreaterThan(0.6);
+    settle(b, 2); expect(b.look.eyeDot).toBeLessThan(0.05);
+    b.applyApp("listening"); settle(b, 2); expect(b.look.eyeDot).toBeGreaterThan(0.95);
   });
 });

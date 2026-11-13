@@ -16,6 +16,7 @@ import { miniShows } from "./chromeLook.ts";
 import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb, Visor } from "./ui/parts.tsx";
 import type { CharacterState } from "./model.ts";
+import type { Reaction } from "./moods.ts";
 import { reducedMotion, watchReducedMotion } from "./motion.ts";
 import { useCharacter, useSetting } from "./settingsStore.ts";
 import { useRest } from "./useRest.ts";
@@ -26,9 +27,11 @@ const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ def
 /** `pose`: always the still picture in that pose, never a live drawing. Rows of choices (Settings' water and how lively)
  *  use it, so a page never holds a live drawing per tile: Macs cap how many a page may hold, and past the cap the tiles
  *  went blank (31 Oct). */
-export function FlowMini({ state, className, still, water, pose, band, glance }: { state: CharacterState; className: string; still?: boolean; water?: Water; pose?: Pose; band?: boolean;
+export function FlowMini({ state, className, still, water, pose, band, glance, mood = null }: { state: CharacterState; className: string; still?: boolean; water?: Water; pose?: Pose; band?: boolean;
   /** M68: the Visor's lights glance once toward the right when this changes (the notch's word at rest). */
-  glance?: string | null }) {
+  glance?: string | null;
+  /** M83: a reaction (moods.ts), shown in this style's own art. */
+  mood?: Reaction | null }) {
   const liveOn = useSetting("character.live") === true;
   const chosen: Water = "ocean";   // look.water is retired (M71)
   const colours = flowColours(water ?? chosen);
@@ -43,14 +46,14 @@ export function FlowMini({ state, className, still, water, pose, band, glance }:
   const look = useCharacterLook();
   const orbSrc = useMemo(() => svgUrl(glassOrbSvg(water ?? chosen)), [water, chosen]);
   const shows = miniShows(look, { live: liveOn, failed, pose: !!pose });
-  if (shows === "visor") return <span className={`${className} ff-orb`} data-character="visor" aria-hidden="true"><Visor state={state} ring={ringOf(state)} band={band} still={!!still || resting} lively={mode} reacts={glance !== undefined && reactsOn} glance={glance} toward={1} /></span>;
-  if (shows === "orb") return <span className={`${className} ff-orb`} data-character="orb" aria-hidden="true"><Orb src={orbSrc} ring={ringOf(state)} /></span>;
-  const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
+  if (shows === "visor") return <span className={`${className} ff-orb`} data-character="visor" aria-hidden="true"><Visor state={state} ring={ringOf(state)} band={band} still={!!still || resting} lively={mode} reacts={glance !== undefined && reactsOn} glance={glance} toward={1} mood={mood} /></span>;
+  if (shows === "orb") return <span className={`${className} ff-orb`} data-character="orb" aria-hidden="true"><Orb src={orbSrc} ring={ringOf(state)} mood={mood} /></span>;
+  const picture = <img className={className} src={pose ? poseUrl(pose) : poseUrl(poseFor(state, { mood }))} alt="" draggable={false} style={water ? { filter: `hue-rotate(${hueTurn(water)}deg)` } : undefined} />;
   if (shows === "picture") return picture;
   return (
     <span className={`${className} ff-mini`} data-live="on" aria-hidden="true">
       <Suspense fallback={picture}>
-        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small reacts={false} onFallback={() => setFailed(true)} waitForWarm placeholder={picture} />
+        <FlowflowView state={state} reduced={!!still || reduced} followRange={0} colours={colours} className="ff-mini-canvas" liveliness={mode} resting={resting} small reacts={false} mood={mood} onFallback={() => setFailed(true)} waitForWarm placeholder={picture} />
       </Suspense>
     </span>
   );

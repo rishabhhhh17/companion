@@ -205,15 +205,16 @@ describe("system.css: one grammar for every look", () => {
 });
 
 describe("one layout grammar (spec 3)", () => {
-  test("the top bar: the status dot, the project's name, one line of context, then the Fix it key", () => {
+  test("the top bar: the status dot, the project's name, one line of context (M83: the Fix it key moved to the ask foot)", () => {
     const bar = card.slice(card.indexOf('<header className="bar">'), card.indexOf("</header>"));
     const at = (s: string) => bar.indexOf(s);
     // M71: the project chip, its dot the project's own state (meaning.ts statusDot), then the folder menu inside it.
     expect(at("<Dot colour={statusDot(status.kind)} />")).toBeGreaterThan(0);
     expect(at("<Dot colour={statusDot(status.kind)} />")).toBeLessThan(at("<Menu id={linkId}"));
     expect(at("<Menu id={linkId}")).toBeLessThan(at('className="bar-meta"'));
-    expect(at('className="bar-meta"')).toBeLessThan(at('className="bar-key"'));
-    expect(at('className="bar-key"')).toBeLessThan(at("<PlacesBox"));
+    expect(at('className="bar-meta"')).toBeLessThan(at("<PlacesBox"));
+    // M83 (the founder, 12 Nov 2026): the key line floated alone in the bar's corner; it is now in the ask box's foot.
+    expect(at('className="bar-key')).toBe(-1);
   });
   test("the context line leads with the footer's words, names the kind only when the folder says it, then the folder", () => {
     const P = "/Users/demo/Projects/my-shop";
@@ -236,7 +237,7 @@ describe("one layout grammar (spec 3)", () => {
     const keys = { using: { ...KEY_USUAL } };
     expect(barKeyChord(keys)).toBe(KEY_USUAL.problem);
     expect(barKeyChord({ using: { ...KEY_USUAL, problem: null } })).toBeNull();
-    expect(card).toContain('{home.tab === "now" && barKey && <span className="bar-key">');
+    expect(card).toContain('{barKey && <span className="bar-key ask-key">');
     // F28's four (Fix it, Hold to talk, Prompt help, Stop everything) and Prompt help's use a suggestion: unchanged by M69.
     expect(Object.entries(KEY_USUAL).filter(([, v]) => v).map(([k]) => k).sort()).toEqual(["accept", "problem", "read", "stop", "talk"]);
     expect(card).not.toMatch(/Cmd\+Enter|meta.*Enter.*global/);

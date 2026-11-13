@@ -8,7 +8,8 @@ import { chordLabel, keycaps } from "../keys.ts";
 import { takeIfLost } from "../focus.ts";
 import { S } from "../strings.ts";
 import type { Verdict } from "../verdict.ts";
-import { glanceDue, visorMotion, visorPose, type Ring } from "../characters.ts";
+import { glanceDue, orbReaction, visorMotion, visorPose, visorReaction, type Ring } from "../characters.ts";
+import type { Reaction } from "../moods.ts";
 import type { CharacterState } from "../model.ts";
 import { meterScales, VISOR_BAND, VISOR_BAND_VIEWBOX, VISOR_GLASS, VISOR_GLASS_GRADIENT, VISOR_METER, VISOR_NEEDS, VISOR_REST, VISOR_SCAN, VISOR_SMILE, VISOR_VIEWBOX, type Box } from "../visorArt.ts";
 import { clampTo, commitText, glideClip, leaveThen, swapKeepsOld, menuOpensUp, moveIndex, Presence, stepBy, tabWrap, typeahead, verdictMark, type PresenceState, type Range, type Stepped } from "./partsLogic.ts";
@@ -418,8 +419,13 @@ export function StatusDot({ kind }: { kind: StatusKind }) {
 
 /** The faceless glass orb (the Instrument character): the water's glass from orbArt.ts with a thin ring whose colour says
  *  the state (characters.ts ringOf). It is a picture only: the status line beside it says the state in words. */
-export function Orb({ src, ring }: { src: string; ring: Ring | null }) {
-  return <span className="ui-orb" data-ring={ring ?? undefined} aria-hidden="true"><img src={src} alt="" draggable={false} /></span>;
+/** M83 `mood`: a reaction (moods.ts), drawn as the orb's own small move (characters.ts orbReaction); proud is its proven ring.
+ *  With Reduce motion or Less motion each is a still look only (data-calm). */
+export function Orb({ src, ring, mood = null }: { src: string; ring: Ring | null; mood?: Reaction | null }) {
+  const [reduced, setReduced] = useState(reducedMotion);
+  useEffect(() => watchReducedMotion(setReduced), []);
+  const o = orbReaction(ring, mood);
+  return <span className="ui-orb" data-ring={o.ring ?? undefined} data-react={o.react && o.react !== "proud" ? o.react : undefined} data-calm={reduced ? "" : undefined} aria-hidden="true"><img src={src} alt="" draggable={false} /></span>;
 }
 
 /** A rounded box of the Visor's drawing (visorArt.ts), as an SVG rect. */
@@ -433,9 +439,11 @@ const VisorRect = ({ b, style, className }: { b: Box; style?: CSSProperties; cla
  *  `level`: a voice level (0 to 1) when one reaches the page; until then the meter is a gentle pulse. The page never reads
  *  audio. `glance`: changes when something new appears, and the lights glance once toward `toward` (-1 left, 1 right). It
  *  is a picture only: the status line beside it says the state in words. */
-export function Visor({ state, ring, band, level, still, lively = "lively", reacts = true, glance, toward = 1 }: {
+export function Visor({ state, ring, band, level, still, lively = "lively", reacts = true, glance, toward = 1, mood = null }: {
   state: CharacterState; ring: Ring | null; band?: boolean; level?: number | null; still?: boolean;
   lively?: "still" | "gentle" | "lively"; reacts?: boolean; glance?: number | string | null; toward?: -1 | 1;
+  /** M83: a reaction (moods.ts) in the Visor's own art (characters.ts visorReaction, ui/parts.css [data-react]). */
+  mood?: Reaction | null;
 }) {
   const gid = `visor${useId().replace(/[^\w-]/g, "")}`;
   const [reduced, setReduced] = useState(reducedMotion);
@@ -447,7 +455,8 @@ export function Visor({ state, ring, band, level, still, lively = "lively", reac
     document.addEventListener("visibilitychange", h);
     return () => document.removeEventListener("visibilitychange", h);
   }, []);
-  const pose = visorPose(state, ring);
+  const reacted = visorReaction(visorPose(state, ring), mood);
+  const pose = reacted.pose;
   const moves = visorMotion(pose, { reduced, still: !!still, lively, reacts, band: !!band });
   // The hop: once, on arriving at proven, never on a loop and never on opening at proven.
   const [hop, setHop] = useState(false);
@@ -489,6 +498,7 @@ export function Visor({ state, ring, band, level, still, lively = "lively", reac
       data-blink={moves.blink && blinking ? "" : undefined} data-scan={moves.scan ? "" : undefined} data-meter={moves.meter ? "" : undefined}
       data-lean={moves.lean ? "" : undefined} data-hop={hop && moves.hop ? "" : undefined} data-glance={glancing && moves.glance ? "" : undefined}
       data-level={levelOn ? "" : undefined} data-paused={hidden ? "" : undefined} data-still={still ? "" : undefined}
+      data-react={reacted.react && reacted.react !== "proud" ? reacted.react : undefined} data-calm={reduced || still ? "" : undefined}
       style={toward === -1 ? ({ "--visor-dir": "-1" } as CSSProperties) : undefined} aria-hidden="true" onAnimationEnd={ended}>
       <svg viewBox={band ? VISOR_BAND_VIEWBOX : VISOR_VIEWBOX} focusable="false">
         <defs>

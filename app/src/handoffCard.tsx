@@ -19,13 +19,17 @@ const newId = () => `ho${Date.now().toString(36)}${++n}`;
 const readLast = (project: string): string | null => { try { return localStorage.getItem(LAST_TOOL_KEY(project)); } catch { return null; } };
 const keepLast = (project: string, tool: ToolId) => { try { localStorage.setItem(LAST_TOOL_KEY(project), tool); } catch { /* storage may be unavailable */ } };
 
-export function HandoffCard({ project, words, onRun, onClose }: { project: string; words: string; onRun: (prompt: string) => void; onClose: () => void }) {
+/** `onWaiting` (M83): whether the hand off is waiting for the person's AI tool, so Home's character watches while it lasts. */
+export function HandoffCard({ project, words, onRun, onClose, onWaiting }: { project: string; words: string; onRun: (prompt: string) => void; onClose: () => void; onWaiting?: (on: boolean) => void }) {
   const found = useFoundTools();
   const here = found && found !== "failed" ? findTools(found).here : [];
   const offered = offeredTools(here);
   const [h, dispatch0] = useReducer(reduce, IDLE);
   const hNow = useRef<Handoff>(IDLE);
   hNow.current = h;
+  const waiting = h.stage === "waiting";
+  useEffect(() => { onWaiting?.(waiting); }, [waiting]);
+  useEffect(() => () => onWaiting?.(false), []);
   const st = useDoneState(project);
   const [said, setSaid] = useState("");
   const act = (a: Action) => {

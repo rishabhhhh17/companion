@@ -96,7 +96,9 @@ import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { HandoffCard } from "./handoffCard.tsx";
-import { AiToolsNowRow } from "./aiToolsScreen.tsx";
+import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
+import { StatusStrip } from "./statusStrip.tsx";
+import { homeFacts, type NotchFactId } from "./notchQuick.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { shapeAsk } from "./settingsFit.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -784,6 +786,8 @@ export function Card() {
   const keepsMine = useSetting("undo.protectMyEdits") !== false;
   // M77: the week's count on Now and in History (read on every render, never behind a condition).
   const weekOn = useSetting("history.thisWeek") !== false;
+  // M83: the AI tools connected in this project (donesignal.state), asked once per project, for the status strip.
+  const doneTools = useDoneState(project);
   // M66 fix 17: a proven result lands once, the first time it is seen on Now (homeFlow.ts Landing), for long enough to
   // play; after that, and on any return to it, it is simply there.
   const landing = useRef(new Landing()), landedAt = useRef<{ id: string; at: number } | null>(null);
@@ -1813,6 +1817,8 @@ export function Card() {
   const [vague, setVague] = useState<VagueChoice[] | null>(null);
   // M82: the words handed to the hand off card (a new press opens a new card).
   const [handoff, setHandoff] = useState<{ words: string; n: number } | null>(null);
+  // M83: the hand off waits for the person's AI tool (handoffCard.tsx): the character watches while it does.
+  const [handoffWaits, setHandoffWaits] = useState(false);
   const sendTask = (prompt: string) => {
     dispatch({ type: "ui.undoClosed" });
     sentFromBox("task");
@@ -2268,6 +2274,17 @@ export function Card() {
       </div>
     );
   };
+  // M83 Part C: the status strip under the lead (statusStrip.tsx), from the same facts as the notch's panel. At rest, over
+  // a result and beside the review card only (while a job works or a question waits, the lead is that). What was caught this week is left to the
+  // list when its row is there (nowRows), so it is never said twice.
+  const listOwnsCaught = weekOn && !!restFix && restShow !== null;
+  // While the review card leads (changes waiting), the strip says the rest; the card says the changes.
+  const stripFacts = !setup && project && home.tab === "now" && (atRest || !!resHero || mode === "review") ? homeFacts(listOwnsCaught ? { ...m, caught: null } : m, { now: clock, tools: doneTools }).filter((f) => !(mode === "review" && f.id === "changes")) : [];
+  const stripOpen = (id: NotchFactId) => {
+    if (id === "changes") openReview();
+    else if (id === "tools") { setSetPlace("fixing.tools"); pickTab("settings"); }
+    else if (id === "check" || id === "caught") { setHistoryQ(NO_FILTER); pickTab("did"); }
+  };
   const urgentCards = show("urgent") && (
 <div ref={urgent}>
       {m.agentsAsk && (
@@ -2429,13 +2446,12 @@ export function Card() {
       {onboarded && (
         <header className="bar">
           {/* M69, one layout grammar (the YC benchmark spec 3): the project's status dot before its name, one line of context
-              after it (when it was checked, whether Undo is ready, its kind when the folder says so, the folder), and the
-              Fix it key on the right, in every look and both layouts (homeLayout.ts barContext, barKeyChord). */}
+              after it (when it was checked, whether Undo is ready, its kind when the folder says so, the folder). M83: the Fix
+              it key moved to the foot of the ask box (homeLayout.ts barKeyChord). */}
           {/* M71: the project chip, its dot the project's own state (green works, orange changed, red failing, grey not
               checked; meaning.ts statusDot), with the folder menu inside it. */}
           {home.tab === "now" && <span className="bar-chip">{project && <Dot colour={statusDot(status.kind)} />}<Menu id={linkId} value="" size="sm" label={S.folderLabel} title={project || undefined} placeholder={project ? (project.split("/").filter(Boolean).at(-1) ?? project) : S.look.noProject} options={folderOptions} onChange={pickFromFolderMenu} /></span>}
           {home.tab === "now" && barLine.length > 0 && <p className="bar-meta" title={barLine.join(" · ")}>{barLine.join(" · ")}</p>}
-          {home.tab === "now" && barKey && <span className="bar-key"><span className="bar-key-word">{S.look.barKey.before}</span><KeyLabel chord={barKey} label={S.look.barKey.label} /><span className="bar-key-word">{S.look.barKey.after}</span></span>}
           {home.tab !== "now" && <>
             {/* The tall Home's row of places names the open one and leads back to Now, so the back arrow is only for Settings,
                 where that row steps aside (the review, 2 Nov 2026: a back arrow beside the row was a second way to the same place). */}
@@ -2486,7 +2502,7 @@ export function Card() {
                 while changes wait for it (only while that card is on Now). */}
             {/* M69: while the review card leads Now, the character is drawn in that card instead (one at a time). */}
             <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
-              ring={leadMeaning === "practice" ? null : heroRingOf(mode, heroStatus)} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
+              ring={leadMeaning === "practice" ? null : heroRingOf(mode, heroStatus)} watching={handoffWaits} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
           </div>
         }>
           {atRest
@@ -2530,6 +2546,7 @@ export function Card() {
           {/* Stop is in the working card; when something works with no card of its own (a look, an answer being written), here. */}
           {stopCan(m) && !jobShown && mode !== "question" && <div className="hero-main ui-lead-acts"><Button kind="secondary" size="sm" label={`${S.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`} title={keyHint("stop", S.look.stopKeys, keys)} onClick={() => void stopNow()}><Icon name="stop" size={14} />{S.stop}</Button></div>}
       </Lead>
+      {stripFacts.length > 0 && <StatusStrip facts={stripFacts} open={stripOpen} places={{ job: S.notch.open, check: S.home.places.did, caught: S.home.places.did, changes: S.notch.quick.review, tools: S.home.places.settings }} />}
       {setup && home.tab === "now" && <SetupList rows={setup} blocker={blocker} onAct={setupAct} />}
       {/* M82: while no AI tool is connected in this project, one row opens Your AI tools (aiTools.nowRow). */}
       {!setup && project && home.tab === "now" && setting("aiTools.nowRow") !== false && <AiToolsNowRow project={project} shown={atRest} onOpen={() => { setSetPlace("fixing.tools"); pickTab("settings"); }} />}
@@ -2607,7 +2624,7 @@ export function Card() {
             </div>
           )}
           {/* M82: the hand off card (handoffCard.tsx): the clear prompt, then Run it (Claude Code) or Put it in and Copy (another tool). */}
-          {handoff && project && <HandoffCard key={handoff.n} project={project} words={handoff.words} onClose={() => setHandoff(null)}
+          {handoff && project && <HandoffCard key={handoff.n} project={project} words={handoff.words} onClose={() => setHandoff(null)} onWaiting={setHandoffWaits}
             onRun={(prompt) => { setHandoff(null); if (working) { setBox(prompt); needWords(S.askBusy); return; } if (!toolOn("drive")) { setBox(prompt); dispatch({ type: "app.notice", message: offLine() }); return; } sendTask(prompt); }} />}
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
@@ -2632,7 +2649,10 @@ export function Card() {
           {madeFolder && madeFolder === project && <div className="line muted" role="status">{S.newFolder.made(folderName(madeFolder))}</div>}
           {/* Every other way to ask, and the options, behind one quiet line (customizable everything: nothing is dropped). The
               check the main button already offers is not here twice. A ticked option is said on the line that opens them. */}
-          {home.tab === "now" && !working && (
+          {/* M83: the quiet foot under the ask box: More ways to ask on the left and the Fix it key on the right (it was alone
+              in the top bar's corner). */}
+          {home.tab === "now" && (!working || barKey) && <div className="ask-foot">
+          {!working && (
             <details className="more">
               <summary onClick={(e) => { setWayCounts(readCounts()); const d = e.currentTarget.parentElement; setTimeout(() => setMoreDesc(firstWayTip(d)), 0); }}>{S.look.more}{off && <span> · {S.offRecord}</span>}</summary>
               {/* The audit, item 40: every way has its drawing and one line, shown under the ways for the one under the pointer
@@ -2666,6 +2686,8 @@ export function Card() {
               </div>
             </details>
           )}
+          {barKey && <span className="bar-key ask-key"><span className="bar-key-word">{S.look.barKey.before}</span><KeyLabel chord={barKey} label={S.look.barKey.label} /><span className="bar-key-word">{S.look.barKey.after}</span></span>}
+          </div>}
           </div>
           {/* About Claude itself (installing, missing, failed): under the ask box, never above it (better-interface review). */}
           {/* M69: never stacked under the setup list, which says the same in its first step. */}

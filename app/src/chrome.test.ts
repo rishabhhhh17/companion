@@ -79,11 +79,11 @@ describe("the pages use it", () => {
     expect(mini).toContain("glassOrbSvg(");
     expect(mini).toContain("ringOf(state)");
     expect(mini).toMatch(/<Orb src=/);
-    expect(mini).toContain("poseUrl(poseFor(state))");   // the friendly picture is still there for Friendly
+    expect(mini).toContain("poseUrl(poseFor(state, { mood }))");   // the friendly picture is still there for Friendly
   });
   test("the edge uses the same orb: no live water, no soft water and no pictures when it shows", () => {
     expect(dock).toContain("dockShows(");
-    expect(dock).toMatch(/<Orb src=\{orbSrc\} ring=\{ringFor\(state, waiting\)\} \/>/);
+    expect(dock).toMatch(/<Orb src=\{orbSrc\} ring=\{ringFor\(state, waiting\)\} mood=\{waiting \? null : mood\} \/>/);
     expect(dock).toMatch(/off: shows !== "picture"/);
     expect(dock).toContain("orbMotion(charLook, stateMotion(s, r))");   // the state's motion goes through the orb's rule
     expect(dock).toContain("data-character={charLook}");

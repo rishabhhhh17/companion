@@ -10,6 +10,10 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Then Squibby waits for your tool, and checks.** The card says it is waiting for the tool to finish. With the tool connected, the review starts the moment it says it is done; without, once your files are quiet, and the card says which. Stop everything ends the wait.
 - **Two new settings,** both on: Write a clear prompt first, and Offer to connect your AI tools on Now. Squibby remembers the tool you last used in each project.
 - **Not yet claimed:** that Put it in finds the chat box in every one of these apps, and the app ids of Antigravity and the Codex app. Those are checked on a real Mac first.
+- **A wider notch that says more.** Rest the pointer on the notch and its panel is now wider, with a row of up to three short facts under the headline: when the last check ran and how it went, how many files changed and wait for a review, which AI tools are connected, what was caught this week, and while a job runs its step and time. Each fact is real or left out, and a press only opens Home at the right place.
+- **Now is minimal but detailed.** Under the headline, a row of small tiles says the same facts, each opening its place. A practice's button now says Start the practice, Skip says Skip the practice, and the Fix it key moved from the corner of the top bar to the foot of the ask box. Flowflow resting in the corner now sits on a soft edge line, so it reads as peeking over it.
+- **Squibby reacts to what really happens.** At rest it looks awake. It is proud when a fix is proven or a check passes, worried when a review says Not safe yet or a key is caught, relieved after an Undo, watches while your AI tool works, says hello when you rest the pointer on it, and gets sleepy after ten quiet minutes. With Reduce motion each is a still look.
+- **Squibby flies in curves.** Trips to a window, back home, or to a new edge or corner follow an arc, stretching and leaning as it goes and landing with a soft squash. With Reduce motion it fades out and back in.
 
 ## The safety net in every AI tool: 11 Nov 2026 (in progress)
 

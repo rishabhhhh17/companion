@@ -159,8 +159,9 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     const css = read("./ui/notch.css");
     expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${LAYOUT_H.quick}px;`);
     expect(LAYOUT_H.quick).toBe(LAYOUT_H.job);
-    // M70 step 4: two rows (the fact with Settings and Open, then the buttons or the job), short like HeyClicky's peek.
-    expect(LAYOUT_H.quick).toBeLessThanOrEqual(96);
+    // M70 step 4: short like HeyClicky's peek. M83: three rows (the fact with Settings and Open, the short facts, then the
+    // buttons or the job), still well under the shell's PANEL_MAX.
+    expect(LAYOUT_H.quick).toBeLessThanOrEqual(128);
     expect(css).toMatch(/\.ip-fact \{[^}]*text-overflow: ellipsis/);
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
@@ -192,7 +193,7 @@ describe("at rest (M70: the bare notch by default)", () => {
   test("while live with wings off, only the mark: no lights, no step word", () => {
     const page = read("./island.tsx");
     expect(page).toContain("const step = showStep && wingsAtRest ? notchStep(m, wings, tries) : null;");
-    expect(page).toContain("{wingsAtRest && <FlowMini className=\"island-flow\" state={w.state} band />}");
+    expect(page).toContain("{wingsAtRest && <FlowMini className=\"island-flow\" state={w.state} band mood={mood} />}");
   });
 });
 

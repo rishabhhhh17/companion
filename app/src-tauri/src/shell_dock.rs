@@ -54,11 +54,17 @@ fn apply_dock(mtm: MainThreadMarker, reason: &str, quiet: bool) {
     // it is already where it belongs, and every other reason puts it there at once.
     let landing = match free { Some(at) => docking::Landing::Free(at), None => docking::Landing::Edge(edge, pct) };
     let secs = if reason == "drag" { docking::land_secs(&landing, reduce_motion()) } else { None };
+    // M83 Part D: a new place picked in Settings (another edge or corner) is a trip: it flies there on the curve, as it
+    // does to a window and home (a plain fade with Reduce motion). Every other reason is as before.
+    let was = with_panels(|d, _| from_appkit(d.frame(), ph));
+    let flies = reason == "setting" && was.is_some_and(|w| (w[0] - f[0]).hypot(w[1] - f[1]) > 4.0);
+    if let (true, Some(app), Some(from)) = (flies, APP.get(), was) { fly_home(app, from, f); with_panels(place_card); } else {
     with_panels(|d, c| {
         if reason == "drag" { LAND_EASE.store(true, Ordering::SeqCst); }
         set_frame_moving(d, to_appkit(f, ph), secs, None, &DOCK_MOVES);
         place_card(d, c);
     });
+    }
     // Put at its place fully in view; it goes back past the edge on the next look, if it should (peek_apply).
     peek_placed();
     if !quiet { log("redock", json!({ "reason": reason, "how": how, "screen": target.id, "frame": f, "inside_work": inside(f, target.work) })); }

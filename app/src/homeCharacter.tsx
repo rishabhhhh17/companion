@@ -19,6 +19,7 @@ import { glassOrbSvg, svgUrl } from "./orbArt.ts";
 import { Orb, Visor } from "./ui/parts.tsx";
 import { useRest } from "./useRest.ts";
 import { useSizeEase } from "./smoothMotion.ts";
+import { useMood } from "./useMood.ts";
 
 // With "Draw live" on (character.live), the founder's live water (src/flowflow/), loaded only then, as on the desktop.
 const FlowflowView = lazy(() => import("./flowflow/view.tsx").then((x) => ({ default: x.FlowflowView })));
@@ -35,12 +36,18 @@ const ON_THE_WATER = { side: "below" as const, at: 0.72, cling: 0.6 };
  *  M55 (the character reacts): `askId`, Home's ask box, which its eyes go to while the person types (Gentle and Lively);
  *  `leanTo`, the card it leans toward while changes wait for a review (card.tsx), or null. M65: `ring`, the orb's ring to
  *  show instead of its state's own (null: none), so it agrees with the status line beside it. */
-export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: { m?: Model; as?: CharacterState; liveliness?: Liveliness; rest?: boolean; askId?: string; leanTo?: string | null; ring?: Ring | null }) {
+export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring, watching }: { m?: Model; as?: CharacterState; liveliness?: Liveliness; rest?: boolean; askId?: string; leanTo?: string | null; ring?: Ring | null;
+  /** M83: your AI tool is working for you (a hand off waiting for your tool): it watches the middle of the screen. */
+  watching?: boolean }) {
   const [reduced, setReduced] = useState(reducedMotion);
   useEffect(() => watchReducedMotion(setReduced), []);
   // A finished task that is not proven is drawn at rest, never with the done look (M45, model.ts lookState).
   const state = as ?? (m ? lookState(m) : "idle");
-  const pose = poseFor(state);
+  // M83: what it reacts to now (moods.ts), from Home's own model; none while a recorded first run acts a state out.
+  const box = useRef<HTMLDivElement>(null);
+  const moodNow = useMood(as ? null : m ?? null, { state, host: box, watching });
+  const mood = as ? null : moodNow;
+  const pose = poseFor(state, { mood });
   const liveOn = useSetting("character.live") === true;
   // The water's colour: the usual ocean (look.water is retired in M71).
   const water = "ocean";
@@ -59,7 +66,6 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   // M55: its small moves for what happens (character.reacts, on unless turned off).
   const reacts = useSetting("character.reacts") !== false;
   const flow = useFlow({ pose, state, calm: reduced, off: live || orb });
-  const box = useRef<HTMLDivElement>(null);
   // M68: something new for the Visor to glance at: the ask box being typed in (an input event on that one box, which
   // carries no text), or a card starting to wait for a review. The part plays at most one glance every few seconds.
   const [news, setNews] = useState(0);
@@ -84,14 +90,14 @@ export function HomeCharacter({ m, as, liveliness, rest, askId, leanTo, ring }: 
   }, [state]);
   const shownRing = homeRingShown(state, ring);
   // M68: the Visor glances toward the ask box or the card (both below and to the left of it in Home).
-  if (look === "visor") return <div className="home-orb" data-state={state} aria-hidden="true"><Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} /></div>;
-  if (orb) return <div className="home-orb" data-state={state} aria-hidden="true"><Orb src={orbSrc} ring={shownRing} /></div>;
+  if (look === "visor") return <div ref={box} className="home-orb" data-state={state} data-mood={mood ?? undefined} aria-hidden="true"><Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} mood={mood} /></div>;
+  if (orb) return <div ref={box} className="home-orb" data-state={state} data-mood={mood ?? undefined} aria-hidden="true"><Orb src={orbSrc} ring={shownRing} mood={mood} /></div>;
   return (
-    <div ref={box} className="home-char" data-state={state} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
+    <div ref={box} className="home-char" data-state={state} data-mood={mood ?? undefined} data-flow={flow.ready || live ? "on" : undefined} data-live={live ? "on" : undefined} aria-hidden="true"
       onPointerDown={(e) => { if (!live) flow.api.poke(e.clientX, e.clientY); }}>
       {live
         ? <>
-          <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} halo={false} liveliness={mode} resting={resting} reacts={reacts} askId={askId} leanTo={leanTo} onFallback={() => setLiveFailed(true)} /></Suspense>
+          <Suspense fallback={<img className="home-pose" src={poseUrl(pose)} alt="" draggable={false} />}><FlowflowView state={state} reduced={reduced} followRange={0.25} className="home-flowflow" colours={colours} surface={ON_THE_WATER} halo={false} liveliness={mode} resting={resting} reacts={reacts} askId={askId} leanTo={leanTo} mood={mood} onFallback={() => setLiveFailed(true)} /></Suspense>
           {/* M55: the still picture of the same pose, hidden under the live drawing. A live drawing cannot be copied, so this is
               what the copy of a place that fades away shows (smoothMotion.ts ghostOf). */}
           <img className="home-pose flow-ready" src={poseUrl(pose)} alt="" draggable={false} />

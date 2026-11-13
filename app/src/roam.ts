@@ -1,7 +1,7 @@
 // The companion comes to what it is about (F18 item 2). The shell moves the character (roam.rs) and tells this page the
 // named state it is in, so the founder's art can follow it later (the water idea: it surfaces from its edge, travels,
 // settles beside the window, and returns). The placeholder dot only hints at each one, and not at all with reduced motion.
-export const ROAM_PHASES = ["home", "surface", "travel", "settle", "visiting", "return"] as const;
+export const ROAM_PHASES = ["home", "surface", "travel", "settle", "visiting", "return", "fade"] as const;   // M83 Part D: fade, a trip with Reduce motion
 export type RoamPhase = (typeof ROAM_PHASES)[number];
 export type Toward = "left" | "right" | "up" | "down";
 export type Roam = { phase: RoamPhase; toward: Toward | null };

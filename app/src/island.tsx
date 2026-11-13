@@ -10,6 +10,7 @@ import { CHEER_AT_MS, CHEER_FOR_MS, TUCK_MS, openness, springFor, springStep, tu
 import { latched, rowMarkShown } from "./notchQuick.ts";
 import { reactionsOn } from "./reactions.ts";
 import { useModel } from "./useModel.ts";
+import { useMood } from "./useMood.ts";
 import { S } from "./strings.ts";
 import { useDrop } from "./dropRing.tsx";
 import { activeGroup } from "./groups.ts";
@@ -349,6 +350,13 @@ function Island() {
   const showWings = parts.wings || tucking === "wings" || tucking === "wingsPeek";
   const w = wings ?? (rest || lastWasRest.current ? null : lastWings.current);
   const r = wings ? null : rest ?? (lastWasRest.current ? lastRest.current : null);
+  // M83: the pointer coming to rest on the notch (the panel opening under it) is a hello, once per arrival; the lights in the
+  // wing take the same reactions as the character elsewhere (moods.ts), in the band's own still shapes (no hop in the notch).
+  const pointedAt = shape.hover && (shape.mode === "peek" || shape.mode === "wingsPeek");
+  const helloN = useRef(0), wasPointed = useRef(false);
+  if (pointedAt && !wasPointed.current) helloN.current++;
+  wasPointed.current = pointedAt;
+  const mood = useMood(mAll, { state: w ? w.state : r ? restWingState(r) : "idle", hello: helloN.current });
   const [soft, setSoft] = useState(false);
   useEffect(() => { if (cheering) { setSoft(true); return; } const id = setTimeout(() => setSoft(false), TUCK_MS); return () => clearTimeout(id); }, [cheering]);
   // M46 (F28, F18): at rest on a notch the window is exactly the notch (island.rs), bare black, with no sun and no count.
@@ -408,12 +416,12 @@ function Island() {
         <button className="island-hit" type="button" aria-label={islandName(line)} title={unseen > 0 ? S.panel.unseen(unseen) : undefined} onClick={tap}>
           {showWings && w && <span aria-hidden="true">
             {/* M70: the Visor's lights only with Show wings at rest on; otherwise the left wing is plain black. */}
-            <span className="island-wing left">{wingsAtRest && <FlowMini className="island-flow" state={w.state} band />}</span>
+            <span className="island-wing left">{wingsAtRest && <FlowMini className="island-flow" state={w.state} band mood={mood} />}</span>
             <span className="island-wing right">{st && shape.wing > WING_USUAL && <StepWord step={st} />}{rowMarkShown(rowMode, w.mark) && <Mark w={w} count={m.approvals.length} reduced={reduced} />}</span>
           </span>}
           {/* M68: the wings at rest. The lights glance once toward a new word on the right. */}
           {showWings && !w && r && <span aria-hidden="true" data-rest="">
-            <span className="island-wing left"><FlowMini className="island-flow" state={restWingState(r)} band glance={r.word ?? (r.tick ? "tick" : null)} /></span>
+            <span className="island-wing left"><FlowMini className="island-flow" state={restWingState(r)} band glance={r.word ?? (r.tick ? "tick" : null)} mood={mood} /></span>
             <span className="island-wing right">{r.word ? <span className="island-rest-word">{r.word}</span> : r.tick ? <span className="mark" data-state="done" data-mark="tick"><svg viewBox="0 0 14 14" width="14" height="14"><path d="M3 7.5l3 3 5-6.5" /></svg></span> : null}</span>
           </span>}
         </button>

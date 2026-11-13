@@ -123,9 +123,9 @@ describe("Home draws them for every style and the tokens show them only in Instr
     expect(homeChar).toContain("const orb = look !== \"friendly\";");
     expect(homeChar).toContain("off: live || orb");
     expect(homeChar).toContain("const shownRing = homeRingShown(state, ring);");
-    expect(homeChar).toContain("<Orb src={orbSrc} ring={shownRing} />");
+    expect(homeChar).toContain("<Orb src={orbSrc} ring={shownRing} mood={mood} />");   // M83: and its reaction
     // M68: the Visor, the usual under Instrument, in the same place with the same ring.
-    expect(homeChar).toContain("<Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} />");
+    expect(homeChar).toContain("<Visor state={state} ring={shownRing} lively={mode} reacts={reacts} still={resting} glance={news} toward={-1} mood={mood} />");
     expect(homeChar).not.toMatch(/home-orb[^\n]*(eye|face|bubble)/);
   });
 });

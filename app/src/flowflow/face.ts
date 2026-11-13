@@ -43,14 +43,21 @@ export class Face {
     this.l.x.v = this.l.y.v = this.r.x.v = this.r.y.v = 0;
     this.glanceLeft = 0;
   }
+  /** M83: the eyes at a place at once, at rest (a still frame of watching shows where it looks, without moving there). */
+  place(nx: number, ny: number): void {
+    this.center(); const x = clamp1(nx), y = clamp1(ny);
+    this.l.x.x = this.r.x.x = x; this.l.y.x = this.r.y.x = y; this.tx = x; this.ty = y;
+  }
   /** True while a blink is under way: a frame loop parks only with the eyes open (M46). */
   get blinking(): boolean { return this.blinkT >= 0; }
 
-  update(dt: number, look: { eyeOpen: number; gazeGain: number }, hasTarget: boolean): void {
+  update(dt: number, look: { eyeOpen: number; gazeGain: number; blinkSlow?: number }, hasTarget: boolean): void {
     if (!(dt > 0)) return;
+    // M83: watching blinks slowly (the same seeded schedule, each blink longer).
+    const blinkLen = BLINK_SECONDS * (1 + 2.5 * Math.max(0, Math.min(1, look.blinkSlow ?? 0)));
     // The blink: a short, smooth close and open, on a schedule that repeats the same way each run.
     this.blinkIn -= dt;
-    if (this.blinkT >= 0) { this.blinkT += dt; if (this.blinkT >= BLINK_SECONDS) { this.blinkT = -1; this.blinkIn = 2.4 + this.rand() * 3.2; } }
+    if (this.blinkT >= 0) { this.blinkT += dt; if (this.blinkT >= blinkLen) { this.blinkT = -1; this.blinkIn = 2.4 + this.rand() * 3.2; } }
     else if (this.blinkIn <= 0) this.blinkT = 0;
     // With nothing to look at it now and then glances aside, then comes back.
     if (!hasTarget && this.wander) {
@@ -65,7 +72,7 @@ export class Face {
     const steps = Math.min(8, Math.max(1, Math.ceil(dt / (1 / 120))));
     const h = dt / steps;
     for (let i = 0; i < steps; i++) { this.l.x.step(h, wx + conv); this.l.y.step(h, wy); this.r.x.step(h, wx - conv); this.r.y.step(h, wy); }
-    const bump = this.blinkT >= 0 ? Math.sin(Math.PI * (this.blinkT / BLINK_SECONDS)) : 0;
+    const bump = this.blinkT >= 0 ? Math.sin(Math.PI * Math.min(1, this.blinkT / blinkLen)) : 0;
     const e = this.eyes;
     e.lx = this.l.x.x; e.ly = this.l.y.x; e.rx = this.r.x.x; e.ry = this.r.y.x;
     e.open = Math.max(0, Math.min(1.15, look.eyeOpen * (1 - bump)));

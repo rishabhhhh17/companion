@@ -21,6 +21,12 @@ fn roam_say(app: &AppHandle, phase: roam::Phase, toward: &str) {
     *ROAM_PHASE.lock().unwrap_or_else(|e| e.into_inner()) = phase;
     let _ = app.emit_to("dock", "roam", json!({ "phase": phase.name(), "toward": toward }));
 }
+/// M83 Part D: a flying state also tells the page the trip's way, time and bend, so the body stretches, leans, grows and
+/// lands along the same curve the window flies (flight.ts).
+fn roam_say_flight(app: &AppHandle, phase: roam::Phase, toward: &str, from: Rect, to: Rect, ms: u64, up: bool) {
+    *ROAM_PHASE.lock().unwrap_or_else(|e| e.into_inner()) = phase;
+    let _ = app.emit_to("dock", "roam", json!({ "phase": phase.name(), "toward": toward, "ms": ms, "dx": to[0] - from[0], "dy": to[1] - from[1], "up": up }));
+}
 
 /// A drag in progress: while it is held, and for a second and a half after its last move (docking::drag_holds; one the
 /// page never ended stops counting after DRAG_LOST_MS).
@@ -125,8 +131,15 @@ fn roam_home_now(app: &AppHandle) {
     roam_say(app, roam::Phase::Home, roam::facing(roam::Phase::Home, home, home, None, edge));
 }
 
+/// M83 Part D: home moved (a new edge or corner picked in Settings): it flies there from where it is, on the same curve as
+/// any trip, or fades with Reduce motion. Main thread.
+fn fly_home(app: &AppHandle, from: Rect, to: Rect) {
+    *ROAM_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some(from);
+    roam_animate(app, roam::Move { to, out: false }, reduce_motion());
+}
+
 /// One trip through the named states (roam::steps), telling the character's page each one. With reduced motion it
-/// appears in place. A newer trip, a drag or a display change stops it where it is. Main thread (it reads the screens),
+/// fades out, is put there, and fades back in (M83 Part D). A newer trip, a drag or a display change stops it where it is. Main thread (it reads the screens),
 /// the trip itself runs on its own thread.
 fn roam_animate(app: &AppHandle, mv: roam::Move, reduced: bool) {
     let gen = ROAM_GEN.fetch_add(1, Ordering::SeqCst) + 1;
@@ -142,10 +155,17 @@ fn roam_animate(app: &AppHandle, mv: roam::Move, reduced: bool) {
         let d = (mv.to[0] - from[0]).hypot(mv.to[1] - from[1]);
         for (phase, ms) in roam::steps(mv.out, reduced, roam::travel_ms(d)) {
             if ROAM_GEN.load(Ordering::SeqCst) != gen { return; }
-            roam_say(&app, phase, roam::facing(phase, from, mv.to, side, edge));
+            let toward = roam::facing(phase, from, mv.to, side, edge);
             match phase {
-                roam::Phase::Travel | roam::Phase::Return => { if !roam_fly(&app, from, mv.to, ms, ceiling, gen) { return; } }
-                roam::Phase::Surface | roam::Phase::Settle => std::thread::sleep(Duration::from_millis(ms)),
+                roam::Phase::Travel | roam::Phase::Return => {
+                    roam_say_flight(&app, phase, toward, from, mv.to, ms, roam::bends_up(from, mv.to, ceiling));
+                    if !roam_fly(&app, from, mv.to, ms, ceiling, gen) { return; }
+                }
+                _ => roam_say(&app, phase, toward),
+            }
+            match phase {
+                roam::Phase::Travel | roam::Phase::Return => {}
+                roam::Phase::Surface | roam::Phase::Settle | roam::Phase::Fade => std::thread::sleep(Duration::from_millis(ms)),
                 roam::Phase::Visiting | roam::Phase::Home => roam_set(&app, mv.to, gen),
             }
         }

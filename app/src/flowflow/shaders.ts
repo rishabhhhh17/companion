@@ -27,6 +27,9 @@ uniform vec3 uMove;        // direction x, direction y, stretch
 uniform vec4 uEyes;        // left x, left y, right x, right y (where each looks, -1 to 1)
 uniform float uOpen;       // 0 shut, 1 open
 uniform vec2 uFace;        // M60: the eyes' arc (1 a soft closed arc, 0 flat, below 0 turned down) and how open (1 soft round eyes)
+uniform vec4 uFace2;       // M83: eye size, catch light, brows, mouth (behavior.ts Look)
+uniform vec4 uFace3;       // M83: heavy lids, how far the eyes turn, rising bubbles (z's), slow blink
+uniform float uSweat;      // M83: worried's sweat drop, how far it has slid (0 to 1), below 0 none
 uniform float uCloud, uGlow, uTime, uPour;   // uPour: 0 still, 1 moving at its fastest (the tail it pours)
 uniform float uSway;       // M46: how much of the resting sway shows (0 Still at rest: the clean orb; 0.4 Gentle; 1 Lively)
 uniform float uSwayTime;   // the sway's own clock (slower in Gentle); uTime stays for news motion
@@ -134,6 +137,34 @@ float arcEye(vec2 e, float w, float h, float th){
   return (sc.y * p.x > sc.x * p.y ? length(p - sc * ra) : abs(length(p) - ra)) - th;
 }
 float dot1(vec2 u, vec2 c, float r, float aa){ return 1.0 - smoothstep(r - aa, r + aa, length(u - c)); }
+float seg(vec2 p, vec2 a, vec2 b){ vec2 pa = p - a, ba = b - a; float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0); return length(pa - ba * h); }
+// M83: the marks around it, outside the glass, in the orb's own units (v: from its centre, its radius 1, y up). Worried's
+// one sweat drop slides down beside it; sleepy's small bubbles drift up from its top, like z's. Premultiplied.
+vec4 marks(vec2 v, float aa){
+  vec4 o = vec4(0.0);
+  vec3 hi = mix(uColA, vec3(1.0), 0.35);
+  if (uSweat >= 0.0) {
+    float p = clamp(uSweat, 0.0, 1.0);
+    vec2 c = vec2(1.0, 0.62 - 0.55 * p), q = v - c;
+    q.y = q.y > 0.0 ? q.y * 0.55 : q.y;                   // a drop: round below, drawn up to a point above
+    float d = length(q) - 0.11;
+    float a = (1.0 - smoothstep(-aa, aa, d)) * (1.0 - smoothstep(0.8, 1.0, p));
+    vec3 c3 = mix(hi, vec3(1.0), 0.7 * dot1(v, c + vec2(-0.03, 0.03), 0.03, aa));
+    o = vec4(c3 * a, a);
+  }
+  float z = clamp(uFace3.z, 0.0, 1.0);
+  if (z > 0.01) {
+    for (int k = 0; k < 3; k++) {
+      float fk = float(k), ph = fract(uTime * 0.22 + fk / 3.0);
+      vec2 c = vec2(0.5 + 0.32 * ph + 0.05 * sin(uTime * 1.3 + fk * 2.0), 0.98 + 0.42 * ph);
+      float r = 0.06 + 0.05 * ph;
+      float ring = 1.0 - smoothstep(-aa, aa, abs(length(v - c) - r) - 0.022);
+      float a = ring * z * sin(3.14159 * ph) * (1.0 - o.a);
+      o += vec4(hi * a, a);
+    }
+  }
+  return o;
+}
 
 // The glass of a bubble of water, for the orb and each follower alike. n: the surface's normal; u: where on the round ball
 // (-1 to 1 across, y up), so the light rides with the body as it squashes; aa: one pixel in those units.
@@ -168,8 +199,9 @@ vec3 sheen(vec3 c, vec2 u, float s, float aa, float big){
 
 void main(){
   vec2 lp = (vWorld - uCenter) / uScale;
+  vec4 mk = marks(lp / uOrb, uPx / uOrb);
   // Far from the orb and both bubbles: nothing to march.
-  if (dot(lp, lp) > 2.6 && length(lp - uBub.xy) > uBubZR.z + 0.45 && length(lp - uBub.zw) > uBubZR.w + 0.45) { gl_FragColor = vec4(0.0); return; }
+  if (dot(lp, lp) > 2.6 && length(lp - uBub.xy) > uBubZR.z + 0.45 && length(lp - uBub.zw) > uBubZR.w + 0.45) { gl_FragColor = mk; return; }
   vec3 ro = vec3(lp, 3.0), rd = vec3(0.0, 0.0, -1.0);
   float t = 0.0, mind = 1e9, tBest = 0.0;
   for (int i = 0; i < 80; i++){ float d = scene(ro + rd*t); if (d < mind) { mind = d; tBest = t; } if (d < 0.0002) break; t += d; if (t > 6.0) break; }
@@ -186,7 +218,7 @@ void main(){
   halo *= uHaloK;
   vec3 haloCol = mix(uColB, uColA, 0.5) * (1.0 + uGlow * 0.6);
   haloCol = mix(haloCol, vec3(1.0, 0.69, 0.125), uAmber * 0.55);
-  if (cover <= 0.0) { gl_FragColor = vec4(haloCol * halo, halo); return; }
+  if (cover <= 0.0) { gl_FragColor = mk + vec4(haloCol * halo, halo) * (1.0 - mk.a); return; }
   vec3 p = ro + rd*tBest;
   // Which was hit: the orb, or one of its bubbles.
   float dA = uBubZR.z > 0.002 ? length(p - vec3(uBub.xy, uBubZR.x)) - uBubZR.z : 1e5;
@@ -222,25 +254,43 @@ void main(){
     float face = smoothstep(0.15, 0.55, n.z);
     vec3 ink = vec3(0.016, 0.06, 0.14);
     float dotE = clamp(uFace.y, 0.0, 1.0), open = clamp(uOpen, 0.0, 1.2);
+    // M83: each reaction's own marks (behavior.ts Look): the eyes' size, a clear catch light, the brows, a small smile, heavy
+    // lids and how far the eyes turn.
+    float size = max(0.5, uFace2.x), glintK = clamp(uFace2.y, 0.0, 1.0), lid = clamp(uFace3.x, 0.0, 1.0), reach = max(1.0, uFace3.y);
     for (int k = 0; k < 2; k++) {
       float side = k == 0 ? -1.0 : 1.0;
       vec2 look = k == 0 ? uEyes.xy : uEyes.zw;
-      vec2 e = u - vec2(side * 0.283 + look.x * 0.075, 0.02 + look.y * 0.055);
+      vec2 e = u - vec2(side * 0.283 + look.x * 0.075 * reach, 0.02 + look.y * 0.055 * reach);
+      e /= size;
       float w = mix(0.108, 0.006, dotE), th = mix(0.038, 0.058, dotE);
       float h = 0.067 * uFace.x * min(open, 1.0) * (1.0 - dotE);
       e.y /= mix(1.0, max(0.1, min(open, 1.1)) * 1.6, dotE);   // round eyes are a little tall, and a blink shuts them
       e.y += h * 0.4;                                          // the arc sits on the eye's line, its rise above it
       float d = arcEye(e, w, h, th);
+      d = max(d, e.y - mix(0.2, 0.004, lid));                  // heavy lids: the top of the eye flat
       float eye = (1.0 - smoothstep(-aa, aa, d)) * face;
       col = mix(col, ink, eye);
-      // The glint: a white point in an open round eye (on a closed arc it would read as a pupil).
-      float glint = dotE * dot1(e, vec2(-0.02, 0.035), 0.02, aa);
+      // The glint: a white point in an open round eye (on a closed arc it would read as a pupil); a clear catch light when
+      // the reaction asks for one.
+      float glint = dotE * dot1(e, vec2(-0.02, 0.035) * (1.0 + 0.4 * glintK) * (1.0 - lid), 0.02 + 0.016 * glintK, aa);
       col = mix(col, vec3(1.0), glint * eye * step(0.3, uOpen));
+      // The brows: a short stroke above each eye, its inner end raised (worried).
+      if (uFace2.z > 0.01) {
+        vec2 a0 = vec2(side * 0.16, 0.25), a1 = vec2(side * 0.37, 0.19);
+        float b = 1.0 - smoothstep(-aa, aa, seg(u - vec2(look.x * 0.03, 0.0), a0, a1) - 0.024);
+        col = mix(col, ink, b * face * clamp(uFace2.z, 0.0, 1.0));
+      }
+    }
+    // A small happy mouth curve (hello).
+    if (uFace2.w > 0.01) {
+      float m = 1.0 - smoothstep(-aa, aa, arcEye(u - vec2(0.0, -0.13), 0.075, -0.045, 0.02));
+      col = mix(col, ink, m * face * clamp(uFace2.w, 0.0, 1.0));
     }
   }
   col = col / (1.0 + col * 0.12);
   float a = cover * clamp(0.96 + 0.04 * fres + uCloud * 0.04, 0.0, 1.0);
-  gl_FragColor = vec4(col * a + haloCol * halo * (1.0 - a), a + halo * (1.0 - a));
+  vec4 body = vec4(col * a + haloCol * halo * (1.0 - a), a + halo * (1.0 - a));
+  gl_FragColor = mk + body * (1.0 - mk.a);
 }`;
 
 export const DROP_VERTEX = /* glsl */ `

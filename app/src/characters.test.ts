@@ -34,7 +34,7 @@ describe("which picture shows", () => {
   test("a trip across the screen swims, but only when nothing else needs showing", () => {
     expect(poseFor("idle", { roam: "travel" })).toBe("swim");
     expect(poseFor("idle", { roam: "return" })).toBe("swim");
-    expect(poseFor("idle", { roam: "settle" })).toBe("look");
+    expect(poseFor("idle", { roam: "settle" })).toBe("peek");   // M83: awake at rest
     expect(poseFor("working", { roam: "travel" })).toBe("laptop");
     expect(poseFor("needsYou", { roam: "travel" })).toBe("wave");
     expect(poseFor("off", { roam: "travel" })).toBe("sleep");
@@ -42,14 +42,14 @@ describe("which picture shows", () => {
   test("a cheer or a party splashes, but never hides that something waits for you or that the screen is being looked at", () => {
     expect(poseFor("idle", { react: "cheer" })).toBe("splash");
     expect(poseFor("idle", { react: "party" })).toBe("splash");
-    expect(poseFor("idle", { react: "nod" })).toBe("look");
+    expect(poseFor("idle", { react: "nod" })).toBe("peek");
     expect(poseFor("needsYou", { react: "party" })).toBe("wave");
     expect(poseFor("checking", { react: "cheer" })).toBe("magnify");
     expect(poseFor("listening", { react: "cheer" })).toBe("glance");
     expect(poseFor("off", { react: "party" })).toBe("sleep");
   });
   test("an unknown trip or reaction changes nothing", () => {
-    expect(poseFor("idle", { roam: "sideways", react: "flip" })).toBe("look");
+    expect(poseFor("idle", { roam: "sideways", react: "flip" })).toBe("peek");
   });
 });
 

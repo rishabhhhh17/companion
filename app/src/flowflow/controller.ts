@@ -2,6 +2,7 @@
 // feeds them what the page and the pointer say, and shuts everything down cleanly. It listens to the pointer without ever
 // taking it: nothing here stops a click, a drag or a key from reaching the window's own handlers.
 import type { CharacterState } from "../model.ts";
+import type { Reaction } from "../moods.ts";
 import type { Liveliness } from "../lookfeel.ts";
 import { FlowflowEngine, type Side, type Snapshot } from "./engine.ts";
 import { FlowflowRenderer } from "./renderer.ts";
@@ -69,6 +70,8 @@ export class FlowflowController {
   private lastNews = -Infinity;
   /** The app's state as last told (listening is the one state that runs during rest, rule 5). */
   private app: CharacterState | null = null;
+  /** M83: the reaction as last told. */
+  private reaction: Reaction | null = null;
   /** M46: resting (a call, Low Power Mode, tucked away): one still frame, no loop, except while listening. */
   private resting = false;
   /** M55: Gentle draws every refresh until then (a reaction under way), and the engine's count of reactions last seen. */
@@ -178,6 +181,15 @@ export class FlowflowController {
     if (changed && !this.reduced) this.lastNews = performance.now();
     this.nudge();
   }
+  /** M83: the reaction in force (moods.ts, from a real event), or null. A change is news; with less motion, one still look. */
+  setReaction(r: Reaction | null): void {
+    if (this.disposed || r === this.reaction) return;
+    this.reaction = r; this.engine.applyReaction(r);
+    if (!this.reduced) this.lastNews = performance.now();
+    this.nudge();
+  }
+  /** M83: the middle of the screen lies `dx, dy` points from the middle of the character (y down): where it watches. */
+  watchToward(dx: number, dy: number): void { if (this.disposed) return; this.engine.watchToward(dx, dy); if (this.reaction === "watching") this.nudge(); }
   setTuning(t: Partial<Tuning>): void { this.engine.setTuning(t); if (this.reduced) this.still(); }
   setReduced(r: boolean): void { if (r === this.reduced) return; this.reduced = r; if (r) { this.stop(); this.still(); } else this.resumeOrPause(); }
 

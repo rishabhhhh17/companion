@@ -201,11 +201,11 @@ export const S = {
     chooseMine: "Choose my project",
     startNewFrom: "Start a new project from this",
     // Something waits on another place (homeHero.ts needMainFor): its next step as the main button on Now.
-    needMain: { practiceStart: "Check my project", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
+    needMain: { practiceStart: "Start the practice", practiceFix: "Fix it", openLearn: "Open the practice" } as Record<"practiceStart" | "practiceFix" | "openLearn", string>,
     // What a practice open in this folder says under its name on Now, one line per stage (homeHero.ts heroWords).
     // M71: a practice ready on Now, said as the practice itself, from its own title.
     practiceOn: (title: string) => `${title}, on a practice copy.`,
-    practiceLine: { start: "Check my project runs its checks on your practice copy.", found: "It found the problem. Fix it next.", failed: "That did not pass. Open the practice to try again.", blocked: "It could not run. Open the practice to see why.", done: "Fixed and proven. Open the practice for what is next." },
+    practiceLine: { start: "Start the practice runs its checks on a practice copy. Nothing real is touched.", found: "It found the problem. Fix it next.", failed: "That did not pass. Open the practice to try again.", blocked: "It could not run. Open the practice to see why.", done: "Fixed and proven. Open the practice for what is next." },
     // M69 (the YC benchmark spec 3.1): the box is pinned at the bottom of Home, its own question, no longer an "Or" after a button.
     ask: "What are you stuck on?",
     talkKeys: "Hold these keys and talk",
@@ -924,6 +924,31 @@ export const S = {
     settings: "Settings",
     actions: "Quick actions",
     quick: { pick: "Pick a project", ask: "Ask", review: "Review changes", check: "Check my project", ship: "Check before going live", undo: "Undo last change", fix: "Fix it" },
+    // M83: the row of up to three short facts under the head (notchQuick.ts notchFacts), and the same facts as Home's strip.
+    // Each is said only from data Squibby holds; a fact with nothing behind it is left out.
+    facts: {
+      label: "About this project",
+      // A clock time today ("2:14 pm"), a weekday and time this week ("Tue 2:14 pm"), else the date ("Nov 3").
+      checkedWorking: (when: string) => `Checked ${when}, working`,
+      checkFailed: (when: string) => `Check failed ${when}`,
+      changedSince: (when: string) => `Passed ${when}, changed since`,
+      filesChanged: (n: number, capped: boolean) => `${n}${capped ? "+" : ""} ${n === 1 && !capped ? "file" : "files"} changed`,
+      toolsConnected: (names: string[]) => `${names.length <= 2 ? names.join(" and ") : `${names[0]}, ${names[1]} and ${names.length - 2} more`} connected`,
+      noTool: "No AI tool connected",
+      caughtWeek: (n: number) => `${n} caught this week`,
+      job: (step: string, clock: string) => `${step} · ${clock}`,
+      // What VoiceOver hears for a fact that opens Home: the fact, then where it goes.
+      opens: (fact: string) => `${fact}. Opens ${PRODUCT}`,
+      // M83: Home's status strip says the same facts as a small caption over a short value.
+      labels: { job: "Now", check: "Last check", changes: "Waiting", tools: "AI tools", caught: "This week" } as Record<"job" | "check" | "changes" | "tools" | "caught", string>,
+      checkValue: { works: (when: string) => `${when} · working`, failing: (when: string) => `${when} · failed`, changed: (when: string) => `${when} · changed since` },
+      toolNames: (names: string[]) => (names.length <= 2 ? names.join(" and ") : `${names[0]}, ${names[1]} and ${names.length - 2} more`),
+      noToolShort: "None connected",
+      caughtShort: (n: number) => `${n} caught`,
+      stripLabel: "This project at a glance",
+      // What VoiceOver hears for a tile on Home: its caption and value, then where it goes.
+      tileSay: (label: string, value: string, place: string) => `${label}: ${value}. Opens ${place}`,
+    },
   },
   hello: {
     hey: (name: string) => `Hey ${name}`,
@@ -3155,7 +3180,8 @@ export const S = {
     // M71: the second line of a row in Now's list.
     sinceLine: "Since your last fix",
     // M71: a practice not started yet, on Now's lead.
-    skip: "Skip",
+    // M83: says what it does (the practice is put away; nothing runs).
+    skip: "Skip the practice",
     taskLine: "Open it to see where it stopped",
     // M71: the list's name for VoiceOver, and the action on a row of files changed.
     listLabel: "Since then",

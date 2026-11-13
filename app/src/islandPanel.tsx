@@ -13,13 +13,28 @@ import { keyHint, keysFrom, setKeysNow } from "./keys.ts";
 import { answerApproval, stopAgent } from "./commands.ts";
 import type { Model } from "./model.ts";
 import { S } from "./strings.ts";
-import { invoke } from "./tauri.ts";
+import { invoke, listen } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
-import { clockWords, homeStatus, jobStep, notchStatusLine } from "./homeHero.ts";
-import { factColour, GEAR_DO, panelLayout, quickActions, quickFact, quickFactKind, quickGo, quickGreeting, quickLabel, quickLook, factLines } from "./notchQuick.ts";
+import { homeStatus, jobStep, notchStatusLine } from "./homeHero.ts";
+import { factColour, GEAR_DO, notchFacts, panelLayout, quickActions, quickFact, quickFactKind, quickGo, quickGreeting, quickLabel, quickLook, factLines } from "./notchQuick.ts";
 import { useGroups } from "./groups.ts";
 import { Button, Dot, Tile } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
+import { doneStateFrom, type DoneState } from "./doneSignal.ts";
+
+/** M83: the AI tools connected in the project, from the engine's donesignal.state as Home asks for it (Your AI tools, the
+ *  Now row). The panel only listens: it never asks the engine anything by itself, so until Home has asked once the fact is
+ *  left out. */
+function useHeardTools(project: string): DoneState | null {
+  const [st, setSt] = useState<DoneState | null>(null);
+  useEffect(() => {
+    setSt(null);
+    if (!project) return;
+    const off = listen("runner-event", (e) => { const d = doneStateFrom(e.payload, project); if (d) setSt(d); });
+    return () => { void off.then((f) => f()); };
+  }, [project]);
+  return st;
+}
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
  *  opens the whole panel. `unseen` (M46): results finished while Home was closed, said on the hover panel's top line only
@@ -102,6 +117,9 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   // M71: the fact's dot in its meaning's colour (a key in the code red, the job at work blue, the rest by quickFact's rule).
   const dot = factColour(reviewKey ? "failing" : view.kind === "job" ? "working" : fact !== fact0 ? "ready" : quickFactKind(m, now, note));
   const actions = showButtons ? quickActions(m, { now, layout, on: groups.on }) : [];
+  // M83: up to three short facts under the head, each from data the page holds, each opening Home at its place.
+  const tools = useHeardTools(project);
+  const facts = layout === "quick" || layout === "job" ? notchFacts(m, { now, tools, job: view.kind === "job" ? { step, ms: now - (since.current?.at ?? now) } : null, head: reviewKey ? "failing" : view.kind === "job" ? "working" : quickFactKind(m, now, note) }) : [];
   const questions = jobs.filter((j) => j.approval);
   const list = questions.length > 0 && <ul className="ip-jobs" aria-label={S.panel.jobs}>
       {questions.map((j) => (
@@ -123,7 +141,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
     : view.kind === "job" ? (
       <div className="ip-live" data-tone="working">
         {/* M70 step 4: the job's name is the head row's fact; here its step, its time so far and Stop, on one row. */}
-        <span className="ip-text"><span>{view.job.sub} · {S.home.timeSoFar(clockWords(now - (since.current?.at ?? now)))}</span>
+        <span className="ip-text"><span>{view.job.sub}</span>
           {/* M70: the step moves here from the wings: the work card's own four steps, done, now and ahead. Drawn only. */}
           <span className="island-step-line ip-steps" aria-hidden="true">{S.home.steps.map((w, i) => <i key={w} data-mark={i < step ? "done" : i === step ? "now" : "ahead"} />)}</span></span>
         <Button size="sm" tabIndex={tab} label={`${S.stop}. ${keyHint("stop", S.look.stopKeys)}`} title={keyHint("stop", S.look.stopKeys)} onClick={() => void invoke("send_command", { cmd: stopAgent() }).catch(() => {})}><Icon name="stop" size={12} />{S.stop}</Button>
@@ -165,6 +183,11 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
           <button className="ip-word" type="button" tabIndex={tab} aria-label={S.notch.open} onClick={() => { if (ready()) void invoke("island_go", {}).catch(() => {}); }}>{S.notch.openShort}</button>
         </span>
       </div>
+      {/* M83: the facts row. It keeps its place with no fact in it, so a fact coming or going never moves anything. */}
+      {(layout === "quick" || layout === "job") && <nav className="ip-facts" aria-label={S.notch.facts.label}>
+        {facts.map((f) => <button key={f.id} type="button" className="ip-chip" data-fact={f.id} tabIndex={tab} aria-label={S.notch.facts.opens(f.words)} title={f.words}
+          onClick={() => { if (ready()) void invoke("island_go", f.go).catch(() => {}); }}>{f.colour ? <Dot colour={f.colour} /> : <span className="ip-chip-none" aria-hidden="true" />}<span className="ip-chip-words">{f.words}</span></button>)}
+      </nav>}
       {layout !== "quick" && live}
       {layout === "quick" && actions.length > 0 && <nav className="ip-quick" aria-label={S.notch.actions}>
         {/* M71: each with its colour tile (notchQuick.ts quickLook), the same colours as Home's, so it reads as one product. */}

@@ -84,7 +84,7 @@ impl Prefs {
 /// display, since the island moves to the display the person uses. It always holds the island at its biggest (opened
 /// downward with the status, island.rs `island_frame`) with CLEAR_MARGIN around it, should a notch read wider or off
 /// centre; for every real display the fixed numbers already hold it. Trips beside a window keep clear of this zone.
-pub const NOTCH_CLEAR: (f64, f64) = (420.0, 280.0);   // the hover panel at its tallest, with CLEAR_MARGIN (island.rs PANEL_W, PANEL_MAX; 27 Oct 2026)
+pub const NOTCH_CLEAR: (f64, f64) = (580.0, 280.0);   // the hover panel at its tallest, with CLEAR_MARGIN (island.rs PANEL_W, PANEL_MAX; M83, 12 Nov 2026: 560 wide)
 pub fn notch_zone(s: &Screen) -> Rect {
     let (w, depth) = NOTCH_CLEAR;
     let below_menu = (s.work[1] - s.frame[1]).max(0.0);

@@ -376,6 +376,33 @@ button, select, input, textarea { font: inherit; }
 @keyframes visor-lean { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(var(--visor-lean)) translateY(var(--visor-lean-up)); } }
 @keyframes visor-hop { 0%, 100% { transform: translateY(0); } 26.67% { transform: translateY(var(--visor-hop-up)) scale(1.02, .98); } 53.33% { transform: translateY(0) scale(.98, 1.02); } }
 
+/* ---------- M83, the character reacts to what really happens (moods.ts) ----------
+   Each reaction only over the plain rest pose, in the art's own shapes, never a new colour: the Visor's two rest lights
+   open wide (worried), close and open again (relieved), turn toward the middle of the screen (watching), lift with a small
+   hop (hello, never in the notch's band) or half close and dim (sleepy). Proud is the smile and its hop (visorReaction). The
+   glass orb has no face, so it moves a little itself. With Reduce motion or Less motion (data-calm) each is its still look. */
+.ui-visor .visor-rest rect { transform-box: fill-box; transform-origin: center; transition: fill var(--dur-2) var(--ease-out), transform var(--dur-3) var(--ease-out); }
+.ui-visor .visor-lights { transition: opacity var(--dur-3) var(--ease-out); }
+.ui-visor[data-react="worried"] .visor-rest rect { transform: scale(1.15, 1.7); }
+.ui-visor[data-react="relieved"] .visor-rest rect { animation: visor-exhale var(--dur-visor-glance) var(--ease-loop) 1 both; }
+.ui-visor[data-react="watching"] .visor-rest { translate: calc(var(--visor-glance-x) * var(--visor-dir) * 2) 0; transition: translate var(--dur-3) var(--ease-out); }
+.ui-visor[data-react="hello"] .visor-rest rect { transform: scale(1.12, 1.35); }
+.ui-visor[data-react="hello"]:not([data-band]) { transform-origin: var(--visor-hop-origin); animation: visor-hop var(--dur-visor-hop) var(--ease-loop) 1 both; }
+.ui-visor[data-react="sleepy"] .visor-rest rect { transform: scaleY(.35); }
+.ui-visor[data-react="sleepy"] .visor-lights { opacity: .6; }
+.ui-orb:not(.ui-visor) img { transition: transform var(--dur-3) var(--ease-out), opacity var(--dur-3) var(--ease-out); }
+.ui-orb:not(.ui-visor)[data-react="worried"] img { transform: scale(1.04); }
+.ui-orb:not(.ui-visor)[data-react="relieved"] img { animation: orb-exhale var(--dur-visor-glance) var(--ease-loop) 1 both; }
+.ui-orb:not(.ui-visor)[data-react="watching"] img { transform: translateY(-2%) scale(1.02); }
+.ui-orb:not(.ui-visor)[data-react="hello"] img { transform-origin: var(--visor-hop-origin); animation: visor-hop var(--dur-visor-hop) var(--ease-loop) 1 both; }
+.ui-orb:not(.ui-visor)[data-react="sleepy"] img { transform: scale(.97); opacity: .8; }
+/* The still looks: relieved holds its eyes nearly closed (the orb a little smaller) until it settles back to rest. */
+.ui-orb[data-calm][data-react], .ui-orb[data-calm][data-react] * { animation: none !important; transition: none !important; }
+.ui-visor[data-calm][data-react="relieved"] .visor-rest rect { transform: scaleY(.25); }
+.ui-orb:not(.ui-visor)[data-calm][data-react="relieved"] img { transform: scale(.97); }
+@keyframes visor-exhale { 0%, 100% { transform: scaleY(1); } 25%, 65% { transform: scaleY(.15); } }
+@keyframes orb-exhale { 0%, 100% { transform: scale(1); } 30%, 60% { transform: scale(.96); } }
+
 /* ---------- Reduced motion (M66): a part that comes in still fades in, plainly; it leaves at once (parts.tsx exitMs) ---------- */
 @media (prefers-reduced-motion: reduce) { :is(.ui-menu-list, .ui-pop, .ui-scrim, .ui-sheet, .ui-toast) { animation: ui-fade-in var(--dur-1) linear both !important; } }
 :root[data-less-motion] .ui-menu-list, :root[data-less-motion] .ui-pop, :root[data-less-motion] .ui-scrim, :root[data-less-motion] .ui-sheet, :root[data-less-motion] .ui-toast { animation: ui-fade-in var(--dur-1) linear both !important; }

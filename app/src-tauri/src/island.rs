@@ -122,7 +122,9 @@ pub fn wing_w(asked: f64) -> f64 { if asked.is_finite() && asked > WING { asked.
 /// pointer on the island opens a small black panel hanging from it, the notch grown down, with the ask bar, the two things
 /// Squibby is for, and each job at work as a little card with its plan and then its result (island.tsx). This wide, so it
 /// fits on the smallest MacBook screen and inside the character's clear zone (docking.rs NOTCH_CLEAR, with CLEAR_MARGIN).
-pub const PANEL_W: f64 = 400.0;
+/// M83 (the founder, 12 Nov 2026: "it can be wider and give some more info"): 560, about 1.4 times the old 400, for the
+/// row of short facts (notchQuick.ts PANEL_W pins the same number).
+pub const PANEL_W: f64 = 560.0;
 /// How tall the panel may be below the notch's row: the page measures what it shows and asks (island_alert `panel`).
 pub const PANEL_MIN: f64 = 56.0;
 pub const PANEL_MAX: f64 = 240.0;

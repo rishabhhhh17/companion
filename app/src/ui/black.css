@@ -208,3 +208,31 @@
 .home .fr .fr-welcome-loop .fl-recorded { min-height: 0; }
 .home .fr .fr-welcome-loop .first-look { gap: var(--space-2); }
 .home .fr .fr-welcome-loop .fl-actions { margin: 0; }
+
+/* ---------- M83, Now minimal but detailed (statusStrip.tsx, notchQuick.ts homeFacts) ----------
+   The status strip under the lead: up to four small tiles in one row, each a caption with its meaning's dot over a short
+   value, on the same left edge as the headline and the list. No gradient, no glow; the press and hover on the M66 tokens. */
+.home .now-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: var(--space-2); margin: 0 0 var(--space-4); }
+.home .now-strip > button.now-tile { all: unset; box-sizing: border-box; display: grid; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); border-radius: var(--r-card); background: var(--surface-1); box-shadow: inset 0 0 0 var(--hair) var(--line); cursor: default; transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
+.home .now-strip > button.now-tile:hover { background: var(--surface-2); }
+.home .now-strip > button.now-tile:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.home .now-strip > button.now-tile:focus-visible { outline: 2px solid var(--focus, var(--fg)); outline-offset: 2px; }
+.home .now-tile-label { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.home .now-tile-label .ui-mdot { flex: none; }
+.home .now-tile-none { flex: none; min-width: 6px; min-height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--fg-3); }
+.home .now-tile-value { min-width: 0; overflow-wrap: anywhere; color: var(--fg); font: var(--w-strong) var(--t-label) / var(--lh-label) var(--font); }
+/* Narrow Home: two by two. */
+@container home (width < 30rem) { .home .now-strip { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The ask box's foot: More ways to ask on the left, the Fix it key on the right, on one line (the key was alone in the
+   bar's corner). */
+.home .askwrap .ask-foot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); }
+.home .askwrap .ask-foot > .ask-key { grid-column: 2; margin: var(--space-1) 0 0; min-height: 0; padding: var(--space-1) 0; line-height: var(--lh-caption); }
+.home .askwrap .ask-foot > details.more + .ask-key, .home .askwrap .ask-foot > .ask-key:only-child { grid-row: 1; }
+
+/* Flowflow resting low in the lead's corner (on purpose, for people who keep it off the screen's sides): a soft edge line
+   where its water meets the surface, so it reads as peeking over an edge, never as a shape cut flat by its box. */
+.home .hero .ui-lead-char .home-char[data-live]::after { content: ""; position: absolute; left: 4%; right: 4%; top: 72%; height: var(--hair); border-radius: var(--hair); background: var(--line-strong); pointer-events: none; }
+/* One rhythm: the lead's words end where its buttons end (the old waterline's room under them is retired with the sea), so
+   the strip and the list follow at the lead's own space-4. */
+.home .hero.ui-lead .ui-lead-words.hero-words { margin-bottom: 0; }

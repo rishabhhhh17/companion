@@ -36,6 +36,12 @@ export type ExitKind = keyof typeof EXIT_MS;
  *  glance every 8 s. */
 export const VISOR_MS = { blink: 4600, scan: 1300, lean: 2600, pulse: 1200, hop: 840, glance: 2400, glanceGap: 8000 } as const;
 
+/** M83, the character reacts to what really happens (moods.ts), in ms: how long each short reaction lasts before it settles
+ *  back to rest (proud a little longer than the old 2.4 s success flash), how long the pointer must rest on the character
+ *  before it says hello, how long with no activity at all before it gets sleepy, and how long after a page opens the events
+ *  it replays are taken as the past, never as news. */
+export const MOOD_MS = { proud: 3600, worried: 4000, relieved: 2400, hello: 1400, helloRest: 350, sleepy: 600_000, quietOnOpen: 1500 } as const;
+
 /** The two curves (cubic-bezier control points). Ease out for every enter, move, land and grow; exit for leaving only. */
 export const EASE_OUT = [0.23, 1, 0.32, 1] as const;
 export const EASE_EXIT = [0.4, 0, 1, 1] as const;
