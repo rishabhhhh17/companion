@@ -17,6 +17,11 @@ export type SavedRow = { id: number; at: string; checkpoint: string; command: st
 /** M77: what the safety net caught in the last seven days, from real rows. Shown only when above zero (rule 16). */
 export type Caught = { since: string; falseDones: number; keys: number; weakened: number; saved: number; undone: number };
 const GUARD_MODE = "guard";
+/** M85: the mode of an ask row, and its label's start. */
+const ASK_MODE = "ask";
+const ASKED_PREFIX = "Asked first: ";
+/** M85: an ask as History shows it (protocol AskedRowView). */
+export type AskedRow = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" };
 const SAVED_PREFIX = "Before Claude ran: ";
 const WEEK_MS = 7 * 86_400_000;
 export type ReviewDid = (typeof REVIEW_DID)[number];
@@ -66,6 +71,8 @@ export class TaskLog {
     if (!have.includes("brought_back")) this.db.run("ALTER TABLE tasks ADD COLUMN brought_back INTEGER NOT NULL DEFAULT 0");
     // M72: which check failed (a rung's id), for a failed task.
     if (!have.includes("failed_check")) this.db.run("ALTER TABLE tasks ADD COLUMN failed_check TEXT");
+    // M85: why an ask was asked (its plain reason, redacted), for an ask row.
+    if (!have.includes("note")) this.db.run("ALTER TABLE tasks ADD COLUMN note TEXT");
     // M57 feature 1: one row per review that ran. Names of files only, the summary with secrets hidden, and what the person
     // did with it. No file text, no diff and no reasons' words are ever kept here.
     this.db.run(`CREATE TABLE IF NOT EXISTS reviews (
@@ -88,6 +95,24 @@ export class TaskLog {
   saved(r: { project: string; label: string; checkpoint: string; at: string }): number {
     const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, checkpoint, changed) VALUES (?, 'guard', ?, ?, 'saved', ?, ?, ?, NULL)");
     return Number(q.run(r.project, GUARD_MODE, clip(redact(r.label), 120), r.at, r.at, r.checkpoint).lastInsertRowid);
+  }
+  /** M85: an ask, as its own finished row (mode ask): the person's own tool was told to ask (agent "tool", status asked),
+   *  or Squibby's own card asked and the person answered (agent "squibby", status once, always, no or expired). Never a
+   *  task, so nothing reads a verdict from it. */
+  asked(r: { project: string; command: string; reason: string; at: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" }): number {
+    const q = this.db.query("INSERT INTO tasks (project, agent, mode, label, status, started_at, ended_at, note) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+    return Number(q.run(r.project, r.by, ASK_MODE, clip(redact(`${ASKED_PREFIX}${r.command}`), 120), r.by === "tool" ? "asked" : r.answer ?? "no", r.at, r.at, clip(redact(r.reason), 300)).lastInsertRowid);
+  }
+  /** M85: the project's asks, newest first, at most 50. */
+  askedRows(project: string, limit = 50): AskedRow[] {
+    const rows = this.db.query("SELECT id, agent, label, status, started_at, note FROM tasks WHERE project = ? AND mode = ? ORDER BY started_at DESC, id DESC LIMIT ?").all(project, ASK_MODE, Math.min(50, limit)) as any[];
+    return rows.map((r) => {
+      const by: "tool" | "squibby" = r.agent === "squibby" ? "squibby" : "tool";
+      const label = String(r.label);
+      const command = clip(label.startsWith(ASKED_PREFIX) ? label.slice(ASKED_PREFIX.length) : label, 80);
+      const answer = ["once", "always", "no", "expired"].includes(r.status) ? (r.status as AskedRow["answer"]) : undefined;
+      return { id: r.id, at: r.started_at, command, reason: clip(String(r.note ?? ""), 300), by, ...(by === "squibby" && answer ? { answer } : {}) };
+    });
   }
   /** M77: the project's saved copies, newest first. */
   savedRows(project: string, limit = 50): SavedRow[] {
@@ -164,7 +189,7 @@ export class TaskLog {
   checkpointsOf(projects: string[], limit = 200): string[] {
     const out = new Set<string>();
     for (const p of new Set(projects)) {
-      const rows = this.db.query("SELECT checkpoint, undone_by FROM tasks WHERE project = ? ORDER BY id DESC LIMIT ?").all(p, limit) as { checkpoint: string | null; undone_by: string | null }[];
+      const rows = this.db.query("SELECT checkpoint, undone_by FROM tasks WHERE project = ? AND mode != 'ask' ORDER BY id DESC LIMIT ?").all(p, limit) as { checkpoint: string | null; undone_by: string | null }[];
       for (const r of rows) { if (r.checkpoint) out.add(r.checkpoint); if (r.undone_by) out.add(r.undone_by); }
     }
     return [...out];
@@ -207,8 +232,8 @@ export class TaskLog {
   list(project?: string, limit = 200): TaskRow[] {
     // M77: a saved copy (mode guard) is its own kind of row (savedRows), never a task here.
     const rows = (project === undefined
-      ? this.db.query("SELECT * FROM tasks WHERE mode != ? ORDER BY id DESC LIMIT ?").all(GUARD_MODE, limit)
-      : this.db.query("SELECT * FROM tasks WHERE project = ? AND mode != ? ORDER BY id DESC LIMIT ?").all(project, GUARD_MODE, limit)) as any[];
+      ? this.db.query("SELECT * FROM tasks WHERE mode != ? AND mode != ? ORDER BY id DESC LIMIT ?").all(GUARD_MODE, ASK_MODE, limit)
+      : this.db.query("SELECT * FROM tasks WHERE project = ? AND mode != ? AND mode != ? ORDER BY id DESC LIMIT ?").all(project, GUARD_MODE, ASK_MODE, limit)) as any[];
     return rows.map((r) => ({
       id: r.id, project: r.project, agent: r.agent, mode: r.mode, label: r.label, status: r.status, usd: r.usd, startedAt: r.started_at, endedAt: r.ended_at,
       checkpoint: r.checkpoint ?? null, changed: r.changed ?? null, proof: r.proof ?? null, undone: r.undone_by != null, back: r.undone_by != null && r.brought_back === 1,

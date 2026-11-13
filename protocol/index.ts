@@ -25,7 +25,10 @@ export type AgentSend = Envelope & { type: "agent.send"; agent: string; project:
 // nothing runs for the agent, it rests again and a plan waiting for approval is dropped; it never stops anything.
 export type AgentInterrupt = Envelope & { type: "agent.interrupt"; agent: string; release?: boolean };
 export type AgentInterruptAll = Envelope & { type: "agent.interruptAll"; reason: string };
-export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" };
+/** M85: scope "project" is Always allow for this project: the card offered it (approval.request always). The engine then
+ *  adds the house rule line to the rules file as it is on disk (never a page's copy of the list) and lets this one go; a
+ *  line it cannot save makes the answer Allow once (approval.resolved always). */
+export type ApprovalResolve = Envelope & { type: "approval.resolve"; approval: string; decision: "allow" | "deny"; scope: "once" | "task" | "project" };
 export type CheckpointRestore = Envelope & { type: "checkpoint.restore"; project: string; checkpoint: string; force?: boolean };
 // "Put those back too": after an Undo left some of the person's own files alone, a second, confirmed press puts the old versions
 // back over them (their versions are saved aside first). `files` may only name files that Undo left alone; without it, all of them.
@@ -322,6 +325,12 @@ export type ApprovalRequest = Envelope & {
   /** M67: true when a check asks it (install the packages, go online, run the scripts), not a tool Claude wants to use.
    *  The first run screen shows these, since it covers Home while the first check runs. */
   check?: boolean;
+  /** M85: Always allow for this project fits this question: the house rule line the card saves on that answer (rules.house).
+   *  Only for a plain read outside the project, never for anything destructive, live or that Undo cannot take back, and
+   *  only while approval.offerAlways is on. */
+  always?: string;
+  /** M85: the command touches a live system a saved copy cannot bring back (livesystems.ts): Allow once is the only yes. */
+  live?: boolean;
 };
 export type CostUpdate = Envelope & {
   type: "cost.update"; agent: string; usdEstimate: number; basis: string; tokens: { in: number; cacheRead: number; out: number };
@@ -351,6 +360,9 @@ export type Receipt = Envelope & {
   /** M77b: the shared notes for other AI tools that changed while the task ran (memory, not the fix): Undo leaves them. */
   notesStay?: ("AGENTS.md" | "CLAUDE.md")[];
   said?: string;   // the agent's last words, the message it ended on: secrets hidden, clipped (runner/src/asks.ts)
+  /** M85 (research feature 4): not_asked, the task changed files the request did not name or said to leave alone;
+   *  said_other, a command it ran goes against what it said it would do (review/drift.ts). Plain words, at most two. */
+  flags?: { kind: "not_asked" | "said_other"; say: string }[];
   asks?: boolean;  // those words stop to ask the person something: the follow up box is where they answer
 };
 // Explain: two short lines of why and one check question. step: which Drive step it explains.
@@ -402,7 +414,9 @@ export type ProofResult = Envelope & { type: "proof.result"; agent: string; verd
   /** M75: private looking pages that opened without a sign in (paths only), a Worth a look finding, never a failure. */
   privateOpen?: string[] };
 
-export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval: string; agent: string; outcome: "allowed" | "denied" | "expired" | "cancelled" };
+/** M85 review: always, only for an Always allow for this project answer: "saved" when the engine added its house rule line
+ *  to the rules file as it was on disk then, "notSaved" when it could not (the answer was then Allow once). */
+export type ApprovalResolved = Envelope & { type: "approval.resolved"; approval: string; agent: string; outcome: "allowed" | "denied" | "expired" | "cancelled"; always?: "saved" | "notSaved" };
 
 export type PlanReady = Envelope & { type: "plan.ready"; agent: string; steps: { id: number; title: string }[]; truncated: boolean; estimateUsd: number };
 export type DriveStep = Envelope & { type: "drive.step"; agent: string; index: number; total: number; title: string; status: "started" | "done" | "not_done" | "stopped" | "over_budget" };
@@ -450,7 +464,7 @@ export type WeekSummary = Envelope & { type: "week.summary"; project: string; we
  *  no_longer_applies: a newer change made every reason go away). */
 export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies", "closed_quietly"] as const;
 export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
-export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string }; saved?: SavedRowView[]; caught?: CaughtView };
+export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string }; saved?: SavedRowView[]; caught?: CaughtView; asked?: AskedRowView[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 // before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; before?: string; caption: string; circles: number; file?: string };
@@ -463,10 +477,17 @@ export type ShipCard = Envelope & { type: "ship.card"; project: string; url: str
 export type PracticeKeyEvent = Envelope & { type: "practice.key"; project: string; step: "wrote" | "fixed" | "refused"; written?: boolean; checkpoint?: string; changed?: { file: string; kind: "added" | "modified" }[]; clean?: boolean; reason?: string };
 /** M75: each tool's done signal in a project. file: the hook file from the project down; adds: the exact text the card shows
  *  before the yes; creates: the file is not there yet. problem: why the last add or remove wrote nothing. */
-export type DoneSignalState = Envelope & { type: "donesignal.state"; project: string; tools: { tool: DoneSignalTool; hook?: HookKind; on: boolean; file: string; adds: string; creates: boolean; problem?: string }[]; problem?: string };
+/** M85: stale, Squibby's line is there but older than today's (turning it off and on again writes the new one, after the card). */
+export type DoneSignalState = Envelope & { type: "donesignal.state"; project: string; tools: { tool: DoneSignalTool; hook?: HookKind; on: boolean; file: string; adds: string; creates: boolean; problem?: string; stale?: boolean }[]; problem?: string };
 /** M77: a saved copy was taken the instant before the person's own AI tool ran a destructive command. command: short and
  *  redacted (60 characters), the same words as the History row. */
 export type GuardSaved = Envelope & { type: "guard.saved"; project: string; checkpoint: string; command: string };
+/** M85: the person's own AI tool was told to ask them first about a command that touches a live system (guard.ts). command:
+ *  short and redacted (60 characters); reason: Squibby's plain reason, redacted, at most 300 characters. */
+export type GuardAsked = Envelope & { type: "guard.asked"; project: string; command: string; reason: string };
+/** M85: an ask in History: the person's own tool asked (by "tool"), or Squibby's own card did (by "squibby", with what the
+ *  person answered). */
+export type AskedRowView = { id: number; at: string; command: string; reason: string; by: "tool" | "squibby"; answer?: "once" | "always" | "no" | "expired" };
 /** M77: Claude Code is waiting for the person in this project (a permission or its idle prompt), or no longer is. message:
  *  Claude Code's own short notification (120 characters, redacted), never the question itself. */
 export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string };
@@ -597,7 +618,7 @@ export type ReviewResultEvent = Envelope & {
   untold?: ReviewUntold;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
+export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -717,6 +738,17 @@ const savedRowsOk: Check = (m) => {
   });
   return ok ? null : '"saved" must be a list of saved copies: id, at, checkpoint, a short command and undone';
 };
+// M85: the asks History shows (at most 50): a short command, the reason, who asked, and what the person answered.
+const askedRowsOk: Check = (m) => {
+  const rows = m.asked;
+  const ok = Array.isArray(rows) && rows.length <= 50 && rows.every((x) => {
+    const o = x as Record<string, unknown> | null;
+    return !!o && typeof o === "object" && !Array.isArray(o) && Number.isInteger(o.id) && typeof o.at === "string" && !Number.isNaN(Date.parse(o.at as string))
+      && typeof o.command === "string" && Array.from(o.command as string).length <= 80 && typeof o.reason === "string" && Array.from(o.reason as string).length <= 300
+      && (o.by === "tool" || o.by === "squibby") && (o.answer === undefined || ["once", "always", "no", "expired"].includes(o.answer as string));
+  });
+  return ok ? null : '"asked" must be a list of asks: id, at, a short command, the reason, who asked and the answer';
+};
 const caughtOk: Check = (m) => {
   const c = m.caught as Record<string, unknown> | null;
   const ok = !!c && typeof c === "object" && !Array.isArray(c) && typeof c.since === "string" && ["falseDones", "keys", "weakened", "saved", "undone"].every((k) => Number.isInteger(c[k]) && (c[k] as number) >= 0);
@@ -824,7 +856,7 @@ const COMMANDS: Record<string, Check[]> = {
   "agent.send": [str("agent"), str("project"), opt("retry", bool("retry")), (m) => (m.retry === true ? opt("text", (x) => (typeof x.text === "string" ? null : '"text" must be text'))(m) : str("text")(m))],
   "agent.interrupt": [str("agent"), opt("release", bool("release"))],
   "agent.interruptAll": [str("reason")],
-  "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task"])],
+  "approval.resolve": [str("approval"), oneOf("decision", ["allow", "deny"]), oneOf("scope", ["once", "task", "project"])],
   "checkpoint.restore": [str("project"), str("checkpoint"), opt("force", bool("force"))],
   "checkpoint.putBack": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'putting your files back needs "confirm": true'), opt("files", list("files"))],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
@@ -855,7 +887,7 @@ const EVENTS: Record<string, Check[]> = {
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
     (m) => (m.reason !== "fixes" || m.resetsOn !== undefined ? null : 'a fixes limit says when they come back in "resetsOn"')],
   "runner.hello": [str("runnerVersion"), str("sdk")],
-  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk), opt("lastWorking", (m) => { const w = m.lastWorking as Record<string, unknown>; return w && typeof w === "object" && typeof w.checkpoint === "string" && /^cp_/.test(w.checkpoint) && typeof w.at === "string" ? null : '"lastWorking" needs a checkpoint and when'; }), opt("saved", savedRowsOk), opt("caught", caughtOk)],
+  "tasks.list": [str("project"), list("tasks"), opt("sinceCheck", oneOf("sinceCheck", ["same", "changed"])), opt("reviews", reviewRowsOk), opt("lastWorking", (m) => { const w = m.lastWorking as Record<string, unknown>; return w && typeof w === "object" && typeof w.checkpoint === "string" && /^cp_/.test(w.checkpoint) && typeof w.at === "string" ? null : '"lastWorking" needs a checkpoint and when'; }), opt("saved", savedRowsOk), opt("caught", caughtOk), opt("asked", askedRowsOk)],
   "runner.pong": [opt("ping", str("ping"))],
   "settings.applied": [list("accepted"), list("refused")],
   // answers: the id of the command this state answers; refused: why that command could not do what it asked.
@@ -927,13 +959,13 @@ const EVENTS: Record<string, Check[]> = {
   "agent.state": [str("agent"), oneOf("state", ["idle", "listening", "thinking", "working", "checking", "needsYou", "done", "error"])],
   "agent.tool": [str("agent"), str("tool"), str("summary"), str("toolUseId"), bool("undoable")],
   "agent.file": [str("agent"), fileInProject("file"), oneOf("kind", FILE_KINDS)],
-  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check"))],
+  "approval.request": [str("approval"), str("agent"), str("checkpoint"), str("toolUseId"), oneOf("risk", ["irreversible", "git", "outside_project", "install", "network", "settings", "house_rule", "scripts"]), str("title"), str("expiresAt"), opt("action", str("action")), opt("undoable", bool("undoable")), opt("check", bool("check")), opt("always", (m) => (typeof m.always === "string" && /^allow reading \S/.test(m.always) && Array.from(m.always).length <= 214 ? null : '"always" must be an "allow reading" house rule line')), opt("live", bool("live"))],
   "cost.update": [str("agent"), num("usdEstimate"), str("basis"), obj("tokens")],
-  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), opt("notesStay", (m) => (Array.isArray(m.notesStay) && m.notesStay.length > 0 && m.notesStay.length <= 2 && m.notesStay.every((f: unknown) => f === "AGENTS.md" || f === "CLAUDE.md") ? null : '"notesStay" must name AGENTS.md or CLAUDE.md')), practiceOk],
+  "receipt": [str("agent"), str("checkpoint"), list("changed"), num("commands"), list("notUndoable"), oneOf("proof", ["passed", "partial", "failed", "skipped"]), num("usdEstimate"), opt("changedAt", place("changedAt")), opt("repeat", repeatOk), opt("said", str("said")), opt("asks", bool("asks")), opt("ended", oneOf("ended", ["done", "needs_you", "stopped", "failed"])), opt("endedWhy", oneOf("endedWhy", ["check_failed", "spending_limit", "daily_limit", "turns", "no_connection", "claude_busy", "error"])), opt("mode", oneOf("mode", ["drive", "rescue", "research", "ship"])), opt("claimedPassed", bool("claimedPassed")), opt("flags", (m) => (Array.isArray(m.flags) && m.flags.length > 0 && m.flags.length <= 2 && m.flags.every((f: unknown) => { const o = f as Record<string, unknown>; return !!o && typeof o === "object" && (o.kind === "not_asked" || o.kind === "said_other") && typeof o.say === "string" && o.say.length > 0 && Array.from(o.say).length <= 400; }) ? null : '"flags" must be one or two of not_asked and said_other, each with words')), opt("notesStay", (m) => (Array.isArray(m.notesStay) && m.notesStay.length > 0 && m.notesStay.length <= 2 && m.notesStay.every((f: unknown) => f === "AGENTS.md" || f === "CLAUDE.md") ? null : '"notesStay" must name AGENTS.md or CLAUDE.md')), practiceOk],
   "protocol.error": [str("reason")],
   "proof.step": [str("agent"), str("rung"), str("label"), oneOf("status", ["running", "passed", "failed", "skipped"]), (m) => (typeof m.detail === "string" ? null : "missing text field \"detail\""), stepNeedsOk],
   "proof.result": [str("agent"), oneOf("verdict", ["passed", "passed_with_gaps", "failed", "nothing_to_check", "cancelled"]), list("steps"), stepsNeedsOk, num("tries"), opt("of", (m) => (Number.isInteger(m.of) && (m.of as number) >= 1 ? null : '"of" must be a whole number from 1')), opt("privateOpen", textList("privateOpen"))],
-  "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"])],
+  "approval.resolved": [str("approval"), str("agent"), oneOf("outcome", ["allowed", "denied", "expired", "cancelled"]), opt("always", oneOf("always", ["saved", "notSaved"]))],
   "assist.prompt.delta": [str("req"), str("text")],
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
@@ -946,6 +978,7 @@ const EVENTS: Record<string, Check[]> = {
   // M77: the saved copy names its project, checkpoint and the short command (never over 80 characters); the waiting mark
   // names its project, and its message is Claude Code's own short notification (never over 120 characters).
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
+  "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters')],
   "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters'))],
   "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],
   "cost.resolved": [str("agent"), oneOf("choice", [...COST_CHOICES])],

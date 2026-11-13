@@ -36,7 +36,7 @@ import { CountUp, useHomeMotion } from "./smoothMotion.ts";
 import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
-import { arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
+import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
 import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
@@ -46,7 +46,7 @@ import { SetupList } from "./setupList.tsx";
 import { setupList } from "./setupList.ts";
 import { Waterline } from "./waterline.tsx";
 import { livelinessOf } from "./lookfeel.ts";
-import { approvalWords } from "./approvals.ts";
+import { alwaysFile, approvalChoices, approvalWords } from "./approvals.ts";
 import { useLook } from "./useLook.ts";
 import { AGAIN_EVENT, onboardedNow } from "./firstRunAgain.ts";
 import { ChangesCard } from "./changesCard.tsx";
@@ -75,9 +75,9 @@ import { sendBackCopy } from "./review.ts";
 import { ShareReport, WalkThrough } from "./m76Panels.tsx";
 import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
-import { projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
+import { askedRowLook, commandParts, projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
 import { WeekPart } from "./weekSummary.tsx";
-import type { CaughtView, SavedRowView } from "../../protocol/index.ts";
+import type { AskedRowView, CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
 import { verdictMark } from "./ui/partsLogic.ts";
@@ -342,7 +342,7 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { 
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
-function HistoryPanel({ items, reviews = [], saved = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
+function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   // M77: the week's count, one line under the lead, only when the setting is on and there is something (read on every render).
   const weekOn = useSetting("history.thisWeek") !== false;
@@ -373,10 +373,12 @@ function HistoryPanel({ items, reviews = [], saved = [], caught = null, q, setQ,
       </div>); };
   // Tasks, reviews and (M77) saved copies in one list, newest first (a task by when it ended or started, a review by when
   // it ran, a saved copy by when it was taken).
+  // M85: and the asks, each with its reason (never while a search filters the list, like reviews and saved copies).
   const byTime = (tasks: HistoryItem[], rs: ReviewRowView[], sv: SavedRowView[]) => [
     ...tasks.map((h, i) => ({ kind: "task" as const, h, i, at: Date.parse(h.endedAt ?? h.startedAt) || 0 })),
     ...rs.map((x) => ({ kind: "review" as const, x, at: Date.parse(x.at) || 0 })),
     ...sv.map((x) => ({ kind: "saved" as const, x, at: Date.parse(x.at) || 0 })),
+    ...(filtering ? [] : asked).map((x) => ({ kind: "asked" as const, x, at: Date.parse(x.at) || 0 })),
   ].sort((a, b) => b.at - a.at);
   const running = items.some((x) => x.status === "running");
   // M77: the Undo question for a saved copy, right under its row (the same words as a task's).
@@ -411,9 +413,14 @@ function HistoryPanel({ items, reviews = [], saved = [], caught = null, q, setQ,
       {/* M72 (the engineer's low list: one list per screen): the reviews of changes (M57 feature 1) are rows of the same
           list, by time, each with its rating's colour, the rating in words, what was done with it and the files by name only.
           Not searched with the tasks, so a search shows tasks only. */}
-      {(shown.length > 0 || ((reviews.length > 0 || saved.length > 0) && !filtering)) && (
+      {(shown.length > 0 || ((reviews.length > 0 || saved.length > 0 || asked.length > 0) && !filtering)) && (
         <ListGroup label={S.recentTitle}>
-          {byTime(shown, filtering ? [] : reviews, filtering ? [] : saved).map((row) => { if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
+          {byTime(shown, filtering ? [] : reviews, filtering ? [] : saved).map((row) => {
+            // M85: an ask, with its reason: the person's own AI tool asked them, or Squibby's own card did and what they said.
+            if (row.kind === "asked") { const x = row.x, l = askedRowLook(x); return (
+              <ListRow key={`asked-${x.id}`} colour={l.tone} icon="shield" title={<>{l.lead} <code className="hist-cmd">{commandParts(l.command).map((w, i) => <Fragment key={i}>{i > 0 ? " " : ""}<span className={w.whole ? "hist-word" : undefined}>{w.text}</span></Fragment>)}</code></>} line={`${l.line} · ${agoWords(x.at, now)}`} fact={l.mark} />
+            ); }
+            if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
             <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
           ); }
             // M77: a saved copy before a destructive command of the person's own AI tool, with Undo (the shadow copy, never git).
@@ -1133,6 +1140,17 @@ export function Card() {
   const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void sendQuiet(listTasks(project)); }, [project, m.receipt, m.review?.batch]);
+  // M85 review: and when the person's own tool was just told to ask first, so the ask lands in Today and History at once.
+  useEffect(() => { if (project && m.guardAsked) void sendQuiet(listTasks(project)); }, [m.guardAsked?.at]);
+  // M85 review: the ask's notice on Now goes by itself after ASKED_NOTICE_MS (the person answers in their own tool, which
+  // Squibby never hears), and only if it is still the one shown.
+  useEffect(() => {
+    const a = m.guardAsked;
+    if (!a || m.notice !== S.guard.askedNotice(a.command)) return;
+    const said = m.notice;
+    const id = setTimeout(() => dispatch({ type: "ui.noticeExpired", notice: said }), Math.max(0, a.at + ASKED_NOTICE_MS - Date.now()));
+    return () => clearTimeout(id);
+  }, [m.guardAsked, m.notice]);
   // Coming back to the front after editing elsewhere: the list (and whether the files changed since the last check, must
   // fix 11) is asked again, so Home never says the project works over edits nobody checked. Home is a non activating panel
   // (rule 9), so "focus" may never fire: it also asks when the pointer comes onto it, at most once every SINCE_ASK_MS, and
@@ -2162,7 +2180,7 @@ export function Card() {
   // every other state; the receipt under it then starts with what to do (Keep, Undo) instead of saying it again.
   const rcptVerdict = rcpt && !undone ? receiptVerdict(m) : null;
   const resHero = mode === "result" && home.tab === "now" && rcpt && rcptVerdict && (rcptVerdict.proven || rcpt.proof === "failed")
-    ? resultHero({ project, label: m.task?.label ?? "", kind: rcptVerdict.proven ? "proven" : "failed", said: rcptVerdict.proven ? proofSentence(m, true) ?? rcptVerdict.line ?? "" : failLead?.why ?? "" })
+    ? resultHero({ project, label: m.task?.label ?? "", kind: rcptVerdict.proven ? "proven" : "failed", said: rcptVerdict.proven ? proofSentence(m, true) ?? rcptVerdict.line ?? "" : failLead?.why ?? "", flagged: !!rcpt.flags?.length })
     : null;
   // M69 step 3: the bar's context line says what the hero does not: when it was checked and that Undo is ready only while
   // the hero says neither (at rest and over a result it does), and in the tall Home the kind of project without its folder.
@@ -2323,12 +2341,20 @@ export function Card() {
           <p className="ask-why">{w.why}</p>
           {w.what && <details className="ask-what-fold"><summary>{S.screens.showCommand}</summary><div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div></details>}
           {w.undo && <div className={`line ask-undo${w.canUndo ? "" : " no"}`}>{w.undo}</div>}
-          {/* M45: Allow and Don't allow carry equal weight; Don't allow comes first, as in the first run, and keeps the safe
-              mark and the keyboard. */}
+          {a.live && <div className="line ask-undo no">{S.approval.liveNote}</div>}
+          {/* M45: the choices carry equal weight; the safe one comes first, as in the first run, and keeps the safe mark and
+              the keyboard. M85: HeyClicky's three choices where they fit (approvals.ts approvalChoices): Not now, Allow once,
+              and Always allow for this project only for a plain read of one file outside the project. */}
+          {(() => { const c = approvalChoices(a), f = c.always ? alwaysFile(a.always) : null; return (<>
+          {/* M85 review: the file Always allow would always allow, said openly (never only behind Show the command). */}
+          {f && <p className="line ask-always">{S.approval.alwaysWhat(f.name, plainPath(f.folder, project))}</p>}
           <div className="row">
-            <button className="btn" type="button" data-safe aria-label={`${S.dontAllow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.dontAllow}</button>
-            <button className="btn" type="button" aria-label={`${S.allow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.allow}</button>
-          </div>
+            <button className="btn" type="button" data-safe aria-label={`${S.approval.notNow}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, false)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.approval.notNow}</button>
+            <button className="btn" type="button" aria-label={`${S.approval.once}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true)); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.approval.once}</button>
+            {/* M85 review: the engine adds the one house rule line to the file as it is on disk, then answers; it says
+                whether it saved (approval.resolved always), and the notice follows from that. */}
+            {f && <button className="btn" type="button" aria-label={`${S.approval.alwaysWhat(f.name, plainPath(f.folder, project))}: ${a.title}`} onClick={() => { void send(answerApproval(a.id, true, "project")); dispatch({ type: "ui.approvalAnswered", approval: a.id }); }}>{S.approval.always}</button>}
+          </div></>); })()}
         </section>
       ); })}
 
@@ -3049,6 +3075,13 @@ export function Card() {
           {/* M69 (spec 3.4): the proven line says how it was proven, from the checks' own times ("Checked in a browser in 5
               seconds."), when the verdict has no line of its own. */}
           {/* M69 step 3: proven, Keep, Undo and Replay come first, right under the hero that says it (above the fold). */}
+          {/* M85 review: Not what you asked for, and Said one thing, ran another, first, in amber, before Keep and Undo: the
+              checks say what they say, but the person reads what else happened before choosing to keep it. */}
+          {!undone && !!m.receipt.flags?.length && (
+            <div className="panel amber receipt-flags" role="note">
+              {m.receipt.flags.map((f) => <p key={f.kind} className="receipt-flag"><b>{S.guard.flags[f.kind]}.</b> {plainPath(f.say, project)}</p>)}
+            </div>
+          )}
           {resHero?.pill === "proven" && (
             <div className="row result-actions receipt-top">
               <Button kind="primary" label={S.fixRun.keepLabel} onClick={() => { const cp = m.receipt?.checkpoint; setKept(cp && undoCan(m, project) ? { checkpoint: cp, n: Date.now() } : null); dispatch({ type: "ui.resultKept" }); }}>{S.homeNow.keep}</Button>
@@ -3444,7 +3477,7 @@ export function Card() {
           </Group>
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>

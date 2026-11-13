@@ -476,8 +476,9 @@ describe("Home says what needs the person, politely, without moving the keyboard
     expect(effect).not.toContain(".focus()");
     // The safe choice of each question that holds work up: Don't allow, No (AGENTS.md), Stop here (the loop card).
     const approval = card.slice(card.indexOf("{m.approvals.map((a, i) => { const w = approvalWords(a, project); return ("), card.indexOf("{m.stuck && ("));
-    expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.dontAllow\}/);
-    expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.allow\}/);
+    // M85 changed the safe choice's words on purpose to HeyClicky's "Not now" (S.approval.notNow); it keeps the safe mark.
+    expect(approval).toMatch(/data-safe aria-label=\{`\$\{S\.approval\.notNow\}/);
+    expect(approval).not.toMatch(/data-safe aria-label=\{`\$\{S\.(?:allow|approval\.once|approval\.always)\}/);
     const agents = card.slice(card.indexOf("{m.agentsAsk && ("), card.indexOf("{m.approvals.map((a, i) => { const w = approvalWords(a, project); return ("));
     expect(agents).toContain('data-safe onClick={() => { void send(answerAgents(project, "no"))');
     const stuck = card.slice(card.indexOf("{m.stuck && ("), card.indexOf("{m.paused && ("));

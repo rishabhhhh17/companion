@@ -93,11 +93,35 @@ export const hookEntry = (marker: string) => ({ hooks: [{ type: "command", comma
 const guardOpening = (guardDir: string, go = "exit 0") => `d=${shQuote(guardDir)}; p=$(cat "$d/${GUARD_PID}" 2>/dev/null) && kill -0 "$p" 2>/dev/null || { ${go}; };`;
 /** M80: how each tool's guard ends, on every path: the tool's own "go on", never a block and never an approval. */
 export const GUARD_GO: Readonly<Record<DoneTool, string>> = { claude: "exit 0", codex: "exit 0", copilot: "exit 0", cursor: "exit 1", antigravity: `printf '{"decision":"allow"}'; exit 0`, gemini: "exit 0", windsurf: "exit 0" };
+/** M85: how each tool's guard says "ask the person first", from each tool's own hook docs, with %s standing for Squibby's
+ *  reason (a JSON string the engine wrote). Only tools whose documented hook answer can ask are here:
+ *  - Claude Code: hookSpecificOutput.permissionDecision "ask" with permissionDecisionReason (code.claude.com/docs/en/hooks).
+ *  - Cursor: permission "ask" with user_message and agent_message (cursor.com/docs/hooks, beforeShellExecution).
+ *  - the VS Code agent: permissionDecision "ask" with permissionDecisionReason at the top (code.visualstudio.com/docs/
+ *    agent-customization/hooks).
+ *  - Antigravity: decision "ask" with reason (antigravity.google/docs/hooks; ask keeps the person's own Always Allow).
+ *  Left out, so they keep today's "go on": Codex (its docs, 14 Nov 2026: permissionDecision "ask" is "parsed but not
+ *  supported yet", the hook run is marked failed and the tool call continues), Gemini CLI (its BeforeTool decision is allow
+ *  or deny, with block as deny) and Windsurf as part of Devin (decision approve or block only). Squibby never answers deny,
+ *  block, approve or auto_approve: ask is the person deciding in their own tool. */
+export const GUARD_ASK: Readonly<Partial<Record<DoneTool, string>>> = {
+  claude: `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":%s}}`,
+  cursor: `{"permission":"ask","user_message":%s,"agent_message":%s}`,
+  copilot: `{"permissionDecision":"ask","permissionDecisionReason":%s}`,
+  antigravity: `{"decision":"ask","reason":%s}`,
+};
+/** M85: the tools whose guard can ask. */
+export const canAsk = (tool: DoneTool): boolean => GUARD_ASK[tool] !== undefined;
 /** M77: the guard hook's command. Its input (the tool call's JSON) goes to <guardDir>/<token>.<pid> through a temporary
- *  name, then it waits for <that>.ok up to GUARD_WAIT_TENTHS tenths of a second, removes both and exits 0. */
+ *  name, then it waits for <that>.ok up to GUARD_WAIT_TENTHS tenths of a second, removes both and exits 0.
+ *  M85: a tool that can ask names its request <token>.<pid>.ask. When Squibby's answer file is not empty it holds the
+ *  reason as a JSON string, and the hook prints the tool's own ask with it (GUARD_ASK) and exits 0. An empty answer, no
+ *  answer and a closed Squibby all end as before, with the tool's own "go on". */
 export const guardCommand = (guardDir: string, token: string, tool: DoneTool = "claude"): string => {
-  const go = GUARD_GO[tool];
-  return `${guardOpening(guardDir, go)} r="$d/${token}.$$"; cat >"$r.tmp" 2>/dev/null && mv "$r.tmp" "$r" 2>/dev/null || { rm -f "$r.tmp"; ${go}; }; i=0; while [ ! -e "$r.ok" ] && [ $i -lt ${GUARD_WAIT_TENTHS} ]; do sleep 0.1; i=$((i+1)); done; rm -f "$r" "$r.ok"; ${go}`;
+  const go = GUARD_GO[tool], ask = GUARD_ASK[tool];
+  const name = ask ? `${token}.$$.ask` : `${token}.$$`;
+  const asks = ask ? `if [ -s "$r.ok" ]; then q=$(cat "$r.ok" 2>/dev/null); rm -f "$r" "$r.ok"; [ -n "$q" ] && { printf '${ask}' ${ask.split("%s").length > 2 ? `"$q" "$q"` : `"$q"`}; exit 0; }; fi; ` : "";
+  return `${guardOpening(guardDir, go)} r="$d/${name}"; cat >"$r.tmp" 2>/dev/null && mv "$r.tmp" "$r" 2>/dev/null || { rm -f "$r.tmp"; ${go}; }; i=0; while [ ! -e "$r.ok" ] && [ $i -lt ${GUARD_WAIT_TENTHS} ]; do sleep 0.1; i=$((i+1)); done; ${asks}rm -f "$r" "$r.ok"; ${go}`;
 };
 /** M77: the waiting hook's command. Its input (the notification's JSON) goes to <guardDir>/<token>.<pid>.note. */
 export const waitingCommand = (guardDir: string, token: string): string =>
@@ -160,7 +184,8 @@ function readHooks(file: string): Json | null | "bad" {
 /** M80: dirs names, for each tool, the highest folder Squibby made for its file (".github/hooks" when .github was there), so
  *  Remove takes away only folders Squibby made. An older record has only folders (the file's top folder). */
 type Rec = { token: string; made?: DoneTool[]; folders?: DoneTool[]; dirs?: Partial<Record<DoneTool, string>> };
-export type DonePlan = { tool: DoneTool; hook: HookKind; file: string; rel: string; on: boolean; creates: boolean; adds: string; problem?: string };
+/** M85: stale, Squibby's entry is there but older than today's (turn it off and on again for the new one). */
+export type DonePlan = { tool: DoneTool; hook: HookKind; file: string; rel: string; on: boolean; creates: boolean; adds: string; problem?: string; stale?: boolean };
 
 /** The tokens of each project, kept in Squibby's own data folder. One random token per project, made when first needed. */
 export class DoneSignals {
@@ -249,9 +274,18 @@ export class DoneSignals {
     const adds = known ? this.addsOf(tool, hook, token) : "";
     const now = readHooks(file);
     const on = known && isObj(now) && this.isOn(now, p, tool, hook);
-    const base: DonePlan = { tool, hook, file, rel, on, creates: now === null, adds };
+    const stale = on && isObj(now) && !!token && this.isStale(now, tool, hook, token);
+    const base: DonePlan = { tool, hook, file, rel, on, creates: now === null, adds, ...(stale ? { stale: true } : {}) };
     if (!known) return { ...base, problem: NOT_FOR_TOOL };
     return now === "bad" ? { ...base, problem: NOT_JSON(rel) } : base;
+  }
+  /** M85: Squibby's entry is there but is not today's (for example a guard written before it could ask): turning it off and
+   *  on again writes today's, after the card shows it. Never rewritten without that yes. */
+  private isStale(j: Json, tool: DoneTool, hook: HookKind, token: string): boolean {
+    const h = this.holder(j, tool, hook), event = eventOf(tool, hook);
+    const list = isObj(h) && Array.isArray(h[event]) ? (h[event] as unknown[]) : [];
+    const current = JSON.stringify(this.entryOf(tool, hook, token));
+    return list.some((e) => this.oursOf(e, hook, token)) && !list.some((e) => this.oursOf(e, hook, token) && JSON.stringify(e) === current);
   }
   private isOn(j: Json, project: string, tool: DoneTool, hook: HookKind): boolean {
     const t = this.tokenFor(project, false), h = this.holder(j, tool, hook), event = eventOf(tool, hook);
@@ -277,7 +311,9 @@ export class DoneSignals {
     if (hooks[event] !== undefined && !Array.isArray(hooks[event])) return { ...this.plan(p, tool, hook), problem: NOT_JSON(rel) };
     // Already there: nothing to write. An older Squibby entry (a token made again after Delete everything) is replaced,
     // never left beside the new one.
-    if (list.some((e) => this.oursOf(e, hook, token))) return this.plan(p, tool, hook);
+    // M85: an entry of this kind that is ours but older (a guard written before it could ask) is replaced by today's.
+    const current = JSON.stringify(this.entryOf(tool, hook, token));
+    if (list.some((e) => this.oursOf(e, hook, token) && JSON.stringify(e) === current)) return this.plan(p, tool, hook);
     hooks[event] = [...list.filter((e) => !anyOurs(e, this.dir, this.guardDir, this.startDir)), this.entryOf(tool, hook, token)];
     // The highest folder of the file's path that is not there yet: Squibby makes it, and remembers it.
     const parts = rel.split("/").slice(0, -1);

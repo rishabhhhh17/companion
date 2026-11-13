@@ -39,3 +39,18 @@ export function approvalWords(a: Pick<ApprovalCard, "risk" | "title" | "action" 
   const isRead = READS.test((a.action ?? "").trim());
   return { question, what: whatOf(a.action, project), why: sentence(a.title), undo: isRead ? null : canUndo ? S.approval.undoYes : S.approval.undoNo, canUndo };
 }
+
+/** M85: HeyClicky's three choices where they fit. Not now and Allow once always; Always allow for this project only when
+ *  the engine offered its house rule line and the command is not live. M85 review: the engine itself adds the line to the
+ *  rules file as it is on disk (rules.ts addHouseRule), so the page never builds or sends a list of rules for it. */
+export function approvalChoices(a: Pick<ApprovalCard, "always" | "live">): { once: true; always: boolean; notNow: true } {
+  return { once: true, always: !!a.always && !a.live && /^allow reading \S/.test(a.always), notNow: true };
+}
+/** M85 review: the file an "allow reading <file>" line would always allow, as its name and its folder, said openly on the
+ *  card above the buttons. null for any other line. */
+export function alwaysFile(line: string | undefined): { name: string; folder: string } | null {
+  const m = /^allow reading (\/.+)$/.exec((line ?? "").trim());
+  if (!m) return null;
+  const p = m[1], at = p.lastIndexOf("/");
+  return { name: p.slice(at + 1), folder: at > 0 ? p.slice(0, at) : "/" };
+}

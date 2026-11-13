@@ -146,11 +146,14 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   snapshot: (p, label) => runner.checkpointsFor(p).snapshot(label),
   emit: (e) => say(e),
   row: (r) => { if (r.label.startsWith(SAVED_LABEL)) taskLog.saved(r); },
+  // M85: a live command in the person's own tool: their tool asks them first, with Squibby's reason (safety.askBeforeLive).
+  askLive: () => runnerSettings.get("safety.askBeforeLive") !== false,
+  asked: (r) => { taskLog.asked({ ...r, by: "tool" }); },
   waitingMinutes: () => waitingMinutesOf(runnerSettings.get("notch.waitingMinutes")),
 });
 guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
-  say({ type: "donesignal.state", project, tools: tools.map((t) => ({ tool: t.tool, hook: t.hook, on: t.on, file: t.rel, adds: t.adds, creates: t.creates, ...(t.problem ? { problem: t.problem } : {}) })), ...(problem ? { problem } : {}) });
+  say({ type: "donesignal.state", project, tools: tools.map((t) => ({ tool: t.tool, hook: t.hook, on: t.on, file: t.rel, adds: t.adds, creates: t.creates, ...(t.problem ? { problem: t.problem } : {}), ...(t.stale ? { stale: true } : {}) })), ...(problem ? { problem } : {}) });
 // Prompt help is told what Companion remembers as each request is made (memory.tellClaude, memory.recallLength), and reads
 // ph.useProjectInfo and ph.handBack on each request.
 const assist = lanes ? new AssistService({ ...lanes, images: new ImageStore(), emit, memory: promptHelpMemory(runnerSettings, settings.data), settings: runnerSettings, spend: { room: (p) => runner.roomFor(p), book: (p, usd) => runner.bookSpend(p, usd) } }) : null;

@@ -94,3 +94,15 @@
    the left) only when a real step ends. */
 .job .run-line { position: relative; display: block; height: 2px; margin: var(--space-2) 0 0; border-radius: var(--r-pill); background: var(--edge); }
 .job .run-line::after { content: ""; position: absolute; inset: 0; border-radius: var(--r-pill); background: var(--c-blue); transform-origin: left center; transform: scaleX(var(--run)); transition: transform var(--dur-3) var(--ease-out); }
+
+/* M85 review: the receipt's flags (Not what you asked for, Said one thing, ran another) come first, before Keep and Undo,
+   as a small needs you panel (its amber edge is .panel.amber's own), so nobody keeps work without seeing what else it did. */
+.home .panel.receipt > .receipt-flags { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: var(--space-3); }
+.home .panel.receipt .receipt-flag { margin: 0; color: var(--fg); font: var(--t-body) / var(--lh-body) var(--font); overflow-wrap: anywhere; }
+.home .panel.receipt .receipt-flag b { font-weight: 600; }
+/* M85 review: the file Always allow would always allow, said above the buttons. */
+.home .ask-card .ask-always { margin: var(--space-2) 0 0; color: var(--fg); font-weight: 600; overflow-wrap: anywhere; }
+/* M85 review: an ask's command in History, in code type, breaking only between its words ("--linked" stays whole): each
+   word is its own box, and a word wider than the row may still break inside it. */
+.home .hist .hist-cmd { font: inherit; font-family: var(--font-code); overflow-wrap: anywhere; }
+.home .hist .hist-cmd .hist-word { display: inline-block; max-width: 100%; }

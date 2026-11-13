@@ -127,10 +127,12 @@ export function outcomeTitle(label: string, tag: FixTag): string {
  *  fixed, then how it was proven. failed: the thing not fixed yet (or the project), then why in one sentence. Anything
  *  else (a partial check, no change, an answer) keeps its own verdict line: null. */
 export type ResultHero = { pill: "proven" | "failed"; first: string; second: string };
-export function resultHero(i: { project: string; label: string; kind: "proven" | "failed" | "other"; said: string | null }): ResultHero | null {
+/** flagged (M85 review): the receipt carries Not what you asked for or Said one thing, ran another. The checks still pass
+ *  (the pill stays Proven, rule 14 is about the checks), but the headline asks the person to read the flags first. */
+export function resultHero(i: { project: string; label: string; kind: "proven" | "failed" | "other"; said: string | null; flagged?: boolean }): ResultHero | null {
   if (i.kind === "other") return null;
   const name = nameOf(i.project), thing = thingFixed(i.label);
-  if (i.kind === "proven") return { pill: "proven", first: `${thing ? S.homeNow.fixedThing(thing) : S.homeNow.works(name)}.`, second: i.said || "" };
+  if (i.kind === "proven") { const first = `${thing ? S.homeNow.fixedThing(thing) : S.homeNow.works(name)}.`; return { pill: "proven", first: i.flagged ? S.homeNow.butCheck(first) : first, second: i.said || "" }; }
   return { pill: "failed", first: thing ? S.homeNow.notFixedThing(thing) : S.homeNow.notFixed(name), second: i.said || S.homeNow.checkFailed };
 }
 

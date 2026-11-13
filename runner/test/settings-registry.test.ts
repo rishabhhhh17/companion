@@ -142,6 +142,10 @@ describe("the shipped list of settings", () => {
       // M82: Have my AI do it writes a clear prompt first (on; it is shown and can be changed before anything is sent), and
       // Now offers Connect your AI tools while none is connected (on; it only opens the screen).
       "handoff.improve": true, "aiTools.nowRow": true,
+      // M85: the person's own AI tool asks them first before a command that touches a live system (on; ask is the person
+      // deciding, never a block), and Squibby's own cards offer Always allow for this project where it fits (on; only a plain
+      // read of one file outside the project, saved as a house rule they can see and remove).
+      "safety.askBeforeLive": true, "approval.offerAlways": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -151,6 +155,10 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M85: asking before live systems, and Always allow for this project", () => {
+    expect(defOf("safety.askBeforeLive")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
+    expect(defOf("approval.offerAlways")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
   });
   test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
     expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });

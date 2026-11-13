@@ -305,12 +305,18 @@ export function islandLine(m: Model, o: { update?: string | null; group?: string
 }
 /** M77: how long the notch says a copy was saved before Claude's command. */
 export const SAVED_LINE_MS = 10_000;
+/** M85 review: how long Now's notice for an ask in the person's own tool stays (they answer it in their tool). */
+export const ASKED_NOTICE_MS = 30_000;
 function islandLineBase(m: Model, o: { update?: string | null; now?: number }): string {
   if (!m.runnerUp) return S.islandOff;
   // M77: a saved copy before a destructive command of the person's own Claude Code, said once, for a few seconds, unless
   // something that needs the person comes first (below).
   const savedFresh = !!m.guardSaved && (o.now ?? Date.now()) - m.guardSaved.at < SAVED_LINE_MS && !m.approvals.length && !waiting(m);
   if (savedFresh && m.voice?.stage !== "listening" && !looksAtScreen(m)) return S.guard.savedNotice;
+  // M85 review: the person's own AI tool was told to ask them first: said the same way, for the same few seconds, with
+  // the short command. Something that needs the person in Squibby itself comes first.
+  const askedFresh = !!m.guardAsked && (o.now ?? Date.now()) - m.guardAsked.at < SAVED_LINE_MS && !m.approvals.length && !waiting(m);
+  if (askedFresh && m.voice?.stage !== "listening" && !looksAtScreen(m)) return cut(S.guard.askedLine(m.guardAsked!.command));
   if (m.voice?.stage === "listening") return S.islandListening;
   if (looksAtScreen(m)) return S.islandLooking;
   // M36: what the Type key just did (typed, copied instead, or refused), for a few seconds.

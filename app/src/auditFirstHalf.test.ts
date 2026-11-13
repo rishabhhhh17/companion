@@ -309,8 +309,10 @@ describe("(26) the approval card leads with the plain question, the command with
   });
   test("Don't allow comes first on Home, as in the first run", () => {
     const at = card.indexOf("panel amber ask-card");
-    const slice = card.slice(at, at + 3000);
-    expect(slice.indexOf("{S.dontAllow}")).toBeLessThan(slice.indexOf("{S.allow}"));
+    const slice = card.slice(at, at + 4000);
+    // M85 renamed the two choices on purpose (Not now, Allow once); the safe one still comes first.
+    expect(slice.indexOf("{S.approval.notNow}")).toBeGreaterThan(-1);
+    expect(slice.indexOf("{S.approval.notNow}")).toBeLessThan(slice.indexOf("{S.approval.once}"));
   });
   test("in the tall Home the waiting cards come before the ask box", () => {
     expect(card).toMatch(/\{!side && urgentCards && /);

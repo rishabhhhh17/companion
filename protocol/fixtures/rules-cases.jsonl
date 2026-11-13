@@ -22,3 +22,7 @@
 {"line": "   # a note", "kind": null}
 {"line": "", "kind": null}
 {"line": "   ", "kind": null}
+{"line": "allow reading /Users/demo/notes/plan.md", "kind": "allow_read", "pattern": "/Users/demo/notes/plan.md", "text": "allow reading /Users/demo/notes/plan.md"}
+{"line": "  Allow   Reading   ~/notes.md ", "kind": "allow_read", "pattern": "~/notes.md", "text": "Allow Reading ~/notes.md"}
+{"line": "allow reading", "kind": null}
+{"line": "allow writing /tmp/x", "kind": null}

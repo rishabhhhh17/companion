@@ -68,7 +68,9 @@ export const askRuleOn = (rules: unknown): boolean => strs(rules).some((r) => ru
 export const installNote = (value: unknown, rules: unknown): string | null => (value === "auto" && askRuleOn(rules) ? S.chkAskRule : null);
 
 /** The five kinds of house rule, in the editor's words. */
-export const ruleKindOptions = (): { id: RuleKind; label: string }[] => RULE_KINDS.map((id) => ({ id, label: S.rulesKinds[id] }));
+// M85: "allow reading" lines come only from Always allow on a question, never from this editor, so it builds only rules that
+// add care.
+export const ruleKindOptions = (): { id: RuleKind; label: string }[] => RULE_KINDS.filter((id) => id !== "allow_read").map((id) => ({ id, label: S.rulesKinds[id] }));
 
 /** A rule added in the editor (not saved until Save): built from a kind and what it is about, checked with the list's own
  *  rules (up to 50, one line of up to 200 characters, never anything that looks like a key or password). */

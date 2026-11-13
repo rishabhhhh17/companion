@@ -56,7 +56,9 @@ import { nextPauseAt, pauseAtUsd, usualTaskUsd, type CostChoice } from "./costpa
 export type { SignInWindow } from "./proof/browser.ts";
 import { headMovedLine, headOf } from "./githead.ts";
 import { sqliteFiles } from "./dbsafety.ts";
-import { applyRules, loadRules, withHouseRule } from "./rules.ts";
+import { addHouseRule, allowedByAlways, alwaysLineFor, applyRules, loadRules, withHouseRule } from "./rules.ts";
+import { liveCommand } from "./livesystems.ts";
+import { driftFlags } from "./review/drift.ts";
 import { companionDirUsable } from "./companionfile.ts";
 import { buildChildEnv, commandsWithFolder, evaluate, evaluateReadOnly, leadsHome, NOT_GIVEN, refusal, taskScopeCovers, withLookup, type Verdict } from "./safety.ts";
 import { LOOK_TOOLS, RESEARCH_TOOLS, REVIEW_TOOLS, taskTools } from "./tools.ts";
@@ -220,7 +222,7 @@ function pruneOldest(dir: string, keep: number) {
 // taskScopeCovers); it ends with the task, and a Drive plan, which the person sees as one task, hands the same one to every
 // step. shells: the background commands this conversation started, which it may read and stop. Neither crosses tasks.
 // webSearch: false when Let tasks search the web is off for this task (work.webSearch), so a search asked for anyway is refused.
-type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task") => void>; taskAllowed: Set<string>; shells: Set<string>; webSearch?: boolean;
+type Session = { agent: string; abort: AbortController; pending: Map<string, (allow: boolean, scope?: "once" | "task" | "project") => void>; taskAllowed: Set<string>; shells: Set<string>; webSearch?: boolean;
   /** The answer to a build's internet or download question, kept for the whole task so a fix round never asks again. */
   netAnswers?: Map<string, boolean>;
   /** M75: the cost pause. at: where it pauses next; usd: what the task has used; before: its safety copy (Undo what it did). */
@@ -292,6 +294,18 @@ const summary = (c: ToolUse): string => {
   if (c.name === "Bash") return `Running: ${clip(redact(String(c.input.command)), 200)}`;
   if (c.input.file_path) return `${c.name}: ${String(c.input.file_path)}`;
   return c.name;
+};
+
+/** M85 review: what an ask's History row names: the command for a shell call, the file for a read or an edit, else the
+ *  tool's name. Never summary()'s "Running: " or "Read: " in front, which the row's own label would say twice. */
+const askedWhat = (c: ToolUse): string => {
+  const one = (t: string) => redact(t).replace(/\s+/g, " ").trim();
+  if (c.name === "Bash" && typeof c.input.command === "string") return clip(one(c.input.command), 80);
+  const p = c.input.file_path ?? c.input.notebook_path ?? c.input.path ?? c.input.url;
+  if (typeof p !== "string" || !p) return c.name;
+  // A long path keeps its end, where the file's name is.
+  const a = Array.from(one(p));
+  return a.length > 80 ? `…${a.slice(a.length - 79).join("")}` : a.join("");
 };
 
 // maxSteps: the most steps this plan may run, as it was when the plan was made (drive.maxSteps; Rescue keeps MAX_STEPS).
@@ -903,7 +917,7 @@ export class AgentRunner {
       case "approval.resolve": {
         for (const s of this.sessions.values()) {
           const r = s.pending.get(cmd.approval);
-          if (r) { s.pending.delete(cmd.approval); r(cmd.decision === "allow", cmd.scope === "task" ? "task" : "once"); return; }
+          if (r) { s.pending.delete(cmd.approval); r(cmd.decision === "allow", cmd.scope === "task" ? "task" : cmd.scope === "project" ? "project" : "once"); return; }
         }
         this.fail(`unknown approval ${cmd.approval}`);
         return;
@@ -960,7 +974,10 @@ export class AgentRunner {
         // the safety net caught in the last seven days, from real rows (said only when something is above zero).
         let saved: ReturnType<TaskLog["savedRows"]> = [], caught: ReturnType<TaskLog["caught"]> | null = null;
         try { saved = this.o.log.savedRows(resolve(cmd.project), 50); const c = this.o.log.caught(resolve(cmd.project)); if (c.falseDones + c.keys + c.weakened + c.saved + c.undone > 0) caught = c; } catch { /* the rows are a nicety */ }
-        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}), ...(saved.length ? { saved } : {}), ...(caught ? { caught } : {}) } as never);
+        // M85: the asks (the person's own tool told to ask first, and Squibby's own cards), each with its reason.
+        let asked: ReturnType<TaskLog["askedRows"]> = [];
+        try { asked = this.o.log.askedRows(resolve(cmd.project), 50); } catch { /* the rows are a nicety */ }
+        this.emit({ type: "tasks.list", project: cmd.project, tasks, ...(sinceCheck ? { sinceCheck } : {}), ...(reviews.length ? { reviews } : {}), ...(working ? { lastWorking: { checkpoint: working.snapshot, at: working.at } } : {}), ...(saved.length ? { saved } : {}), ...(caught ? { caught } : {}), ...(asked.length ? { asked } : {}) } as never);
         return;
       }
       // M79: the weekly summary, on the person's press only. Counts from real rows, and the decisions and house rules
@@ -1312,6 +1329,10 @@ export class AgentRunner {
     const exec = this.exec;
     let sessionId: string | undefined = opts.resumeSession;
     let said = "";
+    // M85: what the agent said last, and each command it ran with those words, for "Said one thing, ran another" (drift.ts).
+    let lastText = "";
+    const steps: { said: string; command: string }[] = [];
+    const ranCommand = (c?: string) => { commands++; if (c) { steps.push({ said: lastText.slice(-600), command: c.slice(0, 2000) }); if (steps.length > 200) steps.shift(); } };
     // The agent's last words in the latest round: its text after its last tool, the message it ended on (asks.ts).
     let finalWords = "", afterTool = true;
 
@@ -1325,7 +1346,7 @@ export class AgentRunner {
       const gen = this.o.engine.start({
         prompt, project: cmd.project, model: cmd.model, signal: abort.signal, budgetUsd: Math.max(0, budget - usd), resumeSession: offRecord ? undefined : resumeSession, memory: recalled, maxTurns, tools,
         ...(offRecord ? { offTheRecord: true } : {}),
-        authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, () => { commands++; }, id),
+        authorize: (tool, id) => this.authorizeTool(cmd, session, tool, before.id, notUndoable, ranCommand, id),
         toolDone: (id, shell) => { if (id) { this.watchers.get(cmd.agent)?.end(id); this.fileDone(id); } this.noteShell(session, shell); },
         // A round that ended before Claude Code said what it cost (Stop, a pause) still cost something: the engine's estimate.
         unbilled: (c) => { usd += money(c); book(); tellCost(); },
@@ -1348,13 +1369,14 @@ export class AgentRunner {
           let result: ToolResult | undefined;
           if (turn.tool) {
             finalWords = ""; afterTool = true;   // what it said before a tool is not what it ended on
-            const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, () => { commands++; });
+            const a = await this.authorizeTool(cmd, session, turn.tool, before.id, notUndoable, ranCommand);
             try { result = a.allow ? await exec(turn.tool, { project: cmd.project }) : { ok: false, output: a.reason }; }
             finally { if (a.wid) { this.watchers.get(cmd.agent)?.end(a.wid); this.fileDone(a.wid); } }
             if (a.allow && turn.tool.name === "Bash") this.noteShell(session, result?.shell);
             if (abort.signal.aborted) { status = "interrupted"; return false; }
           } else if (turn.text) {
             said = (said + " " + turn.text).slice(-1500);
+            lastText = turn.text;
             finalWords = afterTool ? turn.text : `${finalWords}\n${turn.text}`;
             afterTool = false;
             this.state(cmd.agent, "working");
@@ -1527,7 +1549,11 @@ export class AgentRunner {
     if (moved) notUndoable.push(moved);
     // Only those Undo leaves: a file the task's own change holds (it was written after the safe copy) goes back with Undo.
     const notesStay = this.sharedSince(cmd.project, sharedFrom).filter((f) => !changed.some((c) => c.file === f));
-    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...practice } as never);
+    // M85: Not what you asked for, and Said one thing, ran another: from the request, the changed files and the commands
+    // with the words before them. Never off the record's words kept anywhere: the flags are only on this receipt.
+    let flags: { kind: "not_asked" | "said_other"; say: string }[] = [];
+    try { flags = driftFlags({ request: cmd.prompt ?? "", changed: changed.map((c) => c.file), steps, project: cmd.project }); } catch { flags = []; }
+    this.emit({ type: "receipt", agent: cmd.agent, checkpoint: before.id, changed: sized, askWords: wordsIn(cmd.prompt), commands, notUndoable, proof, usdEstimate: usd, ended: status === "done" ? "done" : status === "needs_you" ? "needs_you" : status === "interrupted" ? "stopped" : "failed", ...(endedWhyOf(status, proof) ? { endedWhy: endedWhyOf(status, proof) } : {}), mode: cmd.mode, ...(lastSaid ? { said: lastSaid } : {}), ...(lastSaid && asked ? { asks: true } : {}), ...(lastSaid && proof !== "passed" && claimsPassed(lastSaid) ? { claimedPassed: true } : {}), ...(picture ? { picture: true } : {}), ...(this.driving.has(cmd.agent) ? { inPlan: true } : {}), ...(changedAt ? { changedAt } : {}), ...(repeat ? { repeat: { first: placeOf(repeat.first, "after"), second: placeOf(repeat.second, "after"), was: repeat.was, now: repeat.now } } : {}), ...(notesStay.length ? { notesStay } : {}), ...(flags.length ? { flags } : {}), ...practice } as never);
     // A proven fix (M45: it ended done and its checks passed) counts once toward Free's month (plan.ts). Nothing else does,
     // and an Undo or Bring back later never changes it.
     if (status === "done" && proof === "passed") this.o.fixes?.proven(opts.fixTicket, taskId);
@@ -2752,7 +2778,7 @@ export class AgentRunner {
     };
   }
 
-  private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: () => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
+  private async authorizeTool(cmd: StartCmd, s: Session, tool: ToolUse, checkpoint: string, notUndoable: string[], countCommand: (command?: string) => void, sdkId?: string): Promise<{ allow: boolean; reason: string; wid?: string }> {
     const toolUseId = `toolu_${randomBytes(4).toString("hex")}`;
     const base = await withLookup(evaluate({ tool: tool.name, input: tool.input }, { project: cmd.project, started: { shells: s.shells }, ...(s.webSearch === false ? { webSearch: false } : {}) }), tool.name, tool.input);
     // House rules can only make a call stricter, never looser.
@@ -2768,7 +2794,14 @@ export class AgentRunner {
       ruled = { decision: "ask", risk: "house_rule", reason: "Your house rules file could not be read, so I am asking first.", undoable: base.undoable };
     }
     // A rule can make a call stricter, and can never make something Undo cannot take back look undoable (M45).
-    const { verdict, byHouseRule } = withHouseRule(base, ruled);
+    const { verdict: ruledVerdict, byHouseRule } = withHouseRule(base, ruled);
+    // M85: a command that touches a live system is said in those words on the card, with only Allow once to say yes.
+    const command = tool.name === "Bash" && typeof tool.input.command === "string" ? tool.input.command : "";
+    let live: string | null = null;
+    try { live = command ? liveCommand(command, cmd.project) : null; } catch { live = null; }
+    const verdict: Verdict = live && ruledVerdict.decision === "ask" ? { ...ruledVerdict, reason: live, undoable: false } : ruledVerdict;
+    // M85: an "allow reading" house rule (Always allow for this project) answers a plain read of that one file already.
+    const always = !byHouseRule && !live && allowedByAlways(loaded.rules, { tool: tool.name, input: tool.input }, verdict);
     const sum = summary(tool);
     const tell = (outcome: "ran" | "blocked" | "needs_approval" | "denied") =>
       this.emit({ type: "agent.tool", agent: cmd.agent, tool: tool.name, summary: sum, toolUseId, undoable: verdict.undoable, outcome } as never);
@@ -2788,21 +2821,23 @@ export class AgentRunner {
     // A yes "for the rest of this task" covers exactly this action again, and only the few kinds of question whose repeat is
     // harmless (taskScopeCovers): never a command, a send, a deploy or an unknown tool, and never a refusal (decided above).
     const key = taskScopeCovers({ tool: tool.name, input: tool.input }, verdict, byHouseRule) ? approvalKey(tool, verdict) : null;
-    if (verdict.decision === "ask" && key && s.taskAllowed.has(key)) tell("ran");
+    if (verdict.decision === "ask" && ((key && s.taskAllowed.has(key)) || always)) tell("ran");
     else if (verdict.decision === "ask") {
       tell("needs_approval");
       const approval = `ap_${randomBytes(4).toString("hex")}`;
       // How long a question waits for your answer (approval.waitMinutes, usual 30), read as each question is asked. Only the
       // wait changes: no answer in that time is always a no, and an expired card can never become a yes.
       const timeout = this.o.approvalTimeoutMs ?? this.setting<number>("approval.waitMinutes", cmd.project) * 60_000;
+      // M85: Always allow for this project, only where it fits (rules.ts alwaysLineFor) and while approval.offerAlways is on.
+      const alwaysLine = !byHouseRule && this.setting<boolean>("approval.offerAlways", cmd.project) !== false ? alwaysLineFor({ tool: tool.name, input: tool.input }, verdict, !!live) : null;
       this.emit({
         type: "approval.request", approval, agent: cmd.agent, checkpoint, toolUseId, risk: verdict.risk ?? "irreversible",
         title: verdict.reason, expiresAt: new Date(this.now().getTime() + timeout).toISOString(),
-        action: summary(tool), undoable: verdict.undoable,
+        action: summary(tool), undoable: verdict.undoable, ...(alwaysLine ? { always: alwaysLine } : {}), ...(live ? { live: true } : {}),
       } as never);
       this.state(cmd.agent, "needsYou");
       let how = "denied" as "allowed" | "denied" | "expired" | "cancelled";
-      let forTask = false;
+      let forTask = false, forProject = false, alwaysSaid: "saved" | "notSaved" | null = null;
       // Stop, Stop everything and a pause settle the card at once as cancelled, so it never stays up with nothing behind it,
       // and an answer after that changes nothing. Only a yes given while the task still runs is a yes.
       const allowed = await new Promise<boolean>((res) => {
@@ -2810,10 +2845,20 @@ export class AgentRunner {
         const stop = () => { how = "cancelled"; end(false); };
         const t = setTimeout(() => { how = "expired"; end(false); }, timeout);
         s.abort.signal.addEventListener("abort", stop, { once: true });
-        s.pending.set(approval, (ok, scope) => { how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; forTask = how === "allowed" && scope === "task"; end(how === "allowed"); });
+        s.pending.set(approval, (ok, scope) => {
+          how = ok && !s.abort.signal.aborted ? "allowed" : s.abort.signal.aborted ? "cancelled" : "denied"; forTask = how === "allowed" && scope === "task";
+          // M85 review: Always allow is saved here, by the engine, into the rules file as it is on disk now (rules.ts
+          // addHouseRule): never a whole list from a page's older copy. A line that cannot be saved is Allow once, said so.
+          if (how === "allowed" && scope === "project" && alwaysLine) { forProject = addHouseRule(cmd.project, alwaysLine); alwaysSaid = forProject ? "saved" : "notSaved"; }
+          end(how === "allowed");
+        });
       });
       // Tell every page, so none keeps a stale card or badge.
-      this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how } as never);
+      this.emit({ type: "approval.resolved", approval, agent: cmd.agent, outcome: how, ...(alwaysSaid ? { always: alwaysSaid } : {}) } as never);
+      // M85: the ask and its reason in History, with what the person answered (a stop leaves no row: nobody answered). The
+      // row names the command or the file itself (the row's own label says it was asked). An off the record task keeps no
+      // row: its words are not kept (M85 review).
+      if (how !== "cancelled" && !cmd.offTheRecord) try { this.o.log.asked({ project: resolve(cmd.project), command: askedWhat(tool), reason: clip(redact(verdict.reason), 300), at: this.now().toISOString(), by: "squibby", answer: how === "allowed" ? (forProject ? "always" : "once") : how === "expired" ? "expired" : "no" }); } catch { /* the row is a nicety */ }
       if (!allowed) { tell("denied"); return { allow: false, reason: how === "cancelled" ? "Stopped: nothing more runs in this task." : `The person said no to this, so ${PRODUCT} did not run it. Carry on without it, or end with one short question if you need them to choose.` }; }
       if (s.abort.signal.aborted) { tell("blocked"); return { allow: false, reason: "Stopped: nothing more runs in this task." }; }
       // A web address that asked was not looked up before the answer (withLookup): it is now, and one that leads to this Mac
@@ -2822,7 +2867,7 @@ export class AgentRunner {
       if (forTask && key && !s.abort.signal.aborted) s.taskAllowed.add(key);
       tell("ran");
     }
-    if (tool.name === "Bash") countCommand();
+    if (tool.name === "Bash") countCommand(typeof tool.input.command === "string" ? tool.input.command : undefined);
     if (!verdict.undoable) notUndoable.push(clip(redact(String(tool.input.command ?? sum)), 300));
     this.state(cmd.agent, "working");
     if (verdict.decision === "allow") tell("ran");

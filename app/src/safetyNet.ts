@@ -1,7 +1,7 @@
 // M77 (the safety net): the pages' side of the saved copies, the week's count, "Claude is waiting for you" and what the
 // changes did not tell you. Pure: card.tsx, homeRest.ts and reviewCard.tsx only draw what this says. Honest words (never
 // "Claude did"), a count only when it is above zero and never praise (rule 16), at most three untold lines.
-import type { CaughtView, ReviewUntold, SavedRowView } from "../../protocol/index.ts";
+import type { AskedRowView, CaughtView, ReviewUntold, SavedRowView } from "../../protocol/index.ts";
 import { REVIEW_CHECKS } from "../../protocol/index.ts";
 import { redact } from "../../runner/src/redact.ts";
 import { S } from "./strings.ts";
@@ -74,3 +74,37 @@ export function untoldOf(v: unknown): ReviewUntold | undefined {
 
 /** The project's short name for the waiting line. */
 export const projectName = (project: string | null | undefined): string => (project ?? "").split("/").filter(Boolean).at(-1) ?? "";
+
+/** M85: the asks that keep to the protocol (tasks.list asked), at most 50, secrets hidden again; anything else is left out. */
+export function askedRowsOf(v: unknown): AskedRowView[] {
+  if (!Array.isArray(v)) return [];
+  const out: AskedRowView[] = [];
+  for (const x of v as Record<string, unknown>[]) {
+    if (!x || typeof x !== "object" || Array.isArray(x)) continue;
+    if (!Number.isInteger(x.id) || typeof x.at !== "string" || Number.isNaN(Date.parse(x.at)) || typeof x.command !== "string" || typeof x.reason !== "string" || (x.by !== "tool" && x.by !== "squibby")) continue;
+    const answer = ["once", "always", "no", "expired"].includes(x.answer as string) ? (x.answer as AskedRowView["answer"]) : undefined;
+    out.push({ id: x.id as number, at: x.at, command: redact(x.command).slice(0, 80), reason: redact(x.reason).slice(0, 300), by: x.by, ...(answer ? { answer } : {}) });
+    if (out.length >= MAX_SAVED) break;
+  }
+  return out;
+}
+/** M85: an ask's row as History draws it: the command, who asked and what was answered, and the reason under it. */
+export function askedRowLook(r: AskedRowView): { title: string; lead: string; command: string; line: string; mark: string; tone: "blue" | "orange" | "red" } {
+  const a = S.guard.asked;
+  const mark = r.by === "tool" ? a.byTool : r.answer === "always" ? a.always : r.answer === "once" ? a.once : r.answer === "expired" ? a.expired : a.no;
+  return { title: a.row(r.command), lead: a.lead, command: r.command, line: r.reason, mark, tone: r.by === "tool" ? "blue" : r.answer === "no" || r.answer === "expired" ? "red" : "orange" };
+}
+/** M85 review: the longest word of a command History keeps whole on one line; a longer one (a long path) may break. */
+export const WHOLE_WORD = 40;
+/** M85 review: a command's words for History, so a line breaks only between words ("--linked" never splits after its
+ *  dashes); a word longer than WHOLE_WORD may still break, so nothing runs off the row. */
+export function commandParts(command: string): { text: string; whole: boolean }[] {
+  return command.split(/\s+/).filter(Boolean).map((text) => ({ text, whole: Array.from(text).length <= WHOLE_WORD }));
+}
+/** M85: the receipt's flags that keep to the protocol, as the receipt keeps them; nothing when there are none. */
+export function flagsOf(v: unknown): { flags?: { kind: "not_asked" | "said_other"; say: string }[] } {
+  if (!Array.isArray(v)) return {};
+  const out = v.filter((f): f is { kind: "not_asked" | "said_other"; say: string } => !!f && typeof f === "object" && (f.kind === "not_asked" || f.kind === "said_other") && typeof f.say === "string" && f.say.length > 0)
+    .slice(0, 2).map((f) => ({ kind: f.kind, say: redact(f.say).slice(0, 400) }));
+  return out.length ? { flags: out } : {};
+}

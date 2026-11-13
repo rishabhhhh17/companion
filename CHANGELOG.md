@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Ask before live systems, and catch what the AI hid: 14 Nov 2026
+
+- **Your AI tool asks you first before it touches something live.** A saved copy on your Mac can't bring back a dropped live database, a production deploy, destroyed cloud servers or history rewritten on GitHub. When Claude Code, Cursor, the VS Code agent or Antigravity is about to run a command like that, Squibby has your tool ask you first, with a plain reason, such as "This resets your live Supabase database". You decide in your own tool. Squibby never blocks and never says yes for you.
+- **What counts:** deleting or emptying a database on a server, Supabase reset or push to your live project, Prisma migrate reset or deploy, Prisma db push that wipes data, drizzle-kit push, deleting a GitHub repository, Terraform destroy or apply, kubectl delete, Vercel, Netlify and Fly deploys to production, git push --force, a DELETE or PUT sent to a server, and commands that use a key with wide reach, like a Supabase service role key or an AWS secret. Only the key's name is ever said.
+- **Codex, Gemini CLI and Windsurf can't ask yet.** Their hooks can only allow or block, so for them the command goes on as before. The research said Codex could; its own docs say not yet.
+- **Each ask shows in the notch for a few seconds, on Now with the command, in Today and in History,** with its reason. The ask reaches your tool at once, even while a saved copy of a big project is still being made. Already connected a tool? Settings shows its line as older, with Update. Turn it off in Settings: Ask before live systems.
+- **Squibby's own questions get three choices: Not now, Allow once, and Always allow for this project.** Always allow is only offered to read one file outside your project, and the question names that file. It adds one house rule you can see and remove, written into your rules file as it is right then, so a rule you added by hand is never lost. Anything that deletes, goes live or can't be undone only ever gets Allow once. Your answer and the reason are kept in History.
+- **Two new flags on the result.** Not what you asked for: the fix changed files you did not name, or one you said to leave alone. Said one thing, ran another: it said it would undo only its own work, then ran a command that wiped more, like git checkout HEAD. They come first on the result, in amber, before Keep and Undo, and the headline says "but check these first". These are for Squibby's own fixes; for other tools Squibby does not read what you asked or what they said.
+- **Weakened tests caught inside a test.** If a fix keeps a test but makes it check less, like toBe(5) becoming toBeDefined(), a limit widened from 100 to 1000, or a check removed, the proof says so by the test's name.
+- **Not yet claimed:** that each tool shows its own ask on a real Mac. That is checked next.
+
 ## The notch, changed: 13 Nov 2026
 
 - **No more blank gap.** Resting the pointer on the notch used to show a greeting, one line, an empty row and two buttons. Now every row says something, from the very first time you hover after opening your Mac, even before you have opened Home.

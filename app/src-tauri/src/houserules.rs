@@ -35,7 +35,8 @@ pub fn rule_of(raw: &str) -> Option<Rule> {
     let line = tidy(raw);
     if line.is_empty() || line.starts_with('#') { return None; }
     let starts = |p: &str| line.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p));
-    for (p, kind) in [("never edit ", "never_edit"), ("never run ", "never_run"), ("ask before editing ", "ask_edit"), ("ask before running ", "ask_run")] {
+    // M85: "allow reading <file>" is Always allow for this project on a card asking to read one file outside the project.
+    for (p, kind) in [("never edit ", "never_edit"), ("never run ", "never_run"), ("ask before editing ", "ask_edit"), ("ask before running ", "ask_run"), ("allow reading ", "allow_read")] {
         if starts(p) {
             let rest = line[p.len()..].trim_matches(js_space);
             if !rest.is_empty() { return Some(Rule { kind, pattern: rest.to_string(), text: line.clone() }); }
@@ -158,7 +159,7 @@ mod tests {
         for c in cs {
             let got = rule_of(c["line"].as_str().unwrap());
             if c["kind"].is_null() { assert_eq!(got, None, "{c}"); }
-            else { assert_eq!(got, Some(Rule { kind: match c["kind"].as_str().unwrap() { "never_edit" => "never_edit", "never_run" => "never_run", "ask_edit" => "ask_edit", "ask_run" => "ask_run", _ => "ask_install" }, pattern: c["pattern"].as_str().unwrap().into(), text: c["text"].as_str().unwrap().into() }), "{c}"); }
+            else { assert_eq!(got, Some(Rule { kind: match c["kind"].as_str().unwrap() { "never_edit" => "never_edit", "never_run" => "never_run", "ask_edit" => "ask_edit", "ask_run" => "ask_run", "allow_read" => "allow_read", _ => "ask_install" }, pattern: c["pattern"].as_str().unwrap().into(), text: c["text"].as_str().unwrap().into() }), "{c}"); }
         }
     }
     #[test]

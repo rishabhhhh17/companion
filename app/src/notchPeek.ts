@@ -169,7 +169,7 @@ export const peekHeight = (rows: readonly PeekRow[]): number =>
 
 // ---------- Now's calm timeline of today ----------
 
-export type TodayKind = "reviewed" | "caught" | "fixed" | "failed" | "undone" | "stopped";
+export type TodayKind = "reviewed" | "caught" | "asked" | "fixed" | "failed" | "undone" | "stopped";
 export type TodayEntry = { key: string; kind: TodayKind; at: number; when: string; words: string; colour: Colour; icon: IconName };
 export const TODAY_MAX = 6;
 
@@ -201,9 +201,15 @@ export function todayLine(m: Model, now: number): TodayEntry[] {
     if (t === null) continue;
     out.push({ key: `s${s.id}`, kind: "caught", at: t, when: whenWords(s.at, now), words: L.caught(s.command), ...TODAY_LOOK.caught });
   }
+  // M85 review: each ask before a live system, by the person's own tool or a card of Squibby's own.
+  for (const a of m.askedRows ?? []) {
+    const t = today(a.at);
+    if (t === null) continue;
+    out.push({ key: `a${a.id}`, kind: "asked", at: t, when: whenWords(a.at, now), words: L.asked(a.command), ...TODAY_LOOK.asked });
+  }
   return out.sort((a, b) => b.at - a.at).slice(0, TODAY_MAX);
 }
 const TODAY_LOOK: Record<Exclude<TodayKind, "reviewed">, { colour: Colour; icon: IconName }> = {
-  caught: { colour: MEANING_COLOUR.review, icon: "shield" }, fixed: { colour: MEANING_COLOUR.proven, icon: "tick" }, failed: { colour: MEANING_COLOUR.problem, icon: "cross" },
+  caught: { colour: MEANING_COLOUR.review, icon: "shield" }, asked: { colour: MEANING_COLOUR.question, icon: "wait" }, fixed: { colour: MEANING_COLOUR.proven, icon: "tick" }, failed: { colour: MEANING_COLOUR.problem, icon: "cross" },
   undone: { colour: MEANING_COLOUR.undone, icon: "undo" }, stopped: { colour: MEANING_COLOUR.stopped, icon: "stop" },
 };

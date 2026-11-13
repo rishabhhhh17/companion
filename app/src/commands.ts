@@ -40,8 +40,9 @@ export const followUp = (project: string, text: string): Command | null => {
   return t ? { v: 1, id: id(), type: "agent.send", project, agent: AGENT, text: Array.from(t).slice(0, MAX_FOLLOW_UP_CHARS).join("") } : null;
 };
 export const retryTask = (project: string): Command => ({ v: 1, id: id(), type: "agent.send", project, agent: AGENT, retry: true });
-export const answerApproval = (approval: string, allow: boolean): Command =>
-  ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: "once" });
+// M85: scope "project" only after the page saved the card's own house rule line (Always allow for this project).
+export const answerApproval = (approval: string, allow: boolean, scope: "once" | "project" = "once"): Command =>
+  ({ v: 1, id: id(), type: "approval.resolve", approval, decision: allow ? "allow" : "deny", scope: allow ? scope : "once" });
 // force: only for "Put my fix back" in Your turn, where the person's own attempt is meant to be replaced (it stays in the safety copy).
 export const undo = (project: string, checkpoint: string, force = false): Command =>
   ({ v: 1, id: id(), type: "checkpoint.restore", project, checkpoint, ...(force ? { force: true } : {}) });

@@ -194,7 +194,9 @@ export function validateKey(key: string, v: unknown): Checked {
 // ---------- house rules (rules.house, the project's own .companion/rules.txt) ----------
 
 /** The five kinds of house rule. A rule can only make things stricter (runner/src/rules.ts enforces them). */
-export const RULE_KINDS = ["never_edit", "never_run", "ask_edit", "ask_run", "ask_install"] as const;
+/** M85: allow_read, "allow reading <file>", is the one kind that skips a question: Always allow for this project on a card
+ *  asking to read one file outside the project. It never skips a refusal, and never anything but that plain read. */
+export const RULE_KINDS = ["never_edit", "never_run", "ask_edit", "ask_run", "ask_install", "allow_read"] as const;
 export type RuleKind = (typeof RULE_KINDS)[number];
 const RULE_LINES: [RegExp, RuleKind][] = [
   [/^never\s+edit\s+(.+)$/i, "never_edit"],
@@ -202,6 +204,7 @@ const RULE_LINES: [RegExp, RuleKind][] = [
   [/^ask\s+before\s+editing\s+(.+)$/i, "ask_edit"],
   [/^ask\s+before\s+running\s+(.+)$/i, "ask_run"],
   [/^ask\s+before\s+installing\s+packages$/i, "ask_install"],
+  [/^allow\s+reading\s+(.+)$/i, "allow_read"],
 ];
 /** One line of a rules file read as a rule (spaces tidied), or null for a note, an empty line or a line not understood.
  *  The shell reads lines the same way (houserules.rs); both run fixtures/rules-cases.jsonl. */
@@ -211,7 +214,7 @@ export function ruleOf(raw: string): { kind: RuleKind; pattern: string; text: st
   for (const [re, kind] of RULE_LINES) { const m = re.exec(line); if (m) return { kind, pattern: (m[1] ?? "").trim(), text: line }; }
   return null;
 }
-const RULE_START: Record<RuleKind, string> = { never_edit: "never edit", never_run: "never run", ask_edit: "ask before editing", ask_run: "ask before running", ask_install: "ask before installing packages" };
+const RULE_START: Record<RuleKind, string> = { never_edit: "never edit", never_run: "never run", ask_edit: "ask before editing", ask_run: "ask before running", ask_install: "ask before installing packages", allow_read: "allow reading" };
 /** The line for a rule built from one of the five kinds and what it is about; null when that does not make a rule. */
 export function ruleText(kind: RuleKind, pattern: string): string | null {
   const r = ruleOf(kind === "ask_install" ? RULE_START[kind] : `${RULE_START[kind]} ${pattern}`);

@@ -2,12 +2,13 @@
 // A rule can only make things stricter than Companion's own safety rules, never looser.
 // The agent can never change the rules file.
 
-import { statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { resolveLinks, type ToolCall, type Verdict } from "./safety.ts";
 import { commandsOf, redirectTargets } from "./shell.ts";
 import { ruleOf, type RuleKind } from "../../protocol/settings.ts";
-import { readCompanionFile } from "./companionfile.ts";
+import { companionDirUsable, readCompanionFile } from "./companionfile.ts";
+import { writeAtomic } from "./atomic.ts";
 
 export const RULES_FILE = ".companion/rules.txt";
 export type { RuleKind };
@@ -215,4 +216,63 @@ export function applyRules(rules: Rule[], call: ToolCall, project: string): Verd
     found = found ?? v;
   }
   return found;
+}
+
+// ---- M85: Always allow for this project ----
+
+/** The tools a plain read of one file uses: Always allow is only ever offered for these. */
+const ONE_FILE_READS: Record<string, string> = { Read: "file_path", NotebookRead: "notebook_path" };
+/** The longest a house rule line may be (rules.house item maxLength). */
+const RULE_MAX = 200;
+
+/** M85: the house rule line Always allow for this project would save for this question, or null when it does not fit. It
+ *  fits only a plain read of one named file outside the project that Squibby asks about (undoable, never refused), never a
+ *  command, an edit, anything live or destructive, and never a path the line could not hold exactly. */
+export function alwaysLineFor(call: ToolCall, v: Verdict, live: boolean): string | null {
+  if (live || v.decision !== "ask" || v.risk !== "outside_project" || !v.undoable) return null;
+  const key = ONE_FILE_READS[call.tool];
+  const p = key ? call.input[key] : undefined;
+  if (typeof p !== "string" || !isAbsolute(p) || /[\s\u0000-\u001f\u007f]/.test(p)) return null;
+  const line = `allow reading ${p}`;
+  return line.length <= RULE_MAX && ruleOfLine(line)?.kind === "allow_read" ? line : null;
+}
+const ruleOfLine = (line: string) => parseRules(line).rules[0] ?? null;
+
+/** M85: whether an "allow reading" house rule answers this question already: the same plain read of the same file (links
+ *  followed), asked only because the file is outside the project. A refusal, a command, an edit and anything else are never
+ *  touched: such a rule only ever skips this one question. */
+export function allowedByAlways(rules: Rule[], call: ToolCall, v: Verdict): boolean {
+  if (v.decision !== "ask" || v.risk !== "outside_project" || !v.undoable) return false;
+  const key = ONE_FILE_READS[call.tool];
+  const p = key ? call.input[key] : undefined;
+  if (typeof p !== "string" || !isAbsolute(p)) return false;
+  const want = resolveLinks(p);
+  return rules.some((r) => r.kind === "allow_read" && isAbsolute(r.pattern) && resolveLinks(r.pattern) === want);
+}
+
+/** The most rules the file may hold (the registry's rules.house maxItems): a full file gets no new one. */
+const RULES_MAX = 50;
+
+/** M85 review: Always allow for this project adds its one "allow reading <file>" line to the rules file as it is on disk
+ *  at this moment, so a rule written by hand since any page last read the file is never lost. Every other line (rules,
+ *  notes, empty lines, its line ending) stays exactly as it was. Never through a link (companionfile.ts), never into a file
+ *  that cannot be read, and never a 51st rule. True when the line is in the file afterwards. */
+export function addHouseRule(project: string, line: string): boolean {
+  const rule = ruleOfLine(line);
+  if (!rule || rule.kind !== "allow_read" || !isAbsolute(rule.pattern) || rule.text.length > RULE_MAX) return false;
+  if (!project || !companionDirUsable(project)) return false;
+  const r = readCompanionFile(project, "rules.txt");
+  if (r.state === "unreadable") return false;
+  const now = r.state === "ok" ? r.text : "";
+  const have = parseRules(now).rules;
+  if (have.some((x) => x.text.toLowerCase() === rule.text.toLowerCase())) return true;
+  if (have.length >= RULES_MAX) return false;
+  const nl = now.includes("\r\n") ? "\r\n" : "\n";
+  const text = `${now}${now && !now.endsWith("\n") ? nl : ""}${rule.text}${nl}`;
+  try {
+    mkdirSync(join(project, ".companion"), { recursive: true });
+    if (!companionDirUsable(project)) return false;
+    writeAtomic(join(project, RULES_FILE), text, "keep");
+  } catch { return false; }
+  return true;
 }

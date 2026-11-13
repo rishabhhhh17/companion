@@ -14,6 +14,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, watch as fsWatch, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { databaseProgram, databaseScript, databaseSetting, databaseTool } from "./dbsafety.ts";
+import { liveCommand } from "./livesystems.ts";
 import { GUARD_PID } from "./donesignal.ts";
 import { clip, redact } from "./redact.ts";
 import { commandsWithFolder, resolveLinks, whereIs } from "./safety.ts";
@@ -29,8 +30,13 @@ export const WAITING_MINUTES_CHOICES: readonly number[] = [5, 15, 60];
 export const waitingMinutesOf = (v: unknown): number => { const n = Number(v); return WAITING_MINUTES_CHOICES.includes(n) ? n : 15; };
 /** The notification types that mean Claude Code is waiting for the person (the hook's matcher names the same two). */
 const WAITING_TYPES = new Set(["permission_prompt", "idle_prompt"]);
-/** A request file: <token>.<pid>, with .note for a waiting note. Nothing else in the folder is touched. */
-const REQUEST = /^([0-9a-f]{24})\.(\d{1,10})(\.note)?$/;
+/** A request file: <token>.<pid>, with .note for a waiting note, or (M85) .ask from a hook that can ask the person first.
+ *  Nothing else in the folder is touched. */
+const REQUEST = /^([0-9a-f]{24})\.(\d{1,10})(\.note|\.ask)?$/;
+/** M85: the History row's name for a command the person's own tool was asked to ask about first. */
+export const ASKED_LABEL = "Asked first: ";
+/** M85: the most a reason the hook carries may be, in characters. */
+export const ASK_REASON = 300;
 /** Requests older than this when the engine starts are from a Claude Code that gave up waiting: removed, never answered. */
 const STALE_MS = 60_000;
 
@@ -118,6 +124,12 @@ export type GuardDeps = {
   row?: (r: { project: string; label: string; checkpoint: string; at: string }) => void;
   /** For tests: which commands are destructive. */
   destructive?: (command: string, project: string) => string | null;
+  /** M85: which commands touch a live system (livesystems.ts), for tests. */
+  live?: (command: string, project: string) => string | null;
+  /** M85: whether the person's own tool is asked to ask first about a live command (safety.askBeforeLive), read each time. */
+  askLive?: () => boolean;
+  /** M85: keeps the History row of an ask (the task log), with the reason. */
+  asked?: (r: { project: string; command: string; reason: string; at: string }) => void;
   /** How long a "waiting" mark stays with no further event, in minutes (read each time). */
   waitingMinutes?: () => number;
   snapshotWaitMs?: number;
@@ -184,18 +196,50 @@ export class HookGuard {
     try { rmSync(file, { force: true }); } catch { /* gone */ }
     const token = m[1];
     const project = this.o.projectOf(token);
-    if (m[3]) { if (project) this.note(project, text); return; }
-    const done = () => { try { writeFileSync(`${file}.ok`, "", { mode: 0o600 }); } catch { /* the hook gives up on its own */ } };
-    if (!project) { done(); return; }
+    if (m[3] === ".note") { if (project) this.note(project, text); return; }
+    // The answer file: empty lets the command go; M85: for a hook that can ask, a reason (a JSON string) has its tool ask.
+    // It is written exactly once, whatever goes wrong.
+    let written = false;
+    const done = (answer: string): boolean => {
+      if (written) return false;
+      written = true;
+      try { writeFileSync(`${file}.ok`, answer, { mode: 0o600 }); return true; } catch { return false; /* the hook gives up on its own */ }
+    };
+    if (!project) { done(""); return; }
     this.activity(project);
-    const p = this.answer(project, text).catch(() => undefined).finally(done).finally(() => this.inFlight.delete(name));
+    const p = this.answer(project, text, m[3] === ".ask", done).catch(() => undefined).finally(() => done("")).finally(() => this.inFlight.delete(name));
     this.inFlight.set(name, p);
     await p;
   }
-  /** Judges the request and takes the snapshot when it must. Resolves when the hook may let the command go. */
-  private async answer(project: string, text: string): Promise<void> {
+  /** Judges the request and takes the snapshot when it must, then answers through `done`: "" lets the command go once the
+   *  snapshot is taken (or SNAPSHOT_WAIT_MS has passed). M85: only for a hook that can ask, with safety.askBeforeLive on, a
+   *  live command is answered at once with its reason as a JSON string, and the snapshot finishes on its own (M85 review: a
+   *  slow snapshot of a big project must never outlast the hook's own wait and lose the ask). The person still has to answer
+   *  in their tool. The ask is said and kept in History only once its answer file is written. */
+  private async answer(project: string, text: string, canAsk: boolean, done: (answer: string) => boolean): Promise<void> {
     const req = parseRequest(text);
-    if (!req) return;
+    if (!req) { done(""); return; }
+    let reason: string | null = null;
+    if (canAsk && (this.o.askLive?.() ?? true)) {
+      try { reason = (this.o.live ?? liveCommand)(req.command, project); } catch { reason = null; }
+    }
+    // The snapshot starts first, before any answer, so a destructive command is being saved before the tool can ask.
+    const saving = this.save(project, req.command);
+    if (reason) {
+      const said = clip(redact(reason).replace(/\s+/g, " ").trim(), ASK_REASON);
+      if (done(JSON.stringify(said))) {
+        const command = shortCommand(req.command);
+        const at = new Date((this.o.now ?? Date.now)()).toISOString();
+        try { this.o.asked?.({ project, command, reason: said, at }); } catch { /* the row is a nicety */ }
+        this.o.emit({ type: "guard.asked", project, command, reason: said });
+      }
+    }
+    await saving;
+    done("");
+  }
+  /** Takes the snapshot before a destructive command, waiting at most SNAPSHOT_WAIT_MS. */
+  private async save(project: string, command: string): Promise<void> {
+    const req = { command };
     const why = (this.o.destructive ?? destructiveCommand)(req.command, project);
     if (!why) return;
     const label = SAVED_LABEL + shortCommand(req.command);

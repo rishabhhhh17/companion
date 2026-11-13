@@ -43,6 +43,16 @@ const exact = (t: string) => ASSERT.test(t) && EXACT.test(t) && !NOT_EXACT.test(
 const LITERAL = /(["'`])(?:\\.|(?!\1)[^\\\n])*\1|-?\b\d+(?:\.\d+)?\b|\b(?:true|false|null|undefined|None|True|False|nil)\b/g;
 const literals = (t: string) => t.match(LITERAL) ?? [];
 const skeleton = (t: string) => t.trim().replace(LITERAL, "#").replace(/\s+/g, " ");
+/** M85: a check's limit: below, at most, above, at least, or close to with its digits. */
+const LIMIT_LINE = /\.(toBeLessThan|toBeLessThanOrEqual|toBeGreaterThan|toBeGreaterThanOrEqual)\s*\(\s*(-?\d+(?:\.\d+)?)\s*\)|\.toBeCloseTo\s*\([^,()]+,\s*(\d+)\s*\)|\bassert\s+[^\n]*?(<=|>=|<|>)\s*(-?\d+(?:\.\d+)?)\s*$/;
+const limitOf = (t: string): { kind: string; v: number } | null => {
+  const m = LIMIT_LINE.exec(t);
+  if (!m) return null;
+  if (m[1]) return { kind: m[1], v: Number(m[2]) };
+  if (m[3]) return { kind: "closeTo", v: Number(m[3]) };
+  return { kind: m[4] === "<" || m[4] === "<=" ? "less" : "greater", v: Number(m[5]) };
+};
+const widerLimit = (b: { kind: string; v: number }, a: { kind: string; v: number }) => b.kind === a.kind && (/Less|less/.test(a.kind) ? a.v > b.v : /Greater|greater/.test(a.kind) ? a.v < b.v : a.kind === "closeTo" ? a.v < b.v : false);
 const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|cs|swift|php|vue|svelte)$/i;
 /** A file's name without its folder, its extension and its test marks: test/price.test.js and price.js are both "price". */
 const stemOf = (f: string) => (f.split("/").pop() ?? f).replace(/\.[^.]+$/, "").replace(/(?:[._-](?:test|spec))+$/i, "").replace(/^test_/i, "").replace(/_test$/i, "").replace(/(?:Test|Tests|Spec)$/, "").toLowerCase();
@@ -86,6 +96,14 @@ export function weakenedChecks(deltas: readonly FileDelta[], texts: Readonly<Rec
       const loose = d.added.filter((a) => ASSERT.test(a.text) && !exact(a.text) && !removedTexts.includes(a.text.trim()));
       if (lost <= gained && exactLost > exactGained && loose.length) {
         add(f, loose[0].line, say(`An exact check in ${f} was swapped for a looser one at line ${loose[0].line}. It now passes for many wrong answers, so it proves less.`));
+      }
+      // M85 (research feature 12): a limit widened in a check that stayed ("below 100" became "below 1000", fewer digits
+      // for close to). The line keeps its shape; only the number moved the loose way.
+      for (const a of d.added) {
+        const la = limitOf(a.text);
+        if (!la || removedTexts.includes(a.text.trim())) continue;
+        const b = d.removed.map((r) => limitOf(r.text) && skeleton(r.text) === skeleton(a.text) ? limitOf(r.text) : null).find((x) => x && widerLimit(x, la));
+        if (b) { add(f, a.line, say(`A limit in a check in ${f} was widened at line ${a.line}. It now lets more wrong answers pass, so it proves less.`)); break; }
       }
       // M77b: the expected answer of a check changed in the same change as the code that check tests. If the code is now
       // wrong, the test was made to agree with it. Only the expected value (the last value on the line) may differ.

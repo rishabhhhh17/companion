@@ -783,9 +783,9 @@ function DoneSignalRows() {
   return (<>
     <Row id={fixedAnchor("doneSignal")} label={S.doneSignal.title} description={`${S.doneSignal.line} ${S.doneSignal.fallback}`} />
     {rows.map((r) => { const l = hookLabel(r); return (
-      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}`}
+      <Row key={`${r.tool}-${r.hook}`} indent label={l.label} description={`${r.on ? `${S.doneSignal.on}: ${r.file}` : S.doneSignal.off}${l.line ? `. ${l.line}` : ""}${r.stale ? `. ${S.doneSignal.stale}` : ""}`}
         control={r.on
-          ? <Button size="sm" onClick={() => { setSaid(removedLine(r)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button>
+          ? <>{r.stale && <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.update}</Button>}<Button size="sm" onClick={() => { setSaid(removedLine(r)); void send(removeDoneSignal(project, r.tool, r.hook)); }}>{S.doneSignal.remove}</Button></>
           : <Button size="sm" id={rowId(r)} onClick={() => { setSaid(""); setAsking({ tool: r.tool, hook: r.hook }); }}>{S.doneSignal.setUp}</Button>} />
     ); })}
     {ask && (() => { const w = doneAsk(ask); return (
@@ -794,7 +794,7 @@ function DoneSignalRows() {
         <p>{w.where}</p>
         <div className="ask-what" role="group" aria-label={S.approval.what}><code>{w.what}</code></div>
         {w.notes.map((n) => <p key={n}>{n}</p>)}
-        <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool, h = ask.hook; setAsking(null); void send(addDoneSignal(project, t, h)); }}>{S.doneSignal.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
+        <div className="set-buttons"><Button kind="primary" onClick={() => { const t = ask.tool, h = ask.hook; setAsking(null); void send(addDoneSignal(project, t, h)); }}>{w.yes}</Button><Button cancel onClick={() => setAsking(null)}>{S.doneSignal.no}</Button></div>
       </ConfirmStep>
     ); })()}
     <Note text={st?.problem ?? said} live />

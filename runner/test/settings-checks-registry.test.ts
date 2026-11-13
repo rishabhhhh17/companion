@@ -93,7 +93,9 @@ describe("house rules are read the same way everywhere (shared cases)", () => {
     }
   });
   test("a rule built from one of the five kinds reads back as that kind", () => {
-    expect(RULE_KINDS).toEqual(["never_edit", "never_run", "ask_edit", "ask_run", "ask_install"]);
+    // M85 added allow_read on purpose (Always allow for this project saves "allow reading <file>").
+    expect(RULE_KINDS).toEqual(["never_edit", "never_run", "ask_edit", "ask_run", "ask_install", "allow_read"]);
+    expect(ruleText("allow_read", "/Users/demo/notes.md")).toBe("allow reading /Users/demo/notes.md");
     expect(ruleText("never_edit", "  .env ")).toBe("never edit .env");
     expect(ruleText("never_run", "npm   publish")).toBe("never run npm publish");
     expect(ruleText("ask_edit", "src/*")).toBe("ask before editing src/*");

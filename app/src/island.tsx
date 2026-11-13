@@ -182,6 +182,12 @@ function Island() {
     const id = setTimeout(() => savedTick((n) => n + 1), Math.max(0, m.guardSaved.at + SAVED_LINE_MS - Date.now()) + 50);
     return () => clearTimeout(id);
   }, [m.guardSaved]);
+  // M85 review: the ask's line goes away the same way.
+  useEffect(() => {
+    if (!m.guardAsked) return;
+    const id = setTimeout(() => savedTick((n) => n + 1), Math.max(0, m.guardAsked.at + SAVED_LINE_MS - Date.now()) + 50);
+    return () => clearTimeout(id);
+  }, [m.guardAsked]);
   const line = islandLine(m, { update, group: showGroup && g && g !== "core" ? S.groups.names[g] : null, now: Date.now() });
   // The wings, and the done tick put away after a few seconds. With When something needs me set to only mark the tab
   // (home.goToNeeds), anything that needs the person shows the amber mark too.

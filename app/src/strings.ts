@@ -264,6 +264,15 @@ export const S = {
     why: "Why I'm asking",
     undoYes: "You can undo this.",
     undoNo: "Undo can't take this back.",
+    // M85: HeyClicky's three choices where they fit. Always allow saves a house rule the person can see and remove.
+    once: "Allow once",
+    always: "Always allow for this project",
+    notNow: "Not now",
+    alwaysSaved: "Saved as a house rule. You can remove it in Settings, Checks.",
+    alwaysFailed: "The house rule could not be saved, so this was allowed once.",
+    liveNote: "This reaches something live. Only Allow once is offered.",
+    // M85 review: said openly above the buttons when Always allow is offered, so the person sees the file it would allow.
+    alwaysWhat: (name: string, folder: string) => `Always allow reading ${name} (in ${folder})`,
   },
   dontAllow: "Don't allow",
   needsYouTitle: "Needs your OK",
@@ -532,6 +541,9 @@ export const S = {
     // M82
     "handoff.improve": "Handing a job to your AI tool first turns your words into a clear prompt you can change.",
     "aiTools.nowRow": "Now offers Connect your AI tools until one is connected here.",
+    // M85
+    "safety.askBeforeLive": "Your own AI tool asks you first before it touches a live database, server or site.",
+    "approval.offerAlways": "A question about reading one file outside the project can be answered once for good.",
     // M75
     "spend.pauseAt": "A task that uses far more than a usual one here stops and asks before it goes on.",
     // M77
@@ -1833,6 +1845,23 @@ export const S = {
     claimedPassed: "These words say the checks pass, but the checks did not run or did not pass here. Nothing is proven yet.",
     // Said once on Now and in the notch when a copy was saved.
     savedNotice: `${PRODUCT} saved a copy before Claude's command.`,
+    // M85: a command that touches a live system, in the person's own AI tool: their tool asks them, with this reason.
+    // M85 review: with the command, only for the open project, and it goes by itself after a while.
+    askedNotice: (command: string) => `Your AI tool asked you first about ${command}. The reason is in History.`,
+    // M85 review: the notch's line for a few seconds, like a saved copy's.
+    askedLine: (command: string) => `Your AI tool is asking you first: ${command}`,
+    asked: {
+      row: (command: string) => `Asked first: ${command}`,
+      // M85 review: the same words, with the command drawn after them in code type.
+      lead: "Asked first:",
+      byTool: "Your AI tool asked you",
+      once: "Allowed once",
+      always: "Always allowed here",
+      no: "Not now",
+      expired: "No answer, so not run",
+    },
+    // M85: the receipt's two flags, as their lead words; the engine's own sentence follows.
+    flags: { not_asked: "Not what you asked for", said_other: "Said one thing, ran another" } as Record<string, string>,
     // The notch and Now while Claude Code waits for the person.
     waitingWhy: (project: string) => (project ? `Claude is waiting for you in ${project}` : "Claude is waiting for you"),
     waitingLine: "Answer it in Claude Code. The notch clears when Claude moves on.",
@@ -1894,6 +1923,16 @@ export const S = {
     off: "Not set up",
     setUp: "Set up",
     remove: "Remove",
+    // M85: a guard written before it could ask the person first about live systems.
+    update: "Update",
+    stale: "A newer version can have your AI tool ask you first before it touches something live",
+    // M85 review: the Update card says it replaces the older line, and what the new one does.
+    updateTitle: (file: string) => `Update ${PRODUCT_S} line in ${file}?`,
+    updateWhere: (file: string) => `${PRODUCT} will replace its older line in ${file} with this one:`,
+    updateAsks: (tool: string) => `With the new line, ${tool} asks you first, with ${PRODUCT_S} reason, before a command that touches something live: a live database, a production deploy, history on GitHub. You decide in ${tool}. Everything else works as before.`,
+    updateYes: "Update it",
+    updatePlain: "The new line does the same job as the old one, the way it is done today.",
+    updateSame: (tool: string) => `The new line works as the old one did. ${tool} cannot ask you first yet, so it goes on as before.`,
     noProject: "Pick a project first.",
     askTitle: (tool: string) => `Add a done signal for ${tool}?`,
     askWhere: (file: string, creates: boolean) => `${PRODUCT} will ${creates ? "make" : "add to"} ${file} in this project:`,
@@ -2497,6 +2536,8 @@ export const S = {
     "tour.offer": { label: "Offer Walk me through it", help: "On a review or a fix, Walk me through it goes through each changed place in order. Each place gets two plain lines and a button to open it in your editor. The words come from the review and the fix, with no extra model call.", also: ["walk", "tour", "explain", "changes", "learn", "editor"] },
     "report.codeLines": { label: "Include short code lines in go live reports", help: "A go live report names files but leaves their contents out. On, it adds the review's own short lines, three at most for each finding, with keys and passwords hidden. Off is safer for a report you send to someone.", also: ["report", "client", "share", "pdf", "code", "go live"] },
     "handoff.improve": { label: "Write a clear prompt first", help: `When you hand a job to your AI tool, ${PRODUCT} first writes a clear prompt from your words, with this project's house rules. You can change it before anything is sent. Off: your own words go as they are, and no model is asked.`, also: ["have my ai do it", "hand off", "prompt", "rewrite", "improve", "Cursor", "Codex", "Claude Code", "clear prompt"] },
+    "safety.askBeforeLive": { label: "Ask before live systems", help: `Some commands touch something a saved copy on this Mac can't bring back. Think of a live database, a production site or a cloud account. When your AI tool is about to run one, ${PRODUCT} has that tool ask you first, with the reason. You decide in your tool. It works in Claude Code, Cursor, the VS Code agent and Antigravity. Codex, Gemini CLI and Windsurf can't ask yet, so they go on as before. Each ask is in History.`, also: ["live", "production", "database", "drop", "deploy", "terraform", "supabase", "prisma", "vercel", "force push", "ask", "cloud", "token"] },
+    "approval.offerAlways": { label: "Offer Always allow for this project", help: `When ${PRODUCT} asks to read one file outside your project, the question also offers Always allow for this project. That saves a house rule you can see and remove in Settings, Checks. It is never offered for anything that deletes, goes live or can't be undone: those only ever get Allow once.`, also: ["always allow", "allow once", "not now", "approval", "question", "house rule", "remember"] },
     "aiTools.nowRow": { label: "Offer to connect your AI tools on Now", help: `While no AI tool is connected in this project, Now shows one row that opens Your AI tools. Off: it is only in Settings, Fixing.`, also: ["connect", "ai tools", "Cursor", "Codex", "Claude Code", "VS Code", "row", "now"] },
     "ask.choices": { label: "Offer choices when an ask is vague", help: `When you type something short like "make it better" or "fix it", ${PRODUCT} first shows a few choices from what it knows about your project. Nothing runs until you tap one. More words and Return still work.`, also: ["vague", "choices", "options", "unclear", "make it better", "fix it", "clean up", "ask box", "suggest"] },
     "spend.warnAt": { label: "Warn when a project nears its limit", help: `${PRODUCT} tells you once a day when a project has used half, or most, of today's limit, so a stuck fix never surprises you. Work goes on until the limit itself.`, also: ["warn", "warning", "spending", "money", "cost", "budget", "alert", "limit", "near"], options: { off: "Off", "50": "At half", "80": "Near the limit" } },
@@ -2520,7 +2561,7 @@ export const S = {
     islandOff: `With the notch off, Home opens beside the character and its keys still open it. Before ${PRODUCT} looks at your screen or listens, the character lights up, and before it reads your text, Home opens.`,
     needsMarked: "A question a task waits on opens Now, unless you are typing in Home: then Now gets a dot instead, and VoiceOver says it. Prompt help, the error explainer and Second Look you start always open Now too. Anything else that needs you puts a dot on its tab and a mark on the notch, or on the character when the notch is off, and is said out loud when Say answers out loud is on.",
     budgetDay: "Never more than what is left of today's daily spending limit.",
-    rulesStricter: `House rules can only add care: ${PRODUCT_S} own safety rules always apply, and no reset ever removes a rule.`,
+    rulesStricter: `House rules add care. The one exception is "allow reading" a single file outside your project, which Always allow saves. ${PRODUCT_S} own refusals always apply, and no reset ever removes a rule.`,
     pressNeverRisky: "A button whose words sound like it sends, pays, deletes or publishes is never pressed, whatever this says.",
     browserAlways: "Starting the project and the browser check can never be left out.",
     noAnswerIsNo: "No answer always counts as no.",
@@ -2967,7 +3008,7 @@ export const S = {
   chkNeedsPress: "Choose a button to press first.",
   chkPicturesGo: (n: number, keep: number) => `${n} of your oldest ${n === 1 ? "picture" : "pictures"} will be deleted when the next picture is made. Keep only ${keep}?`,
   chkPicturesGoYes: "Yes, keep fewer",
-  rulesKinds: { never_edit: "Never edit", never_run: "Never run", ask_edit: "Ask before editing", ask_run: "Ask before running", ask_install: "Ask before installing packages" },
+  rulesKinds: { never_edit: "Never edit", never_run: "Never run", ask_edit: "Ask before editing", ask_run: "Ask before running", ask_install: "Ask before installing packages", allow_read: "Allow reading (one file outside the project)" },
   rulesKindLabel: "Kind of rule",
   rulesWhat: "What it is about: a file, a folder or a command",
   rulesAdd: "Add this rule",
@@ -3154,6 +3195,9 @@ export const S = {
     fixedThing: (thing: string) => `${thing.charAt(0).toUpperCase()}${thing.slice(1)} fixed`,
     notFixed: (name: string) => `${name} is not fixed yet.`,
     checkFailed: "A check failed.",
+    // M85 review: a proven result with the receipt's flags (Not what you asked for, Said one thing, ran another): the
+    // checks still pass, but the headline asks the person to read the flags first.
+    butCheck: (first: string) => `${first.replace(/\.$/, "")}, but check these first.`,
     resultPill: { proven: "Proven", failed: "Not fixed yet" } as Record<"proven" | "failed", string>,
     before: "Before",
     after: "After",
@@ -3611,6 +3655,8 @@ export const S = {
       stopped: (task: string) => `Stopped: ${task}`,
       reviewed: (n: number, summary: string) => `Reviewed ${n} ${n === 1 ? "file" : "files"}${summary ? `: ${summary}` : ""}`,
       caught: (command: string) => `Caught: saved a copy before ${command}`,
+      // M85 review: an ask before a live system, by the person's own tool or by a card of Squibby's own.
+      asked: (command: string) => `Asked you first: ${command}`,
     },
     todayEmpty: "Nothing yet today",
     todayEmptyLine: `What your AI tools change, and what ${PRODUCT} reviews, catches and fixes, lands here as it happens.`,
