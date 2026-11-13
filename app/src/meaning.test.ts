@@ -28,7 +28,7 @@ describe("every state has one meaning, and every meaning one colour, one drawing
       ["character", CHARACTER_MEANING, CHARACTER], ["status", STATUS_MEANING, STATUS], ["verdict", VERDICT_MEANING, VERDICTS], ["tone", TONE_MEANING, TONES],
       ["practice", PRACTICE_MEANING, PRACTICE], ["pill", PILL_MEANING, ["passed", "look", "failed", "new"]], ["fix", FIX_MEANING, ["proven", "undone", "failed", "partly", "unchecked"]],
       ["review", REVIEW_MEANING, ["waiting", "look", "stop", "clean"]], ["problem", PROBLEM_MEANING, ["failedCheck", "keyInCode", "error", "notReadyOnline"]],
-      ["fact", FACT_MEANING, ["note", "off", "notConnected", "questions", "pickProject", "changes", "passed", "failing", "changedSince", "notChecked", "ready", "working", "listening"]],
+      ["fact", FACT_MEANING, ["note", "off", "notConnected", "questions", "pickProject", "changes", "passed", "failing", "changedSince", "notChecked", "ready", "working", "listening", "waiting"]],
     ];
     for (const [name, table, states] of tables) {
       expect(Object.keys(table).sort(), name).toEqual([...states].sort());

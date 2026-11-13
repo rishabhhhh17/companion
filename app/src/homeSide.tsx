@@ -15,10 +15,11 @@ import { verdictOf } from "./verdict.ts";
 import { tabId, type Tab } from "./home.ts";
 import type { SidePlace } from "./homeLayout.ts";
 import { Icon } from "./icons.tsx";
-import { SidebarItem, Tile } from "./ui/parts.tsx";
+import { Dot, SidebarItem, Tile } from "./ui/parts.tsx";
 import { historyStamp, sideStamp, taskName } from "./itemLook.ts";
 import { Stamp } from "./itemMarks.tsx";
 import { verdictMark } from "./ui/partsLogic.ts";
+import type { Go, ToolsRow } from "./notchPeek.ts";
 import { reviewStamp, type ReviewCard } from "./review.ts";
 import { MEANING_COLOUR, PLACE_COLOUR, PLACE_ICON, VERDICT_MEANING } from "./meaning.ts";
 import type { VerdictKind } from "./verdict.ts";
@@ -30,6 +31,9 @@ type Props = {
   review?: ReviewCard | null; onReview?: () => void;
   /** M69 step 2: how many things wait on a place (the review card's findings on Now), drawn as a small count. */
   counts?: Partial<Record<SidePlace, number>>;
+  /** M84 (HeyClicky's pattern, never its look): a slim list of the person's AI tools, each with what it is doing now (waiting
+   *  on you, connected and watching, half connected), or one Connect row. A press opens Now or Your AI tools in Settings. */
+  tools?: ToolsRow | null; onTool?: (g: Go) => void;
 };
 
 // M71: each place has its own colour tile (meaning.ts PLACE_COLOUR), so the gems of the old rooms are gone.
@@ -53,7 +57,7 @@ function useGlide(tab: Tab, places: readonly SidePlace[]) {
   return { list, g };
 }
 
-export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts }: Props) {
+export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, onOpen, review, onReview, counts, tools, onTool }: Props) {
   const { list, g } = useGlide(tab, places);
   const on = (places as readonly string[]).includes(tab) ? (tab as SidePlace) : null;
   return (
@@ -64,6 +68,29 @@ export function HomeSide({ places, tab, waits, recent, now, onPick, onSettings, 
           <li key={t}><SidebarItem id={t === "now" ? undefined : tabId(t)} icon={PLACE_ICON[t]} colour={PLACE_COLOUR[t]} label={S.homeTabs[t]} selected={t === tab} attention={waits === t && t !== tab} count={counts?.[t]} onClick={() => onPick(t)} /></li>
         ))}
       </ul>
+      {/* M84: the AI tools, each with what it is doing now (notchPeek.ts sideTools). Nothing while the engine has not said. */}
+      {tools && (tools.kind === "tools" || tools.kind === "connect") && (
+        <section className="side-tools" aria-labelledby="side-tools-title">
+          <h2 id="side-tools-title" className="side-title">{S.m84.sideTitle}</h2>
+          <ul className="side-list">
+            {tools.kind === "tools" ? tools.tools.map((t) => (
+              <li key={t.tool}>
+                <button type="button" className="sb-item side-work side-tool" data-state={t.state} title={`${t.name}: ${t.words}`} aria-label={S.m84.toolSay(t.name, t.words)} onClick={() => onTool?.(t.go)}>
+                  <span className="ui-mtile side-tool-mark" data-c={t.state === "waiting" ? "orange" : "grey"} data-size="place" aria-hidden="true">{t.mark}</span>
+                  <span className="side-tool-text" aria-hidden="true"><span className="side-name">{t.name}</span><span className="side-tool-state"><Dot colour={t.colour} />{t.words}</span></span>
+                </button>
+              </li>
+            )) : (
+              <li key="connect">
+                <button type="button" className="sb-item side-work side-tool" data-state="connect" onClick={() => onTool?.(tools.go)}>
+                  <Tile colour="blue" icon="plug" size="place" />
+                  <span className="side-name">{S.m84.connect}</span>
+                </button>
+              </li>
+            )}
+          </ul>
+        </section>
+      )}
       {/* Changes waiting for a review sit under their own heading, above the recent work (the audit, item 11). */}
       {review && (
         <section className="side-waiting" aria-labelledby="side-waiting-title">

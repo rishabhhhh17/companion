@@ -159,9 +159,10 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     const css = read("./ui/notch.css");
     expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${LAYOUT_H.quick}px;`);
     expect(LAYOUT_H.quick).toBe(LAYOUT_H.job);
-    // M70 step 4: short like HeyClicky's peek. M83: three rows (the fact with Settings and Open, the short facts, then the
-    // buttons or the job), still well under the shell's PANEL_MAX.
-    expect(LAYOUT_H.quick).toBeLessThanOrEqual(128);
+    // M70 step 4: short like HeyClicky's peek. M83: three rows. M84 (changed on purpose, the founder, 13 Nov: "I hope the
+    // notch will be changed"): four rows that each say something (the head, the AI tools, a card, the foot), still under
+    // the shell's PANEL_MAX (checked above).
+    expect(LAYOUT_H.quick).toBeLessThanOrEqual(222);
     expect(css).toMatch(/\.ip-fact \{[^}]*text-overflow: ellipsis/);
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
@@ -257,7 +258,7 @@ describe("Home grows on from the small panel as one black shape (M70, homeShape.
 // M70 step 4, the fixes from the review of the shots (5 Nov 2026).
 describe("M70 step 4: the small panel says something useful at once, and leaves the way it came", () => {
   const view = read("./islandPanel.tsx"), page = read("./island.tsx");
-  test("the head row is the fact with Settings and Open in words; no character anywhere in the panel but the opt in hello", () => {
+  test("the head row is the fact with Settings and Open in words; the character only in the opt in hello and (M84) its face in the head", () => {
     const head = view.slice(view.indexOf('<div className="ip-head">'), view.indexOf("</div>", view.indexOf('<div className="ip-head">')));
     expect(head).toContain("{lines.fact}");
     expect(head).toContain("{S.notch.settings}");
@@ -265,7 +266,10 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
     expect(head).toContain("label={S.notch.open}");
     expect(head).not.toContain("<Icon");
     expect(view).not.toContain("ip-fact\" role=\"status\" title={fact}>{fact}</p>");
-    expect(view.match(/<FlowMini /g)?.length).toBe(1);
+    // M84 changed this on purpose (the milestone asks for Flowflow's live face beside the greeting): the opt in hello's
+    // Visor, and the face in the head of the quick and job layouts. Nothing else in the panel draws the character.
+    expect(view.match(/<FlowMini /g)?.length).toBe(2);
+    expect(view).toContain('{full && <FlowMini className="ip-face" state={m.character} still={!shown} />}');
     expect(view).toContain('<FlowMini className="ip-agent" state="idle" still={!shown} />');
   });
   test("every action looks like a button, each with its colour tile (M71: the mock's raised pills, no blue main one)", () => {

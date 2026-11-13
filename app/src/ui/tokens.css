@@ -164,6 +164,9 @@
 
   /* ---------- Space: every gap snaps to these ---------- */
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-7: 32px;
+  /* M84: the notch panel's own sizes (notchPeek.ts PEEK_ROW_H holds the row heights): Flowflow's face, a tool's mark, the
+     progress line and the timeline's time column. */
+  --peek-face: 30px; --peek-mark: 26px; --peek-line: 2px; --today-time: 64px;
   --space-row-y: 10px;                 /* a row's padding, top and bottom */
   --space-field-x: 10px;               /* inside a field, a sidebar item */
   --space-btn-x: 16px;                 /* a primary button */
@@ -278,6 +281,8 @@
   /* Loops: how long one round of each takes. Paused when nothing is happening, and stopped with reduced motion. */
   --loop-breathe: 4s; --loop-swirl: 2.4s; --loop-busy: 1s; --loop-scan: 1.6s; --loop-glow: 1.8s; --loop-droop: 3s;
   --loop-live: 1.6s;                   /* a live dot */
+  --loop-progress: 1.8s;               /* M84: the sheen running along the notch's thin progress line while a job works */
+  --seq-peek-row: 30ms;                /* M84: each row of the notch panel arrives this much after the one above it */
   --loop-room: 36s; --loop-rays: 22s; --loop-rays-guide: 24s; --loop-motes: 40s;
   --loop-rim: 2.4s; --loop-stamp: 1.4s; --loop-icon-spin: 1.2s; --loop-spin: 900ms;
   --loop-waterline: 9s;

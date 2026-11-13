@@ -99,6 +99,9 @@ import { HandoffCard } from "./handoffCard.tsx";
 import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
 import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
+import { sideTools, todayLine } from "./notchPeek.ts";
+import { TodayLine } from "./todayLine.tsx";
+import { anyConnected } from "./aiTools.ts";
 import { SettingsView, lastPage } from "./settingsPage.tsx";
 import { shapeAsk } from "./settingsFit.ts";
 import { changeSetting, migrateFromPageStorage, setting, settingsReady, startSettings, useSetting } from "./settingsStore.ts";
@@ -2274,12 +2277,25 @@ export function Card() {
       </div>
     );
   };
+  // M84: Now's calm timeline of today (notchPeek.ts todayLine) under the list, at rest only, instead of empty room. Empty,
+  // it says what will appear and offers one action: Connect your AI tools while none is, else all of History.
+  const todayBlock = () => {
+    if (!atRest || home.tab !== "now" || !project || setup) return null;
+    const entries = todayLine(m, clock);
+    const act = entries.length > 0 ? null : doneTools && !anyConnected(doneTools)
+      ? { label: S.m84.todayEmptyConnect, onClick: () => { setSetPlace("fixing.tools"); pickTab("settings"); } }
+      : m.history.length > 0 ? { label: S.m84.todayEmptyAct, onClick: () => { setHistoryQ(NO_FILTER); pickTab("did"); } } : null;
+    return <TodayLine entries={entries} act={act} />;
+  };
+  const today = todayBlock();
   // M83 Part C: the status strip under the lead (statusStrip.tsx), from the same facts as the notch's panel. At rest, over
   // a result and beside the review card only (while a job works or a question waits, the lead is that). What was caught this week is left to the
   // list when its row is there (nowRows), so it is never said twice.
   const listOwnsCaught = weekOn && !!restFix && restShow !== null;
   // While the review card leads (changes waiting), the strip says the rest; the card says the changes.
-  const stripFacts = !setup && project && home.tab === "now" && (atRest || !!resHero || mode === "review") ? homeFacts(listOwnsCaught ? { ...m, caught: null } : m, { now: clock, tools: doneTools }).filter((f) => !(mode === "review" && f.id === "changes")) : [];
+  // M84 review: with the side list on and saying the AI tools, the strip leaves them out (a fact is never said twice).
+  const sideSaysTools = side && !!project && (() => { const t = sideTools(m, doneTools); return !!t && (t.kind === "tools" || t.kind === "connect"); })();
+  const stripFacts = !setup && project && home.tab === "now" && (atRest || !!resHero || mode === "review") ? homeFacts(listOwnsCaught ? { ...m, caught: null } : m, { now: clock, tools: doneTools }).filter((f) => !(mode === "review" && f.id === "changes") && !(sideSaysTools && f.id === "tools")) : [];
   const stripOpen = (id: NotchFactId) => {
     if (id === "changes") openReview();
     else if (id === "tools") { setSetPlace("fixing.tools"); pickTab("settings"); }
@@ -2433,7 +2449,8 @@ export function Card() {
       <div className="inner" ref={inner}>
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
-        onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} counts={reviewOn && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined} />}
+        onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} counts={reviewOn && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}
+        tools={project ? sideTools(m, doneTools) : null} onTool={(g) => { if (g.then?.set) { setSetPlace(g.then.set); pickTab("settings"); } else pickTab("now"); }} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
       {!onboarded && <PartBoundary part="firstRun"><Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
         point={m.point} approvals={m.approvals} usage={m.proUsage ?? null} firstCheck={firstCheck} answer={answerFromFirstRun} fixFound={() => setTimeout(fixKnown, 0)} cloneLink={cloneLink} copying={copying} cloneNote={m.cloneNote} why={m.error ?? m.notice} /></PartBoundary>}
@@ -2699,6 +2716,7 @@ export function Card() {
         mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} /></div>}
       {/* M69 step 2: at rest the Last fix and Since then cards take the recent list's place (homeRest.tsx). */}
       {!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}
+      {!side && show("ask") && today && <div className="view view-lead">{today}</div>}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
       {/* M28: "Not connected" says how to fix it, and the fix is one press away. */}
@@ -2722,6 +2740,7 @@ export function Card() {
           headline (the audit, items 37 and 51). */}
       <div className="view" ref={view} role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}>
       {side && show("ask") && restBlock()}
+      {side && show("ask") && today}
       {show("whatsNew") && changes && (
         <section className="panel" role="status" aria-label={S.whatsNewTitle(changes.show[0].version)}>
           {changes.show.map((r) => (

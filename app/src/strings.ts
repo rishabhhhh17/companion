@@ -3541,4 +3541,80 @@ export const S = {
     stopped: "Stopped waiting. Nothing else was done.",
     close: "Close",
   },
+  // M84, the notch and Home, minimal but detailed (docs/milestones/M84-design-pass.md). The hover panel says something useful
+  // in every state from its first hover: one small card per AI tool with what it is doing now, the latest review with its
+  // proof, the next useful thing when nothing was reviewed yet, and the key to press. Home's side list of the AI tools and
+  // Now's calm timeline of today use the same words.
+  m84: {
+    // A tool's small mark: two letters, drawn in a grey tile (never a logo: names are the tools' own, marks are ours).
+    mark: { claude: "CC", codex: "Cx", cursor: "Cu", copilot: "Co", antigravity: "Ag", gemini: "Ge", windsurf: "Ws" } as Record<"claude" | "codex" | "cursor" | "copilot" | "antigravity" | "gemini" | "windsurf", string>,
+    // What each AI tool is doing now, as far as its hooks say.
+    toolState: {
+      waiting: "Waiting on you",
+      watching: "Connected, watching",
+      partly: "Half connected",
+    } as Record<"waiting" | "watching" | "partly", string>,
+    toolsLabel: "Your AI tools",
+    toolSay: (name: string, state: string) => `${name}: ${state}. Opens ${PRODUCT}`,
+    more: (n: number) => `+${n} more`,
+    moreSay: (n: number) => `${n} more AI ${n === 1 ? "tool" : "tools"}. Opens ${PRODUCT}`,
+    looking: "Checking your AI tools",
+    lookingLine: "One moment",
+    // No answer in a few seconds (or the engine refused): said plainly, with Open, never "One moment" forever.
+    unknown: "Couldn't check your AI tools",
+    unknownLine: "Open to see them",
+    connect: "Connect your AI tools",
+    connectLine: `So ${PRODUCT} knows when they finish, or wait on you`,
+    // The head when the person's Claude Code waits for them (the waiting hook).
+    waitingHead: "Claude Code is waiting on you",
+    // The latest review, as a small card.
+    reviewLabel: "Latest review",
+    proof: { passed: "Checks passed", failed: "Checks failed", none: "Not checked" } as Record<"passed" | "failed" | "none", string>,
+    reviewed: (n: number) => `Reviewed ${n} ${n === 1 ? "file" : "files"}`,
+    undo: "Undo",
+    undoSay: (title: string) => `Undo: ${title}. Opens ${PRODUCT} to ask first`,
+    see: "See it",
+    seeSay: (title: string) => `See it: ${title}. Opens ${PRODUCT}`,
+    // The next useful thing, when nothing was reviewed yet.
+    next: {
+      changes: (n: number) => `${n} ${n === 1 ? "file" : "files"} changed since you last looked`,
+      changesLine: "Review them before you build on them",
+      since: "Files changed since the last check",
+      sinceLine: "Check again to see if it still works",
+      practice: "Try it on a practice project first",
+      practiceLine: "It can't touch anything real. About a minute.",
+      unchecked: "Check it once to see where it stands",
+      uncheckedLine: "Runs your project's own checks, then a browser check",
+      quiet: "Nothing new since you last looked",
+      quietLine: "Reviews and fixes show up here as they happen",
+      pick: "Or try a practice project first",
+      off: `Open ${PRODUCT} to start it again`,
+      offLine: "Nothing can run until it is back",
+      notConnected: "Add your Claude to start",
+      notConnectedLine: `${PRODUCT} uses your own Claude, never ours`,
+    },
+    // The key hint at the panel's foot.
+    keyBefore: "Press",
+    keyAfter: "when stuck",
+    keyStop: "to stop",
+    keyLabel: "Check my project from anywhere",
+    progress: (step: string) => `Working: ${step}`,
+    // Home's slim side list of the AI tools.
+    sideTitle: "AI tools",
+    // Now's calm timeline of today.
+    today: "Today",
+    todayLabel: "What happened today",
+    line: {
+      fixed: (task: string) => `Fixed and proven: ${task}`,
+      failed: (task: string) => `Not fixed yet: ${task}`,
+      undone: (task: string) => `Undone: ${task}`,
+      stopped: (task: string) => `Stopped: ${task}`,
+      reviewed: (n: number, summary: string) => `Reviewed ${n} ${n === 1 ? "file" : "files"}${summary ? `: ${summary}` : ""}`,
+      caught: (command: string) => `Caught: saved a copy before ${command}`,
+    },
+    todayEmpty: "Nothing yet today",
+    todayEmptyLine: `What your AI tools change, and what ${PRODUCT} reviews, catches and fixes, lands here as it happens.`,
+    todayEmptyAct: "See all history",
+    todayEmptyConnect: "Connect your AI tools",
+  },
 } as const;

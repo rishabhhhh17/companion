@@ -7,7 +7,7 @@ import type { ReactElement } from "react";
 import type { ActionIcon } from "./dropmenu.ts";
 import type { Tab } from "./home.ts";
 
-type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron" | "warn" | "halt";
+type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shield" | "person" | "drop" | "keyboard" | "lock" | "info" | "sliders" | "wrench" | "chevron" | "warn" | "halt" | "plug";
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
@@ -26,6 +26,8 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   keyboard: <><rect x="3" y="6.5" width="18" height="11" rx="2" /><path d="M7 10.5h.01M10.5 10.5h.01M14 10.5h.01M17 10.5h.01M8 14h8" /></>,
   wrench: <path d="M14.5 4.5a4.5 4.5 0 00-4.2 6.1L4.5 16.4a1.8 1.8 0 002.6 2.6l5.8-5.8a4.5 4.5 0 006.1-4.2l-2.7 2.7-2.6-.7-.7-2.6z" />,
   chevron: <path d="M9.5 6l6 6-6 6" />,
+  // M84: Connect your AI tools, a plug in the same 1.5 point line as the rest of the set.
+  plug: <><path d="M9 3v4M15 3v4" /><path d="M6.5 7h11v3.5a5.5 5.5 0 0 1-11 0z" /><path d="M12 16v5" /></>,
   lock: <><rect x="5" y="10.5" width="14" height="9.5" rx="2" /><path d="M8.5 10.5V8a3.5 3.5 0 017 0v2.5" /></>,
   info: <><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></>,
   sliders: <><path d="M5 7h9M18 7h1M5 17h3M12 17h7" /><circle cx="16" cy="7" r="2" /><circle cx="10" cy="17" r="2" /></>,

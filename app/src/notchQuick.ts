@@ -44,14 +44,21 @@ export const QUICK_TOOL: Record<QuickId, ToolId | null> = { pick: null, ask: "as
 export type PanelLayout = "quick" | "job" | "question" | "result";
 /** The layout for what the panel shows (islandPanel.ts panelView): a question and a result keep today's cards. */
 export const panelLayout = (v: PanelView): PanelLayout => (v.kind === "questions" ? "question" : v.kind === "job" ? "job" : v.kind === "result" ? "result" : "quick");
-/** The fixed heights of the two new layouts (island.rs PANEL_MIN to PANEL_MAX), so a fact changing never moves anything.
- *  Three rows each (M83): the fact with Settings and Open, the row of short facts, then the buttons or the running job with
- *  Stop. The facts row keeps its place when it has no fact, so a fact coming or going never moves anything. The question
- *  and the result keep their measured card heights. ui/notch.css pins the same numbers. */
-export const LAYOUT_H = { quick: 128, job: 128 } as const;
+/** The height of the two layouts with all four rows (island.rs PANEL_MIN to PANEL_MAX; notchPeek.ts peekHeight). M84: the
+ *  rows are the head, the AI tools, a card and the foot, and each row it lists says something, so no room is ever kept for
+ *  an empty row (the M83 facts row kept 22 points even when empty, and read as a blank gap). Without a project or an engine
+ *  to ask, the tools row is left out and the panel is that much shorter (notchPeek.ts peekRows). The quick and job layouts
+ *  are the same height, so nothing moves as a job starts. The question and the result keep their measured card heights. */
+export const LAYOUT_H = { quick: 222, job: 222 } as const;
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";
+/** M84: Claude Code waits on the person in this very project (hook.waiting, model.ts claudeWaiting). */
+const claudeWaitsHere = (m: Model, project: string): boolean => !!project && !!m.claudeWaiting && m.claudeWaiting.project.replace(/\/+$/, "") === project.replace(/\/+$/, "");
+/** M84 review: the island's own line is the waiting hook's ("Needs you: Claude is waiting for you in ..."), for this
+ *  project: the head says it in its own words with the orange dot, never cut short with a grey one. Any other line (the
+ *  engine stopped, listening, an update) still comes first. */
+const waitingNote = (m: Model, note: string): boolean => !!note && note.includes(S.guard.waitingWhy("")) && claudeWaitsHere(m, projectOf(m));
 const reviewWaits = (m: Model): number => { const rv = m.review; return rv && rv.stage !== "reviewed" && rv.count > 0 ? rv.count : 0; };
 
 /** "Hey <name>" from what the person typed in Settings (you.name), or "Hi there". The Mac's account name is never read. Only
@@ -65,11 +72,14 @@ export const quickGreeting = (name: unknown): string => helloLine(cleanName(name
  *  Check my project button is there). It names only what Squibby itself saw: changes are "to review", never credited to or
  *  blamed on another tool. */
 export function quickFact(m: Model, now: number, note = ""): string {
+  if (waitingNote(m, note)) return S.m84.waitingHead;
   if (note) return note;
   if (!m.runnerUp) return S.islandOff;
   if (m.connected === "none") return S.islandNotConnected;
   if (m.approvals.length > 0) return S.hello.questions(m.approvals.length);
   const project = projectOf(m), name = nameOf(project);
+  // M84: the person's Claude Code waits on them in this project (the waiting hook): said first after a question here.
+  if (claudeWaitsHere(m, project)) return S.m84.waitingHead;
   if (!name) return S.notch.pickProject;
   const n = reviewWaits(m);
   if (n > 0) return S.notch.changes(name, n);
@@ -87,11 +97,13 @@ export function quickFact(m: Model, now: number, note = ""): string {
 /** M71: which fact quickFact says, by the same rules in the same order, so its dot takes that fact's meaning colour
  *  (meaning.ts FACT_MEANING): orange for changes to review, red for a problem, green for a passed check, grey otherwise. */
 export function quickFactKind(m: Model, now: number, note = ""): FactKind {
+  if (waitingNote(m, note)) return "waiting";
   if (note) return "note";
   if (!m.runnerUp) return "off";
   if (m.connected === "none") return "notConnected";
   if (m.approvals.length > 0) return "questions";
   const project = projectOf(m);
+  if (claudeWaitsHere(m, project)) return "waiting";
   if (!nameOf(project)) return "pickProject";
   if (reviewWaits(m) > 0) return "changes";
   const s = homeStatus(m, project, now);

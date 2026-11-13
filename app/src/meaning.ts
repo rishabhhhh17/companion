@@ -92,8 +92,10 @@ export function heroMeaning(o: { mode: HomeMode; tone: HeroTone; status: StatusK
 }
 
 /** The notch's hover panel fact (notchQuick.ts quickFact), as a meaning for its dot. */
-export type FactKind = "note" | "off" | "notConnected" | "questions" | "pickProject" | "changes" | "passed" | "failing" | "changedSince" | "notChecked" | "ready" | "working" | "listening";
+export type FactKind = "note" | "off" | "notConnected" | "questions" | "pickProject" | "changes" | "passed" | "failing" | "changedSince" | "notChecked" | "ready" | "working" | "listening" | "waiting";
 export const FACT_MEANING: Record<FactKind, Meaning> = {
   note: "ready", off: "problem", notConnected: "review", questions: "question", pickProject: "ready", changes: "review", passed: "proven",
   failing: "problem", changedSince: "review", notChecked: "notChecked", ready: "ready", working: "working", listening: "listening",
+  // M84: Claude Code waits on you (its waiting hook): a question in the orange of take a look.
+  waiting: "question",
 };

@@ -24,7 +24,8 @@ export const CATALOG: readonly PracticeEntry[] = [...(catalogJson as { practices
 export const COPY_BASE: string = NAMES.practiceCopyBase;
 /** Every start a copy's folder name may have: today's, then the names it had before a rename (copies made earlier). */
 const COPY_BASES: string[] = [COPY_BASE, ...NAMES.earlierPracticeCopyBases];
-const looksLikeCopy = (folder: string) => { const last = folder.split("/").filter(Boolean).at(-1) ?? ""; return COPY_BASES.some((b) => last.startsWith(`${b} `) || last === b); };
+/** Whether a folder is a practice copy by its name (practiceCopyBase, or a base it had before a rename). */
+export const looksLikeCopy = (folder: string) => { const last = folder.split("/").filter(Boolean).at(-1) ?? ""; return COPY_BASES.some((b) => last.startsWith(`${b} `) || last === b); };
 export const practiceOf = (id: unknown): PracticeEntry | undefined => CATALOG.find((e) => e.id === id);
 /** The first practice: the first run's recommended one. */
 export const FIRST_PRACTICE = CATALOG[0].id;

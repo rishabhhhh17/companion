@@ -236,3 +236,23 @@
 /* One rhythm: the lead's words end where its buttons end (the old waterline's room under them is retired with the sea), so
    the strip and the list follow at the lead's own space-4. */
 .home .hero.ui-lead .ui-lead-words.hero-words { margin-bottom: 0; }
+
+/* ---------- M84, Home minimal but detailed (docs/milestones/M84-design-pass.md) ----------
+   The side list of AI tools: one slim row per tool, its two letter mark in a tile, its name, and what it is doing now at the
+   end (a dot, with words only when it needs you or is half connected). */
+.side-tools { margin-top: var(--space-4); }
+.home[data-side] .side .side-tool { gap: var(--space-2); }
+.side-tool-mark { width: var(--tile-place); height: var(--tile-place); border-radius: var(--r-tile-md); font: var(--w-bold) calc(var(--t-caption) * .9) / 1 var(--font); letter-spacing: .02em; }
+.side-tool-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-block: var(--space-1); }
+.side-tool-state { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); }
+.side-tool[data-state="waiting"] .side-tool-state { color: var(--c-orange-text); }
+.side-recent { margin-top: var(--space-4); }
+/* Now's calm timeline of today: a quiet heading, then one line per event, its clock time in a fixed column, its tile and its
+   words. No card around it: it is the quiet floor of Now. */
+.today { margin-top: var(--space-6); }
+.today-title { margin: 0 0 var(--space-2); color: var(--fg-2); font: var(--w-strong) var(--t-caption) / var(--lh-caption) var(--font); letter-spacing: var(--track-body); text-transform: none; }
+.today-list { position: relative; display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.today-row { display: grid; grid-template-columns: var(--today-time) auto minmax(0, 1fr); align-items: center; gap: var(--space-3); min-height: var(--h-list-row, 32px); padding: var(--space-1) 0; color: var(--fg); font: var(--w-regular) var(--t-label) / var(--lh-label) var(--font); }
+.today-time { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); font-variant-numeric: tabular-nums; text-align: right; }
+.today-words { min-width: 0; overflow-wrap: anywhere; }
+.today-row { animation: ui-fade-in var(--dur-2) var(--ease-out) both; }

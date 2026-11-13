@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The notch, changed: 13 Nov 2026
+
+- **No more blank gap.** Resting the pointer on the notch used to show a greeting, one line, an empty row and two buttons. Now every row says something, from the very first time you hover after opening your Mac, even before you have opened Home.
+- **Your AI tools, one small card each.** Under the headline, a card for each AI tool connected in this project, with what it is doing now. When Claude Code is waiting on you, its card turns orange and says so, first. With no tool connected yet, one card says Connect your AI tools.
+- **The latest review, with its proof.** A small card says what was last checked, when, and whether its checks passed or failed. When the last fix can be undone, Undo is right there; it opens Home on its question, so nothing is undone without your yes.
+- **When nothing was checked yet,** the card says the next useful thing: the changes waiting, files changed since the last check, or trying a practice project first.
+- **Flowflow's face** sits beside the greeting, a thin line shows how far a job has got, and the foot shows the key to press when you are stuck.
+- **Home: your AI tools on the side.** The wide Home lists your AI tools under the places, each with what it is doing now.
+- **Now: a calm timeline of today.** Under the list, what was reviewed, caught, fixed and undone today, each with its time. Nothing yet? It says what will show up there, with one button.
+- **Not yet claimed:** "done and reviewed" for each tool on its own (today the review is one card for the project), and "waiting on you" for tools other than Claude Code, which have no waiting signal. Both are noted for a later step.
+
 ## Connect your AI tools, and hand Squibby the job: 12 Nov 2026
 
 - **Your AI tools.** A new screen lists the AI tools Squibby finds on this Mac, and only those: Claude Code, Codex, Cursor, VS Code (with Copilot), Antigravity, Gemini CLI and Windsurf. Each has one button, Connect. One card shows every file and every line it will add, and one yes adds them: Squibby then saves a copy before that tool runs a destructive command, and starts a review the moment it is done. Disconnect takes the lines out again. Tools that are not on this Mac are folded away under Not on this Mac. Find it in Settings, Fixing, in the first run after you pick a project, and on Now while no tool is connected.

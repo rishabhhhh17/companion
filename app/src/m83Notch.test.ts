@@ -114,8 +114,10 @@ describe("the facts row (M83)", () => {
       if (go.then) expect(arrivalFrom(go)).not.toBeNull();
       else expect(go).toEqual({});
     }
+    // M84 changed this on purpose: the facts row left the panel (Home's strip keeps the facts); every press in the panel
+    // goes through the one helper that only opens Home.
     const panel = read("./islandPanel.tsx");
-    expect(panel).toContain('invoke("island_go", f.go)');
+    expect(panel).toContain('const go = (g: Go) => { if (ready()) void invoke("island_go", g).catch(() => {}); };');
   });
 });
 
@@ -153,15 +155,16 @@ describe("the new size, pinned on both sides (M83)", () => {
     expect(clear).toBeLessThan(1280 / 2);
   });
 
-  test("the quick and job layouts are one fixed height with three rows, inside the shell's limits", () => {
-    expect(LAYOUT_H).toEqual({ quick: 128, job: 128 });
+  // M84 changed this on purpose (the founder, 13 Nov: the facts row kept 22 points even when empty and read as a blank gap):
+  // the panel is now four rows that each say something (notchPeek.ts peekRows), 222 points tall with all four, and the
+  // empty facts slot is gone. m84Peek.test.ts holds the new rows and heights.
+  test("the quick and job layouts are one fixed height, inside the shell's limits", () => {
+    expect({ ...LAYOUT_H }).toEqual({ quick: 222, job: 222 });
     const rs = read("../src-tauri/src/island.rs");
     const max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(max);
     const css = read("./ui/notch.css");
     expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${LAYOUT_H.quick}px;`);
-    expect(css).toMatch(/grid-template-rows: auto 22px auto;/);
-    // The facts row keeps its place even with no fact in it, so nothing moves when one comes or goes.
-    expect(read("./islandPanel.tsx")).toContain('<nav className="ip-facts"');
+    expect(read("./islandPanel.tsx")).not.toContain('<nav className="ip-facts"');
   });
 });
