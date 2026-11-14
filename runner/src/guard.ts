@@ -130,6 +130,9 @@ export type GuardDeps = {
   askLive?: () => boolean;
   /** M85: keeps the History row of an ask (the task log), with the reason. */
   asked?: (r: { project: string; command: string; reason: string; at: string }) => void;
+  /** M90: the person's own tool ran a command in this project (any guard request for a known project): it is working.
+   *  toolbusy.ts turns this into hook.busy, at most now and then. Only the project is passed, never the command. */
+  busy?: (project: string) => void;
   /** How long a "waiting" mark stays with no further event, in minutes (read each time). */
   waitingMinutes?: () => number;
   snapshotWaitMs?: number;
@@ -207,6 +210,7 @@ export class HookGuard {
     };
     if (!project) { done(""); return; }
     this.activity(project);
+    try { this.o.busy?.(project); } catch { /* the peek is a nicety; the answer always goes */ }
     const p = this.answer(project, text, m[3] === ".ask", done).catch(() => undefined).finally(() => done("")).finally(() => this.inFlight.delete(name));
     this.inFlight.set(name, p);
     await p;

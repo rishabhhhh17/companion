@@ -49,6 +49,7 @@ import { OsvClient } from "./review/osv.ts";
 import { setOwnSecretPatterns } from "./secretfiles.ts";
 import { isKeyPractice, practiceKeyStep } from "./practicekey.ts";
 import { DoneSignals, type DonePlan } from "./donesignal.ts";
+import { ToolBusy } from "./toolbusy.ts";
 import { HookGuard, SAVED_LABEL, waitingMinutesOf } from "./guard.ts";
 import { SessionStartNotes } from "./memory/sessionstart.ts";
 
@@ -134,7 +135,9 @@ const review = new ReviewService({
 });
 // M75 (roadmap 19, F30): the other tool's done signal. Only Squibby's own done folder is listened to; a marker for the project
 // being reviewed ends its quiet time at once. The hook is written only after the person's yes (donesignal.add, confirm).
-const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); review.doneSignal(p); } });
+// M90: the person's own tool working (its guard hook ran), said for Flowflow's peek out of the notch; its done hook ends it.
+const toolBusy = new ToolBusy({ emit: (e) => say(e) });
+const doneSignals = new DoneSignals(settings.data, { onDone: (p) => { guard.activity(p); toolBusy.done(p); review.doneSignal(p); } });
 doneSignals.start();
 // M78: the start block Claude Code's SessionStart hook prints, and the project's notes search index. Both are copies of the
 // notes files, written only while the person has the start hook set up; copies left from a hook that is gone are removed.
@@ -153,6 +156,7 @@ const guard = new HookGuard(doneSignals.guardFolder, {
   askLive: () => runnerSettings.get("safety.askBeforeLive") !== false,
   asked: (r) => { taskLog.asked({ ...r, by: "tool" }); },
   waitingMinutes: () => waitingMinutesOf(runnerSettings.get("notch.waitingMinutes")),
+  busy: (p) => toolBusy.seen(p),
 });
 guard.start();
 const doneState = (project: string, tools: DonePlan[], problem?: string) =>
@@ -181,7 +185,7 @@ const interrupts = new Interrupts();
   interrupts.register("watches", { stop: () => watches.stopAll(), groups: g.watches, close: () => watches.stop() });
   interrupts.register("review", { stop: () => review.stopAll(), close: () => review.stop() });
   interrupts.register("assist", { stop: () => assist?.cancelAll(), groups: g.assist });
-  interrupts.register("guard", { stop: () => guard.stopWaits(), close: () => guard.stop() });
+  interrupts.register("guard", { stop: () => { guard.stopWaits(); toolBusy.stop(); }, close: () => guard.stop() });
   // The hooks are the person's own Claude Code's: Stop everything ends nothing of theirs, and the engine closing stops
   // listening to them (the start files stay for the next session, M78).
   interrupts.register("doneSignals", { stop: () => undefined, close: () => doneSignals.stop() });

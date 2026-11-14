@@ -1,0 +1,29 @@
+/* M90 (F32): Flowflow peeking out of the notch (peekOutPage.tsx). The window sits beside the notch, as tall as it, and
+   touches its edge; everything here is drawn inside it and clipped by it, so sliding toward the notch slides behind it. A
+   black lip like the notch's own grows out of its side (the window reaches --peekout-overlap under the notch, so the lip
+   fills the notch's round corner and the two read as one shape), and Flowflow's head shows over the lip's lower edge: its eyes and
+   the top of its head only. Sizes are tokens (tokens.css --peekout-*); peekout.rs counts the same numbers for its click
+   through. */
+html.peekout-page, body.peekout-page { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+.peekout { position: fixed; inset: 0; overflow: hidden; --peekout-size: min(var(--peekout-head), 135vh); }
+.peekout-hit { all: unset; position: absolute; inset: 0; display: block; cursor: pointer; }
+.peekout-hit:focus-visible { outline: none; }
+/* Out from behind the notch: toward it is hidden, away from it is shown. */
+.peekout-slide { position: absolute; inset: 0; transform: translateX(100%); transition: transform var(--dur-exit-sheet) var(--ease-exit); }
+.peekout[data-side="right"] .peekout-slide { transform: translateX(-100%); }
+.peekout[data-in] .peekout-slide, .peekout[data-side="right"][data-in] .peekout-slide { transform: translateX(0); transition: transform var(--dur-4) var(--ease-out); }
+/* Reduce Motion or Less motion: a fade only, in place. */
+.peekout[data-reduced] .peekout-slide, .peekout[data-reduced][data-side="right"] .peekout-slide { transform: none; opacity: 0; transition: opacity var(--dur-1) linear; }
+.peekout[data-reduced][data-in] .peekout-slide { opacity: 1; }
+.peekout-lip { position: absolute; inset: 0; background: var(--notch); border-bottom-left-radius: var(--r-peekout); }
+.peekout[data-side="right"] .peekout-lip { border-bottom-left-radius: 0; border-bottom-right-radius: var(--r-peekout); }
+.peekout-head { position: absolute; width: var(--peekout-size); height: var(--peekout-size); left: calc((100% - var(--peekout-overlap) - var(--peekout-size)) / 2); top: calc(100vh - var(--peekout-size) * var(--peekout-shown)); pointer-events: none; }
+/* The live water: the orb is 60 percent of its canvas and sits a little above the canvas's middle (flowflow/engine.ts
+   ORB_RADIUS and REST_Y), so the canvas is placed for the orb to fill the head. */
+.peekout-head .peekout-canvas { position: absolute; width: 166.7%; height: 166.7%; left: -33.3%; top: -25.8%; display: block; pointer-events: none; }
+/* The pictures: the bubble's own box inside each 351 by 249 picture (characters/water). */
+.peekout-head .peekout-pic { position: absolute; width: 197.2%; height: auto; left: -57.9%; top: -12.4%; pointer-events: none; user-select: none; -webkit-user-select: none; }
+/* Waiting on you: a small amber dot at the head's outer top corner. */
+.peekout-dot { position: absolute; top: 0; left: 0; width: var(--peekout-dot); height: var(--peekout-dot); border-radius: 50%; background: var(--amber); box-shadow: 0 0 0 var(--peekout-ring) var(--notch); }
+.peekout[data-side="right"] .peekout-head { left: calc(var(--peekout-overlap) + (100% - var(--peekout-overlap) - var(--peekout-size)) / 2); }
+.peekout[data-side="right"] .peekout-dot { left: auto; right: 0; }

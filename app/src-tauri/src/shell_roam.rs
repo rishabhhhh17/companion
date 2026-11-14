@@ -237,9 +237,13 @@ fn peek_placed() { *PEEK_POSE.lock().unwrap_or_else(|e| e.into_inner()) = peek::
 /// person (it stays in view), or be a light (listening, looking at the screen). A light brings it fully in at once, and
 /// the caller waits for that before the microphone opens or the screen is read (rule 5).
 pub(crate) fn peek_heard(app: &AppHandle, v: &Value) {
-    // Most events are not news for peeking (a tool line, the cost): nothing more is done for them.
+    // Most events are not news for peeking (a tool line, the cost): nothing more is done for them. Stop everything and the
+    // lights are all news (peek::news_of), so the peek out of the notch hears each of them below.
     if peek::news_of(v).is_empty() { return; }
     let lit = peeker().hear(v, now() as u64, quiet);
+    // M90: Stop everything and the lights hide Flowflow peeking out of the notch (shell_peekout.rs). After the light is set,
+    // so the peek reads it on, and waited for, so it is gone before the microphone opens or the screen is read (rule 5).
+    peekout_heard(app, v);
     if lit { peek_now(app, true); } else { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
 }
 
@@ -543,6 +547,8 @@ fn home_setting_applied(app: &AppHandle, key: &str) {
         "character.lively" | "character.follow" | "character.restLowPower" => { gaze_recompute(); follow_wake(); }
         // Peeking turned on or off: the character goes where it should be now (fully in when off).
         "character.peek" | "character.peekIdle" => { let a = app.clone(); let _ = app.run_on_main_thread(move || peek_apply(&a, false)); }
+        // M90: Flowflow peeking out of the notch turned on or off, or moved to the other side.
+        "notch.peek" | "notch.peekSide" => { let _ = app.run_on_main_thread(|| { PEEKOUT_TOLD.lock().unwrap_or_else(|e| e.into_inner()).take(); peekout_apply("setting"); }); }
         // Close Home when I click another app: the watch reads the setting at each look (watch_home), so the click away
         // stops at once when it is turned off, or starts when it is turned on; the click through goes on either way.
         "home.closeOnClickAway" => {}

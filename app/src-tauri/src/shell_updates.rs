@@ -146,6 +146,8 @@ fn apply_sharing(s: &presentation::Settings) {
     OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setSharingType(t); } });
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { p.setSharingType(t); } });
     FOLLOW.with(|f| { if let Some(p) = f.borrow().as_ref() { p.setSharingType(t); } });
+    // M90: Flowflow peeking out of the notch.
+    PEEKOUT.with(|p| { if let Some(p) = p.borrow().as_ref() { p.setSharingType(t); } });
 }
 
 /// Quiet during calls: a known call app is in front (and, once verified, a camera is in use, or another app uses a

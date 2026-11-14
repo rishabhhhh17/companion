@@ -142,7 +142,7 @@ export class FlowflowRenderer {
     // M60: the two bubbles, from the orb's centre in body units. They do not take its float, so at rest they hold still
     // while it bobs (Gentle).
     const fl = s.followers, bub = u.uBub.value as Vector4, bzr = u.uBubZR.value as Vector4;
-    if (!fl) { bub.set(0, 0, 0, 0); bzr.set(0, 0, 0, 0); }
+    if (!fl || s.pinned) { bub.set(0, 0, 0, 0); bzr.set(0, 0, 0, 0); }   // M90 review: none while pinned (the peek)
     else {
       const dy = pose.y + s.float;
       bub.set((fl.x[0] - pose.x) / BODY_SCALE, (fl.y[0] - dy) / BODY_SCALE, (fl.x[1] - pose.x) / BODY_SCALE, (fl.y[1] - dy) / BODY_SCALE);

@@ -79,6 +79,8 @@ export type Snapshot = {
   followers: Followers;
   /** M60: how far above the frame's middle the orb's centre rests (REST_Y, or REST_Y_FLAT over a floor). */
   restY: number;
+  /** M90 review: pinned for the peek out of the notch (FlowflowEngine.pinned): the renderer draws no following bubbles. */
+  pinned?: boolean;
 };
 
 /** M37c (the founder: "when it gets close to the water it sticks to the sides… the more I push it towards it, the flatter
@@ -136,6 +138,12 @@ export class FlowflowEngine {
   private eyesOn: 0 | 1 | 2 | 3 = 0;
   /** How far the body may roam toward the pointer, as a fraction of the frame (the dock is tiny, the preview is large). */
   followRange = 0.35;
+  /** M90 review (the peek out of the notch, a 60 by 32 point window that shows only the eyes and the top of the head): the
+   *  orb holds its place and size. No reaction, pointer or float moves it, it sheds no drops, its bubbles are not drawn,
+   *  sleepy's rising bubbles are left out, and proud adds a small smile to its happy arcs so it reads as proud this small.
+   *  Only what is drawn changes (snapshot); its own look and moods stay as they are. */
+  pinned = false;
+  private pinLook: Look | null = null;
   private halfW = 1.6; private halfH = 1.1;
 
   constructor(tuning: Partial<Tuning> = {}, seed = 7) {
@@ -174,7 +182,7 @@ export class FlowflowEngine {
     if (this.mode !== "lively" || !Number.isFinite(nx) || !Number.isFinite(ny)) return;
     this.lastLook = this.time; this.lastMove = this.time;
     this.lookX = nx; this.lookY = ny; this.face.setTarget(nx, ny);
-    this.body.setTarget(this.hx + nx * this.halfW * this.followRange, this.hy + ny * this.halfH * this.followRange);
+    if (!this.pinned) this.body.setTarget(this.hx + nx * this.halfW * this.followRange, this.hy + ny * this.halfH * this.followRange);
   }
   /** The pointer anywhere on the screen (M20): the eyes look toward it and the body leans a little that way. */
   gaze(dx: number, dy: number): void {
@@ -183,7 +191,7 @@ export class FlowflowEngine {
     if (g.nx === 0 && g.ny === 0 && !(dx === 0 && dy === 0)) return;
     this.lastLook = this.time; this.lastGaze = this.time;
     this.lookX = g.nx; this.lookY = g.ny; this.face.setTarget(g.nx, g.ny);
-    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD) this.body.setTarget(this.hx + g.nx * this.halfW * 0.12, this.hy + g.ny * this.halfH * 0.12);
+    if (!this.pinned && !this.pushing && this.time - this.lastMove >= FOLLOW_HOLD) this.body.setTarget(this.hx + g.nx * this.halfW * 0.12, this.hy + g.ny * this.halfH * 0.12);
   }
   /** Its window is moving (a peek, a trip to a window, a drag), `vx, vy` in points a second (y down): the water lags
    *  behind like jelly. A speed of nothing lets it catch up, and it squashes and wobbles as it settles. */
@@ -324,7 +332,8 @@ export class FlowflowEngine {
     // M55: where it rests (the lift, the dip, the lean). It goes there when that changes, and after the pointer, whenever
     // nothing else is moving it (the pointer, its window).
     const moved = this.aimHome(true);
-    if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && (moved || this.time - this.lastLook < LOOK_HOLD + 1)) this.body.setTarget(this.hx, this.hy);
+    if (this.pinned) this.body.setTarget(0, 0);
+    else if (!this.pushing && this.time - this.lastMove >= FOLLOW_HOLD && this.time - this.lastGaze >= FOLLOW_HOLD && (moved || this.time - this.lastLook < LOOK_HOLD + 1)) this.body.setTarget(this.hx, this.hy);
     // M46: the sway eases toward the choice's amount in a straight line, so Still's reaches exactly 0 and holds there.
     { const to = this.swayTarget(), stepK = d / SWAY_FADE_S; this.swayK = this.swayK < to ? Math.min(to, this.swayK + stepK) : Math.max(to, this.swayK - stepK); }
     this.swayT += d * SWAY[this.mode].rate;
@@ -338,11 +347,12 @@ export class FlowflowEngine {
     this.face.update(d, look, on !== 0);
     // Droplets leave in proportion to how fast the body moves and how readily this mood sheds them: no dice. M46: none
     // unless Lively (a touch or a done still sends its own few).
-    this.credit += (this.mode === "lively" ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
+    this.credit += (this.mode === "lively" && !this.pinned ? look.droplets : 0) * Math.min(2, this.body.pose.speed) * 0.9 * d;
     if (this.credit >= 1) { this.credit -= 1; const p = this.body.pose; this.emitDroplet(-p.dirX * BODY_RADIUS * 0.6, -p.dirY * BODY_RADIUS * 0.6 + 0.2, 0.4); }
     this.droplets.update(d, this.body.pose.x, this.body.pose.y);
     this.followers.update(d, this.followFrame());
     for (let i = this.followers.takePop(); i >= 0; i = this.followers.takePop()) {   // a bubble popped: a little spray from where it was
+      if (this.pinned) continue;
       const fl = this.followers;
       for (let k = 0; k < 2; k++) this.droplets.emit(fl.x[i], fl.y[i], (k - 0.5) * 0.7, 0.9, 0.035 - i * 0.008);
     }
@@ -356,6 +366,7 @@ export class FlowflowEngine {
   private reactToEntered(): void {
     const s = this.behavior.takeEntered();
     if (!s) return;
+    if (this.pinned) { if (s === "worried") this.sweatFrom = this.time; return; }   // M90 review: no splash, lift or dip
     const g = this.tuning.ripple * this.behavior.look.rippleGain;
     const p = this.body.pose;
     // M60: done sends no drops of its own now: its two bubbles rise and pop, and each pop sprays a few (update).
@@ -412,7 +423,18 @@ export class FlowflowEngine {
     s.sway = this.swayK; s.swayTime = this.swayT; s.pulse = this.behavior.pulse; s.restY = this.restY;
     // M83: the sweat drop slides down once while worried (SWEAT_S), then is gone.
     s.sweat = this.behavior.state === "worried" ? Math.min(1, Math.max(0, (this.time - this.sweatFrom) / SWEAT_S)) : -1;
-    s.float = this.behavior.look.floatAmp * this.swayK * Math.sin(this.swayT * 0.9);
+    s.float = this.pinned ? 0 : this.behavior.look.floatAmp * this.swayK * Math.sin(this.swayT * 0.9);
+    s.pinned = this.pinned;
+    s.look = this.pinned ? this.pinnedLook(this.behavior.look) : this.behavior.look;
     return s;
+  }
+
+  /** M90 review: the look drawn while pinned: never bigger than at rest, no rising bubbles, and a smile with proud's glow. */
+  private pinnedLook(l: Look): Look {
+    const p = this.pinLook ?? (this.pinLook = { ...l });
+    Object.assign(p, l);
+    p.expand = Math.min(0, l.expand); p.zz = 0; p.droplets = 0; p.floatAmp = 0;
+    p.mouth = Math.max(l.mouth, Math.min(1, Math.max(0, (l.glow - 0.2) / 0.6)));
+    return p;
   }
 }

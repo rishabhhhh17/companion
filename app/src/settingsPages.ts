@@ -51,7 +51,9 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
-      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "runway.mark"] },
+      // M90 (F32): the notch at rest, beside it: the character peeking out, its side and how long it stays out. In More
+      // options because General's main level already holds its ten (the spec, 3.4).
+      { id: "more.general.notch", items: ["island.pointOpens", "notch.peek", "notch.peekSide", "notch.peekHideAfter", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "runway.mark"] },
       // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
       { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", f("usedOften")] },

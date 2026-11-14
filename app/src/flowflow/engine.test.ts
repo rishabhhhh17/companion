@@ -269,3 +269,39 @@ describe("the orb and its followers (M60)", () => {
     expect(e.followers.z[0]).toBe(0); expect(e.followers.r[1]).toBe(FOLLOWER_RADII[1]); expect(e.followers.x[0]).toBeLessThan(0);
   });
 });
+
+describe("M90 review: pinned for the peek out of the notch (a 60 by 32 point window)", () => {
+  const pinned = () => { const e = new FlowflowEngine(); e.pinned = true; e.mode = "lively"; return e; };
+  test("proud holds its place and size, sends no drops and no bubbles, and smiles so it reads as proud at this size", () => {
+    const e = pinned(); run(e, 1); e.applyReaction("proud");
+    let maxMove = 0, maxExpand = -1, s = e.update(1 / 60);
+    for (let t = 0; t < 3; t += 1 / 60) { s = e.update(1 / 60); maxMove = Math.max(maxMove, Math.hypot(s.pose.x, s.pose.y), Math.abs(s.float)); maxExpand = Math.max(maxExpand, s.look.expand); }
+    expect(maxMove).toBeLessThan(0.01);
+    expect(maxExpand).toBeLessThanOrEqual(0);
+    expect(e.droplets.alive).toBe(0);
+    expect(s.pinned).toBe(true);   // the renderer draws no following bubbles
+    expect(s.look.mouth).toBeGreaterThan(0.5);
+    expect(s.look.eyeArc).toBeGreaterThan(1);
+    // Its own look is untouched: only what is drawn for the peek changes.
+    expect(e.behavior.look.expand).toBeGreaterThan(0);
+  });
+  test("sleepy has its heavy lids but no rising bubbles, which a 32 point window would cut", () => {
+    const e = pinned(); run(e, 1); e.applyReaction("sleepy"); run(e, 6);
+    const s = e.update(1 / 60);
+    expect(s.look.zz).toBe(0);
+    expect(s.look.lid).toBeGreaterThan(0.5);
+  });
+  test("hello, worried and the pointer never move it either", () => {
+    for (const r of ["hello", "worried", "watching"] as const) {
+      const e = pinned(); run(e, 1); e.applyReaction(r); e.pointer(0.9, 0.9); e.gaze(400, 0);
+      let maxMove = 0; for (let t = 0; t < 2; t += 1 / 60) { const s = e.update(1 / 60); maxMove = Math.max(maxMove, Math.hypot(s.pose.x, s.pose.y)); }
+      expect(maxMove).toBeLessThan(0.01);
+    }
+  });
+  test("not pinned (the dock, Home): proud still grows and its bubbles still show", () => {
+    const e = new FlowflowEngine(); run(e, 1); e.applyReaction("proud"); run(e, 1);
+    const s = e.update(1 / 60);
+    expect(s.look.expand).toBeGreaterThan(0);
+    expect(s.pinned ?? false).toBe(false);
+  });
+});

@@ -135,6 +135,9 @@ describe("the shipped list of settings", () => {
       // M77 (the safety net): weakened checks flagged first (on), the notch's waiting mark cleared after 15 minutes, and the
       // week's count shown (on, only when above zero).
       "review.weakenedChecks": true, "notch.waitingMinutes": "15", "history.thisWeek": true,
+      // M90 (F32, the founder, 14 Nov 2026: the notch at rest is no longer bare): Flowflow peeks out of the notch (on), from
+      // its left side, and hides 2 minutes after the last thing that happened.
+      "notch.peek": true, "notch.peekSide": "left", "notch.peekHideAfter": "2",
       // M78 (memory that is never lost): a fix that ended not proven leaves a tried and failed line (on).
       "memory.triedAndFailed": true,
       // M79 (T18): known serious problems in new packages looked up on OSV.dev, names and versions only (on).
@@ -195,6 +198,13 @@ describe("the shipped list of settings", () => {
     expect(defOf("replay.reduceMotion")).toMatchObject({ section: "watch", kind: "choice", default: "followMac", options: ["followMac", "still", "moving"], applies: ["pages"] });
     expect(defOf("replay.model")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
     expect(validate(defOf("replay.speed")!, "turbo").ok).toBe(false);
+  });
+  test("M90: Flowflow peeks out of the notch: on, its side and how long it stays out", () => {
+    expect(defOf("notch.peek")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["shell", "pages"] });
+    expect(defOf("notch.peekSide")).toMatchObject({ section: "home", kind: "choice", default: "left", options: ["left", "right"], scope: "app", applies: ["shell", "pages"] });
+    expect(defOf("notch.peekHideAfter")).toMatchObject({ section: "home", kind: "choice", default: "2", options: ["1", "2", "5", "10"], scope: "app", applies: ["pages"] });
+    expect(validate(defOf("notch.peekSide")!, "up").ok).toBe(false);
+    expect(validate(defOf("notch.peekHideAfter")!, "3").ok).toBe(false);
   });
   test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
     expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });

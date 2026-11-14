@@ -541,6 +541,9 @@ export type AskedRowView = { id: number; at: string; command: string; reason: st
 /** M77: Claude Code is waiting for the person in this project (a permission or its idle prompt), or no longer is. message:
  *  Claude Code's own short notification (120 characters, redacted), never the question itself. */
 export type HookWaiting = Envelope & { type: "hook.waiting"; project: string; waiting: boolean; message?: string };
+/** M90: the person's own AI tool is working in a project (its guard hook saw it run a command), or is done (its done hook).
+ *  Said at most once every few seconds per project; only the project, never the command. Flowflow peeks out watching. */
+export type HookBusy = Envelope & { type: "hook.busy"; project: string; busy: boolean };
 /** M75: a task has used far more than a usual task here, and waits for the person. No amount (F29, M69). */
 export type CostPause = Envelope & { type: "cost.pause"; agent: string; project: string };
 export type CostResolved = Envelope & { type: "cost.resolved"; agent: string; choice: (typeof COST_CHOICES)[number] };
@@ -683,7 +686,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved;
+export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -1118,6 +1121,7 @@ const EVENTS: Record<string, Check[]> = {
   // names its project, and its message is Claude Code's own short notification (never over 120 characters).
   "guard.saved": [str("project"), str("checkpoint"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters')],
   "guard.asked": [str("project"), (m) => (typeof m.command === "string" && m.command.length > 0 && Array.from(m.command).length <= 80 ? null : '"command" must be a short text, at most 80 characters'), (m) => (typeof m.reason === "string" && m.reason.length > 0 && Array.from(m.reason).length <= 300 ? null : '"reason" must be text, at most 300 characters')],
+  "hook.busy": [str("project"), bool("busy")],
   "hook.waiting": [str("project"), bool("waiting"), opt("message", (m) => (typeof m.message === "string" && Array.from(m.message).length <= 120 ? null : '"message" must be text, at most 120 characters'))],
   "cost.pause": [str("agent"), str("project"), (m) => (Object.keys(m).some((k) => /usd|cost|amount|spent|limit/i.test(k)) ? "the cost pause carries no amount" : null)],
   "cost.resolved": [str("agent"), oneOf("choice", [...COST_CHOICES])],

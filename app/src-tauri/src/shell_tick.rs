@@ -59,6 +59,8 @@ fn tick(app: &AppHandle) {
     }
     // M46: rest (a call, or Low Power Mode) and whether the island may open by itself.
     rest_tick(app, mtm);
+    // M90: a call starting or ending, and Stop's hold ending, for Flowflow peeking out of the notch.
+    peekout_tick();
     // M89: an update found may install while the person is away (shell_updates.rs; every 30 seconds, times and yes or no only).
     quiet_update_tick(app);
     // A screen plugged in or out, a resolution change, or the macOS Dock moving: put the character back inside.

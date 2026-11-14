@@ -167,6 +167,11 @@
   /* M84: the notch panel's own sizes (notchPeek.ts PEEK_ROW_H holds the row heights): Flowflow's face, a tool's mark, the
      progress line and the timeline's time column. */
   --peek-face: 30px; --peek-mark: 26px; --peek-line: 2px; --today-time: 64px;
+  /* M90: Flowflow peeking out of the notch (peekOutPage.tsx, peekout.rs PEEK_W): its window's width beside the notch, its head
+     at most this big (smaller in a short menu bar), how much of the head shows above the menu bar's bottom edge, the amber
+     dot, the lip's outer corner, and how far the window reaches under the notch (so the lip fills the notch's own round
+     corner and the two read as one black shape). */
+  --peekout-w: 60px; --peekout-head: 44px; --peekout-shown: .64; --peekout-dot: 7px; --peekout-ring: 1.5px; --r-peekout: 10px; --peekout-overlap: 10px;
   --space-row-y: 10px;                 /* a row's padding, top and bottom */
   --space-field-x: 10px;               /* inside a field, a sidebar item */
   --space-btn-x: 16px;                 /* a primary button */

@@ -5,6 +5,7 @@
 
 mod docking;
 mod peek;
+mod peekout;
 mod gaze;
 mod google;
 mod claude_install;
@@ -582,6 +583,8 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
         },
     }
     if moved { log("island_placed", json!({ "reason": reason, "how": how, "screen": d.id, "kind": kind.word(), "frame": f })); }
+    // M90: the peek beside it follows (its place, and hidden while the island's panel or Home is out).
+    peekout_apply("island");
 }
 
 /// Sets the island's window to `f` (global top left points) at once. Every frame of the island goes through here. Main thread.
@@ -602,6 +605,8 @@ static ISLAND_PASS: AtomicBool = AtomicBool::new(false);
 /// may say nothing while the window lets the pointer through, so moving into a clear part leaves the island, and coming
 /// back onto the black enters it again. Main thread.
 fn island_pointer_moved() {
+    // M90: the peek's click through and hover follow the same moves.
+    peekout_pointer_moved();
     let Some(mtm) = MainThreadMarker::new() else { return };
     let Some(shape) = *ISLAND_SHAPE.lock().unwrap_or_else(|e| e.into_inner()) else { return };
     let ph = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
@@ -649,6 +654,8 @@ fn island_show(on: bool) {
     let on = on && home_set().island_show;
     ISLAND.with(|i| { if let Some(p) = i.borrow().as_ref() { if on { p.orderFrontRegardless(); } else { p.orderOut(None); } } });
     if !on { reset_hover(); }
+    // M90: the peek beside it goes and comes with it.
+    peekout_apply("island");
 }
 
 /// The island's frame in global top left points, if it is on screen. Main thread.
@@ -1373,6 +1380,7 @@ include!("shell_keys.rs");
 include!("shell_voice.rs");
 include!("shell_tick.rs");
 include!("shell_drop.rs");
+include!("shell_peekout.rs");
 
 fn main() {
     // The helper of "delete everything" runs before anything of the app starts.
@@ -1471,7 +1479,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in, peekout_want, peekout_state]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
@@ -1513,6 +1521,8 @@ fn main() {
                 .on_page_load(|_, p| if matches!(p.event(), tauri::webview::PageLoadEvent::Finished) { FOLLOW_PAGE_AT.store(now() as u64, Ordering::SeqCst); follow_wake(); })
                 .build()?;
             let island_w = WebviewWindowBuilder::new(app, "island", WebviewUrl::App("island.html".into())).visible(false).focused(false).decorations(false).transparent(true).accept_first_mouse(true).inner_size(185.0, 32.0).build()?;
+            // M90 (F32): Flowflow peeking out of the notch, in its own small window beside the island (shell_peekout.rs).
+            let peekout_w = WebviewWindowBuilder::new(app, "peekout", WebviewUrl::App("peekout.html".into())).visible(false).focused(false).decorations(false).transparent(true).accept_first_mouse(true).inner_size(peekout::PEEK_W, 32.0).build()?;
             // F19: a file dropped on the character or the island. Tauri's own drop events, on these two windows only.
             for (w, at) in [(&dock_w, "dock"), (&island_w, "island")] {
                 let a = app.handle().clone();
@@ -1585,6 +1595,16 @@ fn main() {
             island.setLevel(island::LEVEL);
             add_hover_tracking(mtm, &island);
             ISLAND.with(|i| *i.borrow_mut() = Some(island));
+            // M90: borderless and non activating like the island (never key), see through, at the island's level, and
+            // letting every click through until the pointer is on Flowflow's head (peekout_pointer_moved).
+            let peekout_ns: &NSWindow = unsafe { &*(peekout_w.ns_window()? as *const NSWindow) };
+            let peekout = make_panel(mtm, peekout_ns, false, NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(peekout::PEEK_W, 32.0)));
+            peekout.setOpaque(false);
+            peekout.setHasShadow(false);
+            peekout.setBackgroundColor(Some(&NSColor::clearColor()));
+            peekout.setLevel(island::LEVEL);
+            peekout.setIgnoresMouseEvents(true);
+            PEEKOUT.with(|p| *p.borrow_mut() = Some(peekout));
             PANELS.with(|p| *p.borrow_mut() = Some((dock, card)));
             // Hide from screen sharing (on unless turned off), set before anything is ever drawn.
             apply_sharing(&presentation_now());
@@ -1906,6 +1926,7 @@ pub(crate) fn main_src() -> &'static str {
             ("shell_voice.rs", include_str!("shell_voice.rs")),
             ("shell_tick.rs", include_str!("shell_tick.rs")),
             ("shell_drop.rs", include_str!("shell_drop.rs")),
+            ("shell_peekout.rs", include_str!("shell_peekout.rs")),
         ];
         let mut src = include_str!("main.rs").to_string();
         for (name, text) in parts {

@@ -42,6 +42,8 @@ New decisions get the next number (F13, T16, and so on) and the same layout. A r
 | [F28](F28-one-product-status-first-quiet-by-choice.md) | The launch cut: one product (Fix it with proof, a receipt and Undo), Home tells the state first, the notch is bare, the person picks how lively Flowflow is (30 Oct 2026) |
 | [F29](F29-squibby-pays-and-picks-the-model.md) | People pay Squibby, Squibby picks the model and pays for it; nobody signs in to an AI provider (1 Nov 2026; replaces F10) |
 | [F30](F30-a-companion-to-every-ai-coding-tool.md) | A companion to every AI coding tool, for everyone: review every change your AI makes (1 Nov 2026; partly unparks F06) |
+| [F31](F31-yearly-students-and-invites.md) | Yearly billing, a student offer, and invite and earn (13 Nov 2026) |
+| [F32](F32-flowflow-peeks-out-of-the-notch.md) | Flowflow peeks out of the notch while something goes on, and hides when nothing does (14 Nov 2026; amends F28's bare notch at rest) |
 
 ## Technical decisions (accepted, open items checked where shown)
 

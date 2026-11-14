@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The character peeks out of the notch: 14 Nov 2026
+
+- **The notch at rest is no longer bare while something goes on.** While a Squibby job or review runs, or while your AI tool runs commands with the saved copy signal set up, the character's eyes and the top of its head peek out from the side of the notch, as if from behind it. It watches while that work runs, waits on you with a small amber dot when a tool needs you, looks proud when a review's checks pass and worried when one fails. When nothing goes on it gets sleepy, then slides back, and the notch is bare again. Without that signal, your own tool's work does not show.
+- **Point at it** as you would the notch: it does what pointing at the notch does for you. **Click it** to open Home. It never takes your keyboard, and clicks beside it still reach your menu bar.
+- **It stays out of the way.** It sits over the menu bar beside the notch, so it slides away while you point along the menu bar near it, and comes back when you move on. It hides during a call, while Squibby listens or looks at your screen, while Show me how is on, and the moment you press Stop everything. Hidden, it draws nothing at all.
+- **Your choice.** Settings, General, More options, Notch: turn it off, pick the left or right side, and how long it stays out after the last thing that happened (2 minutes unless you change it). With Draw live off it uses the character's pictures, which show fewer of these looks: proud and the resting face look the same, and so do watching and waiting except for the amber dot.
+
 ## How much of your Claude is left, jobs saved for after the reset, better speech, and quiet updates: 14 Nov 2026
 
 - **How much is left, in the notch.** When Claude says how full its limit is, the notch's hover panel shows a small ring with "Claude 42%" beside it, and its label says when it resets. It turns amber when the limit is close. Squibby shows only what Claude itself reports: with an API key, Claude reports no limit, so the ring shows only when Claude turns a request away ("Limit reached"). The notch itself, at rest, looks the same as before.

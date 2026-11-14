@@ -30,6 +30,8 @@ export type FlowflowViewProps = {
   resting?: boolean;
   /** M46: a small Flowflow (the notch's wing): working draws at WORK_INTERVAL in every choice, Lively included. */
   small?: boolean;
+  /** M90 review: pinned for the peek out of the notch: its place and size hold and nothing leaves it (FlowflowEngine.pinned). */
+  pinned?: boolean;
   /** M60: the orb's soft halo on a dark page; on unless turned off (Home draws its own glow behind it). */
   halo?: boolean;
   /** M55 (character.reacts): its small moves for what happens; on unless turned off. */
@@ -68,7 +70,7 @@ const ASK_MEASURE_MS = 400;
 /** The card is measured again once it has grown in (smoothMotion.ts, --dur-enter and a little). */
 const LEAN_SETTLED_MS = 450;
 
-export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo, waitForWarm, placeholder, mood = null }: FlowflowViewProps) {
+export function FlowflowView({ state, reduced, tuning, followRange, onFallback, className, controllerRef, colours, surface, liveliness, resting, small, halo, reacts, askId, leanTo, waitForWarm, placeholder, pinned, mood = null }: FlowflowViewProps) {
   // M66: the canvas is the pool's (pool.ts), put into this host and taken out again on close; the host has no box of its
   // own (display: contents), so the canvas is styled and placed as if it were here directly.
   const host = useRef<HTMLSpanElement>(null);
@@ -76,7 +78,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
   const ctl = useRef<FlowflowController | null>(null);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(() => !waitForWarm || flowflowPool().ready > 0);
-  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small, className, waitForWarm, mood });
+  const initial = useRef({ state, reduced, tuning, followRange, onFallback, liveliness, resting, small, pinned, className, waitForWarm, mood });
 
   // Waiting for a warm drawing: asked for in an idle moment, and kept warm from then on for the next open.
   useEffect(() => {
@@ -99,7 +101,7 @@ export function FlowflowView({ state, reduced, tuning, followRange, onFallback, 
     h.appendChild(c); canvas.current = c;
     let given = false;
     const giveBack = () => { if (given) return; given = true; c.remove(); flowflowPool().give(got); };
-    const made = FlowflowController.create({ canvas: c, host: h.parentElement ?? h, tuning: i.tuning, reduced: i.reduced, followRange: i.followRange, onFallback: fail, small: i.small, renderer: got.renderer, release: giveBack });
+    const made = FlowflowController.create({ canvas: c, host: h.parentElement ?? h, tuning: i.tuning, reduced: i.reduced, followRange: i.followRange, onFallback: fail, small: i.small, pinned: i.pinned, renderer: got.renderer, release: giveBack });
     if (!made) { giveBack(); fail(); return; }
     ctl.current = made; if (controllerRef) controllerRef.current = made;
     made.setLiveliness(i.liveliness ?? "still");

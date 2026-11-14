@@ -579,6 +579,10 @@ export const S = {
     "ask.choices": "A short ask like \"make it better\" shows a few choices first. Nothing runs until you pick one.",
     "spend.dailyLimit": `${PRODUCT} stops and asks before spending more than this in a day.`,
     "island.show": `${PRODUCT_S} status lives in the notch at the top of the screen.`,
+    // M90
+    "notch.peek": "The character's eyes peek from the notch while a job or your tool's commands run, and hide when idle.",
+    "notch.peekSide": "Which side of the notch the character peeks from.",
+    "notch.peekHideAfter": "How long the character stays out after the last thing that happened.",
     "island.peekOnHover": "Point at the notch to open it. Off: click to open.",
     "island.haptics": "A light tap on the trackpad when you open the notch, and when a fix is proven. Off unless you turn it on.",
     "island.wings": "Small wings beside the notch show the lights and one short count. Off, the usual, the notch looks like the hardware.",
@@ -644,6 +648,9 @@ export const S = {
     "spend.pauseAt": { off: "Off", "3": "3 times", "5": "5 times" },
     // M77
     "notch.waitingMinutes": { "5": "5 min", "15": "15 min", "60": "1 hour" },
+    // M90
+    "notch.peekSide": { left: "Left", right: "Right" },
+    "notch.peekHideAfter": { "1": "1 min", "2": "2 min", "5": "5 min", "10": "10 min" },
     // M89
     "runway.warnAt": { off: "Off", "70": "70%", "80": "80%", "90": "90%" },
     "talk.accuracy": { standard: "Standard", best: "Best" },
@@ -2393,6 +2400,10 @@ export const S = {
     "talk.followUpByPointing": { label: "Follow up by pointing at a finished task", help: "On, hold the talk keys with the pointer on a finished task's result in Home. Your words go into that task's follow up box. They wait there for Enter, unless Send spoken words automatically is on. Esc empties the box.", also: ["follow up", "hold to talk", "voice", "carry on", "point"] },
     "talk.shortSteps": { label: "Say steps short, one at a time", help: "With Say answers out loud on, each step says just what to do when its ring lands. A sentence of explanation after it is left out. A warning, a key to press, a question or a second thing to do is still said. A step is never cut in the middle of a sentence. An answer Answer out loud says is said all of it. The full words stay in Home. Off, the whole step is said.", also: ["speak", "short", "voice", "steps", "read aloud", "tutor"] },
     "island.show": { label: "Show in the notch", help: `The notch is ${PRODUCT_S} place at the top of the screen. Off, Home opens beside the character instead, and its keys still open it.`, also: ["Show the notch", "notch", "menu bar", "island", "top of the screen", "hide"] },
+    // M90 (F32): Flowflow peeks out of the notch.
+    "notch.peek": { label: "The character peeks out of the notch", help: `The character's eyes peek from the side of the notch while a ${PRODUCT} job or review runs. Your AI tool's commands count too, with the saved copy signal set up. It watches, waits on you with a small amber dot when a tool needs you, looks proud when checks pass and worried when one fails. It gets sleepy and hides when nothing goes on. It sits over the menu bar beside the notch, and slides away while you point along the menu bar near it. It also hides during a call, while a look at your screen or Show me how is on, and after Stop everything. Point at it as you would the notch, and click it for Home. With Draw live off, the character's pictures show fewer of these looks.`, also: ["peek", "notch", "character", "eyes", "rest", "bare notch", "reactions", "hide", "water"] },
+    "notch.peekSide": { label: "Side", help: `Which side of the notch the character peeks from. On a display without a notch, it peeks from the side of the small pill in the menu bar.`, also: ["left", "right", "peek", "notch", "side"], options: { left: "Left", right: "Right" } },
+    "notch.peekHideAfter": { label: "Hide after", help: `How long the character stays out after the last thing that happened: work ending, a question answered, a result. It gets sleepy near the end, then hides.`, also: ["hide", "idle", "quiet", "sleep", "peek", "notch", "minutes"], options: { "1": "After 1 minute", "2": "After 2 minutes", "5": "After 5 minutes", "10": "After 10 minutes" } },
     "island.peekOnHover": { label: "Open by pointing at the notch", help: "Rest the pointer on the notch and it opens. Off, the notch opens only when you click it.", also: ["Show status on hover", "Show status when I point at the notch", "hover", "peek", "status", "pointer"] },
     "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: one thing worth knowing and a few buttons, such as Ask and Check my project. Each button opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
@@ -3922,5 +3933,10 @@ export const S = {
     },
     updated: (version: string) => `${PRODUCT} updated itself to version ${version} while you were away.`,
     updatedPlain: `${PRODUCT} updated itself while you were away.`,
+  },
+  // M90 (F32): the character peeks out of the notch. Its name for VoiceOver says what it is doing and what pointing and clicking do.
+  m90: {
+    look: { hello: "says hello", watching: "is watching the work", waiting: "says something is waiting on you", proud: "is proud: the checks passed", worried: "is worried: a check failed", sleepy: "is getting sleepy", rest: "is resting" } as Record<"hello" | "watching" | "waiting" | "proud" | "worried" | "sleepy" | "rest", string>,
+    name: (doing: string) => `${PRODUCT} ${doing}. Point at it as you would the notch, click it to open Home.`,
   },
 } as const;

@@ -35,6 +35,8 @@ export type ControllerOptions = {
   onFallback?: () => void;
   /** M46: a small Flowflow (the notch's wing): working draws at WORK_INTERVAL in every choice, Lively included. */
   small?: boolean;
+  /** M90 review: pinned for the peek out of the notch (FlowflowEngine.pinned): its place and size hold, nothing leaves it. */
+  pinned?: boolean;
   /** A renderer to use instead of starting WebGL: the page's warm pool's (pool.ts, M66), or a test's stand in. */
   renderer?: RendererLike;
   /** M66: hands the renderer back to the pool on dispose, instead of freeing its GPU context. */
@@ -87,6 +89,7 @@ export class FlowflowController {
     this.opts = opts; this.renderer = renderer; this.reduced = !!opts.reduced;
     this.engine = new FlowflowEngine(opts.tuning ?? {}, opts.seed ?? 7);
     if (opts.followRange !== undefined) this.engine.followRange = opts.followRange;
+    if (opts.pinned) this.engine.pinned = true;
     this.measure();
     const win = window, doc = document;
     const on = <T extends EventTarget>(t: T, type: string, fn: EventListener, o?: AddEventListenerOptions) => { t.addEventListener(type, fn, o); this.cleanups.push(() => t.removeEventListener(type, fn, o)); };

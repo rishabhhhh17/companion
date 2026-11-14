@@ -68,3 +68,7 @@ The founder, looking at Home from the notch in their own look: "these colors don
 - Status first and quiet by choice (this record) are unchanged.
 
 Plan: docs/milestones/M71-black-with-colour.md.
+
+## Update, 14 Nov 2026 (founder)
+
+The notch at rest changes again: Flowflow peeks out from the notch's side while something goes on, reacts, and hides when nothing does (F32). The bare notch stays for the times when nothing goes on. The rest wings and the hello stay off by default. Built in M90 (docs/milestones/M90-flowflow-peeks-out.md).
