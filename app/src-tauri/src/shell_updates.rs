@@ -38,10 +38,69 @@ async fn check_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<Va
     }
 }
 
-/// Downloads the update found by check_update, checks its signature, installs it and restarts. Only on a press.
+// ---------- M89: install while the person is away ----------
+
+/// When the twice a second tick (on the main thread, where it can also ask whether Squibby is speaking) last found every
+/// quiet condition true, in ms since 1970; 0 for never. A quiet install must have been seen this way within QUIET_FRESH_MS.
+static QUIET_SEEN_AT: AtomicU64 = AtomicU64::new(0);
+/// When the page was last asked to install quietly (ms), so it is asked at most once every QUIET_ASK_EVERY_MS.
+static QUIET_ASKED_AT: AtomicU64 = AtomicU64::new(0);
+/// Ticks since the last look (the tick is twice a second; the look is every QUIET_LOOK_SECS).
+static QUIET_TICKS: AtomicU64 = AtomicU64::new(0);
+const QUIET_FRESH_MS: u64 = 90_000;
+const QUIET_ASK_EVERY_MS: u64 = 10 * 60_000;
+/// Where the note for after the restart is kept (the version only), in Companion's own folder.
+fn update_note_path() -> PathBuf { data_dir().join("update-note.json") }
+
+/// What the quiet install looks at now (updates.rs Quiet). `speaking`: only the main thread can ask, so others pass false
+/// and rely on the tick's own look (QUIET_SEEN_AT).
+fn quiet_state(speaking: bool) -> updates::Quiet {
+    updates::Quiet {
+        setting_on: setting_now("updates.quiet") != json!(false),
+        found: PENDING_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).is_some(),
+        idle_secs: updates::idle_seconds(),
+        busy: updates::running_now(),
+        call: quiet(),
+        capture: showme_pending().active() || overlay_busy(),
+        listening: listening_now() || SHOWME_LISTENING.load(Ordering::SeqCst) || speaking,
+        installing: updates::INSTALLING.busy(),
+    }
+}
+
+/// Called from the tick (main thread). Every QUIET_LOOK_SECS: when an update is found and every quiet condition holds, the
+/// card page is asked (update-quiet-ready) to check what only it knows and then install with quiet: true. Nothing is read
+/// but times and yes or no.
+fn quiet_update_tick(app: &AppHandle) {
+    if !QUIET_TICKS.fetch_add(1, Ordering::SeqCst).is_multiple_of(updates::QUIET_LOOK_SECS * 2) { return; }
+    let st = quiet_state(speak::mac::speaking());
+    if !updates::quiet_install_ok(&st) { return; }
+    let t = now() as u64;
+    QUIET_SEEN_AT.store(t, Ordering::SeqCst);
+    if t.saturating_sub(QUIET_ASKED_AT.load(Ordering::SeqCst)) < QUIET_ASK_EVERY_MS { return; }
+    QUIET_ASKED_AT.store(t, Ordering::SeqCst);
+    log("update_quiet_ready", json!({}));
+    let _ = app.emit_to("card", "update-quiet-ready", json!({}));
+}
+
+/// After a restart: the note a quiet install left (the version), once. It is removed as it is read.
 #[tauri::command]
-async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<(), String> {
+fn update_note_take(window: tauri::WebviewWindow) -> Value {
+    if settings::only_card(window.label()).is_err() { return Value::Null; }
+    let p = update_note_path();
+    let text = std::fs::read_to_string(&p).ok();
+    let _ = std::fs::remove_file(&p);
+    updates::note_for_page(text.as_deref(), now() as u64)
+}
+
+/// Downloads the update found by check_update, checks its signature, installs it and restarts. On a press, or (M89, quiet:
+/// true) when the card page agreed after the shell's quiet moment: then every quiet condition is checked again here, before
+/// anything is taken and again before it installs, and a note is left for after the restart.
+#[tauri::command]
+async fn install_update(app: AppHandle, window: tauri::WebviewWindow, quiet: Option<bool>) -> Result<(), String> {
     if settings::only_card(window.label()).is_err() { return Err("Updates can only be started from the card.".into()); }
+    let quietly = quiet == Some(true);
+    let still_quiet = || updates::quiet_install_ok(&quiet_state(false)) && (now() as u64).saturating_sub(QUIET_SEEN_AT.load(Ordering::SeqCst)) <= QUIET_FRESH_MS;
+    if quietly && !still_quiet() { return Err(updates::NOT_QUIET_WORDS.into()); }
     // Never while something runs: the restart would cut it off. The page asks first (updates.ts installAllowed); this is
     // the backstop, before the update is taken, so it can still be installed once the task is done.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
@@ -52,8 +111,12 @@ async fn install_update(app: AppHandle, window: tauri::WebviewWindow) -> Result<
     let bytes = u.download(|_, _| {}, || {}).await.map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
     // A task may have started during a long download: the restart would cut it off, so it waits for another press.
     if updates::running_now() { return Err(updates::BUSY_WORDS.into()); }
+    // M89: a quiet install that is no longer quiet (the person came back during the download) waits for the next time.
+    if quietly && !(updates::quiet_install_ok(&updates::Quiet { installing: false, ..quiet_state(false) })) { return Err(updates::NOT_QUIET_WORDS.into()); }
     u.install(bytes).map_err(|e| updates::failure_words(&e.to_string()).to_string())?;
-    log("update_installed", json!({}));
+    log("update_installed", json!({ "quiet": quietly }));
+    // M89: the visible note after the restart (Home's notice, update_note_take). The version only.
+    if quietly { let _ = logfile::write_atomic(&update_note_path(), updates::note_json(&u.version).to_string().as_bytes()); }
     // `restart` goes round the normal exit path: end the engine (and what it runs) properly first, so nothing is left running.
     // The speech models go before it (must fix 1): Tauri's restart always runs the clean up at exit, which aborted with one
     // still loaded. The quit is written down as an update's (must fix 15).

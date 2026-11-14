@@ -18,7 +18,9 @@ pub const MODEL_BYTES: u64 = 147_951_465;
 /// Checked against Hugging Face's own record of the file on 9 Oct 2026.
 pub const MODEL_SHA256: &str = "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe";
 
-pub fn model_path(data_dir: &Path) -> PathBuf { data_dir.join("models").join(MODEL_NAME) }
+pub fn model_path(data_dir: &Path) -> PathBuf { model_path_of(data_dir, &crate::speechmodel::STANDARD) }
+/// M89: where a model file lives (Standard or Best, speechmodel.rs), in Companion's own folder.
+pub fn model_path_of(data_dir: &Path, f: &ModelFile) -> PathBuf { data_dir.join("models").join(f.name) }
 
 pub fn sha256_of(path: &Path) -> std::io::Result<String> {
     let mut f = std::fs::File::open(path)?;
@@ -27,43 +29,51 @@ pub fn sha256_of(path: &Path) -> std::io::Result<String> {
     Ok(h.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
+use crate::speechmodel::ModelFile;
+type Checked = std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, bool)>>;
 /// Reading 148 MB to check it takes a moment, and this runs on every press of the talk keys: the answer is remembered for
-/// as long as the file is the same file (same size and last change).
-static CHECKED: std::sync::Mutex<Option<(std::path::PathBuf, std::time::SystemTime, bool)>> = std::sync::Mutex::new(None);
+/// as long as the file is the same file (same size and last change). M89: one memory per model file.
+static CHECKED: Checked = std::sync::Mutex::new(None);
+static CHECKED_BEST: Checked = std::sync::Mutex::new(None);
+fn checked_for(f: &ModelFile) -> &'static Checked { if f.name == crate::speechmodel::BEST.name { &CHECKED_BEST } else { &CHECKED } }
 
 /// Must fix 33: for a key press on the main thread. The answer of a full check already done for this same file, or else
 /// only whether it is there at the right size (no reading). The voice worker runs model_ready, the full check, before it
 /// loads the model, so a file of the right size with the wrong bytes is still never used.
-pub fn model_ready_quick(data_dir: &Path) -> bool {
-    let p = model_path(data_dir);
+pub fn model_ready_quick(data_dir: &Path) -> bool { model_ready_quick_of(data_dir, &crate::speechmodel::STANDARD) }
+pub fn model_ready_quick_of(data_dir: &Path, f: &ModelFile) -> bool {
+    let p = model_path_of(data_dir, f);
     let Ok(m) = std::fs::metadata(&p) else { return false };
-    if m.len() != MODEL_BYTES { return false; }
+    if m.len() != f.bytes { return false; }
     let stamp = m.modified().unwrap_or(std::time::UNIX_EPOCH);
-    if let Some((path, at, ok)) = CHECKED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
+    if let Some((path, at, ok)) = checked_for(f).lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
     true
 }
 
 /// A model that is there and is the file we expect.
-pub fn model_ready(data_dir: &Path) -> bool {
-    let p = model_path(data_dir);
+pub fn model_ready(data_dir: &Path) -> bool { model_ready_of(data_dir, &crate::speechmodel::STANDARD) }
+pub fn model_ready_of(data_dir: &Path, f: &ModelFile) -> bool {
+    let p = model_path_of(data_dir, f);
     let Ok(m) = std::fs::metadata(&p) else { return false };
-    if m.len() != MODEL_BYTES { return false; }
+    if m.len() != f.bytes { return false; }
     let stamp = m.modified().unwrap_or(std::time::UNIX_EPOCH);
-    if let Some((path, at, ok)) = CHECKED.lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
-    let ok = sha256_of(&p).map(|s| s == MODEL_SHA256).unwrap_or(false);
-    *CHECKED.lock().unwrap_or_else(|e| e.into_inner()) = Some((p, stamp, ok));
+    if let Some((path, at, ok)) = checked_for(f).lock().unwrap_or_else(|e| e.into_inner()).as_ref() { if *path == p && *at == stamp { return *ok; } }
+    let ok = sha256_of(&p).map(|s| s == f.sha256).unwrap_or(false);
+    *checked_for(f).lock().unwrap_or_else(|e| e.into_inner()) = Some((p, stamp, ok));
     ok
 }
 
 /// Downloads the model once, into Companion's own folder, and only keeps it if it is exactly the expected file.
 /// `progress` is told how many bytes have arrived. Uses the Mac's own `curl`, so no new network code is added.
-pub fn download_model(data_dir: &Path, progress: &dyn Fn(u64)) -> Result<(), String> {
+pub fn download_model(data_dir: &Path, progress: &dyn Fn(u64)) -> Result<(), String> { download_model_of(data_dir, &crate::speechmodel::STANDARD, progress) }
+/// M89: the same for either model file (Standard or Best), each checked against its own size and fingerprint.
+pub fn download_model_of(data_dir: &Path, f: &ModelFile, progress: &dyn Fn(u64)) -> Result<(), String> {
     let dir = data_dir.join("models");
     std::fs::create_dir_all(&dir).map_err(|e| format!("Could not make the folder: {e}"))?;
-    let tmp = dir.join(format!("{MODEL_NAME}.part"));
+    let tmp = dir.join(format!("{}.part", f.name));
     let _ = std::fs::remove_file(&tmp);
     let mut child = std::process::Command::new("/usr/bin/curl")
-        .args(["-L", "--fail", "--silent", "--show-error", "--max-time", "1800", "-o"]).arg(&tmp).arg(MODEL_URL)
+        .args(["-L", "--fail", "--silent", "--show-error", "--max-time", "1800", "-o"]).arg(&tmp).arg(f.url)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::piped())
         .spawn().map_err(|e| format!("Could not start the download: {e}"))?;
     loop {
@@ -76,9 +86,15 @@ pub fn download_model(data_dir: &Path, progress: &dyn Fn(u64)) -> Result<(), Str
             Err(e) => return Err(e.to_string()),
         }
     }
-    let ok = std::fs::metadata(&tmp).map(|m| m.len() == MODEL_BYTES).unwrap_or(false) && sha256_of(&tmp).map(|s| s == MODEL_SHA256).unwrap_or(false);
+    let ok = std::fs::metadata(&tmp).map(|m| m.len() == f.bytes).unwrap_or(false) && sha256_of(&tmp).map(|s| s == f.sha256).unwrap_or(false);
     if !ok { let _ = std::fs::remove_file(&tmp); return Err("The downloaded file was not the expected one, so it was thrown away.".into()); }
-    std::fs::rename(&tmp, model_path(data_dir)).map_err(|e| format!("Could not save the model: {e}"))
+    std::fs::rename(&tmp, model_path_of(data_dir, f)).map_err(|e| format!("Could not save the model: {e}"))
+}
+/// M89: frees a model file (Best, when the person switches back to Standard). Its memory of the check goes with it.
+pub fn remove_model(data_dir: &Path, f: &ModelFile) {
+    let _ = std::fs::remove_file(model_path_of(data_dir, f));
+    let _ = std::fs::remove_file(data_dir.join("models").join(format!("{}.part", f.name)));
+    *checked_for(f).lock().unwrap_or_else(|e| e.into_inner()) = None;
 }
 
 // ---------- microphone permission ----------
@@ -485,6 +501,59 @@ mod tests {
         eprintln!("second time: {again:?} in {:?}", t1.elapsed());
         let low = text.to_lowercase();
         assert!(low.contains("deploy") && low.contains("website"), "{text}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// M89: Standard against Best, measured on this Mac: words right and time to text for each, on sentences made with the
+    /// Mac's own `say` into a temporary folder (nothing is played out loud, nothing is kept). Needs both models: Standard in
+    /// the app's folder (speech_round_trip downloads it) and Best in COMPANION_BEST_MODEL_DIR (a folder holding
+    /// ggml-large-v3-turbo-q5_0.bin, checked against its pinned size and fingerprint here before it is used).
+    /// Run with: COMPANION_BEST_MODEL_DIR=/path cargo test --release -- --ignored m89_speech_accuracy_measured --nocapture
+    #[test]
+    #[ignore]
+    fn m89_speech_accuracy_measured() {
+        use crate::speechmodel::{BEST, STANDARD};
+        let app = PathBuf::from(std::env::var("HOME").unwrap()).join("Library/Application Support/dev.companion.app");
+        let best_dir = PathBuf::from(std::env::var("COMPANION_BEST_MODEL_DIR").expect("COMPANION_BEST_MODEL_DIR"));
+        assert!(model_ready_of(&app, &STANDARD), "the Standard model first (speech_round_trip)");
+        let best = best_dir.join(BEST.name);
+        assert_eq!(std::fs::metadata(&best).unwrap().len(), BEST.bytes);
+        assert_eq!(sha256_of(&best).unwrap(), BEST.sha256, "the Best file is the pinned one");
+        let sentences = [
+            "How do I deploy this website to the internet",
+            "Why does the sign up page fail when I connect it to Supabase",
+            "Add a contact form to the home page and send the messages to my email",
+            "The Stripe webhook returns an error four oh five on Vercel",
+            "Please undo the last change and run the tests again",
+        ];
+        let dir = std::env::temp_dir().join(format!("companion-test-m89-speech-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let clips: Vec<Vec<f32>> = sentences.iter().enumerate().map(|(i, s)| {
+            let (aiff, wav) = (dir.join(format!("{i}.aiff")), dir.join(format!("{i}.wav")));
+            assert!(std::process::Command::new("say").args(["-o"]).arg(&aiff).arg(s).status().unwrap().success());
+            assert!(std::process::Command::new("afconvert").args(["-f", "WAVE", "-d", "LEI16@16000", "-c", "1"]).arg(&aiff).arg(&wav).status().unwrap().success());
+            let bytes = std::fs::read(&wav).unwrap();
+            bytes[44..].as_chunks::<2>().0.iter().map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect()
+        }).collect();
+        let norm = |t: &str| t.to_lowercase().chars().map(|c| if c.is_alphanumeric() || c == ' ' { c } else { ' ' }).collect::<String>().split_whitespace().map(str::to_string).collect::<Vec<_>>();
+        for (name, path) in [("Standard", model_path_of(&app, &STANDARD)), ("Best", best)] {
+            let t_load = std::time::Instant::now();
+            let ctx = load(&path).unwrap();
+            let load_ms = t_load.elapsed().as_millis();
+            let (mut right, mut total, mut ms) = (0usize, 0usize, Vec::new());
+            for (s, clip) in sentences.iter().zip(&clips) {
+                let t0 = std::time::Instant::now();
+                let heard = crate::voice::clean_transcript(&transcribe_with(&ctx, clip, "", Some("en")).unwrap());
+                ms.push(t0.elapsed().as_millis());
+                let want = norm(s);
+                let mut got = norm(&heard);
+                total += want.len();
+                for w in &want { if let Some(i) = got.iter().position(|g| g == w) { got.remove(i); right += 1; } }
+                eprintln!("{name}: {heard:?}");
+            }
+            ms.sort();
+            eprintln!("M89 {name}: load {load_ms} ms, words right {right}/{total}, time to text median {} ms, slowest {} ms", ms[ms.len() / 2], ms[ms.len() - 1]);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { defOf } from "../../protocol/settings.ts";
 import { runCommand } from "./proof/exec.ts";
+import type { RunwayReading } from "./runway.ts";
 
 export type ToolUse = { name: string; input: Record<string, unknown> };
 // Tokens used since the engine's last turn that reported any. `in` is input not read from the cache (cache writes count
@@ -47,6 +48,9 @@ export type EngineOptions = {
   // everything, a Drive pause or a crash end its process, so no result comes): an estimate from the token counts Claude
   // reported, at list price. Called at most once per round, when the engine's turns end, however they end.
   unbilled?: (usd: number) => void;
+  // M89 (usage runway): what Claude Code said about the person's usage limit, as it said it (runway.ts): the plan's own
+  // numbers (rate_limit_event, plan route only) or a request turned away (429). Numbers and times only.
+  runway?: (r: RunwayReading) => void;
 };
 // Thrown by an engine that was stopped by a limit, so the runner can record the right reason and cost.
 export class EngineStop extends Error { constructor(message: string, public costUsd = 0) { super(message); } }

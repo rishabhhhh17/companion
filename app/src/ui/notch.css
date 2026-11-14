@@ -25,6 +25,14 @@
 /* Settings and Open: quiet words, a soft fill under the pointer, the press on the M66 tokens. */
 .island-panel button.ip-word { display: inline-flex; align-items: center; height: 24px; padding: 0 var(--space-2); border-radius: 7px; color: var(--notch-fg-2); font: 500 var(--t-small) / 1 var(--font); white-space: nowrap; transition: background-color var(--dur-hover) var(--ease-out), color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .island-panel button.ip-word:hover { color: var(--notch-ink); background: var(--notch-card-hover); }
+/* M89: the usage runway's ring beside Settings (islandPanel.tsx RunwayRing): grey while there is room, amber when the limit is
+   close or reached (it needs the person's choice before a big job). Drawn with the panel's own words' size; never moves. */
+.island-panel .ip-runway { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 var(--space-2) 0 var(--space-1); color: var(--notch-fg-2); font: 500 var(--t-small) / 1 var(--font); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.island-panel .ip-runway svg { flex: none; transform: rotate(-90deg); }
+.island-panel .ip-runway circle { fill: none; stroke-width: 2.25; }
+.island-panel .ip-runway .ip-runway-track { stroke: var(--notch-edge-strong); }
+.island-panel .ip-runway .ip-runway-fill { stroke: currentColor; stroke-linecap: round; }
+.island-panel .ip-runway[data-level="near"], .island-panel .ip-runway[data-level="out"] { color: var(--amber); }
 .island-panel button.ip-word:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
 .island-panel .ip-quick { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .island-panel .ip-quick > button { flex: none; white-space: nowrap; }

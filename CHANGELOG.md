@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## How much of your Claude is left, jobs saved for after the reset, better speech, and quiet updates: 14 Nov 2026
+
+- **How much is left, in the notch.** When Claude says how full its limit is, the notch's hover panel shows a small ring with "Claude 42%" beside it, and its label says when it resets. It turns amber when the limit is close. Squibby shows only what Claude itself reports: with an API key, Claude reports no limit, so the ring shows only when Claude turns a request away ("Limit reached"). The notch itself, at rest, looks the same as before.
+- **A warning before a big job.** When the limit is close, Run it (Have my AI do it) and Rescue ask first. The warning names the job and says when the limit resets. Save for after the reset keeps the job, Start anyway starts it, Not now does neither. Pick when it warns (70, 80 or 90 percent, or off) in Settings, Account, More options.
+- **Saved for after the reset.** A saved job waits in Now, above Today, with Start and Remove, and says when it is best started. Saved after Claude turned a request away, it waits a few minutes rather than saying it is ready at once. One tap starts it as an ordinary checked task, and it leaves the list only once the task has really begun. Off the record jobs are never saved.
+- **Better speech, still only on your Mac.** Settings, Keys and voice, More options: Speech accuracy, Standard or Best. Best downloads once (574 MB, checked before it is used) and got 53 of 58 words right on this Mac, against 50 for Standard, in about a second instead of a tenth. Your voice never leaves your Mac. Switching back deletes it.
+- **Updates install while you are away.** An update the daily check found installs by itself after 5 minutes with no typing or mouse, and only when nothing runs: never during a job, a call, a screen look, or while Squibby listens or speaks. A note says so after. Turn it off in Settings, About.
+- **Not yet claimed:** the plan's own limit numbers on a real Claude plan (that route stays off until Anthropic says yes in writing), and a whole quiet update on a signed build. Every test used stand ins.
+
 ## Your numbers, a receipt you can share, and Squibby says how it's going: 14 Nov 2026
 
 - **Your numbers.** A new row in History shows this week in counts for your project: changes reviewed, keys and weakened tests caught, fixes proven, Undos, saved copies, jobs handed to Squibby, AI tools connected and days used. It is counted from your own history on your Mac.

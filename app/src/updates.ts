@@ -68,3 +68,25 @@ export function readyVersion(v: unknown): string | null {
   const x = (v as { version?: unknown } | null)?.version;
   return typeof x === "string" && /^[0-9A-Za-z.+-]{1,40}$/.test(x) ? x : null;
 }
+
+// ---------- M89: updates that install while the person is away ----------
+// The shell decides the quiet part (updates.rs quiet_install_ok: 5 minutes with no input, nothing running, no call, no
+// screen look, not listening or speaking) and then asks this page with "update-quiet-ready". The page adds what only it
+// knows (isBusy: a deploy, an install, a practice, a Draw it or Point at the problem under way) and the person's switch,
+// then asks the shell to install with quiet: true, which checks its own conditions again before anything is taken.
+type Quiet = Busy & { voice?: { stage?: string } | null; speaking?: unknown };
+/** May an update install by itself right now, as far as this page can tell. Off when Install updates while away is off. */
+export function quietInstallOk(m: Quiet, settingOn: unknown): boolean {
+  if (settingOn === false) return false;
+  if (!installAllowed(m)) return false;
+  // Listening, turning speech into words, or a question asked by voice: the person is here, whatever the clock says.
+  if (m.voice?.stage && !["idle", "model_ready", "error", "silent", "blocked"].includes(m.voice.stage)) return false;
+  return true;
+}
+/** The note after a quiet install (the shell's update_note_take, read once after the restart): the version it went to, or
+ *  null when there is none. Only a plain version is taken, as readyVersion does. */
+export function updatedWords(v: unknown): string | null {
+  if (!v || typeof v !== "object") return null;
+  const ver = readyVersion(v);
+  return ver ? S.m89.updated(ver) : (v as { updated?: unknown }).updated === true ? S.m89.updatedPlain : null;
+}

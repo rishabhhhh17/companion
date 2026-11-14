@@ -117,6 +117,8 @@ export const receiptPictureName = (project: string, checkpoint: string): string 
 
 export type { ToolExecutor } from "./engine.ts";
 import type { ToolExecutor } from "./engine.ts";
+import { changed as runwayChanged, type RunwayReading } from "./runway.ts";
+import { SavedJobs } from "./savedjobs.ts";
 
 // What the checker is given: the project, the two snapshots to compare, a way to report each rung,
 // and the stop signal. Tests pass a stand in; the default runs the real ladder.
@@ -807,6 +809,19 @@ export class AgentRunner {
       return yes;
     };
   }
+  // ---------- M89: the usage runway and jobs saved for after the reset ----------
+  /** The last reading told to the pages (runway.ts), so the same one is not told on every reply. */
+  private lastRunway: RunwayReading | null = null;
+  /** What Claude Code said about the person's usage limit on any of Squibby's own runs, told to the pages when it changed. */
+  private runwayHeard = (r: RunwayReading) => {
+    if (!runwayChanged(this.lastRunway, r)) return;
+    this.lastRunway = r;
+    this.emit({ type: "usage.runway", ...r } as never);
+  };
+  private savedJobsStore: SavedJobs | null = null;
+  private savedJobs(): SavedJobs { return (this.savedJobsStore ??= new SavedJobs(this.o.log.database)); }
+  private tellSaved(project: string) { this.emit({ type: "jobs.saved", project, jobs: this.savedJobs().list(resolve(project)) } as never); }
+
   private emit<T extends Omit<Event, "v" | "id">>(e: T) {
     this.o.emit({ v: PROTOCOL_VERSION, id: `e${++this.counter}`, ts: this.now().toISOString(), ...e } as unknown as Event);
   }
@@ -1024,6 +1039,17 @@ export class AgentRunner {
         this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, now), ...this.o.log.usage(p, now), decisions } } as never);
         return;
       }
+      // M89: a job kept for after the usage reset, on the person's press only ("Save for after the reset"). One tap on it
+      // later starts it as an ordinary task (agent.start or rescue.diagnose, sent by the page), then the page drops it.
+      case "jobs.save": {
+        try {
+          if (!this.savedJobs().save(resolve(cmd.project), cmd.kind, cmd.prompt, this.now().toISOString(), cmd.resetsAt)) { this.fail("There was nothing to save: the request was empty."); return; }
+        } catch { this.fail("The job could not be saved on this Mac just now."); return; }
+        this.tellSaved(cmd.project);
+        return;
+      }
+      case "jobs.list": { try { this.tellSaved(cmd.project); } catch { this.emit({ type: "jobs.saved", project: cmd.project, jobs: [] } as never); } return; }
+      case "jobs.drop": { try { this.savedJobs().drop(resolve(cmd.project), cmd.job); this.tellSaved(cmd.project); } catch { /* the list stays as it was */ } return; }
       // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.
       case "checkpoint.mark": {
         const r = this.store(cmd.project).mark(cmd.checkpoint, { ...(cmd.star !== undefined ? { star: cmd.star } : {}), ...(cmd.name !== undefined ? { name: cmd.name } : {}) });
@@ -1385,6 +1411,7 @@ export class AgentRunner {
         toolDone: (id, shell) => { if (id) { this.watchers.get(cmd.agent)?.end(id); this.fileDone(id); } this.noteShell(session, shell); },
         // A round that ended before Claude Code said what it cost (Stop, a pause) still cost something: the engine's estimate.
         unbilled: (c) => { usd += money(c); book(); tellCost(); },
+        runway: this.runwayHeard,
       });
       try {
         let next = await gen.next();
@@ -1671,7 +1698,7 @@ export class AgentRunner {
   private async askReviewer(goal: string, diff: string, budgetUsd: number, signal: AbortSignal, spent: (usd: number) => void, offTheRecord = false): Promise<string> {
     let text = "";
     const gen = this.o.reviewer!.start({
-      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent,
+      prompt: reviewPrompt(goal, diff), project: "", model: this.o.reviewModel ?? MODELS.review, signal, budgetUsd, planOnly: true, tools: REVIEW_TOOLS, ...(offTheRecord ? { offTheRecord: true } : {}), unbilled: spent, runway: this.runwayHeard,
       authorize: async (tool) => { this.emit({ type: "agent.tool", agent: "reviewer", tool: tool.name, summary: summary(tool), toolUseId: `toolu_${randomBytes(4).toString("hex")}`, undoable: true, outcome: "blocked" } as never); return { allow: false, reason: refusal("the reviewer only reads the text it is given") }; },
     });
     try {
@@ -1740,7 +1767,7 @@ export class AgentRunner {
       let text = "";
       // Off the record there is no saved conversation, so nothing is ever continued.
       const gen = this.o.engine.start({ prompt, project: spec.project, model: spec.model, signal: abort.signal, budgetUsd: Math.max(0, budget - st.usd), resumeSession: spec.offTheRecord ? undefined : resume, planOnly: true, tools: spec.tools ?? LOOK_TOOLS, authorize, memory: recalled, maxTurns, ...(spec.offTheRecord ? { offTheRecord: true } : {}),
-        unbilled: (c) => { st.usd += money(c); book(); } });
+        unbilled: (c) => { st.usd += money(c); book(); }, runway: this.runwayHeard });
       try {
         let next = await gen.next();
         while (!next.done) {

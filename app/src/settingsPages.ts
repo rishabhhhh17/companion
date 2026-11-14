@@ -33,7 +33,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "account.you", items: ["you.name"] },
     ],
     more: [
-      { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick"] },
+      { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick", "runway.warnAt"] },
       // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
       { id: "more.account.developer", items: [f("key")] },
       // M58 (feature 9): the first run's optional answer, which AI you build with. It only picks a tip; Not set forgets it.
@@ -51,7 +51,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       // What pointing at the notch opens (2 Nov 2026): Home, the usual, or the status line; beside how long it waits.
-      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes"] },
+      { id: "more.general.notch", items: ["island.pointOpens", "island.showWork", "island.wings", "island.showStep", "island.hello", "island.openDelay", "island.closeDelay", "island.followDelay", "island.haptics", "panel.showWork", "panel.size", "notch.waitingMinutes", "runway.mark"] },
       // M74: quiet hours for the notch's review dot and lines (Home still shows everything).
       { id: "more.general.quiet", items: ["quiet.on", "quiet.from", "quiet.to"] },
       { id: "more.general.home", items: ["home.closeOnClickAway", "home.stepAside", "home.goToNeeds", "home.size", "home.followFrontApp", "home.usedOftenFirst", "history.thisWeek", f("usedOften")] },
@@ -114,7 +114,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "keys.prompt", items: ["prompt.on"] },
     ],
     more: [
-      { id: "more.keys.talking", parent: "voice.on", items: ["talk.speakReplies", "talk.autoSend", "talk.followUpByPointing", "talk.shortSteps", "talk.maxHold", "speak.alsoSay", "speak.status"] },
+      { id: "more.keys.talking", parent: "voice.on", items: ["talk.speakReplies", "talk.autoSend", "talk.followUpByPointing", "talk.shortSteps", "talk.maxHold", "speak.alsoSay", "speak.status", "talk.accuracy"] },
       { id: "more.keys.prompt", parent: "prompt.on", items: ["ph.style", "ph.useProjectInfo", "ph.handBack", "ph.appAnswers"] },
     ],
   },
@@ -137,7 +137,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
   about: {
     icon: "info",
     groups: [
-      { id: "about.updates", items: [f("updates"), "updates.daily"] },   // M69 step 3: what is true now first, then the switch
+      { id: "about.updates", items: [f("updates"), "updates.daily", "updates.quiet"] },   // M69 step 3: what is true now first, then the switch
       { id: "about.help", items: [f("replay"), f("practice"), f("made"), f("logs")] },
       { id: "about.legal", items: [f("acknowledgements")] },
     ],

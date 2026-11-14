@@ -91,6 +91,11 @@ export const exportMemory = (project: string): Command => ({ v: 1, id: id(), typ
 export const restoreMemory = (project: string, text: string): Command => ({ v: 1, id: id(), type: "memory.restore", project, text, confirm: true });
 // M79: the weekly summary, on the press of History's "This week" row only.
 export const showWeek = (project: string): Command => ({ v: 1, id: id(), type: "week.show", project });
+// M89: a job kept for after the usage reset (on Save for after the reset only), the list of them, and one taken off it (once
+// it is started, or removed). Never off the record.
+export const saveJob = (project: string, kind: "job" | "rescue", prompt: string, resetsAt?: string): Command => ({ v: 1, id: id(), type: "jobs.save", project, kind, prompt: prompt.slice(0, 4000), ...(resetsAt ? { resetsAt } : {}) });
+export const listSavedJobs = (project: string): Command => ({ v: 1, id: id(), type: "jobs.list", project });
+export const dropSavedJob = (project: string, job: string): Command => ({ v: 1, id: id(), type: "jobs.drop", project, job });
 export const answerAgents = (project: string, answer: "yes" | "no" | "remove"): Command => ({ v: 1, id: id(), type: "memory.agents", project, answer });
 export const askRecap = (project: string, since: string): Command => ({ v: 1, id: id(), type: "recap.ask", project, since });
 // Watch routines and Where was I (F21). Each names the project, so the shell holds it to the folder the person chose.

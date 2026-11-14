@@ -154,6 +154,9 @@ describe("the shipped list of settings", () => {
       // M88: Your numbers in History (on; it only counts the project's own rows on this Mac and sends nothing by itself),
       // and spoken status (off: no moment is chosen until the person picks one).
       "numbers.yours": true, "speak.status": [],
+      // M89: the usage runway mark in the notch (on) and the warning before a big job near the limit (at 80 percent);
+      // updates that install by themselves after 5 quiet minutes (on); speech accuracy (Standard, the model already used).
+      "runway.mark": true, "runway.warnAt": "80", "updates.quiet": true, "talk.accuracy": "standard",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -163,6 +166,14 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M89: the runway mark and warning are the pages' own, quiet updates are the shell's and the pages', speech accuracy is the shell's", () => {
+    expect(defOf("runway.mark")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("runway.warnAt")).toMatchObject({ section: "spending", kind: "choice", default: "80", options: ["off", "70", "80", "90"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("runway.warnAt")!, "50").ok).toBe(false);
+    expect(defOf("updates.quiet")).toMatchObject({ section: "updates", kind: "switch", default: true, scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
+    expect(defOf("talk.accuracy")).toMatchObject({ section: "talking", kind: "choice", default: "standard", options: ["standard", "best"], scope: "app", applies: ["shell"], store: "settings", live: true });
+    expect(validate(defOf("talk.accuracy")!, "huge").ok).toBe(false);
   });
   test("M88: Your numbers is the pages' own switch, on; spoken status is a list of moments, none chosen", () => {
     expect(defOf("numbers.yours")).toMatchObject({ section: "numbers", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });

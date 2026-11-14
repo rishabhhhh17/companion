@@ -101,6 +101,10 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
     let data = data_dir();
     // The speech model is loaded while the person talks and let go after five idle minutes.
     let mut speech: Option<voice_mac::Speech> = None;
+    // M89: which model file `speech` was loaded from (Standard or Best, speechmodel.rs), so a change of Speech accuracy is
+    // used at the next press; and the file the helper's preloaded copy came from.
+    let mut speech_from: Option<PathBuf> = None;
+    let preload_from: std::sync::Arc<Mutex<Option<PathBuf>>> = std::sync::Arc::new(Mutex::new(None));
     // Loaded by a helper while the person talks, so a Stop or a let-go is never queued behind a 1 to 3 second load.
     let preload: std::sync::Arc<Mutex<Option<voice_mac::Speech>>> = std::sync::Arc::new(Mutex::new(None));
     // Must fix 17: the helper loading it, so there is only ever one load at a time and a let go waits for it.
@@ -216,10 +220,12 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                         }
                         // While the person is talking, on a helper thread; never a second load beside one under way or one
                         // already waiting (must fix 17). The five idle minutes start again from here.
+                        // M89: Speech accuracy changed since the copy in use was loaded: the copy goes, and the chosen one loads.
+                        if speech.is_some() && speech_from.as_deref() != Some(speech_model_path(&data, false).as_path()) { speech = None; speech_from = None; }
                         if speech.is_none() && loader.as_ref().is_none_or(|h| h.is_finished()) && preload.lock().unwrap_or_else(|e| e.into_inner()).is_none() {
-                            let (slot, path) = (preload.clone(), voice_mac::model_path(&data));
+                            let (slot, from, data2) = (preload.clone(), preload_from.clone(), data.clone());
                             last_used = std::time::Instant::now();
-                            loader = Some(std::thread::spawn(move || { if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); } }));
+                            loader = Some(std::thread::spawn(move || { let path = speech_model_path(&data2, true); if let Ok(m) = voice_mac::load(&path) { *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(m); *from.lock().unwrap_or_else(|e| e.into_inner()) = Some(path); } }));
                         }
                     }
                     Err(e) => { hold.cancel(); listening(false); log("failure_detail", json!({ "what": "microphone", "detail": e.to_string() })); say_voice(&app, "error", "I could not use the microphone just now. Check it is connected, then try again.", json!({})); }
@@ -251,8 +257,8 @@ fn voice_worker(app: AppHandle, rx: std::sync::mpsc::Receiver<VoiceMsg>) {
                                 let t0 = now();
                                 // Must fix 17: a load still under way is waited for, never started again beside it.
                                 if speech.is_none() { if let Some(h) = loader.take() { let _ = h.join(); } }
-                                if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); }
-                                if speech.is_none() { speech = voice_mac::load(&voice_mac::model_path(&data)).ok(); }
+                                if speech.is_none() { speech = preload.lock().unwrap_or_else(|e| e.into_inner()).take(); speech_from = preload_from.lock().unwrap_or_else(|e| e.into_inner()).take(); }
+                                if speech.is_none() { let p = speech_model_path(&data, true); speech = voice_mac::load(&p).ok(); speech_from = speech.as_ref().map(|_| p); }
                                 // The project's own words (empty if the helper is not done) and the language picked in Settings.
                                 let words = words_slot.lock().unwrap_or_else(|e| e.into_inner()).take().filter(|(n, _)| *n == press).map(|(_, w)| w).unwrap_or_default();
                                 let language = voiceset::language(&voice_now().language);
@@ -309,22 +315,59 @@ static DOWNLOAD_PERCENT: AtomicU64 = AtomicU64::new(0);
 
 /// Download the speech model once (the person asked for it with a button). A press while one runs does nothing.
 #[tauri::command]
-fn voice_download(app: AppHandle) {
+fn voice_download(app: AppHandle) { voice_download_file(app, &speechmodel::STANDARD); }
+
+/// M89: one model file (Standard on Download, Best when Speech accuracy is set to Best), one download at a time, with its
+/// progress, checked against its size and fingerprint before it is kept (voice_mac::download_model_of). A Best download
+/// that finishes after the person switched back to Standard is not kept.
+fn voice_download_file(app: AppHandle, f: &'static speechmodel::ModelFile) {
     if DOWNLOADING.swap(true, Ordering::SeqCst) { return; }
     DOWNLOAD_PERCENT.store(0, Ordering::SeqCst);
     std::thread::spawn(move || {
         let data = data_dir();
         say_voice(&app, "downloading", "Downloading the speech model", json!({ "percent": 0 }));
         let a = app.clone();
-        let r = voice_mac::download_model(&data, &move |got| {
-            let pct = ((got as f64 / voice_mac::MODEL_BYTES as f64) * 100.0).min(99.0) as u64;
+        let r = voice_mac::download_model_of(&data, f, &move |got| {
+            let pct = ((got as f64 / f.bytes as f64) * 100.0).min(99.0) as u64;
             DOWNLOAD_PERCENT.store(pct, Ordering::SeqCst);
             say_voice(&a, "downloading", "Downloading the speech model", json!({ "percent": pct }));
         });
         DOWNLOADING.store(false, Ordering::SeqCst);
+        if r.is_ok() && *f == speechmodel::BEST && !speechmodel::keep_finished_best(speechmodel::accuracy_from(&setting_now(speechmodel::KEY))) {
+            voice_mac::remove_model(&data, f);
+            log("speech_best_dropped", json!({}));
+            say_voice(&app, "idle", "", json!({}));
+            return;
+        }
+        log("speech_model_downloaded", json!({ "best": *f == speechmodel::BEST, "ok": r.is_ok() }));
         match r {
             Ok(()) => say_voice(&app, "model_ready", &talkkeys::ready_words(key_using(keymap::Action::Talk)), json!({})),
             Err(e) => say_voice(&app, "error", &e, json!({})),
+        }
+    });
+}
+
+/// M89: the model file to use now (speechmodel.rs): Best once it is here and checked, else Standard. `full`: read the whole
+/// file to check it (the worker and its helper, before loading); else only its size and an earlier full check, as a key
+/// press does (must fix 33).
+fn speech_model_path(data: &std::path::Path, full: bool) -> PathBuf {
+    let acc = speechmodel::accuracy_from(&setting_now(speechmodel::KEY));
+    let best_ready = acc == speechmodel::Accuracy::Best && if full { voice_mac::model_ready_of(data, &speechmodel::BEST) } else { voice_mac::model_ready_quick_of(data, &speechmodel::BEST) };
+    voice_mac::model_path_of(data, speechmodel::to_load(acc, best_ready))
+}
+
+/// M89: Speech accuracy changed (setting_applied). Best picked: its download starts (only now, after the person picked it).
+/// Standard picked: Best's file is deleted (unless a download is under way: it is dropped when it finishes). Off the main
+/// thread: checking a 574 MB file takes a moment.
+fn speech_accuracy_applied(app: &AppHandle) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let data = data_dir();
+        let acc = speechmodel::accuracy_from(&setting_now(speechmodel::KEY));
+        match speechmodel::on_change(acc, voice_mac::model_ready_of(&data, &speechmodel::BEST)) {
+            speechmodel::OnChange::DownloadBest => voice_download_file(app, &speechmodel::BEST),
+            speechmodel::OnChange::DeleteBest => { if !DOWNLOADING.load(Ordering::SeqCst) { voice_mac::remove_model(&data, &speechmodel::BEST); } }
+            speechmodel::OnChange::Nothing => {}
         }
     });
 }

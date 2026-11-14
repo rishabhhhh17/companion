@@ -166,6 +166,8 @@ fn setting_applied(app: &AppHandle, key: &str) {
     if (key == "review.mode" || key == "review.modeHere" || key == "flow.on") && !review_watched() { let cleared = review_ready().clear(); review_dot_told(app, cleared); }
     // M74: Open when you log in went back to off (Restore usual, Reset all): the login item goes too.
     if key == loginitem::KEY && off(key) { loginitem::off(); }
+    // M89: Speech accuracy: Best downloads once picked, Standard frees it (shell_voice.rs).
+    if key == speechmodel::KEY { speech_accuracy_applied(app); }
     home_setting_applied(app, key);
 }
 

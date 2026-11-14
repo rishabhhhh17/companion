@@ -631,6 +631,11 @@ export const S = {
     "calls.quiet": `While a call app is in front, ${PRODUCT} doesn't speak and the character stays still.`,
     "memory.paused": `${PRODUCT} stops learning about your projects until you turn this off.`,
     "updates.daily": "Looks once a day. Nothing installs until you say so.",
+    // M89
+    "updates.quiet": "An update found installs after 5 quiet minutes, never during a job, a call or while the light is on.",
+    "runway.mark": "The notch shows how much of the Claude limit is used, when Claude says.",
+    "runway.warnAt": "Before a big job, a warning when the Claude limit is this close, with Save for after the reset.",
+    "talk.accuracy": "Best understands more words. It is a one time download of 574 MB, kept on this Mac.",
   } as Record<string, string>,
   // Short words for a choice drawn side by side (a Segmented control never wraps: the spec, 2.3). The full words stay in a
   // menu, in the help and for search.
@@ -639,6 +644,9 @@ export const S = {
     "spend.pauseAt": { off: "Off", "3": "3 times", "5": "5 times" },
     // M77
     "notch.waitingMinutes": { "5": "5 min", "15": "15 min", "60": "1 hour" },
+    // M89
+    "runway.warnAt": { off: "Off", "70": "70%", "80": "80%", "90": "90%" },
+    "talk.accuracy": { standard: "Standard", best: "Best" },
     // M74
     "spend.warnAt": { off: "Off", "50": "At half", "80": "Near limit" },
     "review.send": { wordsAndChecks: "With words", checksOnly: "Checks only" },
@@ -2374,6 +2382,11 @@ export const S = {
     "talk.speakReplies": { label: "Answer out loud when I ask by voice", help: `When you ask by holding the talk keys, ${PRODUCT} says its short answer out loud, all of it. A long answer is said up to a point, and the rest is in Home.`, also: ["aloud", "spoken answer", "reply"] },
     "showme.listen": { label: "Show me key listens at once", help: `On, the Show me key starts listening when you press it, with the light on first. Press it again when you are done. ${PRODUCT} then looks at your screen and points at the answer. Off, the key only opens the question box. It also opens the box when voice is off or the microphone is not ready yet.`, also: ["voice", "talk", "ask", "question", "microphone", "show me", "key", "hotkey", "listen"] },
     "talk.maxHold": { label: "Longest hold to talk", help: `${PRODUCT} stops listening after this long, even if you are still holding the keys.`, also: ["microphone", "mic", "listen", "dictation", "limit"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
+    // M89 (usage runway, quiet updates, better speech)
+    "runway.mark": { label: "Show how much of the Claude limit is used", help: `When Claude says how much of its limit is used, the notch's panel shows a small ring with the percent and the reset time. ${PRODUCT} shows only what Claude itself reports. With an API key Claude reports no limit, so the ring shows only when Claude turns a request away.`, also: ["usage", "limit", "rate limit", "runway", "plan", "reset", "notch", "quota", "weekly limit"] },
+    "runway.warnAt": { label: "Warn before a big job near the Claude limit", help: `Before Hand ${PRODUCT} the job or Rescue starts, a warning shows when the Claude limit is this full, or Claude just turned a request away. You can start anyway, or save the job for after the reset and start it later with one tap. Off: no warning.`, also: ["usage", "limit", "runway", "reset", "save for later", "rescue", "hand the job", "quota"], options: { off: "Off", "70": "At 70% used", "80": "At 80% used", "90": "At 90% used" } },
+    "updates.quiet": { label: "Install updates while away", help: `An update the check found installs by itself after 5 minutes with no typing or mouse, and only when nothing runs. Never during a job, a call, a screen look, or while ${PRODUCT} listens or speaks. ${PRODUCT} restarts, and a note after says it was updated. Off: an update installs only when you press Install.`, also: ["update", "install", "quietly", "automatic", "restart", "idle", "away"] },
+    "talk.accuracy": { label: "Speech accuracy", help: `How ${PRODUCT} turns your voice into words, on this Mac. Standard uses the 148 MB model you already have. Best downloads a larger model once (574 MB) and checks it before use. It gets more words right, and takes about a second longer. Your voice never leaves this Mac either way. Switching back to Standard deletes the larger model.`, also: ["speech", "voice", "dictation", "whisper", "model", "accuracy", "transcription", "download"], options: { standard: "Standard (148 MB)", best: "Best (574 MB, downloads once)" } },
     "speak.status": { label: "Say how things are going", help: `With voice on, ${PRODUCT} says one short line out loud for the moments you pick, with the words on screen while it speaks. Nothing is said during a call, and Stop everything silences it.`, also: ["spoken status", "aloud", "announce", "waiting", "passed", "not safe", "voice", "speak"], options: { fixPassed: "A fix passed its checks", toolWaiting: "My AI tool is waiting on me", notSafe: "A review says not safe yet", replay: "Say Watch what changed as it draws" } },
     "speak.alsoSay": { label: "Also say out loud", help: `With Say answers out loud on, ${PRODUCT} can also say when something needs you and when a task ends.`, also: ["aloud", "announce", "spoken", "task done", "needs you"], options: { needsYou: "When something needs me", taskDone: "When a task ends" } },
     "talk.autoSend": { label: "Send spoken words automatically", help: "When you let go of the talk keys, a request of three words or more is sent at once. Words that take it back always wait in the box, such as wait, never mind, don't or I changed my mind. So do a question about your screen and words in another language. Off, your words always wait in the box until you press Send.", also: ["dictation", "send", "hold to talk"] },
@@ -3859,5 +3872,55 @@ export const S = {
       toolWaiting: (tool: string) => `${tool} is waiting on you.`,
       notSafe: "A review says this change is not safe yet.",
     },
+  },
+  /** M89: the usage runway (runway.ts), the warning before a big job, jobs saved for after the reset, and quiet updates. */
+  m89: {
+    runway: {
+      // The notch's small ring: the percent used, else a word when Claude only said it turned a request away.
+      // The M89 review: the short text says what it is, so the glance needs no tooltip.
+      used: (pct: number) => `Claude ${pct}%`,
+      outShort: "Limit reached",
+      say: (pct: number, reset: string) => (reset ? `The Claude limit is ${pct}% used. It resets ${reset}.` : `The Claude limit is ${pct}% used.`),
+      sayNear: (reset: string) => (reset ? `The Claude limit is close. It resets ${reset}.` : "The Claude limit is close."),
+      sayOut: (reset: string) => (reset ? `The Claude limit is reached. It resets ${reset}.` : "The Claude limit is reached for now."),
+      sayHit: "Claude turned a request away just now because of a limit. Wait a few minutes, then try again.",
+      at: (clock: string) => `at ${clock}`,
+      tomorrowAt: (clock: string) => `tomorrow at ${clock}`,
+      onDayAt: (day: string, clock: string) => `on ${day} at ${clock}`,
+    },
+    warn: {
+      title: "The Claude limit is close",
+      titleOut: "The Claude limit is reached",
+      titleHit: "Claude is turning requests away",
+      // The M89 review: each line says when it resets, and only the close one says the job may stop part way.
+      job: (reset: string) => (reset
+        ? `A big job can stop part way when the limit is reached. It resets ${reset}. Start it anyway, or save it for after the reset.`
+        : "A big job can stop part way when the limit is reached. Start it anyway, or save it for after the reset."),
+      out: (reset: string) => (reset
+        ? `It resets ${reset}. Save it and start it after the reset, or try anyway.`
+        : "Save it and start it after the reset, or try anyway."),
+      hit: (until: string) => (until
+        ? `This usually lasts a few minutes, until about ${until.replace(/^at /, "")}. Save it for after the wait, or try anyway.`
+        : "This usually lasts a few minutes. Save it for after the wait, or try anyway."),
+      startAnyway: "Start anyway",
+      save: "Save for after the reset",
+      saveWait: "Save for after the wait",
+      notNow: "Not now",
+      offRecord: "Off the record jobs are not saved. Start it anyway, or try again later.",
+    },
+    saved: {
+      title: "Saved for after the reset",
+      rescue: "Rescue this project",
+      ready: "Ready to start",
+      waits: (reset: string) => `Starts best ${reset}`,
+      start: "Start",
+      startLabel: (what: string) => `Start: ${what}`,
+      remove: "Remove",
+      removeLabel: (what: string) => `Remove: ${what}`,
+      savedNote: "Saved. It waits here until you start it.",
+      busy: "Wait until the current task is finished, then start it.",
+    },
+    updated: (version: string) => `${PRODUCT} updated itself to version ${version} while you were away.`,
+    updatedPlain: `${PRODUCT} updated itself while you were away.`,
   },
 } as const;

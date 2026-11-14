@@ -298,6 +298,8 @@ impl Pending {
     }
     /// A step of answer `req` that was not its last was drawn here.
     pub fn pointed(&mut self, req: &str, at: Pt) { if self.cur.as_ref().is_some_and(|(r, _)| r == req) { self.last = Some(at); } }
+    /// M89: an answer is on its way or playing (the screen was looked at for it): an update never installs quietly then.
+    pub fn active(&self) -> bool { self.cur.is_some() }
     /// Ends whatever answer is on its way or playing. True when there was one.
     pub fn end(&mut self) -> bool { self.last = None; self.cur.take().is_some() }
     /// Ends answer `req` only, if it is still the current one (a late tidy up never ends a newer answer).

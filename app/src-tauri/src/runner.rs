@@ -876,6 +876,30 @@ mod tests {
         assert_eq!(crate::numbersmail::check_json(&sent.to_string()), Ok(()));
     }
     #[test]
+    fn m89_saved_jobs_pass_only_for_the_chosen_project_and_the_runway_carries_numbers_and_times_only() {
+        // M89: the shared fixtures (read by the runner's suite and the pages too).
+        let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");
+        let lines: Vec<&str> = fixtures.lines().filter(|l| l.contains("\"type\":\"jobs.")).collect();
+        assert_eq!(lines.len(), 4);
+        for line in lines {
+            let v: Value = serde_json::from_str(line).unwrap();
+            assert!(check_command(&v).is_ok(), "{line}");
+            let project = v["project"].as_str().unwrap();
+            assert!(check_project(&v, project).is_ok(), "{line}");
+            assert!(check_project(&v, "/somewhere/else").is_err(), "{line}");
+        }
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let runway: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"usage.runway\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(runway.len(), 3);
+        for r in &runway {
+            for k in r.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "state", "source", "usedPct", "resetsAt", "window", "retryInS"].contains(&k.as_str()), "{k}"); }
+            assert!(r["usedPct"].as_u64().is_none_or(|p| p <= 100));
+        }
+        let saved: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"jobs.saved\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        assert_eq!(saved.len(), 2);
+        assert!(saved.iter().all(|s| s["jobs"].as_array().is_some_and(|j| j.len() <= 10)));
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

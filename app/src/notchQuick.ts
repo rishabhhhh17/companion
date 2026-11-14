@@ -8,6 +8,7 @@
 import { receiptVerdict, type Model } from "./model.ts";
 import type { IslandMode, WingMark } from "./home.ts";
 import { clockWords, homeStatus, lastResult, notchStatusLine } from "./homeHero.ts";
+import { shortClock, shortDay } from "./clock.ts";
 import { connection } from "./aiTools.ts";
 import { DONE_TOOLS, type DoneState } from "./doneSignal.ts";
 import type { ToolId } from "./groups.ts";
@@ -203,9 +204,9 @@ export function whenWords(iso: string | null | undefined, now: number): string {
   const t = iso ? Date.parse(iso) : NaN;
   if (!Number.isFinite(t) || t > now + 60_000) return "";
   const d = new Date(t), n = new Date(now);
-  const clock = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase().replace(/\s+/g, " ");
+  const clock = shortClock(d);
   if (d.toDateString() === n.toDateString()) return clock;
-  if (now - t < 6 * 86_400_000) return `${d.toLocaleDateString("en-US", { weekday: "short" })} ${clock}`;
+  if (now - t < 6 * 86_400_000) return `${shortDay(d)} ${clock}`;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 

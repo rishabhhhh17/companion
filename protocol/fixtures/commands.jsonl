@@ -125,3 +125,7 @@
 {"v":1,"id":"m86c1","type":"assist.locate","req":"sm_86","question":"which of these do I need for webhooks?","image":{"ref":"sm_86","w":1280,"h":800},"mode":"label","guide":"stripe"}
 {"v":1,"id":"m87c1","type":"ship.whyLive","project":"p_9f2c"}
 {"v":1,"id":"m87c2","type":"ship.whyLive","project":"p_9f2c","url":"https://shop.example.com"}
+{"v":1,"id":"m89c1","type":"jobs.save","project":"p_9f2c","kind":"job","prompt":"Add a contact form to the home page","resetsAt":"2026-11-14T15:40:00.000Z"}
+{"v":1,"id":"m89c2","type":"jobs.save","project":"p_9f2c","kind":"rescue","prompt":""}
+{"v":1,"id":"m89c3","type":"jobs.list","project":"p_9f2c"}
+{"v":1,"id":"m89c4","type":"jobs.drop","project":"p_9f2c","job":"sj_12"}

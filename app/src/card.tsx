@@ -27,7 +27,7 @@ import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } f
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
-import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, readyVersion, updateLine } from "./updates.ts";
+import { afterInstallFailed, autoCheckDue, found, installAllowed, isBusy, quietInstallOk, readyVersion, updateLine, updatedWords } from "./updates.ts";
 import { useModel } from "./useModel.ts";
 import { PH_KEYS_MS, acceptHint, armedFor, canPick, choicesFrom, chordLabel, keyHint, keyProblem, keysFrom, keysIn, setKeysNow, type Choices, type Job, type Keys } from "./keys.ts";
 import { useKeys } from "./useKeys.ts";
@@ -83,7 +83,7 @@ import { WeekPart } from "./weekSummary.tsx";
 import { NumbersPart, SharePreview } from "./m88Panels.tsx";
 import { shareFromTask } from "./shareReceipt.ts";
 import { statusContext, statusLines, statusStep, type StatusLine, type StatusState } from "./spokenStatus.ts";
-import type { AskedRowView, CaughtView, SavedRowView } from "../../protocol/index.ts";
+import type { AskedRowView, CaughtView, SavedJobView, SavedRowView } from "../../protocol/index.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
 import { verdictMark } from "./ui/partsLogic.ts";
@@ -102,6 +102,9 @@ import { refusedEvent, refusedLine, type RefusedEvent } from "./sendRefused.ts";
 import { PartBoundary } from "./partBoundary.tsx";
 import { applyTextSize, textSize, textSizeFrom } from "./textsize.ts";
 import { HandoffCard } from "./handoffCard.tsx";
+import { RunwayAsk, SavedJobsList, type RunwayAskState } from "./runwayPanels.tsx";
+import { resetOrWait, runwayNow, savedStartOutcome, warnBeforeJob } from "./runway.ts";
+import { dropSavedJob, listSavedJobs, saveJob } from "./commands.ts";
 import { AiToolsNowRow, useDoneState } from "./aiToolsScreen.tsx";
 import { StatusStrip } from "./statusStrip.tsx";
 import { homeFacts, type NotchFactId } from "./notchQuick.ts";
@@ -547,6 +550,9 @@ export function Card() {
   const sendOrExplain = (cmd: unknown, closed?: () => void): Promise<void> => sendQuiet(cmd).then(() => undefined, (e) => { closed?.(); explainRefusal(e); });
   // Where send's refusals go: this card's model (protocol.error), as if the engine had refused the command itself.
   useEffect(() => { refused = (ev) => dispatch(ev); return () => { refused = null; }; }, [dispatch]);
+  // M89 (the review): a saved Rescue whose send the shell refused stays on the saved list (onSavedEvent hears the refusal
+  // too). Set after the line above, with the same deps, so it always wraps the current one.
+  useEffect(() => { const base = refused; refused = (ev) => { onSavedEvent.current(ev); base?.(ev); }; return () => { refused = base; }; }, [dispatch]);
   // The model as it is now, for callbacks set up once (a click elsewhere, a practice button pressed after a change).
   const nowModel = useRef(m); nowModel.current = m;
   // Groups of tools (F20): re-draws when a group is switched; the buttons of a group that is off are not drawn.
@@ -657,6 +663,7 @@ export function Card() {
   // can do what the refusal says. A new folder forgets it.
   const sent = useRef<Sent<Attached> | null>(null);
   const putBackSent = () => {
+    if (savedStarting.current?.kind === "job") savedStarting.current = null;
     dispatch({ type: "ui.taskSendFailed" });
     const s = sent.current; sent.current = null;
     if (!s) return;
@@ -1182,6 +1189,8 @@ export function Card() {
   const answerFromFirstRun = (approval: string, allow: boolean) => { void send(answerApproval(approval, allow)); dispatch({ type: "ui.approvalAnswered", approval }); };
   // The timeline: ask when the project is known, and again whenever a task ends.
   useEffect(() => { if (project) void sendQuiet(listTasks(project)); }, [project, m.receipt, m.review?.batch]);
+  // M89: the jobs saved for after the reset in this project, asked when the project opens (and when the engine is back).
+  useEffect(() => { if (project && m.runnerUp) void sendQuiet(listSavedJobs(project)).catch(() => {}); }, [project, m.runnerUp]);
   // M85 review: and when the person's own tool was just told to ask first, so the ask lands in Today and History at once.
   useEffect(() => { if (project && m.guardAsked) void sendQuiet(listTasks(project)); }, [m.guardAsked?.at]);
   // M85 review: the ask's notice on Now goes by itself after ASKED_NOTICE_MS (the person answers in their own tool, which
@@ -1823,6 +1832,17 @@ export function Card() {
     const off = listen("update-ready", (e) => { setUpdateReady(readyVersion(e.payload)); setUpdateNote(""); });
     return () => { off.then((f) => f()); };
   }, []);
+  // M89: an update installs while the person is away. The shell sends "update-quiet-ready" only after 5 minutes with no
+  // input, nothing running, no call, no screen look and no listening; this page adds its own check (quietInstallOk) and the
+  // switch (updates.quiet), and the shell checks everything again before it installs. After the restart, the note says so.
+  useEffect(() => {
+    const off = listen("update-quiet-ready", () => {
+      if (typingNow() || !quietInstallOk(nowModel.current, setting("updates.quiet"))) return;
+      void invoke("install_update", { quiet: true }).catch(() => { /* not now: the shell asks again after the next quiet stretch */ });
+    });
+    void invoke("update_note_take").then((v) => { const w = updatedWords(v); if (w) dispatch({ type: "app.notice", message: w }); }).catch(() => {});
+    return () => { off.then((f) => f()); };
+  }, []);
   const installUpdate = () => { if (!installAllowed(nowModel.current)) return; setUpdateNote(updateLine({ stage: "installing" }, "", true)); const prev = found.update; void invoke("install_update").catch((e) => { const r = afterInstallFailed(prev, String(e)); found.update = r.update; setUpdateNote(r.note || String(e)); }); };
   useEffect(() => {
     const off = listen("home-click-away", () => { if (closesOnClickAway(nowModel.current, onboardingNow.current, setting("home.closeOnClickAway") === true, typingNow())) { box.current?.blur(); player.current.hush(); void invoke("close_card"); } });
@@ -1913,6 +1933,43 @@ export function Card() {
     const added = forRequest(attachedNow.current);
     void sendQuiet(startTask(project, prompt, off, added)).catch((e) => { putBackSent(); explainRefusal(e); }); setOff(offRecordAtStart());
     clearBox(); clearAttached();
+  };
+  // M89: before a big job (Hand Squibby the job, Rescue), a warning when Claude said the person's limit is close (runway.ts,
+  // runway.warnAt). Nothing starts or is saved until a press on the warning.
+  const [runwayAsk, setRunwayAsk] = useState<(RunwayAskState & { go: () => void }) | null>(null);
+  const runwayGate = (kind: RunwayAskState["kind"], prompt: string, go: () => void, fromSaved?: string) => {
+    if (warnBeforeJob(m.runway, Date.now(), setting("runway.warnAt"))) { setRunwayAsk({ kind, prompt, go, ...(fromSaved ? { fromSaved } : {}) }); return; }
+    go();
+  };
+  // The M89 review: a job started from the saved list is already saved, so Save only closes the warning (never a second
+  // copy). The words never came from the box (Run it on the hand off card, or the list), so the box is left as it is. A
+  // limit hit with no reset from Claude is saved until the end of the wait (resetOrWait), never as "Ready to start".
+  const saveForLater = (a: RunwayAskState) => {
+    setRunwayAsk(null);
+    if (a.fromSaved) return;
+    void sendOrExplain(saveJob(project, a.kind, a.prompt, resetOrWait(runwayNow(m.runway, Date.now())))).then(() => dispatch({ type: "app.notice", message: S.m89.saved.savedNote }));
+  };
+  // The M89 review: a saved job leaves the list only once its task really began (runway.ts savedStartOutcome); refused, or
+  // the send itself failed, it stays.
+  const savedStarting = useRef<{ id: string; kind: RunwayAskState["kind"] } | null>(null);
+  const onSavedEvent = useRef((_: unknown) => {});
+  onSavedEvent.current = (payload: unknown) => {
+    const s = savedStarting.current;
+    if (!s) return;
+    const o = savedStartOutcome(payload, s.kind, AGENT);
+    if (o === "refused") savedStarting.current = null;
+    if (o === "started") { savedStarting.current = null; if (project) void sendQuiet(dropSavedJob(project, s.id)).catch(() => {}); }
+  };
+  useEffect(() => {
+    const off = listen("runner-event", (e) => onSavedEvent.current(e.payload));
+    return () => { off.then((f) => f()); };
+  }, []);
+  useEffect(() => { savedStarting.current = null; }, [project]);
+  // A start the shell itself refused never reaches the engine: Hand Squibby the job puts its words back (putBackSent, which
+  // forgets the saved job), and Rescue's refusal comes through `refused` as a protocol.error (onSavedEvent).
+  const startSaved = (j: SavedJobView, go: () => void) => {
+    savedStarting.current = { id: j.id, kind: j.kind };
+    go();
   };
   const pickVague = (c: VagueChoice) => {
     pressed();
@@ -2380,6 +2437,16 @@ export function Card() {
     return <TodayLine entries={entries} act={act} />;
   };
   const today = todayBlock();
+  // M89 (the review): the jobs saved for after the reset, in Now's own column above Today (never pinned under the ask box,
+  // where they pushed Home's own content off screen).
+  const savedJobsEl = project && m.savedJobs?.project === project && home.tab === "now" ? <SavedJobsList jobs={m.savedJobs.jobs} now={Date.now()} busy={working}
+    onRemove={(j) => void sendQuiet(dropSavedJob(project, j.id)).catch(() => {})}
+    onStart={(j) => {
+      if (working) return;
+      if (j.kind === "rescue") { runwayGate("rescue", "", () => startSaved(j, rescue), j.id); return; }
+      if (!toolOn("drive")) { dispatch({ type: "app.notice", message: offLine() }); return; }
+      runwayGate("job", j.prompt, () => startSaved(j, () => sendTask(j.prompt)), j.id);
+    }} /> : null;
   // M83 Part C: the status strip under the lead (statusStrip.tsx), from the same facts as the notch's panel. At rest, over
   // a result and beside the review card only (while a job works or a question waits, the lead is that). What was caught this week is left to the
   // list when its row is there (nowRows), so it is never said twice.
@@ -2742,7 +2809,10 @@ export function Card() {
           )}
           {/* M82: the hand off card (handoffCard.tsx): the clear prompt, then Run it (Claude Code) or Put it in and Copy (another tool). */}
           {handoff && project && <HandoffCard key={handoff.n} project={project} words={handoff.words} onClose={() => setHandoff(null)} onWaiting={setHandoffWaits}
-            onRun={(prompt) => { setHandoff(null); if (working) { setBox(prompt); needWords(S.askBusy); return; } if (!toolOn("drive")) { setBox(prompt); dispatch({ type: "app.notice", message: offLine() }); return; } sendTask(prompt); }} />}
+            onRun={(prompt) => { setHandoff(null); if (working) { setBox(prompt); needWords(S.askBusy); return; } if (!toolOn("drive")) { setBox(prompt); dispatch({ type: "app.notice", message: offLine() }); return; } runwayGate("job", prompt, () => sendTask(prompt)); }} />}
+          {/* M89: the warning before a big job near the Claude limit, and the jobs saved for after the reset (runwayPanels.tsx). */}
+          {runwayAsk && project && <RunwayAsk runway={m.runway} now={Date.now()} offRecord={off} kind={runwayAsk.kind} prompt={runwayAsk.prompt} onClose={() => setRunwayAsk(null)}
+            onStart={() => { const go = runwayAsk.go; setRunwayAsk(null); go(); }} onSave={() => saveForLater(runwayAsk)} />}
           {askHint && <div className="line muted" role="status">{askHint} <Button size="sm" onClick={() => { setAskHint(null); box.current?.focus(); }}>{S.ehClose}</Button></div>}
           {voiceHint && <div className="line" role="status">{voiceHint === "screenQuestion" ? S.voiceWaitsScreen : voiceHint === "holdOff" ? S.voiceWaitsHoldOff : S.voiceWaitsLanguage}</div>}
           {dragging && <div className="line drop-line" role="status">{S.attachDrop}</div>}
@@ -2786,7 +2856,7 @@ export function Card() {
                   { id: "explain" as const, el: toolOn("errorHelp") && main !== "explain" && <Button size="sm" key="explain" title={tip("explain", "explain")} onClick={wayPress("explain", explainFromBox)}><Icon name="explain" size={14} />{S.look.chipExplain}</Button> },
                   { id: "showMe" as const, el: buttonShown("showMe") && <Button size="sm" key="showMe" title={tip("showMe", "showme")} onClick={wayPress("showMe", () => { const q = box.current?.value.trim() ?? ""; if (q) { sentFromBox("showme"); showMe(q, q, []); } else { pressed(); needWords(S.showMeHint); } })}><Icon name="pointer" size={14} />{S.look.chipShowMe}</Button> },
                   { id: "plan" as const, el: buttonShown("plan") && <Button size="sm" key="plan" title={tip("plan")} onClick={wayPress("plan", plan)}><Icon name="grid" size={14} />{S.planIt}</Button> },
-                  { id: "rescue" as const, el: buttonShown("rescue") && <Button size="sm" key="rescue" title={tip("rescue")} onClick={wayPress("rescue", rescue)}><Icon name="wrench" size={14} />{S.rescueIt}</Button> },
+                  { id: "rescue" as const, el: buttonShown("rescue") && <Button size="sm" key="rescue" title={tip("rescue")} onClick={wayPress("rescue", () => runwayGate("rescue", "", rescue))}><Icon name="wrench" size={14} />{S.rescueIt}</Button> },
                   { id: "research" as const, el: buttonShown("research") && <Button size="sm" key="research" title={tip("research")} onClick={wayPress("research", research)}><Icon name="doc" size={14} />{S.researchIt}</Button> },
                   { id: "online" as const, el: buttonShown("online") && <Button size="sm" key="online" title={tip("online")} onClick={wayPress("online", shipOnline)}><Icon name="send" size={14} />{S.onlineButton}{shipTags && <ProTag />}</Button> },
                   { id: "bisect" as const, el: canBisect(m) && project && buttonShown("whichTask") && <Button size="sm" key="bisect" title={tip("bisect")} onClick={wayPress("bisect", findBreaker)}><Icon name="split" size={14} />{S.bisectButton}</Button> },
@@ -2816,6 +2886,7 @@ export function Card() {
         mark={cardLeads ? <HomeCharacter m={m} rest={!homeOpen || home.tab !== "now"} askId={askId} ring={heroRingOf(mode, heroStatus)} leanTo={null} /> : undefined} /></div>}
       {/* M69 step 2: at rest the Last fix and Since then cards take the recent list's place (homeRest.tsx). */}
       {!side && show("ask") && restCards(restIn) && atRest && home.tab === "now" && <div className="view view-lead">{restBlock()}</div>}
+      {!side && show("ask") && savedJobsEl && <div className="view view-lead">{savedJobsEl}</div>}
       {!side && show("ask") && today && <div className="view view-lead">{today}</div>}
       {/* About Companion itself (the engine stopped, a notice, an error from something done on any place): on every place. */}
       {show("notes") && <>
@@ -2840,6 +2911,7 @@ export function Card() {
           headline (the audit, items 37 and 51). */}
       <div className="view" ref={view} role={home.tab !== "now" ? "region" : undefined} id={tabPanelId(home.tab)} aria-labelledby={home.tab !== "now" ? "home-title" : undefined}>
       {side && show("ask") && restBlock()}
+      {side && show("ask") && savedJobsEl}
       {side && show("ask") && today}
       {show("whatsNew") && changes && (
         <section className="panel" role="status" aria-label={S.whatsNewTitle(changes.show[0].version)}>

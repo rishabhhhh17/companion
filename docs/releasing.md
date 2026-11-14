@@ -67,7 +67,7 @@ Checked offline on 20 Oct 2026 (build, disk image, bundle contents, Info.plist, 
 
 ## What an update check sends
 
-Squibby asks the address for `latest.json`. It is a plain request: it names the update tool, and the address sees the person's internet address like any web request. No project, no words, no ids. Installs happen only on a press, never while something is running, and only if the file's signature matches the public key inside the app.
+Squibby asks the address for `latest.json`. It is a plain request: it names the update tool, and the address sees the person's internet address like any web request. No project, no words, no ids. An update installs on a press, or (M89, Install updates while away, on unless turned off) by itself after 5 minutes with no keyboard, mouse or trackpad input. Never while something is running, during a call, while Squibby looks at the screen, listens or speaks, and only if the file's signature matches the public key inside the app. After a quiet install, Home says which version it updated to. The shell checks every condition again before it downloads and again before it installs (`updates.rs quiet_install_ok`).
 
 ## Known soft spots (not blockers)
 

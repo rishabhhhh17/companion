@@ -56,7 +56,8 @@ describe("every setting has exactly one place (the spec, 3.4)", () => {
     expect(mainKeys("keys")).toEqual(["keys.hotkeys", "voice.on", "talk.voice", "talk.speak", "talk.captions", "talk.dictate", "prompt.on"]);
     // M74: what goes to Claude, and how long safety copies are kept.
     expect(mainKeys("privacy")).toEqual(["sharing.hide", "calls.quiet", "memory.paused", "privacy.neverSend", "review.send", "undo.keepSize", "undo.keepAge"]);
-    expect(mainKeys("about")).toEqual(["updates.daily"]);
+    // M89: Install updates while away sits under the daily check it depends on.
+    expect(mainKeys("about")).toEqual(["updates.daily", "updates.quiet"]);
     expect(mainKeys("more")).toEqual([]);
   });
   test("every part that is not a setting has one place and its words", () => {

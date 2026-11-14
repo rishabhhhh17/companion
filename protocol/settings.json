@@ -29,6 +29,7 @@
     { "key": "talk.dictate", "section": "talking", "kind": "switch", "default": false, "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "speak.alsoSay", "section": "talking", "kind": "list", "default": [], "maxItems": 2, "allowedItems": ["needsYou", "taskDone"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "speak.alsoSay" },
     { "key": "speak.status", "section": "talking", "kind": "list", "default": [], "maxItems": 4, "allowedItems": ["fixPassed", "toolWaiting", "notSafe", "replay"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true, "floor": "speak.status" },
+    { "key": "talk.accuracy", "section": "talking", "kind": "choice", "default": "standard", "options": ["standard", "best"], "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
 
     { "key": "character.name", "section": "home", "kind": "text", "default": "", "maxLength": 24, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "island.show", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["shell"], "store": "settings", "live": true, "floor": "islandOff" },
@@ -174,6 +175,8 @@
     { "key": "review.weakenedChecks", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "packages.check", "section": "watch", "kind": "switch", "default": true, "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "notch.waitingMinutes", "section": "home", "kind": "choice", "default": "15", "options": ["5", "15", "60"], "scope": "app", "applies": ["runner"], "store": "settings", "live": true },
+    { "key": "runway.mark", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "runway.warnAt", "section": "spending", "kind": "choice", "default": "80", "options": ["off", "70", "80", "90"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "history.thisWeek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "numbers.yours", "section": "numbers", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "check.privatePages", "section": "checks", "kind": "switch", "default": true, "scope": "project", "applies": ["runner"], "store": "settings", "live": true },
@@ -237,6 +240,7 @@
 
     { "key": "updates.daily", "section": "updates", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true,
       "from": { "pageStorage": { "name": "companion.updateAuto", "map": "notZero" } } },
+    { "key": "updates.quiet", "section": "updates", "kind": "switch", "default": true, "scope": "app", "applies": ["shell", "pages"], "store": "settings", "live": true },
     { "key": "app.openAtLogin", "section": "home", "kind": "switch", "default": false, "scope": "app", "applies": ["shell"], "store": "settings", "live": true },
 
     { "key": "numbers.on", "section": "numbers", "kind": "switch", "default": false, "scope": "app", "applies": ["runner"], "store": "metrics", "live": true }

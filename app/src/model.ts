@@ -20,6 +20,8 @@ import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.
 import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
 import { signInReduce, signInStopped } from "./shipFinish.ts";
 import { whyLiveReduce, type WhyLive } from "./whyLive.ts";
+import { runwayFrom, savedFrom, type Runway } from "./runway.ts";
+import type { SavedJobView } from "../../protocol/index.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -287,6 +289,11 @@ export type Model = {
   /** M85 review: the person's own AI tool was just told to ask them first (guard.asked), in any project: the notch's line
    *  for a few seconds, and Now's notice (with the command) when it is the open project. */
   guardAsked?: { project: string; command: string; at: number } | null;
+  /** M89: the last thing Claude said about the person's usage limit on Squibby's own runs (runway.ts), kept across projects:
+   *  the limit is the person's, not the project's. */
+  runway?: Runway | null;
+  /** M89: the jobs saved for after the reset, for the project they were listed for. */
+  savedJobs?: { project: string; jobs: SavedJobView[] } | null;
   runnerUp: boolean;
   /** Return was pressed and the engine has not answered yet (the audit, item 27): the words sent, so Home shows them at once
    *  with Starting, and Flowflow thinks. Cleared once the engine starts the task, or refuses it, or anything else ends it. */
@@ -910,6 +917,9 @@ function reduceRest(m: Model, e: Ev): Model {
     case "approval.resolved": return { ...m, approvals: m.approvals.filter((a) => a.id !== e.approval), ...(e.always === "saved" ? { notice: S.approval.alwaysSaved } : e.always === "notSaved" ? { notice: S.approval.alwaysFailed } : {}) };
     // M77: a saved copy before a destructive command of the person's own AI tool: said once (Now's notice and the notch's
     // line); its row comes with the next tasks.list. Claude waiting: the notch's amber mark and line, cleared by the engine.
+    // M89: the usage runway (any project: the limit is the person's) and the jobs saved for after the reset.
+    case "usage.runway": { const r = runwayFrom(e, Date.now()); return r ? { ...m, runway: r } : m; }
+    case "jobs.saved": { const p = typeof e.project === "string" ? e.project : ""; const jobs = p ? savedFrom(e, p) : null; return jobs ? { ...m, savedJobs: { project: p, jobs } } : m; }
     case "guard.saved": return typeof e.project === "string" ? { ...m, notice: S.guard.savedNotice, guardSaved: { project: e.project, at: Date.now() } } : m;
     // M85: the person's own AI tool was told to ask them first: the notch's line for a few seconds (any project), and the
     // reason waits in History. M85 review: Now's notice names the command, only for the open project, and goes by itself

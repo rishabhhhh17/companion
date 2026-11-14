@@ -14,6 +14,7 @@ import { toolsFor } from "./tools.ts";
 import { turnStop, type ApiError } from "./reach.ts";
 import { APPROVAL_TIMEOUT_MS, EngineStop, MAX_APPROVAL_WAIT_MS, type Authorization, type Engine, type EngineOptions, type ShellFacts, type ToolUse, type Turn, type ToolResult, type Usage } from "./engine.ts";
 import { PRODUCT } from "./names.ts";
+import { fromRateLimitEvent, fromRetry, limitHit, type RunwayReading } from "./runway.ts";
 
 // The safety hook waits while an approval card is open. Its own time limit (in seconds, the SDK's unit) is set longer than a
 // card can ever live (the longest wait the setting allows, not the one chosen now, so a wait changed while the engine runs
@@ -182,9 +183,13 @@ export class SdkEngine implements Engine {
     // Whether the stream has said anything since its last result. A stream that ends with words and no result after them was
     // cut off (or ended on a failed request): that is a failure, never a finished turn (shortlist item 6).
     let open = false;
+    // M89: the usage runway, told as it comes (runway.ts). A listener that throws never breaks the run.
+    const tell = (r: RunwayReading | null) => { if (r) try { opts.runway?.(r); } catch { /* the runway is a nicety */ } };
     try {
     for await (const m of q as AsyncIterable<any>) {
       if (m.session_id) sessionId = String(m.session_id);
+      if (m.type === "rate_limit_event") { tell(fromRateLimitEvent(m)); continue; }
+      if (m.type === "system" && m.subtype === "api_retry") { tell(fromRetry(m)); continue; }
       if (m.type === "assistant") {
         open = true;
         // An assistant message's own usage is not booked: the result holds it. It is only kept for the estimate above.
@@ -199,7 +204,7 @@ export class SdkEngine implements Engine {
         const text = content.filter((b: any) => b.type === "text").map((b: any) => b.text).join("");
         // Claude Code's own message about a failed request (an API error, or a reply cut at its output limit) is not the
         // agent speaking: it is kept to name the failure if the turn ends on it, and never shown as the agent's words.
-        if (m.error) { apiError = { kind: String(m.error), text }; continue; }
+        if (m.error) { apiError = { kind: String(m.error), text }; if (m.error === "rate_limit") tell(limitHit()); continue; }
         if (text) yield { text, costUsd: 0, sessionId };
         // A tool call: whatever the agent said before it is not what it ended on (asks.ts reads the last words).
         if (content.some((b: any) => b.type === "tool_use")) yield { costUsd: 0, sessionId, usedTool: true };

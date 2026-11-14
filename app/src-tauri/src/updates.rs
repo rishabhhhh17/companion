@@ -68,6 +68,8 @@ pub struct InstallFlight(std::sync::atomic::AtomicBool);
 pub struct InstallGuard<'a>(&'a InstallFlight);
 impl InstallFlight {
     pub const fn new() -> Self { InstallFlight(std::sync::atomic::AtomicBool::new(false)) }
+    /// M89: whether an install is under way now (the quiet install never starts a second one).
+    pub fn busy(&self) -> bool { self.0.load(std::sync::atomic::Ordering::SeqCst) }
     pub fn try_start(&self) -> Option<InstallGuard<'_>> { if self.0.swap(true, std::sync::atomic::Ordering::SeqCst) { None } else { Some(InstallGuard(self)) } }
 }
 impl Drop for InstallGuard<'_> { fn drop(&mut self) { (self.0).0.store(false, std::sync::atomic::Ordering::SeqCst); } }
@@ -75,12 +77,109 @@ pub static INSTALLING: InstallFlight = InstallFlight::new();
 /// What install_update says to a second press while one install is under way.
 pub const INSTALLING_WORDS: &str = "An update is already being installed.";
 
+/// M89: what install_update says to a quiet install when the Mac is no longer quiet. Never shown: the page drops it.
+pub const NOT_QUIET_WORDS: &str = "Not quiet now. The update waits.";
 /// What install_update says when something runs: the page's own words (S.updatesBusy).
 pub const BUSY_WORDS: &str = "Wait until the current task is finished, then install.";
+
+// ---------- M89: install while the person is away ----------
+
+/// How long with no keyboard, mouse or trackpad input before an update found may install by itself.
+pub const QUIET_SECS: f64 = 300.0;
+/// How often the shell looks (the tick runs twice a second; this is counted in ticks of it, see shell_updates.rs).
+pub const QUIET_LOOK_SECS: u64 = 30;
+/// What the quiet install looks at. Only times and yes or no: never what was typed, never a key, never a window's content.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Quiet {
+    /// Install updates while away (updates.quiet), on unless turned off.
+    pub setting_on: bool,
+    /// A check found an update that is ready to install (PENDING_UPDATE).
+    pub found: bool,
+    /// Seconds since the last keyboard, mouse or trackpad input anywhere on the Mac (idle_seconds), or None when unknown.
+    pub idle_secs: Option<f64>,
+    /// A task or an approval under way (Running::busy).
+    pub busy: bool,
+    /// A call app in front with Quiet during calls on, or the camera or another app's microphone in use (presentation.rs).
+    pub call: bool,
+    /// The screen is being looked at: a Show me how answer on its way, a pointer or picture on the overlay (rule 5).
+    pub capture: bool,
+    /// The microphone is open (hold to talk, Show me listening) or Squibby is speaking.
+    pub listening: bool,
+    /// An install is already under way.
+    pub installing: bool,
+}
+/// May an update install by itself now: switched on, one found, 5 minutes with no input (unknown counts as not quiet), and
+/// nothing running, no call, no screen look and no microphone or speech. The page asks its own questions on top
+/// (updates.ts quietInstallOk), and install_update asks this again before it takes anything.
+pub fn quiet_install_ok(q: &Quiet) -> bool {
+    q.setting_on && q.found && !q.installing && !q.busy && !q.call && !q.capture && !q.listening && q.idle_secs.is_some_and(|s| s.is_finite() && s >= QUIET_SECS)
+}
+/// The note kept for after the restart: the version only. Read once (update_note_take) and removed.
+pub fn note_json(version: &str) -> serde_json::Value { serde_json::json!({ "version": version.chars().filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')).take(40).collect::<String>(), "at": crate_now_ms() }) }
+fn crate_now_ms() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0) }
+/// The note as the page gets it: the version, only when the note is less than a day old (an old note is just removed).
+pub fn note_for_page(text: Option<&str>, now_ms: u64) -> serde_json::Value {
+    let Some(v) = text.and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok()) else { return serde_json::Value::Null };
+    let at = v["at"].as_u64().unwrap_or(0);
+    let ver = v["version"].as_str().unwrap_or("");
+    if at == 0 || now_ms.saturating_sub(at) > 86_400_000 || at > now_ms + 60_000 { return serde_json::Value::Null; }
+    if ver.is_empty() || ver.len() > 40 || !ver.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+')) { return serde_json::json!({ "updated": true }); }
+    serde_json::json!({ "version": ver })
+}
+
+/// Seconds since the last input event of any kind (keyboard, mouse, trackpad), as the window server counts it for the whole
+/// session. Only a number: no event is read, no key is seen, and it needs no permission (no Input Monitoring, rule 8).
+/// [verify] on a real Mac that macOS never asks for Input Monitoring for this (it should not: it is the same idle time the
+/// screen saver uses). None when it cannot be read.
+#[cfg(target_os = "macos")]
+pub fn idle_seconds() -> Option<f64> {
+    #[link(name = "CoreGraphics", kind = "framework")]
+    unsafe extern "C" { fn CGEventSourceSecondsSinceLastEventType(state: i32, event_type: u32) -> f64; }
+    // kCGEventSourceStateCombinedSessionState (0) and kCGAnyInputEventType (~0).
+    let s = unsafe { CGEventSourceSecondsSinceLastEventType(0, u32::MAX) };
+    (s.is_finite() && s >= 0.0).then_some(s)
+}
+#[cfg(not(target_os = "macos"))]
+pub fn idle_seconds() -> Option<f64> { None }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn calm() -> Quiet { Quiet { setting_on: true, found: true, idle_secs: Some(QUIET_SECS + 1.0), ..Quiet::default() } }
+    #[test]
+    fn m89_an_update_installs_by_itself_only_after_five_quiet_minutes_with_nothing_under_way() {
+        assert!(quiet_install_ok(&calm()));
+        assert!(!quiet_install_ok(&Quiet { idle_secs: Some(QUIET_SECS - 1.0), ..calm() }), "4 minutes 59 is not quiet enough");
+        assert!(!quiet_install_ok(&Quiet { idle_secs: None, ..calm() }), "an idle time that cannot be read is not quiet");
+        assert!(!quiet_install_ok(&Quiet { idle_secs: Some(f64::NAN), ..calm() }));
+        assert!(!quiet_install_ok(&Quiet { setting_on: false, ..calm() }), "switched off");
+        assert!(!quiet_install_ok(&Quiet { found: false, ..calm() }), "nothing to install");
+        assert!(!quiet_install_ok(&Quiet { busy: true, ..calm() }), "never during a job or an approval");
+        assert!(!quiet_install_ok(&Quiet { call: true, ..calm() }), "never during a call");
+        assert!(!quiet_install_ok(&Quiet { capture: true, ..calm() }), "never while the screen is looked at");
+        assert!(!quiet_install_ok(&Quiet { listening: true, ..calm() }), "never while listening or speaking");
+        assert!(!quiet_install_ok(&Quiet { installing: true, ..calm() }), "never a second install");
+    }
+    #[test]
+    fn m89_the_note_after_carries_a_plain_version_and_goes_stale_after_a_day() {
+        let n = note_json("1.4.0<script>");
+        assert_eq!(n["version"], "1.4.0script");
+        let now = n["at"].as_u64().unwrap();
+        assert_eq!(note_for_page(Some(&n.to_string()), now + 1000), serde_json::json!({ "version": "1.4.0script" }));
+        assert_eq!(note_for_page(Some(&n.to_string()), now + 86_400_001), serde_json::Value::Null, "a day old: said no more");
+        assert_eq!(note_for_page(Some(r#"{"version":"","at":5}"#), 6), serde_json::json!({ "updated": true }));
+        assert_eq!(note_for_page(Some("{nope"), now), serde_json::Value::Null);
+        assert_eq!(note_for_page(None, now), serde_json::Value::Null);
+    }
+    #[test]
+    fn m89_the_idle_time_is_a_number_and_reads_no_events() {
+        // On this Mac it is a number of seconds (the test runner itself is not input).
+        #[cfg(target_os = "macos")]
+        assert!(idle_seconds().is_some_and(|s| s >= 0.0));
+        let src = include_str!("updates.rs");
+        let code = &src[..src.find("#[cfg(test)]").unwrap()];
+        for never in [concat!("CGEvent", "TapCreate"), "IOHIDManager", "NSEvent.addGlobalMonitor", "addGlobalMonitorForEventsMatchingMask"] { assert!(!code.contains(never), "{never}"); }
+    }
     #[test]
     fn an_empty_file_means_updates_are_not_set_up() {
         assert_eq!(parse_config(r#"{"pubkey":"","endpoint":""}"#), None);

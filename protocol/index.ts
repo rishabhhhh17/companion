@@ -142,6 +142,14 @@ export type ShipSignIn = Envelope & { type: "ship.signIn"; project: string; /** 
 /** M87: Why is live broken?, on the person's press only, read only. url: the live address the person typed, when Squibby
  *  does not know it (a plain https address). */
 export type ShipWhyLive = Envelope & { type: "ship.whyLive"; project: string; url?: string };
+/** M89: a job kept for after the usage reset (runner/src/savedjobs.ts). kind job: a request for Hand Squibby the job, with
+ *  its words. kind rescue: Rescue, which needs no words. resetsAt: when the limit said it resets, if it said. Never sent
+ *  off the record. */
+export const SAVED_JOB_KINDS = ["job", "rescue"] as const;
+export const MAX_SAVED_JOB_CHARS = 4000;
+export type JobsSave = Envelope & { type: "jobs.save"; project: string; kind: (typeof SAVED_JOB_KINDS)[number]; prompt: string; resetsAt?: string };
+export type JobsList = Envelope & { type: "jobs.list"; project: string };
+export type JobsDrop = Envelope & { type: "jobs.drop"; project: string; job: string };
 /** M58 (feature 9): the key practice, on the person's press. write: the practice's pretend AI writes its made up key into the
  *  copy (then the review looks at once, by its rules alone); fix: the fixed fix moves it to .env.local, with a safety copy
  *  first. Only in a practice copy of the key practice (runner/src/practicekey.ts); no model, no cost. */
@@ -322,7 +330,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -500,6 +508,16 @@ export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; 
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
 /** M87: Why is live broken?, part by part as each finishes (running), then done, or stopped. liveUrl: the live address the
  *  pages were opened on. */
+/** M89 (usage runway): how much of the person's Claude is left, from what the Agent SDK really reports on Squibby's own runs
+ *  (runner/src/runway.ts). source plan: the plan's own numbers (rate_limit_event, the plan route only). source limit_hit:
+ *  Claude turned a request away just now (429), the only thing the API key route reports. usedPct: the share of the window
+ *  used, 0 to 100. resetsAt: when the window resets. retryInS: how long Claude Code waits before it tries again. Numbers and
+ *  times only. */
+export const RUNWAY_STATES = ["ok", "near", "out"] as const;
+export const RUNWAY_WINDOWS = ["five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet", "overage", "other"] as const;
+export type UsageRunway = Envelope & { type: "usage.runway"; state: (typeof RUNWAY_STATES)[number]; source: "plan" | "limit_hit"; usedPct?: number; resetsAt?: string; window?: (typeof RUNWAY_WINDOWS)[number]; retryInS?: number };
+export type SavedJobView = { id: string; kind: (typeof SAVED_JOB_KINDS)[number]; prompt: string; savedAt: string; resetsAt?: string };
+export type JobsSaved = Envelope & { type: "jobs.saved"; project: string; jobs: SavedJobView[] };
 export type ShipWhyLiveEvent = Envelope & { type: "ship.whyLive"; project: string; stage: "running" | "done" | "stopped"; parts: LivePart[]; liveUrl?: string; /** M87 review: why nothing ran (not_set_up: this Mac's engine has no tools for it) */ reason?: "not_set_up" };
 /** M58 (UI 13): where the person's own Vercel sign in is. opened: Vercel's own page (url, always https on vercel.com) is
  *  ready to open in their browser. lesson: the step could not run here, so the step by step lesson is offered. */
@@ -665,7 +683,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent;
+export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -689,6 +707,10 @@ const day: (k: string) => Check = (k) => (m) => {
 const NEXT_ACTIONS = ["fixWatch", "findProblem", "review", "open", "none"];
 const oneOfNext = (n: Record<string, unknown>): boolean => NEXT_ACTIONS.includes(n.action as string) && (n.action !== "fixWatch" || (typeof n.watch === "string" && n.watch.length > 0));
 const opt: (k: string, c: Check) => Check = (k, c) => (m) => (m[k] === undefined ? null : c(m));
+// M89: a time, a whole percent, and a saved job's words (a Rescue may have none).
+const isoOk = (k: string): Check => (m) => (typeof m[k] === "string" && (m[k] as string).length <= 40 && !Number.isNaN(Date.parse(m[k] as string)) ? null : `"${k}" must be a time`);
+const pctOk: Check = (m) => (typeof m.usedPct === "number" && Number.isInteger(m.usedPct) && m.usedPct >= 0 && m.usedPct <= 100 ? null : '"usedPct" must be a whole number from 0 to 100');
+const savedPromptOk: Check = (m) => (typeof m.prompt === "string" && Array.from(m.prompt).length <= MAX_SAVED_JOB_CHARS && (m.kind === "rescue" || m.prompt.trim().length > 0) ? null : `"prompt" must be the request, at most ${MAX_SAVED_JOB_CHARS} characters`);
 const needsOk: Check = opt("needs", oneOf("needs", ["browser"]));
 // M58: a check step may also need the person to sign in (a sign in wall): never on any other event.
 const stepNeedsOk: Check = opt("needs", oneOf("needs", ["browser", "signIn"]));
@@ -972,6 +994,9 @@ const COMMANDS: Record<string, Check[]> = {
   // M58 (UI 13): the person's own Vercel sign in, on their press.
   "ship.signIn": [str("project"), opt("stop", bool("stop"))],
   // M87: Why is live broken?, on the person's press. A typed address is a plain https address only.
+  "jobs.save": [str("project"), oneOf("kind", [...SAVED_JOB_KINDS]), savedPromptOk, opt("resetsAt", isoOk("resetsAt"))],
+  "jobs.list": [str("project")],
+  "jobs.drop": [str("project"), (m) => (typeof m.job === "string" && /^sj_\d{1,12}$/.test(m.job) ? null : '"job" must be a saved job\'s id')],
   "ship.whyLive": [str("project"), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/[^\s]+$/.test(m.url) && m.url.length <= 500 ? null : '"url" must be an https address'))],
   // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press.
   "practice.key": [str("project"), oneOf("step", ["write", "fix"])],
@@ -1081,6 +1106,9 @@ const EVENTS: Record<string, Check[]> = {
   "assist.labels": [str("req"), labelsOk, num("usdEstimate"), opt("guide", oneOf("guide", [...LABEL_GUIDES]))],
   "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
   // M87: Why is live broken?: each part is one of the four, with a known state and a reason that part can give.
+  "usage.runway": [oneOf("state", [...RUNWAY_STATES]), oneOf("source", ["plan", "limit_hit"]), opt("usedPct", pctOk), opt("resetsAt", isoOk("resetsAt")), opt("window", oneOf("window", [...RUNWAY_WINDOWS])), opt("retryInS", (m) => (typeof m.retryInS === "number" && Number.isInteger(m.retryInS) && m.retryInS > 0 && m.retryInS <= 86_400 ? null : '"retryInS" must be whole seconds, at most a day')),
+    (m) => (Object.keys(m).every((k) => ["v", "id", "ts", "type", "state", "source", "usedPct", "resetsAt", "window", "retryInS"].includes(k)) ? null : "the runway carries numbers and times only")],
+  "jobs.saved": [str("project"), (m) => (Array.isArray(m.jobs) && m.jobs.length <= 10 && m.jobs.every((j) => { const o = j as Record<string, unknown>; return !!o && typeof o === "object" && typeof o.id === "string" && /^sj_\d{1,12}$/.test(o.id) && (SAVED_JOB_KINDS as readonly string[]).includes(o.kind as string) && savedPromptOk(o) === null && isoOk("savedAt")(o) === null && (o.resetsAt === undefined || isoOk("resetsAt")(o) === null); }) ? null : '"jobs" must be at most 10 saved jobs')],
   "ship.whyLive": [str("project"), oneOf("stage", ["running", "done", "stopped"]), livePartsOk, opt("liveUrl", (m) => (typeof m.liveUrl === "string" && /^https:\/\//.test(m.liveUrl) ? null : '"liveUrl" must be an https address')), opt("reason", (m) => (m.reason === "not_set_up" ? null : '"reason" must be not_set_up'))],
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
   "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
