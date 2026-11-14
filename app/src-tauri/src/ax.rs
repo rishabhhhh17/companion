@@ -457,6 +457,16 @@ fn clickable_el(x: f64, y: f64) -> Option<Cf> {
     None
 }
 
+/// M86, Label it: the title of the front window of an app, and nothing else (no element, no value). Only on a Label it
+/// press, with the light already on, to choose a setup checklist (labels.rs guide_from_title). Never woken, never kept.
+pub fn front_window_title(pid: i32) -> Option<String> {
+    if pid <= 0 || !trusted(false) { return None; }
+    let app = Cf::new(unsafe { AXUIElementCreateApplication(pid) })?;
+    quick(&app);
+    let window = attr(&app, "AXFocusedWindow").or_else(|| attr(&app, "AXMainWindow"))?;
+    text_attr(&window, "AXTitle")
+}
+
 // ---------- M76: the typing boxes of the app in front (Show me where to paste) ----------
 
 /// The front window of an app: its frame, its title, and every typing box in it with what the box says about itself

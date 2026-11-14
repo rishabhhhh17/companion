@@ -146,6 +146,9 @@ describe("the shipped list of settings", () => {
       // deciding, never a block), and Squibby's own cards offer Always allow for this project where it fits (on; only a plain
       // read of one file outside the project, saved as a house rule they can see and remove).
       "safety.askBeforeLive": true, "approval.offerAlways": true,
+      // M86: Watch what changed plays on each review card (on), at the usual speed, still when the Mac asks for less motion;
+      // its one capped model call is on (measured under a cent with stand in token counts; m86-replay.test.ts).
+      "replay.show": true, "replay.speed": "normal", "replay.reduceMotion": "followMac", "replay.model": true,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -159,6 +162,13 @@ describe("the shipped list of settings", () => {
   test("M85: asking before live systems, and Always allow for this project", () => {
     expect(defOf("safety.askBeforeLive")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
     expect(defOf("approval.offerAlways")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });
+  });
+  test("M86: Watch what changed: on or off, speed, Reduce Motion, and its one model call", () => {
+    expect(defOf("replay.show")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner", "pages"], store: "settings", live: true });
+    expect(defOf("replay.speed")).toMatchObject({ section: "watch", kind: "choice", default: "normal", options: ["slow", "normal", "fast"], applies: ["pages"] });
+    expect(defOf("replay.reduceMotion")).toMatchObject({ section: "watch", kind: "choice", default: "followMac", options: ["followMac", "still", "moving"], applies: ["pages"] });
+    expect(defOf("replay.model")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });
+    expect(validate(defOf("replay.speed")!, "turbo").ok).toBe(false);
   });
   test("M77: the weakened check rule, the waiting mark's timeout and the week's count", () => {
     expect(defOf("review.weakenedChecks")).toMatchObject({ section: "watch", kind: "switch", default: true, scope: "app", applies: ["runner"] });

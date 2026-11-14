@@ -4,6 +4,7 @@
 // that found something (stop, worth a look) is never replaced before the person closes it: newer changes wait behind it
 // (later), with their own review if one ran, and take its place once it is closed. Nothing here
 // starts work: Review them, Fix it and Looks fine are the person's presses (card.tsx sends them), and Fix it asks first.
+import { replayOf, type ReplayView } from "./replay.ts";
 import { REVIEW_AWAY, REVIEW_CHECKS, REVIEW_CLOSED_HOW, REVIEW_LANES, REVIEW_RATINGS, REVIEW_REASONS, REVIEW_SILENCE_LINES, REVIEW_TOUCHES, type Command, type CodeLine, type ReviewChecks, type ReviewFile, type ReviewKeyPlace, type ReviewRating, type ReviewReason, type ReviewReasonKind, type ReviewTouch, type ReviewUntold } from "../../protocol/index.ts";
 import { addMemory } from "./commands.ts";
 import { untoldOf } from "./safetyNet.ts";
@@ -38,6 +39,8 @@ export type ReviewDone = {
   fixed?: number[];
   /** M77: what the changes did not tell you (files beyond the usual, TODO lines, the checks), from the review's own data. */
   untold?: ReviewUntold;
+  /** M86: Watch what changed, the review's replay from its own facts (replay.ts checks it again; dropped whole when off). */
+  replay?: ReplayView;
 };
 /** The card. stage: ready (changes wait to be reviewed), reviewing, or reviewed (result is there). asked: Review them was
  *  pressed and the engine has not started yet. fix: Fix it's question is open, or its task was asked for. note: one plain
@@ -122,8 +125,9 @@ function doneOf(e: Ev): (ReviewDone & { files: ReviewFile[]; count: number; capp
   const checksNote = str(e.checksNote), note = str(e.note), checksDetail = e.checks === "failed" ? str(e.checksDetail, 1500) : null;
   const ruleFiles = strings(e.ruleFiles, 10), hidden = whole(e.hidden);
   const untold = untoldOf(e.untold);
+  const replay = replayOf(e.replay);
   return {
-    ...(untold ? { untold } : {}),
+    ...(untold ? { untold } : {}), ...(replay ? { replay } : {}),
     rating: e.rating as ReviewRating, touches: [...new Set(e.touches as ReviewTouch[])], summary, notes, reasons, checks: e.checks as ReviewChecks,
     ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail: redact(checksDetail) } : {}), sendBack, lane, usdEstimate: typeof e.usdEstimate === "number" && e.usdEstimate >= 0 ? e.usdEstimate : 0, ...(note ? { note } : {}),
     ...(ruleFiles?.length ? { ruleFiles: ruleFiles.map((f) => f.slice(0, 200)) } : {}), ...(hidden ? { hidden } : {}),
@@ -144,7 +148,7 @@ export function reviewReduce(r: ReviewCard | null, e: Ev): ReviewCard | null {
     // The newer batch is said first; its review's start and result follow it. Anything else for another batch is late.
     // The waiting card goes through this same rule, so a waiting review that found something keeps its own place too:
     // a still newer batch waits behind it, never takes it (m67 bug 11).
-    const review = e.type === "review.batch" || e.type === "review.started" || e.type === "review.result";
+    const review = e.type === "review.batch" || e.type === "review.started" || e.type === "review.result" || e.type === "review.replay";
     if (!review) return reduceOne(r, e);
     if (e.type !== "review.batch" && !r.later) return r;
     const later = reviewReduce(r.later ?? null, e);
@@ -191,6 +195,13 @@ function reduceOne(r: ReviewCard | null, e: Ev): ReviewCard | null {
       const done: ReviewCard = { ...base, stage: "reviewed", files, count, capped, secretFiles, asked: false, fix: null, note: null, result };
       // M69: Fix it was pressed on the key warning before the review: its own question shows now (never a fix unasked).
       return fixAfter && canFix(done) ? { ...done, fix: "confirm" } : done;
+    }
+    // M86: the model's arrangement of the replay, after the result (which never waits for it). Only the card's own batch,
+    // only once reviewed, checked again whole (replay.ts replayOf); the same facts, so nothing else on the card changes.
+    case "review.replay": {
+      if (!r?.result || r.stage !== "reviewed" || !isProject(e.project) || norm(e.project) !== norm(r.project) || e.batch !== r.batch) return r;
+      const replay = replayOf(e.replay);
+      return replay ? { ...r, result: { ...r.result, replay } } : r;
     }
     // M57 feature 4: the rules looked again after a newer change. The places that no longer hold are marked; a card with
     // nothing left closes, and the newer review waiting behind it (later) takes its place.

@@ -122,3 +122,4 @@
 {"v":1,"id":"m81d1","type":"donesignal.add","project":"p_9f2c","tool":"gemini","confirm":true,"hook":"guard"}
 {"v":1,"id":"m81d2","type":"donesignal.remove","project":"p_9f2c","tool":"windsurf"}
 {"v":1,"id":"m85c1","type":"approval.resolve","approval":"ap_85","decision":"allow","scope":"project"}
+{"v":1,"id":"m86c1","type":"assist.locate","req":"sm_86","question":"which of these do I need for webhooks?","image":{"ref":"sm_86","w":1280,"h":800},"mode":"label","guide":"stripe"}

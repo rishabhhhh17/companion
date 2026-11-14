@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Watch what changed, and Label it: 14 Nov 2026
+
+- **Watch what changed.** After each review, the review card draws a short replay, one step at a time: the files your AI changed and which part of your app each is, each check and how it ended (with its exit code), and the verdict. Each step has one plain sentence under it. Watch again plays it over. The card shows up straight away: Claude's clearer words, when you have them on, follow a moment later.
+- **It can't make things up.** The replay is built only from what the review measured. Every sentence is checked against those facts: a file, a check, a number, a pass or a failure that is not in them, and the sentence is thrown away. Nothing is called working, fixed, ready or done unless a check passed. Checks that did not run are never said to pass.
+- **Your way, in Settings.** Turn it off, pick a speed, or show it as one still picture (it already follows your Mac's Reduce Motion). Claude can put the facts in clearer words with one short request per review, measured at under a cent; turn that off and the plain words are used.
+- **Label it.** Press the Show me key and ask "label this" or "what are these settings?". Squibby looks once (the light comes on first, nothing is saved) and puts up to 8 labels on your screen, each beside the thing it names (never on top of it) with a thin line to its edge, in blue, orange for worth a look, or red for a risk with why. A question like "which of these do I click?" still gets the pointing ring.
+- **Setup pages get a checklist.** On a Supabase, Stripe, Vercel, Clerk, Firebase or GitHub page (known from the window's title only), the labels know what usually goes wrong there, like row level security or a webhook pointing at localhost.
+- **Labels never overlap, and they go when you move on:** Esc, Stop everything, a new question, the window changing, or 30 seconds takes them away, and Home's line about them goes with them. They never click or type anything.
+- **Not yet claimed:** that the labels land on the right things on a real screen, and the real cost of the replay's words. Both are checked next.
+
 ## Ask before live systems, and catch what the AI hid: 14 Nov 2026
 
 - **Your AI tool asks you first before it touches something live.** A saved copy on your Mac can't bring back a dropped live database, a production deploy, destroyed cloud servers or history rewritten on GitHub. When Claude Code, Cursor, the VS Code agent or Antigravity is about to run a command like that, Squibby has your tool ask you first, with a plain reason, such as "This resets your live Supabase database". You decide in your own tool. Squibby never blocks and never says yes for you.

@@ -28,6 +28,10 @@ import { NEEDS_GIT, type Checkpoint, type CheckpointStore } from "../checkpoints
 import type { FastLike } from "../lanes.ts";
 import { PRODUCT, PRODUCT_S } from "../names.ts";
 import { clip, redact, redactOutput } from "../redact.ts";
+import { factSheet, makeReplay, ruleBeats, type CheckRun, type FactSheet } from "./replay.ts";
+
+/** M86: the longest the replay's own model call may take. It never holds up the review (review.result goes first). */
+export const REPLAY_TIMEOUT_MS = 8_000;
 import { isEnvFile } from "../secretfiles.ts";
 import { coveredBy, patternTests } from "../pathglob.ts";
 import { limitReached } from "../spending.ts";
@@ -56,7 +60,8 @@ export const LIGHT_WORK: ReadonlySet<string> = new Set(commandsWhere((r) => r.ow
 const LIGHT_OWN_FILE = /(^|\/)(AGENTS\.md|CLAUDE\.md|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|composer\.lock|Gemfile\.lock|go\.sum)$/;
 
 /** What the project's own checks said (agent.ts checkForReview): a result, a reason it was not run, or stopped (null). */
-export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[]; /** M77b: a failed check's own output, for behind Details. */ detail?: string } | { skip: string } | null;
+export type CheckOutcome = { outcome: "ok" | "failing" | "unknown"; reason: string; /** M75: private looking pages that opened without a sign in. */ open?: string[]; /** M77b: a failed check's own output, for behind Details. */ detail?: string;
+  /** M86: each check with its exit code, and the proof screenshot's path (Watch what changed). */ runs?: CheckRun[]; shot?: string } | { skip: string } | null;
 /** M75: each private looking page that opened without a sign in is a Worth a look reason (never a stop: a page can be
  *  public on purpose). A safe rating becomes worth a look; a stop stays a stop. */
 export function withOpenPages<T extends { rating: ReviewRating; reasons: Reason[] }>(rated: T, open: readonly string[]): T {
@@ -708,6 +713,21 @@ export class ReviewService {
   }
 
   /** M57 feature 1: what was done with a review, in its row. Never in the way of the review itself. */
+  /** M86: the model's arrangement of a review's replay, after its review.result: on its own short time limit, stopped with
+   *  the review (Stop everything, a newer change), booked whatever became of it, and sent only when it checked out. */
+  private async replayByModel(b: Batch, sheet: FactSheet, stop: AbortSignal, gen: number): Promise<void> {
+    const rc = new AbortController();
+    const end = () => rc.abort();
+    stop.addEventListener("abort", end, { once: true });
+    const timer = setTimeout(end, Math.min(REPLAY_TIMEOUT_MS, this.deps.modelTimeoutMs ?? REPLAY_TIMEOUT_MS));
+    try {
+      const made = await makeReplay({ sheet, model: this.deps.cheap, useModel: true, room: this.deps.spend.room(b.project), signal: rc.signal });
+      if (made.usd > 0) this.deps.spend.book(b.project, made.usd);
+      if (made.by !== "model" || gen !== this.gen || stop.aborted || !this.reviewed.has(b.id)) return;
+      this.deps.emit({ type: "review.replay", project: b.project, batch: b.id, replay: { beats: made.beats, by: "model", files: sheet.files, count: sheet.count, more: sheet.more, checks: sheet.checks, ...(sheet.shot ? { shot: sheet.shot } : {}) } });
+    } catch { /* the rules' replay is already on the card */ }
+    finally { clearTimeout(timer); stop.removeEventListener("abort", end); }
+  }
   private said(b: Batch, did: Parameters<ReviewHistory["did"]>[2]): void {
     try { this.deps.history?.did(b.project, b.id, did); } catch { /* the row is a nicety */ }
   }
@@ -872,6 +892,7 @@ export class ReviewService {
       // The project's own checks, only when asked (or automatic), never beside the engine's other work in the project.
       let checks: Checks = "not_run", checksNote: string | undefined, checksDetail: string | undefined;
       let privateOpen: string[] = [];
+      let checkRuns: CheckRun[] | undefined, checkShot: string | undefined;
       if (proof) {
         if (!this.deps.check) { checks = "unknown"; checksNote = "The project's checks cannot run here."; }
         else if (this.ownOf(b.project) > 0 || this.deps.busy?.(b.project)) { checks = "unknown"; checksNote = `${PRODUCT} is working on this project right now, so its checks were not run.`; }
@@ -883,7 +904,7 @@ export class ReviewService {
           catch { r = abort.signal.aborted ? null : { outcome: "unknown", reason: "The checks took too long, so they were stopped." }; }
           if (abort.signal.aborted || r === null) throw new Error("stopped");
           if ("skip" in r) { checks = "unknown"; checksNote = r.skip; }
-          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; checksDetail = r.outcome === "failing" && r.detail ? clip(redactOutput(r.detail).trim(), 1200) : undefined; }
+          else { checks = r.outcome === "ok" ? "passed" : r.outcome === "failing" ? "failed" : "unknown"; checksNote = r.reason; privateOpen = r.open ?? []; checkRuns = r.runs; checkShot = r.shot; checksDetail = r.outcome === "failing" && r.detail ? clip(redactOutput(r.detail).trim(), 1200) : undefined; }
           checksNote = checksNote ? clip(redactOutput(checksNote).replace(/\s+/g, " ").trim(), 240) : undefined;
         }
       }
@@ -947,13 +968,21 @@ export class ReviewService {
       // M77: what the changes did not tell you, from this review's own data (no model call).
       const untold = untoldOf(b.files, deltas, checks);
       const ruleFiles = lane !== "none" ? ruleNotes.map((n) => n.name) : [];
+      // M86, Watch what changed: the replay of this review, from its own facts. review.result carries the rules' beats (no
+      // model, no wait); with replay.model on (on as usual: under a cent measured with stand in token counts), one capped
+      // call on the cheap lane may then arrange the same facts, and its replay follows as review.replay. The card never
+      // waits for it. It is booked like any other call. Never with Checks only (nothing of the change leaves this Mac).
+      let replay: Record<string, unknown> | undefined;
+      const sheet = this.deps.setting("replay.show") !== false ? factSheet({ files: b.files, count: b.count, checks, runs: checkRuns, shot: checkShot, rating: shown.rating }) : null;
+      if (sheet) replay = { beats: ruleBeats(sheet), by: "rules", files: sheet.files, count: sheet.count, more: sheet.more, checks: sheet.checks, ...(sheet.shot ? { shot: sheet.shot } : {}) };
       if (gen !== this.gen || abort.signal.aborted) throw new Error("stopped");
       this.deps.emit({
         type: "review.result", project: b.project, batch: b.id, ok: true, rating: shown.rating, touches, summary: clip(redact(summary), 400), notes,
         reasons: withLines(shown.reasons, after), files: b.files.slice(0, SHOWN_FILES), count: b.count, capped: b.capped, secretFiles: b.secretFiles.slice(0, 20),
         checks, ...(checksNote ? { checksNote } : {}), ...(checksDetail ? { checksDetail } : {}), sendBack: sendBackText(review), lane, usdEstimate: Math.round(usd * 1e6) / 1e6, ...(note ? { note } : {}),
-        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold,
+        ...(ruleFiles.length ? { ruleFiles } : {}), ...(shown.hidden ? { hidden: shown.hidden } : {}), untold, ...(replay ? { replay } : {}),
       });
+      if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
       try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))] }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));

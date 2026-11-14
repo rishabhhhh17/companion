@@ -359,7 +359,7 @@ describe("every light feature goes through the one booking function", () => {
     const count = (src: string, re: RegExp) => (src.match(re) ?? []).length;
     const agent = read("agent.ts"), lanes = read("lanes.ts");
     expect({ explainer: count(agent, /this\.o\.explainer!?\(/g), describer: count(agent, /this\.o\.describer\(/g), checker: count(agent, /secondLook\([^)]*this\.o\.checker/g) }).toEqual({ explainer: 3, describer: 1, checker: 1 });
-    expect({ fast: count(lanes, /this\.o\.fast\.run\(/g), vision: count(lanes, /this\.o\.vision\.locate\(/g), look: count(lanes, /this\.o\.look\(/g) }).toEqual({ fast: 2, vision: 1, look: 1 });
+    expect({ fast: count(lanes, /this\.o\.fast\.run\(/g), vision: count(lanes, /this\.o\.vision\.locate\(/g), look: count(lanes, /this\.o\.look\(/g) }).toEqual({ fast: 2, vision: 1, look: 2 });   // M86: Label it's look, booked like the everyday look (m86-labels.test.ts)
     // Nothing else in the engine calls a lane: every other file that could would show up here. (secondlook.ts calls the fast lane
     // once, for agent.ts's secondLookCheck, which books what it returns, success or failure; the count of that call is checked.)
     expect(count(read("secondlook.ts"), /\bfast\.run\(/g)).toBe(1);

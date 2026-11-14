@@ -35,9 +35,12 @@ describe("the checks of a review", () => {
     const r = await s.run(true);
     expect(s.calls[0].noServer).toBeFalsy();
     expect(s.calls[0].noInstall).toBe(true);
-    expect(r).toEqual({ outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser." });
+    // M86 changed this on purpose: a review's check also says each rung and how it ended, for Watch what changed (no exit
+    // code here: this stand in ladder ran no command).
+    const runs = [{ label: "The build and checks", rung: "checks", status: "passed" }, { label: "Starting the app", rung: "start", status: "passed" }, { label: "The browser check", rung: "browser", status: "passed" }] as { label: string; rung: string; status: "passed" | "failed" | "skipped" }[];
+    expect(r).toEqual({ outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", runs });
     const n = setup({ approve: true, ladder: noPage });
-    expect(await n.run(true)).toEqual({ outcome: "ok", reason: "The project's own checks passed. The browser check did not run: there is nothing to open in a browser." });
+    expect(await n.run(true)).toEqual({ outcome: "ok", reason: "The project's own checks passed. The browser check did not run: there is nothing to open in a browser.", runs: [runs[0], { ...runs[1], status: "skipped" as const }, { ...runs[2], status: "skipped" as const }] });
   });
   test("a press of Review them runs a project nobody allowed yet, in the safety box only", async () => {
     const s = setup({ approve: false });

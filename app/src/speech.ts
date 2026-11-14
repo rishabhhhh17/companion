@@ -184,10 +184,10 @@ export function lineByVoice(q: VoiceQuestion, key: string, nowMs: number): boole
 }
 /** How a Show me asked by voice is ended. Not "done": the last step said in words takes the pointer away first and its
  *  words come after, and they are still its answer. */
-const SHOWME_ENDS = ["your_turn_done", "done_for_you", "error", "needs_permission", "window_changed"];
+const SHOWME_ENDS = ["your_turn_done", "done_for_you", "error", "needs_permission", "window_changed", "labelled"];
 /** A Show me asked by voice, as Show me's own events arrive (app.showme, and assist.error for a request): it takes the
  *  request the first "Finding it" after it names, and it ends when that answer ends (the click, Do it for me, an error, a
- *  missing permission, a window that changed) or another question takes the pointer (another request's "Finding it").
+ *  missing permission, a window that changed, labels drawn) or another question takes the pointer (another request's "Finding it").
  *  A question of another kind is left alone. */
 export function followVoiceShowMe(q: VoiceQuestion, ev: unknown): VoiceQuestion {
   if (!q || q.kind !== "showme" || typeof ev !== "object" || ev === null) return q;

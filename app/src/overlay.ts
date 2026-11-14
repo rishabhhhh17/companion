@@ -4,7 +4,10 @@
 import { listen } from "./tauri.ts";
 import { at, burst, captionPlace, captionStyle, confetti, CONFETTI_S, flightMs, ringLook, ringMsOf } from "./pointer.ts";
 import { arcAt, BEAD_GAP, BEAD_R, bud, dropScale, DROP_R, easeInOut, HOME_DELAY_MS, HOME_MS, isHop, LAND_MS, RING_IN_MS, ringBeads, ringIn, settle, SPLIT_MS, SPREAD_MS, stretch, type Tint, waterTint } from "./water.ts";
-import { fitLabel, wrapLines } from "./layout.ts";
+import "./ui/tokens.css";
+import "./ui/labels.css";
+import { fitLabel, labelBounds, labelSize, placeLabels, wrapLines } from "./layout.ts";
+import { revealPlan, toneColour, type LabelTone } from "./labelReveal.ts";
 import { sketchEllipse, sketchLine, sketchRect } from "./sketch.ts";
 import { fadeMs, markFor, ringRadii } from "./marks.ts";
 import { INK, haloFor, inkMark, inkPath, penEase, type InkMark } from "./ink.ts";
@@ -491,4 +494,37 @@ export function drawSketch(sk: { title: string; caption: string; shapes: SketchS
   }
   if (ms !== null) timer = setTimeout(() => { if (reduced) { clear(); return; } g.style.transition = transition("opacity", DUR[4], EASE_EXIT_CSS); g.style.opacity = "0"; cap.style.transition = transition("opacity", DUR[4], EASE_EXIT_CSS); cap.setAttribute("opacity", "0"); timer = setTimeout(clear, DUR[4] + DUR[1]); }, Math.max(ms, 12_000));
 }
+// M86, Label it: up to 8 labels the shell checked (labels.rs), each beside its point with a thin line back to a small dot,
+// placed so none overlaps another or leaves the screen (layout.ts placeLabels), revealed one after another (labelReveal.ts),
+// in their tone's meaning colour from the tokens. Words go in as text, never markup. They go after their time, on Esc, Stop
+// everything, a newer draw, or when the window under them changes (the shell clears the overlay).
+type ShownLabel = { x: number; y: number; box?: { x: number; y: number; w: number; h: number }; label: string; note?: string; tone: LabelTone };
+type LabelsPayload = { labels: ShownLabel[]; w?: number; h?: number; reduce?: boolean; gapMs?: number; ms?: number };
+function drawLabels(p: LabelsPayload) {
+  clear();
+  const mine = drawGen;
+  const list = p.labels.slice(0, 8);
+  const reduce = p.reduce === true || reducedMotion();
+  const sizes = list.map((l) => labelSize(l.label, l.note));
+  const placed = placeLabels(list.map((l) => ({ x: l.x, y: l.y, ...(l.box ? { box: l.box } : {}) })), sizes, labelBounds(p, { w: innerWidth, h: innerHeight }));
+  for (const step of revealPlan(list.length, reduce, p.gapMs)) {
+    const l = list[step.index], at = placed[step.index];
+    const g = el("g", { class: step.motion ? "lb lb-in" : "lb", "data-c": toneColour(l.tone) });
+    if (step.motion) (g as SVGGElement).style.animationDelay = `${step.delayMs}ms`;
+    g.appendChild(el("line", { class: "lb-line", x1: at.line[0][0], y1: at.line[0][1], x2: at.line[1][0], y2: at.line[1][1] }));
+    g.appendChild(el("circle", { class: "lb-dot", cx: at.dot[0], cy: at.dot[1], r: 4 }));
+    g.appendChild(el("rect", { class: "lb-box", x: at.x, y: at.y, width: at.w, height: at.h, rx: 8 }));
+    const name = el("text", { class: "lb-label", x: at.x + 13, y: at.y + 20 });
+    name.textContent = l.label;
+    g.appendChild(name);
+    if (l.note) wrapLines(l.note, Math.max(8, Math.floor((at.w - 26) / 6.4)), 3).forEach((line, i) => {
+      const t = el("text", { class: "lb-note", x: at.x + 13, y: at.y + 36 + i * 16 });
+      t.textContent = line;
+      g.appendChild(t);
+    });
+    svg.appendChild(g);
+  }
+  timer = setTimeout(() => { if (drawGen === mine) clear(); }, typeof p.ms === "number" ? p.ms : 30_000);
+}
+void listen("overlay-labels", (e) => drawLabels(e.payload as LabelsPayload));
 void listen("overlay-diagram", (e) => { const p = e.payload as { diagram: Laid & { sketch?: { title: string; caption: string; shapes: SketchShape[] } }; dockX: number; ms?: number | null; settings?: unknown }; takeSnapshot(p.settings); if (p.diagram.sketch) drawSketch(p.diagram.sketch, p.dockX, diagramMsOf(p.ms)); else drawDiagram(p.diagram, p.dockX, diagramMsOf(p.ms)); });

@@ -544,6 +544,11 @@ export const S = {
     // M85
     "safety.askBeforeLive": "Your own AI tool asks you first before it touches a live database, server or site.",
     "approval.offerAlways": "A question about reading one file outside the project can be answered once for good.",
+    // M86
+    "replay.show": "Each review card plays a short drawing of what changed, made only from what the review measured.",
+    "replay.speed": "How fast Watch what changed plays.",
+    "replay.reduceMotion": "Show Watch what changed as one still picture, or draw it, or do as your Mac does.",
+    "replay.model": "Claude may put the replay's facts in clearer words, checked against the review.",
     // M75
     "spend.pauseAt": "A task that uses far more than a usual one here stops and asks before it goes on.",
     // M77
@@ -668,7 +673,7 @@ export const S = {
     "more.account.you": "The AI you build with",
     "more.general.notch": "Notch", "more.general.quiet": "Quiet hours for the notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
-    "more.fixing.review": "Reviews of changes", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
+    "more.fixing.review": "Reviews of changes", "more.fixing.replay": "Watch what changed", "more.fixing.run": "How fixes run", "more.fixing.checks": "Checks and proof",
     "more.flowflow.motion": "Motion and placement",
     "more.keys.talking": "Talking", "more.keys.prompt": "Prompt help",
     "more.privacy.memory": "Memory", "more.privacy.calls": "Calls and counts",
@@ -2537,6 +2542,10 @@ export const S = {
     "report.codeLines": { label: "Include short code lines in go live reports", help: "A go live report names files but leaves their contents out. On, it adds the review's own short lines, three at most for each finding, with keys and passwords hidden. Off is safer for a report you send to someone.", also: ["report", "client", "share", "pdf", "code", "go live"] },
     "handoff.improve": { label: "Write a clear prompt first", help: `When you hand a job to your AI tool, ${PRODUCT} first writes a clear prompt from your words, with this project's house rules. You can change it before anything is sent. Off: your own words go as they are, and no model is asked.`, also: ["have my ai do it", "hand off", "prompt", "rewrite", "improve", "Cursor", "Codex", "Claude Code", "clear prompt"] },
     "safety.askBeforeLive": { label: "Ask before live systems", help: `Some commands touch something a saved copy on this Mac can't bring back. Think of a live database, a production site or a cloud account. When your AI tool is about to run one, ${PRODUCT} has that tool ask you first, with the reason. You decide in your tool. It works in Claude Code, Cursor, the VS Code agent and Antigravity. Codex, Gemini CLI and Windsurf can't ask yet, so they go on as before. Each ask is in History.`, also: ["live", "production", "database", "drop", "deploy", "terraform", "supabase", "prisma", "vercel", "force push", "ask", "cloud", "token"] },
+    "replay.show": { label: "Watch what changed", help: `After each review, ${PRODUCT} draws a short replay on the review card and in the notch. It shows the files that changed and which part of your app they are. It shows each check and how it ended, and the picture of your page. It is made only from what the review measured.`, also: ["replay", "watch", "animation", "drawing", "what changed", "review", "explain"] },
+    "replay.speed": { label: "Replay speed", help: "How fast each step of Watch what changed is drawn. Each step stays on long enough to read its sentence.", also: ["replay", "speed", "slow", "fast", "watch"], options: { slow: "Slow", normal: "Normal", fast: "Fast" } },
+    "replay.reduceMotion": { label: "Replay motion", help: "Follow my Mac draws the replay unless Reduce Motion is on. A still picture shows every step at once with no drawing.", also: ["replay", "reduce motion", "animation", "still", "accessibility"], options: { followMac: "Like my Mac", still: "Still", moving: "Always draw" } },
+    "replay.model": { label: "Clearer replay words", help: `One short request to Claude per review puts the replay's facts in clearer words. It may only use the review's own facts. ${PRODUCT} checks every word against them, and anything else is thrown away for the plain words. It is never sent when a review may send checks only.`, also: ["replay", "claude", "model", "words", "watch"] },
     "approval.offerAlways": { label: "Offer Always allow for this project", help: `When ${PRODUCT} asks to read one file outside your project, the question also offers Always allow for this project. That saves a house rule you can see and remove in Settings, Checks. It is never offered for anything that deletes, goes live or can't be undone: those only ever get Allow once.`, also: ["always allow", "allow once", "not now", "approval", "question", "house rule", "remember"] },
     "aiTools.nowRow": { label: "Offer to connect your AI tools on Now", help: `While no AI tool is connected in this project, Now shows one row that opens Your AI tools. Off: it is only in Settings, Fixing.`, also: ["connect", "ai tools", "Cursor", "Codex", "Claude Code", "VS Code", "row", "now"] },
     "ask.choices": { label: "Offer choices when an ask is vague", help: `When you type something short like "make it better" or "fix it", ${PRODUCT} first shows a few choices from what it knows about your project. Nothing runs until you tap one. More words and Return still work.`, also: ["vague", "choices", "options", "unclear", "make it better", "fix it", "clean up", "ask box", "suggest"] },
@@ -3662,5 +3671,24 @@ export const S = {
     todayEmptyLine: `What your AI tools change, and what ${PRODUCT} reviews, catches and fixes, lands here as it happens.`,
     todayEmptyAct: "See all history",
     todayEmptyConnect: "Connect your AI tools",
+  },
+  // M86 (docs/milestones/M86-watch-and-label.md). Watch what changed: a short drawn replay of each review, built only from
+  // what the review measured. Label it: labels on the screen, on your key.
+  m86: {
+    // Label it: said in Home while the labels are up.
+    labelled: (n: number) => `${n} ${n === 1 ? "label" : "labels"} on your screen. Esc clears them.`,
+    // The same, when Esc stays with the person's apps (home.escStops off).
+    labelledNoEsc: (n: number) => `${n} ${n === 1 ? "label" : "labels"} on your screen. They go in 30 seconds.`,
+    labelsFailed: "The labels could not be drawn. Try again.",
+    watch: "Watch what changed",
+    watchLabel: "A drawn replay of this review, one step at a time",
+    watchAgain: "Watch again",
+    // Who arranged the beats: the rules' own words, or Claude's arrangement of the same facts (checked against them).
+    byRules: "Drawn from the review's own facts.",
+    byModel: "Arranged by Claude from the review's own facts, and checked against them.",
+    more: (n: number) => `${n} more`,
+    exit: (n: number) => `exit ${n}`,
+    parts: { pages: "Pages", server: "Server", data: "Database", looks: "Styles", tests: "Tests", settings: "Settings", packages: "Packages", other: "Other" } as Record<"pages" | "server" | "data" | "looks" | "tests" | "settings" | "packages" | "other", string>,
+    check: { passed: "passed", failed: "did not pass", skipped: "did not run" } as Record<"passed" | "failed" | "skipped", string>,
   },
 } as const;

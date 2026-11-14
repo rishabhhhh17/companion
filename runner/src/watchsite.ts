@@ -10,7 +10,9 @@ import { hostAllowed, isLocalName, parseTarget, resolvedAllowed } from "./watcha
 import { PRODUCT } from "./names.ts";
 
 /** detail (M77b): a failed check's own output, kept apart from the plain reason, for behind Details. */
-export type CheckResult = { outcome: "ok" | "failing" | "unknown"; reason: string; detail?: string };
+export type CheckResult = { outcome: "ok" | "failing" | "unknown"; reason: string; detail?: string;
+  /** M86, for a review only: each check with its exit code, and the proof screenshot's path once the page opened. */
+  runs?: { label: string; rung: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string; open?: string[] };
 export type SiteResponse = { status: number; headers: { get(name: string): string | null }; body?: { cancel(): unknown } | null };
 /** address: the one already checked address of the name in the url. A fetcher connects to exactly that address (keeping the
  *  name for the Host header and the certificate), so a name that answers differently the second time cannot lead elsewhere. */

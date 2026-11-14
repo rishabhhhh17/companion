@@ -213,6 +213,16 @@ export function sweepBisect(workDir: string) {
 
 // Receipt pictures are kept for the timeline, newest first, so they never fill the disk: as many as "Pictures to keep" says
 // (pictures.keep, usually 200), removed when the next picture is made.
+/** M86: each rung's name in plain words, for Watch what changed. */
+const RUN_WORDS: Record<string, string> = { install: "The install", checks: "The build and checks", tests: "The tests", start: "Starting the app", browser: "The browser check", review: "The review" };
+/** M86: each check of a review as Watch what changed draws it: its plain label, how it ended, and the exit code of the
+ *  last command it ran (none when it ran none). */
+export function reviewRuns(steps: readonly { rung: string; label: string; status: string; runs?: { exit: number }[] }[]): { label: string; rung: string; status: "passed" | "failed" | "skipped"; exit?: number }[] {
+  return steps.filter((x) => x.status === "passed" || x.status === "failed" || x.status === "skipped").map((x) => {
+    const last = x.runs?.length ? x.runs[x.runs.length - 1].exit : undefined;
+    return { label: RUN_WORDS[x.rung] ?? `The ${x.label} check`, rung: x.rung, status: x.status as "passed" | "failed" | "skipped", ...(Number.isInteger(last) ? { exit: last as number } : {}) };
+  });
+}
 function pruneOldest(dir: string, keep: number) {
   const files = readdirSync(dir).filter((f) => f.endsWith(".jpg")).map((f) => ({ f, t: statSync(join(dir, f)).mtimeMs })).sort((a, b) => b.t - a.t);
   for (const x of files.slice(keep)) rmSync(join(dir, x.f), { force: true });
@@ -578,19 +588,37 @@ export class AgentRunner {
       const failed = res.verdict === "failed" ? (res.failedAt ?? res.steps.find((x) => x.status === "failed")) : undefined;
       // M77b (the 10 Nov real run, bug 3): the plain line (which check, the first failing test, where), and the check's own
       // output apart, for behind Details.
-      if (res.verdict === "failed") return failed ? { outcome: "failing", reason: plainFailLine(failed), detail: clip(redactOutput(failed.detail).trim(), 1200) } : { outcome: "failing", reason: "The project's checks did not pass." };
+      if (res.verdict === "failed") return failed ? { outcome: "failing", reason: plainFailLine(failed), detail: clip(redactOutput(failed.detail).trim(), 1200), ...(review ? { runs: reviewRuns(res.steps) } : {}) } : { outcome: "failing", reason: "The project's checks did not pass." };
       if (res.verdict === "nothing_to_check") return { outcome: "unknown", reason: `There is nothing in this project that ${PRODUCT} can check yet.` };
       if (res.verdict === "passed_with_gaps") return { outcome: "ok", reason: `The checks that could run passed. ${res.gaps?.[0] ? clip(redactOutput(res.gaps[0]), 120) : "Some could not run."}`.trim() };
       if (review) {
         const browser = res.steps.find((x) => x.rung === "browser");
-        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", ...(res.openPrivate?.length ? { open: res.openPrivate } : {}) };
+        // M86: the facts for Watch what changed: each check with its exit code, and the proof screenshot saved with the
+        // receipts (Pictures to keep), only once the page opened in the browser.
+        const facts = { runs: reviewRuns(res.steps), ...(browser?.status === "passed" && res.shot ? this.keepReviewShot(project, res.shot) : {}) };
+        if (browser?.status === "passed") return { outcome: "ok", reason: "All of the project's own checks passed, and the page opened in a browser.", ...(res.openPrivate?.length ? { open: res.openPrivate } : {}), ...facts };
         const why = browser?.detail ? clip(redactOutput(browser.detail).replace(/\s+/g, " ").trim(), 140) : "";
-        return { outcome: "ok", reason: why ? `The project's own checks passed. The browser check did not run: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : "The project's own checks passed. The browser check did not run." };
+        return { outcome: "ok", reason: why ? `The project's own checks passed. The browser check did not run: ${why.charAt(0).toLowerCase()}${why.slice(1)}` : "The project's own checks passed. The browser check did not run.", ...facts };
       }
       return { outcome: "ok", reason: "All of the project's own checks passed." };
     } catch (e) {
       return { outcome: "unknown", reason: isNeedsGit(e) ? NEEDS_GIT : (await this.sandboxed()) ? SANDBOXED_CHECKS : `${PRODUCT} could not check the project. Try again.` };
     } finally { signal.removeEventListener("abort", stop); if (this.watchRuns.get(key) === run) this.watchRuns.delete(key); }
+  }
+
+  /** M86: the proof screenshot of a review, saved with the receipts as a task's picture is (Make pictures, Pictures to keep),
+   *  so Watch what changed can name it. A screenshot of the app being built in the hidden browser, never of the screen. */
+  private keepReviewShot(project: string, shot: PageShot): { shot?: string } {
+    const pics = this.o.pictures;
+    const keep = Number(this.setting<number>("pictures.keep") ?? 200);
+    if (!pics || this.setting<boolean>("pictures.make") === false || !(keep > 0) || !shot.jpeg) return {};
+    try {
+      mkdirSync(pics.saveDir, { recursive: true, mode: 0o700 });
+      const file = join(pics.saveDir, receiptPictureName(project, `review-${Date.now().toString(36)}`));
+      writeFileSync(file, Buffer.from(shot.jpeg, "base64"), { mode: 0o600 });
+      pruneOldest(pics.saveDir, keep);
+      return { shot: file };
+    } catch { return {}; }
   }
 
   // Explain: asks the fast model why the task did what it did, from the real change. A problem here is never a problem for

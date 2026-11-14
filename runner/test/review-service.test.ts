@@ -23,7 +23,7 @@ const KEY = "sk_live_51HabcdefghijklmnopQRSTUVwx";
 const ENV_VALUE = "very-private-database-password-42";
 
 type Ev = Record<string, any>;
-function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolean; room?: number; words?: string; check?: ReviewDeps["check"]; busy?: () => boolean; cheap?: boolean; strong?: boolean; modelTimeoutMs?: number } = {}) {
+function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolean; room?: number; words?: string; check?: ReviewDeps["check"]; busy?: () => boolean; cheap?: boolean; strong?: boolean; modelTimeoutMs?: number; replayAnswer?: (signal: AbortSignal) => Promise<{ text: string; costUsd: number }> } = {}) {
   const project = tmp("proj"), shadow = tmp("shadow");
   write(project, o.files ?? { "src/App.tsx": "export const title = 'Hello';\n", "package.json": '{ "name": "site", "dependencies": { "react": "^19.0.0" } }\n' });
   const real = new CheckpointStore(join(shadow, "p.git"), project);
@@ -38,7 +38,7 @@ function setup(o: { files?: Record<string, string>; mode?: string; flow?: boolea
   let send: ((rel: string) => void) | null = null;
   const watch: WatchFn = (_d, on) => { send = on; return { close: () => { send = null; } }; };
   const asked: { lane: string; req: FastReq }[] = [];
-  const lane = (name: string): FastLike => ({ run: async (req) => { asked.push({ lane: name, req }); return { text: o.words ?? JSON.stringify({ summary: "The page title changed.", notes: ["Look at the home page once."], concern: false }), costUsd: name === "strong" ? 0.02 : 0.001 }; } });
+  const lane = (name: string): FastLike => ({ run: async (req, _d, signal) => { asked.push({ lane: name, req }); if (o.replayAnswer && req.system?.startsWith("You turn the fact sheet")) return o.replayAnswer(signal); return { text: o.words ?? JSON.stringify({ summary: "The page title changed.", notes: ["Look at the home page once."], concern: false }), costUsd: name === "strong" ? 0.02 : 0.001 }; } });
   const booked: number[] = [];
   const fixes: Command[] = [];
   let room = o.room ?? 10;
@@ -87,6 +87,40 @@ describe("a batch of changes", () => {
     expect(t.booked).toEqual([0.001]);
     expect(t.asked.map((a) => a.lane)).toEqual(["cheap"]);
     every(t.events);
+  });
+  test("M86: the review never waits for the replay's model call: review.result first with the rules' replay, the model's follows as review.replay", async () => {
+    let answer: (v: { text: string; costUsd: number }) => void = () => {};
+    const t = setup({ replayAnswer: () => new Promise((r) => { answer = r; }) });
+    t.values["replay.model"] = true;
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hello there';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    const batch = t.of("review.batch")[0].batch;
+    await t.svc.handle(t.cmd("review.now", { batch }) as never);
+    // The model has not answered, and the card is already there with the rules' beats.
+    const [r] = t.of("review.result");
+    expect(r.replay.by).toBe("rules");
+    expect(t.of("review.replay")).toEqual([]);
+    answer({ text: JSON.stringify({ beats: [
+      { say: "Your AI changed 1 file.", draw: "count" }, { say: "The page title changed.", draw: "file", ref: "src/App.tsx" }, { say: "Nothing stands out, but it is not proven because the checks did not run.", draw: "verdict" },
+    ] }), costUsd: 0.0005 });
+    await t.until(() => t.of("review.replay").length === 1);
+    expect(t.of("review.replay")[0]).toMatchObject({ project: t.project, batch, replay: { by: "model" } });
+    expect(t.booked).toContain(0.0005);
+    every(t.events);
+  });
+  test("M86: a replay call that runs past its own short limit is stopped, booked, and nothing follows", async () => {
+    const t = setup({ modelTimeoutMs: 50, replayAnswer: (signal) => new Promise((_, no) => signal.addEventListener("abort", () => no(new Error("cancelled")))) });
+    t.values["replay.model"] = true;
+    await started(t);
+    t.change({ "src/App.tsx": "export const title = 'Hello there';\n" });
+    await t.until(() => t.of("review.batch").length === 1);
+    await t.svc.handle(t.cmd("review.now", { batch: t.of("review.batch")[0].batch }) as never);
+    expect(t.of("review.result").length).toBe(1);
+    await t.until(() => t.booked.length === 2);
+    expect(t.booked[1]).toBeGreaterThan(0);
+    await sleep(50);
+    expect(t.of("review.replay")).toEqual([]);
   });
   test("changes after a review make a new batch from where the review ended, never the old changes again", async () => {
     const t = setup();

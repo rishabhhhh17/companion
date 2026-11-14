@@ -80,7 +80,7 @@
       "runner": ["review.now", "review.dismiss", "review.fix", "donesignal.show", "donesignal.add", "donesignal.remove"], "stays": ["review.dismiss", "donesignal.remove"] },
 
     { "id": "showMe", "group": "guide", "hotkeys": ["showme"], "tried": "page", "permissions": ["screenRecording"], "settings": ["showme.allScreens", "point.everyday"],
-      "commands": ["showme_start", "showme_aim", "do_it_for_me"],
+      "commands": ["showme_start", "showme_aim", "showme_labels", "do_it_for_me"],
       "runner": ["assist.locate", "assist.image"] },
     { "id": "lessons", "group": "guide", "tried": "page", "permissions": ["screenRecording"], "settings": [],
       "commands": [],

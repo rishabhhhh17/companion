@@ -1004,7 +1004,8 @@ mod tests {
         }
         kinds.sort(); kinds.dedup();
         // M57: review.recheck says which reasons of an earlier review no longer hold after a newer change.
-        assert_eq!(kinds, ["review.batch", "review.recheck", "review.result", "review.started"]);
+        // M86: review.replay is the model's replay, sent after review.result (which never waits for it).
+        assert_eq!(kinds, ["review.batch", "review.recheck", "review.replay", "review.result", "review.started"]);
     }
     #[test]
     fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {

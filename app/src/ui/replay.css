@@ -1,0 +1,19 @@
+/* M86, Watch what changed (replayView.tsx), on Home's review card. The board is the review's facts in
+   quiet greys; each beat's mark is drawn on in its meaning colour (data-c, tokens.css). Reduce Motion, or the still
+   choice: every mark drawn, no animation. Every colour, size, time and curve is a token. */
+.rp { margin: var(--space-2) 0; display: grid; gap: var(--space-1); }
+.rp-cap-head { font-size: var(--t-caption); line-height: var(--lh-caption); font-weight: 600; color: var(--fg-2); }
+.rp-board { display: block; max-width: 100%; height: auto; border-radius: var(--r-control, 8px); background: var(--surface-1); }
+.rp-row rect, .rp-chip rect, .rp-shot rect { fill: var(--surface-2); }
+.rp-board text { fill: var(--fg-2); font-family: var(--font); font-size: var(--t-caption); font-weight: 500; }
+.rp-board .rp-part { font-size: var(--t-caption); }
+.rp-mark { fill: none; stroke: var(--mc); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: rp-draw var(--dur-4) var(--ease-out) forwards; }
+.rp[data-still] .rp-mark { stroke-dashoffset: 0; animation: none; }
+@keyframes rp-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .rp-mark { animation: none; stroke-dashoffset: 0; } }
+.rp-say { display: grid; color: var(--fg); font-size: var(--t-body); line-height: var(--lh-body); }
+.rp-say-line { grid-area: 1 / 1; visibility: hidden; }
+.rp-say-line[data-on] { visibility: visible; }
+.rp-says { margin: 0; padding-left: 1.2em; color: var(--fg); font-size: var(--t-body); line-height: var(--lh-body); }
+.rp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.rp-by { color: var(--fg-2); font-size: var(--t-caption); line-height: var(--lh-caption); }

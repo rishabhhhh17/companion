@@ -7,6 +7,7 @@ import { SharedFilesRow } from "./sharedFilesRow.tsx";
 import { focusBack, focusIfLost, keepFocus, takeIfLost } from "./focus.ts";
 import { allScreensOn, voiceHint as talkKeysLine } from "./settings.ts";
 import { layoutDiagram } from "./layout.ts";
+import { labelAsk, labelledLine } from "./labelReveal.ts";
 import { answered, asksWorked, atLimit, clicked, judged, nextQuestion, settlesBeforeLook, waitsForPage } from "./anywhere.ts";
 import { EVERYDAY_ASK, checkQuestion, everydayGoal, everydayStepsAsk, frontOf, heroRoute, mainAction, nextLookMode, whyShown } from "./everyday.ts";
 import { answerPlayer, flightFor, lineMs, planSteps, sequenceOver, stepsLine, stillWanted, targetsOf, type Step } from "./sequence.ts";
@@ -1406,6 +1407,24 @@ export function Card() {
     });
     return () => { off.then((f) => f()); player.current.hush(); };
   }, []);
+  // M86, Label it: the engine's labels go to the shell, which checks them (labels.rs) and draws them over the screen the
+  // picture was of. Only for the Show me still waiting for them; nothing is drawn after it was ended.
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      const ev = e.payload as { type?: string; req?: string; labels?: unknown };
+      if (ev.type !== "assist.labels" || !ev.req?.startsWith("sm_") || !Array.isArray(ev.labels)) return;
+      if (!stillWanted(showmeNow.current)) return;
+      player.current.hush();
+      const n = ev.labels.length;
+      void invoke("showme_labels", { req: ev.req, labels: ev.labels }).then((r) => {
+        const out = r as { ok?: boolean; why?: string } | undefined;
+        if (out?.ok) dispatch({ type: "app.showme", stage: "labelled", message: labelledLine(n, setting("home.escStops") !== false), req: ev.req });
+        else if (out?.why === "window_changed") dispatch({ type: "app.showme", stage: "window_changed", message: S.sequenceWindowChanged });
+        else if (out?.why !== "gone") dispatch({ type: "app.showme", stage: "error", message: S.m86.labelsFailed });
+      }, () => dispatch({ type: "app.showme", stage: "error", message: S.m86.labelsFailed }));
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   // Point at the problem: the key checks the project; when a place comes back, the pointer flies there. Any Show me answer
   // still playing ends first, here and in the shell, so none of its later steps or lines lands on top of this one.
   const pointProblem = (project: string, problem: unknown) => { player.current.hush(); void invoke("point_problem", { project, problem }); };
@@ -1520,12 +1539,16 @@ export function Card() {
   // before: with "recheck", the spreadsheet error code the first look read, so the engine can prove it gone.
   // An ordinary question (no mode) is not the everyday walkthrough: the everyday panel closes and what it saw is forgotten,
   // so no look again can land on it. The everyday look counts its press on the key, so only a question counts a use here.
-  const showMe = (question: string, goal: string, steps: string[], settle = false, mode?: "everyday" | "recheck", before?: string) => {
+  const showMe = (question: string, goal: string, steps: string[], settle = false, mode?: "everyday" | "recheck" | "label", before?: string) => {
     if (!mode && steps.length === 0) count("anywhere_use");
     if (m.showme?.stage === "pointing_roughly") count("soft_ring_corrected");
     everydayWalk.current = !!mode;
     if (!mode) { lastWalk.current = null; if (nowModel.current.everyday) dispatch({ type: "ui.everydayClosed" }); }
     player.current.hush(); setWalk({ goal, steps });
+    // M86, Label it: a question that asks for labels ("label this", "which of these do I need?") is the same one capture,
+    // answered with labels as data (labelReveal.ts labelAsk).
+    // Never for a walkthrough's next step or a look after a click: those always point.
+    mode = mode ?? (steps.length === 0 && !settle && labelAsk(question) ? "label" : undefined);
     void invoke("showme_start", { question, allScreens: allScreensOn(), settle, mode, before });
   };
   // An everyday stuck moment: Show me's own look (light first, secrets covered, nothing kept), asking what is wrong and the
@@ -3415,7 +3438,7 @@ export function Card() {
             </div>
           )}
           {["your_turn_done", "done_for_you"].includes(m.showme.stage) && !walk && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); }}>{S.onlineClose}</button></div>}
-          {(["error", "needs_permission", "opened", "window_changed", "not_sure"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
+          {(["error", "needs_permission", "opened", "window_changed", "not_sure", "labelled"].includes(m.showme.stage) || (["pointing", "pointing_roughly"].includes(m.showme.stage) && !walk && !m.showme.turn)) && <div className="row"><button className="btn" type="button" onClick={() => { void invoke("showme_clear"); setWalk(null); }}>{S.onlineClose}</button></div>}
         </section>
       )}
 

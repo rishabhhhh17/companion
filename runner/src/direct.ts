@@ -137,7 +137,7 @@ export class DirectFastLane implements FastLike {
     const content = req.raw ? req.text : wrapUserText(req.text) + (req.extra ? `\n\n${req.extra}` : "");
     const uses = Math.min(MAX_SEARCHES, Math.floor(Number(req.search?.maxUses ?? 0)) || 0);
     const tools = uses >= 1 ? { tools: [{ type: WEB_SEARCH_TOOL, name: "web_search", max_uses: uses }] } : {};
-    const r = await send(this.o, model, { system: req.system ?? FAST_SYSTEM, messages: [{ role: "user", content }], ...tools }, signal, uses >= 1 ? undefined : onDelta);
+    const r = await send(this.o, model, { system: req.system ?? FAST_SYSTEM, messages: [{ role: "user", content }], ...tools, ...(req.maxTokens ? { max_tokens: Math.min(req.maxTokens, MAX_TOKENS) } : {}) }, signal, uses >= 1 ? undefined : onDelta);
     const out: FastOut = { text: r.text, costUsd: round(estimateUsd(model, r.usage)) };
     return uses >= 1 ? { ...out, searches: searchesOf(r.usage), sources: r.sources } : out;
   }

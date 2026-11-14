@@ -105,7 +105,10 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             }),
             Box::new(move |q, pics, cands| {
                 if !current() { return; }
-                let _ = a2.state::<runner::Runner>().send(&showme::with_project(everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before), &current_project()));
+                // M86, Label it: the front window's title chooses a setup checklist. It is read here, after the light came on
+                // and the one capture was taken (rule 5), on this press only; nothing else of it is kept.
+                let guide = if mode == Some("label") { labels::guide_from_title(&ax::front_window_title(front_pid()).unwrap_or_default()) } else { None };
+                let _ = a2.state::<runner::Runner>().send(&showme::with_project(everyday::with_guide(everyday::with_mode(showme::locate_command(&req2, q, pics, cands, &front), mode, before), guide), &current_project()));
             }),
             Box::new(move |on| { if !on { return; } say_showme(&a3, "looking", "Looking at your screen", json!({})); std::thread::sleep(Duration::from_millis(250)); /* the light is on screen before the capture */ }),
         );
@@ -136,6 +139,61 @@ fn showme_start(app: AppHandle, question: String, all_screens: Option<bool>, set
             Err(showme::Refusal::Stopped) => { if current() { say_showme(&app, "error", showme::HIDDEN_WORDS, json!({})); } }
         }
     });
+}
+
+/// M86, Label it: the engine's labels for the press that took the picture (assist.labels), checked here (labels.rs) and
+/// drawn on the overlay over the display that picture was of, revealed one after another by the page. They never take
+/// focus or the mouse, and they go with Esc, Stop everything, a newer question, Companion being hidden, after
+/// labels::SHOWN_MS, or as soon as the window under them changes (F17 rule 22). What was seen is forgotten here.
+#[tauri::command]
+fn showme_labels(app: AppHandle, req: String, labels: Value) -> Value {
+    use std::sync::atomic::Ordering::SeqCst;
+    let asked = POINT_GEN.load(SeqCst);
+    let Some((prep, _)) = showme_pending().step(&req, true) else { return json!({ "ok": false, "why": "gone" }) };
+    let Some(shot) = prep.shots.first().copied() else { return json!({ "ok": false, "why": "gone" }) };
+    if let Err(e) = labels::validate(&labels, shot.img_w, shot.img_h) { log("labels_refused", json!({ "why": e })); return json!({ "ok": false, "why": "invalid" }); }
+    if HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { return json!({ "ok": false, "why": "hidden" }); }
+    let ours = std::process::id() as i32;
+    let anchor = labels::middle(&labels, &shot).and_then(|m| crate::anchor::anchor_at(&prep.wins, ours, prep.front_pid, m.x, m.y).map(|a| (a, m)));
+    if let Some((a, m)) = &anchor {
+        if crate::anchor::check(&fullscreen::sys::on_screen_windows(), ours, a, front_pid(), m.x, m.y) != crate::anchor::Verdict::Fine { hide_overlay(&app); return json!({ "ok": false, "why": "window_changed" }); }
+    }
+    if POINT_GEN.compare_exchange(asked, asked + 1, SeqCst, SeqCst).is_err() { return json!({ "ok": false, "why": "gone" }); }
+    let gen = asked + 1;
+    turn_cancel();
+    let placed = labels::to_display(&labels, &shot);
+    let d = shot.display;
+    let reduce = reduce_motion();
+    OVERLAY_BUSY_UNTIL.store(now() as u64 + labels::SHOWN_MS + 500, SeqCst);
+    let a = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let mtm = MainThreadMarker::new().unwrap();
+        let primary_h = NSScreen::screens(mtm).iter().next().map(|s| s.frame().size.height).unwrap_or(0.0);
+        let ak = coords::rect_to_appkit(d, primary_h);
+        OVERLAY.with(|o| { if let Some(p) = o.borrow().as_ref() { p.setFrame_display(NSRect::new(NSPoint::new(ak.x, ak.y), NSSize::new(ak.w, ak.h)), true); p.orderFrontRegardless(); } });
+        esc_screen(&a, true);
+        let _ = a.emit_to("overlay", "overlay-labels", json!({ "labels": placed, "w": d.w, "h": d.h, "reduce": reduce, "gapMs": labels::REVEAL_GAP_MS, "ms": labels::SHOWN_MS }));
+    });
+    log("labels_shown", json!({ "count": labels.as_array().map_or(0, |l| l.len()) }));
+    std::thread::spawn(move || {
+        let until = std::time::Instant::now() + Duration::from_millis(labels::SHOWN_MS);
+        let mut changed = false;
+        while std::time::Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(250));
+            if POINT_GEN.load(SeqCst) != gen || !overlay_busy() { return; }
+            if HIDDEN_BY_US.load(SeqCst) || USER_HID.load(SeqCst) { break; }
+            if let Some((a, m)) = &anchor {
+                if crate::anchor::check(&fullscreen::sys::on_screen_windows(), ours, a, front_pid(), m.x, m.y) != crate::anchor::Verdict::Fine { log("labels_window_changed", json!({})); changed = true; break; }
+            }
+        }
+        // Gone by themselves (the time ran out, the window changed, Companion was hidden): Home is told, so its "labels on
+        // your screen" line and Show me's own state end with them. Esc, Stop and a newer question say so themselves.
+        if POINT_GEN.load(SeqCst) == gen {
+            hide_overlay(&app);
+            if changed { say_showme(&app, "window_changed", LABELS_WINDOW_CHANGED, json!({ "req": req })); } else { say_showme(&app, "done", "", json!({ "req": req })); }
+        }
+    });
+    json!({ "ok": true })
 }
 
 /// The window a ring at this spot belongs to (rule 22: a ring is drawn inside it and goes away if it changes).
@@ -215,6 +273,7 @@ fn draw_pointer_with(app: &AppHandle, d: coords::R, rect: coords::R, caption: &s
 }
 
 /// What the person is told when a ring went away because its window changed (moved, closed, covered, another app in front).
+const LABELS_WINDOW_CHANGED: &str = "The window changed, so I took the labels away. Ask again and I will look again.";
 const RING_WINDOW_CHANGED: &str = "The window changed, so I took the ring away. Press Show me where to point again.";
 
 /// A ring that does not wait for a click (a step in the middle of a multi step answer, Point at the problem's line or

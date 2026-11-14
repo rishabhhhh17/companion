@@ -231,7 +231,9 @@ describe("M71: one black look, colour for meaning only", () => {
   const M71_FILES: [string, Rule[]][] = [["parts.css", parts], ["black.css", parse(BLACK_CSS())], ["notch.css", parse(NOTCH_CSS())],
     ["style.css", style], ["look.css", parse(LOOK_CSS())], ["wide.css", parse(WIDE_CSS())], ["home.css", parse(HOME_CSS())], ["homeFlow.css", parse(HOME_FLOW_CSS())],
     ["system.css", system], ["pages.css", parse(PAGES_CSS())], ["fix.css", parse(FIX_CSS())], ["homeNow.css", parse(HOME_NOW_CSS())],
-    ["chrome.css", parse(sheet("./chrome.css"))], ["homeShape.css", parse(sheet("./homeShape.css"))]];
+    ["chrome.css", parse(sheet("./chrome.css"))], ["homeShape.css", parse(sheet("./homeShape.css"))],
+    // M86: Watch what changed and Label it's labels, held to the same rules.
+    ["replay.css", parse(sheet("./replay.css"))], ["labels.css", parse(sheet("./labels.css"))]];
   test("the lint covers every stylesheet in the app", () => {
     const all = readdirSync(new URL(".", import.meta.url)).filter((f) => f.endsWith(".css")).filter((f) => f !== "tokens.css");
     const covered = new Set(M71_FILES.map(([f]) => f));

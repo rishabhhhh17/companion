@@ -99,9 +99,10 @@ pub fn app_for(mode: Option<&'static str>, front: impl FnOnce() -> String) -> St
     if mode.is_some() { String::new() } else { front() }
 }
 
-/// The only modes a page may ask a look for. Anything else is an ordinary Show me question.
+/// The only modes a page may ask a look for. Anything else is an ordinary Show me question. M86: "label" is Label it, the
+/// same one capture answered with labels as data (labels.rs).
 pub fn mode(m: Option<&str>) -> Option<&'static str> {
-    match m { Some("everyday") => Some("everyday"), Some("recheck") => Some("recheck"), _ => None }
+    match m { Some("everyday") => Some("everyday"), Some("recheck") => Some("recheck"), Some("label") => Some("label"), _ => None }
 }
 
 /// The spreadsheet error codes of the engine's table (protocol/index.ts SHEET_CODES, runner/src/everyday.ts).
@@ -119,6 +120,12 @@ pub fn with_mode(mut cmd: Value, mode: Option<&'static str>, before: Option<&'st
         o.insert("mode".into(), json!(m));
         if let (Some(b), "recheck") = (before, m) { o.insert("before".into(), json!(b)); }
     }
+    cmd
+}
+
+/// M86: a Label it question with the setup page read from the window title (labels.rs guide_from_title), when there is one.
+pub fn with_guide(mut cmd: Value, guide: Option<&'static str>) -> Value {
+    if let (Some(g), Some(o)) = (guide, cmd.as_object_mut()) { if o.get("mode").and_then(Value::as_str) == Some("label") { o.insert("guide".into(), json!(g)); } }
     cmd
 }
 

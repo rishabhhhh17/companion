@@ -14,6 +14,7 @@ import type { RunnerSettings } from "./settings.ts";
 import { MODELS, estimateUsd, thinkingFor } from "./models.ts";
 import { limitReached } from "./spending.ts";
 import { isClaudeStop, turnStop, withoutTryAgain, type ApiError } from "./reach.ts";
+import { guideOf, labelRequest, parseLabels, type Label } from "./labelit.ts";
 import { everydayRequest, goneVerdict, landmarksOf, parseEveryday, sameView, sheetFromTable, tableAgrees, type EverydayAnswer } from "./everyday.ts";
 import { TUTOR_EXAMPLE, tutorFor, tutorLines, type Tutor } from "./tutor.ts";
 import { PRODUCT } from "./names.ts";
@@ -464,7 +465,10 @@ export type LastStep = "yes" | "no" | "unsure";
 export function clickPoint(r: Located): Point | null { return r.targets?.length ? r.targets[r.targets.length - 1] : r.point; }
 /** A request on the fast lane. search: Second Look's web search, at most maxUses searches; only a lane that says canSearch
  *  sends it (the plain API lanes, direct.ts), and the Claude Code lane never searches. */
-export type FastReq = { text: string; system?: string; extra?: string; raw?: boolean; search?: { maxUses: number } };
+export type FastReq = { text: string; system?: string; extra?: string; raw?: boolean; search?: { maxUses: number };
+  /** M86: the most output tokens this answer may use (the replay's cap). The plain API lanes send it; every caller also cuts
+   *  the stream itself, since Claude Code cannot be told a max. */
+  maxTokens?: number };
 /** searches: how many web searches were made; sources: the pages they returned (address and title only). */
 export type FastOut = { text: string; costUsd: number; searches?: number; sources?: { url: string; title: string }[] };
 export interface FastLike { readonly canSearch?: boolean; run(req: FastReq, onDelta: (t: string) => void, signal: AbortSignal): Promise<FastOut> }
@@ -584,6 +588,8 @@ export class AssistService {
     if (!img) { dropAll(); return this.emit({ type: "assist.error", req: cmd.req, reason: "The screenshot was not found or has expired" }); }
     // An everyday look has its own instructions (everyday.ts) and never the tutor's; the shell sends it no app id.
     if (cmd.mode === "everyday" || cmd.mode === "recheck") return this.everyday(cmd, { ...img, w: cmd.image.w, h: cmd.image.h }, screens, cmd.mode, dropAll);
+    // M86, Label it: the screen under the pointer only (the labels are drawn on that one), with its own instructions.
+    if (cmd.mode === "label") return this.labels(cmd, { ...img, w: cmd.image.w, h: cmd.image.h }, dropAll);
     const ac = new AbortController();
     this.active.set(cmd.req, ac); this.kind.set(cmd.req, "guide");
     // A question about the screen that has not been answered in half a minute is not coming; the person is told, not left waiting.
@@ -609,6 +615,32 @@ export class AssistService {
       dropAll();   // every screenshot is dropped as soon as it has been used
       this.active.delete(cmd.req); this.kind.delete(cmd.req);
     }
+  }
+
+  // M86, Label it (labelit.ts): one look at the picture, answered with up to 8 labels as data (assist.labels). The shell
+  // checks them again (labels.rs) and the overlay draws them; nothing is clicked or typed. The picture is dropped as soon
+  // as the answer is in, whatever it was, and the look is booked like any other.
+  private async labels(cmd: Extract<Command, { type: "assist.locate" }>, image: Image, dropAll: () => void) {
+    const ac = new AbortController();
+    this.active.set(cmd.req, ac); this.kind.set(cmd.req, "guide");
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; ac.abort(); }, this.o.locateTimeoutMs ?? 30_000);
+    const guide = guideOf(cmd.guide);
+    const r = labelRequest({ question: cmd.question, guide });
+    let labels: Label[] | null = null, cost = 0, failure = "";
+    try {
+      if (!this.o.look) throw new Error("pictures cannot be looked at in this mode");
+      const got = await Promise.race([this.o.look({ image, question: r.text, ocr: cmd.ocr ?? [], system: r.system }, ac.signal),
+        new Promise<never>((_, rej) => ac.signal.addEventListener("abort", () => rej(new Error("aborted")), { once: true }))]);
+      cost = got.costUsd;
+      this.book(cmd.project, cost);
+      labels = parseLabels(got.text, { w: image.w ?? cmd.image.w, h: image.h ?? cmd.image.h });
+      if (!labels?.length) failure = "No clear labels came back";
+    } catch (e) { failure = String((e as Error).message ?? e); }
+    finally { clearTimeout(timer); dropAll(); this.active.delete(cmd.req); this.kind.delete(cmd.req); }
+    if (ac.signal.aborted && !timedOut) return this.emit({ type: "assist.error", req: cmd.req, reason: "cancelled" });
+    if (!labels?.length) return this.emit({ type: "assist.error", req: cmd.req, reason: timedOut ? "It took too long to label that. Try again." : isClaudeStop(failure) ? withoutTryAgain(failure) : `Could not label it (${failure})` });
+    this.emit({ type: "assist.labels", req: cmd.req, labels, ...(guide ? { guide } : {}), usdEstimate: round(cost) });
   }
 
   // An everyday stuck moment (everyday.ts): what is wrong and the first steps, or (recheck) whether it is gone. The answer

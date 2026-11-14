@@ -40,12 +40,22 @@ export type AssistPrompt = Envelope & { type: "assist.prompt"; req: string; app:
 // app: the id of the app in front when the picture was taken (the shell reads only the id, on the key press), so the engine
 // can answer as a tutor for an everyday app (showme.everydayTutor). Never sent to the model as it is. The shell leaves it out
 // of an everyday look (mode), which has its own instructions and is told only the kind of app in front (everyday.rs).
-export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; app?: string; mode?: LocateMode; before?: SheetCode };
+export type AssistLocate = Envelope & { type: "assist.locate"; req: string; question: string; image: { ref: string; w: number; h: number }; ocr?: { id: string; text: string; box: number[]; screen?: number }[]; walkthrough?: boolean; screens?: { ref: string; w: number; h: number; label: string }[]; app?: string; mode?: LocateMode | "label"; before?: SheetCode;
+  /** M86, Label it (mode "label"): the setup page the shell read from the front window's title only (labels.rs), for its checklist. */
+  guide?: (typeof LABEL_GUIDES)[number] };
 // mode: an everyday stuck moment (the hero key with no project, or with an app in front that is not a code tool). "everyday"
 // asks what is wrong and the first steps of the fix; "recheck" looks again to say whether it is gone (runner/src/everyday.ts).
 // before: with "recheck" only, the spreadsheet error code the first look read on the screen (the Mac's text reader), so the
 // look again can say fixed only when that code is no longer read. Only the codes of the runner's table.
 export type LocateMode = "everyday" | "recheck";
+/** M86, Label it: the setup pages with a checklist (runner/src/labelit.ts CHECKLISTS, app/src-tauri/src/labels.rs). */
+export const LABEL_GUIDES = ["supabase", "stripe", "vercel", "clerk", "firebase", "github"] as const;
+/** M86: a label's tone, drawn in its meaning colour: info (what it is), look (worth a look for the question), risk. */
+export const LABEL_TONES = ["info", "look", "risk"] as const;
+export type ScreenLabel = { x: number; y: number; box?: { x: number; y: number; w: number; h: number }; label: string; note?: string; tone: (typeof LABEL_TONES)[number] };
+/** M86, Label it's answer: up to 8 labels as data, each a point in the picture's pixels (the pointer's screen), at most 4
+ *  words, an optional one line note. The shell checks them again before the overlay draws them; nothing is clicked. */
+export type AssistLabels = Envelope & { type: "assist.labels"; req: string; labels: ScreenLabel[]; guide?: (typeof LABEL_GUIDES)[number]; usdEstimate: number };
 export const SHEET_CODES = ["#REF!", "#VALUE!", "#DIV/0!", "#N/A", "#NAME?", "circular reference"] as const;
 export type SheetCode = (typeof SHEET_CODES)[number];
 export type AssistImage = Envelope & { type: "assist.image"; ref: string; mediaType: "image/jpeg" | "image/png"; base64: string; w: number; h: number };
@@ -593,6 +603,8 @@ export type ReviewStarted = Envelope & { type: "review.started"; project: string
 /** M57 feature 4: when a newer batch was reviewed, the rules looked again at an earlier review's reasons that were still
  *  open, with no model. fixed: the places (in that review's reasons) of those that no longer hold ("Changed since, this no
  *  longer applies"). closed: nothing is left, so its card closes and the newer review (by) shows. */
+/** M86: the model's arrangement of a review's replay, after review.result (which never waits for it). The same checks. */
+export type ReviewReplayEvent = Envelope & { type: "review.replay"; project: string; batch: string; replay: ReviewReplay };
 export type ReviewRecheck = Envelope & { type: "review.recheck"; project: string; batch: string; by: string; fixed: number[]; closed: boolean };
 // The review. ok false: nothing was reviewed, reason says why in plain words (batch, when one was named). ok true: what changed
 // (summary, notes: plain words, secrets hidden), what it touches, the rating and its reasons (the most serious first, each
@@ -616,9 +628,22 @@ export type ReviewResultEvent = Envelope & {
    *  code (tests, CI and lint config, settings, dependencies, settings and key files), at most 5 named and how many more;
    *  TODO or FIXME lines added; whether the checks ran and whether they failed. The pages make at most three lines of it. */
   untold?: ReviewUntold;
+  /** M86, Watch what changed: the review's replay, from its own fact sheet (runner/src/review/replay.ts). Absent with
+   *  replay.show off. */
+  replay?: ReviewReplay;
+};
+export const REPLAY_PARTS = ["pages", "server", "data", "looks", "tests", "settings", "packages", "other"] as const;
+/** count: the whole list of files. The verdict is the last beat, once. (No screenshot beat until the board can show it.) */
+export const REPLAY_DRAWS = ["count", "file", "part", "check", "verdict"] as const;
+/** beats: 3 to 6, each one sentence and one drawing step, checked against the sheet (files, checks, shot). by: the rules'
+ *  own words, or a model's arrangement of the same facts. shot: the proof screenshot's path, saved with the receipts. */
+export type ReviewReplay = {
+  beats: { say: string; draw: (typeof REPLAY_DRAWS)[number]; ref?: string }[]; by: "rules" | "model";
+  files: { file: string; kind: ReviewFile["kind"]; part: (typeof REPLAY_PARTS)[number] }[]; count: number; more: number;
+  checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
+export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -766,6 +791,43 @@ const weekOk: Check = (m) => {
   return ok ? null : '"week" must count reviews, files, proven, undone, saved, savedUsed and againstRules, what was caught, and at most 10 decisions, from since to until';
 };
 // M77: what the changes did not tell you: file names (at most 5) and counts.
+/** M86: a replay keeps to its own sheet: every drawn file, part and check is in it (the engine's validator checked the words). */
+const replayOk: Check = (m) => {
+  const r = m.replay as Record<string, unknown> | undefined;
+  if (!r || typeof r !== "object") return '"replay" must be an object';
+  const files = r.files, checks = r.checks, beats = r.beats;
+  if (!Array.isArray(files) || files.length > 8 || !files.every((f) => !!f && typeof f.file === "string" && ["added", "modified", "deleted"].includes(f.kind) && (REPLAY_PARTS as readonly string[]).includes(f.part))) return '"replay.files" must be at most 8 files, each with its part';
+  if (!Array.isArray(checks) || checks.length > 4 || !checks.every((c) => !!c && typeof c.label === "string" && ["passed", "failed", "skipped"].includes(c.status) && (c.exit === undefined || Number.isInteger(c.exit)))) return '"replay.checks" must be at most 4 checks';
+  if (!Number.isInteger(r.count) || !Number.isInteger(r.more) || (r.count as number) < 0 || (r.more as number) < 0) return '"replay.count" and "replay.more" must be whole numbers';
+  if (r.by !== "rules" && r.by !== "model") return '"replay.by" must be rules or model';
+  if (r.shot !== undefined && typeof r.shot !== "string") return '"replay.shot" must be text';
+  if (!Array.isArray(beats) || beats.length < 3 || beats.length > 6) return '"replay.beats" must be 3 to 6 beats';
+  const names = new Set(files.map((f) => f.file)), parts = new Set(files.map((f) => f.part)), labels = new Set(checks.map((c) => c.label));
+  if (beats.filter((b) => b?.draw === "verdict").length !== 1 || beats[beats.length - 1]?.draw !== "verdict") return "the verdict is the last beat, once";
+  for (const b of beats) {
+    if (!b || typeof b.say !== "string" || !b.say || b.say.length > 120 || !(REPLAY_DRAWS as readonly string[]).includes(b.draw)) return "each beat is one sentence and one known drawing step";
+    if (b.draw === "file" && !names.has(b.ref)) return "a beat draws a file that is not in the replay";
+    if (b.draw === "part" && !parts.has(b.ref)) return "a beat draws a part that is not in the replay";
+    if (b.draw === "check" && !labels.has(b.ref)) return "a beat draws a check that is not in the replay";
+  }
+  return null;
+};
+const labelsOk: Check = (m) => {
+  const l = m.labels;
+  if (!Array.isArray(l) || l.length < 1 || l.length > 8) return '"labels" must be 1 to 8 labels';
+  for (const x of l) {
+    if (!x || typeof x !== "object" || !Number.isFinite(x.x) || !Number.isFinite(x.y) || x.x < 0 || x.y < 0) return "each label has a point in the picture";
+    if (x.box !== undefined) {
+      const b = x.box;
+      if (!b || typeof b !== "object" || Array.isArray(b) || Object.keys(b).length !== 4 || !["x", "y", "w", "h"].every((k) => Number.isFinite(b[k]) && b[k] >= 0) || b.w < 1 || b.h < 1
+        || x.x < b.x - 4 || x.x > b.x + b.w + 4 || x.y < b.y - 4 || x.y > b.y + b.h + 4) return "a label's box is x, y, w and h around its point";
+    }
+    if (typeof x.label !== "string" || !x.label.trim() || x.label.length > 32 || x.label.trim().split(/\s+/).length > 4 || /[<>]/.test(x.label)) return "each label is at most 4 plain words";
+    if (x.note !== undefined && (typeof x.note !== "string" || x.note.length > 100 || /[<>\n]/.test(x.note))) return "a note is one plain line";
+    if (!(LABEL_TONES as readonly string[]).includes(x.tone)) return `"tone" must be one of ${LABEL_TONES.join(", ")}`;
+  }
+  return null;
+};
 const untoldOk: Check = (m) => {
   const u = m.untold as Record<string, unknown> | null;
   const ok = !!u && typeof u === "object" && !Array.isArray(u) && Array.isArray(u.beyond) && (u.beyond as unknown[]).length <= 5 && (u.beyond as unknown[]).every((f) => typeof f === "string" && f.length > 0)
@@ -860,7 +922,7 @@ const COMMANDS: Record<string, Check[]> = {
   "checkpoint.restore": [str("project"), str("checkpoint"), opt("force", bool("force"))],
   "checkpoint.putBack": [str("project"), str("checkpoint"), (m) => (m.confirm === true ? null : 'putting your files back needs "confirm": true'), opt("files", list("files"))],
   "assist.prompt": [str("req"), str("app"), str("target"), str("text"), oneOf("style", ["full", "light"])],
-  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app")), opt("mode", oneOf("mode", ["everyday", "recheck"])), opt("before", oneOf("before", [...SHEET_CODES]))],
+  "assist.locate": [str("req"), str("question"), obj("image"), screensOk, opt("app", str("app")), opt("mode", oneOf("mode", ["everyday", "recheck", "label"])), opt("before", oneOf("before", [...SHEET_CODES])), opt("guide", oneOf("guide", [...LABEL_GUIDES]))],
   "assist.cancel": [str("req")],
   "assist.image": [str("ref"), oneOf("mediaType", ["image/jpeg", "image/png"]), str("base64"), num("w"), num("h")],
   "checkpoint.mark": [str("project"), str("checkpoint"), opt("star", bool("star")), opt("name", (m) => (typeof m.name === "string" && m.name.length <= 40 ? null : '"name" must be text of at most 40 characters')), (m) => (m.star === undefined && m.name === undefined ? 'a mark needs "star" or "name"' : null)],
@@ -880,8 +942,9 @@ const EVENTS: Record<string, Check[]> = {
   // M52, the review of every change (runner/src/review/service.ts).
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
   "review.started": [str("project"), str("batch"), bool("proof")],
+  "review.replay": [str("project"), str("batch"), replayOk],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
-  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), reviewOk],
+  "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), reviewOk],
   // payments spec sections 2, 3 and 9 (runner/src/plan.ts); protocol/fixtures/plan-cases.jsonl is run by both suites.
   "plan.usage": [whole("used"), whole("limit"), day("resetsOn"), bool("everUsed")],
   "plan.limit": [oneOf("reason", [...PLAN_LIMITS]), opt("resetsOn", day("resetsOn")), opt("command", str("command")),
@@ -970,6 +1033,7 @@ const EVENTS: Record<string, Check[]> = {
   "assist.prompt.done": [str("req"), str("text"), list("diff"), num("usdEstimate"), oneOf("handback", ["paste", "copy"])],
   "assist.point": [str("req"), num("step"), num("x"), num("y"), str("targetText"), num("confidence"), str("caption"), pointExtrasOk],
   "assist.error": [str("req"), str("reason")],
+  "assist.labels": [str("req"), labelsOk, num("usdEstimate"), opt("guide", oneOf("guide", [...LABEL_GUIDES]))],
   "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
   "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
