@@ -32,7 +32,7 @@ export function RunwayRing({ mark }: { mark: RunwayMark }) {
   return (
     <span className="ip-runway" data-level={mark.level} role="img" aria-label={mark.say} title={mark.say}>
       <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle className="ip-runway-track" cx="8" cy="8" r="6" /><circle className="ip-runway-fill" cx="8" cy="8" r="6" pathLength={100} style={{ strokeDasharray: `${Math.round(mark.fill * 100)} 100` }} /></svg>
-      {mark.short && <span aria-hidden="true">{mark.short}</span>}
+      {mark.short && (mark.over ? <span className="ip-runway-text" aria-hidden="true"><small>{mark.over}</small><span>{mark.short}</span></span> : <span aria-hidden="true">{mark.short}</span>)}
     </span>
   );
 }
@@ -101,6 +101,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
   const greet = quickGreeting(useSetting("you.name"));
   // M89: the runway ring, when Claude has said how full the limit is (or turned a request away) and it is not switched off.
   const runwayOn = useSetting("runway.mark");
+  const runwayWarnAt = useSetting("runway.warnAt");
   const tries = Number(useSetting("work.tries")) || 3;
   const groups = useGroups();
   const compact = useSetting("panel.size") === "compact";
@@ -232,7 +233,7 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         {full && <FlowMini className="ip-face" state={m.character} still={!shown} />}
         <span className="ip-lead"><span className="ip-greet" title={lines.top}>{lines.top}</span><b className="ip-fact" title={lines.fact}><Dot colour={dot} />{lines.fact}</b></span>
         <span className="ip-tools">
-          {(() => { const rm = runwayMark(m.runway, now, runwayOn); return rm && <RunwayRing mark={rm} />; })()}
+          {(() => { const rm = runwayMark(m.runway, now, runwayOn, undefined, runwayWarnAt); return rm && <RunwayRing mark={rm} />; })()}
           <button className="ip-word" type="button" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", { then: GEAR_DO }).catch(() => {}); }}>{S.notch.settings}</button>
           <button className="ip-word" type="button" tabIndex={tab} aria-label={S.notch.open} onClick={() => { if (ready()) void invoke("island_go", {}).catch(() => {}); }}>{S.notch.openShort}</button>
         </span>

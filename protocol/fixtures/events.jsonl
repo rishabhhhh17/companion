@@ -196,5 +196,6 @@
 {"v":1,"id":"m89e1","type":"usage.runway","state":"near","source":"plan","usedPct":91,"resetsAt":"2026-11-14T15:40:00.000Z","window":"five_hour"}
 {"v":1,"id":"m89e2","type":"usage.runway","state":"ok","source":"plan","usedPct":40,"resetsAt":"2026-11-20T09:00:00.000Z","window":"seven_day"}
 {"v":1,"id":"m89e3","type":"usage.runway","state":"out","source":"limit_hit","retryInS":30}
+{"v":1,"id":"m91e1","type":"usage.runway","state":"ok","source":"plan","usedPct":85,"resetsAt":"2026-11-14T15:40:00.000Z","window":"five_hour","nextPct":84,"nextResetsAt":"2026-11-20T09:00:00.000Z","nextWindow":"seven_day"}
 {"v":1,"id":"m89e4","type":"jobs.saved","project":"p_9f2c","jobs":[{"id":"sj_12","kind":"job","prompt":"Add a contact form to the home page","savedAt":"2026-11-14T13:02:00.000Z","resetsAt":"2026-11-14T15:40:00.000Z"},{"id":"sj_11","kind":"rescue","prompt":"","savedAt":"2026-11-14T12:50:00.000Z"}]}
 {"v":1,"id":"m89e5","type":"jobs.saved","project":"p_9f2c","jobs":[]}

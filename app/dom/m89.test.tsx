@@ -41,7 +41,7 @@ describe("the warning before a big job near the limit", () => {
     await runner(near);
     await press("Run it");
     expect(tasks()).toEqual([]);
-    const warn = screen.getByRole("alertdialog", { name: S.m89.warn.title });
+    const warn = screen.getByRole("alertdialog", { name: S.m91.warnTitle("5 hour") });
     expect(warn.textContent).toContain(S.m89.warn.job(resetWords(RESET, Date.now())));
     await press(S.m89.warn.save);
     expect(tasks()).toEqual([]);
@@ -110,7 +110,7 @@ describe("the M89 review", () => {
     await handOffReady();
     await runner(near);
     await press("Run it");
-    const warn = screen.getByRole("alertdialog", { name: S.m89.warn.title });
+    const warn = screen.getByRole("alertdialog", { name: S.m91.warnTitle("5 hour") });
     expect(warn.textContent).toContain(PROMPT);
     expect(warn.textContent).toContain(resetWords(RESET, Date.now()));
   });
@@ -209,9 +209,9 @@ describe("the runway's ring in the notch's panel", () => {
   test("the share used, said in words, beside Settings", async () => {
     app.reset();
     await renderPage(<IslandPanel m={run([near], atRest())} line="" shown />);
-    const ring = screen.getByRole("img", { name: /The Claude limit is 91% used/ });
+    const ring = screen.getByRole("img", { name: /The Claude 5 hour limit is 91% used/ });
     expect(ring.getAttribute("data-level")).toBe("near");
-    expect(ring.textContent).toBe(S.m89.runway.used(91));
+    expect(ring.textContent).toBe(`${S.m91.over("5 hour")}${S.m91.used(91)}`);
   });
   test("nothing reported: no ring (switched off is in m89Off.test.tsx: the settings are read once per page)", async () => {
     app.reset();

@@ -890,10 +890,12 @@ mod tests {
         }
         let events = include_str!("../../../protocol/fixtures/events.jsonl");
         let runway: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"usage.runway\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
-        assert_eq!(runway.len(), 3);
+        // M91 review: a fourth reading carries the next window (nextPct, nextResetsAt, nextWindow), numbers and times too.
+        assert_eq!(runway.len(), 4);
         for r in &runway {
-            for k in r.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "state", "source", "usedPct", "resetsAt", "window", "retryInS"].contains(&k.as_str()), "{k}"); }
+            for k in r.as_object().unwrap().keys() { assert!(["v", "id", "ts", "type", "state", "source", "usedPct", "resetsAt", "window", "retryInS", "nextPct", "nextResetsAt", "nextWindow"].contains(&k.as_str()), "{k}"); }
             assert!(r["usedPct"].as_u64().is_none_or(|p| p <= 100));
+            assert!(r["nextPct"].as_u64().is_none_or(|p| p <= 100));
         }
         let saved: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"jobs.saved\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!(saved.len(), 2);

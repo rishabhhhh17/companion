@@ -3934,6 +3934,22 @@ export const S = {
     updated: (version: string) => `${PRODUCT} updated itself to version ${version} while you were away.`,
     updatedPlain: `${PRODUCT} updated itself while you were away.`,
   },
+  // M91: the real plan usage reading. The plan route sends the share used per window; the ring and the warning name the
+  // window closest to its limit.
+  m91: {
+    window: { five_hour: "5 hour", seven_day: "week", seven_day_opus: "Opus week", seven_day_sonnet: "Sonnet week" } as Record<"five_hour" | "seven_day" | "seven_day_opus" | "seven_day_sonnet", string>,
+    // The ring's short text, on two small lines like the panel's own head: the window over the share used ("Week" over
+    // "46% used"). The M91 review: "used" so it is never read as the share left, and the window on a line of its own so
+    // "5 hour" is never read as a time; two short lines keep the panel's headline from being cut. Its label says the whole
+    // sentence with "Claude" in it.
+    used: (pct: number) => `${pct}% used`,
+    over: (win: string) => `${win.charAt(0).toUpperCase()}${win.slice(1)}`,
+    say: (win: string, pct: number, reset: string) => (reset ? `The Claude ${win} limit is ${pct}% used. It resets ${reset}.` : `The Claude ${win} limit is ${pct}% used.`),
+    sayNear: (win: string, reset: string) => (reset ? `The Claude ${win} limit is close. It resets ${reset}.` : `The Claude ${win} limit is close.`),
+    sayOut: (win: string, reset: string) => (reset ? `The Claude ${win} limit is reached. It resets ${reset}.` : `The Claude ${win} limit is reached for now.`),
+    warnTitle: (win: string) => `The Claude ${win} limit is close`,
+    warnTitleOut: (win: string) => `The Claude ${win} limit is reached`,
+  },
   // M90 (F32): the character peeks out of the notch. Its name for VoiceOver says what it is doing and what pointing and clicking do.
   m90: {
     look: { hello: "says hello", watching: "is watching the work", waiting: "says something is waiting on you", proud: "is proud: the checks passed", worried: "is worried: a check failed", sleepy: "is getting sleepy", rest: "is resting" } as Record<"hello" | "watching" | "waiting" | "proud" | "worried" | "sleepy" | "rest", string>,

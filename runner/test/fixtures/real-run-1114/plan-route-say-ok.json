@@ -1,0 +1,22 @@
+{
+  "about": "M91: the shape of what the plan route really sent on one real run, 14 Nov 2026 (the founder's own plan login, approved in chat; the SDK's bundled binary, settingSources [], strictMcpConfig, no tools, haiku, \"say ok\"). Only the shape and the numbers are kept: the ids are stand ins and no words, account or organisation are kept.",
+  "order": ["system/init", "assistant", "assistant", "rate_limit_event", "result/success"],
+  "init": { "type": "system", "subtype": "init", "apiKeySource": "none", "tools": [], "mcp_servers": [] },
+  "rate_limit_event": {
+    "type": "rate_limit_event",
+    "rate_limit_info": {
+      "status": "allowed",
+      "resetsAt": 1794646200,
+      "rateLimitType": "five_hour",
+      "overageStatus": "rejected",
+      "overageDisabledReason": "org_level_disabled",
+      "isUsingOverage": false,
+      "unifiedWindows": {
+        "five_hour": { "utilization": 0.2, "resetsAt": 1794646200 },
+        "seven_day": { "utilization": 0.46, "resetsAt": 1794888000 }
+      }
+    },
+    "uuid": "u",
+    "session_id": "s"
+  }
+}

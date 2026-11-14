@@ -12,7 +12,7 @@ What the SDK really gives:
 
 1. **API key route (the usual one): nothing about how much is left.** No `rate_limit_event`, even with the plan's headers on every answer. The SDK's `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` says `rate_limits_available: false`, `rate_limits: null`, `subscription_type: null`.
 2. **A request turned away (429) is seen on either route:** an `api_retry` system message per try (`error: "rate_limit"`, `error_status: 429`, `retry_delay_ms` from `retry-after`), then a reply with `error: "rate_limit"` and an error result.
-3. **Plan route (behind the remote switch, off until Anthropic says yes in writing):** the SDK's types promise `rate_limit_event` with `status` (allowed, allowed_warning, rejected), `utilization`, `resetsAt` and `rateLimitType` (five_hour, seven_day, ...). Read from the types only: tests never use a plan login. [verify]
+3. **Plan route (behind the remote switch, off until Anthropic says yes in writing):** the SDK's types promise `rate_limit_event` with `status` (allowed, allowed_warning, rejected), `utilization`, `resetsAt` and `rateLimitType` (five_hour, seven_day, ...). Read from the types only: tests never use a plan login. **Verified on a real Max plan in M91 (one run, 14 Nov 2026, `M91-plan-usage-reading.md`):** the event comes on every turn, even when allowed, with no top level `utilization`; the share per window (a fraction) and its reset (seconds) are in `unifiedWindows`. `runway.ts` was fixed to read it.
 
 So the runway is built only from what is real: the plan's own numbers when it is on, and "Claude turned a request away just now" on either route. Nothing is guessed from token counts.
 
@@ -59,7 +59,7 @@ The app has an updater (`updates.rs`, `shell_updates.rs`). Now an update the che
 
 ## [verify] on a real Mac (also in `docs/research/technical_research.md` section 20, item 34)
 
-- A real plan route `rate_limit_event`: that it comes on Squibby's runs, that `utilization` is a fraction (0.91) as the headers are, and that `resetsAt` is in seconds. Needs Anthropic's written yes and the plan switch on.
+- ~~A real plan route `rate_limit_event`~~ Resolved in M91 (one real run on a Max plan, 14 Nov 2026): it comes on every turn; the shares are fractions in `unifiedWindows`, the resets seconds. Still open: the event near and past the limit.
 - That reading the idle time (`CGEventSourceSecondsSinceLastEventType`) never makes macOS ask for Input Monitoring, and that it counts trackpad and keyboard alike.
 - A whole quiet install on a signed build: found by the daily check, installed after 5 idle minutes, not during a call or a task, the note shown after the restart.
 - Best on an Intel Mac or a Mac with 8 GB, if any is supported: its time to text and memory.

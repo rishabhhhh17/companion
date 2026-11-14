@@ -8,10 +8,13 @@
 //      SDK's usage call says rate_limits_available false and subscription_type null. So nothing tells how much is left.
 //   2. A request turned away (429 rate_limit_error) is seen: an api_retry system message (error "rate_limit", error_status
 //      429, retry_delay_ms from retry-after) for each try, then a reply with error "rate_limit". runway.ts reads both.
-//   3. Plan route: not run here (it needs a plan login, which tests never use). The SDK's types promise rate_limit_event
-//      with status, utilization, resetsAt and rateLimitType for subscription users: [verify] on a real plan.
+//   3. Plan route: not run here (it needs a plan login, which tests never use). Seen once on a real Max plan (M91, 14 Nov
+//      2026, approved by the founder; fixtures/real-run-1114): system/init (apiKeySource "none"), assistant, assistant,
+//      rate_limit_event, result. The event comes on every turn, even with status "allowed"; it has no top level utilization;
+//      the share per window (a fraction, 0 to 1) and its reset (seconds) are in rate_limit_info.unifiedWindows, which the
+//      SDK's type does not name yet. The test at the end reads that real shape.
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -109,10 +112,16 @@ describe.skipIf(!binary)("the spike: what the bundled Claude Code reports about 
   }, 60_000);
 });
 
-describe("the plan route's event, from the SDK's own type (no plan login is ever used in tests)", () => {
-  test("rate_limit_event: status, utilization, resetsAt and the window are read; anything else is ignored", () => {
+describe("the plan route's event, in the shape a real Max plan sent it on 14 Nov 2026 (no plan login is ever used in tests)", () => {
+  test("rate_limit_event with status allowed and unifiedWindows: the window closest to its limit, its share and its reset", () => {
+    const real = JSON.parse(readFileSync(join(import.meta.dir, "fixtures", "real-run-1114", "plan-route-say-ok.json"), "utf8"));
+    expect(real.init).toMatchObject({ apiKeySource: "none", tools: [], mcp_servers: [] });
+    expect(real.rate_limit_event.rate_limit_info.utilization).toBeUndefined();
+    expect(fromRateLimitEvent(real.rate_limit_event)).toEqual({ state: "ok", source: "plan", usedPct: 46, resetsAt: new Date(1794888000 * 1000).toISOString(), window: "seven_day" });
+    expect(existsSync(join(import.meta.dir, "..", "node_modules", "@anthropic-ai", "claude-agent-sdk", "sdk.d.ts"))).toBe(true);
+  });
+  test("the older shape the SDK's type names (a top level utilization) is still read", () => {
     expect(fromRateLimitEvent({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", utilization: 0.91, resetsAt: RESET, rateLimitType: "five_hour", overageStatus: "rejected" }, uuid: "u", session_id: "s" }))
       .toEqual({ state: "near", source: "plan", usedPct: 91, resetsAt: new Date(RESET * 1000).toISOString(), window: "five_hour" });
-    expect(existsSync(join(import.meta.dir, "..", "node_modules", "@anthropic-ai", "claude-agent-sdk", "sdk.d.ts"))).toBe(true);
   });
 });

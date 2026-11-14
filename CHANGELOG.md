@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The real usage reading on a Claude plan: 14 Nov 2026
+
+- **Checked on a real plan.** One short run with a real Claude Max plan login ("say ok", the smallest model, no tools) showed what Claude really sends about its limit on a plan: after every reply, not only near the limit, with how full each window is (the 5 hour window and the week) and when each resets. Squibby now reads exactly that. Before, it was built from Anthropic's type definitions alone, and it would have missed the numbers.
+- **The ring names the window.** The notch's hover panel shows the window closest to its limit, for example "Week" over "46% used", and its label says "The Claude week limit is 46% used. It resets on Wed at 9:00 am." It turns amber at the same mark as the warning below (80% used unless you picked another), even while Claude still says there is room.
+- **The next window is kept.** When the 5 hour window resets while the week is still nearly full, the ring and the warning move on to the week instead of going quiet.
+- **The warning names it too.** Run it and Rescue ask first from 80% used (or the mark you picked), with a title such as "The Claude week limit is close".
+- **Still switched off.** Signing in with a Claude plan stays behind its switch, off until Anthropic says yes in writing. Nothing here turns it on. With an API key, Claude still reports no limit, so nothing changes there.
+- **Not yet claimed:** what the event looks like close to the limit or past it. The one real run had plenty of room left; those cases are read the same way but were only tested with stand ins.
+
 ## The character peeks out of the notch: 14 Nov 2026
 
 - **The notch at rest is no longer bare while something goes on.** While a Squibby job or review runs, or while your AI tool runs commands with the saved copy signal set up, the character's eyes and the top of its head peek out from the side of the notch, as if from behind it. It watches while that work runs, waits on you with a small amber dot when a tool needs you, looks proud when a review's checks pass and worried when one fails. When nothing goes on it gets sleepy, then slides back, and the notch is bare again. Without that signal, your own tool's work does not show.
