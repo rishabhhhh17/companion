@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Ready to sign, and a kit for testing on real accounts: 14 Nov 2026
+
+- **Signing is one step away.** The day the Apple developer account arrives, three names and one command make the signed, notarized release: `app/scripts/sign-release.sh`. It never reads a password or a key file. To find your certificate it lists certificate names in your Keychain (never keys), and Apple's notary login stays in your Keychain under a name you pick, used only by Apple's own notary tool. Neither ever shows us a password. After signing it checks the signature, that Apple's Gatekeeper accepts the app as notarized, and that the ticket is attached.
+- **A check you can run today.** `sh app/scripts/sign-release.sh --dry-run` checks everything that needs no certificate and lists what is still missing: today the three names, the update key, where problem reports go and a tested commit. It also lists any Apple tool that is missing on the Mac, so it never says ready above a missing one. The steps, in plain words, are in `docs/milestones/M92-signing-ready.md`.
+- **Only the microphone.** The signed app asks macOS for one special right, the microphone, for the talk keys. It needs nothing for the screen or for running code faster: that was checked one by one.
+- **Anthropic's Claude stays theirs.** The app still carries no Claude: it is installed at first run, from Anthropic's own build. The release checks that no Claude got into the app and that the copy it must match still carries Anthropic's own signature.
+- **A test kit for your real accounts.** One command makes a small throwaway app wired for Supabase, Vercel and Stripe (test mode, no real money), with three holes on purpose: a table anyone can read, a missing setting in Vercel, and a private looking page that opens for anyone. A step by step guide (`docs/milestones/M92-real-test-kit.md`) walks through making free accounts yourself, then Label it, Why is live broken? and Ask before live systems on them, with what each step should show. Label it looks at the real Supabase project; Why is live broken? reads Vercel and Stripe live, but its database part still reads the project's files on the Mac, not the live database.
+- **Not yet claimed:** a real signed release (it needs the Apple account), and the three features on real Supabase, Vercel and Stripe projects. The kit was only checked on this Mac, offline; the session with real accounts comes next.
+
 ## The real usage reading on a Claude plan: 14 Nov 2026
 
 - **Checked on a real plan.** One short run with a real Claude Max plan login ("say ok", the smallest model, no tools) showed what Claude really sends about its limit on a plan: after every reply, not only near the limit, with how full each window is (the 5 hour window and the week) and when each resets. Squibby now reads exactly that. Before, it was built from Anthropic's type definitions alone, and it would have missed the numbers.
