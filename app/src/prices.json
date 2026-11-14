@@ -1,8 +1,15 @@
 {
-  "about": "M79: the only place prices live (F25 as changed by the founder on 6 Nov 2026: Pro $15 a month). US prices; the local price and tax show at Dodo's checkout. proYearly is null until the founder sets a yearly price, so no yearly choice shows. Payments stay off (billing.*.json paymentsOn and the remote switch), so none of this shows to anyone yet.",
+  "about": "M79: the only place prices live (F25 as changed by the founder on 6 Nov 2026: Pro $15 a month). M88 (F31, the founder's choices of 13 Nov 2026, taken from HeyClicky): yearly is 20% off the monthly price over a year, students get 50% off their first month, and invite and earn (the friend gets 25% off their first monthly month; the inviter gets 25% of the friend's plan as credit, for up to 12 months). US prices; the local price and tax show at Dodo's checkout. Payments stay off (billing.*.json paymentsOn and the remote switch), so none of this shows to anyone yet.",
   "currency": "USD",
   "symbol": "$",
   "proMonthly": 15,
-  "proYearly": null,
-  "reportOnce": 29
+  "proYearly": 144,
+  "reportOnce": 29,
+  "offers": {
+    "yearlyOffPercent": 20,
+    "studentFirstMonthOffPercent": 50,
+    "inviteFriendFirstMonthOffPercent": 25,
+    "inviterSharePercent": 25,
+    "inviterMonths": 12
+  }
 }

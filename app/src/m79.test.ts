@@ -97,10 +97,11 @@ describe("the weekly summary", () => {
 });
 
 describe("payments, built and switched off", () => {
-  test("prices live in one config: Pro $15 a month, the report $29 one time, no yearly price yet", () => {
+  test("prices live in one config: Pro $15 a month, the report $29 one time, and (M88, F31) yearly at 20% off", () => {
     const file = JSON.parse(read("./prices.json"));
-    expect(file).toMatchObject({ currency: "USD", symbol: "$", proMonthly: 15, proYearly: null, reportOnce: 29 });
-    expect(PRICES).toEqual({ symbol: "$", proMonthly: 15, proYearly: null, reportOnce: 29 });
+    // M88 (F31, 13 Nov 2026): the founder set yearly billing at 20% off, so the yearly price is no longer empty.
+    expect(file).toMatchObject({ currency: "USD", symbol: "$", proMonthly: 15, proYearly: 144, reportOnce: 29 });
+    expect(PRICES).toEqual({ symbol: "$", proMonthly: 15, proYearly: 144, reportOnce: 29 });
     expect(pricesFrom({ proMonthly: -1, proYearly: "15", reportOnce: 0 })).toEqual({ symbol: "$", proMonthly: null, proYearly: null, reportOnce: null });
     // No dollar amount written anywhere in the app's own code or words: only prices.json.
     for (const f of ["./plan.ts", "./planCard.tsx", "./strings.ts", "./m76Panels.tsx", "./weekSummary.ts", "./card.tsx"]) expect(read(f).split("\n").filter((l) => !/^\s*(\/\/|\*)/.test(l)).join("\n"), f).not.toMatch(/\$\d|\b(15|29) a month/);

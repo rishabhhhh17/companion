@@ -6,17 +6,21 @@ import { S } from "./strings.ts";
 import { listen } from "./tauri.ts";
 import { Button, ListGroup, ListRow } from "./ui/parts.tsx";
 import { weekAsk, weekFrom, weekPage } from "./weekSummary.ts";
+import { SharePreview } from "./m88Panels.tsx";
+import { shareFromWeek } from "./shareReceipt.ts";
 
 export function WeekPart({ project, send }: { project: string; send: (cmd: unknown) => unknown }) {
   const [open, setOpen] = useState(false);
   const [week, setWeek] = useState<WeekView | null>(null);
+  // M88 (b): Share what my AI did, from this week: the preview first, then Save.
+  const [sharing, setSharing] = useState(false);
   const asked = useRef(false);
   useEffect(() => {
-    setOpen(false); setWeek(null); asked.current = false;
+    setOpen(false); setWeek(null); setSharing(false); asked.current = false;
     const off = listen("runner-event", (e) => { const w = asked.current ? weekFrom(e.payload, project) : null; if (w) { asked.current = false; setWeek(w); } });
     return () => { void off.then((f) => f()); };
   }, [project]);
-  const press = () => { if (open) { setOpen(false); return; } setOpen(true); setWeek(null); asked.current = true; void send(weekAsk(project)); };
+  const press = () => { if (open) { setOpen(false); return; } setOpen(true); setWeek(null); setSharing(false); asked.current = true; void send(weekAsk(project)); };
   const page = week ? weekPage(week) : null;
   return (
     <div className="hist-week-part" role="group" aria-label={S.m79.week.rowTitle}>
@@ -38,7 +42,11 @@ export function WeekPart({ project, send }: { project: string; send: (cmd: unkno
             {page.decisions.length ? <ul>{page.decisions.map((d) => <li className="line" key={d}>{d}</li>)}</ul> : <p className="line muted">{S.m79.week.decisionsNone}</p>}
             {page.rules && <p className="line">{page.rules}</p>}
             <p className="line muted">{S.m79.week.fromRows}</p>
-            <div className="row"><Button size="sm" onClick={() => setOpen(false)}>{S.m79.week.close}</Button></div>
+            <div className="row">
+              {!sharing && <Button size="sm" onClick={() => setSharing(true)}>{S.m88.share.button}</Button>}
+              <Button size="sm" onClick={() => setOpen(false)}>{S.m79.week.close}</Button>
+            </div>
+            {sharing && week && <SharePreview id="share-week" doc={shareFromWeek(week, project, null, new Date())} onClose={() => setSharing(false)} />}
           </>)}
         </section>
       )}

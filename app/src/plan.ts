@@ -21,6 +21,50 @@ export function pricesFrom(v: unknown): Prices {
 export const PRICES: Prices = pricesFrom(PRICES_FILE);
 const money = (n: number, p: Prices = PRICES) => S.m79.money(p.symbol, n);
 
+// ---------- M88 (F31): yearly, students and invite and earn, still switched off ----------
+
+/** The founder's offers of 13 Nov 2026, from prices.json only. A percent is a whole number from 1 to 99 and the months a
+ *  whole number from 1 to 24; anything else reads as not set, and an offer not set is never said. */
+export type Offers = { yearlyOff: number | null; studentFirstMonthOff: number | null; friendFirstMonthOff: number | null; inviterShare: number | null; inviterMonths: number | null };
+const percent = (v: unknown): number | null => (Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 99 ? (v as number) : null);
+export function offersFrom(v: unknown): Offers {
+  const o = ((v && typeof v === "object" ? (v as Record<string, unknown>).offers : null) ?? {}) as Record<string, unknown>;
+  const months = Number.isInteger(o.inviterMonths) && (o.inviterMonths as number) >= 1 && (o.inviterMonths as number) <= 24 ? (o.inviterMonths as number) : null;
+  return { yearlyOff: percent(o.yearlyOffPercent), studentFirstMonthOff: percent(o.studentFirstMonthOffPercent), friendFirstMonthOff: percent(o.inviteFriendFirstMonthOffPercent), inviterShare: percent(o.inviterSharePercent), inviterMonths: months };
+}
+export const OFFERS: Offers = offersFrom(PRICES_FILE);
+/** Money to the cent, never a float's tail. */
+export const cents = (n: number): number => Math.round(n * 100) / 100;
+/** A price less a percent. */
+export const less = (price: number, off: number): number => cents(price * (100 - off) / 100);
+/** The yearly price the offer gives: twelve months of the monthly price, less the yearly percent. */
+export const yearlyFrom = (monthly: number, off: number): number => less(monthly * 12, off);
+/** Whether prices.json's yearly price is the one the yearly offer gives (a test holds that the file agrees with itself). */
+export const yearlyAgrees = (p: Prices = PRICES, o: Offers = OFFERS): boolean => !!p.proMonthly && !!p.proYearly && o.yearlyOff !== null && p.proYearly === yearlyFrom(p.proMonthly, o.yearlyOff);
+/** A student's first month of Pro (monthly), or null when either is not set. */
+export const studentFirstMonth = (p: Prices = PRICES, o: Offers = OFFERS): number | null => (p.proMonthly && o.studentFirstMonthOff ? less(p.proMonthly, o.studentFirstMonthOff) : null);
+/** An invited friend's first monthly month, or null when either is not set. The offer is for the monthly plan only. */
+export const friendFirstMonth = (p: Prices = PRICES, o: Offers = OFFERS): number | null => (p.proMonthly && o.friendFirstMonthOff ? less(p.proMonthly, o.friendFirstMonthOff) : null);
+/** The inviter's credit from one friend: the share of the friend's plan for each month the friend is on it, up to the
+ *  months. A yearly plan counts as its yearly price once (it covers those twelve months). monthsPaid: whole months the
+ *  friend paid for (a monthly friend), or the years (a yearly friend). Null when an offer is not set. */
+export function inviterCredit(friend: { term: "monthly" | "yearly"; paid: number }, p: Prices = PRICES, o: Offers = OFFERS): number | null {
+  if (o.inviterShare === null || o.inviterMonths === null || !Number.isInteger(friend.paid) || friend.paid < 0) return null;
+  if (friend.term === "monthly") return p.proMonthly ? cents(Math.min(friend.paid, o.inviterMonths) * p.proMonthly * o.inviterShare / 100) : null;
+  return p.proYearly ? cents(Math.min(friend.paid, Math.ceil(o.inviterMonths / 12)) * p.proYearly * o.inviterShare / 100) : null;
+}
+/** The offers' lines on Get Pro, only while payments are on (today they are off, so nothing shows to anyone). Each line
+ *  only when its numbers are set, and the yearly line only when the yearly choice is offered. Percents only: no amount. */
+export function offerLines(s: PlanStatus, p: Prices = PRICES, o: Offers = OFFERS): string[] {
+  if (!s.paymentsOn) return [];
+  const w = S.m88.offers;
+  return [
+    ...(p.proYearly && o.yearlyOff !== null ? [w.yearlySaves(o.yearlyOff)] : []),
+    ...(p.proMonthly && o.studentFirstMonthOff !== null ? [w.student(o.studentFirstMonthOff)] : []),
+    ...(p.proMonthly && o.friendFirstMonthOff !== null && o.inviterShare !== null && o.inviterMonths !== null ? [w.invite(o.friendFirstMonthOff, o.inviterShare, o.inviterMonths)] : []),
+  ];
+}
+
 /** The free fixes a month (the founder's call, 31 Oct 2026). The engine's plan.usage says the real number; this is only what
  *  the card says before that first arrives. */
 export const FREE_FIXES = 3;

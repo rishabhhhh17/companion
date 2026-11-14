@@ -114,7 +114,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       { id: "keys.prompt", items: ["prompt.on"] },
     ],
     more: [
-      { id: "more.keys.talking", parent: "voice.on", items: ["talk.speakReplies", "talk.autoSend", "talk.followUpByPointing", "talk.shortSteps", "talk.maxHold", "speak.alsoSay"] },
+      { id: "more.keys.talking", parent: "voice.on", items: ["talk.speakReplies", "talk.autoSend", "talk.followUpByPointing", "talk.shortSteps", "talk.maxHold", "speak.alsoSay", "speak.status"] },
       { id: "more.keys.prompt", parent: "prompt.on", items: ["ph.style", "ph.useProjectInfo", "ph.handBack", "ph.appAnswers"] },
     ],
   },
@@ -131,7 +131,7 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
     ],
     more: [
       { id: "more.privacy.memory", items: ["memory.learnFromFiles", "memory.learnFromWords", "memory.rememberGoals", "memory.triedAndFailed", "memory.tellClaude", "memory.recallLength", "memory.toastSeconds", "task.offRecordByDefault"] },
-      { id: "more.privacy.calls", items: ["calls.apps", "numbers.on"] },
+      { id: "more.privacy.calls", items: ["calls.apps", "numbers.on", "numbers.yours"] },
     ],
   },
   about: {

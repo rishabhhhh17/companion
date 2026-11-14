@@ -860,6 +860,22 @@ mod tests {
         assert_eq!(stages, ["opened", "done", "failed"]);
     }
     #[test]
+    fn m88_the_week_carries_jobs_and_days_as_counts_and_they_fit_the_numbers_the_shell_sends() {
+        // M88 (Your numbers): the same shared fixtures the runner and the pages read.
+        let events = include_str!("../../../protocol/fixtures/events.jsonl");
+        let weeks: Vec<Value> = events.lines().filter(|l| l.contains("\"type\":\"week.summary\"")).map(|l| serde_json::from_str(l).unwrap()).collect();
+        for w in &weeks {
+            assert!(w["week"]["jobs"].as_u64().is_some(), "jobs");
+            assert!(w["week"]["days"].as_u64().is_some_and(|d| d <= 8), "days");
+        }
+        // The numbers the page would send from m79e2 (yourNumbers.ts numbersJson) pass the shell's own check.
+        let w = &weeks.iter().find(|w| w["id"] == "m79e2").unwrap()["week"];
+        let sent = json!({ "numbers": 1, "from": "2026-11-04", "to": "2026-11-11", "changesReviewed": w["reviews"], "filesReviewed": w["files"],
+            "caught": { "keys": w["caught"]["keys"], "weakenedChecks": w["caught"]["weakened"], "falseDones": w["caught"]["falseDones"], "riskyPackages": w["caught"]["packages"] },
+            "fixesProven": w["proven"], "undos": w["undone"], "savedCopies": w["saved"], "savedCopiesUsed": w["savedUsed"], "jobsHanded": w["jobs"], "aiToolsConnected": 2, "daysUsed": w["days"] });
+        assert_eq!(crate::numbersmail::check_json(&sent.to_string()), Ok(()));
+    }
+    #[test]
     fn m79_the_weekly_summary_passes_only_for_the_chosen_project_and_its_events_and_the_package_findings_read() {
         // M79: the shared fixtures (read by the runner's suite and the pages too).
         let fixtures = include_str!("../../../protocol/fixtures/commands.jsonl");

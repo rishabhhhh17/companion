@@ -1,0 +1,4 @@
+{
+  "about": "M88: the one place the address for Send these numbers lives. Empty until the founder sets one: the mail draft then opens with an empty To line, and the person types an address or does not send it. Read by the pages (yourNumbers.ts) and the shell (numbersmail.rs).",
+  "to": ""
+}

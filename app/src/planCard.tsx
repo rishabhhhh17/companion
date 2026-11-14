@@ -7,7 +7,7 @@
 import { useId, useRef, useState } from "react";
 import { Button, Card, Field, Sheet } from "./ui/parts.tsx";
 import { ConfirmStep } from "./confirm.tsx";
-import { getProSheet, limitCard, planCard, planIncludes, planProblem, tidyKey, TRIAL_DAYS, type LimitView, type PlanButton, type PlanStatus, type Term, type Usage } from "./plan.ts";
+import { getProSheet, limitCard, offerLines, planCard, planIncludes, planProblem, tidyKey, TRIAL_DAYS, type LimitView, type PlanButton, type PlanStatus, type Term, type Usage } from "./plan.ts";
 import { notePlan } from "./usePlan.ts";
 import { proCommands } from "./tauri.ts";
 import { S } from "./strings.ts";
@@ -113,6 +113,8 @@ export function GetProSheet({ status, keyFirst, say, onClose }: { status: PlanSt
           {sheet.choices.map((c) => <Button key={c.term} size="lg" disabled={!c.ready || busy} onClick={() => open(c.term)}>{c.label}</Button>)}
         </div>
         {sheet.lines.map((l) => <p className="plan-fact" key={l}>{l}</p>)}
+        {/* M88 (F31): yearly, students and invite and earn, only while payments are on (offerLines is empty when off). */}
+        {offerLines(status).map((l) => <p className="plan-fact" key={l}>{l}</p>)}
         {/* M79: what each plan includes, the one list, shown only while payments are on (planIncludes is empty when off). */}
         {planIncludes(status).map((p) => (
           <div className="plan-includes" key={p.id} role="group" aria-label={p.title}>

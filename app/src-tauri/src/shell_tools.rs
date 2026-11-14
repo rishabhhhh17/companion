@@ -492,6 +492,43 @@ async fn save_notes(window: tauri::WebviewWindow, name: String, text: String) ->
     Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
 }
 
+/// M88 (b): Share what my AI did, on Save under the preview. The page made one self contained web page; it is checked again
+/// (receiptfile.rs: nothing that runs or loads, one picture inside the page at most, no folder of this Mac) and written where
+/// the person picks through the Mac's own save dialog. A cancel writes nothing. Nothing is sent anywhere, and the page itself
+/// is never logged.
+#[tauri::command]
+async fn save_receipt(window: tauri::WebviewWindow, name: String, html: String) -> Result<String, String> {
+    settings::only_card(window.label())?;
+    receiptfile::check(&html).map_err(String::from)?;
+    let offered = golive::script_text(&receiptfile::offered_name(&name));
+    let dialog = NativeDialog::open();
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        let script = format!("POSIX path of (choose file name with prompt \"Save what your AI did\" default name \"{offered}\" default location (path to downloads folder))");
+        std::process::Command::new("/usr/bin/osascript").args(["-e", &script]).env_clear().env("PATH", "/usr/bin:/bin").output().ok()
+            .filter(|o| o.status.success()).map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    }).await.unwrap_or(None);
+    drop(dialog);
+    let Some(picked) = picked.filter(|p| !p.is_empty()) else { return Ok(String::new()) };   // cancelled: nothing written
+    let path = receiptfile::chosen_path(&picked).ok_or("notSaved")?;
+    golive::write(&path, html.as_bytes()).map_err(|_| "notSaved".to_string())?;
+    log("receipt_saved", json!({ "bytes": html.len() }));   // how big, never what
+    Ok(path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+/// M88 (a): Send these numbers, on the second press on Your numbers (the first showed the exact JSON). The JSON is checked
+/// again (numbersmail.rs: counts and dates only), and the person's own mail app opens a draft to the address in the one
+/// config spot (empty until the founder sets one). Nothing is sent: the person sends the draft, or not. Never logged.
+#[tauri::command]
+fn numbers_mail(window: tauri::WebviewWindow, json: String, subject: String) -> Result<(), String> {
+    settings::only_card(window.label())?;
+    numbersmail::check_json(&json).map_err(String::from)?;
+    numbersmail::check_subject(&subject).map_err(String::from)?;
+    let link = numbersmail::mailto(&numbersmail::configured(), &subject, &json);
+    let ok = std::process::Command::new("/usr/bin/open").arg(&link).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok_and(|s| s.success());
+    log("numbers_draft", json!({ "ok": ok }));
+    if ok { Ok(()) } else { Err("notOpened".into()) }
+}
+
 /// M78: Restore from a file, on a press on the Memory page: the Mac's own open dialog, then the chosen file's text, only
 /// when it is a notes export (notesfile.rs). The page shows how many lines it holds and asks before memory.restore. Only
 /// from Home. A cancel reads nothing. The text is never logged.

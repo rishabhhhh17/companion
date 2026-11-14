@@ -22,7 +22,9 @@ export function weekFrom(e: unknown, project: string): WeekView | null {
   const caught = { keys: m("keys"), weakened: m("weakened"), falseDones: m("falseDones"), packages: m("packages") };
   if (Object.values(counts).some((x) => x === null) || Object.values(caught).some((x) => x === null)) return null;
   const decisions = Array.isArray(w.decisions) ? w.decisions.filter((d): d is string => typeof d === "string" && d.length > 0).slice(0, 10).map((d) => d.slice(0, 300)) : [];
-  return { since: w.since, until: w.until, ...(counts as Record<keyof typeof counts, number>), caught: caught as WeekView["caught"], decisions };
+  // M88 (Your numbers): the jobs and the days used, when the engine counted them (a count that is not a count is dropped).
+  const jobs = n("jobs"), days = n("days");
+  return { since: w.since, until: w.until, ...(counts as Record<keyof typeof counts, number>), caught: caught as WeekView["caught"], decisions, ...(jobs !== null ? { jobs } : {}), ...(days !== null && days <= 8 ? { days } : {}) };
 }
 
 /** Whether anything at all happened in the week (the decisions are standing notes, not something that happened). */

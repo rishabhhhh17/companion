@@ -10,6 +10,10 @@ import { reducedMotion } from "./motion.ts";
 import { replayScene, replayStill, replayTimes, REPLAY_BOARD, type ReplayView as Replay } from "./replay.ts";
 import { useSetting } from "./settingsStore.ts";
 import { S } from "./strings.ts";
+import { toolOn } from "./groups.ts";
+import { spokenReplayTimes, statusSays } from "./spokenStatus.ts";
+import { invoke, listen } from "./tauri.ts";
+import { spokenSpeed } from "./voicesettings.ts";
 import "./ui/replay.css";
 
 export function ReplayView({ replay, rating, id }: { replay: Replay; rating: ReviewRating; id?: string }) {
@@ -29,16 +33,30 @@ export function ReplayView({ replay, rating, id }: { replay: Replay; rating: Rev
     return () => ro.disconnect();
   }, []);
   const scene = useMemo(() => replayScene(replay, rating, width), [replay, rating, width]);
-  const times = useMemo(() => replayTimes(replay, speed), [replay, speed]);
+  // M88 (d): said out loud as it draws (speak.status "replay", with voice on, never for the still picture): each beat waits
+  // for its words at the voice's speed, and its sentence shows under the board while it is said. Stop everything silences
+  // the rest of this run (the shell has already silenced the voice).
+  const statusChoice = useSetting("speak.status");
+  const voice = toolOn("speak");
+  const aloud = !still && statusSays("replay", statusChoice, voice);
+  const times = useMemo(() => (aloud ? spokenReplayTimes(replay, speed, spokenSpeed()) : replayTimes(replay, speed)), [replay, speed, aloud]);
+  const hushed = useRef(false);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => { if ((e.payload as { type?: string } | null)?.type === "app.stop_everything") hushed.current = true; });
+    const offHush = listen("hush", () => { hushed.current = true; });
+    return () => { void off.then((f) => f()); void offHush.then((f) => f()); };
+  }, []);
   const last = replay.beats.length - 1;
   const [run, setRun] = useState(0);
   const [beat, setBeat] = useState(still ? last : 0);
   useEffect(() => {
     if (still) { setBeat(last); return; }
     setBeat(0);
-    const ts = times.map((t, i) => setTimeout(() => setBeat(i), t.at));
+    hushed.current = false;
+    const say = (i: number) => { if (aloud && !hushed.current) void invoke("speak", { text: replay.beats[i].say }).catch(() => {}); };
+    const ts = times.map((t, i) => setTimeout(() => { setBeat(i); say(i); }, t.at));
     return () => ts.forEach(clearTimeout);
-  }, [run, still, times, last]);
+  }, [run, still, times, last, aloud]);
   const all = replay.beats.map((b) => b.say).join(" ");
   return (
     <figure className="rp" id={id} ref={box} data-still={still ? "" : undefined} aria-label={S.m86.watchLabel}>

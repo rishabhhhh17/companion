@@ -80,6 +80,9 @@ import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
 import { askedRowLook, commandParts, projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
 import { WeekPart } from "./weekSummary.tsx";
+import { NumbersPart, SharePreview } from "./m88Panels.tsx";
+import { shareFromTask } from "./shareReceipt.ts";
+import { statusContext, statusLines, statusStep, type StatusLine, type StatusState } from "./spokenStatus.ts";
 import type { AskedRowView, CaughtView, SavedRowView } from "../../protocol/index.ts";
 import { historyMeaning, taskName } from "./itemLook.ts";
 import { verdictOf } from "./verdict.ts";
@@ -345,7 +348,7 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyL
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
-function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void }) {
+function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice, shotFor }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   // M77: the week's count, one line under the lead, only when the setting is on and there is something (read on every render).
   const weekOn = useSetting("history.thisWeek") !== false;
@@ -358,6 +361,8 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
   // The task whose marks are open under the list (a press on its row), or the one an Undo is being asked about.
   const [sel, setSel] = useState<number | null>(null);
   const picked = shown.find((h) => h.id === sel) ?? null;
+  // M88 (b): the task whose Share what my AI did preview is open (under its row).
+  const [sharing, setSharing] = useState<number | null>(null);
   const asking = u && project ? shown.find((h) => h.checkpoint && h.checkpoint === u.checkpoint) ?? null : null;
   const name = project.split("/").filter(Boolean).at(-1) ?? project;
   // When: the time today, else the day (historyDays), so one list holds every day.
@@ -395,6 +400,8 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
       {weekLine && <div className="line hist-week" role="status">{weekLine}</div>}
       {/* M79: the weekly summary, on this row's press only. */}
       {project && <WeekPart project={project} send={send} />}
+      {/* M88 (a): Your numbers, on this row's press only (off in Settings, Privacy). */}
+      {project && <NumbersPart project={project} send={send} />}
       {items.length > 0 && (
         <div className="row hist-search" role="search">
           <input type="search" autoComplete="off" spellCheck={false} value={q.words} placeholder={S.historySearch} aria-label={S.historySearch}
@@ -460,6 +467,9 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
               {asking?.id === h.id && h.checkpoint && <li className="ui-mrow hist-extra-row">{undoAsk(h)}</li>}
               {picked?.id === h.id && h.checkpoint && project && !u && <li className="ui-mrow hist-extra-row" role="group" aria-label={task}>
                 <SaveMarksActions star={h.star} name={h.name} subject={task} onMark={(mk) => void send(markSave(project, h.checkpoint!, mk))} />
+                {/* M88 (b): Share what my AI did, for a task that ended: the preview first, then Save. */}
+                {h.status !== "running" && sharing !== h.id && <div className="row"><button className="btn" type="button" aria-label={S.m88.share.buttonLabel(task)} onClick={() => setSharing(h.id)}>{S.m88.share.button}</button></div>}
+                {sharing === h.id && <SharePreview id={`share-${h.id}`} doc={shareFromTask(h, project, new Date(now), h.checkpoint ? shotFor?.(h.checkpoint) : undefined)} onClose={() => setSharing(null)} />}
               </li>}
             </Fragment>;
           })}
@@ -1063,6 +1073,35 @@ export function Card() {
     for (const l of also) alsoSaid.current.add(l.key);
     if (fresh.length) sayIt(fresh[0].text, false);
   }, [alsoKeys]);
+  // M88 (d): spoken status (speak.status, no moment chosen as usual): with voice on, one short fixed line for each moment
+  // chosen, said once, through sayIt (the shell stays quiet during calls and shows the words while it speaks). After Stop
+  // everything, nothing already on Home is said late. A fix already said by Also say out loud is not said twice.
+  const statusState = useRef<StatusState>({ said: new Set<string>(), ctx: "" });
+  const statusNow = useRef<StatusLine[]>([]);
+  const statusHushed = useRef(false);
+  const statusList = statusLines(m, project, setting("speak.status"));
+  statusNow.current = statusList;
+  const statusKeys = statusList.map((l) => l.key).join("|");
+  // Choosing a moment or opening another project says nothing already on Home (statusStep): only what comes after.
+  const statusCtx = statusContext(project, setting("speak.status"));
+  useEffect(() => {
+    const quiet = !toolOn("speak") || statusHushed.current;
+    statusHushed.current = false;
+    const n = statusStep(statusList, statusState.current, statusCtx, quiet);
+    statusState.current = n.state;
+    const alsoSaidIt = speechOn() && ((setting("speak.alsoSay") as string[] | undefined) ?? []).includes("taskDone");
+    // Every new line, in order, as one utterance (a new utterance cuts off the one before).
+    const words = n.say.filter((l) => !(l.moment === "fixPassed" && alsoSaidIt)).map((l) => l.text).join(" ");
+    if (words) sayIt(words, false);
+  }, [statusKeys, statusCtx]);
+  useEffect(() => {
+    const off = listen("runner-event", (e) => {
+      if ((e.payload as { type?: string } | null)?.type !== "app.stop_everything") return;
+      statusHushed.current = true;
+      statusState.current = { ...statusState.current, said: new Set(statusNow.current.map((l) => l.key)) };
+    });
+    return () => { off.then((f) => f()); };
+  }, []);
   // Another project: its answers are numbered and named on their own (its first task ends with cp_0001 again), and a
   // question asked by voice about the old project is not answered by anything in the new one.
   useEffect(() => {
@@ -3518,7 +3557,8 @@ export function Card() {
           </Group>
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined} />}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined}
+        shotFor={(cp) => (m.receipt?.checkpoint === cp && !m.receipt.undone ? m.receipt.visual?.image : undefined)} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (
         <details className="more" open={watchesOf(m.watches, project).some((w) => w.state === "failing")}>

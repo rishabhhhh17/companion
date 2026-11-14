@@ -302,9 +302,12 @@ describe("the page model: plan.usage and plan.limit", () => {
 });
 
 describe("Get Pro (section 4)", () => {
-  test("Monthly at the price in prices.json ($15, the founder's call of 6 Nov 2026), no yearly until a yearly price is set, with the US prices line; nothing chosen for the person", () => {
+  test("Monthly at the price in prices.json ($15, the founder's call of 6 Nov 2026), and since F31 (13 Nov 2026) Yearly first at 20% off, with the US prices line; nothing chosen for the person", () => {
     const g = getProSheet(on());
-    expect(g.choices.map((c) => [c.term, c.label, c.ready])).toEqual([["monthly", "Monthly, $15 a month", true]]);
+    // M88 (F31): the founder set a yearly price (20% off twelve months of $15), so Yearly shows first, as section 4 wants.
+    expect(g.choices.map((c) => [c.term, c.label, c.ready])).toEqual([["yearly", "Yearly, $144 a year", true], ["monthly", "Monthly, $15 a month", true]]);
+    // With no yearly price in the one config, only Monthly shows.
+    expect(getProSheet(on(), { symbol: "$", proMonthly: 15, proYearly: null, reportOnce: 29 }).choices.map((c) => c.term)).toEqual(["monthly"]);
     // With a yearly price set in the one config, Yearly comes first again.
     expect(getProSheet(on(), { symbol: "$", proMonthly: 15, proYearly: 150, reportOnce: 29 }).choices.map((c) => c.label)).toEqual(["Yearly, $150 a year", "Monthly, $15 a month"]);
     expect(g.lines).toEqual(["US prices. Your local price and tax show at checkout.", "Checkout opens in your browser. Dodo handles the payment, tax and receipts."]);

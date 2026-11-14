@@ -480,6 +480,9 @@ export type WeekView = {
   since: string; until: string; reviews: number; files: number;
   caught: { keys: number; weakened: number; falseDones: number; packages: number };
   proven: number; undone: number; saved: number; savedUsed: number; decisions: string[]; againstRules: number;
+  /** M88 (Your numbers): tasks Squibby ran for the person in the seven days, and the days with any row (at most 8, as the
+   *  seven days can touch eight dates). Counts only. */
+  jobs?: number; days?: number;
 };
 export type WeekShow = Envelope & { type: "week.show"; project: string };
 export type WeekSummary = Envelope & { type: "week.summary"; project: string; week: WeekView };
@@ -806,7 +809,8 @@ const weekOk: Check = (m) => {
   const ok = !!w && typeof w === "object" && !Array.isArray(w) && typeof w.since === "string" && !Number.isNaN(Date.parse(w.since)) && typeof w.until === "string" && !Number.isNaN(Date.parse(w.until))
     && ["reviews", "files", "proven", "undone", "saved", "savedUsed", "againstRules"].every((k) => n(w, k))
     && !!c && typeof c === "object" && !Array.isArray(c) && ["keys", "weakened", "falseDones", "packages"].every((k) => n(c, k))
-    && Array.isArray(w.decisions) && w.decisions.length <= 10 && w.decisions.every((d) => typeof d === "string" && d.length > 0 && d.length <= 300);
+    && Array.isArray(w.decisions) && w.decisions.length <= 10 && w.decisions.every((d) => typeof d === "string" && d.length > 0 && d.length <= 300)
+    && (w.jobs === undefined || n(w, "jobs")) && (w.days === undefined || (n(w, "days") && (w.days as number) <= 8));
   return ok ? null : '"week" must count reviews, files, proven, undone, saved, savedUsed and againstRules, what was caught, and at most 10 decisions, from since to until';
 };
 // M77: what the changes did not tell you: file names (at most 5) and counts.

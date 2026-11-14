@@ -164,6 +164,18 @@ export class TaskLog {
       againstRules,
     };
   }
+  /** M88 (Your numbers): two more counts for the same seven days, from real rows only. jobs: tasks Squibby ran for the
+   *  person (not a saved copy, not an ask). days: the days on this Mac's clock with any row at all (a task, a saved copy,
+   *  an ask or a review). Counts only: no label, file or word goes with them. */
+  usage(project: string, now: Date = new Date()): { jobs: number; days: number } {
+    const since = new Date(now.getTime() - WEEK_MS).toISOString(), until = now.toISOString();
+    const all = <T,>(sql: string, ...args: unknown[]): T[] => { try { return this.db.query(sql).all(...(args as never[])) as T[]; } catch { return []; } };
+    const tasks = all<{ mode: string; at: string }>("SELECT mode, started_at AS at FROM tasks WHERE project = ? AND started_at >= ? AND started_at <= ?", project, since, until);
+    const reviews = all<{ at: string }>("SELECT at FROM reviews WHERE project = ? AND at >= ? AND at <= ?", project, since, until);
+    const day = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? "" : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+    const days = new Set([...tasks.map((t) => day(t.at)), ...reviews.map((r) => day(r.at))].filter(Boolean));
+    return { jobs: tasks.filter((t) => t.mode !== GUARD_MODE && t.mode !== ASK_MODE).length, days: days.size };
+  }
   finish(id: number, status: string, usd: number, endedAt: string, receipt?: { checkpoint: string; changed: number; proof: string; failedCheck?: string }) {
     const failed = receipt?.proof === "failed" && receipt.failedCheck && RUNGS.includes(receipt.failedCheck) ? receipt.failedCheck : null;
     this.db.query("UPDATE tasks SET status = ?, usd = ?, ended_at = ?, checkpoint = COALESCE(?, checkpoint), changed = ?, proof = ?, failed_check = ? WHERE id = ?")

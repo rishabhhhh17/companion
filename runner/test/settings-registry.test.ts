@@ -151,6 +151,9 @@ describe("the shipped list of settings", () => {
       "replay.show": true, "replay.speed": "normal", "replay.reduceMotion": "followMac", "replay.model": true,
       // M87: Why is live broken? reads Stripe's live mode (where real payments are) unless a project says test.
       "live.stripeMode": "live",
+      // M88: Your numbers in History (on; it only counts the project's own rows on this Mac and sends nothing by itself),
+      // and spoken status (off: no moment is chosen until the person picks one).
+      "numbers.yours": true, "speak.status": [],
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -160,6 +163,12 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M88: Your numbers is the pages' own switch, on; spoken status is a list of moments, none chosen", () => {
+    expect(defOf("numbers.yours")).toMatchObject({ section: "numbers", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(defOf("speak.status")).toMatchObject({ section: "talking", kind: "list", default: [], maxItems: 4, allowedItems: ["fixPassed", "toolWaiting", "notSafe", "replay"], scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("speak.status")!, ["shout"]).ok).toBe(false);
+    expect(validate(defOf("speak.status")!, ["fixPassed", "replay"]).ok).toBe(true);
   });
   test("M87: which Stripe mode Why is live broken? reads, per project", () => {
     expect(defOf("live.stripeMode")).toMatchObject({ section: "checks", kind: "choice", default: "live", options: ["live", "test"], scope: "project", applies: ["runner"], store: "settings", live: true });

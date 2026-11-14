@@ -1019,7 +1019,9 @@ export class AgentRunner {
         const p = resolve(cmd.project);
         let decisions: string[] = [];
         try { const m = this.memoryFor(cmd.project); if (m) decisions = pickNotes(p, m).filter((x) => x.kind === "rule" || x.kind === "decision").map((x) => clip(x.text, 300)).slice(0, 10); } catch { /* memory is a nicety here */ }
-        this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, this.now()), decisions } } as never);
+        // M88 (Your numbers): with the jobs Squibby ran and the days with any row, for the same seven days.
+        const now = this.now();
+        this.emit({ type: "week.summary", project: cmd.project, week: { ...this.o.log.week(p, now), ...this.o.log.usage(p, now), decisions } } as never);
         return;
       }
       // M58: star or name a save point. Only the shadow store's own notes change: never a file in the project, never git.

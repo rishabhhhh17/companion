@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Your numbers, a receipt you can share, and Squibby says how it's going: 14 Nov 2026
+
+- **Your numbers.** A new row in History shows this week in counts for your project: changes reviewed, keys and weakened tests caught, fixes proven, Undos, saved copies, jobs handed to Squibby, AI tools connected and days used. It is counted from your own history on your Mac.
+- **Send them only if you want to.** Send these numbers shows exactly what would go first: counts and dates only, no project name, no file names, no words. Then your own mail app opens a draft, and nothing is sent until you send it. You can turn the page off in Settings, Privacy.
+- **Share what my AI did.** Open a task in History, or This week, and make one web page that says what your AI did, whether its checks passed, the picture of your page from the browser check, and the counts. You see it first, then save it wherever you like. Nothing is uploaded. Keys, file contents and folder names are taken out; only your project's name stays.
+- **Squibby can tell you out loud.** Pick the moments in Settings, Keys and voice: a fix passed its checks, your AI tool is waiting on you, a review says not safe yet, or Watch what changed said as it draws. The words show on screen while it speaks. Off unless you pick one, quiet during calls, and Stop everything silences it.
+- **Plans, still switched off.** Yearly will be 20% off, students get half off their first month, and inviting a friend gives them 25% off their first month and you credit. Pro stays $15 a month. Nothing is charged or shown yet.
+- **Not yet claimed:** that the mail draft, the saved page and the spoken lines work on a real Mac. Every test used stand ins; those are checked next.
+
 ## Why is live broken?: 14 Nov 2026
 
 - **One press when your live site is broken.** On your live site's panel, press Why is live broken? (in Ready to go live? it is called Check my live setup, since nothing may be live yet). The answer opens right below the button. Squibby checks four things that usually break a site that worked on your Mac, and says each one in plain words with the next step.
