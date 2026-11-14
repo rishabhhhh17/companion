@@ -116,6 +116,8 @@ export const shipRollback = (project: string): Command => ({ v: 1, id: id(), typ
 export const shipSignIn = (project: string): Command => ({ v: 1, id: id(), type: "ship.signIn", project });
 /** Ends a Vercel sign in that is still waiting (the person pressed Stop signing in, or Close). */
 export const shipSignInStop = (project: string): Command => ({ v: 1, id: id(), type: "ship.signIn", project, stop: true });
+/** M87: Why is live broken?, on the person's press. url: the live address they typed (a plain https address). */
+export const shipWhyLive = (project: string, url?: string): Command => ({ v: 1, id: id(), type: "ship.whyLive", project, ...(url ? { url } : {}) });
 export const addMemory = (project: string, scope: "project" | "profile", text: string, source: string): Command => ({ v: 1, id: id(), type: "memory.add", project, scope, text, source });
 export const checkMac = (): Command => ({ v: 1, id: id(), type: "doctor.check" });
 // Point at the problem: check the project as it is (no Claude, nothing changed) and say where it fails. `first`: the first

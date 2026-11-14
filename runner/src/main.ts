@@ -15,6 +15,9 @@ import { SilenceLedger } from "./review/silence.ts";
 import { doctor } from "./doctor.ts";
 import { release as releaseShotDrive } from "./ramdisk.ts";
 import { VercelCli } from "./ship/deploy.ts";
+import { realTools } from "./ship/livecheck.ts";
+import { browserInstalled } from "./proof/browser.ts";
+import { homedir } from "node:os";
 import { heldKey } from "./keychain.ts";
 import { testKey } from "./keytest.ts";
 import { TaskLog } from "./tasklog.ts";
@@ -82,7 +85,7 @@ const taskLog = new TaskLog(join(settings.data, "tasks.db"), problem);
 // The plan gate (plan.ts, F25): nothing is gated until the shell says payments are on (plan.state). The free fix count lives
 // beside the task history and is opened only when it is first needed, so with payments off nothing about it is written.
 const plan = new PlanGate({ fixes: () => new FreeFixes(taskLog.database), emit: (e) => say(e) });
-const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
+const runner = new AgentRunner({ reachable: settings.engine === "sdk" ? claudeOnline : undefined, settings: runnerSettings, ci: gh, watches: { forProject: (p) => watchList.engine?.forProject(p) ?? [] }, reviewState: (p) => review.stateFor(p), shadowRoot: join(settings.data, "shadow"), engine: createEngine(settings), log: taskLog, reviewer: process.env.COMPANION_REVIEW === "1" && settings.engine === "sdk" ? createEngine(settings) : undefined, ledger: new Ledger(join(settings.data, "ledger.db"), undefined, problem), dailyCeilingUsd: startingLimit(process.env.COMPANION_DAILY_CEILING_USD, spending.read()), saveDailyLimit: (usd) => spending.save(usd), memoryDir: settings.data, startNotes: { refresh: (p, m) => sessionNotes.refresh(p, m) }, deployer: vercel, deployLogs: vercel, liveTools: realTools({ vercelAuthFile: join(homedir(), "Library", "Application Support", "com.vercel.cli", "auth.json"), browserReady: browserInstalled }), fixes: plan, pictures: { workDir: join(settings.data, "work"), saveDir: join(settings.data, "receipts") }, bisect: { workDir: join(settings.data, "work") }, explainer: lanes && !settings.assistStub ? (req, signal) => lanes.fast.run({ ...req, raw: true }, () => {}, signal) : undefined, checker: lanes && !settings.assistStub ? lanes.fast : undefined, describer: lanes && !settings.assistStub ? lanes.describe : undefined, emit });
 const watches = new WatchEngine({
   file: join(settings.data, WATCH_FILE), emit: (e) => say(e), get: (k) => runnerSettings.get(k), onProblem: problem,
   checks: makeChecks({ vercel, gh, project: (p, sig) => runner.checkWithoutModel(p, sig) }), evidence: makeEvidence({ vercel, gh }),

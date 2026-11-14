@@ -34,7 +34,7 @@
       "runner": ["memory.add", "memory.list", "memory.forget", "memory.edit", "memory.erase", "memory.export", "memory.agents", "memory.restore"] },
     { "id": "ship", "group": "core", "permissions": [], "settings": [],
       "commands": ["save_share_card", "copy_link", "copy_text", "open_link", "save_report", "report_status", "report_activate"],
-      "runner": ["ship.preview", "ship.live", "ship.rollback", "ship.check", "ship.signIn"], "agentModes": ["ship"] },
+      "runner": ["ship.preview", "ship.live", "ship.rollback", "ship.check", "ship.signIn", "ship.whyLive"], "agentModes": ["ship"] },
     { "id": "research", "group": "core", "permissions": [], "settings": [],
       "commands": [],
       "runner": ["research.ask"], "agentModes": ["research"] },

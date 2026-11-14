@@ -2,6 +2,18 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Why is live broken?: 14 Nov 2026
+
+- **One press when your live site is broken.** On your live site's panel, press Why is live broken? (in Ready to go live? it is called Check my live setup, since nothing may be live yet). The answer opens right below the button. Squibby checks four things that usually break a site that worked on your Mac, and says each one in plain words with the next step.
+- **Settings missing in Vercel.** It reads which settings values your code uses and checks that each one is in Vercel Production, through your own Vercel tool. It only reads the names, never the values. A missing one is named with the file and line that reads it.
+- **Stripe webhooks that fail.** Through your own Stripe tool, it checks that your webhook address points at your live site, is switched on, and that Stripe delivered your recent events. If it could not, it says how many, which kinds, and what a 404, 405 or 400 usually means. Stripe counts failed events for your whole account, so an address is named only when it is your account's one webhook address. If it cannot tell which address is this project's, it asks for your live address instead of blaming another one.
+- **Private pages open to anyone.** It opens your dashboard, settings and account pages on the live site without signing in, only reading. One that opens is named. A page that does not answer, because the site is down or the address is wrong, is never called fine: it is named as not checked.
+- **Database rules.** The Supabase row level security check runs too.
+- **Never your keys.** If the Vercel or Stripe tool is not installed or you are not signed in, it says exactly what to run and skips that part. Squibby never asks for a key, never stores one, and never changes anything in Vercel or Stripe.
+- **Never stuck.** Close is always there, even while it runs. If Squibby's helper restarts in the middle, the panel says so and stops waiting.
+- **Copy for my AI.** One message with what is broken, where, and what to do, ready to paste into your AI tool.
+- **Not yet claimed:** that it reads the real Vercel and Stripe tools right. Every test used saved answers; the real tools are checked next.
+
 ## Watch what changed, and Label it: 14 Nov 2026
 
 - **Watch what changed.** After each review, the review card draws a short replay, one step at a time: the files your AI changed and which part of your app each is, each check and how it ended (with its exit code), and the verdict. Each step has one plain sentence under it. Watch again plays it over. The card shows up straight away: Claude's clearer words, when you have them on, follow a moment later.

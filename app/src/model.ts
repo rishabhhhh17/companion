@@ -19,6 +19,7 @@ import { limitShown, usageFrom, type LimitReason, type LimitView, type Usage } f
 import { checkParts, WRITTEN_FOR_A_PERSON, type CheckParts } from "./checkParts.ts";
 import { verdictOf, type Facts, type Verdict } from "./verdict.ts";
 import { signInReduce, signInStopped } from "./shipFinish.ts";
+import { whyLiveReduce, type WhyLive } from "./whyLive.ts";
 
 export type CharacterState = "off" | "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 // text: the engine's own summary (secrets hidden again here); words: the same step in plain words for the card.
@@ -255,6 +256,8 @@ export type Model = {
   toast: { lines: Saved[] } | null;
   agentsAsk: string[] | null;
   ship: ShipReport | null;
+  /** M87: Why is live broken?, from the press to its last part (whyLive.ts). */
+  whyLive?: WhyLive | null;
   ph: PromptHelp | null;
   research: ResearchCard | null;
   rescue: RescueCard | null;
@@ -529,6 +532,8 @@ function reduceSent(m: Model, e: Ev): Model {
 }
 
 function reduceOne(m: Model, e: Ev): Model {
+  // M87: Why is live broken? keeps its own state; Stop everything ends it, a new project closes it.
+  if (e.type && ["ui.whyLiveAsked", "ui.whyLiveClosed", "ship.whyLive", "app.stop_everything", "ui.projectChanged", "app.runner_restarted", "app.runner_down"].includes(e.type)) { const w = whyLiveReduce(m.whyLive, e as { type: string }); if (w !== (m.whyLive ?? null)) m = { ...m, whyLive: w }; if (e.type.startsWith("ui.whyLive") || e.type === "ship.whyLive") return m; }
   // The limit card goes once new work starts, another folder is chosen, or everything stops.
   if (m.proLimit && ((e.type === "agent.state" && (e.state === "thinking" || e.state === "working")) || e.type === "ui.projectChanged" || e.type === "app.stop_everything")) m = { ...m, proLimit: null };
   // M52: the review card follows its own events and presses (review.ts). A refused Fix it is said on its card, not as

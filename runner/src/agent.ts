@@ -45,6 +45,7 @@ import { recapLines } from "./recap.ts";
 import { addShipReceipt, NOT_SIGNED_IN, readShips, type Deployer, type DeployLogReader } from "./ship/deploy.ts";
 import { SIGN_IN, signInStep } from "./ship/signin.ts";
 import { readDeployFailure } from "./ship/buildlog.ts";
+import { LIVE_PARTS, whyLiveBroken, type LivePart, type Tools as LiveTools } from "./ship/livecheck.ts";
 import { ciEvidence, type CiReader } from "./connections.ts";
 import { whereWasI, type ReviewState, type WatchLite } from "./wherewasi.ts";
 import type { CheckResult } from "./watchsite.ts";
@@ -192,6 +193,9 @@ export type RunnerOptions = {
   // and the folder its temporary profiles are made in (Squibby's own data, beside the shadow store, by default).
   signInWindow?: SignInWindow;
   signInProfiles?: string;
+  // M87: Why is live broken?: the person's own vercel and stripe tools (read only) and the anonymous visit. Without it, the
+  // check says it is not set up on this Mac. Tests pass fixture outputs; never the real tools.
+  liveTools?: LiveTools;
 };
 
 /** How long one snapshot may take (checkpoints.ts), doubled by "my internet is slow". */
@@ -888,6 +892,7 @@ export class AgentRunner {
       case "ship.live": return this.shipLive(cmd);
       case "ship.rollback": return this.shipRollback(cmd);
       case "ship.signIn": return this.shipSignIn(cmd);
+      case "ship.whyLive": return this.shipWhyLive(cmd);
       case "explain.set": { const m = this.memoryFor(cmd.project); if (!m) { this.fail("Settings are not available.", undefined); return; } m.setExplainMode(cmd.mode); this.emit({ type: "explain.state", project: cmd.project, enabled: m.explainEnabled(), mode: m.explainMode() } as never); return; }
       case "memory.add": {
         // A line the person chose themselves (for example an answer at setup). It still goes through the same filter.
@@ -2066,6 +2071,33 @@ export class AgentRunner {
     try { await signInStep(d, cmd.project, (e) => this.emit(e as never), ac.signal); }
     catch { this.emit({ type: "ship.signIn", project: cmd.project, stage: "failed", reason: SIGN_IN.failed } as never); }
     finally { this.shipping.delete(key); this.signIns.delete(key); this.sessions.delete(sk); }
+  }
+
+  // M87: Why is live broken? (ship/livecheck.ts), on the person's press only. Read only: no snapshot, nothing written, the
+  // person's own tools only through readonly.ts. Its own session, so Stop everything ends it; one at a time per project.
+  private whyLiveRunning = new Set<string>();
+  private async shipWhyLive(cmd: Extract<Command, { type: "ship.whyLive" }>): Promise<void> {
+    const key = resolve(cmd.project);
+    const say = (stage: "running" | "done" | "stopped", parts: unknown[], liveUrl?: string, reason?: "not_set_up") => this.emit({ type: "ship.whyLive", project: cmd.project, stage, parts, ...(liveUrl ? { liveUrl } : {}), ...(reason ? { reason } : {}) } as never);
+    // M87 review: every press ends in a final event, so the panel never waits forever. The words are the page's (rule 21).
+    if (!this.o.liveTools) { say("done", [], undefined, "not_set_up"); return; }
+    if (this.whyLiveRunning.has(key)) return;
+    this.whyLiveRunning.add(key);
+    const ac = new AbortController();
+    const sk = this.openShipSession(ac);
+    let so: LivePart[] = [];
+    try {
+      say("running", []);
+      const mode = this.setting<string>("live.stripeMode", cmd.project) === "test" ? "test" : "live";
+      const r = await whyLiveBroken({ project: cmd.project, tools: this.o.liveTools, stripeMode: mode, ...(cmd.url !== undefined ? { typedUrl: cmd.url } : {}), signal: ac.signal, onPart: (_p, now) => { so = now; say("running", now); } });
+      say(ac.signal.aborted ? "stopped" : "done", r.parts, r.liveUrl);
+    } catch {
+      // An internal break is not a stop the person pressed: done, with the parts so far and the step that broke.
+      const stopped = ac.signal.aborted;
+      const got = new Set(so.map((p) => p.id));
+      const next = LIVE_PARTS.find((id) => !got.has(id));
+      say(stopped ? "stopped" : "done", next ? [...so, { id: next, state: "could_not", why: stopped && next !== "database" ? "stopped" : "failed" }] : so);
+    } finally { this.whyLiveRunning.delete(key); this.sessions.delete(sk); }
   }
 
   // The places a task changed, from the two snapshots. Only files that may be taught from are read (teach.ts), at most 40 of

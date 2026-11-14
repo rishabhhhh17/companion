@@ -149,6 +149,8 @@ describe("the shipped list of settings", () => {
       // M86: Watch what changed plays on each review card (on), at the usual speed, still when the Mac asks for less motion;
       // its one capped model call is on (measured under a cent with stand in token counts; m86-replay.test.ts).
       "replay.show": true, "replay.speed": "normal", "replay.reduceMotion": "followMac", "replay.model": true,
+      // M87: Why is live broken? reads Stripe's live mode (where real payments are) unless a project says test.
+      "live.stripeMode": "live",
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -158,6 +160,10 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M87: which Stripe mode Why is live broken? reads, per project", () => {
+    expect(defOf("live.stripeMode")).toMatchObject({ section: "checks", kind: "choice", default: "live", options: ["live", "test"], scope: "project", applies: ["runner"], store: "settings", live: true });
+    expect(validate(defOf("live.stripeMode")!, "both").ok).toBe(false);
   });
   test("M85: asking before live systems, and Always allow for this project", () => {
     expect(defOf("safety.askBeforeLive")).toMatchObject({ section: "work", kind: "switch", default: true, scope: "app", applies: ["runner"], store: "settings", live: true });

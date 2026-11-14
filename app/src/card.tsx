@@ -15,7 +15,7 @@ import { alsoSayLines, askedByVoice, followVoiceShowMe, lineByVoice, lineFor, ne
 import { guessWords } from "./pointer.ts";
 import { noteSpeed, spokenSpeed, voiceSettingsFrom } from "./voicesettings.ts";
 import { reviewDismiss, reviewFix, reviewNow } from "./commands.ts";
-import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, restoreMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
+import { AGENT, SETTINGS_LESSON_ID, undoPutBack, releaseAgent, watchAdd, watchCheck, watchFix, watchList, watchPause, watchRemove, whereWasI, fixWatch, checkBrowser, getBrowser, NO_PROJECT, metricsNote, walkActed, walkAnswer, walkList, walkSkip, walkStart, walkStop, shipSignInStop, shipWhyLive, fixFound, VERCEL_LESSON_ID, askDiagram, inspectProject, installPackages, findProblem, shipLive, shipPreview, shipRollback, answerAgents, askRecap, editLine, eraseMemory, exportMemory, restoreMemory, forgetLine, listMemory, checkShip, answerApproval, approvePlan, askResearch, chooseLoop, diagnose, pauseDrive, resumeDrive, listTasks, planDrive, startTask, stopAgent, undo, followUp, retryTask, pointChange, tryNextOne, checkMyChange, findBreakingTask, undoOneTask, fixError, warmEngine, checkMac , newFolderTask} from "./commands.ts";
 // M58 area A: the fixed ladder, Last working and save marks, the sign in turn.
 import { markSave } from "./commands.ts";
 import { backPlanStep, fixLadder, optionWords, stuckRung, tryCounter } from "./fixLadder.ts";
@@ -63,6 +63,8 @@ import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
 // M58 UI 6 and UI 13: the check before going live's finish line and the Sign in to Vercel step.
 import { ShipGatesPanel, SignInStep } from "./shipPanels.tsx";
+import { WhyLivePanel } from "./whyLivePanel.tsx";
+import { whyLiveCopy } from "./whyLive.ts";
 import { detailShown, gateFixCommand, putOnlineShown, signingIn, type Gate } from "./shipFinish.ts";
 import { shipSignIn } from "./commands.ts";
 import { practiceKey } from "./commands.ts";
@@ -284,7 +286,7 @@ function LinkLine({ label, url, strong }: { label: string; url: string; strong?:
   );
 }
 
-function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { f: ShipFlow; project: string; onClose: () => void; onCheckAgain: () => void; onLesson: () => void; dispatch: (e: { type: string; [k: string]: unknown }) => void }) {
+function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyLive }: { f: ShipFlow; project: string; onClose: () => void; onCheckAgain: () => void; onLesson: () => void; dispatch: (e: { type: string; [k: string]: unknown }) => void; whyLive?: ReactNode }) {
   const [ask, setAsk] = useState<"live" | "back" | null>(null);
   const [shared, setShared] = useState("");
   const liveId = useId(), rollId = useId();
@@ -316,7 +318,7 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch }: { 
           {shared && <div className="line muted" role="status">{shared}</div>}
         </figure>
       )}
-      {f.stage === "live" && ask !== "back" && <div className="row"><button id={rollId} className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button></div>}
+      {f.stage === "live" && ask !== "back" && <div className="row"><button id={rollId} className="btn" type="button" onClick={() => setAsk("back")}>{S.rollBack}</button>{whyLive}</div>}
       {ask === "back" && (
         <ConfirmStep className="row" label={S.rollSure} back={rollId} onCancel={() => setAsk(null)}>
           <span className="line">{S.rollSure}</span>
@@ -1941,6 +1943,16 @@ export function Card() {
   // before going live (the main button, the chip, the notch, the confirm rows) only checks on this Mac, so it is free.
   const shipGate = (): boolean => { if (!proTag("ship", planNow())) return true; dispatch({ type: "ui.proLimit", reason: "ship" }); return false; };
   const shipIt = (o: { runChecks?: boolean; confirm?: string[] } = {}) => { if (!project) return; dispatch({ type: "ui.planRequested", ship: true }); void send(checkShip(project, { runChecks: true, ...o })); };
+  // M87: Why is live broken?, on the person's press only (read only; runner/src/ship/livecheck.ts).
+  // M87 review: from says which panel's button was pressed, so the answer opens right below it. In Ready to go live? the
+  // site may never have been put online, so the same check carries pre launch words there.
+  const askWhyLive = (url?: string, from?: "gates" | "online") => { if (!project) return; dispatch({ type: "ui.whyLiveAsked", project, ...(from ? { from } : {}) }); void send(shipWhyLive(project, url)); };
+  const whyLiveButton = (from: "gates" | "online") => project ? <button className="btn" type="button" title={S.whyLive.askHelp} onClick={() => askWhyLive(undefined, from)}>{from === "gates" ? S.whyLive.askBefore : S.whyLive.ask}</button> : null;
+  const whyLiveHere = (from: "gates" | "online") => show("ship") && m.whyLive && project && m.whyLive.project === project && (m.whyLive.from ?? "gates") === from && (from === "gates" ? !!m.ship : !!m.shipFlow)
+    ? <WhyLivePanel w={m.whyLive} onAgain={(url) => askWhyLive(url)} onClose={() => dispatch({ type: "ui.whyLiveClosed" })} copy={<CopyButton text={whyLiveCopy(m.whyLive, projectName)} label={S.whyLive.copy} />} />
+    : null;
+  // Where it is drawn when the panel that held its button has since closed: in the gates' place.
+  const whyLiveOrphan = show("ship") && m.whyLive && project && m.whyLive.project === project && !((m.whyLive.from ?? "gates") === "gates" ? m.ship : m.shipFlow);
   const shipOnline = () => { if (!project || !shipGate()) return; dispatch({ type: "ui.planRequested", ship: true }); void send(shipPreview(project)); };
   // M58 UI 6: a blocked gate's Fix it, an ordinary checked fix of what it found. No plan request first, so the panel and its
   // found problem stay on screen until the task's first event (its safety copy) takes their place. False when refused.
@@ -2995,14 +3007,20 @@ export function Card() {
         </section>
       )}
 
-      {show("ship") && m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} onCheckAgain={() => shipIt()} onLesson={() => beginLesson("vercel-sign-in", false)} dispatch={dispatch} />}
+      {show("ship") && m.shipFlow && <OnlineBox f={m.shipFlow} project={project} onClose={() => dispatch({ type: "ui.shipClosed" })} onCheckAgain={() => shipIt()} onLesson={() => beginLesson("vercel-sign-in", false)} dispatch={dispatch} whyLive={m.whyLive ? null : whyLiveButton("online")} />}
+      {whyLiveHere("online")}
 
       {show("ship") && m.ship && (
         // M58 UI 6: the readiness line, each gate's own next step (Fix it, Check again, I checked this myself), and Put it
         // online as the one main button once every gate passed (shipPanels.tsx; shipFinish.ts decides).
         <ShipGatesPanel ship={m.ship as { gates: Gate[]; canShip: boolean }} words={shipWords(m)} online={putOnlineShown(m.ship as { gates: Gate[]; canShip: boolean }, m.practice?.project === project)} practice={m.practice?.project === project}
           onPutOnline={shipOnline} onFix={gateFix} onCheck={() => shipIt()} onConfirm={(id) => shipIt({ confirm: [id] })} onClose={() => dispatch({ type: "ui.shipClosed" })}
-          share={project ? <ShareReport id="ship-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null} />
+          share={project ? <ShareReport id="ship-share" input={{ project, proof: m.task?.proof ?? null, review: m.review ?? null, ship: m.ship }} /> : null}
+          whyLive={m.whyLive ? null : whyLiveButton("gates")} />
+      )}
+      {whyLiveHere("gates")}
+      {whyLiveOrphan && m.whyLive && (
+        <WhyLivePanel w={m.whyLive} onAgain={(url) => askWhyLive(url)} onClose={() => dispatch({ type: "ui.whyLiveClosed" })} copy={<CopyButton text={whyLiveCopy(m.whyLive, projectName)} label={S.whyLive.copy} />} />
       )}
 
       {show("research") && m.research && (

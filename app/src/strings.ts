@@ -2,6 +2,16 @@
 // The names themselves (product, character) are in protocol/names.json, the one file the pages, the engine and the shell
 // read, so a rename is one edit. Plain words, no cute talk (rule 16).
 import names from "../../protocol/names.json";
+/** M87: what a Why is live broken? part may carry (protocol LivePart), for its words. Never a value. */
+type WhyPart = { names?: string[]; more?: string[]; count?: number; at?: string; mode?: "live" | "test"; detail?: string };
+const WHY_MODE = (p: WhyPart): string => (p.mode === "test" ? "test mode" : "live mode");
+/** A time from the engine, as a person says it: "13 Nov, 21:04" in this Mac's own time. */
+const whenWords = (iso: string | undefined): string => {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return "recently";
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getMonth()];
+  return `${d.getDate()} ${mon}, ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 
 /** The product's name ("Squibby"), and with 's. Other page files import these rather than typing the word. */
 export const PRODUCT: string = names.product;
@@ -560,6 +570,7 @@ export const S = {
     "notch.waitingMinutes": "How long the notch says Claude is waiting for you when nothing else happens.",
     "history.thisWeek": "History and Now show what was caught in the last seven days, only when there is something.",
     "check.privatePages": "After the page check, private looking pages are opened once without a sign in.",
+    "live.stripeMode": "Why is live broken? reads your Stripe webhooks in live mode, or in test mode.",
     "paste.showWhere": "After you copy words for your AI tool, a button rings its chat box. You paste them yourself.",
     "tour.offer": "Reviews and fixes offer a walk through each changed place.",
     "report.codeLines": "Go live reports leave code out unless this is on. Keys are always hidden.",
@@ -2537,6 +2548,7 @@ export const S = {
     // M74 (your way): the behaviours that had no setting. Each keeps a fixed floor (S.floors).
     "spend.pauseAt": { label: "Pause a task that uses far more than usual", help: `When one task has used far more than a usual task here, ${PRODUCT} pauses it and asks: Keep going, Stop, or Undo what it did. Usual comes from this project's own tasks. Nothing runs while it asks.`, also: ["pause", "cost", "money", "spending", "budget", "keep going", "stuck", "loop", "usual", "expensive", "too much"], options: { off: "Off", "3": "At 3 times a usual task", "5": "At 5 times a usual task" } },
     "check.privatePages": { label: "Look for pages that should need a sign in", help: `In a project with a sign in, ${PRODUCT} opens pages that look private, such as a dashboard or settings page, once without signing in. It only reads them. One that opens is Worth a look.`, also: ["sign in", "login", "auth", "private", "dashboard", "admin", "security", "protected", "middleware", "open"] },
+    "live.stripeMode": { label: "Stripe mode for Why is live broken?", help: `Which of your Stripe modes ${PRODUCT} reads when you ask why your live site is broken. Live is where real payments are. It reads through your own Stripe tool and only reads.`, also: ["stripe", "webhook", "payments", "live", "test mode", "broken"], options: { live: "Live", test: "Test" } },
     "paste.showWhere": { label: "Offer Show me where to paste", help: `After you copy words for your AI tool, Show me where to paste rings its chat box. It works with Cursor, the Claude app, ChatGPT and Lovable. It looks only when you press it, with the light on first. ${PRODUCT} asks for Accessibility the first time. It never types or pastes for you.`, also: ["paste", "chat box", "cursor", "claude", "chatgpt", "lovable", "ring", "where"] },
     "tour.offer": { label: "Offer Walk me through it", help: "On a review or a fix, Walk me through it goes through each changed place in order. Each place gets two plain lines and a button to open it in your editor. The words come from the review and the fix, with no extra model call.", also: ["walk", "tour", "explain", "changes", "learn", "editor"] },
     "report.codeLines": { label: "Include short code lines in go live reports", help: "A go live report names files but leaves their contents out. On, it adds the review's own short lines, three at most for each finding, with keys and passwords hidden. Off is safer for a report you send to someone.", also: ["report", "client", "share", "pdf", "code", "go live"] },
@@ -3487,6 +3499,90 @@ export const S = {
     fileName: (project: string, date: string, ext: string) => `${project}-go-live-report-${date}.${ext}`,
     pdfMore: "(continued)",
     hidden: "(hidden)",
+  },
+
+  /** M87: Why is live broken? (research feature 7, complaint group E). Read only, on the person's press, with their own
+   *  Vercel and Stripe tools. Every reason a part gives has its line, and a next step when there is one. Never a value. */
+  whyLive: {
+    ask: "Why is live broken?",
+    /** M87 review: the same check offered before anything is live (Ready to go live?), in words that fit. */
+    askBefore: "Check my live setup",
+    titleBefore: "Your live setup",
+    askHelp: "Reads your live setup with your own Vercel and Stripe tools, opens private pages without signing in, and checks your database rules. It only reads.",
+    title: "Why is live broken?",
+    running: "Checking your live setup. This only reads, and changes nothing.",
+    stopped: "Stopped. What was checked so far is below.",
+    problems: (n: number) => (n === 1 ? "1 thing looks broken." : `${n} things look broken.`),
+    noneFound: "Nothing that was checked looks broken.",
+    noneButSkipped: "Nothing that was checked looks broken, but some parts were skipped or could not be checked. They say what to do.",
+    nothingChecked: "Nothing could be checked yet. Each part below says what to do.",
+    notSetUp: "This check is not set up on this Mac yet, so nothing was read.",
+    interrupted: "The check ended because the helper restarted. What was checked so far is below. Press Check again.",
+    parts: { env: "Settings in Vercel Production", stripe: "Stripe webhooks", pages: "Private pages", database: "Database rules" } as Record<string, string>,
+    marks: { ok: "Fine", problem: "Broken", skipped: "Skipped", could_not: "Could not check", waiting: "Waiting" } as Record<string, string>,
+    next: (how: string) => `Next: ${how}`,
+    addressLabel: "Your live address",
+    addressHint: "https://your-site.com",
+    addressCheck: "Check this address",
+    addressBad: "Type the address of your live site. It starts with https://",
+    again: "Check again",
+    copy: "Copy for my AI",
+    close: "Close",
+    modeWords: { live: "live mode", test: "test mode" } as Record<string, string>,
+    copyHead: (project: string) => `My live site for ${project} is broken. ${PRODUCT} checked it, only reading, and found this:`,
+    copyNotChecked: "Not checked:",
+    copyAsk: "Please fix what is broken above, one thing at a time. Never show me or write down any secret value, and ask me before you change anything on the live site, in Vercel or in Stripe.",
+    list: (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`),
+    at: (file: string, line: number) => `${file}, line ${line}`,
+    say: {
+      env: {
+        all_present: (p: WhyPart) => ({ line: `All ${p.count ?? 0} values your code needs are in Vercel Production.${p.more?.length ? ` These are not, but your code has a fallback for them: ${p.more.join(", ")}.` : ""}` }),
+        missing: (p: WhyPart) => ({ line: `Your code reads ${p.names!.length === 1 ? "a value" : `${p.names!.length} values`} that Vercel Production does not have: ${p.names!.join(", ")}. On your Mac they may be in .env, but the live site cannot see them.${p.more?.length ? ` Also missing, with a fallback in your code: ${p.more.join(", ")}.` : ""}`, next: "In Vercel, open your project, then Settings, Environment Variables. Add each one for Production, then deploy again." }),
+        none_in_code: () => ({ line: "Your code reads no settings values, so there was nothing to compare." }),
+        no_cli: () => ({ line: "The Vercel tool is not installed on this Mac, so this part was skipped.", next: "Install it with: npm install -g vercel, sign in with: vercel login, then press Check again." }),
+        not_signed_in: () => ({ line: "You are not signed in to the Vercel tool, so this part was skipped.", next: `Sign in with: vercel login, then press Check again. ${PRODUCT} never sees your Vercel login.` }),
+        not_linked: () => ({ line: "This folder is not linked to a Vercel project, so I could not tell which project to read.", next: "In this folder, run: vercel link, then press Check again." }),
+        unreadable: () => ({ line: "The Vercel tool's answer could not be read.", next: "Open your project on vercel.com, then Settings, Environment Variables, and compare by hand." }),
+        timed_out: () => ({ line: "Vercel took too long, so I stopped it.", next: "Try again in a minute." }),
+        said_no: () => ({ line: "The Vercel tool said no.", next: "In this folder, run: vercel env ls production to see why." }),
+        stopped: () => ({ line: "Stopped before this part finished." }),
+        failed: () => ({ line: "Something went wrong while checking this part.", next: "Press Check again." }),
+      } as Record<string, (p: WhyPart) => { line: string; next?: string }>,
+      stripe: {
+        delivering: (p: WhyPart) => ({ line: `Stripe delivered every recent event in ${WHY_MODE(p)}${p.names?.length ? ` to ${p.names.join(", ")}` : ""}.` }),
+        failing: (p: WhyPart) => ({ line: `In the last 7 days, Stripe could not deliver ${p.count === 1 ? "1 event" : `${p.count} events`} in ${WHY_MODE(p)}${p.names?.length ? ` (${p.names.join(", ")})` : ""} ${p.more?.length ? `to ${p.more.join(", ")}` : "to your Stripe account's webhook endpoints"}. The newest was ${whenWords(p.at)}.`, next: "In Stripe, open Developers, then Webhooks, and read a failed attempt. A 404 or 405 often means the address or its path is wrong. A 400 often means the signing secret in Vercel does not match Stripe's." }),
+        disabled: (p: WhyPart) => ({ line: `Stripe has switched off your webhook address in ${WHY_MODE(p)}: ${p.names!.join(", ")}.`, next: "Find out why it failed, then turn it back on in Stripe, under Developers, then Webhooks." }),
+        no_endpoint_here: (p: WhyPart) => ({ line: `None of your Stripe webhook addresses in ${WHY_MODE(p)} point at your live site, ${p.at}. They point at: ${p.names!.join(", ")}.`, next: "In Stripe, under Developers, then Webhooks, add your live address with your webhook's path. Put its signing secret in Vercel Production." }),
+        endpoint_unknown: (p: WhyPart) => ({ line: `Your Stripe account has ${p.count === 1 ? "1 webhook address" : `${p.count ?? 0} webhook addresses`} in ${WHY_MODE(p)}, but I could not tell which one is this project's, so none was checked.`, next: "Type your live address below, then press Check this address." }),
+        no_endpoints: (p: WhyPart) => ({ line: `Your code has a Stripe webhook (${p.names!.join(", ")}) but Stripe has no webhook address in ${WHY_MODE(p)}.`, next: "In Stripe, under Developers, then Webhooks, add your live address with that path. Put its signing secret in Vercel Production." }),
+        no_cli: () => ({ line: "The Stripe tool is not installed on this Mac, so this part was skipped.", next: "Install it with: brew install stripe/stripe-cli/stripe, sign in with: stripe login, then press Check again." }),
+        not_signed_in: () => ({ line: "You are not signed in to the Stripe tool, so this part was skipped.", next: `Sign in with: stripe login, then press Check again. ${PRODUCT} never asks for your Stripe key.` }),
+        not_used: () => ({ line: "This project does not use Stripe." }),
+        no_permission: (p: WhyPart) => ({ line: `Your Stripe tool's key for ${WHY_MODE(p)} may not read webhooks.`, next: "Run: stripe login again, or look in Stripe under Developers, then Webhooks. You can switch the mode in Settings." }),
+        unreadable: () => ({ line: "The Stripe tool's answer could not be read.", next: "Look in Stripe under Developers, then Webhooks." }),
+        timed_out: () => ({ line: "Stripe took too long, so I stopped it.", next: "Try again in a minute." }),
+        said_no: () => ({ line: "The Stripe tool said no.", next: "Look in Stripe under Developers, then Webhooks." }),
+        stopped: () => ({ line: "Stopped before this part finished." }),
+        failed: () => ({ line: "Something went wrong while checking this part.", next: "Press Check again." }),
+      } as Record<string, (p: WhyPart) => { line: string; next?: string }>,
+      pages: {
+        all_need_sign_in: (p: WhyPart) => ({ line: `Each private page asked for a sign in on ${p.at}: ${p.names?.join(", ") ?? ""}.` }),
+        open: (p: WhyPart) => ({ line: `${p.names!.length === 1 ? "This page opened" : "These pages opened"} on your live site with no sign in: ${p.names!.join(", ")}.${p.more?.length ? ` These did not answer, so they were not checked: ${p.more.join(", ")}.` : ""}`, next: "Make each one check who is signed in, and send everyone else to the sign in page." }),
+        unreachable: (p: WhyPart) => ({ line: `${p.names!.length === 1 ? "This page" : "These pages"} on ${p.at} did not answer, so I could not tell if ${p.names!.length === 1 ? "it asks" : "they ask"} for a sign in: ${p.names!.join(", ")}.${p.more?.length ? ` These asked for a sign in: ${p.more.join(", ")}.` : ""}`, next: "Open your live address in your browser. If it does not load, the site may be down or the address may be wrong. Then press Check again." }),
+        no_address: () => ({ line: "I do not know your live address yet, so private pages were not opened.", next: "Type it below, then press Check this address." }),
+        no_private_pages: () => ({ line: "No pages here look private, so there was nothing to open." }),
+        no_browser: () => ({ line: "The hidden browser is not installed, so the pages were not opened.", next: "Run a page check once so it is installed, then press Check again." }),
+        stopped: () => ({ line: "Stopped before this part finished." }),
+        failed: () => ({ line: "Something went wrong while opening the pages.", next: "Press Check again." }),
+      } as Record<string, (p: WhyPart) => { line: string; next?: string }>,
+      database: {
+        protected: (p: WhyPart) => ({ line: p.detail ?? "Your tables have row level security on." }),
+        open: (p: WhyPart) => ({ line: p.detail ?? "Some tables are open to anyone.", next: "Turn on row level security for each table, and add the rules that say who may see what." }),
+        not_used: () => ({ line: "This project does not use Supabase." }),
+        unsure: (p: WhyPart) => ({ line: p.detail ?? "I could not check your database rules." }),
+        failed: () => ({ line: "Something went wrong while checking your database rules.", next: "Press Check again." }),
+      } as Record<string, (p: WhyPart) => { line: string; next?: string }>,
+    },
   },
 
   /** M76 (roadmap 16): after Copy for my AI, Show me where to paste. Squibby never types or pastes into the other app. */

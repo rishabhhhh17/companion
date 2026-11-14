@@ -15,6 +15,7 @@ import { chromium } from "playwright-core";
 import { clip, redact } from "../redact.ts";
 import { runCommand, type RunOptions, type RunResult } from "./exec.ts";
 import { startPublicOnlyProxy, type Lookup } from "./publicProxy.ts";
+import { isSafeUrl } from "../research.ts";
 
 export const browsersPath = () => process.env.PLAYWRIGHT_BROWSERS_PATH || join(homedir(), "Library", "Application Support", "Companion", "browsers");
 
@@ -417,17 +418,38 @@ async function pressByLabel(page: import("playwright-core").Page, wanted: string
 
 /** M75: opens each private looking page once in the hidden browser with no sign in, only read, nothing pressed, kept to this
  *  Mac's own addresses as every check is. One "loads without a sign in" when it answers below 400, stays on its own path,
- *  and shows no password field and no sign in words. Returns those paths. */
+ *  and shows no password field and no sign in words. Returns those paths.
+ *  M87 (Why is live broken?): the same visit to the live site, on the person's press only: a plain https address on the
+ *  internet (isSafeUrl), with every connection through the public only proxy as a preview's check is (publicProxy.ts), so
+ *  nothing on this Mac or the home network is ever reached. Still only read: no form is sent, nothing is pressed. */
 export async function openWithoutSignIn(baseUrl: string, routes: readonly string[], o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<string[]> {
-  if (!routes.length || !browserInstalled() || o.signal?.aborted || !onThisMac(baseUrl)) return [];
+  return (await visitWithoutSignIn(baseUrl, routes, o)).open;
+}
+
+/** M87 review: how each private looking page answered the visit. open: it loaded with no sign in. signIn: it positively
+ *  asked for one (a 401 or 403, a move to another page, a password field, or sign in words). unreachable: no answer that
+ *  says either (the visit could not start, the address did not answer, timed out, or said 404 or 500 and up, or the page
+ *  was empty). A route only counts as protected when it is in signIn: a site that is down is never "fine". */
+export type PageVisit = { open: string[]; signIn: string[]; unreachable: string[] };
+export async function visitWithoutSignIn(baseUrl: string, routes: readonly string[], o: { signal?: AbortSignal; timeoutMs?: number } = {}): Promise<PageVisit> {
+  const out: PageVisit = { open: [], signIn: [], unreachable: [] };
+  const none = (): PageVisit => ({ open: [], signIn: [], unreachable: [...routes] });
+  if (!routes.length || o.signal?.aborted) return out;
+  const local = onThisMac(baseUrl);
+  if (!local && !(/^https:\/\//i.test(baseUrl) && isSafeUrl(baseUrl))) return none();
+  if (!browserInstalled()) return none();
   let door: { port: number; stop: () => void } | null = null;
-  try { const d = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open(sk) { sk.end(); }, data() {} } }); door = { port: d.port, stop: () => d.stop(true) }; } catch { return []; }
+  try {
+    if (local) { const d = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { open(sk) { sk.end(); }, data() {} } }); door = { port: d.port, stop: () => d.stop(true) }; }
+    else { const p = await startPublicOnlyProxy({}); door = { port: p.port, stop: p.stop }; }
+  } catch { return none(); }
   let browser: import("playwright-core").Browser | null = null;
   const stop = () => { browser?.close().catch(() => {}); };
   o.signal?.addEventListener("abort", stop, { once: true });
-  const open: string[] = [];
+  const seen = new Set<string>();
+  const put = (k: keyof PageVisit, r: string) => { seen.add(r); out[k].push(r); };
   try {
-    browser = await chromium.launch({ headless: true, executablePath: browserExecutable()!, args: localOnlyArgs(door.port) });
+    browser = await chromium.launch({ headless: true, executablePath: browserExecutable()!, args: local ? localOnlyArgs(door.port) : publicOnlyArgs(door.port) });
     const context = await browser.newContext({ serviceWorkers: "block" });
     await context.route("**/*", (route) => (reachableFrom(baseUrl, route.request().url()) ? route.continue() : route.abort("blockedbyclient")));
     await context.routeWebSocket(() => true, (ws) => ws.close({ code: 1008, reason: "A check never connects here" }));
@@ -436,19 +458,22 @@ export async function openWithoutSignIn(baseUrl: string, routes: readonly string
       if (o.signal?.aborted) break;
       const url = new URL(r, baseUrl).toString();
       let status = 0;
-      try { const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: o.timeoutMs ?? 15_000 }); status = res?.status() ?? 0; } catch { continue; }
+      try { const res = await page.goto(url, { waitUntil: "domcontentloaded", timeout: o.timeoutMs ?? 15_000 }); status = res?.status() ?? 0; } catch { put("unreachable", r); continue; }
       await page.waitForTimeout(300);
-      if (!(status > 0 && status < 400)) continue;
+      if (status === 401 || status === 403) { put("signIn", r); continue; }
+      if (!(status > 0 && status < 400)) { put("unreachable", r); continue; }
       const here = new URL(page.url()), want = new URL(url);
-      if (here.host !== want.host || here.pathname.replace(/\/+$/, "") !== want.pathname.replace(/\/+$/, "")) continue;
-      if ((await page.locator('input[type="password"]').count().catch(() => 1)) > 0) continue;
+      if (here.host !== want.host || here.pathname.replace(/\/+$/, "") !== want.pathname.replace(/\/+$/, "")) { put("signIn", r); continue; }
+      if ((await page.locator('input[type="password"]').count().catch(() => 1)) > 0) { put("signIn", r); continue; }
       const text = (await page.locator("body").innerText({ timeout: 2000 }).catch(() => "")) ?? "";
-      if (!text.trim() || SIGN_IN_WORDS.test(text)) continue;
-      open.push(r);
+      if (SIGN_IN_WORDS.test(text)) { put("signIn", r); continue; }
+      if (!text.trim()) { put("unreachable", r); continue; }
+      put("open", r);
     }
-  } catch { /* a probe that cannot run finds nothing */ }
+  } catch { /* a visit that cannot run: every route not yet answered is unreachable, below */ }
   finally { o.signal?.removeEventListener("abort", stop); await browser?.close().catch(() => {}); door.stop(); }
-  return open;
+  if (!o.signal?.aborted) for (const r of routes) if (!seen.has(r)) out.unreachable.push(r);
+  return out;
 }
 
 export const SIGN_IN_GAP = "The page needs a sign in, so what is behind it was not checked.";

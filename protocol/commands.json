@@ -67,6 +67,7 @@
     "ship.preview": {"gate": "pro", "page": true, "project": true, "own": "light"},
     "ship.rollback": {"gate": "never", "page": true, "project": true, "own": "light"},
     "ship.signIn": {"gate": "never", "page": true, "project": true},
+    "ship.whyLive": {"gate": "never", "page": true, "project": true},
     "spending.set": {"gate": "never", "project": true},
     "spending.show": {"gate": "never", "page": true, "project": true},
     "tasks.list": {"gate": "never", "page": true, "project": true},

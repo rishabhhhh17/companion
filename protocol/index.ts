@@ -50,6 +50,19 @@ export type AssistLocate = Envelope & { type: "assist.locate"; req: string; ques
 export type LocateMode = "everyday" | "recheck";
 /** M86, Label it: the setup pages with a checklist (runner/src/labelit.ts CHECKLISTS, app/src-tauri/src/labels.rs). */
 export const LABEL_GUIDES = ["supabase", "stripe", "vercel", "clerk", "firebase", "github"] as const;
+/** M87: the four parts of Why is live broken?, their states, and every reason each may give (runner/src/ship/livecheck.ts).
+ *  Every sentence a person reads for them is in app/src/strings.ts. */
+export const LIVE_PARTS = ["env", "stripe", "pages", "database"] as const;
+export const LIVE_STATES = ["ok", "problem", "skipped", "could_not"] as const;
+export const LIVE_WHY = {
+  env: ["all_present", "missing", "no_cli", "not_signed_in", "not_linked", "none_in_code", "unreadable", "timed_out", "said_no", "stopped", "failed"],
+  stripe: ["delivering", "failing", "disabled", "no_endpoint_here", "no_endpoints", "endpoint_unknown", "no_cli", "not_signed_in", "not_used", "no_permission", "unreadable", "timed_out", "said_no", "stopped", "failed"],
+  pages: ["all_need_sign_in", "open", "unreachable", "no_address", "no_private_pages", "no_browser", "stopped", "failed"],
+  database: ["protected", "open", "not_used", "unsure", "failed"],
+} as const;
+/** names: value names, event kinds, page paths or table names, never a value. more: names read with a fallback in the code
+ *  (env), or the webhook addresses read (stripe). where: the file and line reading each missing value. */
+export type LivePart = { id: (typeof LIVE_PARTS)[number]; state: (typeof LIVE_STATES)[number]; why: string; names?: string[]; more?: string[]; count?: number; at?: string; where?: { name: string; file: string; line: number }[]; mode?: "live" | "test"; detail?: string };
 /** M86: a label's tone, drawn in its meaning colour: info (what it is), look (worth a look for the question), risk. */
 export const LABEL_TONES = ["info", "look", "risk"] as const;
 export type ScreenLabel = { x: number; y: number; box?: { x: number; y: number; w: number; h: number }; label: string; note?: string; tone: (typeof LABEL_TONES)[number] };
@@ -126,6 +139,9 @@ export type ShipRollback = Envelope & { type: "ship.rollback"; project: string; 
 /** M58 (UI 13): the person pressed Sign in to Vercel. The engine runs their own `vercel login` as a visible step; it never
  *  reads, stores or passes the login. Only on this press, never at launch or on a timer. */
 export type ShipSignIn = Envelope & { type: "ship.signIn"; project: string; /** true: end a sign in that is still waiting (the review of 5 Nov) */ stop?: boolean };
+/** M87: Why is live broken?, on the person's press only, read only. url: the live address the person typed, when Squibby
+ *  does not know it (a plain https address). */
+export type ShipWhyLive = Envelope & { type: "ship.whyLive"; project: string; url?: string };
 /** M58 (feature 9): the key practice, on the person's press. write: the practice's pretend AI writes its made up key into the
  *  copy (then the review looks at once, by its rules alone); fix: the fixed fix moves it to .env.local, with a safety copy
  *  first. Only in a practice copy of the key practice (runner/src/practicekey.ts); no model, no cost. */
@@ -306,7 +322,7 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow;
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -479,6 +495,9 @@ export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; t
 // before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
 export type ReceiptVisual = Envelope & { type: "receipt.visual"; agent: string; project: string; checkpoint: string; made: boolean; image?: string; before?: string; caption: string; circles: number; file?: string };
 export type ShipCard = Envelope & { type: "ship.card"; project: string; url: string; title: string; image: string; withShot: boolean };
+/** M87: Why is live broken?, part by part as each finishes (running), then done, or stopped. liveUrl: the live address the
+ *  pages were opened on. */
+export type ShipWhyLiveEvent = Envelope & { type: "ship.whyLive"; project: string; stage: "running" | "done" | "stopped"; parts: LivePart[]; liveUrl?: string; /** M87 review: why nothing ran (not_set_up: this Mac's engine has no tools for it) */ reason?: "not_set_up" };
 /** M58 (UI 13): where the person's own Vercel sign in is. opened: Vercel's own page (url, always https on vercel.com) is
  *  ready to open in their browser. lesson: the step could not run here, so the step by step lesson is offered. */
 /** M58 (feature 9): what the key practice's step did. wrote: the pretend AI's change is in the copy (written: false when it
@@ -643,7 +662,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary;
+export type Event = GuardSaved | GuardAsked | HookWaiting | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -792,6 +811,26 @@ const weekOk: Check = (m) => {
 };
 // M77: what the changes did not tell you: file names (at most 5) and counts.
 /** M86: a replay keeps to its own sheet: every drawn file, part and check is in it (the engine's validator checked the words). */
+const strs = (v: unknown, max: number): boolean => v === undefined || (Array.isArray(v) && v.length <= max && v.every((x) => typeof x === "string" && x.length <= 300));
+/** M87: the parts of Why is live broken?, at most one of each, every field the shape it says. */
+const livePartsOk: Check = (m) => {
+  if (!Array.isArray(m.parts) || m.parts.length > LIVE_PARTS.length) return '"parts" must be a list of at most four parts';
+  const seen = new Set<string>();
+  for (const raw of m.parts) {
+    const p = raw as Record<string, unknown>;
+    if (!p || typeof p !== "object" || !(LIVE_PARTS as readonly unknown[]).includes(p.id) || seen.has(p.id as string)) return "each part must be env, stripe, pages or database, once";
+    seen.add(p.id as string);
+    if (!(LIVE_STATES as readonly unknown[]).includes(p.state)) return `part ${String(p.id)} has an unknown state`;
+    if (!(LIVE_WHY[p.id as (typeof LIVE_PARTS)[number]] as readonly unknown[]).includes(p.why)) return `part ${String(p.id)} has an unknown reason`;
+    if (!strs(p.names, 50) || !strs(p.more, 50)) return `part ${String(p.id)} has a bad list of names`;
+    if (p.count !== undefined && !(typeof p.count === "number" && Number.isInteger(p.count) && p.count >= 0)) return `part ${String(p.id)} has a bad count`;
+    if (p.at !== undefined && !(typeof p.at === "string" && p.at.length <= 300)) return `part ${String(p.id)} has a bad place`;
+    if (p.mode !== undefined && p.mode !== "live" && p.mode !== "test") return `part ${String(p.id)} has a bad mode`;
+    if (p.detail !== undefined && !(typeof p.detail === "string" && p.detail.length <= 1200)) return `part ${String(p.id)} has a bad detail`;
+    if (p.where !== undefined && !(Array.isArray(p.where) && p.where.length <= 20 && p.where.every((w) => { const o = w as Record<string, unknown>; return !!o && typeof o.name === "string" && typeof o.file === "string" && typeof o.line === "number"; }))) return `part ${String(p.id)} has a bad list of places`;
+  }
+  return null;
+};
 const replayOk: Check = (m) => {
   const r = m.replay as Record<string, unknown> | undefined;
   if (!r || typeof r !== "object") return '"replay" must be an object';
@@ -928,6 +967,8 @@ const COMMANDS: Record<string, Check[]> = {
   "checkpoint.mark": [str("project"), str("checkpoint"), opt("star", bool("star")), opt("name", (m) => (typeof m.name === "string" && m.name.length <= 40 ? null : '"name" must be text of at most 40 characters')), (m) => (m.star === undefined && m.name === undefined ? 'a mark needs "star" or "name"' : null)],
   // M58 (UI 13): the person's own Vercel sign in, on their press.
   "ship.signIn": [str("project"), opt("stop", bool("stop"))],
+  // M87: Why is live broken?, on the person's press. A typed address is a plain https address only.
+  "ship.whyLive": [str("project"), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/[^\s]+$/.test(m.url) && m.url.length <= 500 ? null : '"url" must be an https address'))],
   // M58 (feature 9): the key practice's pretend AI and its fixed fix, on the person's press.
   "practice.key": [str("project"), oneOf("step", ["write", "fix"])],
   // M75: the done signal (only with the yes), the cost pause's answer and the sign in handover's answer.
@@ -1035,6 +1076,8 @@ const EVENTS: Record<string, Check[]> = {
   "assist.error": [str("req"), str("reason")],
   "assist.labels": [str("req"), labelsOk, num("usdEstimate"), opt("guide", oneOf("guide", [...LABEL_GUIDES]))],
   "assist.problem": [str("req"), oneOf("mode", ["everyday", "recheck"]), bool("found"), num("steps"), num("usdEstimate"), opt("why", list("why")), opt("fixes", list("fixes")), opt("gone", oneOf("gone", ["yes", "looks", "no", "unsure"])), opt("problem", str("problem")), opt("code", str("code"))],
+  // M87: Why is live broken?: each part is one of the four, with a known state and a reason that part can give.
+  "ship.whyLive": [str("project"), oneOf("stage", ["running", "done", "stopped"]), livePartsOk, opt("liveUrl", (m) => (typeof m.liveUrl === "string" && /^https:\/\//.test(m.liveUrl) ? null : '"liveUrl" must be an https address')), opt("reason", (m) => (m.reason === "not_set_up" ? null : '"reason" must be not_set_up'))],
   // M58 (UI 13): where the person's own Vercel sign in is. The page opens only an https page on vercel.com itself.
   "ship.signIn": [str("project"), oneOf("stage", ["opened", "done", "failed"]), opt("url", (m) => (typeof m.url === "string" && /^https:\/\/vercel\.com\//.test(m.url) && m.url.length <= 500 ? null : '"url" must be a page on https://vercel.com')), opt("reason", str("reason")), opt("lesson", bool("lesson"))],
   // M75: the done signal per tool, the cost pause (no amount), and the sign in handover.
