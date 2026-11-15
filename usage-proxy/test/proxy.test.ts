@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { createProxy, type SafeEvent } from "../src/proxy.ts";
-import { MemoryStore } from "../src/store.ts";
 import { newToken } from "../src/tokens.ts";
 import { PLANS } from "../src/plans.ts";
 import { costOf } from "../src/usage.ts";
 import { PRODUCT_S } from "../src/names.ts";
 import { deriveUserId, USER_ID_SECRET_SETTING } from "../src/userid.ts";
+import { TEST_STORES, type TestStore } from "./stores.ts";
+
+// M99: every test below runs on both stores, the in memory one and the Durable Object one (test/stores.ts).
+for (const kind of TEST_STORES) describe(kind.name, () => {
 
 const OUR_KEY = "sk-ant-api03-OUR-SECRET-KEY-0000000000000000";
 const PROMPT_MARK = "PROMPT-MARKER-9f3c", REPLY_MARK = "REPLY-MARKER-77ab";
@@ -15,11 +18,11 @@ const USER_ID_SECRET = "operator-secret-for-tests-0123456789abcdef";
 
 type Seen = { url: string; headers: Headers; body: string };
 function rig(o: { plan?: string; status?: "active" | "past_due" | "canceled" | "revoked" | "suspended"; owner?: string; secret?: string | null; enabled?: boolean; maxInFlight?: number; upstream?: (s: Seen) => Promise<Response> | Response } = {}) {
-  const store = new MemoryStore();
+  const store = kind.make();
   const seen: Seen[] = [], events: SafeEvent[] = [];
   const ready = (async () => {
     const t = await newToken();
-    store.addUser(t.hash, { id: o.owner ?? "u1", plan: o.plan ?? "pro", status: o.status ?? "active" });
+    await store.addUser(t.hash, { id: o.owner ?? "u1", plan: o.plan ?? "pro", status: o.status ?? "active" });
     return t.token;
   })();
   const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -326,6 +329,52 @@ describe("money", () => {
   });
 });
 
+describe("when the store fails (M99 review)", () => {
+  const boom = async () => { throw new Error(`store hiccup ${PROMPT_MARK}`); };
+  test("a store that cannot answer: a plain 503 that nothing was sent, in the API's own error shape", async () => {
+    const t = rig(); await t.token();
+    for (const step of ["userByTokenHash", "spent", "begin"] as const) {
+      const real = t.store[step];
+      (t.store as any)[step] = boom;
+      const r = await t.send();
+      expect(r.status).toBe(503);
+      const e = await errBody(r);
+      expect(e.type).toBe("error");
+      expect(e.error.message).toMatch(/Nothing was sent to Claude/);
+      expect(JSON.stringify(e)).not.toContain(PROMPT_MARK);
+      (t.store as any)[step] = real;
+    }
+    expect(t.seen.length).toBe(0);
+    expect(t.events.filter((e) => e.reason === "store_failed").length).toBe(3);
+  });
+  test("a hold that fails after the slot was taken lets the slot go, so the person is not left at too many at once", async () => {
+    const t = rig({ maxInFlight: 1 }); await t.token();
+    const real = t.store.hold;
+    t.store.hold = boom;
+    const r = await t.send();
+    expect(r.status).toBe(503);
+    expect((await errBody(r)).error.message).toMatch(/Nothing was sent to Claude/);
+    expect(t.seen.length).toBe(0);
+    expect(t.store.inFlight("u1")).toBe(0);
+    t.store.hold = real;
+    expect((await t.send()).status).toBe(200);
+  });
+  test("a booking that fails after Claude answered: the answer still comes back, and the hold and slot are let go", async () => {
+    const t = rig(); await t.token();
+    const real = t.store.record;
+    let failed = 0;
+    t.store.record = async (rec) => { if (failed++ === 0) throw new Error("hiccup"); return real.call(t.store, rec); };
+    const r = await t.send();
+    expect(r.status).toBe(200);
+    expect(await r.text()).toContain(REPLY_MARK);
+    expect(t.events).toContainEqual(expect.objectContaining({ kind: "request", reason: "booking_failed", userId: "u1" }));
+    expect(t.store.inFlight("u1")).toBe(0);
+    expect((await t.store.spent("u1", NOW)).day).toBe(0);   // nothing booked and nothing left held
+    expect((await t.send()).status).toBe(200);   // the next one books as usual
+    expect(t.store.records.length).toBe(1);
+  });
+});
+
 describe("what is never kept", () => {
   test("no prompt or reply text is in any log event, stored record, or error message, success or failure", async () => {
     const t = rig({ upstream: (s) => (s.body.includes("FAILME") ? json({ type: "error", error: { type: "api_error", message: `echo ${PROMPT_MARK}` } }, 500) : sseResponse(STREAM)) });
@@ -347,4 +396,5 @@ describe("what is never kept", () => {
     const allowed = new Set(["kind", "userId", "reason", "model", "usd", "status", "complete"]);
     for (const e of t.events) for (const k of Object.keys(e)) expect(allowed.has(k), k).toBe(true);
   });
+});
 });

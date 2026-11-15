@@ -1,8 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createGoogleVerifier, GOOGLE_JWKS_URL, maxAgeOf } from "../src/google.ts";
 import { createProxy, GOOGLE_SIGNIN_PATH, type SafeEvent } from "../src/proxy.ts";
-import { MemoryStore } from "../src/store.ts";
 import { hashToken } from "../src/tokens.ts";
+import { TEST_STORES, type TestStore } from "./stores.ts";
+
+// M99: every test below runs on both stores, the in memory one and the Durable Object one (test/stores.ts).
+for (const kind of TEST_STORES) describe(kind.name, () => {
 
 // Google is a stand in: our own RSA key pair signs the tokens, and a fake fetch serves its public half as the key set.
 // The real fetch is replaced with one that fails the test, so nothing here can reach the network.
@@ -54,7 +57,7 @@ function google(keys: () => Key[], maxAge = 3600) {
 function rig(o: { enabled?: boolean; secret?: string | null; clock?: { t: number }; keys?: () => Key[]; noGoogle?: boolean } = {}) {
   const clock = o.clock ?? { t: NOW };
   const { g, fetch: gf } = google(o.keys ?? (() => [GOOD]));
-  const store = new MemoryStore(), events: SafeEvent[] = [];
+  const store = kind.make(), events: SafeEvent[] = [];
   let forwarded = 0;
   const verify = createGoogleVerifier({ clientId: CLIENT_ID, fetch: gf, now: () => clock.t });
   const handle = createProxy({
@@ -157,7 +160,7 @@ describe("the sign in route", () => {
   });
   test("signing in again keeps the plan the person already has", async () => {
     const r = rig();
-    r.store.addUser("some-hash", { id: "google:109876543210", plan: "pro", status: "active" });
+    await r.store.addUser("some-hash", { id: "google:109876543210", plan: "pro", status: "active" });
     const body = await (await r.signIn({ idToken: await sign(claims()) })).json() as Record<string, unknown>;
     expect(body.plan).toBe("pro");
     expect((await r.store.userByTokenHash(await hashToken(body.token as string)))?.plan).toBe("pro");
@@ -212,4 +215,5 @@ describe("the sign in route", () => {
     for (const s of ["pat@example.com", "Pat Example"]) expect(logged).not.toContain(s);
   });
   test("no network was used by any test here", () => { expect(networkCalls).toBe(0); });
+});
 });

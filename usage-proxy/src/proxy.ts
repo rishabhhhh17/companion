@@ -30,6 +30,9 @@ export type Deps = {
   now?: () => number;
   log?: (e: SafeEvent) => void;
   maxInFlight?: number;
+  /** Keeps the server running until a streamed reply's cost is booked (a Worker's ctx.waitUntil). Without it, a server that
+   *  stops a request's work once the reply is sent could leave a cost unbooked. */
+  waitUntil?: (p: Promise<unknown>) => void;
   /** Checks a Google ID token (createGoogleVerifier in google.ts, with the GOOGLE_CLIENT_ID setting). Missing: the sign in route answers 503. */
   googleSignIn?: (idToken: unknown) => Promise<GoogleCheck>;
 };
@@ -37,6 +40,10 @@ export type Deps = {
 const error = (status: number, type: string, message: string, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify({ type: "error", error: { type, message } }), { status, headers: { "content-type": "application/json", ...headers } });
 const PASS_BACK = ["content-type", "request-id", "retry-after", "cache-control"];
+/** The answer when the store cannot finish a step before anything was forwarded (M99 review): the API's own error shape, so the
+ *  app can show a plain sentence, never a server's own error page. The Worker answers its other routes' store failures alike. */
+export const STORE_FAILED_MESSAGE = `${PRODUCT_S} included usage could not be checked just now. Nothing was sent to Claude. Try again in a moment.`;
+export const storeFailed = () => error(503, "api_error", STORE_FAILED_MESSAGE);
 
 /** The body as text, read only up to the cap: a body with no length that never ends is refused, not read to the end. Null when over. */
 async function readCapped(req: Request, cap = MAX_BODY_BYTES): Promise<string | null> {
@@ -119,8 +126,15 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
   };
 
   return async (req) => {
+    try { return await handle(req); }
+    catch { return refuse("store_failed", storeFailed()); }   // never the error itself: it could carry something it should not
+  };
+
+  async function handle(req: Request): Promise<Response> {
     if (!d.enabled()) return refuse("disabled", error(503, "api_error", `${PRODUCT_S} included usage is not switched on yet. Use your own Claude key in Settings for now.`));
     if (secretProblem(d.userIdSecret)) return refuse("no_user_id_secret", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later, or use your own Claude key in Settings.`));
+    // M99: a server with no Anthropic key set forwards nothing (it would only send the person's request to a certain refusal).
+    if (typeof d.anthropicKey !== "string" || d.anthropicKey.trim() === "") return refuse("no_anthropic_key", error(503, "api_error", `${PRODUCT_S} included usage is not ready yet. Nothing was sent to Claude. Try again later.`));
     const url = new URL(req.url);
     if (req.method === "POST" && url.pathname === GOOGLE_SIGNIN_PATH) return signInWithGoogle(req);
     const token = tokenFromHeaders(req.headers);
@@ -136,22 +150,35 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
     const checked = checkRequest(req.method, url.pathname, raw, await deriveUserId(user.id, d.userIdSecret as string));
     if (!checked.ok) return refuse("bad_request", error(checked.status, "invalid_request_error", checked.message), user.id);
 
-    const plan = planOf(user.plan);
+    // A plan kept through a late payment lasts only until its end date (Dodo's past_due_ends_at); then it is free.
+    const plan = planOf(user.planUntil !== undefined && now() >= user.planUntil ? "free" : user.plan);
     if (!checked.free) {
       const b = budgetCheck(plan, await d.store.spent(user.id, now()), now());
       if (!b.ok) return overBudget(b, user.id);
     }
-    if (!(await d.store.begin(user.id, maxInFlight))) return refuse("busy", error(429, "rate_limit_error", "Too many requests at once. Try again in a moment."), user.id);
+    // This request's own id, so letting go of its slot and hold never takes another request's of the same amount.
+    const id = crypto.randomUUID();
+    if (!(await d.store.begin(user.id, maxInFlight, id))) return refuse("busy", error(429, "rate_limit_error", "Too many requests at once. Try again in a moment."), user.id);
     // Must fix 10 (a): the request holds its worst case (its whole max_tokens as output) while it runs, checked and held in
     // one step, so many requests opened at once cannot all pass on the same last cent. The hold goes when it ends.
     const worst = checked.free ? 0 : costOf(checked.model, { input_tokens: 0, output_tokens: checked.maxTokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, web_search_requests: 0 });
-    if (!checked.free && !(await d.store.hold(user.id, worst, now(), (s) => budgetCheck(plan, s, now()).ok))) {
-      await d.store.end(user.id);
+    let held: boolean;
+    try { held = checked.free || (await d.store.hold(user.id, worst, now(), plan, id)); }
+    catch (e) { await d.store.end(user.id, id).catch(() => {}); throw e; }   // the slot is let go, then the plain 503 below
+    if (!held) {
+      await d.store.end(user.id, id);
       return overBudget(budgetCheck(plan, await d.store.spent(user.id, now()), now()), user.id);
     }
 
+    // Best effort: a slot or a hold the store could not let go of frees itself after its lease, so a failure here never costs
+    // the person their answer.
     let released = false;
-    const release = async () => { if (!released) { released = true; if (worst > 0) await d.store.unhold(user.id, worst); await d.store.end(user.id); } };
+    const release = async () => {
+      if (released) return;
+      released = true;
+      if (worst > 0) await d.store.unhold(user.id, worst, id).catch(() => {});
+      await d.store.end(user.id, id).catch(() => {});
+    };
     try {
       const beta = (req.headers.get("anthropic-beta") ?? "").replace(/\s+/g, "");
       const headers = new Headers({ "content-type": "application/json", "x-api-key": d.anthropicKey, "anthropic-version": req.headers.get("anthropic-version") ?? "2023-06-01" });
@@ -168,7 +195,10 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
         // reported: the person does not pay a full answer for Anthropic's failure.
         const usage = complete || failedUpstream ? seen : { ...seen, output_tokens: Math.max(seen.output_tokens, checked.maxTokens) };
         const usd = costOf(checked.model, usage);
-        if (usd > 0) await d.store.record({ userId: user.id, model: checked.model, usage, usd, at: now(), complete });
+        // Claude has answered and our key has paid by now, so a booking the store cannot finish never costs the person the
+        // answer: it is logged (booking_failed, ids and dollars only) and the answer still goes back.
+        try { if (usd > 0) await d.store.record({ userId: user.id, model: checked.model, usage, usd, at: now(), complete }); }
+        catch { log({ kind: "request", userId: user.id, model: checked.model, usd, status: res.status, complete, reason: "booking_failed" }); return; }
         log({ kind: "request", userId: user.id, model: checked.model, usd, status: res.status, complete });
       };
       if (!res.ok) {
@@ -180,7 +210,10 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       if (checked.free) { const text = await res.text(); await release(); return new Response(text, { status: res.status, headers: back }); }
       if (res.body && (res.headers.get("content-type") ?? "").includes("text/event-stream")) {
         const sniffer = new UsageSniffer();
-        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete(), sniffer.failedUpstream()); } finally { await release(); } }), { status: res.status, headers: back });
+        let booked: () => void = () => {};
+        const bookedNow = new Promise<void>((r) => { booked = r; });
+        d.waitUntil?.(bookedNow);
+        return new Response(metered(res.body, sniffer, async () => { try { await book(sniffer.usage(), sniffer.complete(), sniffer.failedUpstream()); } finally { try { await release(); } finally { booked(); } } }), { status: res.status, headers: back });
       }
       const text = await res.text();
       await book(usageFromJson(text), true);
@@ -190,5 +223,5 @@ export function createProxy(d: Deps): (req: Request) => Promise<Response> {
       await release();
       return error(502, "api_error", `${PRODUCT} could not reach Claude. Try again in a moment.`);
     }
-  };
+  }
 }

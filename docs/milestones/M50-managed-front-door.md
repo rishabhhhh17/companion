@@ -11,7 +11,7 @@ Decision record: `docs/decisions/F22-company-pays-for-usage-gated.md`. Checklist
 - **At the daily limit:** the server's plain message, when it resets, and a button to use their own Claude.
 
 ## What gets built (all offline, no spending, the remote switch stays off)
-1. **A real store and the Worker** in `usage-proxy/`: a Cloudflare Worker that receives the app's requests and the payment webhook, and one Durable Object per person so two requests can never both pass the same budget. The existing store tests must pass against it unchanged.
+1. **A real store and the Worker** in `usage-proxy/` (*built in M99, 15 Nov 2026, not deployed: `docs/milestones/M99-usage-server-cloudflare.md`*): a Cloudflare Worker that receives the app's requests and the payment webhook, and one Durable Object per person so two requests can never both pass the same budget. The existing store tests must pass against it unchanged.
 2. **The runner:** the Squibby sign in token lives in the Keychain beside nothing else; on the managed route the light lanes call the proxy with it. It never reaches Claude Code, a hook, a command or a log. Anything the person says is sent only to the proxy.
 3. **The shell (Rust):** the Google sign in (the system browser, the loopback return and PKCE, so no password or token is ever typed into our window), storing the token, sign out that revokes it, and the switch read from the remote setting.
 4. **The pages:** the new second first-run screen, the Account row, the limit message, and the words in `strings.ts`.

@@ -216,8 +216,10 @@ export type DodoWebhookDeps = {
   products: () => DodoProducts;
   ledger: DodoLedger;
   links: LinkBook;
-  /** Writes the person's plan to the store. Throwing makes the answer 500, so Dodo retries. */
-  apply: (e: DodoEntitlement) => Promise<void>;
+  /** Writes the person's plan to the store. Throwing makes the answer 500, so Dodo retries. `at` is the event's own time (ms):
+   *  a store shared by many server instances uses it to skip an older event in the same step as the write (M99). Answering
+   *  false means it was not written for that reason, and the event is answered and logged as stale (M99 review). */
+  apply: (e: DodoEntitlement, at: number) => Promise<boolean | void>;
   now?: () => number;
   log?: (e: SafeDodoEvent) => void;
 };
@@ -286,7 +288,8 @@ export function createDodoWebhook(d: DodoWebhookDeps): (req: Request) => Promise
         outcome = await oneAtATime(entitlement.userId, async () => {
           const last = await d.ledger.lastAppliedAt(entitlement.userId);
           if (last !== null && at < last) return "stale" as const;
-          await d.apply(entitlement); await d.ledger.setLastAppliedAt(entitlement.userId, at);
+          if ((await d.apply(entitlement, at)) === false) return "stale" as const;
+          await d.ledger.setLastAppliedAt(entitlement.userId, at);
           return "applied" as const;
         });
         log({ kind: outcome === "stale" ? "stale" : "applied", eventType, webhookId, userId: safeOrUndefined(entitlement.userId), plan: entitlement.plan });

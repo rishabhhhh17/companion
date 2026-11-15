@@ -7,7 +7,8 @@ plan and daily limit, adds Squibby's own Anthropic key, forwards the request, an
 writing (`docs/decisions/F22-company-pays-for-usage-gated.md`, `docs/outreach/anthropic-managed-usage-question.md`). Nothing here
 runs anywhere until you say so.
 
-Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No dependencies, no network, no spending.
+Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No dependencies needed for the tests, no network beyond
+this Mac, no spending. Check the Cloudflare build without an account: `bun run dry-run` (needs `bun install` first, see below).
 
 ## What is here
 | File | What it does |
@@ -21,7 +22,11 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 | `src/operator.ts`, `scripts/suspend.ts` | The operator's tool to find, suspend and restore one person (dry run by default) |
 | `src/usage.ts` | Reads token counts from a reply (streaming or not) without keeping any text; prices them with the app's own table |
 | `src/proxy.ts` | The request handler: switch, token, plan, budget, forward, stream back, book the cost |
-| `src/store.ts` | What is kept (users, spend, one small record per request) and an in memory store for tests |
+| `src/store.ts` | What is kept (users, spend, one small record per request, the plan a payment gave) and an in memory store for tests |
+| `src/store-do.ts` | The real store (M99): Cloudflare Durable Objects, one per owner, each doing its read, check and write as one step; small shared ones for a token's owner, the list of owners and the suspension log, and payment event ids. A running slot and a hold free themselves after 30 minutes (`LEASE_MS`). Never a body, a token (only its hash) or a key |
+| `src/worker.ts` | The Cloudflare Worker (M99): every request in, to the proxy, Google sign in, the chosen payment webhook, or the operator's route (`POST /v1/operator`, only with `OPERATOR_KEY`). `GET /v1/status` says whether the switch is on |
+| `wrangler.toml`, `scripts/deploy.sh` | The Cloudflare settings (no account id, no domain, no secret) and the deploy script: a dry run unless `--apply`, and `--apply` refuses until every secret is set |
+| `scripts/verify-dev.sh`, `scripts/stand-in-model.ts` | The local check of `wrangler dev`: one metered request to a stand in model on this Mac, no account, no key |
 | `src/stripe.ts` | Checking a Stripe webhook is genuine, and turning a subscription event into a plan |
 | `src/dodo.ts` | The same for Dodo Payments: the signature check, the table of Dodo products to plans, subscription events to plans, once only and in order, and the webhook handler |
 | `src/payments.ts` | Which payment provider is on (`none`, `stripe` or `dodo`; default none) and the one webhook address each has |
@@ -29,17 +34,52 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 
 ## What is not here (and would be next, after a written yes)
 - Go live steps, in order: `docs/launch/company-paid-go-live-checklist.md`.
-- A real store. The in memory one is not safe across many server instances: two at once could each let a request through. The real one needs one atomic place per user (a Cloudflare Durable Object, or a database transaction), and the same tests must pass against it.
-- The Worker that receives requests and Stripe webhooks, the secrets (Squibby's Anthropic key, the Stripe secret), the domain.
-- Sign up, email checks, abuse limits on new accounts.
+- Done in M99 (15 Nov 2026): the real store (`src/store-do.ts`, the same tests pass against it and the in memory one) and the
+  Worker (`src/worker.ts`), with `wrangler.toml` and `scripts/deploy.sh`. Nothing is deployed and no account exists.
+- Still to come: the domain, the secrets on Cloudflare (the founder's), sign up with an email check, and abuse limits on new
+  accounts. Stripe's webhook is not built (Dodo Payments is the provider).
 - The app side: a "managed" route in the runner and the sign up screen.
+
+## On Cloudflare (M99): ready, not deployed
+
+**Nothing here creates an account, signs in or deploys by itself.** The founder makes the Cloudflare account and sets the secrets.
+
+1. Install the two tools, pinned to exact versions in `package.json` (both MIT or Apache-2.0): `wrangler` 4.156.0 and
+   `@cloudflare/workers-types` 5.20261029.1. The `node_modules` committed here is a link to itself, so remove it first:
+   `rm node_modules && bun install`.
+2. `bun run dry-run`: builds the Worker into `dist/` and checks that it holds the store and that the `STORE` binding resolves.
+   Deploys nothing and needs no account.
+3. `sh scripts/verify-dev.sh`: starts `wrangler dev` on this Mac with made up settings and a stand in model, and makes one metered
+   request through it. No account, no key.
+4. When the founder is ready: `wrangler login` (his own), then `wrangler secret put <NAME>` for each of `ANTHROPIC_API_KEY`,
+   `METADATA_USER_ID_SECRET`, `OPERATOR_KEY`, `GOOGLE_CLIENT_ID`, `DODO_WEBHOOK_SECRET` and `DODO_PRODUCTS` (what each is: the
+   comment at the top of `wrangler.toml`). Then `bun run deploy`, which refuses while any is missing, and while `DEV_TOKENS` or
+   `UPSTREAM_BASE` (local only) is set there or written as a var in `wrangler.toml`. It prints plain sentences only; what wrangler said goes to `dist/`.
+5. The switch: `wrangler secret put PROXY_ON` and type on. Off: `wrangler secret delete PROXY_ON`. Without it nothing is forwarded.
+
+The operator's suspend and restore work on the real store through the Worker: `POST /v1/operator` with
+`Authorization: Bearer <OPERATOR_KEY>` and `{"argv": [...]}`, the same options as `scripts/suspend.ts` (a dry run unless
+`--apply`). Without `OPERATOR_KEY` (at least 32 characters) the route is not served.
 
 ## Promises the tests hold it to
 - No prompt, reply, token or Anthropic key is ever in a log event, a stored record or an error message.
 - Squibby's key never reaches the user, and the user's token never reaches Anthropic.
-- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
+- A user cannot run past a limit by more than the requests that were already running together (at most 4 at once, `maxInFlight`): the budget is checked before a request starts and booked when it ends, so those few can each pass it. Each request holds its worst case while it runs, checked and held in one step, on the Durable Object store too, even from two server instances at once. One request is limited in size and in `max_tokens`, so the overshoot is bounded, not zero.
 - The address requests are forwarded to must be https (this machine aside), a redirect from it is never followed (our key would travel with it), and a body is read only up to its size limit.
 - A stream that is cut short is still charged for what was used.
+- A store failure is answered with a plain 503 in the API's own error shape ("Nothing was sent to Claude"), never with Cloudflare's
+  own error page. A slot taken before the failure is let go. A cost that cannot be booked after Claude answered still sends the
+  answer back, and the log says `booking_failed`.
+- Each running slot and hold carries its request's own id, so a request that ends after its 30 minutes ran out never lets go of
+  another request's slot or hold of the same amount.
+
+## How long things are kept (M99 review)
+- One small record per request (counts, cost, model, time): 90 days, then dropped, checked at most once a day per person.
+- Day totals: only this month's. Month totals: only the months those 90 days of records still cover.
+- Sign in token hashes: the newest 50 sign ins per person. Past that the oldest go first, stopped ones before working ones; a
+  dropped token stops working and its small object is cleared, so the person signs in again.
+- Payment event ids: 15 minutes (three times Dodo's time window). The suspension log and the list of owners are kept while the
+  service runs, because they are how a notice from Anthropic is matched to a person.
 
 ## Telling Anthropic who a request is for, and cutting one person off (24 Oct 2026)
 
@@ -60,7 +100,7 @@ bun scripts/suspend.ts --store <module> --user-id <the id Anthropic reported> [-
 bun scripts/suspend.ts --store <module> --owner <our owner id> [--apply] [--case <ref>]
 bun scripts/suspend.ts --store <module> --owner <our owner id> --restore [--apply]
 ```
-`--user-id` needs `METADATA_USER_ID_SECRET` in the environment: it derives each owner's id again and prints the owner whose id matches. `--case` is a short reference of ours (letters, digits, - and _), never a message. It prints only ids and plain sentences. **The real store does not exist yet**, so the script loads one from a module you name (`--store`, or the `SUSPEND_STORE` setting) whose default export is a `Store` or a function returning one; with none it says so and stops. It is tested against the in memory store only. Any real store must implement the same interface and pass the same tests in `test/abuse.test.ts`, including that a payment update cannot lift a suspension.
+`--user-id` needs `METADATA_USER_ID_SECRET` in the environment: it derives each owner's id again and prints the owner whose id matches. `--case` is a short reference of ours (letters, digits, - and _), never a message. It prints only ids and plain sentences. The real store lives on Cloudflare (M99), where the same steps run through the Worker's operator route (above). Run here, the script loads a store from a module you name (`--store`, or the `SUSPEND_STORE` setting) whose default export is a `Store` or a function returning one; with none it says so and stops. It is tested against the in memory store only. Any real store must implement the same interface and pass the same tests in `test/abuse.test.ts`, including that a payment update cannot lift a suspension.
 
 ## Payments through Dodo Payments (founder's choice, 23 Oct 2026)
 
@@ -109,5 +149,6 @@ No real Dodo test mode webhook has been received yet: the founder has to create 
 are marked in `docs/milestones/M13-managed-usage-plan.md`: that checkout `metadata` reaches the subscription events (Dodo's docs say
 it is "associated with the payment" and do not say it is copied to the subscription, hence the link learned from the payment);
 that the subscription event payload carries `product_id`, `status`, `customer.customer_id` and `past_due_ends_at` as the
-subscription API lists them; what `cancelled` means for timing; and the exact request Dodo sends. The store behind the ledger is
-in memory: two server instances at once need one atomic place (a Durable Object or a database transaction), as the main note above says.
+subscription API lists them; what `cancelled` means for timing; and the exact request Dodo sends. On Cloudflare (M99) the ledger's
+event ids live in one Durable Object and each person's newest applied time and plan in their own, so an older event is skipped in
+the same step as the write, across server instances too.

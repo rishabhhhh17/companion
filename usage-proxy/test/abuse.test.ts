@@ -1,30 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { MemoryStore } from "../src/store.ts";
 import { hashToken, newToken } from "../src/tokens.ts";
 import { issueToken } from "../src/accounts.ts";
 import { runOperator } from "../src/operator.ts";
 import { deriveUserId, USER_ID_SECRET_SETTING } from "../src/userid.ts";
 import { createProxy } from "../src/proxy.ts";
+import { TEST_STORES, type TestStore } from "./stores.ts";
+
+// M99: every test below runs on both stores, the in memory one and the Durable Object one (test/stores.ts).
+for (const kind of TEST_STORES) describe(kind.name, () => {
 
 const SECRET = "operator-secret-for-tests-0123456789abcdef";
 const NOW = Date.UTC(2026, 9, 24, 9, 0, 0);
 const env = { [USER_ID_SECRET_SETTING]: SECRET };
 
 async function world() {
-  const store = new MemoryStore();
+  const store = kind.make();
   const tokens: Record<string, string> = {};
   for (const [owner, plan] of [["owner-aaa", "pro"], ["owner-bbb", "free"], ["owner-ccc", "pro"]] as const) {
     const a = await issueToken(store, owner, plan); if (!a.ok) throw new Error("setup");
     tokens[owner] = a.token;
   }
-  const b2 = await newToken(); store.addUser(b2.hash, { id: "owner-aaa", plan: "pro", status: "active" });   // a second device for aaa
+  const b2 = await newToken(); await store.addUser(b2.hash, { id: "owner-aaa", plan: "pro", status: "active" });   // a second device for aaa
   return { store, tokens, second: b2.token };
 }
-const run = (store: MemoryStore, argv: string[], e: Record<string, string | undefined> = env) => runOperator(argv, e, store, () => NOW);
+const run = (store: TestStore, argv: string[], e: Record<string, string | undefined> = env) => runOperator(argv, e, store, () => NOW);
 
 describe("signing a person in", () => {
   test("a token is issued and works for the owner", async () => {
-    const s = new MemoryStore(); const a = await issueToken(s, "owner-x", "pro");
+    const s = kind.make(); const a = await issueToken(s, "owner-x", "pro");
     expect(a.ok).toBe(true); if (!a.ok) return;
     expect(await s.userByTokenHash(await hashToken(a.token))).toEqual({ id: "owner-x", plan: "pro", status: "active" });
   });
@@ -37,7 +40,7 @@ describe("signing a person in", () => {
     expect(a.message).toMatch(/paused|suspended/i);
     expect(JSON.stringify(store.dump())).toBe(before);
   });
-  test("an empty owner id is refused", async () => { expect((await issueToken(new MemoryStore(), "", "free")).ok).toBe(false); });
+  test("an empty owner id is refused", async () => { expect((await issueToken(kind.make(), "", "free")).ok).toBe(false); });
 });
 
 describe("suspending one person", () => {
@@ -78,7 +81,7 @@ describe("suspending one person", () => {
   test("a payment event that sets a plan cannot lift a suspension: the flag is separate from the token's status", async () => {
     const { store, tokens } = await world();
     await store.suspendOwner("owner-aaa", { at: NOW });
-    store.addUser(await hashToken(tokens["owner-aaa"]), { id: "owner-aaa", plan: "pro", status: "active" });   // what a late payment event would write
+    await store.addUser(await hashToken(tokens["owner-aaa"]), { id: "owner-aaa", plan: "pro", status: "active" });   // what a late payment event would write
     expect((await store.userByTokenHash(await hashToken(tokens["owner-aaa"])))?.status).toBe("suspended");
   });
   test("restoring lifts the block for new tokens, but the old tokens stay dead", async () => {
@@ -160,4 +163,5 @@ describe("the operator command", () => {
     expect(text).not.toContain(SECRET);
     for (const t of Object.values(tokens)) { expect(text).not.toContain(t); expect(text).not.toContain(await hashToken(t)); }
   });
+});
 });

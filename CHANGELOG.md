@@ -2,6 +2,15 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The usage server, ready for Cloudflare: 15 Nov 2026
+
+- **Nothing you can see changes yet.** This is the groundwork for Squibby paying for your fixes: the server that will hold Squibby's own AI key, so that key never sits on your Mac.
+- **It can now run on Cloudflare,** with a store that keeps each person's limits in one place, so two requests at the same moment, even from two servers, can never both spend the last of a day's allowance. A request that is cut off still frees its place after 30 minutes, so nobody gets stuck.
+- **It keeps only ids, dates, counts and dollars.** Never what you asked, never the answer, never your sign in token, only a scrambled form of it. The tests check this on both kinds of store.
+- **It is not switched on and not deployed.** There is no Cloudflare account yet, no address and no key. The deploy script only does a dry run unless told otherwise, and even then it refuses until every secret is set. It never signs in or creates anything by itself.
+- How much AI use Pro includes is unchanged. It will be decided once real fixes are measured.
+- **Fixes from a review (16 Nov):** when the server's store has a hiccup, the app gets a plain sentence that nothing was sent, never a blank error page. An answer Claude already gave is never lost because the cost could not be written down. A request that runs very long can no longer free up someone else's place. Old records are dropped after 90 days, and only the last 50 sign ins per person are kept.
+
 ## True words on screen: 15 Nov 2026
 
 - **No more "getting ready" that never ends.** Until Squibby's own fixing is switched on, Home said Squibby "is getting ready on this Mac" with a Try again button that could never work. It now says what is true: "Fixing is not switched on for this Mac yet. Checking your project still works. Squibby will tell you here when fixing is ready. Your project is safe." The notch, its hover line and its small chat say the same, in fewer words.
