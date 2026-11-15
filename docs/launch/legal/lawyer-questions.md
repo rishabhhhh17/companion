@@ -5,6 +5,8 @@
 
 ## Facts that apply to every question
 
+> **Note, 15 Nov 2026.** The bullets above Price describe the build before F29 (the customer's own Claude key, no servers of ours). M98 rewrites them. Under F29 Squibby pays for the AI it uses, and the billing code and the usage server are built and switched off.
+
 - **Product.** A Mac app (Windows later) for non-engineers who start projects with AI and get stuck. Working name "Companion" (it will change). Direct download, not the App Store. Alpha build 0.1.0, no public release yet.
 - **Company.** Founder is a solo first-time founder. Entity not yet formed or not yet decided **[founder to fill in: where the founder lives, whether a company exists]**.
 - **Claude.** The app ships Anthropic's Claude Code binary, unmodified and not re-signed, and drives it through the Claude Agent SDK (pinned). The customer supplies their own Claude API key, saved in their macOS Keychain. We never pay for, resell or route Claude usage. We run no server that receives their content. A subscription (claude.ai) sign-in route exists in code behind a remote switch that is **off**, and stays off until Anthropic confirms in writing.
@@ -12,7 +14,7 @@
 - **What stays on the Mac.** Task history, undo snapshots, receipt pictures, memory, settings, a small activity log, optional local counts. A "Delete everything" button removes them (`app/src-tauri/src/wipe.rs`). A support log is written to Downloads and is never sent by the app (`logexport.rs`).
 - **No analytics, no account, no servers of ours** in the current build. A phone approvals relay and a Telegram link are planned for later (F09) and are not built.
 - **Third parties contacted by the Mac.** Anthropic (the customer's own account), Hugging Face (speech model, on request), Playwright's CDN (browser, on request), GitHub (planned update host, not yet switched on), and git hosts or package registries when the customer opens a link or installs packages.
-- **Price.** Not decided. Research hypothesis: about $8 a month or $72 a year, merchant of record, regional prices. No billing code yet.
+- **Price.** Free, and Pro at $15 a month or $144 a year (US prices; decisions F25 as changed 6 Nov 2026, and F31 of 13 Nov 2026). A one time "Is this safe to go live" report at $29. Sold through Dodo Payments as the merchant of record, with the local price and tax shown at its checkout. Billing code is built and switched off: nothing is charged and no price shows to anyone yet. The one place these numbers live is `app/src/prices.json`.
 
 ## 1. Anthropic's Commercial Terms for a product that drives Claude Code with a customer's own key
 

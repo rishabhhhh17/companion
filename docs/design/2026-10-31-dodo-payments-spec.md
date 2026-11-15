@@ -1,3 +1,5 @@
+> **Prices superseded (15 Nov 2026, M97):** Pro is $15 a month or $144 a year. The prices live only in `app/src/prices.json` (F25 as changed 6 Nov 2026, F31). The amounts below are history.
+
 # Dodo Payments integration spec (F25 Pro)
 
 - **Status:** Accepted and built in M47 (31 Oct 2026), with payments off. The founder left the open calls to the build ("U tell me"); the calls made are in section 16 and `docs/milestones/M47-pro-plan.md`. Nothing here is proven against Dodo's test mode yet (section 15).

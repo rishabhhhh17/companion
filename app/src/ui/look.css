@@ -203,6 +203,9 @@
 /* Settings' page scrolls under a fade at its foot, never a row cut mid sentence; its own bottom padding sits under the fade,
    so the last row is clear once scrolled to. */
 .home[data-view="settings"] .settings-content { -webkit-mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); mask-image: linear-gradient(180deg, var(--mask-solid) calc(100% - var(--fade)), transparent); }
+/* M97 fix: a mask clips everything inside it, the fixed sheet layer too, so a sheet opened from a Settings page (Get Pro,
+   house rules, keys) drew cut off under the list of pages. While a sheet is open the fade is lifted; the sheet covers it. */
+.home[data-view="settings"] .settings-content:has(.ui-sheet-layer) { -webkit-mask-image: none; mask-image: none; }
 /* The first run: where you are as a short bar per step, the ones reached in the water. */
 .fr-dots { display: inline-flex; gap: var(--space-1); margin-right: var(--space-2); vertical-align: middle; }
 .fr-dots i { display: block; width: 14px; min-height: 3px; border-radius: var(--r-key); background: var(--fr-edge-slot); }
@@ -218,6 +221,8 @@
 @container home (width >= 44rem) {
   .home[data-layout="wide"][data-view="settings"] .inner { display: grid; grid-template-columns: var(--w-side) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); flex: 1 1 auto; min-height: 0; padding: 0; }
   .home[data-layout="wide"][data-view="settings"] .view, .home[data-layout="wide"][data-view="settings"] .settings-frame { display: contents; }
+  /* M97 fix: a sheet here covers the page column beside the list, never the list itself (the scrim still dims it). */
+  .home[data-layout="wide"][data-view="settings"] .settings-frame { --w-sheet: calc(100% - var(--w-side)); }
   .home[data-layout="wide"][data-view="settings"] .inner > *, .home[data-layout="wide"][data-view="settings"] .work > *, .home[data-layout="wide"][data-view="settings"] .view > * { grid-column: 2; margin-inline: var(--space-6); }
   .home[data-layout="wide"][data-view="settings"] .bar { grid-row: 1; margin-top: var(--space-3); }
   .home[data-layout="wide"][data-view="settings"] .settings-side { grid-column: 1; grid-row: 1 / -1; position: static; min-height: 0; overflow-y: auto; box-sizing: border-box; padding: var(--space-3) var(--space-2) var(--space-2); border-right: var(--hair) solid var(--line); background: var(--surface-1); }

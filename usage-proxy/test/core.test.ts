@@ -5,6 +5,8 @@ import { checkRequest, MAX_BODY_BYTES } from "../src/filter.ts";
 import { UsageSniffer, usageFromJson, costOf } from "../src/usage.ts";
 import { MAX_SEARCHES, WEB_SEARCH_TOOL, WEB_SEARCH_USD } from "../../runner/src/models.ts";
 import { PRODUCT } from "../src/names.ts";
+import { readFileSync } from "node:fs";
+import PRICES from "../../app/src/prices.json";
 
 describe("sign in tokens", () => {
   test("a new token is random, prefixed, and only its hash is kept", async () => {
@@ -202,13 +204,28 @@ describe("tools: only Second Look's capped web search", () => {
   });
 });
 
-describe("F25 pricing", () => {
-  test("Pro is $10 a month or $96 a year, and its model allowance stays under its price", () => {
-    expect(PLANS.pro.priceUsdMonthly).toBe(10);
-    expect(PLANS.pro.priceUsdYearly).toBe(96);
-    for (const p of Object.values(PLANS)) expect(p.monthlyUsd, p.name).toBeLessThan(Math.max(p.priceUsdMonthly, 2.01));
+describe("F25 pricing, one price everywhere (M97: F25 as changed 6 Nov 2026, F31)", () => {
+  // Changed on purpose in M97: this test pinned $10 and $96 in plans.ts. Prices now live only in app/src/prices.json (M79),
+  // so the usage server holds no price at all, and the allowance is checked against that file instead.
+  test("the usage server holds no price: each plan is only a name and its model allowance", () => {
+    for (const p of Object.values(PLANS)) expect(Object.keys(p).sort(), p.name).toEqual(["dailyUsd", "monthlyUsd", "name"]);
+    const src = readFileSync(new URL("../src/plans.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/priceUsd|\$\s?(10|20|96|100|144|15)\b/);
+    expect(src).toContain("F31");
   });
-  test("a plan sold before F25 is never more than Pro now", () => {
-    expect(PLANS.max.monthlyUsd).toBeLessThanOrEqual(PLANS.pro.monthlyUsd);
+  test("Pro's model allowance stays under its price in prices.json, monthly and yearly", () => {
+    expect(PRICES.proMonthly).toBe(15);
+    expect(PRICES.proYearly).toBe(144);
+    const price: Record<string, number> = { free: 0, pro: Math.min(PRICES.proMonthly, PRICES.proYearly / 12) };
+    for (const p of Object.values(PLANS)) expect(p.monthlyUsd, p.name).toBeLessThan(Math.max(price[p.name], 2.01));
+  });
+  test("there is no Max plan: only Free and Pro, and a Max entitlement written by a test or by hand reads as free", () => {
+    expect(Object.keys(PLANS)).toEqual(["free", "pro"]);
+    expect(planOf("max")).toBe(PLANS.free);
+  });
+  test("the Pro allowance is not changed here: $0.75 a day and $5 a month, until the founder sets it after M100 measures fixing", () => {
+    expect(PLANS.pro).toEqual({ name: "pro", dailyUsd: 0.75, monthlyUsd: 5 });
+    expect(PLANS.free).toEqual({ name: "free", dailyUsd: 0.2, monthlyUsd: 2 });
+    expect(readFileSync(new URL("../src/plans.ts", import.meta.url), "utf8")).toMatch(/not been checked against the cost of fixing/);
   });
 });

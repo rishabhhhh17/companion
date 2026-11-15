@@ -13,7 +13,7 @@ const env = { [USER_ID_SECRET_SETTING]: SECRET };
 async function world() {
   const store = new MemoryStore();
   const tokens: Record<string, string> = {};
-  for (const [owner, plan] of [["owner-aaa", "pro"], ["owner-bbb", "free"], ["owner-ccc", "max"]] as const) {
+  for (const [owner, plan] of [["owner-aaa", "pro"], ["owner-bbb", "free"], ["owner-ccc", "pro"]] as const) {
     const a = await issueToken(store, owner, plan); if (!a.ok) throw new Error("setup");
     tokens[owner] = a.token;
   }
@@ -78,7 +78,7 @@ describe("suspending one person", () => {
   test("a payment event that sets a plan cannot lift a suspension: the flag is separate from the token's status", async () => {
     const { store, tokens } = await world();
     await store.suspendOwner("owner-aaa", { at: NOW });
-    store.addUser(await hashToken(tokens["owner-aaa"]), { id: "owner-aaa", plan: "max", status: "active" });   // what a late payment event would write
+    store.addUser(await hashToken(tokens["owner-aaa"]), { id: "owner-aaa", plan: "pro", status: "active" });   // what a late payment event would write
     expect((await store.userByTokenHash(await hashToken(tokens["owner-aaa"])))?.status).toBe("suspended");
   });
   test("restoring lifts the block for new tokens, but the old tokens stay dead", async () => {

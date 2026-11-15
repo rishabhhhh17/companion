@@ -27,5 +27,8 @@
 - Prices live in one config only, `app/src/prices.json`. What Free and Pro include is one list in `strings.ts` (`S.m79.includes`), with every limit written as "with limits" until it is measured.
 - Payments stay off: the build's own switch (`paymentsOn` in `billing.*.json`) and a remote switch (`remoteSwitchUrl`, empty today) must both say yes. Dodo test mode until the founder's account, lawyer and domain exist.
 
+## Pointer, 15 Nov 2026 (M97)
+- Yearly set by F31, 13 Nov 2026: $144. The prices live only in `app/src/prices.json`.
+
 ## Revisit only if
 The founder changes the price, or Anthropic's terms change what Squibby may pay for.

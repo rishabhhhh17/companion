@@ -13,7 +13,7 @@ Run the tests: `cd usage-proxy && bun test` (and `bun run typecheck`). No depend
 | File | What it does |
 |---|---|
 | `src/tokens.ts` | Sign in tokens (random, only the hash kept). A real Anthropic key is never accepted as one |
-| `src/plans.ts` | The plan table (Free, Pro, Max) and the daily and monthly limits, in dollars of Anthropic cost |
+| `src/plans.ts` | The plan table (Free and Pro) and the daily and monthly limits, in dollars of Anthropic cost. No prices: they live only in `app/src/prices.json` (M97). `allowanceReport` and `scripts/allowance.ts` say how many measured fixes an allowance covers |
 | `src/filter.ts` | What may be forwarded: two paths, the models Squibby uses, a size limit, `max_tokens` clamped; sets `metadata.user_id` and removes any `metadata` the client sent |
 | `src/userid.ts` | The opaque user id Anthropic sees (keyed hash of the owner id) and the lookup from an id back to an owner |
 | `src/accounts.ts` | Issuing a sign in token; refused for a suspended owner |
@@ -72,8 +72,8 @@ Fees, payout timing and terms are Dodo's: read them in the Dodo dashboard and Do
 remote switch, and it stays off until Anthropic confirms in writing (`docs/decisions/F22-company-pays-for-usage-gated.md`).
 
 ### Setting it up (operator, later, after a written yes)
-1. In the Dodo dashboard (test mode first) create one product per paid plan and note each product id.
-2. Fill in the product table, a JSON object of Dodo product id to plan name (`pro` or `max`). The shape is in
+1. In the Dodo dashboard (test mode first) create the two Pro products, monthly ($15) and yearly ($144) as in `app/src/prices.json` (F31), and note each product id.
+2. Fill in the product table, a JSON object of Dodo product id to plan name (both are `pro`; there is no Max plan). The shape is in
    `dodo-products.example.json`. It is read from the `DODO_PRODUCTS` setting. Product ids are never written in code. A product that
    is not in the table is given no plan, and the webhook answers 503 with a plain sentence naming it, so Dodo tries again after you
    fix the table.

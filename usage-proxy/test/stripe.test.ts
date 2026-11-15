@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { verifyStripeSignature, entitlementFromEvent, signForTest } from "../src/stripe.ts";
 
 const SECRET = "whsec_test_secret";
-const PRICES = { price_pro_monthly: "pro", price_max_monthly: "max" };
+// M97: one paid plan, Pro, sold monthly and yearly (F31). There is no Max plan any more.
+const PRICES = { price_pro_monthly: "pro", price_pro_yearly: "pro" };
 const NOW = 1_800_000_000;
 
 describe("Stripe signature", () => {
@@ -35,7 +36,11 @@ describe("what a subscription event means for a user's plan", () => {
   const sub = (type: string, status: string, over: Record<string, unknown> = {}) => ({ type, data: { object: { status, metadata: { companion_user_id: "u9" }, items: { data: [{ price: { id: "price_pro_monthly" } }] }, ...over } } });
   test("an active or trialing subscription gives that plan", () => {
     for (const status of ["active", "trialing"]) expect(entitlementFromEvent(sub("customer.subscription.updated", status), PRICES)).toEqual({ userId: "u9", plan: "pro", status: "active" });
-    expect(entitlementFromEvent(sub("customer.subscription.created", "active", { items: { data: [{ price: { id: "price_max_monthly" } }] } }), PRICES)).toEqual({ userId: "u9", plan: "max", status: "active" });
+    expect(entitlementFromEvent(sub("customer.subscription.created", "active", { items: { data: [{ price: { id: "price_pro_yearly" } }] } }), PRICES)).toEqual({ userId: "u9", plan: "pro", status: "active" });
+  });
+  test("a price mapped to the old Max plan is never granted (M97)", () => {
+    const old = { ...PRICES, price_max_monthly: "max" };
+    expect(entitlementFromEvent(sub("customer.subscription.created", "active", { items: { data: [{ price: { id: "price_max_monthly" } }] } }), old)).toBeNull();
   });
   test("a late payment keeps the plan for a grace period, marked past due", () => {
     for (const status of ["past_due", "unpaid"]) expect(entitlementFromEvent(sub("customer.subscription.updated", status), PRICES)).toEqual({ userId: "u9", plan: "pro", status: "past_due" });

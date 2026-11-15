@@ -1,3 +1,5 @@
+> **Prices superseded (15 Nov 2026, M97):** Pro is $15 a month or $144 a year. The prices live only in `app/src/prices.json` (F25 as changed 6 Nov 2026, F31). The amounts below are history.
+
 # The UI/UX overhaul spec (30 Oct 2026, revised 31 Oct)
 
 **What this is.** A spec for Squibby's interface that is ready to build. It merges M47 (one Settings, the launch cut) and M48 (Home status first, the result card, the notch hover as status), and it adds the Plan card for Dodo. Today the founder said: "even now the chrome sometimes looks weird", Settings "still looks very complicated", and "everything does not look very planned". This spec answers that.

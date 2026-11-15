@@ -10,7 +10,8 @@ const b64 = (s: string) => btoa(s);
 const SECRET = `whsec_${b64("dodo-test-secret-key-0123456789")}`;
 const OTHER = `whsec_${b64("another-secret-key-9876543210ab")}`;
 const NOW = 1_800_000_000;
-const PRODUCTS = { pdt_pro: "pro", pdt_max: "max" };
+// M97: one paid plan, Pro, as two Dodo products, monthly and yearly (F31). There is no Max plan any more.
+const PRODUCTS = { pdt_pro: "pro", pdt_pro_yearly: "pro" };
 const MARK_EMAIL = "person.private@example.com", MARK_NAME = "Private Personname";
 
 const iso = (sec: number) => new Date(sec * 1000).toISOString();
@@ -106,7 +107,12 @@ describe("Dodo signature (Standard Webhooks)", () => {
 
 describe("the product table is configuration", () => {
   test("a table of product id to plan name is read from JSON", () => {
-    expect(parseDodoProducts('{"pdt_a":"pro","pdt_b":"max"}')).toEqual({ ok: true, products: { pdt_a: "pro", pdt_b: "max" } });
+    expect(parseDodoProducts('{"pdt_a":"pro","pdt_b":"pro"}')).toEqual({ ok: true, products: { pdt_a: "pro", pdt_b: "pro" } });
+  });
+  test("a table that still maps a product to the old Max plan is refused, naming the plans there are (M97)", () => {
+    const r = parseDodoProducts('{"pdt_a":"pro","pdt_b":"max"}');
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toContain("(free, pro)");
   });
   test("a plan we do not have, a non text value, or bad JSON is refused in plain words", () => {
     for (const bad of ['{"pdt_a":"enterprise"}', '{"pdt_a":5}', "not json", "[]", "null", '{"":"pro"}', '{"__proto__":"pro"}']) {
@@ -144,7 +150,9 @@ describe("what each Dodo subscription event means for a plan", () => {
     for (const type of ["subscription.active", "subscription.renewed", "subscription.unpaused", "subscription.updated", "subscription.plan_changed"]) {
       expect(await decide(event(type, "active"))).toMatchObject({ kind: "set", entitlement: pro });
     }
-    expect(await decide(event("subscription.plan_changed", "active", { product_id: "pdt_max" }))).toMatchObject({ kind: "set", entitlement: { plan: "max" } });
+    expect(await decide(event("subscription.plan_changed", "active", { product_id: "pdt_pro_yearly" }))).toMatchObject({ kind: "set", entitlement: { plan: "pro" } });
+    // M97: a product the operator still maps to the old Max plan grants nothing
+    expect(await decideDodoEvent(event("subscription.active", "active", { product_id: "pdt_max" }), { ...PRODUCTS, pdt_max: "max" }, links())).toMatchObject({ kind: "unknown_product" });
   });
   test("an event that says active without a status, or with a status we do not know, grants nothing", async () => {
     expect((await decide(event("subscription.active", undefined)).then((d) => d.kind))).toBe("ignore");
@@ -178,7 +186,7 @@ describe("what each Dodo subscription event means for a plan", () => {
     const e: DodoEntitlement = { userId: "u9", plan: "pro", status: "past_due", until: 5000 };
     expect(entitledPlan(e, 4999)).toBe("pro");
     expect(entitledPlan(e, 5000)).toBe("free");
-    expect(entitledPlan({ userId: "u9", plan: "max", status: "active" }, 9e15)).toBe("max");
+    expect(entitledPlan({ userId: "u9", plan: "pro", status: "active" }, 9e15)).toBe("pro");
   });
   test("update_payment_method and other events change nothing", async () => {
     expect((await decide(event("subscription.update_payment_method", "active"))).kind).toBe("ignore");
@@ -330,9 +338,9 @@ describe("the webhook handler", () => {
     expect(applied).toEqual([]);
     expect(logs.at(-1)).toMatchObject({ kind: "unknown_product", productId: "pdt_mystery" });
     // after the operator adds the product, the same delivery is accepted
-    const fixed = hook({ products: () => ({ ...PRODUCTS, pdt_mystery: "max" }) });
+    const fixed = hook({ products: () => ({ ...PRODUCTS, pdt_mystery: "pro" }) });
     expect(await outcome(await send(fixed, event("subscription.active", "active", { product_id: "pdt_mystery" }), "msg_1"))).toBe("applied");
-    expect(applied.at(-1)?.plan).toBe("max");
+    expect(applied.at(-1)?.plan).toBe("pro");
   });
   test("an event for a person we cannot identify applies nothing and asks Dodo to try again", async () => {
     const r = await send(hook(), event("subscription.active", "active", { metadata: {} }));

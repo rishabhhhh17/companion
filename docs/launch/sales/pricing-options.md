@@ -1,3 +1,5 @@
+> **Replaced (15 Nov 2026, M97):** by F29 (Squibby picks the model and pays for it) and F31 (Pro $15 a month or $144 a year). The prices live only in `app/src/prices.json`. This page is kept as history.
+
 # Pricing options
 
 Drafted 20 Oct 2026. This is a thinking document for the founder. No price here has been tested with a real customer, and billing, terms and a merchant of record are not set up. The founder owns the decision (market research section 7).

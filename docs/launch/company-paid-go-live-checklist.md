@@ -14,23 +14,22 @@
 
 ### A. Accounts and money
 - [ ] **1. Dodo account and identity check.** `[F]` Create the account, finish the identity and business checks, switch from test mode to live when ready. Fees, payout schedule and terms are Dodo's own: read them in the dashboard; nothing in the repo states them.
-- [ ] **2. The product and the price.** `[F]` One Dodo product per paid plan: Pro ($20 a month) and Max ($100 a month) are the numbers in `usage-proxy/src/plans.ts` today. Free has no product. The price is a founder decision; if it changes, the limits in item 5 must be re-checked against it.
+- [ ] **2. The product and the price.** `[F]` Two Dodo products, both for Pro: monthly at $15 and yearly at $144 (F25 as changed 6 Nov 2026, F31). There is no Max plan. Free has no product. The prices live only in `app/src/prices.json`; the usage server holds none (M97). The price is a founder decision; if it changes, the limits in item 5 must be re-checked against it.
 - [ ] **3. The webhook secret** `[F]` In the Dodo dashboard add a webhook to `https://<the proxy's address>/webhooks/dodo`, subscribe it to the subscription events and `payment.succeeded`, copy its signing secret (starts with `whsec_`) into the operator's environment as `DODO_WEBHOOK_SECRET`. Never in the repo or a log.
-- [ ] **4. `DODO_PRODUCTS` config.** `[F]` The JSON table from Dodo product id to plan name (`pro` or `max`), shape in `usage-proxy/dodo-products.example.json`. Set `PAYMENT_PROVIDER=dodo`. A product missing from the table gets no plan and the webhook answers 503 until it is fixed.
+- [ ] **4. `DODO_PRODUCTS` config.** `[F]` The JSON table from Dodo product id to plan name (both products map to `pro`), shape in `usage-proxy/dodo-products.example.json`. A table that still names `max` is refused. Set `PAYMENT_PROVIDER=dodo`. A product missing from the table gets no plan and the webhook answers 503 until it is fixed.
 - [ ] **4b. The metadata secret.** `[F]` Make a long random value (at least 32 characters) and put it in the operator's environment as `METADATA_USER_ID_SECRET`. It makes the opaque `user_id` Anthropic sees. **Keep a safe copy apart from the server. Never change it casually:** changing it changes every id, and ids in older Anthropic notices can no longer be matched to people. Without it the proxy refuses to forward anything.
 - [ ] **4c. One real Dodo test mode webhook received.** `[F]` then me. Still unproven: that checkout `metadata` (`companion_user_id`) reaches the subscription events, the payload fields, what `cancelled` means for timing, the exact request. See `docs/milestones/M13-managed-usage-plan.md`.
 
 ### B. Money limits
-- [ ] **5. Plan limits reviewed.** `[F]` The real numbers today (`usage-proxy/src/plans.ts`, dollars of Anthropic cost, day and month in UTC):
+- [ ] **5. Plan limits reviewed.** `[F]` Read the limits from `usage-proxy/src/plans.ts` (dollars of Anthropic cost, day and month in UTC); the prices from `app/src/prices.json`. On 15 Nov 2026 they were:
 
   | Plan | Price | Daily limit | Monthly limit |
   |---|---|---|---|
   | Free | $0 | $0.20 | $2 |
-  | Pro | $20 a month | $1.50 | $12 |
-  | Max | $100 a month | $8 | $60 |
+  | Pro | $15 a month, or $144 a year | $0.75 | $5 |
 
-  Also: at most 4 requests at once per person, and an answer may not be longer than 64,000 tokens. A person can run past a limit by about one request. Check these against a price you are happy with and against item 6.
-- [ ] **6. A higher Anthropic usage tier requested.** `[F+A]` The Start tier has a **$500 a month** cap. Worst case, if every account used its full monthly limit: 42 Pro accounts would pass $500 (42 x $12 = $504), or 250 Free accounts (250 x $2 = $500), or 9 Max accounts (9 x $60 = $540). Real use will be lower, but a viral day could hit the cap and **stop the service for everyone**. Request the next tier before the rollout goes past friends. Also set the Console workspace spend limit as the last backstop (it is mentioned in F22; the amount is yours to choose).
+  Also: at most 4 requests at once per person, and an answer may not be longer than 64,000 tokens. A person can run past a limit by about one request. The Pro limit was sized for the light features and has not been checked against the cost of fixing now that Squibby pays (F29). M100 measures real fixes; `cd usage-proxy && bun scripts/allowance.ts <costs.json>` says how many fixes each limit covers. The number is yours to set. Check these against item 6.
+- [ ] **6. A higher Anthropic usage tier requested.** `[F+A]` The Start tier has a **$500 a month** cap. Worst case, if every account used its full monthly limit (the 15 Nov 2026 limits): 101 Pro accounts would pass $500 (101 x $5 = $505), or 251 Free accounts (251 x $2 = $502). Work it out again if the limits change. Real use will be lower, but a viral day could hit the cap and **stop the service for everyone**. Request the next tier before the rollout goes past friends. Also set the Console workspace spend limit as the last backstop (it is mentioned in F22; the amount is yours to choose).
 - [ ] **7. A prepaid balance in the Console** `[F]` large enough for the first month, with a low balance alert to your email. Check how Anthropic bills at your tier (balance or invoice): not stated in the repo.
 
 ### C. Terms, abuse and legal

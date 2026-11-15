@@ -2,6 +2,13 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## One price everywhere: 15 Nov 2026
+
+- **Squibby Pro is $15 a month, or $144 a year.** That is now the only price written anywhere: in the app, the go live checklist, the notes for the lawyer and the docs. Some of them still said $10, $20, $96 or "about $8", and the checklist still listed a Max plan at $100. There is no Max plan.
+- **One place holds the price.** The app's own price file is the only place a price lives. The usage server keeps no price of its own, only how much model use each plan may have, so the two can never disagree again. A test reads the documents a person acts on and fails if an old price comes back.
+- **A way to measure before deciding.** How much AI use Pro includes ($5 a month) was sized before Squibby started paying for fixes. It is not changed. A small tool now says how many fixes that covers, once real fixes are measured, so the founder can decide with numbers.
+- Payments are still off, so nobody is charged and no price shows to anyone yet.
+
 ## The notch, small first, then it opens out: 15 Nov 2026
 
 - **Pointing at the notch grows one small row out of it,** the same black, like the notch got a little longer: the character, "hey sam", and one glowing button with what matters now, such as "2 changes to review" (with a small dot when something waits), "Fix it", "Undo last change", "Stop" while a job runs, or "Check my project" when nothing waits. Nothing else.
