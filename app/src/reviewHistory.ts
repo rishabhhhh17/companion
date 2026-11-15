@@ -1,7 +1,7 @@
 // M57 feature 1: the reviews of changes to the open project, as History's own rows (the engine's task log, sent with
 // tasks.list). Names of files only, never their text; the summary had secrets hidden before it was kept. Plain code,
 // tested in reviewEveryDay.test.ts; card.tsx only draws what this says. Nothing here counts days or praises a habit.
-import { REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, type ReviewRating, type ReviewRowView } from "../../protocol/index.ts";
+import { REVIEW_BATCH_ID, REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, REVIEW_UNDO_STATES, type ReviewRating, type ReviewRowView } from "../../protocol/index.ts";
 import { redact } from "../../runner/src/redact.ts";
 import type { IconName } from "./icons.tsx";
 import { S } from "./strings.ts";
@@ -20,7 +20,10 @@ export function reviewRowsOf(v: unknown): ReviewRowView[] {
     if (!(REVIEW_RATINGS as readonly string[]).includes(x.rating as string) || !(REVIEW_CHECKS as readonly string[]).includes(x.checks as string) || !(REVIEW_DID as readonly string[]).includes(x.did as string)) continue;
     if (!Array.isArray(x.touches) || !(x.touches as unknown[]).every((t) => (REVIEW_TOUCHES as readonly string[]).includes(t as string)) || typeof x.summary !== "string") continue;
     out.push({ id: x.id as number, at: x.at, count: x.count as number, files: (x.files as string[]).slice(0, 20).map((f) => f.slice(0, 300)), rating: x.rating as ReviewRating,
-      touches: [...new Set(x.touches as ReviewRowView["touches"])], checks: x.checks as ReviewRowView["checks"], did: x.did as ReviewRowView["did"], summary: redact(x.summary).slice(0, 400) });
+      touches: [...new Set(x.touches as ReviewRowView["touches"])], checks: x.checks as ReviewRowView["checks"], did: x.did as ReviewRowView["did"], summary: redact(x.summary).slice(0, 400),
+      // M101: the batch and whether Put these files back can be offered (only known states, only a real batch name).
+      ...(typeof x.batch === "string" && REVIEW_BATCH_ID.test(x.batch) ? { batch: x.batch } : {}),
+      ...(typeof x.batch === "string" && REVIEW_BATCH_ID.test(x.batch) && (REVIEW_UNDO_STATES as readonly string[]).includes(x.undo as string) ? { undo: x.undo as ReviewRowView["undo"] } : {}) });
     if (out.length >= MAX_ROWS) break;
   }
   return out;
@@ -47,7 +50,8 @@ export function reviewRowLook(r: ReviewRowView, now: number): { mark: string; na
   return {
     mark: S.history.reviewMark,
     name: `${S.review.rating[r.rating]}: ${r.summary || S.review.lead(r.count)}`,
-    meta: `${S.history.reviewDid[r.did]} · ${files} · ${ago(r.at, now)}`,
+    // M101: a review whose files were put back says so.
+    meta: `${S.history.reviewDid[r.did]}${r.undo === "done" ? ` · ${S.reviewUndo.doneMark}` : ""} · ${files} · ${ago(r.at, now)}`,
     icon: RATING_ICON[r.rating], tone: RATING_TONE[r.rating],
     files: r.files.join(", ") + (r.count > r.files.length ? ` ${S.history.reviewMore(r.count - r.files.length)}` : ""),
   };

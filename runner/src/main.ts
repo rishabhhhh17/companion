@@ -122,7 +122,9 @@ const review = new ReviewService({
   // M58 (feature 9): the key practice's copy is reviewed by the rules alone, with no model and no cost.
   rulesOnly: (p) => isKeyPractice(p),
   // M57 feature 1: each review that ran is one row in the task history (names of files only), kept review.keepDays days.
-  history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d) },
+  history: { add: (r) => taskLog.addReview(r, { keepDays: Number(runnerSettings.get("review.keepDays")) }), did: (p, b, d) => taskLog.reviewDid(p, b, d),
+    // M101: Put these files back from History, and its link record (counts only, for M94).
+    points: (p, b) => taskLog.reviewPoints(p, b), undone: (p, b, s) => taskLog.reviewUndone(p, b, s), recent: (p, n) => taskLog.recentReviewPoints(p, n) },
   // M95, the light tutor: a problem this review found that a later change fixed, and the person kept.
   learned: (p, kind, key) => runner.learnFromReview(p, kind, key),
   // M79 (T18): known serious problems in packages a change added, on OSV.dev. Names and versions only, a day's cache in
@@ -288,7 +290,8 @@ function dispatch(cmd: Command) {
     } catch (e) { say({ type: "protocol.error", ...failure(e as Error, cmd.type) }); }
     return;
   }
-  if (cmd.type === "review.now" || cmd.type === "review.dismiss" || cmd.type === "review.fix") { const p = review.handle(cmd).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
+  // M101: Put these files back is the review's own (it runs as the engine's own work there, review.around).
+  if (cmd.type === "review.now" || cmd.type === "review.dismiss" || cmd.type === "review.fix" || cmd.type === "review.undoPlan" || cmd.type === "review.undo") { const p = review.handle(cmd).catch((e: Error) => say({ type: "protocol.error", ...failure(e, cmd.type) })).finally(() => inflight.delete(p)); inflight.add(p); return; }
   const c = cmd;
   const work = c.type.startsWith("walk.") ? walks.handle(c as never) : c.type.startsWith("assist.")
     ? (assist ? assist.handle(c) : Promise.resolve(say({ type: "protocol.error", ...failure("Prompt help and Show me how are not available in this mode", c.type) })))

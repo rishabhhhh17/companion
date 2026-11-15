@@ -61,6 +61,8 @@ import { heroMeaning, MEANING_COLOUR, PILL_MEANING, PLACE_COLOUR, PLACE_ICON, st
 import { reviewHead } from "./reviewHead.ts";
 import { HomeSide } from "./homeSide.tsx";
 import { ReviewCardView, REVIEW_ID } from "./reviewCard.tsx";
+import { ReviewUndoPart } from "./reviewUndoPart.tsx";
+import { lookCommand, undoCommand, undoOffered } from "./reviewUndo.ts";
 // M58 UI 6 and UI 13: the check before going live's finish line and the Sign in to Vercel step.
 import { ShipGatesPanel, SignInStep } from "./shipPanels.tsx";
 import { WhyLivePanel } from "./whyLivePanel.tsx";
@@ -78,6 +80,7 @@ import { sendBackCopy } from "./review.ts";
 import { ShareReport, WalkThrough } from "./m76Panels.tsx";
 import { tourFromReceipt, type TourStep } from "./tour.ts";
 import { reviewRowLook } from "./reviewHistory.ts";
+import type { ReviewUndo } from "./reviewUndo.ts";
 import { askedRowLook, commandParts, projectName as shortProjectName, savedRowLook, thisWeekLine } from "./safetyNet.ts";
 import { WeekPart } from "./weekSummary.tsx";
 import { NumbersPart, SharePreview } from "./m88Panels.tsx";
@@ -362,7 +365,9 @@ function OnlineBox({ f, project, onClose, onCheckAgain, onLesson, dispatch, whyL
 // and the files it changed, and when on the right (the time today, else the day; history.ts historyDays). Undo is the
 // newest changing task's one action. A press on a row opens its save point's marks (Star, Name it) under the list. No
 // cost (F29). Empty: one row that says what will appear, with one action.
-function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice, shotFor }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined }) {
+function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = null, q, setQ, undoState: u, project, keepsMine, dispatch, focus, now, onAsk, onPractice, shotFor, reviewUndo = null, undoFor, askUndo }: { items: HistoryItem[]; reviews?: ReviewRowView[]; saved?: SavedRowView[]; asked?: AskedRowView[]; caught?: CaughtView | null; q: HistoryQuery; setQ: (q: HistoryQuery) => void; undoState: UndoState | null; project: string; keepsMine: boolean; dispatch: (e: { type: string; [k: string]: unknown }) => void; focus?: number | null; now: number; onAsk?: () => void; onPractice?: () => void; shotFor?: (checkpoint: string) => string | undefined;
+  /** M101: Put these files back on a review's row: the flow open now, how to draw it under a row, and the row's press. */
+  reviewUndo?: ReviewUndo | null; undoFor?: (batch: string, idBase: string) => ReactNode; askUndo?: (batch: string) => void }) {
   useEffect(() => { if (focus != null) document.getElementById(`history-${focus}`)?.scrollIntoView({ block: "center" }); }, [focus]);
   // M77: the week's count, one line under the lead, only when the setting is on and there is something (read on every render).
   const weekOn = useSetting("history.thisWeek") !== false;
@@ -444,8 +449,19 @@ function HistoryPanel({ items, reviews = [], saved = [], asked = [], caught = nu
             if (row.kind === "asked") { const x = row.x, l = askedRowLook(x); return (
               <ListRow key={`asked-${x.id}`} colour={l.tone} icon="shield" title={<>{l.lead} <code className="hist-cmd">{commandParts(l.command).map((w, i) => <Fragment key={i}>{i > 0 ? " " : ""}<span className={w.whole ? "hist-word" : undefined}>{w.text}</span></Fragment>)}</code></>} line={`${l.line} · ${agoWords(x.at, now)}`} fact={l.mark} />
             ); }
-            if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now); return (
-            <ListRow key={`review-${x.id}`} colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}<code className="hist-files">{l.files}</code></>} fact={l.mark} />
+            if (row.kind === "review") { const x = row.x, l = reviewRowLook(x, now);
+              // M101: Put these files back under the row, while its versions are kept; greyed, with why, once they are not.
+              const idBase = `${undoId}-review-${x.id}`, flow = reviewUndo && x.batch && reviewUndo.batch === x.batch && reviewUndo.where === "history" ? reviewUndo : null;
+              const offer = !!x.batch && !!project && !!askUndo && (x.undo === "ok" || x.undo === "gone");
+              const stepsAside = !!flow && flow.stage !== "refused";
+              return (
+              <Fragment key={`review-${x.id}`}>
+                <ListRow colour={l.tone === "good" ? "green" : l.tone === "bad" ? "red" : "orange"} icon={l.icon} title={l.name} line={<>{l.meta}{x.undo === "gone" ? ` · ${S.reviewUndo.goneLine}` : ""}<code className="hist-files">{l.files}</code></>}
+                  // One press on the right: with Put back there, the row's Review fact steps aside (the M101 review).
+                  fact={offer && !stepsAside ? undefined : l.mark}
+                  action={offer && !stepsAside ? { id: `${idBase}-row`, label: S.reviewUndo.rowButton, colour: "orange", disabled: x.undo === "gone", ariaLabel: x.undo === "gone" ? `${S.reviewUndo.button}: ${S.reviewUndo.goneLine}` : `${S.reviewUndo.button}: ${l.name}`, onClick: () => askUndo!(x.batch!) } : null} />
+                {flow && undoFor && <li className="ui-mrow hist-extra-row"><div className="hist-extra">{undoFor(x.batch!, idBase)}</div></li>}
+              </Fragment>
           ); }
             // M77: a saved copy before a destructive command of the person's own AI tool, with Undo (the shadow copy, never git).
             if (row.kind === "saved") { const x = row.x, l = savedRowLook(x, { running, undoing: !!u }); const backId = `${undoId}-saved-${x.id}`; return (
@@ -1295,17 +1311,33 @@ export function Card() {
   // M76: read on every render (a hook behind reviewOn && changed the hook order when the first review card came, and Home
   // stopped drawing: "Cannot read properties of null (reading 'getSnapshot')").
   const whenNothing = useSetting("review.whenNothing");
-  const quietBatch = reviewOn && closesQuietly(m.review, whenNothing) ? m.review!.batch : null;
+  const quietBatch = reviewOn && closesQuietly(m.review, whenNothing, m.reviewUndo) ? m.review!.batch : null;
   useEffect(() => {
     if (!quietBatch || !project) return;
     const t = setTimeout(() => {
-      if (nowModel.current.review?.batch !== quietBatch || !closesQuietly(nowModel.current.review, setting("review.whenNothing"))) return;
+      if (nowModel.current.review?.batch !== quietBatch || !closesQuietly(nowModel.current.review, setting("review.whenNothing"), nowModel.current.reviewUndo)) return;
       dispatch({ type: "ui.reviewDismissed", batch: quietBatch });
       void sendQuiet(reviewDismiss(project, quietBatch, "quiet")).catch(() => {});
     }, CLOSE_QUIETLY_MS);
     return () => clearTimeout(t);
   }, [quietBatch, project]);
+  // M101: Put these files back, for the card's batch or a History row's (one flow at a time, reviewUndo.ts).
+  const undoFlow = (batch: string, where: "card" | "history", idBase: string, flowOnly = false) => project ? (
+    <ReviewUndoPart u={m.reviewUndo ?? null} project={project} batch={batch} idBase={idBase} flowOnly={flowOnly}
+      onAsk={() => { dispatch({ type: "ui.reviewUndoAsked", project, batch, where }); void sendQuiet(lookCommand(project, batch)).catch(() => dispatch({ type: "ui.reviewUndoRefused" })); }}
+      onOverwrite={(on) => dispatch({ type: "ui.reviewUndoOverwrite", on })}
+      onYes={() => { const u = nowModel.current.reviewUndo; const c = u ? undoCommand(u) : null; if (!c) return; dispatch({ type: "ui.reviewUndoSent" }); void sendQuiet(c).catch(() => dispatch({ type: "ui.reviewUndoRefused" })); }}
+      onCancel={() => dispatch({ type: "ui.reviewUndoClosed" })}
+      // The card of a change put back no longer applies (the engine closed it too): Close takes it away with the flow.
+      onClose={() => { const u = nowModel.current.reviewUndo; dispatch({ type: "ui.reviewUndoClosed" }); if (where === "card" && u?.stage === "done") dispatch({ type: "ui.reviewDismissed", batch }); }} />
+  ) : null;
+  const practiceHere = !!m.practice && !!project && m.practice.project === project;
+  // M101: the card's files were put back from the card: its findings step aside, and the waiting item in the side goes.
+  const undoneHere = !!m.review && m.reviewUndo?.where === "card" && m.reviewUndo.batch === m.review.batch && m.reviewUndo.stage === "done";
   const reviewHandlers = {
+    undoPart: m.review && undoOffered(m.review, practiceHere) ? undoFlow(m.review.batch, "card", "home-review-undo") : undefined,
+    undoTook: !!m.review && m.reviewUndo?.where === "card" && m.reviewUndo.batch === m.review.batch && m.reviewUndo.stage !== "refused",
+    undoDone: undoneHere,
     // M76: Circle it on a Walk me through it step: Point at the problem's own ring on that line, on the person's press.
     onPoint: (st: TourStep) => { const r = nowModel.current.review; if (r && project && st.line && st.lineText) pointAt(pointChange(project, { file: st.file, line: st.line, lineText: st.lineText }, st.what)); },
     onReview: (proof: boolean) => {
@@ -2701,7 +2733,7 @@ export function Card() {
         onSettings={() => { openOut(); gear(); }} onExpand={() => { openOut(); pickTab("now"); }} />}
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
-        onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} counts={reviewOn && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}
+        onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn && !undoneHere ? m.review : null} onReview={openReview} counts={reviewOn && !undoneHere && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}
         tools={project ? sideTools(m, doneTools) : null} onTool={(g) => { if (g.then?.set) { setSetPlace(g.then.set); pickTab("settings"); } else pickTab("now"); }} />}
       <div className="sr" role="status" aria-live="polite" aria-atomic="true">{news}</div>
       {!onboarded && <PartBoundary part="firstRun"><Onboarding doctor={m.doctor} connected={m.connected} keyTested={m.keyTested} project={project} send={send} pickFolder={pickFolder} startPractice={beginPractice} onDone={finishOnboarding}
@@ -3726,7 +3758,8 @@ export function Card() {
           </Group>
         </section>
       )}
-      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined}
+      {show("history") && <HistoryPanel items={project ? m.history : []} reviews={project ? m.reviewHistory ?? [] : []} saved={project ? m.savedRows ?? [] : []} asked={project ? m.askedRows ?? [] : []} caught={project ? m.caught ?? null : null} q={historyQ} setQ={setHistoryQ} undoState={m.undo} project={project} keepsMine={keepsMine} dispatch={dispatch} focus={historyFocus}
+        reviewUndo={m.reviewUndo ?? null} undoFor={(batch, idBase) => undoFlow(batch, "history", idBase, true)} askUndo={(batch) => { if (!project) return; dispatch({ type: "ui.reviewUndoAsked", project, batch, where: "history" }); void sendQuiet(lookCommand(project, batch)).catch(() => dispatch({ type: "ui.reviewUndoRefused" })); }} now={clock} onAsk={() => { pickTab("now"); setTimeout(() => box.current?.focus(), 0); }} onPractice={groups.groupOn("guide") ? () => beginPractice(FIRST_PRACTICE) : undefined}
         shotFor={(cp) => (m.receipt?.checkpoint === cp && !m.receipt.undone ? m.receipt.visual?.image : undefined)} />}
       {/* F28: watch routines start off, so the fold stays away until they are on or this folder already has watches. */}
       {show("watch") && project && groups.on("watch") && (routinesOn || watchesOf(m.watches, project).length > 0) && (

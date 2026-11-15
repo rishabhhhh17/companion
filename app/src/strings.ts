@@ -1813,6 +1813,50 @@ export const S = {
   // M58 (shortlist 3): the fixed shape of every finding (findingShape.ts). One readiness line, three levels, four short parts.
   // Fixed sentences per kind: no model writes them, none names a value or another tool, and there is no number score.
   // What is wrong is the kind's headline (homeNow.reviewHead); what it means for you is its second half, unless said here.
+  // M101: Put these files back, on a review's card and its row in History (reviewUndo.ts decides, reviewUndoPart.tsx draws).
+  reviewUndo: {
+    button: "Put these files back",
+    help: "Puts back only the files this change touched, the way they were before it. It asks first.",
+    looking: "Checking which files can go back…",
+    sure: (n: number) => (n === 1 ? "This puts 1 file back the way it was before this change." : `This puts ${n} files back the way they were before this change.`),
+    /** Every file of the change was changed again since: nothing goes back until Put those back too. */
+    onlyLater: "Nothing goes back unless you tick Put those back too.",
+    filesLabel: "Files that go back",
+    later: (n: number) => (n === 1 ? "1 file was changed again after this change, so it stays as you have it:" : `${n} files were changed again after this change, so they stay as you have them:`),
+    laterToo: "Put those back too",
+    laterOn: "Those go back too. Your versions are kept in the recovery folder first.",
+    laterOff: "Keep mine",
+    env: (names: string) => `Settings and key files (${names}) are not put back. A review keeps no copy of them.`,
+    cannot: (names: string) => `These stay as they are, because they cannot be put back safely: ${names}.`,
+    commitBefore: "A commit was made in Git since this change began. Putting files back does not change Git, so the commit stays.",
+    yes: "Put them back",
+    no: "Keep them",
+    working: "Putting the files back…",
+    done: (n: number) => (n === 1 ? "1 file is back the way it was." : `${n} files are back the way they were.`),
+    doneKept: (names: string) => `Left as you have them: ${names}.`,
+    doneSaved: "Your later versions are in the recovery folder.",
+    commitAfter: "The files are back, but the commit stays in Git. To take the commit back too, run this in Terminal in your project folder:",
+    commitNote: `Only if your AI tool made just one commit. ${PRODUCT} never runs it.`,
+    /** The command shown when a commit was made (runner/src/review/gitcommit.ts UNDO_COMMIT_COMMAND). Never run by Squibby. */
+    command: "git reset HEAD~1",
+    copy: "Copy the command",
+    close: "Close",
+    doneMark: "Files put back",
+    /** On the card once its files are back: its findings were about files that are now as before. */
+    noLongerApplies: "The files are back as they were, so this review's findings no longer apply.",
+    goneLine: "The copy from before is gone.",
+    /** History's row says it in two words; VoiceOver hears the whole button with the row's name. */
+    rowButton: "Put back",
+    why: {
+      open: "Review these changes first. Then you can put their files back.",
+      writing: "Your AI tool is still changing files. Stop it first, then press this again.",
+      busy: `${PRODUCT} is working on this project right now. Wait for it to finish, then try again.`,
+      gone: "The copy from before this change is no longer kept, so its files cannot be put back.",
+      done: "These files were already put back.",
+      nothing: "None of these files can be put back. They stay as they are.",
+      failed: "That did not finish. Try again.",
+    } as Record<string, string>,
+  },
   finding: {
     ready: { ready: "Ready", check: (n: number) => (n === 1 ? "Check this 1 thing" : `Check these ${n} things`), notSafe: "Not safe yet" },
     readyLine: { ready: "Nothing was found, and the checks passed.", check: "Nothing blocks it. Look at these before you go on.", notSafe: "Fix these before you share or ship this." } as Record<"ready" | "check" | "notSafe", string>,

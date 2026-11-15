@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import { RULES_FILE } from "./rules.ts";
 import { PRODUCT } from "./names.ts";
+import { isEnvFile } from "./secretfiles.ts";
 
 export type Skipped = { path: string; reason: string };
 export type Checkpoint = { id: string; commit: string; label: string; files: number; skipped: Skipped[]; createdAt: string; envFiles: string[] };
@@ -48,6 +49,22 @@ export type LineCount = { added: number; removed: number; was?: number };
 /** A file that lost at least this many lines has its old length read, to tell a rewrite from an edit. */
 export const REWRITE_MIN_LINES = 40;
 export class UndoOneError extends Error { constructor(message: string, readonly safetyCheckpoint?: string) { super(message); } }
+/** M101: putting back one batch of another tool's changes (review/service.ts). */
+export type BatchPlan = { files: string[]; later: string[]; env: string[]; cannot: string[] };
+export type UndoBatchResult = { safetyCheckpoint: string; reverted: string[]; kept: string[]; saved: string[]; savedTo: string; env: string[]; cannot: string[] };
+type Why = Record<"later" | "link" | "big" | "unsaved" | "git" | "nocopy", string[]>;
+type Classified = { changed: Changed[]; env: string[]; why: Why };
+function batchPlanOf(c: Classified): BatchPlan {
+  const later = new Set(c.why.later), cannot = new Set([...c.why.link, ...c.why.big, ...c.why.unsaved, ...c.why.git]);
+  // A settings or key file (.env and the like) is never put back: a review's version keeps only a hash of it.
+  const all = c.changed.map((x) => x.file), files = all.filter((f) => !isEnvFile(f));
+  return {
+    files: files.filter((f) => !later.has(f) && !cannot.has(f)),
+    later: files.filter((f) => later.has(f) && !cannot.has(f)),
+    env: [...new Set([...c.env, ...all.filter((f) => isEnvFile(f))])].sort(),
+    cannot: files.filter((f) => cannot.has(f)),
+  };
+}
 const MAX_UNDO_ONE_FILES = 1000;
 
 const MAX_NEW_FILE_BYTES = 2 * 1024 * 1024;
@@ -321,6 +338,22 @@ export class CheckpointStore {
   /** Undo only that task: save the project first (so this is undoable too), check again against that, then put back only the
    *  files that task changed. Refuses, changing nothing, if later work changed any of them. */
   undoOne(fromId: string, toId: string, label: string): Promise<UndoOneResult> { return this.serial(() => this.undoOneNow(fromId, toId, label)).catch((e) => { throw e instanceof UndoOneError ? e : friendly(e); }); }
+  /** M101: whether a saved version is still kept (it may have been cleaned up under the cap). Reads only. */
+  has(id: string): boolean { try { return CHECKPOINT_ID.test(id) && this.refs().some((r) => r.id === id); } catch { return false; } }
+  /** M101: a saved version's facts (when it was made), or null when it is not kept. Reads only. */
+  info(id: string): Checkpoint | null { try { return this.has(id) ? this.readMeta(id) : null; } catch { return null; } }
+  /** M101: what putting back one batch of another tool's changes (from..to) would do against the project as saved in nowId.
+   *  Writes nothing. files: what would come back; later: the batch's files changed again since (left alone unless named);
+   *  env: .env files it changed (never put back); cannot: files that cannot be written safely. */
+  batchPlan(fromId: string, toId: string, nowId: string): Promise<BatchPlan> {
+    return this.serial(async () => { const c = await this.classifyNow(fromId, toId, nowId); return batchPlanOf(c); });
+  }
+  /** M101: put back only the files one batch changed, from its own version before. A safety copy first. A file changed
+   *  again since is left as it is unless it is in `overwrite`; then the person's version is copied to the recovery folder
+   *  first. Never a .env file, a file behind a link, or one with no saved copy. Never the whole project. */
+  undoBatch(fromId: string, toId: string, label: string, overwrite: string[]): Promise<UndoBatchResult> {
+    return this.serial(() => this.undoBatchNow(fromId, toId, label, overwrite)).catch((e) => { throw friendly(e); });
+  }
 
   // ---------- git plumbing ----------
 
@@ -1187,7 +1220,8 @@ export class CheckpointStore {
     try { return readFileSync(join(this.metaPath(id), "env", rel)); } catch { return null; }
   }
 
-  private async planOneNow(fromId: string, toId: string, nowId: string): Promise<UndoOnePlan> {
+  /** What one change (fromId..toId) touched, and why each file could not be put back on its own against nowId. Writes nothing. */
+  private async classifyNow(fromId: string, toId: string, nowId: string): Promise<Classified> {
     const a = this.readMeta(fromId), b = this.readMeta(toId), c = this.readMeta(nowId);
     if (!a || !b || !c) throw new Error(`Unknown checkpoint: ${!a ? fromId : !b ? toId : nowId}`);
     // What the task changed, with each file's kind (an ordinary file, a link, a folder with its own history).
@@ -1212,7 +1246,7 @@ export class CheckpointStore {
     const big = new Set(files.filter((x) => String(x.reason ?? "").startsWith("over 2 MiB")).map((x) => x.path));
     const unsaved = new Set(files.map((x) => x.path).filter((p) => !big.has(p)));
     const ownGit = all.filter((x) => x.path.endsWith("/")).map((x) => x.path);
-    const why: Record<"later" | "link" | "big" | "unsaved" | "git" | "nocopy", string[]> = { later: [], link: [], big: [], unsaved: [], git: [], nocopy: [] };
+    const why: Why = { later: [], link: [], big: [], unsaved: [], git: [], nocopy: [] };
     const blocked = (rel: string): keyof typeof why | null => {
       if (later.has(rel)) return "later";
       if (big.has(rel)) return "big";
@@ -1236,6 +1270,12 @@ export class CheckpointStore {
       if (a.envFiles.includes(rel) && !this.envCopy(fromId, rel)) { why.nocopy.push(rel); continue; }
       try { if (this.hasLinkOnTheWay(this.inProject(rel)) || lstatSync(join(this.projectDir, rel)).isSymbolicLink()) why.link.push(rel); } catch { /* not there now: fine */ }
     }
+    return { changed, env, why };
+  }
+
+  private async planOneNow(fromId: string, toId: string, nowId: string): Promise<UndoOnePlan> {
+    const { changed, env, why } = await this.classifyNow(fromId, toId, nowId);
+    const c = this.readMeta(nowId)!;
     const conflicts = [...new Set([...why.later, ...why.link, ...why.big, ...why.unsaved, ...why.git, ...why.nocopy])].sort();
     const names = (l: string[]) => (l.length <= 5 ? l.join(", ") : `${l.slice(0, 5).join(", ")} and ${l.length - 5} more`);
     const are = (l: string[]) => (l.length === 1 ? "is" : "are");
@@ -1306,5 +1346,46 @@ export class CheckpointStore {
       }
     } catch { /* the next task's end saves it again */ }
     return { safetyCheckpoint: safety.id, reverted: plan.changed.map((x) => x.file), env: plan.env };
+  }
+
+  // ---------- M101: put back one batch of another tool's changes ----------
+
+  private async undoBatchNow(fromId: string, toId: string, label: string, overwrite: string[]): Promise<UndoBatchResult> {
+    const a = this.readMeta(fromId);
+    if (!a || !this.readMeta(toId)) throw new Error(`Unknown checkpoint: ${!a ? fromId : toId}`);
+    // The project exactly as it is now, so this put back can itself be undone, and what the check below compares with.
+    const safety = await this.snapshotNow(`Before putting back a reviewed change: ${label.slice(0, 60)}`);
+    const plan = batchPlanOf(await this.classifyNow(fromId, toId, safety.id));
+    const kinds = new Map((await this.diffNow(fromId, toId)).map((c) => [c.file, c.kind]));
+    const yes = new Set(overwrite);
+    const aside = join(this.shadowDir, "recovered", safety.id);
+    const kept: string[] = [], saved: string[] = [];
+    let budget = this.recoveryBudget;
+    // A file changed again since: the person's version is kept aside first, or the file stays as it is.
+    for (const rel of plan.later) {
+      if (!yes.has(rel)) { kept.push(rel); continue; }
+      let abs: string, st;
+      try { abs = this.inProject(rel); st = lstatSync(abs); } catch { st = null; abs = ""; }
+      if (st && (!st.isFile() || st.size > budget)) { kept.push(rel); continue; }
+      if (st) { const copy = join(aside, rel); mkdirSync(dirname(copy), { recursive: true }); copyFileSync(abs, copy); budget -= st.size; }
+      saved.push(rel);
+    }
+    const take = [...plan.files, ...saved];
+    const back = take.filter((f) => kinds.get(f) !== "added");
+    const added = take.filter((f) => kinds.get(f) === "added");
+    if (back.length) {
+      const idx = this.tmpIndex();
+      try {
+        await this.git(["read-tree", a.commit], { index: idx });
+        await this.git(["checkout-index", "-f", "--", ...back], { index: idx });
+      } finally { rmSync(idx, { force: true }); }
+    }
+    for (const rel of added) { try { this.removeWithEmptyDirs(this.inProject(rel)); } catch { /* already gone */ } }
+    // What our work left now includes the files put back, so they are not taken for the person's own edits later.
+    try {
+      const base = this.readOwn().baseline;
+      if (base && take.length) { const tree = await this.retree(base.tree, take); this.updateOwn((own) => { if (own.baseline) own.baseline = { tree, env: own.baseline.env, big: own.baseline.big }; }); }
+    } catch { /* the next task's end saves it again */ }
+    return { safetyCheckpoint: safety.id, reverted: take.sort(), kept, saved, savedTo: aside, env: plan.env, cannot: plan.cannot };
   }
 }

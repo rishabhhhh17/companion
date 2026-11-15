@@ -1065,7 +1065,8 @@ mod tests {
             seen.push(t);
         }
         seen.sort(); seen.dedup();
-        assert_eq!(seen, ["review.dismiss", "review.fix", "review.now"]);
+        // M101: Put these files back (its look and its yes), for the chosen folder only too.
+        assert_eq!(seen, ["review.dismiss", "review.fix", "review.now", "review.undo", "review.undoPlan"]);
     }
     #[test]
     fn the_review_events_in_the_shared_fixtures_are_whole_lines_the_shell_can_route() {
@@ -1089,7 +1090,8 @@ mod tests {
         kinds.sort(); kinds.dedup();
         // M57: review.recheck says which reasons of an earlier review no longer hold after a newer change.
         // M86: review.replay is the model's replay, sent after review.result (which never waits for it).
-        assert_eq!(kinds, ["review.batch", "review.recheck", "review.replay", "review.result", "review.started"]);
+        // M101: review.undoPlan and review.undone, Put these files back's look and its result.
+        assert_eq!(kinds, ["review.batch", "review.recheck", "review.replay", "review.result", "review.started", "review.undoPlan", "review.undone"]);
     }
     #[test]
     fn your_turn_may_be_asked_for_by_a_page_and_only_for_the_chosen_project() {

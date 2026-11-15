@@ -23,7 +23,7 @@ import { commandsWhere } from "../../../protocol/commands.ts";
 import { join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
 import { kindOfReason } from "../memory/learned.ts";
-import { reviewModeOf, reviewSilenced, type Command, type LearnedKind, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
+import { REVIEW_UNDO_WHY, reviewModeOf, reviewSilenced, type Command, type LearnedKind, type REVIEW_AWAY, type ReviewChecks, type ReviewKeyPlace, type ReviewRating, type ReviewStrictness, type ReviewTouch } from "../../../protocol/index.ts";
 import { loadRules } from "../rules.ts";
 import { NEEDS_GIT, type Checkpoint, type CheckpointStore } from "../checkpoints.ts";
 import type { FastLike } from "../lanes.ts";
@@ -49,6 +49,7 @@ import { claimedPassedReason, hasGitRemote, untoldOf, weakenedChecks, withPushRi
 import { changedPackages, isManifest } from "./packages.ts";
 import { PACKAGE_NOTES, packageReasons, type PackageLookup } from "./osv.ts";
 import { dirname as dirOf } from "node:path";
+import { committedSince } from "./gitcommit.ts";
 
 /** The commands whose work can write in the project (a task, a plan, Undo, an install, a check or a ship step that builds
  *  it, the shared memory files): main.ts wraps each in around(), so nothing they change is ever counted as the other
@@ -71,7 +72,7 @@ export function withOpenPages<T extends { rating: ReviewRating; reasons: Reason[
   return { ...rated, rating: rated.rating === "safe" ? "worth_a_look" : rated.rating, reasons: [...rated.reasons, ...add] };
 }
 type AgentStart = Extract<Command, { type: "agent.start" }>;
-type ReviewCmd = Extract<Command, { type: "review.now" | "review.dismiss" | "review.fix" }>;
+type ReviewCmd = Extract<Command, { type: "review.now" | "review.dismiss" | "review.fix" | "review.undoPlan" | "review.undo" }>;
 
 export type ReviewDeps = {
   /** Says an event; the caller adds v, id and ts. */
@@ -120,15 +121,22 @@ export type ReviewDeps = {
 };
 /** M57 feature 1: a review's row in History. Names of files only, never their text (TaskLog.addReview keeps nothing else). */
 export type ReviewHistory = {
-  add(row: { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string; kinds?: string[] }): void;
+  add(row: { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string; kinds?: string[]; from?: string; to?: string; began?: number }): unknown;
   did(project: string, batch: string, did: "looks_fine" | "sent_back" | "fix" | "no_longer_applies" | "closed_quietly"): void;
+  /** M101: a review's two versions after the card closed or the engine restarted, and the link record of its put back. */
+  points?(project: string, batch: string): { from: string; to: string; undoneBy: string | null; began?: number | null } | null;
+  undone?(project: string, batch: string, safety: string): void;
+  /** M101: the versions the newest reviews point at, kept from pruning so History can still put them back. */
+  recent?(project: string, n: number): string[];
 };
 
 type Away = (typeof REVIEW_AWAY)[number];
 /** away: the batch of changes made while the engine was closed or not watching (must fix 8). It never grows (it is frozen
  *  from the start, so a later save waits and becomes its own batch once this one is closed), it is never reviewed by
  *  itself, and its project's checks and scripts run only when the person asks for them. */
-type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away };
+/** began (M101): when the batch's first change was written (ms), for the commit check: never the starting point's time,
+ *  which can be hours older than the change. */
+type Batch = { id: string; project: string; from: string; to: string; files: FileChange[]; count: number; capped: boolean; secretFiles: string[]; frozen: boolean; away?: Away; began?: number };
 /** Changes of the other tool set aside while the engine's own work, a review or an earlier batch was in the way: said as
  *  their own batch once that is over. to: null while the engine's work still runs. only: the files that are the other
  *  tool's (null: every file from..to). quiet: wait for the folder to be quiet first. stops: Stop everything's count when
@@ -163,6 +171,8 @@ const pendingOwn = (store: CheckpointStore, from: string | null): PendingOwn | n
 const LABEL_START = "Review: the starting point";
 const LABEL_BATCH = "Review: the changes to look at";
 const LABEL_AFTER = `Review: after ${PRODUCT_S} own work`;
+const LABEL_UNDO_LOOK = "Review: before putting files back";
+type UndoWhy = (typeof REVIEW_UNDO_WHY)[number];
 /** M74: the card's note when the person chose Checks only for what a review may send. */
 export const CHECKS_ONLY = "You chose to send nothing to Claude for reviews, so these are the rules' own words.";
 const OFF_REASON = "Reviews of changes are off. Turn them on in Settings.";
@@ -178,6 +188,24 @@ const NO_COPY = `${PRODUCT} could not keep a copy of this project to compare wit
 const FULL = `Reviews of changes are paused for this project: ${PRODUCT_S} undo history for it is full (over 2 GB). Older undo points are removed as new ones are made, and reviews start again by themselves when there is room. Changes made meanwhile are not reviewed.`;
 /** The review's own versions kept from pruning (must fix 26), besides those of the open and the reviewed batches. */
 const KEEP_MADE = 20;
+/** M101: a newer change waiting to be reviewed that is younger than this means the tool may still be at work. */
+const STILL_WRITING_MS = 60_000;
+/** M101: the most changed files whose time is read to tell when a batch began. */
+const BEGAN_FILES = 200;
+/** M101: when a batch's first change was written: the oldest time among its files still there (their times only, read, never
+ *  their text), never before its starting point. With none to read (every file removed), now. */
+function firstWrite(store: CheckpointStore, project: string, from: string, files: FileChange[]): number {
+  const floor = Date.parse(store.info(from)?.createdAt ?? "");
+  let min = Infinity;
+  for (const f of files.slice(0, BEGAN_FILES)) {
+    if (f.kind === "deleted") continue;
+    try { const st = lstatSync(join(project, f.file)); if (st.isFile() && st.mtimeMs < min) min = st.mtimeMs; } catch { /* gone since */ }
+  }
+  if (!Number.isFinite(min)) return Date.now();
+  return Number.isFinite(floor) ? Math.max(floor, min) : min;
+}
+/** M101: how many of the newest reviews keep their two versions for Put these files back in History. */
+const KEEP_FOR_UNDO = 10;
 
 const later = <T>(p: Promise<T>, ms: number, signal: AbortSignal): Promise<T> => new Promise<T>((ok, no) => {
   if (signal.aborted) { no(new Error("stopped")); return; }
@@ -276,6 +304,8 @@ export class ReviewService {
   /** Projects watched before in this run of the engine: changes found when one is watched again were made while it was not
    *  watched (another project was open, or reviews were off), not while the engine was closed. */
   private watchedBefore = new Set<string>();
+  /** M101: batches put back in this run of the engine (the task log's record is the lasting one). */
+  private putBack = new Set<string>();
   constructor(private deps: ReviewDeps) {}
 
   /** A version for the review: it only needs to tell whether a .env file changed, so it keeps a salted hash of it, never a
@@ -288,6 +318,8 @@ export class ReviewService {
     const out = [...this.made];
     if (this.watching) { try { const st = this.deps.store(this.watching), n = st.note(PENDING); if (n) out.push(n); const own = pendingOwn(st, n); if (own) out.push(own.after); } catch { /* none */ } }
     for (const b of [this.open, ...[...this.reviewed.values()].map((r) => r.batch)]) if (b) out.push(b.from, b.to);
+    // M101: the newest reviews' versions, so Put these files back still works from History.
+    if (this.watching) { try { out.push(...(this.deps.history?.recent?.(this.watching, KEEP_FOR_UNDO) ?? [])); } catch { /* a nicety */ } }
     return out;
   }
   /** The store is full: nothing is measured or saved, and it is said once. False when there is room. */
@@ -616,7 +648,9 @@ export class ReviewService {
     }
     // Must fix 8 (review finding, 4 Nov 2026): a batch from while away is frozen from the start, so measure never grows it
     // with a later save (which used to drop its mark and, in Automatic, review the evening's changes by themselves).
-    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > this.maxFiles(), secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}) };
+    // M101: when its first change was written; a batch that grows keeps the earliest.
+    const began = Math.min(old && old.from === from && old.began ? old.began : Infinity, firstWrite(store, p, from, files));
+    const b: Batch = { id: `rv_${randomBytes(5).toString("hex")}`, project: p, from, to, files, count: files.length, capped: capped || files.length > this.maxFiles(), secretFiles: files.filter((f) => isEnvFile(f.file)).map((f) => f.file), frozen: frozen || !!away, ...(away ? { away } : {}), began };
     this.open = b;
     if (!store.note(PENDING)) { store.setNote(PENDING, from); store.setNote(PENDING_OWN, null); }
     // A safe review whose card this newer batch replaces on the page can never be closed there: its History row says so.
@@ -705,6 +739,8 @@ export class ReviewService {
 
   async handle(cmd: ReviewCmd): Promise<void> {
     if (cmd.type === "review.now") return this.reviewNow(cmd);
+    if (cmd.type === "review.undoPlan") return this.undoPlan(cmd);
+    if (cmd.type === "review.undo") return this.undo(cmd);
     if (cmd.type === "review.dismiss") {
       const b = this.open?.id === cmd.batch ? this.open : this.reviewed.get(cmd.batch)?.batch;
       // M57 feature 1: a review that ran was closed: Looks fine, or after Copy for my AI. A skipped batch has no row.
@@ -792,6 +828,76 @@ export class ReviewService {
     this.reviewed.delete(cmd.batch);
     // An ordinary task: it keeps a safety copy first and can be undone, like every fix. The plan gate admits it in main.ts.
     await this.deps.fix({ v: 1, id: cmd.id, type: "agent.start", project: cmd.project, agent: cmd.agent, mode: "drive", prompt: fixPrompt(rec.words), model: cmd.model, budgetUsd: cmd.budgetUsd });
+  }
+
+  // ---------- M101: Put these files back ----------
+
+  /** The batch's two versions, or why it cannot be put back now. Only a closed batch (reviewed): the open one may still
+   *  grow. Not while the other tool is still writing (changes not quiet yet), nor while Squibby's own work is in the folder. */
+  private undoable(project: string, batch: string): { p: string; store: CheckpointStore; from: string; to: string; began: number | null } | { why: UndoWhy } {
+    let p: string;
+    try { p = resolve(project); } catch { return { why: "gone" }; }
+    if (this.open?.id === batch && !this.reviewed.has(batch)) return { why: "open" };
+    const rec = this.reviewed.get(batch);
+    let pts: { from: string; to: string; undoneBy: string | null; began?: number | null } | null = null;
+    try { pts = this.deps.history?.points?.(p, batch) ?? null; } catch { pts = null; }
+    if (pts?.undoneBy || this.putBack.has(batch)) return { why: "done" };
+    const from = rec?.batch.project === p ? rec.batch.from : pts?.from, to = rec?.batch.project === p ? rec.batch.to : pts?.to;
+    if (!from || !to) return { why: "gone" };
+    if (p === this.watching && this.batcher && this.batcher.waiting() > 0) return { why: "writing" };
+    if (this.ownOf(p) > 0 || this.deps.busy?.(p) === true || this.reviewing) return { why: "busy" };
+    let store: CheckpointStore;
+    try { store = this.deps.store(p); } catch { return { why: "gone" }; }
+    // A newer change is open and not reviewed, and it is moments old: the tool may only have paused for longer than the
+    // quiet time, and still be at work (the M101 review). An older open one is the person's to review, not a tool writing.
+    const o = this.open;
+    if (p === this.watching && o && o.id !== batch && o.project === p && !this.reviewed.has(o.id)) {
+      const at = Date.parse(store.info(o.to)?.createdAt ?? "");
+      if (!Number.isFinite(at) || Date.now() - at < STILL_WRITING_MS) return { why: "writing" };
+    }
+    if (!store.has(from) || !store.has(to)) return { why: "gone" };
+    const began = rec?.batch.project === p ? rec.batch.began ?? null : pts?.began ?? null;
+    return { p, store, from, to, began };
+  }
+  /** M101: what Put these files back would do. Writes nothing in the project: one shadow snapshot of it as it is now. */
+  private async undoPlan(cmd: Extract<ReviewCmd, { type: "review.undoPlan" }>): Promise<void> {
+    const no = (why: UndoWhy) => this.deps.emit({ type: "review.undoPlan", project: cmd.project, batch: cmd.batch, ok: false, why });
+    const u = this.undoable(cmd.project, cmd.batch);
+    if ("why" in u) { no(u.why); return; }
+    try {
+      const now = await this.snap(u.store, LABEL_UNDO_LOOK);
+      const plan = await u.store.batchPlan(u.from, u.to, now.id);
+      if (!plan.files.length && !plan.later.length) { no("nothing"); return; }
+      this.deps.emit({ type: "review.undoPlan", project: cmd.project, batch: cmd.batch, ok: true, files: plan.files.slice(0, SHOWN_FILES), count: plan.files.length, later: plan.later.slice(0, SHOWN_FILES), env: plan.env.slice(0, 20), cannot: plan.cannot.slice(0, SHOWN_FILES), committed: this.committed(u) });
+    } catch { no("failed"); }
+  }
+  /** M101: the person's yes. Only that batch's files, from its own version before, as the engine's own work (so it is never
+   *  reviewed as the other tool's change). A file changed again since stays unless the person named it in overwrite. */
+  private async undo(cmd: Extract<ReviewCmd, { type: "review.undo" }>): Promise<void> {
+    const no = (why: UndoWhy) => this.deps.emit({ type: "review.undone", project: cmd.project, batch: cmd.batch, ok: false, why, reverted: [] });
+    if ((cmd as { confirm?: unknown }).confirm !== true) { no("failed"); return; }
+    const u = this.undoable(cmd.project, cmd.batch);
+    if ("why" in u) { no(u.why); return; }
+    let settle!: () => void;
+    this.around(u.p, new Promise<void>((r) => { settle = r; }), "review.undo");
+    try {
+      const committed = this.committed(u);
+      const r = await u.store.undoBatch(u.from, u.to, cmd.batch, Array.isArray(cmd.overwrite) ? cmd.overwrite.filter((f) => typeof f === "string") : []);
+      if (!r.reverted.length) { no("nothing"); return; }
+      this.putBack.add(cmd.batch);
+      try { this.deps.history?.undone?.(u.p, cmd.batch, r.safetyCheckpoint); } catch { /* the record is a nicety */ }
+      // The card of a review that was put back no longer applies: its reasons were about files that are back as they were.
+      const rec = this.reviewed.get(cmd.batch);
+      if (rec) { this.reviewed.delete(cmd.batch); this.said(rec.batch, "no_longer_applies"); }
+      this.deps.emit({ type: "review.undone", project: cmd.project, batch: cmd.batch, ok: true, reverted: r.reverted, kept: r.kept, saved: r.saved, env: r.env, cannot: r.cannot, committed, safety: r.safetyCheckpoint });
+    } catch { no("failed"); }
+    finally { settle(); }
+  }
+  /** A commit was made in the person's git since the batch began: only where HEAD points and when it moved (gitcommit.ts). */
+  private committed(u: { p: string; store: CheckpointStore; from: string; began: number | null }): boolean {
+    // When the batch's first change was written; only a review kept before that was known falls back to its starting point.
+    const at = u.began ?? Date.parse(u.store.info(u.from)?.createdAt ?? "");
+    return Number.isFinite(at) && committedSince(u.p, at);
   }
 
   /** The project's memory lines, for "do not flag" (M57 feature 7). None when they cannot be read. */
@@ -999,7 +1105,7 @@ export class ReviewService {
       });
       if (sheet && this.deps.setting("replay.model") === true && !rulesOnly && !checksOnly) void this.replayByModel(b, sheet, abort.signal, gen);
       // M57 feature 1: one row in the task log. Names of files only, the summary with secrets hidden; no file text.
-      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))] }); } catch { /* the row is a nicety */ }
+      try { this.deps.history?.add({ project: b.project, batch: b.id, at: new Date().toISOString(), files: b.files.map((f) => f.file).slice(0, 20), count: b.count, rating: shown.rating, touches, checks, summary: clip(redact(summary), 400), kinds: [...new Set(shown.reasons.map((r) => r.kind))], from: b.from, to: b.to, ...(b.began ? { began: b.began } : {}) }); } catch { /* the row is a nicety */ }
       const rechecks = shown.reasons.map((r) => recheckOf(r, { b, added, stillUsed, open }));
       this.reviewed.set(b.id, { batch: b, words: review, rechecks, fixed: new Set(), kinds: shown.reasons.map((r) => r.kind), at: Date.now() });
       // The oldest go first, but a review that found something may still be the card on the page (newer ones wait behind

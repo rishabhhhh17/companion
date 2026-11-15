@@ -358,6 +358,8 @@
 .home .panel.notice { padding: var(--space-3); }
 /* Item 15: red on a dark room's card is the lighter red, so it reads there (4.8 to 5.3 to 1); White keeps its own red. */
 .home .btn.danger { color: var(--bad-room); border-color: color-mix(in srgb, var(--bad-room) 45%, transparent); }
+/* M101: a danger press that waits (Put them back until Put those back too is ticked) looks waiting, not red. */
+.home .btn.danger:disabled { color: var(--ink-disabled); border-color: transparent; }
 /* Item 11: a review at work has the live dot, as a job's thread does. */
 .review-busy { display: flex; align-items: center; gap: var(--space-2); }
 .review-busy::before { content: ""; flex: none; width: 6px; aspect-ratio: 1; border-radius: var(--r-round); background: var(--mark-line); animation: live-dot var(--loop-live) var(--ease-loop) infinite; }

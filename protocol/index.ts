@@ -350,7 +350,13 @@ export type ReviewNow = Envelope & { type: "review.now"; project: string; batch?
 export const REVIEW_CLOSED_HOW = ["looksFine", "sentBack", "quiet"] as const;
 export type ReviewDismiss = Envelope & { type: "review.dismiss"; project: string; batch: string; how?: (typeof REVIEW_CLOSED_HOW)[number] };
 export type ReviewFix = Envelope & { type: "review.fix"; project: string; batch: string; agent: string; model: string; budgetUsd: number };
-export type Command = ReviewNow | ReviewDismiss | ReviewFix | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
+// M101: Put these files back, on a review that ran (the card, or its row in History). review.undoPlan only looks (one shadow
+// snapshot of the folder as it is now) and says what would come back; review.undo is the person's yes, and puts back only
+// that batch's files from its own version before. overwrite: files changed again after the batch that the person said to
+// put back too (their version is kept in the recovery folder first). Never the whole project, never a .env file, never git.
+export type ReviewUndoPlan = Envelope & { type: "review.undoPlan"; project: string; batch: string };
+export type ReviewUndo = Envelope & { type: "review.undo"; project: string; batch: string; confirm: true; overwrite?: string[] };
+export type Command = ReviewNow | ReviewDismiss | ReviewFix | ReviewUndoPlan | ReviewUndo | PlanState | WatchAdd | WatchList | WatchRemove | WatchPause | WatchCheck | WatchFix | WhereWasI | SettingsApply | EngineWarm | BisectStart | BisectUndo | ErrorExplain | SecondLookCheck | TeachTry | TeachCheck | SpendingShow | SpendingSet | BrowserCheck | BrowserInstall | MetricsSet | MetricsNote | MetricsShow | MetricsErase | WalkList | WalkStart | WalkActed | WalkAnswer | WalkSkip | WalkStop | DiagramAsk | ProjectInspect | ProjectInstall | ProjectClone | ProblemFind | DoctorCheck | AuthCheck | MemoryAdd | AssistImage | ShipPreview | ShipLive | ShipRollback | RecapAsk | ExplainSet | MemoryAgents | MemoryList | MemoryForget | MemoryEdit | MemoryPause | MemoryErase | MemoryExport | MemoryRestore | RunnerPing | GoogleAccounts | ShipCheck | ResearchAsk | RescueDiagnose | DrivePause | DriveResume | LoopChoose | DrivePlan | DriveApprove | TasksList | AssistPrompt | AssistLocate | AssistCancel | AgentStart | AgentSend | AgentInterrupt | AgentInterruptAll | ApprovalResolve | CheckpointRestore | CheckpointPutBack | CheckpointMark | ShipSignIn | PracticeKey | DoneSignalShow | DoneSignalAdd | DoneSignalRemove | CostChoose | ProofSignIn | WeekShow | ShipWhyLive | JobsSave | JobsList | JobsDrop | TutorList | TutorNote | TutorForget;
 
 export type AgentStateName = "idle" | "listening" | "thinking" | "working" | "checking" | "needsYou" | "done" | "error";
 
@@ -532,7 +538,11 @@ export type WeekSummary = Envelope & { type: "week.summary"; project: string; we
  *  had secrets hidden before it was kept. did: what the person did with it (open: nothing yet, or the engine closed before;
  *  no_longer_applies: a newer change made every reason go away). */
 export const REVIEW_DID = ["open", "looks_fine", "sent_back", "fix", "no_longer_applies", "closed_quietly"] as const;
-export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string };
+export type ReviewRowView = { id: number; at: string; count: number; files: string[]; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; did: (typeof REVIEW_DID)[number]; summary: string;
+  /** M101: the batch, and whether Put these files back can be offered: ok (its versions are kept), gone (cleaned up), done
+   *  (already put back). None for a row kept before M101. */
+  batch?: string; undo?: (typeof REVIEW_UNDO_STATES)[number] };
+export const REVIEW_UNDO_STATES = ["ok", "gone", "done"] as const;
 export type TasksListEvent = Envelope & { type: "tasks.list"; project: string; tasks: TaskSummary[]; sinceCheck?: "same" | "changed"; reviews?: ReviewRowView[]; lastWorking?: { checkpoint: string; at: string }; saved?: SavedRowView[]; caught?: CaughtView; asked?: AskedRowView[] };
 // made: false means no picture after all (stopped, or it could not be made); the card stops waiting for it.
 // before (M69): the earlier version's picture, for the before and after pair; absent when it could not be pictured.
@@ -685,6 +695,21 @@ export type ReviewStarted = Envelope & { type: "review.started"; project: string
 /** M86: the model's arrangement of a review's replay, after review.result (which never waits for it). The same checks. */
 export type ReviewReplayEvent = Envelope & { type: "review.replay"; project: string; batch: string; replay: ReviewReplay };
 export type ReviewRecheck = Envelope & { type: "review.recheck"; project: string; batch: string; by: string; fixed: number[]; closed: boolean };
+/** M101: why Put these files back cannot be done now, as a code the page words (strings.ts). open: the batch is not closed
+ *  (not reviewed yet); writing: the other tool is still changing files; busy: Squibby's own work is in the folder; gone: its
+ *  version from before is no longer kept (cleaned up, or not known after a restart); done: already put back; nothing: no
+ *  file of it can be put back; failed: it could not finish (nothing was changed). */
+export const REVIEW_UNDO_WHY = ["open", "writing", "busy", "gone", "done", "nothing", "failed"] as const;
+/** M101: what putting back a review's files would do. files: what would come back (at most 50 named, count all); later: its
+ *  files changed again since (left alone unless named in overwrite); env: .env files it changed (never put back); cannot:
+ *  files that cannot be written safely (behind a link, too big for a saved copy); committed: a commit was made in git since
+ *  the change began (the page shows the command, never runs it). */
+export type ReviewUndoPlanEvent = Envelope & { type: "review.undoPlan"; project: string; batch: string; ok: boolean; why?: (typeof REVIEW_UNDO_WHY)[number];
+  files?: string[]; count?: number; later?: string[]; env?: string[]; cannot?: string[]; committed?: boolean };
+/** M101: the put back. reverted: files back as they were; kept: changed again since and left as they are; saved: those put
+ *  back over, the person's version kept in the recovery folder; safety: the copy taken just before (this is undoable too). */
+export type ReviewUndone = Envelope & { type: "review.undone"; project: string; batch: string; ok: boolean; why?: (typeof REVIEW_UNDO_WHY)[number];
+  reverted: string[]; kept?: string[]; saved?: string[]; env?: string[]; cannot?: string[]; committed?: boolean; safety?: string };
 // The review. ok false: nothing was reviewed, reason says why in plain words (batch, when one was named). ok true: what changed
 // (summary, notes: plain words, secrets hidden), what it touches, the rating and its reasons (the most serious first, each
 // with its file and line when it has one), the files, what the project's own checks said (checks, and checksNote: one plain
@@ -722,7 +747,7 @@ export type ReviewReplay = {
   checks: { label: string; status: "passed" | "failed" | "skipped"; exit?: number }[]; shot?: string;
 };
 export type ReviewUntold = { beyond: string[]; beyondMore: number; todos: number; checks: ReviewChecks };
-export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
+export type Event = GuardSaved | GuardAsked | HookWaiting | HookBusy | ReviewBatchEvent | ReviewStarted | ReviewRecheck | ReviewUndoPlanEvent | ReviewUndone | ReviewReplayEvent | ReviewResultEvent | PlanUsage | PlanLimit | WatchStateEvent | WatchListEvent | WatchAlert | WatchEvidence | WhereReady | SettingsApplied | BisectProgress | BisectResult | BisectUndone | ErrorExplained | SecondLookResult | ExplainReady | TeachReady | TeachResult | TeachStep | SpendingState | SpendingWarn | BrowserStatus | BrowserInstallEvent | CheckpointRestored | CheckpointPutBackDone | MetricsSummary | WalkLessons | WalkStepEvent | WalkAsk | WalkHelp | WalkWait | WalkDone | WalkStopped | DiagramReady | ProjectReportEvent | ProjectInstallEvent | ProjectCloned | ShipCard | ReceiptVisual | ProblemFound | RunnerPong | ShipGates | ResearchDone | RescueReport | DrivePaused | LoopStuck | PlanReady | DriveStep | DriveDone | TasksListEvent | ProofStepEvent | ProofResult | ApprovalResolved | AssistPromptDelta | AssistPromptDone | AssistPoint | AssistProblem | AssistLabels | AssistError | RunnerHello | AuthStatus | CheckpointCreated | AgentState | AgentTool | AgentFile | ApprovalRequest | CostUpdate | Receipt | ProtocolError | ShipSignInEvent | PracticeKeyEvent | DoneSignalState | CostPause | CostResolved | ProofSignInEvent | WeekSummary | ShipWhyLiveEvent | UsageRunway | JobsSaved | TutorLearned;
 
 export type Parsed<T> = { ok: true; msg: T } | { ok: false; error: string };
 
@@ -831,6 +856,12 @@ const keyPlacesOk: Check = (m) => {
   }) ? null : '"keys" must be 1 to 10 places, each a file and a line, and at most the masked lines around it';
 };
 // M57 feature 1: the review rows History shows. Names of files only (no text field of any kind besides the summary).
+/** M101: a review batch's name (the engine's service.ts). */
+export const REVIEW_BATCH_ID = /^rv_[0-9a-f]{10}$/;
+/** M101: a list of project files by name (from the folder down), at most `max`. */
+const fileNames = (k: string, max: number): Check => (m) => (Array.isArray(m[k]) && (m[k] as unknown[]).length <= max && (m[k] as unknown[]).every((f) => typeof f === "string" && f.length > 0 && f.length <= 1000 && !f.startsWith("/") && !(f as string).split("/").includes("..")) ? null : `"${k}" must be a list of at most ${max} file names in the project`);
+const batchOk: Check = (m) => (typeof m.batch === "string" && REVIEW_BATCH_ID.test(m.batch) ? null : '"batch" must be a review batch (rv_ and 10 hex characters)');
+const cpOk = (k: string): Check => (m) => (typeof m[k] === "string" && /^cp_[A-Za-z0-9_-]{1,80}$/.test(m[k] as string) ? null : `"${k}" must be a saved version`);
 const reviewRowsOk: Check = (m) => {
   const rows = m.reviews;
   const ok = Array.isArray(rows) && rows.length <= 200 && rows.every((x) => {
@@ -838,7 +869,8 @@ const reviewRowsOk: Check = (m) => {
     return !!o && typeof o === "object" && !Array.isArray(o) && Number.isInteger(o.id) && typeof o.at === "string" && !Number.isNaN(Date.parse(o.at as string)) && Number.isInteger(o.count) && (o.count as number) >= 0
       && Array.isArray(o.files) && (o.files as unknown[]).length <= 20 && (o.files as unknown[]).every((f) => typeof f === "string" && f.length > 0)
       && (REVIEW_RATINGS as readonly string[]).includes(o.rating as string) && Array.isArray(o.touches) && (o.touches as unknown[]).every((t) => (REVIEW_TOUCHES as readonly string[]).includes(t as string))
-      && (REVIEW_CHECKS as readonly string[]).includes(o.checks as string) && (REVIEW_DID as readonly string[]).includes(o.did as string) && typeof o.summary === "string";
+      && (REVIEW_CHECKS as readonly string[]).includes(o.checks as string) && (REVIEW_DID as readonly string[]).includes(o.did as string) && typeof o.summary === "string"
+      && (o.batch === undefined || (typeof o.batch === "string" && REVIEW_BATCH_ID.test(o.batch))) && (o.undo === undefined || (REVIEW_UNDO_STATES as readonly string[]).includes(o.undo as string));
   });
   return ok ? null : '"reviews" must be a list of review rows: id, at, count, files (names), rating, touches, checks, did and summary';
 };
@@ -968,6 +1000,8 @@ const COMMANDS: Record<string, Check[]> = {
   "review.now": [str("project"), opt("batch", str("batch")), opt("proof", bool("proof"))],
   "review.dismiss": [str("project"), str("batch"), opt("how", oneOf("how", [...REVIEW_CLOSED_HOW]))],
   "review.fix": [str("project"), str("batch"), str("agent"), str("model"), num("budgetUsd")],
+  "review.undoPlan": [str("project"), batchOk],
+  "review.undo": [str("project"), batchOk, (m) => (m.confirm === true ? null : 'putting files back needs "confirm": true'), opt("overwrite", fileNames("overwrite", 50))],
   "agent.start": [str("project"), str("agent"), oneOf("mode", ["drive", "rescue", "research", "ship"]), str("prompt"), str("model"), num("budgetUsd"), filesOk, imagesOk, practiceOk],
   "tasks.list": [str("project")],
   "drive.plan": [str("project"), str("agent"), str("goal"), str("model"), num("budgetUsd")],
@@ -1071,6 +1105,10 @@ const EVENTS: Record<string, Check[]> = {
   // M52, the review of every change (runner/src/review/service.ts).
   "review.batch": [str("project"), str("batch"), filesListOk("files"), whole("count"), bool("capped"), textList("secretFiles"), bool("auto"), opt("away", oneOf("away", [...REVIEW_AWAY])), opt("keys", keyPlacesOk)],
   "review.started": [str("project"), str("batch"), bool("proof")],
+  "review.undoPlan": [str("project"), batchOk, bool("ok"), opt("why", oneOf("why", [...REVIEW_UNDO_WHY])), opt("files", fileNames("files", 50)), opt("count", whole("count")), opt("later", fileNames("later", 50)), opt("env", fileNames("env", 20)), opt("cannot", fileNames("cannot", 50)), opt("committed", bool("committed")),
+    (m) => (m.ok === true ? (Array.isArray(m.files) && Number.isInteger(m.count) ? null : 'a plan that can be done names its "files" and "count"') : (m.why ? null : 'a plan that cannot be done says "why"'))],
+  "review.undone": [str("project"), batchOk, bool("ok"), fileNames("reverted", 1000), opt("why", oneOf("why", [...REVIEW_UNDO_WHY])), opt("kept", fileNames("kept", 1000)), opt("saved", fileNames("saved", 1000)), opt("env", fileNames("env", 50)), opt("cannot", fileNames("cannot", 1000)), opt("committed", bool("committed")), opt("safety", cpOk("safety")),
+    (m) => (m.ok === true || m.why ? null : 'a put back that did not happen says "why"')],
   "review.replay": [str("project"), str("batch"), replayOk],
   "review.recheck": [str("project"), str("batch"), str("by"), (m) => (Array.isArray(m.fixed) && m.fixed.length > 0 && m.fixed.every((n) => Number.isInteger(n) && (n as number) >= 0) ? null : '"fixed" must be a list of whole numbers from 0'), bool("closed")],
   "review.result": [str("project"), bool("ok"), num("usdEstimate"), opt("batch", str("batch")), opt("checksNote", (m) => (typeof m.checksNote === "string" ? null : '"checksNote" must be text')), opt("checksDetail", (m) => (typeof m.checksDetail === "string" ? null : '"checksDetail" must be text')), opt("note", str("note")), opt("ruleFiles", textList("ruleFiles")), opt("hidden", whole("hidden")), opt("untold", untoldOk), opt("replay", replayOk), reviewOk],

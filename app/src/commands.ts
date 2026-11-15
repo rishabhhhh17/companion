@@ -116,6 +116,10 @@ export const watchCheck = (project: string, watch: string): Command => ({ v: 1, 
 export const reviewNow = (project: string, batch?: string, proof?: boolean): Command => ({ v: 1, id: id(), type: "review.now", project, ...(batch ? { batch } : {}), ...(proof ? { proof: true } : {}) });
 /** how (M57 feature 1): Looks fine, or closed after Copy for my AI, for the review's row in History. None for Skip this one. */
 export const reviewDismiss = (project: string, batch: string, how?: "looksFine" | "sentBack" | "quiet"): Command => ({ v: 1, id: id(), type: "review.dismiss", project, batch, ...(how ? { how } : {}) });
+// M101: Put these files back. The look only reads; the yes names the files changed again since only when the person said
+// Put those back too.
+export const reviewUndoPlan = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.undoPlan", project, batch });
+export const reviewUndo = (project: string, batch: string, overwrite?: string[]): Command => ({ v: 1, id: id(), type: "review.undo", project, batch, confirm: true, ...(overwrite?.length ? { overwrite } : {}) });
 export const reviewFix = (project: string, batch: string): Command => ({ v: 1, id: id(), type: "review.fix", project, batch, agent: AGENT, model: workModel(), budgetUsd: budgetFor("budget.task") });
 export const watchFix = (project: string, watch: string): Command => ({ v: 1, id: id(), type: "watch.fix", project, watch });
 export const whereWasI = (project: string, since?: string): Command => ({ v: 1, id: id(), type: "where.was.i", project, ...(since ? { since } : {}) });

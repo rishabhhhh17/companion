@@ -14,7 +14,9 @@ const GIT = /\bgit\b/;
 // Allowed on purpose: "git history" is the person's own project history (a folder that has one is moved with it, and Undo
 // does not cover a folder inside the project that has its own); "Android SDK" is the real name of a tool to install.
 // M75: /hooks is the command a person types in Codex to trust the done signal; it is said as typed.
-const ALLOWED_PHRASES = [/\bgit history\b/g, /\bAndroid SDK\b/g, /\/hooks\b/g];
+// M101: "git reset HEAD~1" is the one command the review card shows, with Copy, for the person to run themselves (never run
+// by Squibby); it is said exactly as typed.
+const ALLOWED_PHRASES = [/\bgit history\b/g, /\bAndroid SDK\b/g, /\/hooks\b/g, /\bgit reset HEAD~1\b/g];
 const machineWord = (text: string): string | null => {
   let t = text;
   for (const p of ALLOWED_PHRASES) t = t.replace(p, "");

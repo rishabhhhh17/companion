@@ -272,7 +272,9 @@ export function hushReview<M extends { review?: ReviewCard | null }>(m: M, hushe
 export const CLOSE_QUIETLY_MS = 4000;
 /** M74: the card closes by itself: Close it quietly is chosen, the review ran, it is safe with no reason at all, nothing
  *  was pressed on it and no newer change waits behind it. Leave the card (the usual) never closes anything. */
-export function closesQuietly(r: ReviewCard | null | undefined, whenNothing: unknown): boolean {
+export function closesQuietly(r: ReviewCard | null | undefined, whenNothing: unknown, undo?: { batch: string } | null): boolean {
+  // M101: never while Put these files back is open for this card (its question, its work, its result or its refusal).
+  if (r && undo?.batch === r.batch) return false;
   return whenNothing === "closeQuietly" && !!r?.result && r.stage === "reviewed" && r.result.rating === "safe" && r.result.reasons.length === 0
     && !r.fix && !r.asked && !r.sentBack && !r.later && !r.note;
 }

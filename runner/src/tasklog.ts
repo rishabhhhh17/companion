@@ -11,13 +11,20 @@ import { MARK_KINDS, REVIEW_CHECKS, REVIEW_DID, REVIEW_RATINGS, REVIEW_TOUCHES, 
 /** M57 feature 1: a review that ran, as it is kept. Names of files only, never their text. */
 export type ReviewRowIn = { project: string; batch: string; at: string; files: string[]; count: number; rating: ReviewRating; touches: ReviewTouch[]; checks: ReviewChecks; summary: string;
   /** M77: the kinds of the review's reasons (names only, never their words), for the week's count. */
-  kinds?: string[] };
+  kinds?: string[];
+  /** M101: the batch's two versions in the engine's shadow store (ids only), so Put these files back works from History. */
+  from?: string; to?: string;
+  /** M101: when the batch's first change was written (ms), for the commit check after a restart. */
+  began?: number };
 /** M77: a saved copy taken before a destructive command of the person's own AI tool (guard.ts): its own row, never a task.
  *  command: the short, redacted command from the label. undone: an Undo went back to this copy or an earlier one. */
 export type SavedRow = { id: number; at: string; checkpoint: string; command: string; undone: boolean };
 /** M77: what the safety net caught in the last seven days, from real rows. Shown only when above zero (rule 16). */
 export type Caught = { since: string; falseDones: number; keys: number; weakened: number; saved: number; undone: number };
 const GUARD_MODE = "guard";
+/** M101: a shadow store id, and a review batch's name. */
+const CP_ID = /^cp_[A-Za-z0-9_-]{1,80}$/;
+const REVIEW_BATCH = /^rv_[0-9a-f]{10}$/;
 /** M85: the mode of an ask row, and its label's start. */
 const ASK_MODE = "ask";
 const ASKED_PREFIX = "Asked first: ";
@@ -95,6 +102,11 @@ export class TaskLog {
     // M77: the kinds of each review's reasons (names only), for the week's count.
     const rhave = (this.db.query("PRAGMA table_info(reviews)").all() as { name: string }[]).map((c) => c.name);
     if (!rhave.includes("kinds")) this.db.run("ALTER TABLE reviews ADD COLUMN kinds TEXT NOT NULL DEFAULT '[]'");
+    // M101: the batch's two versions (shadow store ids only) and the safety copy of its put back, when there was one.
+    if (!rhave.includes("from_cp")) this.db.run("ALTER TABLE reviews ADD COLUMN from_cp TEXT");
+    if (!rhave.includes("to_cp")) this.db.run("ALTER TABLE reviews ADD COLUMN to_cp TEXT");
+    if (!rhave.includes("undone_by")) this.db.run("ALTER TABLE reviews ADD COLUMN undone_by TEXT");
+    if (!rhave.includes("began_ms")) this.db.run("ALTER TABLE reviews ADD COLUMN began_ms INTEGER");
     // A task still marked "running" when the log opens was cut short by a crash or a forced quit.
     this.db.run("UPDATE tasks SET status = 'interrupted', ended_at = COALESCE(ended_at, started_at) WHERE status = 'running'");
   }
@@ -267,9 +279,35 @@ export class TaskLog {
       const rating = (REVIEW_RATINGS as readonly string[]).includes(r.rating) ? r.rating : "worth_a_look";
       const checks = (REVIEW_CHECKS as readonly string[]).includes(r.checks) ? r.checks : "unknown";
       const kinds = (r.kinds ?? []).filter((k) => typeof k === "string" && /^[a-z_]{1,40}$/.test(k)).slice(0, 40);
-      const q = this.db.query("INSERT INTO reviews (project, batch, at, files, count, rating, touches, checks, summary, kinds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-      return Number(q.run(r.project, r.batch, r.at, JSON.stringify(files), Math.max(0, Math.floor(r.count)), rating, JSON.stringify(touches), checks, clip(redact(r.summary).replace(/\s+/g, " ").trim(), ROW_SUMMARY), JSON.stringify(kinds)).lastInsertRowid);
+      const cp = (v: unknown) => (typeof v === "string" && CP_ID.test(v) ? v : null);
+      const began = typeof r.began === "number" && Number.isFinite(r.began) && r.began > 0 ? Math.floor(r.began) : null;
+      const q = this.db.query("INSERT INTO reviews (project, batch, at, files, count, rating, touches, checks, summary, kinds, from_cp, to_cp, began_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      return Number(q.run(r.project, r.batch, r.at, JSON.stringify(files), Math.max(0, Math.floor(r.count)), rating, JSON.stringify(touches), checks, clip(redact(r.summary).replace(/\s+/g, " ").trim(), ROW_SUMMARY), JSON.stringify(kinds), cp(r.from), cp(r.to), began).lastInsertRowid);
     } catch { return 0; }
+  }
+  /** M101: a review's two versions and the safety copy of its put back (null when it was not put back). Null when no row
+   *  knows the batch or it was kept before M101. */
+  reviewPoints(project: string, batch: string): { from: string; to: string; undoneBy: string | null; began: number | null } | null {
+    try {
+      const r = this.db.query("SELECT from_cp, to_cp, undone_by, began_ms FROM reviews WHERE project = ? AND batch = ? ORDER BY id DESC LIMIT 1").get(project, batch) as { from_cp: string | null; to_cp: string | null; undone_by: string | null; began_ms: number | null } | null;
+      return r && r.from_cp && r.to_cp ? { from: r.from_cp, to: r.to_cp, undoneBy: r.undone_by ?? null, began: typeof r.began_ms === "number" ? r.began_ms : null } : null;
+    } catch { return null; }
+  }
+  /** M101: the link record. The review's files were put back; safety is the copy taken just before. Only the first is kept. */
+  reviewUndone(project: string, batch: string, safety: string): void {
+    if (!CP_ID.test(safety)) return;
+    try { this.db.query("UPDATE reviews SET undone_by = ? WHERE project = ? AND batch = ? AND undone_by IS NULL").run(safety, project, batch); } catch { /* never in the way */ }
+  }
+  /** M101, for M94: how many reviews of this project were put back since then. A count only. */
+  reviewUndos(project: string, since: string): number {
+    try { return (this.db.query("SELECT COUNT(*) AS n FROM reviews WHERE project = ? AND undone_by IS NOT NULL AND at >= ?").get(project, since) as { n: number }).n; } catch { return 0; }
+  }
+  /** M101: the versions the newest reviews point at, so the undo store keeps them for History's Put these files back. */
+  recentReviewPoints(project: string, n: number): string[] {
+    try {
+      const rows = this.db.query("SELECT from_cp, to_cp FROM reviews WHERE project = ? AND from_cp IS NOT NULL AND undone_by IS NULL ORDER BY id DESC LIMIT ?").all(project, Math.max(0, Math.floor(n))) as { from_cp: string; to_cp: string | null }[];
+      return rows.flatMap((r) => [r.from_cp, ...(r.to_cp ? [r.to_cp] : [])]);
+    } catch { return []; }
   }
   /** What the person did with a review (or that a newer change made it go away). Only the first close is kept. */
   reviewDid(project: string, batch: string, did: ReviewDid) {
@@ -289,6 +327,8 @@ export class TaskLog {
     return rows.map((r) => ({
       id: r.id, at: r.at, count: r.count, files: parse(r.files).filter((f): f is string => typeof f === "string" && f.length > 0).slice(0, ROW_FILES),
       rating: r.rating, touches: parse(r.touches).filter((t): t is ReviewTouch => (REVIEW_TOUCHES as readonly string[]).includes(t as string)), checks: r.checks, did: r.did, summary: r.summary,
+      // M101: the batch, for Put these files back. Whether its versions are still kept is the engine's to say (agent.ts).
+      ...(typeof r.batch === "string" && REVIEW_BATCH.test(r.batch) ? { batch: r.batch } : {}), ...(r.undone_by ? { undo: "done" as const } : {}),
     }));
   }
   // Newest first. Pass a project to see only its tasks.

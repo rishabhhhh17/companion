@@ -679,6 +679,8 @@ export function ListGroup({ label, id, shown, children }: { label: string; id?: 
 }
 
 export type RowAction = { label: string; onClick: () => void; colour?: Colour; id?: string; describedBy?: string;
+  /** M101: drawn greyed and not pressable (the row's line says why). */
+  disabled?: boolean;
   /** What VoiceOver hears for a press repeated on every row ("Forget: <the note>", M72): the verb and the row's subject. */
   ariaLabel?: string };
 /** One row of the grouped list: a colour tile, a title, one line, and one fact and one action on the right. `onOpen`: the row
@@ -705,7 +707,7 @@ export function ListRow({ colour, icon, mark, title, line, fact, factColour, onO
         ? <button type="button" className="ui-mrow-main" id={id} aria-label={openLabel} aria-describedby={openLabel && line ? lineId : undefined} aria-expanded={expanded} onClick={onOpen}>{words}{action ? null : factShown}</button>
         : <div className="ui-mrow-main">{words}{action ? null : factShown}</div>}
       {action ? factShown : null}
-      {action ? <button type="button" className="ui-mrow-act" id={action.id} data-c={action.colour ?? colour} aria-label={action.ariaLabel} aria-describedby={action.describedBy} onClick={action.onClick}>{action.label}</button> : null}
+      {action ? <button type="button" className="ui-mrow-act" id={action.id} data-c={action.disabled ? undefined : action.colour ?? colour} aria-label={action.ariaLabel} aria-describedby={action.describedBy} disabled={action.disabled || undefined} onClick={action.onClick}>{action.label}</button> : null}
     </li>
   );
 }

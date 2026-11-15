@@ -146,3 +146,25 @@
 .home .tour-why { margin: 0; font: var(--t-body) / var(--lh-body) var(--font); }
 .home .tour-nav { justify-content: flex-start; }
 @media (prefers-reduced-motion: reduce) { .home .tour-step { animation: none; } }
+
+/* M101: Put these files back, on the review card and under a review's row in History. */
+.home .rvu { display: grid; gap: var(--space-2); margin: var(--space-2) 0 0; }
+.home .rvu.row { display: flex; margin: var(--space-1) 0 0; }
+/* The quiet button's icon lines up with the words above it (its padding sits outside the column). */
+.home .rvu .rvu-btn { margin-inline-start: calc(-1 * var(--space-2)); }
+.home .rvu-confirm, .home .rvu-done, .home .rvu-later, .home .rvu-commit, .home .rvu-refused { display: grid; gap: var(--space-2); }
+.home .rvu-confirm .row, .home .rvu-done .row, .home .rvu-refused .row { margin: var(--space-1) 0 0; }
+.home .rvu-files { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.home .rvu-files li { margin: 0; padding: 0; line-height: var(--lh-caption); }
+.home .rvu-sure { color: var(--fg); font: var(--w-strong) var(--t-answer) / var(--lh-answer) var(--font); }
+.home .rvu-names { display: block; margin-top: 2px; }
+.home .rvu-files code, .home .rvu-command code { color: var(--fg-2); font: var(--t-caption) / var(--lh-caption) var(--font-code); overflow-wrap: anywhere; }
+.home .rvu-more, .home .rvu-names { color: var(--fg-2); font: var(--w-regular) var(--t-caption) / var(--lh-caption) var(--font-code); }
+.home .rvu-toggle { display: inline-flex; align-items: center; gap: var(--space-2); width: fit-content; cursor: pointer; font: var(--w-strong) var(--t-small) / var(--lh-small) var(--font); }
+.home .rvu-commit { font: var(--t-small) / var(--lh-small) var(--font); }
+.home .rvu-command { align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.home .rvu-command code { padding: var(--space-1) var(--space-2); border-radius: var(--r-control); background: var(--surface-3); color: var(--fg); }
+.home .rvu-done { padding-bottom: var(--space-2); }
+.home .rvu-refused { gap: var(--space-1); }
+.home .rvu-refused > .line, .home .rvu > .line { margin: 0; }
+.home .rvu-refused .row { margin: 0; }

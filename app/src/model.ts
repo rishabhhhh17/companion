@@ -3,6 +3,7 @@
 import { learnedFrom, type Learned } from "./tutor.ts";
 import { startFrom, type StartState } from "./memoryStart.ts";
 import { reviewReduce, type ReviewCard } from "./review.ts";
+import { reviewUndoReduce, type ReviewUndo } from "./reviewUndo.ts";
 import { NO_PROJECT, SETTINGS_LESSON_ID } from "./commands.ts";
 import { gateFinding, isExpected, keyPracticeReduce, practiceOf } from "./practice.ts";
 import { activityWords } from "./activity.ts";
@@ -327,6 +328,8 @@ export type Model = {
   proLimit?: LimitView | null;
   // M52 (F30): the review of the changes another AI tool made in the open project (review.ts), until it is closed.
   review?: ReviewCard | null;
+  /** M101: Put these files back, on the review card or a review's row in History (reviewUndo.ts), one at a time. */
+  reviewUndo?: ReviewUndo | null;
   /** M83: how many times Stop everything was pressed since the page opened, so the character drops any reaction at once (moods.ts). */
   stopped?: number;
 };
@@ -558,6 +561,14 @@ function reduceOne(m: Model, e: Ev): Model {
     if (pr !== m.practice) m = { ...m, practice: pr };
     if (e.type !== "review.result") return m;
   }
+  // M101: Put these files back follows its own events and presses; a put back marks its History row.
+  const hadUndo = m.reviewUndo ?? null, ru = reviewUndoReduce(hadUndo, e);
+  if (ru !== hadUndo) m = { ...m, reviewUndo: ru };
+  if (e.type === "review.undone" && e.ok === true && typeof e.batch === "string" && m.reviewHistory?.some((x) => x.batch === e.batch)) m = { ...m, reviewHistory: m.reviewHistory.map((x) => (x.batch === e.batch ? { ...x, undo: "done" as const } : x)) };
+  // M101: files put back from History close Home's card of the same batch (its findings were about files now as before). A
+  // put back from the card itself keeps the card, to show its result until Close.
+  if (e.type === "review.undone" && e.ok === true && m.review && e.batch === m.review.batch && !(hadUndo?.where === "card" && hadUndo.batch === e.batch)) m = { ...m, review: reviewReduce(m.review, { type: "ui.reviewDismissed", batch: e.batch }) };
+  if (typeof e.type === "string" && (e.type.startsWith("ui.reviewUndo") || e.type === "review.undoPlan" || e.type === "review.undone")) return m;
   const hadReview = m.review ?? null;
   const rv = reviewReduce(hadReview, e);
   if (rv !== hadReview) m = { ...m, review: rv };

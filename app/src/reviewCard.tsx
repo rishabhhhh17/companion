@@ -52,6 +52,13 @@ type Props = {
   mark?: ReactNode; titleId?: string;
   /** M76: Circle it on a Walk me through it step (Point at the problem's own ring, on the person's press). */
   onPoint?: (s: TourStep) => void;
+  /** M101: Put these files back (reviewUndoPart.tsx), drawn under the presses once the review ran. */
+  undoPart?: ReactNode;
+  /** M101: Put these files back is open (its question, or its files being put back, or put back): one question at a time,
+   *  so the card's other presses step aside, and once the files are back they no longer apply. */
+  undoTook?: boolean;
+  /** M101: this card's files were put back: its findings were about files that are now as before, so they step aside. */
+  undoDone?: boolean;
 };
 
 /** M86: Watch what changed, the review's replay, under its first lines (replay.show). */
@@ -118,7 +125,7 @@ export function ReviewCardView(p: Props) {
  *  key shape, the reassurance under them, and Why does this matter? opening the review's own words. The other findings
  *  follow as one line cards (Then, Fine); See opens the files. Nothing of the older card is dropped: it sits behind Why and
  *  See. */
-function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, mark, titleId, head }: Props & { head: ReviewHead }) {
+function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, mark, titleId, head, undoPart, undoTook = false, undoDone = false }: Props & { head: ReviewHead }) {
   const res = r.result;
   const [open, setOpen] = useState<"why" | "files" | null>(null);
   const toggle = (k: "why" | "files") => setOpen((o) => (o === k ? null : k));
@@ -132,7 +139,8 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <p className="ui-status" data-tone={head.tone === "stop" ? "stop" : "needs"}><span className="ui-status-dot" aria-hidden="true" />{head.tag}</p>
             {/* The headline is the title; what it means is a paragraph at the card's width, not part of a 40 point heading. */}
             <h1 id={`${REVIEW_ID}-title`} className="rv-title"><span id={titleId}>{head.headline}</span></h1>
-            {head.why && <p className="rv-why-line">{head.why}</p>}
+            {/* M101: once the files are back, the line under the headline says the findings no longer apply. */}
+            {undoDone ? <p className="rv-why-line rv-gone">{S.reviewUndo.noLongerApplies}</p> : head.why && <p className="rv-why-line">{head.why}</p>}
           </div>
           {mark && <div className="rv-mark" aria-hidden="true">{mark}</div>}
         </div>
@@ -140,7 +148,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             Looks fine are in view without scrolling, never under the ask box. The evidence follows: the readiness line, the
             finding's parts and the line pointed at. */}
         {/* M77: what the changes did not tell you, up to three plain lines at the top, from the review's own data. */}
-        {untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
+        {!undoDone && untoldLines(res?.untold).map((l) => <div className="line rv-untold" key={l}>{l}</div>)}
         <ReviewReplay r={r} />
         {r.note && <div className="line" role="status">{r.note}</div>}
         {r.later && <div className="line muted" role="status">{S.review.later(r.later.count)}</div>}
@@ -168,7 +176,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <button className="btn" type="button" onClick={onDismiss}>{S.review.skipThis}</button>
           </div>
         )}
-        {r.stage === "reviewed" && r.fix !== "sent" && (
+        {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && (
           <div className="row result-actions rv-actions">
             {canFix(r) && r.fix !== "confirm" && <button id={FIX_ID} className="btn primary" type="button" onClick={onAskFix}>{S.review.fix}</button>}
             <SendBack text={sendBackCopy(r)} onCopied={onSentBack} />
@@ -176,7 +184,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
             <button className="btn quiet rv-whylink" type="button" aria-expanded={open === "why"} aria-controls={whyId} onClick={() => toggle("why")}>{S.homeNow.whyMatters}</button>
           </div>
         )}
-        {r.fix !== "sent" && <ReviewWalk r={r} onPoint={onPoint} />}
+        {r.fix !== "sent" && !undoTook && <ReviewWalk r={r} onPoint={onPoint} />}
         {r.fix === "confirm" && (
           <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
             <div>{S.review.fixSure}</div>
@@ -187,14 +195,16 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
           </ConfirmStep>
         )}
         {/* While the review runs, nothing waits on a press, so "Nothing changes until you press a button" is not said. M72: right under the presses. */}
-        {r.stage !== "reviewing" && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
+        {r.stage !== "reviewing" && !undoTook && <p className="rv-reassure">{r.stage === "ready" && keyWarned(r) ? S.homeNow.reassure : r.stage === "ready" ? (r.auto ? S.review.autoLine : S.review.askFirst) : head.reassure}</p>}
+        {/* M101: Put these files back, once the review ran (the batch is closed), under the reassurance that belongs to Fix it. */}
+        {r.stage === "reviewed" && r.fix !== "sent" && r.fix !== "confirm" && undoPart}
         {/* M58 shortlist 3: the readiness line, in words, under the headline that already has its own tag. */}
-        <ReadinessLine r={readinessOf(r)} quiet />
-        {res && <LeadParts f={shapeFindings(r)[0]} />}
+        {!undoDone && <ReadinessLine r={readinessOf(r)} quiet />}
+        {res && !undoDone && <LeadParts f={shapeFindings(r)[0]} />}
         <div className="sr" role="status">{res ? S.review.arrived(S.review.rating[res.rating], head.headline) : ""}</div>
         {/* M69 step 3: the place, as the engine named it, with the line and the lines either side of it (masked by the engine
             and again by review.ts: a key keeps only its prefix). Without lines, the file and the line number only. */}
-        {head.pointed && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
+        {head.pointed && !undoDone && <CodePoint file={head.pointed.file} line={head.pointed.line} lines={head.pointed.lines} tone={head.tone} />}
         {/* m67 bug 14: a key warning before any review says when the changes were made, as the plain card does. */}
         {!res && r.away && <div className="line muted">{S.review.away[r.away]}</div>}
         {/* M72 (item 2): what the change did, in the review's own summary, said once under the evidence. */}
@@ -225,7 +235,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
         </div>
       </section>
       {/* The other findings, one line each with one quiet action; Fine opens the files. */}
-      {head.others.length > 0 && (
+      {head.others.length > 0 && !undoDone && (
         <ul className="rv-others" aria-label={S.review.whyLabel}>
           {head.others.map((f) => (
             <li key={f.id} className="panel rv-other" data-tag={f.tag}>
@@ -261,7 +271,7 @@ function ReviewLeadView({ r, onReview, onReviewFix, onDismiss, onAskFix, onFix, 
   );
 }
 
-function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, heroSays = false, heroHeadline }: Props) {
+function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix, onSilence, onSentBack, onPoint, heroSays = false, heroHeadline, undoPart, undoTook = false, undoDone = false }: Props) {
   const res = r.result;
   const look = res ? ratingLook(res.rating) : null;
   const checks = res && res.checks ? checksLook(res.checks, res.rating, res.reasons.some((x) => x.kind === "secret_in_code")) : null;
@@ -307,7 +317,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
         </div>
       )}
       {/* M58 shortlist 3: the readiness line on top: Ready only when nothing was found and the checks passed. */}
-      {res && <ReadinessLine r={readinessOf(r)} />}
+      {res && !undoDone && <ReadinessLine r={readinessOf(r)} />}
       {/* Jumping by heading lands here and hears the rating with it (the audit, item 37); the rating's arrival is said once. */}
       {/* Once rated, the rating leads the card, so this heading is for VoiceOver only (the review, 2 Nov 2026: Changes to
           review sat over What changed). */}
@@ -344,7 +354,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           </div>
         </>
       )}
-      {r.stage === "reviewed" && r.fix !== "sent" && (
+      {r.stage === "reviewed" && r.fix !== "sent" && !undoTook && (
         <div className="row result-actions">
           {/* While its question is open, Fix it steps aside (the audit, item 7): the question has the keyboard, and Escape
               closes only it. It comes back, with the keyboard, when the question is answered or put away. */}
@@ -354,7 +364,7 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           <button className={res?.rating === "stop" ? "btn quiet" : "btn"} type="button" onClick={onDismiss}>{res?.rating === "stop" ? keepWords(r) : S.review.looksFine}</button>
         </div>
       )}
-      {r.fix !== "sent" && <ReviewWalk r={r} onPoint={onPoint} />}
+      {r.fix !== "sent" && !undoTook && <ReviewWalk r={r} onPoint={onPoint} />}
       {r.fix === "confirm" && (
         <ConfirmStep className="line" label={S.review.fixSure} back={FIX_ID} onCancel={onCancelFix}>
           <div>{S.review.fixSure}</div>
@@ -364,25 +374,28 @@ function ReviewPlainView({ r, onReview, onDismiss, onAskFix, onFix, onCancelFix,
           </div>
         </ConfirmStep>
       )}
+      {/* M101: Put these files back, once the review ran (the batch is closed). */}
+      {r.stage === "reviewed" && r.fix !== "sent" && r.fix !== "confirm" && undoPart}
+      {undoDone && <p className="line muted rv-gone">{S.reviewUndo.noLongerApplies}</p>}
       {/* Why comes straight after the presses (the review, 2 Nov 2026: in the wide Home the key written into pay.ts was
           below the fold, under What it touches). */}
       {/* M58 shortlist 3: every finding in its fixed shape, Must fix first, with checks that did not run as a thing to
           check (findingShape.ts). M57: one that no longer holds says so in words; Don't flag this kind here again only where
           review.ts silenceOffered allows it. */}
-      {res && shapeFindings(r).length > 0 && (
+      {res && !undoDone && shapeFindings(r).length > 0 && (
         <div className="review-why">
           <span className="review-label">{S.review.whyLabel}</span>
           <FindingList items={shapeFindings(r)} id={`${REVIEW_ID}-why`} extra={silenceExtra(r, onSilence)} />
         </div>
       )}
       {res?.hidden ? <div className="line muted">{S.review.hidden(res.hidden)}</div> : null}
-      {res && res.touches.length > 0 && (
+      {res && !undoDone && res.touches.length > 0 && (
         <div className="review-touches">
           <span className="review-label" id={`${REVIEW_ID}-touches`}>{S.review.touchesLabel}</span>
           <ul aria-labelledby={`${REVIEW_ID}-touches`}>{res.touches.map((t) => <li key={t} className="review-tag" data-touch={t}>{S.review.touches[t]}</li>)}</ul>
         </div>
       )}
-      {checks && (
+      {checks && !undoDone && (
         <div className="review-checks" role="group" aria-label={S.review.checksLabel}>
           {checks.kind === "notRun"
             ? <span className="ui-chip" data-kind="notRun"><span className="ui-chip-mark" aria-hidden="true"><Icon name="dash" size={12} /></span><span>{checks.label}</span></span>

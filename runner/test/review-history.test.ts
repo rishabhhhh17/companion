@@ -83,7 +83,9 @@ describe("feature 1: the task log keeps one row per review, names only", () => {
     expect(r.count).toBe(30);
     expect(JSON.stringify(r)).not.toContain(KEY);
     const cols = (log.database.query("PRAGMA table_info(reviews)").all() as { name: string }[]).map((c) => c.name).sort();
-    expect(cols).toEqual(["at", "batch", "checks", "count", "did", "files", "id", "kinds", "project", "rating", "summary", "touches"]);   // M77: kinds, the reasons' names only
+    // M77: kinds, the reasons' names only. M101: from_cp, to_cp and undone_by, shadow store ids only (Put these files back),
+    // and began_ms, when the change began (a time only), for the commit check.
+    expect(cols).toEqual(["at", "batch", "began_ms", "checks", "count", "did", "files", "from_cp", "id", "kinds", "project", "rating", "summary", "to_cp", "touches", "undone_by"]);
   });
   test("rows older than review.keepDays are removed as new ones come and when History asks", () => {
     const log = new TaskLog(":memory:");

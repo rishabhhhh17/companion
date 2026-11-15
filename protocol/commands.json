@@ -62,6 +62,8 @@
     "review.dismiss": {"gate": "never", "page": true, "project": true},
     "review.fix": {"gate": "fix", "page": true, "project": true},
     "review.now": {"gate": "never", "page": true, "project": true},
+    "review.undo": {"gate": "never", "page": true, "project": true, "own": "edits"},
+    "review.undoPlan": {"gate": "never", "page": true, "project": true},
     "runner.ping": {"gate": "never"},
     "secondlook.check": {"gate": "never"},
     "settings.apply": {"gate": "pro"},

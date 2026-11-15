@@ -1067,7 +1067,15 @@ export class AgentRunner {
           ...(working?.task === t.id ? { lastWorking: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.star ? { star: true } : {}), ...(t.checkpoint && marks[t.checkpoint]?.name ? { name: marks[t.checkpoint].name } : {}) }));
         const sinceCheck = await this.sinceProven(cmd.project);
         // M57 feature 1: the reviews of changes to this project, as their own rows (names of files only), within review.keepDays.
-        const reviews = this.o.log.reviews(resolve(cmd.project), 50, { keepDays: Number(this.setting("review.keepDays")) });
+        // M101: each row's Put these files back: ok while its two versions are kept, gone once they were cleaned up.
+        const reviews = this.o.log.reviews(resolve(cmd.project), 50, { keepDays: Number(this.setting("review.keepDays")) }).map((r) => {
+          if (!r.batch || r.undo) return r;
+          const pts = this.o.log.reviewPoints(resolve(cmd.project), r.batch);
+          if (!pts) return r;
+          let kept = false;
+          try { const st = this.store(cmd.project); kept = st.has(pts.from) && st.has(pts.to); } catch { kept = false; }
+          return { ...r, undo: kept ? "ok" as const : "gone" as const };
+        });
         // M77: the saved copies taken before a destructive command of the person's own AI tool (their own rows), and what
         // the safety net caught in the last seven days, from real rows (said only when something is above zero).
         let saved: ReturnType<TaskLog["savedRows"]> = [], caught: ReturnType<TaskLog["caught"]> | null = null;

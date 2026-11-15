@@ -2,6 +2,14 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## Put these files back, on the review card: 16 Nov 2026
+
+- **One button takes back what another AI tool changed.** On the card that explained a change by Cursor, Codex, Claude Code or any other tool, Put these files back puts only the files that change touched back the way they were. Nothing else in your project moves, and it is never the whole project.
+- **It asks first, and names the files.** You see which files go back. If you changed one of them again afterwards, it is named and left as you have it, unless you tick Put those back too, and then your version is kept in the recovery folder first.
+- **It says what it cannot do.** Settings and key files like `.env` are never put back, because a review keeps no copy of them. Installs, databases, live sites and emails sent are not undone. If your tool is still writing, it tells you to stop it first. A commit you made yourself before the change is never taken for the tool's.
+- **Your git is never touched.** If the tool made a commit, the card says the commit stays and shows the one command that takes it back, with a Copy button. Squibby never runs it.
+- **It is in History too.** Each review's row has Put back, greyed with the reason once the copy from before has been cleaned up. A review whose files were put back says "Files put back", and its card on Home steps aside, since its findings no longer apply.
+
 ## Squibby's own fixing, built and switched off: 16 Nov 2026
 
 - **Squibby can now fix things with its own AI loop, paid by Squibby.** You will not need an AI key or an AI account. Squibby asks the AI through its own server, which holds Squibby's key, so that key never sits on your Mac. It is built and tested, but it stays switched off for everyone until the launch checklist is done.

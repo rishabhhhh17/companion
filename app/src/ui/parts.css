@@ -44,6 +44,8 @@ button, select, input, textarea { font: inherit; }
 .btn.danger { border-color: var(--bad-edge); color: var(--bad); }
 .btn.danger:hover:not(:disabled) { background: var(--bad-hover); }
 .btn.danger:active:not(:disabled) { background: var(--bad-press); }
+/* A danger press that waits (M101: Put them back until Put those back too is ticked) looks waiting, not red. */
+.btn.danger:disabled { border-color: transparent; color: var(--ink-disabled); }
 .btn.icon { width: var(--h-sm); min-height: var(--h-sm); padding: 0; }
 .btn.icon:not(.primary) { border-color: transparent; box-shadow: none; color: var(--fg-2); }
 .btn.icon:not(.primary):hover:not(:disabled) { color: var(--fg); }
@@ -437,6 +439,11 @@ button.ui-mrow-main:hover { background: var(--surface-2); }
 .ui-mrow-act { flex: none; min-height: var(--h-sm); margin: 0; padding: 0 var(--space-2); border: 0; border-radius: var(--r-control); background: transparent; color: var(--mc-text); font: var(--w-bold) var(--t-small) / var(--lh-small) var(--font); transition: background-color var(--dur-hover) var(--ease-out), transform var(--dur-release) var(--ease-out); }
 .ui-mrow-act:hover { background: var(--mc-soft); }
 .ui-mrow-act:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+/* M101: an action that cannot be pressed now (its row's line says why). */
+/* No colour and regular weight, so it never reads as a press beside one that is (the M101 review). */
+.ui-mrow-act:disabled { color: var(--ink-disabled); font-weight: var(--w-regular); cursor: default; }
+.ui-mrow-act:disabled:hover { background: transparent; }
+.ui-mrow-act:disabled:active { transform: none; }
 .ui-lead { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; }
 .ui-lead-words { display: grid; justify-items: start; gap: var(--space-2); min-width: 0; position: relative; }
 .ui-lead-title { margin: var(--space-1) 0 0; color: var(--fg); font: var(--w-bold) var(--t-hero-sm) / var(--lh-hero-sm) var(--font); letter-spacing: var(--track-hero-sm); text-wrap: balance; }
