@@ -1,6 +1,6 @@
 # M94: What Squibby saved you
 
-Status: built 15 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: stand in engines, fixtures and temporary folders only.
+Status: built 15 Nov 2026, tests pass. Committed 15 Nov 2026 (1c307a5). Nothing was spent on a real model: stand in engines, fixtures and temporary folders only.
 
 The why: the founder asked on 14 Nov 2026, "does it save tokens and do my things efficiently?" Squibby already guards its own spend (a model per job in `runner/src/models.ts`, the fix loop breaker in `drive.ts`, the cost pause in `costpause.ts`, the daily limit in `spending.ts`, `bisect.ts` with no model, proof by exit codes first) and stops waste, but nothing showed it. This milestone shows it, counting only real events from the person's own task log.
 

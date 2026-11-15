@@ -35,7 +35,8 @@ export const PAGES: Readonly<Record<PageId, Page>> = {
       // the warning that reads the same usage (runway.warnAt), no longer under General's Notch.
       { id: "more.account.spending", items: ["budget.plan", "budget.rescue", "budget.research", "model.work", "model.rescue", "model.quick", "runway.mark", "runway.warnAt"] },
       // M69 (F29): Squibby pays and picks the model, so nobody needs a key. Your own key stays only as a developer tool, here.
-      { id: "more.account.developer", items: [f("key")] },
+      // M98: hidden behind its own switch (developer.tools, off), so a customer never sees a key row.
+      { id: "more.account.developer", items: ["developer.tools", f("key")] },
       // M58 (feature 9): the first run's optional answer, which AI you build with. It only picks a tip; Not set forgets it.
       { id: "more.account.you", items: ["you.buildsWith"] },
     ],

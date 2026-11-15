@@ -13,7 +13,7 @@ import { NOT_REACHED, reachHost } from "./reach.ts";
 import { SdkEngine, resolveClaudeBinary } from "./sdkEngine.ts";
 import { MODELS, modelForChoice } from "./models.ts";
 import type { query as realQuery } from "@anthropic-ai/claude-agent-sdk";
-import { PRODUCT } from "./names.ts";
+import { PRODUCT, PRODUCT_S } from "./names.ts";
 
 export type Settings = {
   engine: "sdk" | "scripted"; route: "api_key" | "plan" | "managed"; data: string;
@@ -82,14 +82,16 @@ export function engineEnv(a: Auth, data: string, parent: Record<string, string |
   if (env.CLAUDE_CONFIG_DIR === own) { mkdirSync(own, { recursive: true, mode: 0o700 }); chmodSync(own, 0o700); }
   return env;
 }
-const NOT_CONNECTED = "Not connected: add your API key, or sign in with your Claude plan.";
+// M98 (F29): nobody adds a key or signs in to an AI provider. Until fixing is switched on for this Mac, say so, and what works.
+export const NOT_CONNECTED = `${PRODUCT_S} AI is not switched on for this Mac yet, so this could not start. Checking your project still works, and so does Undo.`;
 
 // How every Claude Code run starts, agent tasks and both lanes alike: the bundled binary, and the environment for the
 // current sign in. Looked up each time, so adding a key while the app is open just works.
-/** The fix engine runs Claude Code, which Companion may not pay for without Anthropic's written agreement (F22). */
-export const MANAGED_NEEDS_OWN_CLAUDE = `Fixing needs your own Claude for now: add your API key or sign in with your Claude plan. The guide and explanations keep working with your ${PRODUCT} sign in.`;
+/** The fix engine runs Claude Code, which Companion may not pay for without Anthropic's written agreement (F22). Goes away
+ *  once M100's own fixing loop runs on managed usage. */
+export const MANAGED_FIXING_OFF = "Fixing is not switched on for this Mac yet. Checking your project, the guide and explanations still work.";
 async function claudeLaunch(s: Settings): Promise<{ claudeBinary: string; env: Record<string, string> }> {
-  if (s.route === "managed") throw new Error(MANAGED_NEEDS_OWN_CLAUDE);
+  if (s.route === "managed") throw new Error(MANAGED_FIXING_OFF);
   const a = await currentAuth(s);
   if (a.method === "none") throw new Error(NOT_CONNECTED);
   return { claudeBinary: resolveClaudeBinary(s.claudeBin, s.claudeBinId), env: engineEnv(a, s.data) };

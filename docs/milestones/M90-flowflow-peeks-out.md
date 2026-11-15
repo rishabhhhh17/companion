@@ -1,6 +1,6 @@
 # M90: Flowflow peeks out of the notch
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: fixtures and stand ins only.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (9a69dab). Nothing was spent on a real model: fixtures and stand ins only.
 
 The founder, 14 Nov 2026, after M84 made the hover panel useful but left the notch itself looking the same: the notch at rest changes from bare (F28, 4 Nov) to "Flowflow peeks out". Recorded as F32, which amends F28's update of 4 Nov.
 

@@ -1,6 +1,6 @@
 # M92 (A): Signing ready
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was signed, notarized or sent to Apple. No Keychain item was read, no certificate was made, no signing material was looked at.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (c724220). Nothing was signed, notarized or sent to Apple. No Keychain item was read, no certificate was made, no signing material was looked at.
 
 ## Why
 

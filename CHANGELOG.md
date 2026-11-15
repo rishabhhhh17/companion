@@ -2,6 +2,17 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## True words on screen: 15 Nov 2026
+
+- **No more "getting ready" that never ends.** Until Squibby's own fixing is switched on, Home said Squibby "is getting ready on this Mac" with a Try again button that could never work. It now says what is true: "Fixing is not switched on for this Mac yet. Checking your project still works. Squibby will tell you here when fixing is ready. Your project is safe." The notch, its hover line and its small chat say the same, in fewer words.
+- **One button that works.** In place of Try again, Home offers Check my project, which runs your project's own checks and needs nothing else. With no project yet, the setup list goes straight to Pick a project. The character stays calm and the status line says how your project is, since nothing is broken and nothing needs you.
+- **Nothing asks you to bring your own Claude.** Every line that told a person to add an API key, sign in with a Claude plan or use their own Claude is gone or reworded, in the app and in the messages Squibby's engine sends. A test reads every line in the app and fails if one comes back.
+- **The key row is for developers only.** The row where a developer can paste a model key now sits under Settings, More options, Account, For developers, and only shows once Developer tools is turned on there. It is off unless you turn it on, and search does not find the row while it is off.
+- "Getting ready" is still said while a part Squibby needs is downloading, because that is true then.
+- **No button that cannot work.** While fixing is off, a problem the check finds shows where it is and a plain line that Fix it comes later, never a Fix it that only ends in a refusal. The status tag keeps your project's own colour, grey or green, and is red only when something really fails.
+- **With no project open, Home says what you can do now:** pick a project and check that it works. The setup tick says "Checking is ready on this Mac", which is what is true.
+- **A narrow Home fits.** The list on the left becomes a slim rail of its icons, so the setup steps no longer wrap one word to a line.
+
 ## One price everywhere: 15 Nov 2026
 
 - **Squibby Pro is $15 a month, or $144 a year.** That is now the only price written anywhere: in the app, the go live checklist, the notes for the lawyer and the docs. Some of them still said $10, $20, $96 or "about $8", and the checklist still listed a Max plan at $100. There is no Max plan.
@@ -142,7 +153,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Squibby reacts to what really happens.** At rest it looks awake. It is proud when a fix is proven or a check passes, worried when a review says Not safe yet or a key is caught, relieved after an Undo, watches while your AI tool works, says hello when you rest the pointer on it, and gets sleepy after ten quiet minutes. With Reduce motion each is a still look.
 - **Squibby flies in curves.** Trips to a window, back home, or to a new edge or corner follow an arc, stretching and leaning as it goes and landing with a soft squash. With Reduce motion it fades out and back in.
 
-## The safety net in every AI tool: 11 Nov 2026 (in progress)
+## The safety net in every AI tool: 11 Nov 2026
 
 - **Codex, Cursor, the VS Code agent and Antigravity get the safety net too.** Before, only Claude Code could tell Squibby to save a copy before it ran a command that throws work away. Now each of these tools can, from its own settings in your project, after your yes. The command still runs exactly as your tool decides; Squibby only saves a copy first, and Undo in History brings the files back.
 - **Reviews start the moment any of them says done.** The same done signal Claude Code and Codex had now works for Cursor, the VS Code agent and Antigravity.
@@ -152,7 +163,7 @@ What changed, in plain words. Newest first. Written so it can be posted while bu
 - **Gemini CLI and Windsurf too.** The same two signals now work for Gemini CLI and for Windsurf, which now lives inside Devin. That is seven AI tools in all.
 - **Not yet claimed:** Xcode. Its Claude Agent and Codex may pick up the same project settings; that is checked on a real Mac first.
 
-## Foundations: 11 Nov 2026 (in progress)
+## Foundations: 11 Nov 2026
 
 Mostly under the hood, so the next big pieces stand on solid ground.
 
@@ -162,14 +173,14 @@ Mostly under the hood, so the next big pieces stand on solid ground.
 - **The pages are tested the way you use them.** Home, a review card, Fix it to proven to Undo, Stop, History, Memory, Settings, the first run and the notch panel are now drawn and clicked through in the tests.
 - **A small fix you may notice.** The character's liveliness setting is now read the same way on every draw.
 
-## Risky packages, the week, and payments ready but off: 11 Nov 2026 (in progress)
+## Risky packages, the week, and payments ready but off: 11 Nov 2026
 
 - **New packages are checked for known problems.** When a change adds a package or moves one to a new version, the review looks up only its name and version on OSV.dev, a free public list of known problems run by Google. Never your code and never your files. A known critical problem is a Must fix, a high one a Should fix, each with the fixed version to move to: "lodash 4.17.20: This package has a known serious problem: GHSA-..., fixed in 4.17.21." Works for npm, Python, Go and Rust package lists. If OSV.dev does not answer, the review says the packages were not checked, never that they are safe. Answers are kept on your Mac for a day. Turn it off in Settings, Fixing, More: Check new packages for known problems.
 - **This week, when you ask.** A "This week" row in History opens a plain page for the open project: changes reviewed, what was caught (keys, weakened tests, dones that were not done, risky packages), fixes proven, Undos used, copies saved before destructive commands, and the decisions Claude Code is told at the start. Only from your own history, only when you press it, never a notification. An empty week says so. No streaks, no praise.
 - **What we learned about memory.** We tested the start notes on real Claude Code sessions: Claude kept to your house rules and decisions every time, and without them it went against a decision in 5 of 6 tries. It did not make sessions cheaper or faster, so Squibby does not say it does. The notes no longer name the search command, which was never used. The command still works.
 - **Payments are built and switched off.** Pro is now $15 a month, and a one time "Is this safe to go live" report for one project is $29, both through Dodo. What Free and Pro include is one list, with limits written as "with limits" until they are measured. Undo and Stop always work, at any limit. Nothing is charged and no checkout shows to anyone: payments need both the build's own switch and a remote switch, and both are off.
 
-## Memory that is never lost: 10 Nov 2026 (in progress)
+## Memory that is never lost: 10 Nov 2026
 
 - **Claude Code gets your notes as each session starts.** In Settings, Fixing, under Start reviews sooner, you can let Squibby hand Claude Code a short block of notes when a session starts in your project: your house rules, decisions with their reason, and fixes that did not work. At most 30 lines, only what your code does not show. It stays the same for the whole session. It is added only after your yes, and Remove takes it out.
 - **See exactly what Claude is told.** The top of the Memory page shows the block line by line, each with where it came from and Forget. House rules link to Settings, where you change them.
@@ -178,7 +189,7 @@ Mostly under the hood, so the next big pieces stand on solid ground.
 - **Export and restore.** Export notes saves every note, about the project and about you, plus the house rules, in one plain file you keep where you like. Restore from a file puts them back after a yes. Nothing is removed, and lines you asked to forget stay forgotten. Your notes are never lost: export them any time.
 - **The shared AGENTS.md block stays small.** It holds at most 30 lines, most useful first. The rest stays in your notes file.
 
-## What the real run found: 10 Nov 2026 (in progress)
+## What the real run found: 10 Nov 2026
 
 We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes worked 8 of 8 times. These are the things it got wrong, now put right.
 
@@ -191,7 +202,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **A result that ends on a question starts at the start of a sentence,** keeping the first sentence, which usually says what went wrong.
 - **Started inside another app's sandbox, Squibby says so.** Instead of "Claude could not be reached" and "Try again", it says the checks could not run because of that sandbox, and to open Squibby by itself.
 
-## The safety net: 10 Nov 2026 (in progress)
+## The safety net: 10 Nov 2026
 
 - **A copy saved the instant before Claude Code runs a destructive command.** In Settings, Fixing, under Start reviews sooner, you can let Claude Code tell Squibby before each shell command in this project. When the command would throw work away (git reset --hard, git checkout or restore on files, git clean, rm -rf inside the project, a database drop or reset), Squibby saves a copy of the project first, then the command runs exactly as Claude Code decided. Nothing is blocked or changed, and if Squibby is closed or slow Claude Code goes on without waiting. History shows "Before Claude ran git reset --hard" with Undo, which puts the files back from Squibby's own copy, never through git. Squibby shows you the exact lines first, adds them only when you say yes, and one press removes them. Delete everything and leaving a project remove them too.
 - **"Claude is waiting for you" in the notch.** A second hook, also only after your yes: when Claude Code asks for a permission or waits for you to type, the notch's mark goes amber and the hover panel says Claude is waiting for you in your project, with Claude Code's own short notice under it. It clears when Claude Code moves on, or after 15 minutes (you can pick 5, 15 or 60). The question itself never travels.
@@ -200,7 +211,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **A key about to be pushed.** When a review finds a key in the code and the project has a git remote, the finding adds "If this is pushed, the key is public", and Copy for my AI tells the tool to remove it before any commit or push and to rotate it. Squibby runs no git command.
 - **What Squibby caught this week.** History shows one line, and Now one row, counting false dones, keys in code, weakened checks, saved copies you went back to, and Undos in the last seven days, from your own rows. It shows only when there is something, and it is never a streak or a score. You can turn it off in Settings.
 
-## Features, batch two: 6 Nov 2026 (in progress)
+## Features, batch two: 6 Nov 2026
 
 - **A report you can send a client.** On a proven fix, and on the checks before going live, Share report makes one plain page: "Is this safe to go live?", the answer, what was checked and how it went, what the review found, and what was not checked. It only says Ready when everything passed on this version. Keys and passwords are hidden, and code is left out unless you turn that on. Save it as a web page or a PDF wherever you pick. Nothing is sent anywhere.
 - **Show me where to paste.** After Copy for my AI, one press rings the chat box of the AI app in front: Cursor, the Claude app, ChatGPT, or Lovable in a browser. A solid ring means Squibby is sure; a dashed one says it is a guess; otherwise it tells you in words. It looks only when you press, with the light on first, and asks for Accessibility the first time. You paste it yourself. Squibby never types into another app.
@@ -208,7 +219,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Delete everything now also takes out the done signal.** The small "done" hook Squibby added to a project's Claude Code or Codex settings goes when you delete everything, or when a project goes to the Trash from Squibby. Only Squibby's own line is taken out.
 - **Fixed: Home could stop drawing when the first review card arrived** while a review setting was read out of order. It now reads it the same way every time.
 
-## Features, batch one: 6 Nov 2026 (in progress)
+## Features, batch one: 6 Nov 2026
 
 - **Reviews start when your AI tool says it is done.** In Settings, Fixing, you can let Claude Code or Codex tell Squibby the moment it finishes in this project, so the review starts then instead of after a quiet spell. Squibby shows you exactly the lines it would add to that tool's own settings file first, adds them only when you say yes, and one press removes them. The signal carries nothing of what the tool said, only "done in this folder". Without it, reviews start after the quiet time as before.
 - **A pause before a task runs away.** When one task has used far more than a usual task in your project, Squibby stops it and asks: Keep going, Stop, or Undo what it did. Nothing more runs while it asks, and Stop everything still stops it. It never shows an amount. You can pick 3 or 5 times a usual task, or turn it off, on the Account page.
@@ -216,7 +227,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Pages that should need a sign in.** In a project with a sign in, a dashboard, settings, account or admin page that opens without signing in is shown as Worth a look, with what it means and how to fix it.
 - **Choices for a vague ask.** Type "make it better" or "fix it" and Squibby shows a few choices from what it knows about your project, such as fixing the check that fails. Nothing runs until you tap one, and typing more words still works.
 
-## Your way: 6 Nov 2026 (in progress)
+## Your way: 6 Nov 2026
 
 - **Settings you looked for are easier to find.** How strict reviews are, the instant key warning (still off unless you turn it on) and How many times to try a fix are now on the main Fixing page. A line under Review changes says when a review starts.
 - **A warning before the daily limit.** Squibby tells you once a day when a project has used most of today's limit, or half if you pick that. It never shows an amount. The most one task may spend now sits right beside it on Account.
@@ -232,7 +243,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Open when you log in.** Off unless you turn it on; Squibby asks first, and you can turn it off here or in System Settings.
 - **How long reviews stay in History** is now also shown on the Privacy page.
 
-## Fluid: 6 Nov 2026 (in progress)
+## Fluid: 6 Nov 2026
 
 - **Everything answers your press.** Places, list rows and their buttons sink a little when you press them, like the buttons already did.
 - **Lists arrive, they do not pop.** Rows rise in one after another, all of them within a tenth of a second.
@@ -249,7 +260,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Calmer text.** List rows use a slightly smaller, tighter title, and corners are a touch tighter. Notes with no button go after four seconds and wait while Home is hidden.
 - **More contrast when the Mac asks for it.** With Increase contrast on, lines and faint marks get stronger.
 
-## Make it work: 6 Nov 2026 (in progress)
+## Make it work: 6 Nov 2026
 
 - **Your water character stays.** If you used the Friendly look and never picked a character, Home, the edge of your screen and Settings show the water character again, drawn whole beside the headline. Picking another character still works.
 - **Back never loses a problem.** In the first run, Back closes Set up more and keeps the problem it found. Going back further, the project screen offers See the problem instead of checking again.
@@ -264,7 +275,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Clearer options.** More ways to ask shows all of itself, and each switch has one line on what it does. Stop sharing these notes says what it removes. Odd words in Settings are plain now.
 - **Easier with VoiceOver and the keyboard.** Rows say what they do and to what ("Forget: Uses pnpm"), the keyboard comes back to the row after Edit or Start over, and a practice under way can be started over.
 
-## Black, with colour that means something: 5 Nov 2026 (in progress)
+## Black, with colour that means something: 5 Nov 2026
 
 - **One look: black like the notch.** Home and the notch's small panel are one black surface now, with no blocks of navy, grey or purple inside it. Colour only marks what something means: blue for Now and actions, purple for Learn and practice, orange for History and changes to look at, pink for Memory, green for proven and red for a real problem.
 - **Every place has its colour tile.** Now, Learn, History and Memory each have a small coloured square, like the Mac's own Settings. Settings is a grey gear.
@@ -280,7 +291,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **A practice ready on Now says what it is.** "A Join button that fails, on a practice copy." instead of what the button does.
 - **The old rooms are gone.** The coloured light behind Home, the sea and the glows are removed for good.
 
-## Fix it means fix: 5 Nov 2026 (in progress)
+## Fix it means fix: 5 Nov 2026
 
 - **Fix it fixes the line it found.** When the check finds one line, Fix it now makes one small checked fix of that line, instead of planning first. When nothing specific was found, it still looks deeper first. You can still pick Look deeper first in Settings.
 - **Fix it answers at once.** Pressing it says Starting the fix right away, and the problem stays on screen until the work really begins. If the fix cannot start, the problem stays and Squibby says why.
@@ -291,7 +302,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **A sign in page is said plainly.** When the browser check meets a sign in page, the result says the page needs a sign in, that Squibby never types passwords, and that what is behind it is not checked. The browser check shows as stopped at the sign in page, not as a tick. A way to sign in yourself and carry on the check is not built yet.
 - **After Stop, Undo what it did is ready.** A stopped run that changed files shows Undo what it did as the main button. Nothing is undone until you tap it, and a stopped run never counts as a fix.
 
-## A first run that shows both jobs: 5 Nov 2026 (in progress)
+## A first run that shows both jobs: 5 Nov 2026
 
 - **The welcome says both jobs.** "I look over every change your AI makes, and fix what breaks."
 - **One optional question: which AI do you build with?** Lovable, Bolt, Replit, Cursor, Claude Code or something else, or Skip. It only picks a tip about where Copy for my AI's words go. It stays on this Mac, is never sent, and Settings can forget it.
@@ -299,7 +310,7 @@ We ran Squibby's fixes and reviews on a real model for under a dollar. Fixes wor
 - **Fix it stays in view on the first check.** The optional parts (Make it yours, more tools, how you like things, keys) wait behind one Set up more (optional) link.
 - **Small wording fixes.** A cost under a cent says Less than 1 cent, never About less than 1 cent. A passing check is titled Checks pass and names the button that is really there, Look at my screen. More ways to ask shows the first way's line as soon as it opens. A one minute practice says About 1 minute.
 
-## Findings with a fixed shape, and a finish line for going live: 5 Nov 2026 (in progress)
+## Findings with a fixed shape, and a finish line for going live: 5 Nov 2026
 
 - **Every review says how ready it is, in one line.** Ready, Check these 2 things, or Not safe yet. It is never Ready when something must be fixed, when your checks failed, or when they did not run.
 - **Every finding has the same four parts.** Must fix comes first, then Should fix, then Worth a look. Each one says what is wrong, what it means for you, how to fix it, and when it may be fine on purpose. The top finding shows them on the card (the headline, one line of what it means, then how to fix it and, where it can be, when it may be fine); the rest are under Why does this matter. A key in the code is never fine, so that part is left out there, and the button that closes the card says Leave the key in the code instead of Keep it anyway. There is no score.

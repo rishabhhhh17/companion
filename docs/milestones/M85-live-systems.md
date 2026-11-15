@@ -1,6 +1,6 @@
 # M85: ask before live systems, and catch what the AI hid
 
-Status: built 14 Nov 2026, tests pass. Not committed.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (9ac87a9).
 
 The why comes from the checked research of 13 Nov 2026 (synthesis section 3), features 3, 4 and 12. The complaint ids below are the research's own (user needs, groups A, B, C and H).
 

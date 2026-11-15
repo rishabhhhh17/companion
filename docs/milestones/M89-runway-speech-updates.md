@@ -1,6 +1,6 @@
 # M89: Better speech on this Mac, the usage runway, and quiet updates
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: the spike ran Anthropic's bundled Claude Code against a stand in model on 127.0.0.1, and every other test used fixtures and fake query functions in temporary folders. The Best speech model was downloaded once into the session's scratch folder (never the app's folder) to pin and measure it.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (c769f3d). Nothing was spent on a real model: the spike ran Anthropic's bundled Claude Code against a stand in model on 127.0.0.1, and every other test used fixtures and fake query functions in temporary folders. The Best speech model was downloaded once into the session's scratch folder (never the app's folder) to pin and measure it.
 
 The why comes from the checked research of 13 Nov 2026 (`research-1113/synthesis.md` first). Feature 5, the usage runway, answers the loudest complaint group found (group F in `user-needs.md`, F1 to F9): Codex threads of about 624, 324 and 210 comments (F6, F7, F8), a 331 point Hacker News thread, and Anthropic itself saying people were "hitting usage limits in Claude Code way faster than expected" (F1). It hits Squibby too: Hand Squibby the job and Rescue run on the person's own Claude. The speech part is section M86 of `M84-86-plans.md`.
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { createEngine, createLanes, readSettings, MANAGED_NEEDS_OWN_CLAUDE } from "../src/engines.ts";
+import { createEngine, createLanes, readSettings, MANAGED_FIXING_OFF } from "../src/engines.ts";
 import { heldKey } from "../src/keychain.ts";
 import { PRODUCT, PRODUCT_S } from "../src/names.ts";
 
@@ -63,7 +63,7 @@ describe("the lanes each route gets", () => {
     const managed = { COMPANION_ROUTE: "managed", COMPANION_MANAGED_BASE: "https://usage.example.com" };
     for (const wrong of [KEY, "sk-ant-api03-" + "x".repeat(40), "sk-ant-oat01-" + "y".repeat(40), "cmp_short", " ", "Bearer cmp_" + "a".repeat(30)]) {
       const lanes = createLanes(readSettings(managed), { fetchFn: s.fetchFn, keyFn: async () => wrong });
-      await expect(lanes.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/Not connected/);
+      await expect(lanes.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/not switched on/);
     }
     expect(s.seen.length).toBe(0);
     const ok = createLanes(readSettings(managed), { fetchFn: s.fetchFn, keyFn: async () => "cmp_" + "a".repeat(40) });
@@ -73,15 +73,15 @@ describe("the lanes each route gets", () => {
   test("the person's own key still goes straight to Anthropic on the direct route (a token shaped value does not)", async () => {
     const s = spy();
     const lanes = createLanes(readSettings({ COMPANION_LANES: "direct" }), { fetchFn: s.fetchFn, keyFn: async () => "cmp_" + "a".repeat(40) });
-    await expect(lanes.fast.run({ text: "x", raw: true }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    await expect(lanes.fast.run({ text: "x", raw: true }, () => {}, sig())).rejects.toThrow(/not switched on/);
     expect(s.seen.length).toBe(0);
   });
   test("managed usage with no server address, or no sign in: not connected, nothing sent", async () => {
     const s = spy();
     const noBase = createLanes(readSettings({ COMPANION_ROUTE: "managed" }), { fetchFn: s.fetchFn, keyFn: async () => TOKEN });
-    await expect(noBase.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    await expect(noBase.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/not switched on/);
     const noToken = createLanes(readSettings({ COMPANION_ROUTE: "managed", COMPANION_MANAGED_BASE: "https://usage.example.com" }), { fetchFn: s.fetchFn, keyFn: async () => null });
-    await expect(noToken.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    await expect(noToken.fast.run({ text: "x" }, () => {}, sig())).rejects.toThrow(/not switched on/);
     expect(s.seen.length).toBe(0);
   });
   test("managed usage never uses the experimental pointing lane (it needs the person's own key)", async () => {
@@ -93,14 +93,15 @@ describe("the lanes each route gets", () => {
 });
 
 describe("the fix engine on managed usage", () => {
-  test("refuses in plain words: fixing needs the person's own Claude until Anthropic agrees otherwise; the token never reaches Claude Code", async () => {
+  test("refuses in plain words: fixing is not switched on yet until Anthropic agrees otherwise or M100 ships; the token never reaches Claude Code", async () => {
     let started = 0;
     const queryFn = (() => { started++; return (async function* () {})(); }) as never;
     const engine = createEngine(readSettings({ COMPANION_ROUTE: "managed", COMPANION_MANAGED_BASE: "https://usage.example.com", COMPANION_CLAUDE_BIN: "/bin/ls" }), { queryFn });
     const gen = engine.start({ prompt: "fix", project: "/tmp", model: "claude-sonnet-5-5" } as never);
-    await expect(gen.next()).rejects.toThrow(MANAGED_NEEDS_OWN_CLAUDE);
+    await expect(gen.next()).rejects.toThrow(MANAGED_FIXING_OFF);
     expect(started).toBe(0);
-    expect(MANAGED_NEEDS_OWN_CLAUDE).toMatch(/your own Claude/);
+    // M98 (F29): it says fixing is not switched on yet, never to bring your own Claude.
+    expect(MANAGED_FIXING_OFF).toMatch(/not switched on/);
   });
 });
 

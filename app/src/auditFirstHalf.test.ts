@@ -179,14 +179,15 @@ describe("(12) Home says what blocks it, with the one way out as the main button
   });
   test("each has its own words and main button", () => {
     for (const b of ["key", "engine", "claude", "claudeGetting"] as const) expect(S.home.blocked[b].headline.length).toBeGreaterThan(0);
-    expect(S.home.blocked.key.main).toBe("Try again");   // M69, F29: never "Add your key"
+    expect(S.home.blocked.key.main).toBe("");   // M98, F29: no Try again that cannot work; Check my project instead (blockMainFor)
     expect(S.home.blocked.engine.main).toBe("Restart");
     expect(S.home.blocked.claude.main).toBe("Get it");
   });
   test("blocked is a mode of its own, and Flowflow takes its error pose", () => {
     const m = { ...initial(), folder: P, connected: "none" } as Model;
     expect(homeMode(m, need(m), { blocker: "key" })).toBe("blocked");
-    expect(card).toMatch(/as=\{blocker && blocker !== "claudeGetting" \? "error" : undefined\}/);
+    // M98: only a real break takes the error pose (homeHero.ts blockerPose); fixing not switched on is nothing broken.
+    expect(card).toContain("as={blockerPose(blocker)}");
   });
   test("Claude's own notice is a secondary button, and notes on the sea have a backing", () => {
     expect(card).not.toMatch(/claude-notice[\s\S]{0,400}btn primary/);

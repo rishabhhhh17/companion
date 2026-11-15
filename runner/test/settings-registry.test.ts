@@ -164,6 +164,8 @@ describe("the shipped list of settings", () => {
       // M89: the usage runway mark in the notch (on) and the warning before a big job near the limit (at 80 percent);
       // updates that install by themselves after 5 quiet minutes (on); speech accuracy (Standard, the model already used).
       "runway.mark": true, "runway.warnAt": "80", "updates.quiet": true, "talk.accuracy": "standard",
+      // M98 (F29): the developer key row is hidden unless this is turned on (off).
+      "developer.tools": false,
     };
     for (const [k, v] of Object.entries(want)) expect(defaultOf(k), k).toEqual(v);
     expect(REGISTRY.settings.map((d) => d.key).sort()).toEqual(Object.keys(want).sort());
@@ -173,6 +175,10 @@ describe("the shipped list of settings", () => {
     expect(validate(defOf("spend.pauseAt")!, "10").ok).toBe(false);
     expect(defOf("check.privatePages")).toMatchObject({ section: "checks", kind: "switch", default: true, scope: "project", applies: ["runner"] });
     expect(defOf("ask.choices")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"] });
+  });
+  test("M98: the developer tools switch is the pages' own, off", () => {
+    expect(defOf("developer.tools")).toMatchObject({ section: "display", kind: "switch", default: false, scope: "app", applies: ["pages"], store: "settings", live: true });
+    expect(validate(defOf("developer.tools")!, "yes").ok).toBe(false);
   });
   test("M89: the runway mark and warning are the pages' own, quiet updates are the shell's and the pages', speech accuracy is the shell's", () => {
     expect(defOf("runway.mark")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["pages"], store: "settings", live: true });

@@ -1,6 +1,6 @@
 # M88: Your numbers, a shareable receipt, and spoken status
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model, nothing was sent, no real save dialog opened and nothing was said out loud: fixtures and stand ins only, temporary folders only.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (a2a37c2). Nothing was spent on a real model, nothing was sent, no real save dialog opened and nothing was said out loud: fixtures and stand ins only, temporary folders only.
 
 The why comes from the checked research of 13 Nov 2026 (`synthesis.md` first). Section 5, item 1: real users and numbers are the biggest gap for YC, reported "the way Agent FM and Plover did: weekly users, paying users, reviews done, undos used, fixes that passed checks". Feature 8 (section 3): a shareable "what my AI did" receipt, which answers "how do you get users?" (`yc-companies.md`: Spacesheep's shareable agent output, HeyClicky's growth through short video). Feature 9: spoken status ("your fix passed its checks", "Cursor is waiting on you"); Agent FM reported 410 engineers, 60+ paying and 1.2 hours a day of audio updates. The plan for (a) is `M84-86-plans.md` section M85.
 

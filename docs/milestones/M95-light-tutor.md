@@ -1,6 +1,6 @@
 # M95: A light tutor: what you have learned, and what to practise next
 
-Status: built 15 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: stand in engines, fixtures and temporary folders only.
+Status: built 15 Nov 2026, tests pass. Committed 15 Nov 2026 (38b0188). Nothing was spent on a real model: stand in engines, fixtures and temporary folders only.
 
 The why: the founder asked on 14 Nov 2026, "does it teach me how to code better?" Teaching already rides inside the fix (Explain with its check question, Your turn, Show me what changed, the six practice projects and the guided tour in Learn, lessons made from the project, Prompt help). Nothing followed the person over time. This milestone adds a light tutor in Learn: what you have learned, and one thing to practise next.
 

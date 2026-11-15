@@ -245,7 +245,8 @@ describe("it springs open from the notch, and not at all with less motion", () =
     // Its error pose while something blocks every job (the audit, item 12).
     // M55 (the character reacts): it also gets the ask box, and the review card while changes wait (characterReacts.test.ts).
     // M69 step 2: while the review card leads Now the character is drawn in that card instead (one at a time).
-    expect(card).toContain('<div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}');
+    // M98: the error pose only for a real break (homeHero.ts blockerPose), never for fixing not switched on yet.
+    expect(card).toContain('<div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blockerPose(blocker)} rest={!homeOpen || home.tab !== "now"} askId={askId}');
     expect(card).toContain('<div className="ch-water"><Waterline under /></div>');
     expect(ch).toContain("const resting = useRest() || !!rest;");
     expect(css).not.toContain(".hero .home-char { display: none; }");

@@ -127,6 +127,12 @@ export function searchSettingsFor(query: string, settings: readonly Def[] = REGI
   return out.sort((a, b) => b.score - a.score || a.order - b.order).slice(0, MAX_RESULTS).map(({ close: _c, ...r }) => r);
 }
 
+/** M98 (F29): the developer key row shows, and is found, only while Developer tools is on (developer.tools, off). */
+export const developerShown = (v: unknown): boolean => v === true;
+/** The results a person sees: the developer key row only while Developer tools is on (it is not on the page otherwise). */
+export const shownResults = (results: readonly Result[], developer: boolean): Result[] =>
+  results.filter((r) => developer || !("fixed" in r.hit && r.hit.fixed === "key"));
+
 /** Results grouped under their page and group ("General, Notch and Home"), in the order the best of each came. */
 export function groupResults(results: readonly Result[]): ResultGroup[] {
   const groups: ResultGroup[] = [];

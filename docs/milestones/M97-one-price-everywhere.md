@@ -1,6 +1,6 @@
 # M97: One price everywhere: Pro $15 a month, $144 a year, no Max
 
-Status: plan approved by the founder on 15 Nov 2026 ("Yes, build it all", for the whole M97 to M109 plan as written). Built 15 Nov 2026, tests pass. Not committed. Nothing was spent: no real model call, no key, no deploy, no account; fixture costs and temporary folders only.
+Status: plan approved by the founder on 15 Nov 2026 ("Yes, build it all", for the whole M97 to M109 plan as written). Built 15 Nov 2026, tests pass. Committed 15 Nov 2026 (faba93a). Nothing was spent: no real model call, no key, no deploy, no account; fixture costs and temporary folders only.
 
 The why: on 15 Nov 2026 the price disagreed in five places, so the founder, a lawyer or a checkout setup could act on a wrong number. Nothing user facing was wrong (payments are off), but the founder could have made Dodo products at $20 and $100 from the go live checklist, and a lawyer could have read "about $8 a month".
 

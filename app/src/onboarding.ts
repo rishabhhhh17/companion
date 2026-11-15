@@ -4,7 +4,6 @@ import type { Command } from "../../protocol/index.ts";
 import { SWITCHED, switchKey, TOOLS, toolOn, type SwitchedId } from "./groups.ts";
 import { setting } from "./settingsStore.ts";
 import type { Liveliness } from "./lookfeel.ts";
-import { numberWords } from "./settingsRows.ts";
 import { S } from "./strings.ts";
 import { cleanName } from "./notchHello.ts";
 import type { Verdict } from "./verdict.ts";
@@ -171,20 +170,6 @@ export function keyCheck(savedAt: number | null, tested: KeyTested | null): KeyT
 /** The keys named on the last screen: the four that have keys by usual (F28): Fix it, Hold to talk, Prompt help and Stop
  *  everything. A job whose key the person took away is left out (only keys that can be pressed are named). */
 export const FIRST_KEYS: readonly string[] = ["problem", "talk", "read", "stop"];
-
-// ---------- Your Claude: the honest lines ----------
-
-const stop = (t: string) => (/[.!?]$/.test(t.trim()) ? t.trim() : `${t.trim()}.`);
-/** The three lines over the key field, each true of this Mac now: where the key goes (only to Claude, from the Keychain),
- *  what it costs (Anthropic bills the person directly; the daily limit in force, which Settings changes), and the plan,
- *  from the Plan card's own state (planCard: with payments off, early access and nothing charged). */
-export function honestLines(o: { limitUsd: number; plan: { line: string; facts: readonly string[] } }): { privacy: string; cost: string; plan: string } {
-  return {
-    privacy: S.fr.keyPrivacy,
-    cost: S.fr.keyCost(numberWords(o.limitUsd, "dollars")),
-    plan: S.fr.keyPlan([o.plan.line, ...o.plan.facts].filter((t) => t.trim()).map(stop).join(" ")),
-  };
-}
 
 // ---------- the first check ----------
 

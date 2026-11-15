@@ -156,3 +156,9 @@
 .runway-ring[data-level="near"], .runway-ring[data-level="out"] { color: var(--c-orange-text); }
 .runway-ring-text { display: flex; align-items: baseline; gap: 4px; }
 .runway-ring-text small { color: var(--fg-2); font: 500 var(--t-caption) / 1.15 var(--font); }
+/* Review of M98: in a narrow Home a setup row stacks: its words take the row's width, and its button sits under them at full
+   width, lined up with the words (past the step's mark), never squeezing them to a word a line. */
+@container home (width < 36rem) {
+  .home .setup-row { flex-wrap: wrap; row-gap: var(--space-2); }
+  .home .setup-row > .btn { flex: 1 0 100%; margin-inline-start: calc(var(--h-chip) + var(--space-3)); max-width: calc(100% - var(--h-chip) - var(--space-3)); }
+}

@@ -3,7 +3,7 @@
 // panel, History). Pure: no page, no setting. Every tag, dot and tile reads from here; ui/tokens.css holds the colours
 // themselves (--c-<colour>, -soft, -text). Tested in meaning.test.ts: no state is left without a meaning.
 import type { CharacterState } from "./model.ts";
-import type { HeroTone, HomeMode, StatusKind } from "./homeHero.ts";
+import type { Blocker, HeroTone, HomeMode, StatusKind } from "./homeHero.ts";
 import type { VerdictKind } from "./verdict.ts";
 import type { IconName } from "./icons.tsx";
 
@@ -78,11 +78,15 @@ export const PROBLEM_MEANING: Record<"failedCheck" | "keyInCode" | "error" | "no
 
 /** Home's lead: the one thing that matters now, as a meaning. A practice of this folder that waits on the person is a
  *  practice, purple (the founder, 5 Nov 2026: never NEEDS YOU on a waiting practice); a real question is a question. */
-export function heroMeaning(o: { mode: HomeMode; tone: HeroTone; status: StatusKind; practice?: string | null; reviewStop?: boolean; atRest?: boolean; restPill?: keyof typeof PILL_MEANING | null }): Meaning {
+export function heroMeaning(o: { mode: HomeMode; tone: HeroTone; status: StatusKind; practice?: string | null; reviewStop?: boolean; atRest?: boolean; restPill?: keyof typeof PILL_MEANING | null; blocker?: Blocker | null }): Meaning {
   if (o.practice && o.practice in PRACTICE_MEANING && (o.mode === "needs" || o.mode === "rest" || o.tone === "needsYou")) return PRACTICE_MEANING[o.practice as keyof typeof PRACTICE_MEANING];
   if (o.mode === "working") return "working";
   if (o.mode === "review") return o.reviewStop ? "problem" : "review";
   if (o.mode === "question") return "question";
+  // Review of M98: only a real break is red. Fixing not switched on yet keeps the project's own colour (its tag says the
+  // project's own state, homeHero.ts heroStatusOf), and a part on its way is working.
+  if (o.mode === "blocked" && o.blocker === "key") return STATUS_MEANING[o.status];
+  if (o.mode === "blocked" && o.blocker === "claudeGetting") return "working";
   if (o.mode === "blocked") return "problem";
   if (o.mode === "result") return TONE_MEANING[o.tone];
   if (o.mode === "answer") return "ready";

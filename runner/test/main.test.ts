@@ -145,7 +145,7 @@ describe("the runner program", () => {
     await r.waitFor(() => r.events().some((e) => e.type === "auth.status"));
     expect(r.events().find((e) => e.type === "auth.status").method).toBe("none");
     r.send(start(project));
-    await r.waitFor(() => r.events().some((e) => e.type === "protocol.error" && /not connected/i.test(e.reason)));
+    await r.waitFor(() => r.events().some((e) => e.type === "protocol.error" && /not switched on/i.test(e.reason)));
     await r.close();
   });
 

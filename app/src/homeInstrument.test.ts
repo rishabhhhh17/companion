@@ -27,7 +27,8 @@ describe("the status line says the state in words", () => {
     expect(heroStatusOf("review", st("works"), "needsYou", true)).toBe("fixFirst");
     // M69 step 3: while the parts download there is nothing for the person to do yet: Working, not Needs you.
     expect(heroStatusOf("blocked", st("works"), "needsYou", false, "claudeGetting")).toBe("working");
-    expect(heroStatusOf("blocked", st("works"), "needsYou", false, "key")).toBe("needs");
+    // M98: fixing not switched on needs nothing from the person either: the project's own state, never Needs you.
+    expect(heroStatusOf("blocked", st("works"), "needsYou", false, "key")).toBe("proven");
     expect(heroStatusOf("needs", st("works"), "needsYou", true)).toBe("needs");   // only the review's own stop
     expect(S.ui.status.fixFirst).toBe("Fix this first");
     expect(heroRingOf("review", "fixFirst")).toBe("stop");

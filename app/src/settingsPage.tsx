@@ -30,7 +30,7 @@ import { S } from "./strings.ts";
 import { failNote } from "./failwords.ts";
 import { invoke, listen } from "./tauri.ts";
 import { AT_REST, atRestOf, atRestWrites, CHILD_OF, FIRST_PAGE, HAIRLINE_BEFORE, HIDDEN_OPTIONS, isPage, mainKeys, MORE_SECTIONS, moreKeys, PAGE_COLOUR, PAGES, placeOf, rowAnchor, shownValue, SIDEBAR, type AtRest, type Fixed, type Item, type PageId, type Topic } from "./settingsPages.ts";
-import { groupResults, searchSettingsFor, type Hit } from "./settingsSearch.ts";
+import { developerShown, groupResults, searchSettingsFor, shownResults, type Hit } from "./settingsSearch.ts";
 import { defOf, defaultOf, validate, type Def, type RuleKind } from "../../protocol/settings.ts";
 import { reviewModeOf } from "../../protocol/index.ts";
 import { changedNow, changeSetting, characterNow, notHeard, resetKeysWithUndo, resetSetting, resetWithUndo, setting, snapshotNow, undoReset, usualOf, useSetting, useSettings, type Done } from "./settingsStore.ts";
@@ -736,7 +736,8 @@ function GroupView({ id, items }: { id: string; items: readonly Item[] }) {
 
 function FixedRows({ fixed }: { fixed: Fixed }) {
   switch (fixed) {
-    case "key": return <KeyRow />;
+    // M98 (F29): a developer tool, never shown to customers: only while Developer tools is on.
+    case "key": return developerShown(setting("developer.tools")) ? <KeyRow /> : null;
     case "permissions": return <PermissionRows />;
     case "kept": return <KeptRow />;
     case "updates": return <UpdatesRow />;
@@ -1392,7 +1393,9 @@ function SearchResults({ q }: { q: string }) {
   const c = useCtx();
   const shown = shownSettings().filter((x) => shownNow(x.key, setting));
   const results = searchSettingsFor(q, shown);
-  const groups = groupResults(results);
+  // M98 (F29): the developer key row is found only while Developer tools is on, as it is drawn only then.
+  const found = shownResults(results, developerShown(setting("developer.tools")));
+  const groups = groupResults(found);
   const heading = (page: PageId, group: string) => S.setFrame.heading(S.pages[page].title, (S.setGroupTitles as Record<string, string>)[group] ?? "");
   const hitRow = (h: Hit) => {
     if ("key" in h) {
@@ -1402,7 +1405,7 @@ function SearchResults({ q }: { q: string }) {
     return <Row key={h.fixed} label={S.setFixed[h.fixed].title} control={<Button size="sm" onClick={() => c.go(h.fixed)}>{S.setFrame.show}</Button>} />;
   };
   return (<>
-    <div className={results.length ? "sr" : "set-note"} role="status" aria-live="polite">{results.length ? S.setFrame.found(results.length) : S.setFrame.noMatch(q.trim())}</div>
+    <div className={found.length ? "sr" : "set-note"} role="status" aria-live="polite">{found.length ? S.setFrame.found(found.length) : S.setFrame.noMatch(q.trim())}</div>
     {groups.map((g) => (
       <section key={`${g.page}:${g.group}`} className="set-result">
         <Button kind="quiet" size="sm" className="set-result-head" onClick={() => c.go(g.group || g.page)}>{heading(g.page, g.group)}</Button>

@@ -135,7 +135,7 @@ describe("failures, Stop, and what is never kept", () => {
   });
   test("no sign in: nothing is sent, and the message says how to connect", async () => {
     const r = rig(() => json({}), null);
-    await expect(new DirectFastLane(r.deps).run({ text: "x" }, () => {}, sig())).rejects.toThrow(/Not connected/);
+    await expect(new DirectFastLane(r.deps).run({ text: "x" }, () => {}, sig())).rejects.toThrow(/not switched on/);
     expect(r.seen.length).toBe(0);
   });
   test("Stop before sending sends nothing; Stop while waiting ends the request", async () => {

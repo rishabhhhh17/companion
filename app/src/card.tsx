@@ -38,7 +38,7 @@ import { JobLive } from "./jobLive.tsx";
 import { failCopy, failedStep, proofSentence, proofTicks, replayRows, runList } from "./runList.ts";
 import { FailLead, ProofTicks, Replay, RunRows } from "./runListView.tsx";
 import { ASKED_NOTICE_MS, arrivalFrom, closesOnClickAway, homeReduce, homeStart, markedLine, need, phArmable, shownOn, stepsAside, tabId, tabName, tabPanelId, typing, type HomeArrival, type Panel, type Tab } from "./home.ts";
-import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
+import { jobStep, needMainWords, goLiveAnswer, reviewHeroSays, askRoute, blockerOf, blockLineFor, blockMainFor, blockerPose, fixOffered, MAIN_TOOL, heroCompact, homeFixRoute, jobLive, timeLine, reviewLead, aboutWorthACard, needMainFor, sayFor, agoWords, barPlaces, barStopCan, bringBackCan, heroWords, homeMode, homeStatus, mainFor, placeAfter, retryOwnsMain, recapShownLines, recapWorthACard, stopCan, undoCan, frontFollowed, frontKindOf, halfWay, heroRingOf, heroLineSaid, heroStatusOf, homeFoot, statusLineShown, statusSubShown, type FrontKind, type MainAct } from "./homeHero.ts";
 import { notePress, orderWays, readCounts, type Counts, type Way } from "./usedOften.ts";
 import { homeKey } from "./homeKeys.ts";
 import { paletteMove, paletteRows, paletteShown, type PaletteAction, type PaletteRow } from "./palette.ts";
@@ -2179,7 +2179,8 @@ export function Card() {
   // M69 (spec 3.11): one numbered setup list while this Mac is not ready or no project is open; its open step has the one
   // button and the line, so the hero keeps neither then (no message said twice, no two buttons for the same step).
   const setup = onboarded ? setupList({ blocker, project, practiced: practiceRec.rows.some((r) => r.done) }) : null;
-  const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: setup ? "" : S.home.blocked[blocker].line, detail: undefined, count: undefined }
+  // M98: fixing not switched on is not a setup step, so its line shows over the list too (the list does not say it).
+  const heroShown = blocker ? { headline: S.home.blocked[blocker].headline, line: setup && blocker !== "key" ? "" : blockLineFor(blocker, project), detail: undefined, count: undefined }
     : mode === "review" && rlead ? { headline: rlead.headline, line: rlead.line, detail: undefined, count: undefined, friendly: rlead.friendly } : hero;
   // M65, the Instrument look: a status line with its dot over the headline, the orb's ring agreeing with that line, and the
   // footer line under the ask box (homeHero.ts). The page never branches on the style: the tokens show them in Instrument
@@ -2196,18 +2197,20 @@ export function Card() {
     keyWarned: (keyWarned(m.review as typeof m.review) || !!m.review?.result?.reasons.some((x) => x.kind === "secret_in_code" || x.kind === "key_in_page")) && m.review?.project === project,
     reviewOpen: reviewOn,
     errorExplained: m.eh?.stage === "ready" && (!m.eh.project || m.eh.project === project),
-    checkFound: m.point?.stage === "found" && !m.point.fixing,
+    // Review of M98: "Fix what the check found" needs the model, so not while fixing is switched off (homeHero.ts fixOffered).
+    checkFound: m.point?.stage === "found" && !m.point.fixing && fixOffered(blocker),
     watchFailing: watchesOf(m.watches, project).filter((w) => w.state === "failing").map((w) => w.kind),
     changedSinceCheck: m.sinceCheck?.project === project && m.sinceCheck.changed,
     needsInstall: m.about?.project === project && m.about.needsInstall,
   });
   // The one way out of a block, or into the review, as the main button.
   const blockMain = blocker && S.home.blocked[blocker].main ? blocker : null;
+  // M98 (F29): fixing not switched on has no Try again; Check my project works without the engine, so it is the button.
+  const blockAct = blockMainFor(blocker, project);
   const reviewMain = mode === "review" && rlead?.main === "review";
   const doBlockMain = () => {
-    // M69 (F29): Try again, never a key to add (the key stays a developer tool in Settings, Account).
-    if (blocker === "key") void invoke("restart_engine").catch(() => {});
-    else if (blocker === "engine") void invoke("restart_engine").catch(() => {});
+    // M98 (F29): fixing not switched on has no button of its own (blockMainFor); only a stopped engine restarts.
+    if (blocker === "engine") void invoke("restart_engine").catch(() => {});
     else if (blocker === "claude") getClaude(setClaudeSt);
   };
   // The limit card takes the result's place and has its own main button, so Home's main button steps aside while it shows.
@@ -2251,9 +2254,8 @@ export function Card() {
   // The one main button on Now (one per screen): the way out of a block, Review the changes, the status's own, or the next
   // step of what waits elsewhere. None while the hero is folded for a card that needs a tap (the audit, item 13).
   // A result that offers Try again owns the next step (the audit, item 34), so the hero has no main button of its own then.
-  const setupAct = (a: "retry" | "getParts" | "pickFolder" | "practice") => {
-    if (a === "retry") void invoke("restart_engine").catch(() => {});
-    else if (a === "getParts") getClaude(setClaudeSt);
+  const setupAct = (a: "getParts" | "pickFolder" | "practice") => {
+    if (a === "getParts") getClaude(setClaudeSt);
     else if (a === "pickFolder") pickFolder();
     else beginPractice(FIRST_PRACTICE);
   };
@@ -2262,6 +2264,7 @@ export function Card() {
   const heroMain: { label: string; go: () => void; status: boolean } | null = compact || setup ? null
     : retryOwnsMain(m, project) ? null
     : blockMain ? { label: S.home.blocked[blockMain].main, go: () => doBlockMain(), status: false }
+    : blockAct && buttonShown(MAIN_TOOL[blockAct]!) ? { label: S.home.main[blockAct], go: () => findFromHome(), status: false }
     // M71: one main button per screen. When the review card is right under the lead with its own Review changes, the lead
     // has none of its own (two blue buttons said the same thing).
     : reviewMain ? (show("review") && reviewOn && home.tab === "now" ? null : { label: S.home.reviewMain, go: () => openReview(), status: false })
@@ -2338,7 +2341,7 @@ export function Card() {
   // M71 (meaning.ts): the lead's meaning, so its tag, its colour and the list's agree. A practice that waits on the person is
   // "Practice ready" in purple, never needs you (the founder, 5 Nov 2026).
   const practiceLead = !!m.practice && !!needNow && needNow.key.startsWith("practice:") && !atRest;
-  const leadMeaning = heroMeaning({ mode, tone: hero.tone, status: status.kind, practice: practiceLead ? m.practice!.stage : null, reviewStop: !!rlead?.stop, atRest, restPill: atRest ? restWords.pill : null });
+  const leadMeaning = heroMeaning({ mode, tone: hero.tone, status: status.kind, practice: practiceLead ? m.practice!.stage : null, reviewStop: !!rlead?.stop, atRest, restPill: atRest ? restWords.pill : null, blocker });
   // M72 (the engineer's low list): the practice's own short title, never English matched in logic.
   const leadHeadline = leadMeaning === "practice" && heroShown.headline === S.practiceTitle ? S.practiceLeadTitle : heroShown.headline;
   const practiceSkip = practiceLead && m.practice?.stage === "start" && !!m.practice && !workingOn(m);
@@ -2767,7 +2770,7 @@ export function Card() {
             {/* M55 (the character reacts): its eyes go to the ask box while the person types, and it leans toward the review card
                 while changes wait for it (only while that card is on Now). */}
             {/* M69: while the review card leads Now, the character is drawn in that card instead (one at a time). */}
-            <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blocker && blocker !== "claudeGetting" ? "error" : undefined} rest={!homeOpen || home.tab !== "now"} askId={askId}
+            <div className="ch-char">{!cardLeads && <HomeCharacter m={m} as={blockerPose(blocker)} rest={!homeOpen || home.tab !== "now"} askId={askId}
               ring={leadMeaning === "practice" ? null : heroRingOf(mode, heroStatus)} watching={handoffWaits} leanTo={home.tab === "now" && show("review") && reviewOn && changesWait(m.review) ? REVIEW_ID : null} />}</div>
           </div>
         }>
@@ -3525,9 +3528,9 @@ export function Card() {
           {m.point.stage !== "checking" && (
             <div className="row">
               {m.point.stage === "found" && pointsOnScreen(m.point.problem) && <button className="btn" type="button" onClick={() => pointProblem(project, m.point?.problem)}>{S.pointWhere}</button>}
-              {m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
+              {fixOffered(blocker) && m.point.stage === "found" && buttonShown("pointWhy") && <button className="btn" type="button" disabled={m.diagram?.stage === "asking"} onClick={() => drawIt("Why did this break?", m.point?.problem && m.point.problem.kind === "line" ? { kind: "line", file: m.point.problem.file, line: m.point.problem.line, message: m.point.problem.message } : { message: m.point?.problem?.message ?? m.point?.message })}>{S.drawWhy}</button>}
               {/* While a fix already runs (a practice's, or one asked for from Learn), Fix it is not offered again (M51 polish). */}
-              {m.point.stage === "found" && !working && !m.point.fixing && <button className="btn primary" type="button" onClick={fixKnown}>{S.pointFix}</button>}
+              {m.point.stage === "found" && !working && !m.point.fixing && fixOffered(blocker) && <button className="btn primary" type="button" onClick={fixKnown}>{S.pointFix}</button>}
               {m.point.stage === "found" && m.point.fixing && <span className="fix-starting" role="status"><b>{S.fix.starting}</b> <span className="muted">{S.fix.startingLine}</span></span>}
               {m.point.stage === "found" && !working && canBisect(m) && project && buttonShown("whichTask") && <button className="btn" type="button" onClick={findBreaker}>{S.bisectButton}</button>}
               {/* The project's checks found nothing wrong: the problem may be in another app, so the screen can be looked at (point.everyday). */}
@@ -3540,6 +3543,8 @@ export function Card() {
             <div className="line">{m.point.problem && m.point.problem.kind === "line" && !lineOf(m.point.problem) ? `${m.point.problem.file}, line ${m.point.problem.line}: ` : ""}{m.point.problem?.message || plainPath(m.point.message ?? "", project)}</div>
             {/* M51: where it is and the line itself, as a proof row in the system mono. */}
             <FailingLine problem={m.point.problem} />
+            {/* Review of M98: while fixing is not switched on, one plain line in place of Fix it and Why (homeHero.ts fixOffered). */}
+            {!fixOffered(blocker) && <div className="line muted" role="note">{S.pointFixOff}</div>}
           </>}
         </section>
       )}

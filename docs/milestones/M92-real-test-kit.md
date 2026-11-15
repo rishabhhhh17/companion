@@ -1,6 +1,6 @@
 # M92 (B): The real test kit
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing reached the network, no account was made, and no real Supabase, Vercel or Stripe tool ran: the kit's script only writes files, and every tool answer in the tests is a fixture.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (c724220). Nothing reached the network, no account was made, and no real Supabase, Vercel or Stripe tool ran: the kit's script only writes files, and every tool answer in the tests is a fixture.
 
 ## Why
 

@@ -248,7 +248,7 @@ describe("the secondlook.check command", () => {
     const s = setup();
     await s.ask();
     expect(s.answer()[0]).toMatchObject({ ok: false });
-    expect(s.answer()[0].reason).toMatch(/Claude/);
+    expect(s.answer()[0].reason).toMatch(/not switched on/);   // M98 (F29): never "connect Claude"
     const seen: any[] = [];
     const t = setup({ checker: lane(LOOK, {}, true, seen) });
     await t.ask({ text: "   " });

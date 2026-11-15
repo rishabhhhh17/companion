@@ -90,7 +90,7 @@ import type { PageShot } from "./proof/browser.ts";
 import type { TaskLog } from "./tasklog.ts";
 import type { RunnerSettings } from "./settings.ts";
 import { defaultOf } from "../../protocol/settings.ts";
-import { PRODUCT } from "./names.ts";
+import { PRODUCT, PRODUCT_S } from "./names.ts";
 import type { FixCounter } from "./plan.ts";
 
 /** An undo error that already reads as a plain sentence is shown as it is (the product name comes from protocol/names.json). */
@@ -1328,7 +1328,7 @@ export class AgentRunner {
     const parts = [cmd.prompt, attachmentsBlock(added.files)];
     let prior = 0;
     if (added.images.length && this.room(cmd.project) > 0) {
-      if (!this.o.describer) { this.fail("Pictures can be looked at only once Claude is connected, so nothing was started. Remove the picture, or connect Claude in Settings.", cmd.agent); return { ended: { status: "refused", usd: 0 } }; }
+      if (!this.o.describer) { this.fail(`Pictures can be looked at only once ${PRODUCT_S} AI is switched on for this Mac, so nothing was started. Remove the picture to carry on.`, cmd.agent); return { ended: { status: "refused", usd: 0 } }; }
       const abort = new AbortController();
       this.sessions.set(cmd.agent, newSession(cmd.agent, abort));   // so Stop and Stop everything reach it
       this.state(cmd.agent, "thinking");
@@ -2546,7 +2546,7 @@ export class AgentRunner {
     let where: Problem | null = null;
     try { where = project ? locateError(text, project) : null; } catch { where = null; }
     const at = where?.kind === "line" ? { where } : {};
-    if (!this.o.explainer) { say(false, { ...at, reason: "Explaining needs Claude, which is not connected here. You can still look at where it is, or press Fix it." }); return; }
+    if (!this.o.explainer) { say(false, { ...at, reason: `Explaining needs ${PRODUCT_S} AI, which is not switched on for this Mac yet. You can still look at where it is.` }); return; }
     // It spends on the person's key, so it counts in the project's day and waits at its limit, as Explain does.
     if (this.roomFor(project) <= 0) { say(false, { ...at, reason: limitReached(project) }); return; }
     const ac = new AbortController();
@@ -2578,7 +2578,7 @@ export class AgentRunner {
     const say = (ok: boolean, extra: Record<string, unknown>) => this.emit({ type: "secondlook.result", req: cmd.req, ...(cmd.project ? { project: cmd.project } : {}), ok, items: [], checked: [], cantTell: [], search: "off", searches: 0, usdEstimate: 0, ...extra } as never);
     if (this.setting<boolean>("secondLook.on") === false) { say(false, { reason: "Second Look is off. Turn it on in Settings, General." }); return; }
     if (!String(cmd.text ?? "").trim()) { say(false, { reason: "Select the answer you want checked, then press the keys again." }); return; }
-    if (!this.o.checker) { say(false, { reason: "Second Look needs Claude, which is not connected here." }); return; }
+    if (!this.o.checker) { say(false, { reason: `Second Look needs ${PRODUCT_S} AI, which is not switched on for this Mac yet.` }); return; }
     if (this.roomFor(project) <= 0) { say(false, { reason: limitReached(project) }); return; }
     const ac = new AbortController();
     this.picturing.add(ac); this.owner.set(ac, "secondLook");   // Stop everything ends it, and so do Prompt help or Second Look going off

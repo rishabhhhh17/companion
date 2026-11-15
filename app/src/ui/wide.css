@@ -137,3 +137,17 @@
 .home[data-side] .hero[data-compact][data-mode="result"] .hero-words, .home[data-side] .hero[data-compact][data-mode="review"] .hero-words { padding-right: calc(var(--char) * .72); margin-bottom: calc(var(--line-up) + var(--space-3)); }
 /* More ways to ask: in both layouts it opens downward in the ask box's own column (ui/system.css, M69, spec 3.15). The
    popover over the ask box it was here (the audit, item 40) is gone: it covered the work above it. */
+
+/* Review of M98: a narrow Home (under about 500 points) keeps the list as a rail of its tiles, so the work keeps its width
+   (the full list took 204 of 460, and a setup row wrapped one word a line). Each place keeps its name for VoiceOver; the
+   section titles, task names and marks step out of sight, and the work's side padding narrows to match. */
+@container home (width < 36rem) {
+  .home[data-side] .inner { grid-template-columns: calc(var(--tile-place) + var(--space-2) * 4) minmax(0, 1fr); }
+  .home[data-side] .side { padding-inline: var(--space-2); }
+  .home[data-side] .side .sb-item { position: relative; justify-content: center; padding-inline: 0; }
+  .home[data-side] .side .sb-label, .home[data-side] .side .side-name, .home[data-side] .side .side-tool-text, .home[data-side] .side .side-title { position: absolute; width: var(--hair); height: var(--hair); margin: calc(var(--hair) * -1); padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .home[data-side] .side .side-mark, .home[data-side] .side .stamp { display: none; }
+  .home[data-side] .side .sb-count, .home[data-side] .side .sb-dot { position: absolute; top: 0; right: 0; margin: 0; }
+  .home[data-side] .work { padding-inline: var(--space-4); }
+  .home[data-side] .work > .askwrap::after { inset-inline: calc(var(--space-4) * -1); }
+}

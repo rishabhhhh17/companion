@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { addMemory, findProblem } from "./commands.ts";
-import { ALL_ANSWERED, back, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, honestLines, keyShownFirst, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, settingsFor, skipTo, STEPS, yoursSettings, type PointNow } from "./onboarding.ts";
+import { ALL_ANSWERED, back, canContinue, checkAnnounce, checkEndLine, checkStage, commandsFor, COUNTED, countOf, DEFAULT_ANSWERS, DEFAULT_YOURS, effectsOf, FIRST_KEYS, firstCheckVerdict, groupSettingsFor, keyShownFirst, installAsks, keyCheck, keyLooksRight, KEY_PAGE, LEVEL, NAME_MAX, next, QUESTIONS, settingsFor, skipTo, STEPS, yoursSettings, type PointNow } from "./onboarding.ts";
 import { characterName, COMPANIONS } from "./companion.ts";
-import { OFF, planCard, type PlanStatus } from "./plan.ts";
 import { readFileSync } from "node:fs";
 import { initial, reduce, type Model } from "./model.ts";
 import { S } from "./strings.ts";
@@ -209,20 +208,7 @@ describe("the first check of the real project", () => {
   });
 });
 
-describe("Your Claude: the honest lines, the key field and Test, and never a login form", () => {
-  test("the three lines come from strings.ts: the key goes only to Claude, you pay Anthropic with a limit you can change, and the plan's own state", () => {
-    const off = honestLines({ limitUsd: 10, plan: planCard(OFF, null) });
-    expect(off.privacy).toBe(S.fr.keyPrivacy);
-    expect(off.privacy).toContain("Keychain"); expect(off.privacy).toContain("only to Claude");
-    expect(off.cost).toBe(S.fr.keyCost("$10"));
-    expect(off.cost).toContain("pay Anthropic directly"); expect(off.cost).toContain("change that in Settings");
-    expect(off.plan).toBe(S.fr.keyPlan(`${S.plan.earlyAccess}. ${S.plan.nothingCharged}`));
-    expect(honestLines({ limitUsd: 12.5, plan: planCard(OFF, null) }).cost).toContain("$12.50");
-    // With payments on, the line follows the Plan card, not a fixed promise.
-    const free: PlanStatus = { ...OFF, paymentsOn: true, state: "free" };
-    expect(honestLines({ limitUsd: 10, plan: planCard(free, null) }).plan).toBe(S.fr.keyPlan(S.plan.freeNew(3)));
-    for (const l of Object.values(off)) { expect(l).not.toContain("\u2014"); expect(l).toMatch(/\.$/); }
-  });
+describe("Your Claude: no key field, no honest lines (M98 deleted them with honestLines), and never a login form", () => {
   test("M69 (F29): the first run has no key field, no password box, no cost words and never a login form (rule 2)", () => {
     const ui = read("./onboarding.tsx");
     expect(ui).not.toContain('type="password"');

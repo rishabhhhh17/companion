@@ -183,6 +183,7 @@
     { "key": "runway.warnAt", "section": "spending", "kind": "choice", "default": "80", "options": ["off", "70", "80", "90"], "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "history.thisWeek", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "numbers.yours", "section": "numbers", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
+    { "key": "developer.tools", "section": "display", "kind": "switch", "default": false, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },
     { "key": "check.privatePages", "section": "checks", "kind": "switch", "default": true, "scope": "project", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "live.stripeMode", "section": "checks", "kind": "choice", "default": "live", "options": ["live", "test"], "scope": "project", "applies": ["runner"], "store": "settings", "live": true },
     { "key": "ask.choices", "section": "home", "kind": "switch", "default": true, "scope": "app", "applies": ["pages"], "store": "settings", "live": true },

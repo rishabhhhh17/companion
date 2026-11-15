@@ -178,7 +178,7 @@ describe("the engine and lanes the app makes", () => {
     heldKey.set(null);
     const { s } = settings("api_key");
     const c = capture();
-    await expect((async () => { for await (const _ of createEngine(s, { queryFn: c.q }).start({ prompt: "p", project: tmp("p"), model: "m", signal: signal(), authorize: base.authorize, budgetUsd: 1 })) { /* drain */ } })()).rejects.toThrow(/Not connected/);
+    await expect((async () => { for await (const _ of createEngine(s, { queryFn: c.q }).start({ prompt: "p", project: tmp("p"), model: "m", signal: signal(), authorize: base.authorize, budgetUsd: 1 })) { /* drain */ } })()).rejects.toThrow(/not switched on/);
     expect(c.seen.length).toBe(0);
   });
 });

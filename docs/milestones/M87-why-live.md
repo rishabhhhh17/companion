@@ -1,6 +1,6 @@
 # M87: Why is live broken?
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model, and the real `vercel` and `stripe` tools never ran: every command output in the tests is a fixture.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (227f533). Nothing was spent on a real model, and the real `vercel` and `stripe` tools never ran: every command output in the tests is a fixture.
 
 The why comes from the checked research of 13 Nov 2026: synthesis section 3, feature 7, and user-needs group E (setup walls). E3: Stripe webhooks to a Vercel production endpoint failing with 405, with no fix in the thread. E4: Vercel's own guide says environment values must be defined the same way in Production. E5: the "100 hour gap", values not shared with Vercel and "the last 20% still takes 80%+ of the time". E1 and E2: an app that let anyone in through inverted auth, and Supabase apps with no row security. The research found nothing in Squibby for E3 and E4 before this.
 

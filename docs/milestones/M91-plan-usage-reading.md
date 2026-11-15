@@ -1,6 +1,6 @@
 # M91: The real plan usage reading
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model in any test: fixtures and fake query functions only, in temporary folders.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (b85538b). Nothing was spent on a real model in any test: fixtures and fake query functions only, in temporary folders.
 
 ## Why
 

@@ -425,6 +425,23 @@ export function blockerOf(o: { connected: Model["connected"] | string; runnerUp:
   if (o.connected === "none") return "key";
   return null;
 }
+/** M98 (F29): the main button while a blocker shows, when it is not the blocker's own (S.home.blocked[b].main). Fixing not
+ *  switched on for this Mac ("key") has nothing to try again; Check my project runs the project's own checks with no model,
+ *  so it is the one way forward. With no project the setup list leads with Pick a project. */
+export function blockMainFor(b: Blocker | null, project: string): MainAct | null {
+  return b === "key" && project ? "check" : null;
+}
+/** The hero's line while a blocker shows. Review of M98: fixing not switched on with no project open never talks about
+ *  "your project" (there is none); it says what can be done now. */
+export function blockLineFor(b: Blocker, project: string): string {
+  return b === "key" && !project ? S.home.blocked.key.lineNoProject : S.home.blocked[b].line;
+}
+/** Whether Fix it and Why did this break are offered on a found problem. Review of M98: both need the model, so while
+ *  fixing is not switched on for this Mac they would only end in the engine's refusal; a plain line shows instead. */
+export const fixOffered = (b: Blocker | null): boolean => b !== "key";
+/** The character's pose while a blocker shows: the error pose only when something really broke (the engine stopped, a part
+ *  missing). Fixing not switched on yet, or a part on its way, is nothing broken (M98). */
+export const blockerPose = (b: Blocker | null): "error" | undefined => (b === "engine" || b === "claude" ? "error" : undefined);
 
 /** Changes from another AI tool that lead Home (item 11): waiting to be reviewed, being reviewed, or reviewed with something
  *  found that is not fixed yet. main: Review the changes, only while nothing has started; once reviewed, the card's own
@@ -504,6 +521,8 @@ export function heroStatusOf(mode: HomeMode, status: Pick<HomeStatus, "kind">, t
   if (mode === "working" || (mode === "blocked" && blocker === "claudeGetting")) return "working";
   // Changes rated stop, or a key in the code (M65 step 4): red, as the card's own mark is, never amber.
   if (mode === "review" && reviewStop) return "fixFirst";
+  // M98: fixing not switched on yet needs nothing from the person, so the status line says the project's own state.
+  if (mode === "blocked" && blocker === "key") return REST_STATUS[status.kind];
   if (mode === "question" || mode === "needs" || mode === "review" || mode === "blocked") return "needs";
   if (mode === "result") return RESULT_STATUS[tone];
   if (mode === "answer") return null;

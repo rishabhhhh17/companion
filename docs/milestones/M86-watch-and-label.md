@@ -1,6 +1,6 @@
 # M86: Watch what changed, and Label it
 
-Status: built 14 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: fixtures and stand in models only.
+Status: built 14 Nov 2026, tests pass. Committed 14 Nov 2026 (a1e7fa6). Nothing was spent on a real model: fixtures and stand in models only.
 
 The why comes from the checked research of 13 Nov 2026: synthesis section 3 (feature 6) and section 4, visuals.md feature 1, and the founder's ask for HeyClicky style drawing on the screen (M84-86 plans, section M84, "Label it"). The complaint groups are the research's own: B (false done, for example B8, "27 false claims in a day", CC #106546) and E (setup screens: Stripe webhooks, Vercel production values, Supabase row level security).
 

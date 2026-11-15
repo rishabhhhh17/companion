@@ -1,6 +1,6 @@
 # M96: The notch, HeyClicky style: small, then it opens out
 
-Status: built 15 Nov 2026, tests pass. Not committed. Nothing was spent on a real model: fixtures and stand ins only.
+Status: built 15 Nov 2026, tests pass. Committed 15 Nov 2026 (6150338). Nothing was spent on a real model: fixtures and stand ins only.
 
 ## The founder's feedback
 

@@ -101,10 +101,11 @@ describe("the first run (spec 3.10, F29)", () => {
 });
 
 describe("setup problems: one numbered list (spec 3.11, F29)", () => {
-  test("not ready on this Mac: step 1 open with Try again, never a key to add", () => {
+  test("fixing not switched on is not a setup step (M98): nothing to try again, the list moves on to the project", () => {
+    // Review of M98: the practice is left out while fixing is off (it ends in Fix it); it was ready, project, practice.
     const l = setupList({ blocker: "key", project: "", practiced: false })!;
-    expect(l.map((r) => [r.id, r.state, r.act])).toEqual([["ready", "now", "retry"], ["project", "later", "pickFolder"], ["practice", "later", "practice"]]);
-    expect(setupNow(l)).toEqual({ n: 1, of: 3 });
+    expect(l.map((r) => [r.id, r.state, r.act])).toEqual([["ready", "done", null], ["project", "now", "pickFolder"]]);
+    expect(setupNow(l)).toEqual({ n: 2, of: 2 });
   });
   test("a missing part gets it; while it comes there is no button", () => {
     expect(setupList({ blocker: "claude", project: "/p", practiced: false })![0].act).toBe("getParts");

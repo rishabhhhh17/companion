@@ -2,15 +2,15 @@
 // list, done steps ticked, the open step with its one button; the practice is a one tap start whenever no project is open.
 import { Icon } from "./icons.tsx";
 import { S } from "./strings.ts";
-import { setupNow, type SetupAct, type SetupRow } from "./setupList.ts";
+import { readyDoneWords, setupNow, type SetupAct, type SetupRow } from "./setupList.ts";
 import { Button } from "./ui/parts.tsx";
 import type { Blocker } from "./homeHero.ts";
 
-const LABEL: Record<Exclude<SetupAct, null>, string> = { retry: S.tryAgain, getParts: S.home.blocked.claude.main, pickFolder: S.screens.pickFolder, practice: S.screens.startPractice };
+const LABEL: Record<Exclude<SetupAct, null>, string> = { getParts: S.home.blocked.claude.main, pickFolder: S.screens.pickFolder, practice: S.screens.startPractice };
 
 /** M69 step 3: the open "Getting ready" step says what is happening or what went wrong and what to do, never Try again alone. */
 export function SetupList({ rows, blocker, onAct }: { rows: SetupRow[]; blocker: Blocker | null; onAct: (a: Exclude<SetupAct, null>) => void }) {
-  const readyLine = blocker === "claudeGetting" ? S.screens.setupGetting : blocker === "key" ? S.screens.setupWhy.key : blocker === "claude" ? S.screens.setupWhy.claude : S.screens.setupSteps.ready.line;
+  const readyLine = blocker === "claudeGetting" ? S.screens.setupGetting : blocker === "claude" ? S.screens.setupWhy.claude : S.screens.setupSteps.ready.line;
   const now = setupNow(rows);
   const ready = rows[0]?.state === "done";
   return (
@@ -28,7 +28,7 @@ export function SetupList({ rows, blocker, onAct }: { rows: SetupRow[]; blocker:
             <li key={r.id} className="setup-row" data-state={r.state} aria-current={r.state === "now" ? "step" : undefined}>
               <span className="setup-mark" aria-hidden="true">{r.state === "done" ? <Icon name="tick" size={12} /> : i + 1}</span>
               <div className="setup-words">
-                <span className="setup-name">{r.state === "done" ? w.done : w.title}</span>
+                <span className="setup-name">{r.state === "done" ? (r.id === "ready" ? readyDoneWords(blocker) : w.done) : w.title}</span>
                 {r.state === "now" && <span className="setup-line">{r.id === "ready" ? readyLine : w.line}</span>}
               </div>
               {r.state === "done" && <span className="sr">{S.screens.setupDone}</span>}

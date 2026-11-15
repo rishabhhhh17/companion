@@ -23,7 +23,7 @@ The target is the YC benchmark spec and its three mockups, now in the repo at `d
 - One main key in onboarding copy (spec 3.9). Kept in spirit: onboarding names only the Fix it key in use, never four chords.
 - Removing the Fix it confirm step on the review card. The second tap stays (M52); the reassurance line goes under the buttons as well.
 - Sound on Proven (spec 4). Already a setting, off by default (M66). No change.
-- **Founder question:** what a customer sees before the managed engine is live, since without a key the engine cannot fix anything. Until then the setup checklist says "Squibby is getting ready on this Mac" with Try again, never "Add your key".
+- **Founder question:** what a customer sees before the managed engine is live, since without a key the engine cannot fix anything. Until then the setup checklist says "Squibby is getting ready on this Mac" with Try again, never "Add your key". **Answered 15 Nov 2026 (M98, the founder's yes to the plan):** "Fixing is not switched on for this Mac yet", with Check my project as the button; see `docs/milestones/M98-true-words.md`.
 
 ## Already built (do not redo)
 

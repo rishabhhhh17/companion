@@ -200,12 +200,14 @@ export const S = {
     gettingStarted: "Getting started",
     // Nothing can run (homeHero.ts blockerOf): what stops it, and the one way out as the main button.
     blocked: {
-      // M69 (F29): nobody adds a key or gets Claude. These say what is true for the person: Squibby is not ready yet.
-      key: { headline: `${PRODUCT} is getting ready on this Mac`, line: "It can't fix anything until it's connected. Try again in a moment.", main: "Try again" },
+      // M98 (F29, the founder's words of 15 Nov 2026): nobody adds a key or gets Claude, and nothing is getting ready. Fixing
+      // is not switched on for this Mac yet; checking still works, so Home's main button is Check my project (blockMainFor).
+      // lineNoProject (review of M98): with no project open the line says what can be done now, never "your project".
+      key: { headline: "Fixing is not switched on for this Mac yet", line: `Checking your project still works. ${PRODUCT} will tell you here when fixing is ready. Your project is safe.`, lineNoProject: `Fixing comes later. You can pick a project now and check that it works.`, main: "" },
       engine: { headline: `${PRODUCT} stopped working`, line: "Restart it to carry on. Your work is kept.", main: "Restart" },
       claude: { headline: `${PRODUCT} is missing a part on this Mac`, line: "It is needed before anything can run.", main: "Get it" },
       claudeGetting: { headline: `${PRODUCT} is getting ready on this Mac`, line: "This takes a minute or two.", main: "" },
-    } as Record<"key" | "engine" | "claude" | "claudeGetting", { headline: string; line: string; main: string }>,
+    } as Record<"key" | "engine" | "claude" | "claudeGetting", { headline: string; line: string; main: string }> & { key: { lineNoProject: string } },
     // Return with no project open (the audit, item 2): the words wait for the person to pick one of these.
     noProjectAsk: "Which project is this for?",
     chooseMine: "Choose my project",
@@ -251,7 +253,6 @@ export const S = {
     notchNotChecked: (name: string) => `${name} is not checked yet.`,
     notchNothing: "Nothing is running.",
     notchChanged: (name: string) => `${name} changed since its last check.`,
-    addKey: "Add your key",
     // The footer line under Home in the Instrument look (M65, homeHero.ts homeFoot), when the result offers Undo.
     undoReady: "Undo is ready",
   },
@@ -524,8 +525,8 @@ export const S = {
   stepStoppedRestart: `Stopped when ${PRODUCT} restarted.`,
   // The engine restarted (model.ts): what is true about the files, never "as they were" (the engine puts nothing back).
   restartedStopped: `${PRODUCT} restarted, so what was running was stopped. Anything a task changed before it stopped is still in your files.`,
-  notConnectedNotice: `${PRODUCT} is getting ready on this Mac.`,
-  addYourKey: "Add your key",
+  // M98 (F29): a marker only (model.ts); Home says it in its headline, never as a notice.
+  notConnectedNotice: "Fixing is not switched on for this Mac yet.",
   followDone: "Fixed. Checks pass.",
   // A part of a page that could not be drawn (must fix 4): the rest of the window still works.
   partFailed: "This part could not be shown. The rest of the window still works.",
@@ -557,6 +558,7 @@ export const S = {
     // M86
     "replay.show": "Each review card plays a short drawing of what changed, made only from what the review measured.",
     "numbers.yours": "History shows your numbers for this week, counted on this Mac. Nothing is sent unless you send it.",
+    "developer.tools": `Shows a row for a model key, for people who build ${PRODUCT} itself. You never need it.`,
     "speak.status": "Short lines out loud for the moments you pick, such as a fix that passed its checks.",
     "replay.speed": "How fast Watch what changed plays.",
     "replay.reduceMotion": "Show Watch what changed as one still picture, or draw it, or do as your Mac does.",
@@ -698,7 +700,7 @@ export const S = {
     "privacy.see": `What ${PRODUCT} may see`, "privacy.sharing": "Sharing and calls", "privacy.memory": "Memory", "privacy.claude": "What goes to Claude", "privacy.copies": "Safety copies and history", "privacy.danger": "Danger zone",
     "about.updates": "Updates", "about.help": "Help", "about.legal": "Legal",
     "more.account.spending": "Spending per job and models",
-    "more.account.developer": "For developers: your own Claude key",
+    "more.account.developer": "For developers",
     "more.account.you": "The AI you build with",
     "more.general.notch": "Notch", "more.general.quiet": "Quiet hours for the notch", "more.general.home": "Home", "more.general.tools": "Tools", "more.general.showme": "Show me how and pointing",
     "more.general.files": "File conversion", "more.general.watch": "Watch routines and Where was I",
@@ -779,7 +781,6 @@ export const S = {
     keyReplace: "Replace",
     keySave: "Save key",
     keySheet: "Replace your Claude key",
-    setupKey: "Add your Claude key",
     setupFolder: "Pick a project folder",
     setupStop: "Learn the stop key",
     setupStopDesc: (keys: string) => `${keys} stops every job at once.`,
@@ -842,16 +843,7 @@ export const S = {
     helloLine: "I find what broke, fix it, and prove it works. You stay in charge of every change.",
     count: (n: number, of: number) => `${n} of ${of}`,
     skipSetup: "Skip setup",
-    // Screen 2, Your Claude.
-    claudeTitle: "Your Claude",
-    claudeLine: `${PRODUCT} works with your own Claude, through a key from Anthropic.`,
-    keyPrivacy: "Your key stays in this Mac's Keychain and goes only to Claude. Your code goes from this Mac straight to Anthropic, on your own account.",
-    keyCost: (limit: string) => `You pay Anthropic directly for what you use, and every receipt shows the cost. ${PRODUCT} stops at ${limit} a day for each project, and you can change that in Settings.`,
-    keyPlan: (words: string) => `Your ${PRODUCT} plan: ${words}`,
-    keyHow: "How to get a key",
-    keyPage: "Open Anthropic's key page",
-    skipKey: "Skip for now, I'll add it later",
-    keyNeeded: "Paste a key to continue, or skip for now.",
+    // M98 (F29): the old Your Claude screen's words are gone; the first run has no key step.
     claudeGetting: (mb: number, pct: number | null) => (pct === null ? `Getting Claude ready: downloading, ${mb} MB so far` : `Getting Claude ready: downloading, ${pct}%`),
     claudeAgain: "Try again",
     claudeMissing: `${PRODUCT} needs Anthropic's Claude to work. It downloads once, straight from Anthropic, and is checked before it's used.`,
@@ -1067,13 +1059,8 @@ export const S = {
   },
   // Under the keys at the end of the first run (F17: "works on any app" is in the feature list, never the headline).
   obAnyApp: "Stuck in any app, like a spreadsheet, a document or a settings window? Press the stuck key and it finds the problem on your screen with you.",
-  obWelcome2: `You bring your own Claude, and you pay Anthropic directly for what you use. ${PRODUCT} has no server of its own. It looks at your screen or listens only when you press a key, with a light on first.`,
-  obConnectTitle: "Connect your Claude",
-  obConnected: "Connected.",
-  obKeyHelp: `${PRODUCT} uses your own Claude, through a key from Anthropic. You pay Anthropic directly for what you use, and every receipt shows the cost. The key stays in your Mac's Keychain and is only used to talk to Claude.`,
+  // The developer key row's field (Settings, More options, Account, For developers; hidden unless developer.tools is on).
   obKeyLabel: "Anthropic API key",
-  obKeySave: "Save key",
-  obPlanLater: "Signing in with a Claude plan is not available yet.",
   obKeySteps: ["Open Anthropic's console and sign in, or make a free account.", "Add a little credit. Five dollars usually covers many small fixes.", "Make a key, copy it, and paste it here."],
   obGetKey: "Get a key",
   obKeyCheck: {
@@ -1186,6 +1173,8 @@ export const S = {
   everydayWhyTitle: "Why it happened",
   everydayWhyNote: "Part of the same look, no extra cost.",
   pointFix: "Fix it",
+  // Review of M98: in place of Fix it and Why while fixing is not switched on for this Mac (homeHero.ts fixOffered).
+  pointFixOff: `Fixing is not switched on for this Mac yet. ${PRODUCT} will offer Fix it here when it is.`,
   drawWhy: "Why? Draw it",
   drawIt: "Draw it",
   drawTitle: "Why it broke",
@@ -2323,8 +2312,9 @@ export const S = {
   islandOpen: `Open ${PRODUCT}`,
   // Only heard (VoiceOver), never shown: idle, the notch is the bare notch with no words on it.
   islandQuiet: "Nothing needs you right now.",
-  // M69 (F29): Squibby pays and picks the model, so the notch never asks anyone to connect or add a key.
-  islandNotConnected: `${PRODUCT} is getting ready on this Mac.`,
+  // M69 (F29): Squibby pays and picks the model, so the notch never asks anyone to connect or add a key. M98: and it says
+  // what is true, never "getting ready".
+  islandNotConnected: "Fixing is not switched on for this Mac yet.",
   islandUpdate: (version: string) => `Version ${version} is ready. Click to install it.`,
   homeUpdateReady: (version: string) => `Version ${version} of ${PRODUCT} is ready.`,
   islandOff: `${PRODUCT} is not running. Click to see why.`,
@@ -2435,7 +2425,7 @@ export const S = {
     "showme.listen": { label: "Show me key listens at once", help: `On, the Show me key starts listening when you press it, with the light on first. Press it again when you are done. ${PRODUCT} then looks at your screen and points at the answer. Off, the key only opens the question box. It also opens the box when voice is off or the microphone is not ready yet.`, also: ["voice", "talk", "ask", "question", "microphone", "show me", "key", "hotkey", "listen"] },
     "talk.maxHold": { label: "Longest hold to talk", help: `${PRODUCT} stops listening after this long, even if you are still holding the keys.`, also: ["microphone", "mic", "listen", "dictation", "limit"], options: { "30": "30 seconds", "60": "1 minute", "120": "2 minutes" } },
     // M89 (usage runway, quiet updates, better speech)
-    "runway.mark": { label: "Show how much of the Claude limit is used", help: `When Claude says how much of its limit is used, Now in Home shows a ring labelled Claude usage, under the status strip. It shows the reset time too. ${PRODUCT} shows only what Claude itself reports. With an API key Claude reports no limit, so the ring shows only when Claude turns a request away.`, also: ["usage", "limit", "rate limit", "runway", "plan", "reset", "notch", "quota", "weekly limit"] },
+    "runway.mark": { label: "Show how much of the Claude limit is used", help: `When Claude says how much of its limit is used, Now in Home shows a ring labelled Claude usage, under the status strip. It shows the reset time too. ${PRODUCT} shows only what Claude itself reports. When Claude reports no limit, the ring shows only when Claude turns a request away.`, also: ["usage", "limit", "rate limit", "runway", "plan", "reset", "notch", "quota", "weekly limit"] },
     "runway.warnAt": { label: "Warn before a big job near the Claude limit", help: `Before Hand ${PRODUCT} the job or Rescue starts, a warning shows when the Claude limit is this full, or Claude just turned a request away. You can start anyway, or save the job for after the reset and start it later with one tap. Off: no warning.`, also: ["usage", "limit", "runway", "reset", "save for later", "rescue", "hand the job", "quota"], options: { off: "Off", "70": "At 70% used", "80": "At 80% used", "90": "At 90% used" } },
     "updates.quiet": { label: "Install updates while away", help: `An update the check found installs by itself after 5 minutes with no typing or mouse, and only when nothing runs. Never during a job, a call, a screen look, or while ${PRODUCT} listens or speaks. ${PRODUCT} restarts, and a note after says it was updated. Off: an update installs only when you press Install.`, also: ["update", "install", "quietly", "automatic", "restart", "idle", "away"] },
     "talk.accuracy": { label: "Speech accuracy", help: `How ${PRODUCT} turns your voice into words, on this Mac. Standard uses the 148 MB model you already have. Best downloads a larger model once (574 MB) and checks it before use. It gets more words right, and takes about a second longer. Your voice never leaves this Mac either way. Switching back to Standard deletes the larger model.`, also: ["speech", "voice", "dictation", "whisper", "model", "accuracy", "transcription", "download"], options: { standard: "Standard (148 MB)", best: "Best (574 MB, downloads once)" } },
@@ -2615,6 +2605,8 @@ export const S = {
     "packages.check": { label: "Check new packages for known problems", help: `When a change adds a package or a new version, the review sends only its name and version to OSV.dev. OSV.dev is a free public list of known problems, run by Google. Never your code and never your files. A known serious problem is a Must fix or a Should fix. Answers are kept on this Mac for a day. If OSV.dev does not answer, the review says the packages were not checked. Off, nothing is looked up.`, also: ["packages", "dependencies", "npm", "pip", "cargo", "go", "vulnerability", "security", "osv", "cve", "lock file", "package.json", "requirements.txt"] },
     "notch.waitingMinutes": { label: "Clear \"Claude is waiting for you\" after", help: `Needs the waiting signal (Fixing, Start reviews sooner). When Claude Code asks for a permission or waits for input, the notch's mark goes amber and says Claude is waiting for you. It clears when Claude Code moves on, or after this long.`, also: ["notch", "waiting", "permission", "claude code", "amber", "needs you", "clear", "timeout"], options: { "5": "After 5 minutes", "15": "After 15 minutes", "60": "After 1 hour" } },
     "numbers.yours": { label: "Your numbers in History", help: `A page in History with this week's counts for the project, counted from your own history on this Mac. Nothing leaves your Mac unless you press Send these numbers. It shows exactly what goes first.`, also: ["numbers", "stats", "counts", "metrics", "send", "share", "week"] },
+    // M98 (F29): the key row is a developer tool, never shown to customers; this switch shows it, off unless turned on.
+    "developer.tools": { label: "Developer tools", help: `Shows a row for a model key, for people who build ${PRODUCT} itself. You never need it.`, also: ["developer", "advanced", "model key", "testing", "debug"] },
     "history.thisWeek": { label: "Show what was caught this week", help: `One line in History and one row on Now. It counts false dones, keys, weakened checks, saved copies used and Undos in the last seven days, from your own rows. It shows only when the count is above zero.`, also: ["history", "week", "caught", "count", "catch rate", "undo", "keys", "false done"] },
     "review.keyWarning": { label: "Warn at once about a key in the code", help: `Off unless you turn it on. When on, and a change adds what looks like a key or password to your code, ${PRODUCT} says so at once, without asking first. Only that one check runs, on this Mac, with no model and nothing sent anywhere. Everything else still waits until you ask for a review.`, also: ["review", "key", "secret", "password", "token", "api key", "warning", "Cursor", "Codex", "Claude Code"] },
     // M57 feature 1: how long History keeps its review rows (names of files only, never their text).
@@ -2691,7 +2683,8 @@ export const S = {
   google: {
     notSetUp: "Google isn't available in this version yet.",
     signInTitle: "Your account",
-    signInLine: "Sign in with Google to have a Squibby account. Your own Claude key keeps working without one.",
+    // M98 (F29): a Squibby account, nothing about a Claude key.
+    signInLine: `Sign in with Google to have a ${PRODUCT} account. Google's own page opens in your browser.`,
     signIn: "Sign in with Google",
     signOut: "Sign out",
     signedIn: (name: string, email: string) => (name ? `${name}, ${email}` : email),
@@ -3437,14 +3430,15 @@ export const S = {
     // Setup problems (spec 3.11, corrected by F29: no Get Claude, no key).
     setupTitle: "Finish setting up",
     setupSteps: {
-      ready: { title: "Getting ready on this Mac", line: `${PRODUCT} can't fix anything until this is done.`, done: "Ready on this Mac" },
+      // doneCheckOnly (review of M98): while fixing is not switched on, the tick claims only what is true.
+      ready: { title: "Getting ready on this Mac", line: `${PRODUCT} can't fix anything until this is done.`, done: "Ready on this Mac", doneCheckOnly: "Checking is ready on this Mac" },
       project: { title: "Pick a project", line: "The folder your AI tool built. Nothing in it changes without your OK.", done: "Project picked" },
       practice: { title: "Try the practice", line: "A small broken project to fix. It can't touch anything real. Takes about a minute.", done: "Practice tried" },
     },
     setupStep: (n: number, of: number) => `Step ${n} of ${of}`,
     setupDone: "Done",
     setupGetting: "Getting it now. This takes a minute or two.",
-    setupWhy: { key: `${PRODUCT} could not connect yet. Check your internet, then press Try again.`, claude: "A part it needs is not on this Mac yet. Press Get it to download it." } as Record<"key" | "claude", string>,
+    setupWhy: { claude: "A part it needs is not on this Mac yet. Press Get it to download it." } as Record<"claude", string>,
     pickFolder: "Pick a folder",
     // Approvals (spec 3.12).
     approvalAdd: `${PRODUCT} needs your OK to add a tool.`,
@@ -3815,8 +3809,9 @@ export const S = {
       pick: "Or try a practice project first",
       off: `Open ${PRODUCT} to start it again`,
       offLine: "Nothing can run until it is back",
-      notConnected: "Add your Claude to start",
-      notConnectedLine: `${PRODUCT} uses your own Claude, never ours`,
+      // M98 (F29): nothing to add or connect; fixing is just not switched on yet.
+      notConnected: "Fixing is not switched on yet",
+      notConnectedLine: "Checking your project still works",
     },
     // The key hint at the panel's foot.
     keyBefore: "Press",
@@ -4010,7 +4005,7 @@ export const S = {
     // The one short line, only when it matters. Nothing when all is quiet.
     line: {
       off: `${PRODUCT} is not running`,
-      notReady: `${PRODUCT} is getting ready`,
+      notReady: "Fixing is not switched on yet",
       questions: (n: number) => (n === 1 ? "1 question is waiting for you" : `${n} questions are waiting for you`),
       // The M93 review: the same words as the notch's own line and its setting (S.guard.waitingWhy).
       claude: "Claude is waiting for you",
@@ -4090,7 +4085,7 @@ export const S = {
       review: (n: number) => (n === 1 ? "Your AI tool changed 1 file. It is ready to review." : `Your AI tool changed ${n} files. It is ready to review.`),
       claude: "Claude is waiting for you.",
       off: `${PRODUCT} is not running.`,
-      notReady: `${PRODUCT} is getting ready.`,
+      notReady: "Fixing is not switched on for this Mac yet. Checking your project still works.",
     },
   },
   // M94: What Squibby saved you. Counts of real events from this project's own history only: never a guess, never an
