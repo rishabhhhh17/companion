@@ -1,4 +1,4 @@
-import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, StrictMode, useEffect, useId, useLayoutEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { createRoot } from "react-dom/client";
 import { EMPTY_LINE, liveLine, type LiveLine } from "./a11y.ts";
 import { ConfirmStep } from "./confirm.tsx";
@@ -23,7 +23,7 @@ import { lastWorkingTime, signInTurn, undoLimitsLine } from "./savePoints.ts";
 import { SaveMarksActions, SaveMarksLine } from "./savePointsRow.tsx";
 import { browserView, confirmable, lookState, shipWords, phWords, blockedNote, characterWords, savedWords, pausedWords, driveWords, historyWords, historyFacts, isFixing, triesNote, notDoneReason, notDoneLine, plainPath, stateLabel, pointsOnScreen, pointsOnFound, activityNow, canFollowUp, canRetry, stuckWords, stuckHelpWords, planCutWords, canOfferTurn, receiptHeading, receiptUndone, receiptVerdict, receiptSaid, cardWorking, teachActions, teachLines, bisectLines, canBisect, ehLines, slLines, slSources, releasable, foundHandsOver, awayFolder, folderName, lessonWordsOnly } from "./model.ts";
 import { invoke, listen } from "./tauri.ts";
-import type { Explain, HistoryItem, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
+import type { Explain, HistoryItem, Model, MemoryLine, Practice, Problem, UndoState } from "./model.ts";
 import { FIRST_PRACTICE, NO_RECORD, backTo, canStart, copyOf, lessonsShown, listRows, markFor, needsMacCheck, nextPractice, nodeMissing, practiceWithoutNode, pointFixRoute, practiceNotes, practiceOf, recordFrom, reviewFixRoute, resumeOnOpen, startOrOpen, workingOn, type PracticeRecord } from "./practice.ts";
 import { PracticeList, PracticePanel } from "./practicePanel.tsx";
 import { Onboarding } from "./onboarding.tsx";
@@ -145,6 +145,10 @@ import "./ui/black.css";
 import { checksOnOpen, Landing, onlyStreamChanged, revealTo, scrollerOf, STREAM_LINES, waitNeedsScroll, waitScroll } from "./homeFlow.ts";
 import { changeSize } from "./changeSize.ts";
 import { contentAtMs, fromOf } from "./homeShape.ts";
+// M96: the small chat out of the notch (notchChat.ts, notchChat.tsx).
+import { NotchChat } from "./notchChat.tsx";
+import { chatHolds } from "./notchChat.ts";
+import { hoverGreeting } from "./notchMinimal.ts";
 import { resultChips, type ChipId } from "./resultChips.ts";
 /** How long a proven result keeps its landing attribute: long enough for the glow to play once (ui/homeFlow.css). */
 const LAND_HOLD_MS = 2000;
@@ -616,7 +620,20 @@ export function Card() {
   const view = useRef<HTMLDivElement>(null);
   // Which page of Settings is open, or what a deep link names (a page, a group, a setting): the last page viewed at first.
   const [setPlace, setSetPlace] = useState<string>(() => lastPage());
-  const box = useRef<HTMLTextAreaElement>(null);
+  // M96: Home opened as the small chat out of the notch (the shell's "opened" says so, main.rs open_card_then). Home's one ask
+  // box is then the chat's field: `box` reads whichever field shows (Home's own box, or the chat's), so Return, voice words,
+  // the warm up, the character's eyes and every hint go to the field the person sees, and the words move across when the
+  // chat opens out (nothing typed is lost). React sets Home's own box through it, as before.
+  const [chat, setChat] = useState(false);
+  // The chat mic's press says the keys to hold as Squibby's bubble; typing keeps it (the M96 review: it went at the first
+  // key, so the press looked broken). Hold to talk itself, or the chat closing, puts it away.
+  const [micSaid, setMicSaid] = useState<string | null>(null);
+  const chatOn = useRef(false); chatOn.current = chat;
+  const homeBox = useRef<HTMLTextAreaElement | null>(null), chatBox = useRef<HTMLTextAreaElement | null>(null);
+  const box = useRef<RefObject<HTMLTextAreaElement | null>>({
+    get current() { return chatOn.current ? chatBox.current : homeBox.current; },
+    set current(el: HTMLTextAreaElement | null) { homeBox.current = el; },
+  }).current;
   // Words in the ask box (or in a follow up's) are being typed: Home never closes on a click elsewhere then (home.ts).
   const typingNow = (): boolean => !!box.current?.value.trim() || (document.activeElement instanceof HTMLInputElement && !!document.activeElement.value.trim());
   // The ask box's draft (askbox.ts): kept on this Mac as it is typed, put back when Companion starts again, cleared when it
@@ -1378,6 +1395,7 @@ export function Card() {
       const k = frontKindOf({ kind: (e.payload as { front?: unknown } | null)?.front });
       if (k) setFrontKind(k);
       homeDispatch({ type: "opened", keyboard });
+      setChat((e.payload as { chat?: unknown } | null)?.chat === true);
       // M66: Home grows out of the notch (homeStage.tsx), in the same update that set the place it opens on, so it never
       // shows blank or the place it showed last. The motion is the stage's; with reduced or Less motion it fades.
       // M26: opened by a keyboard shortcut (the shell says instant, island.rs animates_open), it is simply there.
@@ -1404,7 +1422,7 @@ export function Card() {
     });
     // Every way Home goes away goes through the shell, which says so: a window that was just hidden sends no pointerleave.
     // Closing (Close, Esc, the island or the character again) folds Home back into the notch (homeStage.tsx listens).
-    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; });
+    const offClosed = listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; setChat(false); });
     return () => { off.then((f) => f()); offClosed.then((f) => f()); };
   }, []);
   // Tell the app how tall the content is, so the panel fits it. M66 fix 14: Settings fills Home and scrolls inside it, so it
@@ -1947,6 +1965,31 @@ export function Card() {
   const [vague, setVague] = useState<VagueChoice[] | null>(null);
   // M82: the words handed to the hand off card (a new press opens a new card).
   const [handoff, setHandoff] = useState<{ words: string; n: number } | null>(null);
+  // M96: the small chat opens out to all of Home (its expand button, its Settings button, or something that needs a card of
+  // its own: chatHolds). The shell grows Home's shape to the size in force in the same window (main.rs home_expand).
+  // The words typed in the chat's field move into Home's own box first, so nothing typed is lost.
+  const openOut = () => {
+    const was = chatBox.current, home = homeBox.current;
+    if (was && home && was.value) { home.value = was.value; was.value = ""; }
+    setChat(false); void invoke("home_expand").catch(() => {});
+  };
+  // And Home's draft moves into the chat's field as it opens.
+  useLayoutEffect(() => {
+    const now = chatBox.current, was = homeBox.current;
+    if (!chat || !now || !was || !was.value) return;
+    now.value = was.value; was.value = ""; fitBox();
+  }, [chat]);
+  // What showed as the chat opened: a notice or a result from before then does not throw it open at once, a new one does
+  // (Home draws it: the notice line, the receipt with Undo and See proof). Set in render, so the first check sees it.
+  const chatAt = useRef<{ notice: string | null; receipt: Model["receipt"] } | null>(null);
+  if (!chat) chatAt.current = null;
+  else if (!chatAt.current) chatAt.current = { notice: m.notice, receipt: m.receipt };
+  const freshNotice = chat && !!m.notice && m.notice !== S.notConnectedNotice && m.notice !== chatAt.current?.notice;
+  const freshResult = chat && !!m.receipt && m.receipt !== chatAt.current?.receipt;
+  useEffect(() => { if (!chat || m.voice) setMicSaid(null); }, [chat, m.voice]);
+  useEffect(() => {
+    if (chat && !chatHolds(m, { onboarded, vague: !!vague, noProject: !!noProjectFor, handoff: !!handoff, attached: attached.length, freshNotice, freshResult })) openOut();
+  }, [chat, m, onboarded, vague, noProjectFor, handoff, attached, freshNotice, freshResult]);
   // M83: the hand off waits for the person's AI tool (handoffCard.tsx): the character watches while it does.
   const [handoffWaits, setHandoffWaits] = useState(false);
   const sendTask = (prompt: string) => {
@@ -2624,7 +2667,7 @@ export function Card() {
       </div>  );
   return (
     <HomeStage stage={homeStage}>
-    <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
+    <main className={`card home${dragging ? " dropping" : ""}`} ref={root} data-view={home.tab} data-layout={layout} data-chat={chat ? "" : undefined} data-side={side ? "" : undefined} data-tone={hero.tone} data-talking={m.voice?.stage === "listening" ? "" : undefined}
       onPointerDown={(e) => { touch(); void invoke("ui_click", { label: "card:" + (e.target as HTMLElement).tagName }); }}
       onDragOver={(e) => { if (!onboarded || !carriesFiles(e.dataTransfer?.types)) return; e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setDragging(true); }}
       onDragLeave={(e) => { if (!e.relatedTarget || !root.current?.contains(e.relatedTarget as Node)) setDragging(false); }}
@@ -2639,6 +2682,20 @@ export function Card() {
         if (e.key === "Escape" && !composing(e)) { e.preventDefault(); box.current?.blur(); player.current.hush(); void invoke("close_card"); } }}>
       {/* M71: Home is one black surface; the rooms' light (data-element, RoomLight) is retired. */}
       <div className="inner" ref={inner}>
+      {/* M96: the small chat out of the notch, only while Home is the small chat; everything else in Home stays laid out but
+          hidden until it opens out (black.css), so nothing in it is lost. */}
+      {chat && <NotchChat m={m} project={project} greet={hoverGreeting(setting("you.name"))} now={clock} hint={askHint ?? micSaid} boxRef={chatBox} working={working}
+        talk={{ on: groups.on("talk") && !!keys.using.talk, title: talkKeysLine(keys), label: keys.using.talk ? S.m96.chat.micKeys(chordLabel(keys.using.talk)) : S.m96.chat.mic }}
+        stop={stopCan(m) ? { label: `${S.m96.chat.stop}. ${keyHint("stop", S.look.stopKeys, keys)}`, title: keyHint("stop", S.look.stopKeys, keys) } : null} onStop={() => void stopNow()}
+        onBubble={(go) => { openOut(); if (go === "review") onArrival.current({ do: "review" }); else pickTab("now"); }}
+        onMic={() => { if (keys.using.talk) setMicSaid(S.look.micHint(chordLabel(keys.using.talk))); }}
+        onSend={submit} onInput={() => { fitBox(); setAskHint(null); setVague(null); }} onFocus={() => warmSoon()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !composing(e) && e.currentTarget.value) { e.preventDefault(); e.stopPropagation(); clearBox(); return; }
+          if (askKey({ key: e.key, shift: e.shiftKey, alt: e.altKey, meta: e.metaKey, ctrl: e.ctrlKey, composing: composing(e) }) !== "send") return;
+          e.preventDefault(); submit();
+        }}
+        onSettings={() => { openOut(); gear(); }} onExpand={() => { openOut(); pickTab("now"); }} />}
       {/* The wide Home (look.layout, M51): the places and the recent work in a list on the left, the work beside it. */}
       {side && <HomeSide places={sidePlaces({ learnOn: learnShown() })} tab={home.tab} waits={waitsOn} recent={sideRecent(project ? m.history : [])} now={clock}
         onPick={pickTab} onSettings={gear} onOpen={openRecent} review={reviewOn ? m.review : null} onReview={openReview} counts={reviewOn && reviewHead(m.review) ? { now: reviewHead(m.review)!.count } : undefined}

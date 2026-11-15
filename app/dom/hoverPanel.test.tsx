@@ -4,6 +4,9 @@
 // Rishabh' and some CTA"): the panel is a greeting, at most one short line, ONE action and a quiet Open Home. The M84 rows
 // (the AI tools, the latest review, the next useful thing, the key hint) left it for Home; the tests that held them now
 // hold that they are gone, that the panel sends nothing on opening, and where each one is in Home.
+// M96 (changed on purpose, the founder, 15 Nov 2026: "just see how HeyClicky does it", and "yeah" to the mock): one row, the
+// face and a lowercase hello as one button that opens the small chat (island_chat), and one pill with the action's own
+// words; no line row and no Open Home. Each test below holds the M96 equivalent of what it held.
 import { describe, expect, test } from "bun:test";
 import { IslandPanel } from "../src/islandPanel.tsx";
 import { islandJobs } from "../src/islandPanel.ts";
@@ -20,16 +23,20 @@ const run = (events: Record<string, unknown>[], from: Model = initial()) => even
 const atRest = () => run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: PROJECT }]);
 const goes = () => app.invoked("island_go").map((c) => c.args);
 const panelButtons = () => [...document.querySelectorAll(".island-panel button")].map((b) => (b.getAttribute("aria-label") ?? b.textContent ?? "").trim());
+const hello = (greet = "hey there") => S.m96.openChat(greet);
+const rowSays = () => document.querySelector(".nb-row")?.getAttribute("aria-label") ?? "";
+const waits = (words: string) => `${words}. ${S.m96.waits}`;
 
 describe("the hover panel's one action", () => {
-  test("at rest with a project never checked: Hey there, no line, Check my project and Open Home, each opening Home at its own place", async () => {
+  test("at rest with a project never checked: hey there, no line, Check my project, and the hello opens the small chat", async () => {
     await renderPage(<IslandPanel m={atRest()} line="" shown />);
-    expect(screen.getByRole("status", { name: "Hey there." })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "hey there." })).toBeTruthy();
     expect(document.querySelector(".ip-line")).toBeNull();
-    expect(panelButtons()).toEqual([S.m93.act.check, S.m93.openHome]);
-    await press(S.m93.act.check);
-    await press(S.m93.openHome);
-    expect(goes()).toEqual([{ then: { do: "find" } }, {}]);
+    expect(panelButtons()).toEqual([hello(), S.m96.act.check]);
+    await press(S.m96.act.check);
+    await press(hello());
+    expect(goes()).toEqual([{ then: { do: "find" } }]);
+    expect(app.invoked("island_chat").length).toBe(1);
     // Opening Home is all a press does. M93 (changed on purpose): the panel sends nothing at all, not even M84's read only
     // ask for the AI tools (Home's side list asks for them).
     expect(app.sentTypes()).toEqual([]);
@@ -38,8 +45,10 @@ describe("the hover panel's one action", () => {
   test("changes waiting: the line says how many, and Review changes opens Home on the review", async () => {
     const m = run([{ type: "review.batch", project: PROJECT, batch: "rv_4f2a9c01de", files: [{ file: "src/a.ts", kind: "modified" }], count: 1, capped: false, secretFiles: [], auto: false }], atRest());
     await renderPage(<IslandPanel m={m} line="" shown />);
-    expect(document.querySelector(".ip-line")?.textContent).toBe(S.m93.line.changes(1));
-    await press(S.m93.act.review);
+    expect(rowSays()).toContain(S.m93.line.changes(1));
+    expect(document.querySelector(".nb-pill")?.textContent).toBe(S.m96.changes(1));
+    expect(document.querySelector(".nb-pill .nb-dot")).toBeTruthy();
+    await press(waits(S.m96.changes(1)));
     expect(goes()).toEqual([{ then: { do: "review" } }]);
   });
 
@@ -48,17 +57,19 @@ describe("the hover panel's one action", () => {
     // The settings are read once per page: read them again with this answer.
     await act(async () => { _resetForTests(); startSettings(); });
     await settle();
-    expect(document.querySelector(".ip-greet-big")?.textContent).toBe("Hey Rishabh");
+    expect(document.querySelector(".nb-greet")?.textContent).toBe("hey rishabh");
     expect(panelButtons()).not.toContain("Settings");
-    await press(S.m93.openHome);
-    expect(goes()).toEqual([{}]);
+    expect(panelButtons()).not.toContain(S.m93.openHome);
+    await press(hello("hey rishabh"));
+    expect(goes()).toEqual([]);
+    expect(app.invoked("island_chat").length).toBe(1);
   });
 
   test("a running job: its name is the line, Stop is the one action and sends one interrupt", async () => {
     const m = run([{ type: "agent.state", agent: "builder-1", state: "working" }, { type: "checkpoint.created", project: PROJECT, agent: "builder-1", checkpoint: "cp_0042", label: "Before: make the button blue", files: 12, skipped: [] }], atRest());
     await renderPage(<IslandPanel m={m} line="" shown />);
-    expect(document.querySelector(".ip-line")?.textContent).toMatch(/make the button blue/i);
-    expect(document.querySelectorAll(".ip-cta").length).toBe(1);
+    expect(rowSays()).toMatch(/make the button blue/i);
+    expect(document.querySelectorAll(".nb-pill").length).toBe(1);
     await press(/^Stop/);
     expect(app.sent()).toEqual([expect.objectContaining({ type: "agent.interrupt", agent: "builder-1" })]);
     expect(goes()).toEqual([]);
@@ -73,9 +84,9 @@ describe("the hover panel's one action", () => {
   test("M84, changed by M93: Claude Code waiting on you is the line, and the one action opens Home on Now; no tool cards, no ask", async () => {
     const waiting = run([{ type: "hook.waiting", project: PROJECT, waiting: true, message: "Claude needs your permission" }], atRest());
     const r = await renderPage(<IslandPanel m={waiting} line="" shown />);
-    expect(document.querySelector(".ip-line")?.textContent).toBe(S.m93.line.claude);
+    expect(rowSays()).toContain(S.m93.line.claude);
     expect(screen.queryByRole("navigation", { name: S.m84.toolsLabel })).toBeNull();
-    await press(S.m93.act.claude);
+    await press(waits(S.m96.act.claude));
     expect(goes()).toEqual([{}]);
     r.rerender(<IslandPanel m={waiting} line="" shown={false} />);
     r.rerender(<IslandPanel m={waiting} line="" shown />);
@@ -91,10 +102,10 @@ describe("the hover panel's one action", () => {
     expect(read("../src/card.tsx")).toContain("<AiToolsNowRow");
   });
 
-  test("M84, changed by M93: a real project never checked: two rows, each with something in it, no practice card (Learn keeps it)", async () => {
+  test("M84, changed by M93 and M96: a real project never checked: one row with something in it, no practice card (Learn keeps it)", async () => {
     await renderPage(<IslandPanel m={atRest()} line="" shown />);
     const panel = document.querySelector(".island-panel")!;
-    expect(panel.children.length).toBe(2);
+    expect(panel.children.length).toBe(1);
     expect(panel.querySelector(".ip-card")).toBeNull();
     expect(panelButtons()).not.toContain(S.m84.next.practice);
     for (const row of panel.children) expect((row.textContent ?? "").trim().length, row.className).toBeGreaterThan(0);
@@ -105,7 +116,7 @@ describe("the hover panel's one action", () => {
     const m = run([{ type: "auth.status", method: "api_key", source: "keychain" }, { type: "ui.folderShown", project: copy }]);
     await renderPage(<IslandPanel m={m} line="" shown />);
     expect(panelButtons()).not.toContain(S.m84.next.practice);
-    await press(S.m93.act.check);
+    await press(S.m96.act.check);
     expect(goes()).toEqual([{ then: { do: "find" } }]);
   });
 
@@ -119,8 +130,8 @@ describe("the hover panel's one action", () => {
 
   test("M84, changed by M93: the engine stopped says so, with its one action; back again, nothing is asked", async () => {
     const r = await renderPage(<IslandPanel m={{ ...atRest(), runnerUp: false }} line="" shown />);
-    expect(document.querySelector(".ip-line")?.textContent).toBe(S.m93.line.off);
-    await press(S.m93.act.seeWhy);
+    expect(rowSays()).toContain(S.m93.line.off);
+    await press(S.m96.act.seeWhy);
     expect(goes()).toEqual([{}]);
     r.rerender(<IslandPanel m={atRest()} line="" shown />);
     await settle();
@@ -137,7 +148,7 @@ describe("the hover panel's one action", () => {
   test("M84, changed by M93: no key hint in the panel at all, never bare keycaps (the key is at the foot of Home's ask box)", async () => {
     const m = run([{ type: "review.batch", project: PROJECT, batch: "rv_4f2a9c01de", files: [{ file: "src/a.ts", kind: "modified" }], count: 1, capped: false, secretFiles: [], auto: false }], atRest());
     await renderPage(<IslandPanel m={m} line="" shown />);
-    expect(document.querySelectorAll(".ip-cta").length).toBe(1);
+    expect(document.querySelectorAll(".nb-pill").length).toBe(1);
     expect(document.querySelector(".ip-key")).toBeNull();
     expect(read("../src/ui/notch.css")).not.toMatch(/\.ip-key\[data-tight\] > span:not\(\.ui-keys\) \{ display: none; \}/);
     expect(read("../src/card.tsx")).toContain("barKeyChord(keys)");
@@ -152,9 +163,11 @@ describe("the hover panel's one action", () => {
     const kept = islandJobs(done).find((j) => j.key.startsWith("done:"))?.key ?? null;
     await renderPage(<IslandPanel m={done} line="" shown kept={kept} />);
     expect(screen.queryByRole("group", { name: new RegExp(S.m84.reviewLabel) })).toBeNull();
-    expect(panelButtons()).toEqual([S.m93.act.ask, S.m93.openHome]);
-    await press(S.m93.act.ask);
-    expect(goes()).toEqual([{ then: { place: "ask" } }]);
+    // M96 (changed on purpose): with nothing waiting and the last fix undoable, the pill offers Undo last change, which
+    // only asks Home's own Undo question (arrival.rs "undo").
+    expect(panelButtons()).toEqual([hello(), S.m96.act.undo]);
+    await press(S.m96.act.undo);
+    expect(goes()).toEqual([{ then: { do: "undo" } }]);
     expect(app.sentTypes()).toEqual([]);
   });
 });

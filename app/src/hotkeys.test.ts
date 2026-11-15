@@ -66,7 +66,8 @@ describe("the keys main.rs registers", () => {
   test("the handler sends each job's keys to that job, and only the keys in use now reach it", () => {
     const handler = body(main, ".with_handler(", ".build(),");
     const arm = (job: string) => { const a = handler.indexOf(`keymap::Action::${job} =>`); expect(a, job).toBeGreaterThan(-1); const rest = handler.slice(a + 10); const n = rest.search(/keymap::Action::\w+ =>/); return rest.slice(0, n < 0 ? undefined : n); };
-    expect(arm("Card")).toContain('open_card(app, "hotkey", true)'); expect(arm("Card")).not.toContain("showme-mode");
+    // M96 (changed on purpose): the ask key opens the small chat out of the notch (island.rs opens_small), keys and all.
+    expect(arm("Card")).toContain('open_card(app, "ask_key", true)'); expect(arm("Card")).not.toContain("showme-mode");
     expect(arm("ShowMe")).toContain("show_me_key(app)");
     // Finding M: the Show me key listens at once through the same worker as hold to talk (so the light, the permission and the
     // cap checks are the same), a second press ends it, and the box is the fallback.

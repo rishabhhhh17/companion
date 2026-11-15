@@ -171,7 +171,8 @@ describe("following up by voice", () => {
     expect(opened).toContain("homeShown.current = true;");
     // Every way Home goes away (Esc, Close, a click elsewhere, the island or the character, a full screen app, Hide) goes
     // through the shell's home_closed, which tells the page: no pointerleave fires for a window that was just hidden.
-    expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; })');
+    // M96 (changed on purpose): and the small chat is forgotten too.
+    expect(card).toContain('listen("closed", () => { overReceipt.current = false; homeShown.current = false; setHomeOpen(false); keysDown.current = null; setChat(false); })');
     const main = shellSource();
     const closed = main.slice(main.indexOf("fn home_closed()"), main.indexOf("\n}\n", main.indexOf("fn home_closed()")));
     expect(closed).toContain('if let Some(a) = APP.get() {');

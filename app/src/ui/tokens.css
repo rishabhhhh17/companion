@@ -236,6 +236,7 @@
      on --ease-exit; with Reduce motion or Less motion a short linear fade is all that stays (style.css). */
   --dur-1: 120ms;                      /* a press, a hover, every exit */
   --dur-2: 200ms;                      /* menus, toasts, list rows, small panels */
+  --dur-notch-row: 220ms;              /* M96: the one row under the notch and the small chat's words arriving (one short move) */
   --dur-3: 240ms;                      /* surfaces: a sheet, a place arriving in Home */
   --dur-4: 320ms;                      /* window trips, the character coming in */
   --dur-count: 300ms;                  /* listed exception: the cost counting up */
@@ -428,6 +429,34 @@
   --notch-edge-cost: rgba(255, 255, 255, .16);
   --notch-edge-ok: rgba(123, 228, 149, .5);
   --notch-edge-bad: rgba(255, 122, 110, .55);
+  /* M96, the notch HeyClicky style (docs/milestones/M96-heyclicky-notch.md; the founder approved the mock, 15 Nov 2026):
+     one lavender blue for the one thing to press under the notch and for the person's own words in the small chat. It
+     lights only the pill, the person's bubble, the mic and the ask field's outline (m96Notch.test.ts): the black stays calm,
+     one accent, never a surface. Navy words on it (about 12 to 1). The old lime never appears here. */
+  --lav-1: #DFE8FF;                            /* the top of the pill, the mic and the person's bubble */
+  --lav-2: #A9C1FF;                            /* their foot */
+  --lav-2-soft: #B4C8FF;                       /* the foot of the person's bubble, a touch lighter */
+  --lav-ink: #13213D;                          /* navy words and icons on the lavender */
+  --lav-hair: rgba(255, 255, 255, .55);        /* the pill's inner white hairline */
+  --lav-line: rgba(185, 204, 255, .85);        /* the ask field's lavender inner outline */
+  --lav-glow: rgba(140, 175, 255, .55);        /* the soft blue outer glow of the pill and the mic */
+  --lav-glow-soft: rgba(140, 175, 255, .35);   /* the field's, softer */
+  --pill-hover: .92;                           /* the pill under the pointer: one step deeper, the same lavender */
+  --chat-them-hover: #34353A;                  /* a bubble that opens somewhere, under the pointer */
+  --pill-stop: #2E2F34;                        /* Stop under the notch: a quiet dark pill with no glow, never the lavender */
+  --pill-stop-hover: #3A3B41;
+  --pill-stop-line: rgba(255, 255, 255, .18);
+  --notch-wait: #E2563F;                         /* the small dot on the pill when something waits for the person */
+  --chat-them: #2A2B2F;                        /* Squibby's bubbles in the small chat */
+  --chat-them-fg: #ECEEF2;
+  --chat-field: #1D1E22;                       /* the ask field's own fill */
+  --chat-grid: rgba(255, 255, 255, .09);       /* the faint dotted grid on the small chat's black */
+  --chat-icon-bg: rgba(255, 255, 255, .08);    /* the small round Settings and expand buttons */
+  --chat-icon-fg: #CFD5DF;
+  --chat-send: rgba(255, 255, 255, .14);       /* the round send button inside the field */
+  --chat-fg: rgba(255, 255, 255, .92);         /* the lowercase hello */
+  --chat-when: rgba(255, 255, 255, .5);        /* the small time line and the field's hint (4.5 to 1 on the black) */
+  --chat-when-day: rgba(255, 255, 255, .75);
   /* The character's lights on the desktop: listening's glow when a skin has none, and the still ring of looking. */
   --glow-light: #FFFFFF;
   --glow-look-edge: rgba(0, 0, 0, .55);

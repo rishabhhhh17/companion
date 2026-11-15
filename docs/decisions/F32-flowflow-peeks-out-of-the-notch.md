@@ -29,5 +29,13 @@
 - **Unchanged:** a question or a fresh result that opens the panel by itself keeps its cards; the peek, its hide rules and its settings; every press opens Home through `island_go`, except Stop.
 - Built in `docs/milestones/M93-minimal-hover.md`.
 
+## Update, 15 Nov 2026 (founder): the notch HeyClicky style, small then it opens out (M96)
+- **The founder, on the real M93 hover** (a wide black panel under the notch: a tiny Flowflow, "Hey there", a Check my project button with a green check box icon, Open Home far right, lots of empty black): "I don't like how it looks, just see how HeyClicky does it", then "it starts small and then when we go to settings then it opens up". A mock of three states was made and the founder approved it ("yeah").
+- **Why it changed.** M93 cut what the hover said, but kept the 560 point width it shared with the question cards, so two rows sat in a wide black panel that read as empty. HeyClicky's notch is small and grows only as far as what it holds, and opens out only when asked.
+- **Decision.** At rest: only the hardware notch (the M90 peek still slides out when there is news). Pointing: one row out of the notch, about 330 wide, the same black with no gap or border: Flowflow's live face, a lowercase "hey <first name>" ("hey there" with none), and one glowing lavender pill with the moment's one action in its own words ("2 changes to review" with a small dot when something waits, "Undo last change", "Fix it", "Stop", "Check my project" when nothing waits, See why with the engine stopped). No line row, no Open Home, no icon in the pill. Opened: a click on the face or the hello, or the ask key, opens a small chat out of the notch, about 460 by 300: Settings and expand buttons, the recent news as chat bubbles, the mic and an Ask field. Settings and expand open all of Home. Esc and a click elsewhere fold it back; Stop everything hides everything.
+- **The colour.** One lavender blue, only on the pill, the person's own bubble, the mic and the field's outline, with the soft glow the mock shows. The M71 rule (no gradient, no glow) keeps holding everywhere else; the lint names exactly these parts. One accent, calm black, no lime.
+- **Unchanged:** the name is typed only (F28); every press opens Home through `island_go` except Stop; the question and result cards keep their 560 point panel; the panel never takes focus; the chat takes the keys only when the person clicks into it or used the ask key. A switch, Open a small chat first (`island.smallChat`, on), brings back Home at its full size.
+- Built in `docs/milestones/M96-heyclicky-notch.md`.
+
 ## Revisit only if
 People on real Macs find it distracting at work, or read it as a glitch; then the usual may change, the switch stays.

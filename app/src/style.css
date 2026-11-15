@@ -318,7 +318,7 @@ html.island-page, body.island-page { background: transparent; overflow: clip; he
 /* M70 step 4: the corner follows the shape's height on its spring (island.tsx --open, not inherited), from --r to --r-open. */
 @property --open { syntax: "<number>"; inherits: false; initial-value: 0; }
 .island-shape { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 100%; height: 100%; background: var(--notch); overflow: hidden; --r-now: calc(var(--r) + (var(--r-open) - var(--r)) * var(--open)); border-radius: 0 0 var(--r-now) var(--r-now); }
-.island.notch { --r-open: 22px; }
+.island.notch { --r-open: 20px; }
 .island.pill { --r: var(--row, 20px); }
 .island.edge { --r: 3px; }
 .island.edge[data-mode="wings"] { --r: var(--r-card); }

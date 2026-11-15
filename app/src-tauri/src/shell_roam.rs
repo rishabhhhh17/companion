@@ -515,7 +515,7 @@ fn place_set(app: &AppHandle, next: Prefs) {
 fn home_set() -> homeset::HomeSet { with_settings(|s| homeset::read(settings::registry(), &s.file)) }
 /// Home's size in force (home.size): its width, least height and tallest height. The one size for placing Home, for the
 /// character's clear zones and for the trips beside a window.
-fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }
+fn home_size() -> island::HomeSize { island::size_in_force(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst), CHAT_OPEN.load(Ordering::SeqCst)) }
 
 /// What the shell does at once when one of these changes (homeset.rs). The rest are read where they are used (the waits on
 /// the island, the wait beside a window, the motion, full screen apps) and need nothing more.

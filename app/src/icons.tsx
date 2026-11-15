@@ -11,7 +11,7 @@ type HomeIcon = "gear" | "mic" | "send" | "find" | "explain" | "pointer" | "shie
 
 const base = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true, focusable: false } as const;
 
-const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | "copy" | "star" | "starFilled" | HomeIcon, ReactElement> = {
+const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "back" | "undo" | "stop" | "wait" | "half" | "dash" | "ring" | "spin" | "sparkle" | "alert" | "eye" | "updown" | "copy" | "star" | "starFilled" | "expand" | HomeIcon, ReactElement> = {
   // The tabs
   now: <><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" /></>,
   did: <><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></>,
@@ -77,6 +77,8 @@ const PATHS: Record<ActionIcon | Tab | "tick" | "cross" | "more" | "close" | "ba
   mono: <><path d="M8 9v6M12 6v12M16 9v6" /></>,
   video: <><rect x="3.5" y="6" width="12" height="12" rx="2" /><path d="M15.5 10.5l5-2.5v8l-5-2.5z" /></>,
   archive: <><path d="M4 8h16M5 8l1-4h12l1 4" /><path d="M5 8v11a1 1 0 001 1h12a1 1 0 001-1V8" /><path d="M10 12h4" /></>,
+  // M96: open all of Home, from the small chat (two arrows out, corner to corner).
+  expand: <><path d="M14 4h6v6M10 20H4v-6" /><path d="M20 4l-6.5 6.5M4 20l6.5-6.5" /></>,
   resize: <><path d="M4 9V4h5M20 15v5h-5" /><path d="M4 4l6 6M20 20l-6-6" /></>,
   squeeze: <><path d="M4 8h5V3M20 16h-5v5" /><path d="M9 8L3.5 2.5M15 16l5.5 5.5" /></>,
   trim: <><circle cx="6.5" cy="7" r="2.5" /><circle cx="6.5" cy="17" r="2.5" /><path d="M8.7 8.3L20 18M8.7 15.7L20 6" /></>,

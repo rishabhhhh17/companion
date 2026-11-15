@@ -256,3 +256,58 @@
 .today-time { color: var(--fg-2); font: var(--w-strong) var(--t-caption) / 1 var(--font); font-variant-numeric: tabular-nums; text-align: right; }
 .today-words { min-width: 0; overflow-wrap: anywhere; }
 .today-row { animation: ui-fade-in var(--dur-2) var(--ease-out) both; }
+
+/* ---------- M96: the small chat out of the notch (notchChat.tsx; docs/milestones/M96-heyclicky-notch.md) ----------
+   The founder approved the mock, 15 Nov 2026. Home's own black shape, 460 by 266 under the notch (island.rs HomeSize::CHAT),
+   with a faint dotted grid; the top row, the news as bubbles, and at the foot the mic and the ask field. Everything else in
+   Home stays laid out but hidden until the chat opens out (nothing in it is lost). The lavender only on the person's
+   bubble, the mic and the field's outline (one accent); colours only from tokens.css. */
+.home .notch-chat { display: none; }
+/* The chat is exactly the shape the shell holds (266 under the notch): the top row and the ask bar stay, and the news scrolls
+   when there is more of it (or bigger text) than fits. */
+.home[data-chat] { height: 100%; }
+.home[data-chat] > .inner { display: block; height: 100%; padding: 0; }
+.home[data-chat] > .inner > :not(.notch-chat) { display: none; }
+.home[data-chat] .notch-chat { position: relative; display: flex; flex-direction: column; gap: calc(8rem / 14); height: 100%; box-sizing: border-box; padding: 8px 14px 14px 16px; background-color: var(--notch); background-image: radial-gradient(var(--chat-grid) 1px, transparent 1.2px); background-size: 14px 14px; }
+.notch-chat .nc-top { display: flex; align-items: center; gap: 9px; min-height: 26px; }
+.notch-chat .nc-face, .notch-chat .nc-face.ff-mini { flex: none; width: 22px; }
+.notch-chat .nc-face .ff-orb, .notch-chat .ff-orb { --orb: 22px; --orb-gap: var(--hair); }
+.notch-chat .nc-hi { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-fg); font: var(--w-strong) var(--t-body) / var(--lh-body) var(--font); letter-spacing: -.01em; }
+/* The project an ask goes to, quiet beside the hello; whichever of the two is last pushes the buttons to the right. */
+.notch-chat .nc-proj { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.notch-chat .nc-hi:not(:has(+ .nc-proj)), .notch-chat .nc-proj { margin-right: auto; }
+.notch-chat .nc-stop { flex: none; display: inline-flex; align-items: center; gap: 5px; min-height: 26px; padding: 0 11px 0 9px; border: 0; border-radius: 999px; color: var(--chat-fg); background: var(--pill-stop); box-shadow: 0 0 0 1px var(--pill-stop-line) inset; font: var(--w-strong) var(--t-caption) / 1 var(--font); transition: transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-stop:hover { background: var(--pill-stop-hover); }
+.notch-chat .nc-stop:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.notch-chat .nc-ico { flex: none; display: grid; place-items: center; width: 26px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-icon-bg); color: var(--chat-icon-fg); transition: transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-ico:hover { background: var(--chat-send); }
+.notch-chat .nc-ico:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.notch-chat .nc-news { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: calc(6rem / 14); overflow-y: auto; }
+/* The newest at the foot, by the field; more than fits scrolls (never cut at the top). */
+.notch-chat .nc-news > :first-child { margin-top: auto; }
+/* One bubble (the invite, or one piece of news): centred in the chat, never pinned under an empty band. */
+.notch-chat .nc-news[data-few] { justify-content: center; }
+.notch-chat .nc-news[data-few] > :first-child { margin-top: 0; }
+.notch-chat .nc-when { margin: 0 0 2px; align-self: center; color: var(--chat-when); font: var(--t-caption) / var(--lh-caption) var(--font); }
+.notch-chat .nc-when b { color: var(--chat-when-day); font-weight: var(--w-bold); }
+.notch-chat .nc-b { margin: 0; max-width: 300px; padding: 7px 12px; border-radius: 16px; font: var(--t-body) / var(--lh-body) var(--font); overflow-wrap: anywhere; animation: nc-in var(--dur-notch-row) var(--ease-out) both; }
+.notch-chat .nc-them { align-self: flex-start; background: var(--chat-them); color: var(--chat-them-fg); border-bottom-left-radius: 5px; }
+/* A bubble that opens out to its place (the changes to review, Claude Code waiting, a failed check). */
+.notch-chat button.nc-go { border: 0; text-align: start; cursor: pointer; transition: background-color var(--dur-release) var(--ease-out); }
+.notch-chat button.nc-go:hover { background: var(--chat-them-hover); }
+.notch-chat .nc-me { align-self: flex-end; background: linear-gradient(180deg, var(--lav-1), var(--lav-2-soft)); color: var(--lav-ink); border-bottom-right-radius: 5px; }
+@keyframes nc-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .notch-chat .nc-b { animation-name: nc-fade; } }
+@keyframes nc-fade { from { opacity: 0; } }
+.notch-chat .nc-bar { flex: none; display: flex; align-items: center; gap: 8px; }
+.notch-chat .nc-mic { flex: none; display: grid; place-items: center; width: 38px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; color: var(--lav-ink); background: linear-gradient(180deg, var(--lav-1), var(--lav-2)); box-shadow: 0 0 14px var(--lav-glow); transition: transform var(--dur-release) var(--ease-out); }
+.notch-chat .nc-mic:active { transform: scale(var(--press)); transition-duration: var(--dur-press); }
+.notch-chat .nc-field { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; min-height: 38px; box-sizing: border-box; padding: 5px 5px 5px 14px; border-radius: 19px; background: var(--chat-field); box-shadow: 0 0 0 1.5px var(--lav-line) inset, 0 0 12px var(--lav-glow-soft); }
+/* The field shows focus, as Home's own ask box does: a stronger lavender edge; the box's own ring is for forced colours. */
+.notch-chat .nc-field:focus-within { box-shadow: 0 0 0 2px var(--lav-1) inset, 0 0 16px var(--lav-glow); }
+.notch-chat .nc-field textarea { flex: 1 1 auto; min-width: 0; max-height: calc(54rem / 14); padding: 0; margin: 0; border: 0; outline: 0; resize: none; overflow-y: auto; background: transparent; box-shadow: none; color: var(--chat-them-fg); caret-color: var(--chat-fg); font: var(--t-body) / var(--lh-body) var(--font); }
+.notch-chat .nc-field textarea:focus-visible { outline: var(--ring) solid transparent; }
+.notch-chat .nc-field textarea::placeholder { color: var(--chat-when); }
+.notch-chat .nc-send { flex: none; display: grid; place-items: center; width: 28px; aspect-ratio: 1; padding: 0; border: 0; border-radius: 50%; background: var(--chat-send); color: var(--notch-ink); }
+.notch-chat .nc-send:disabled { color: var(--ink-disabled); background: var(--fill-disabled); }
+.notch-chat button:focus-visible { outline: var(--ring) solid var(--focus); outline-offset: 2px; }

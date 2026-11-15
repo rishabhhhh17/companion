@@ -8,8 +8,16 @@
 // lives in Home. Every press only opens Home at a place (island_go), except Stop, which stops (as before).
 //
 // The name is only what the person typed (you.name, on this Mac only): the Mac account's name is never read (F28).
+//
+// M96, the notch HeyClicky style (docs/milestones/M96-heyclicky-notch.md). The founder, 15 Nov 2026, on the real M93 hover:
+// "I don't like how it looks, just see how HeyClicky does it", then "it starts small and then when we go to settings then
+// it opens up", and "yeah" to the mock. Pointing now grows ONE row out of the notch, about 330 wide: Flowflow's face, a
+// lowercase "hey <first name>", and one glowing pill with the action's own words ("2 changes to review" with a small dot when
+// something waits). No line row, no Open Home, no icon in the pill. The line below (hoverLine) is still decided, for the
+// words VoiceOver hears and the pill's tooltip, never drawn as a row. Clicking the face or the greeting opens the small
+// chat (notchChat.ts).
 import type { Model } from "./model.ts";
-import { homeStatus } from "./homeHero.ts";
+import { homeStatus, undoCan } from "./homeHero.ts";
 import { factColour, QUICK_LOOK, QUICK_TOOL } from "./notchQuick.ts";
 import { MEANING_COLOUR, type Colour, type FactKind } from "./meaning.ts";
 import type { ToolId } from "./groups.ts";
@@ -24,8 +32,8 @@ import { firstName, NAME_SHOWN_MAX } from "./notchHello.ts";
 // The first word of the name and its cut live in notchHello.ts, so the hello and this greeting say the same name (the M93
 // review: the hello said the whole typed name).
 export { firstName, NAME_SHOWN_MAX };
-/** "Hey Rishabh", or "Hey there" when no name was typed. */
-export const hoverGreeting = (typed: unknown): string => { const n = firstName(typed); return n ? S.m93.hey(n) : S.m93.heyThere; };
+/** M96: "hey rishabh", or "hey there" when no name was typed: lowercase, as the approved mock says it. */
+export const hoverGreeting = (typed: unknown): string => { const n = firstName(typed); return n ? S.m96.hey(n.toLocaleLowerCase()) : S.m96.heyThere; };
 
 // ---------- the one short line ----------
 
@@ -75,7 +83,7 @@ export function hoverLine(m: Model, now: number, o: LineInput = {}): HoverLine |
 
 // ---------- the one action ----------
 
-export type HoverActionId = keyof typeof S.m93.act;
+export type HoverActionId = keyof typeof S.m96.act;
 export type HoverAction = { id: HoverActionId; label: string; look: { colour: Colour; icon: IconName };
   /** Where island_go opens Home; null only for Stop, which sends the stop command itself. */
   go: Go | null };
@@ -89,16 +97,19 @@ const ACT: Record<HoverActionId, { go: Go | null; look: { colour: Colour; icon: 
   pick: { go: {}, look: QUICK_LOOK.pick, tool: QUICK_TOOL.pick },
   review: { go: { then: { do: "review" } }, look: QUICK_LOOK.review, tool: QUICK_TOOL.review },
   fix: { go: { then: { do: "find" } }, look: { colour: MEANING_COLOUR.problem, icon: "wrench" }, tool: QUICK_TOOL.check },
+  // M96: the receipt's own Undo question, asked in Home (nothing is undone without the person's yes there).
+  undo: { go: { then: { do: "undo" } }, look: { colour: "grey", icon: "undo" }, tool: QUICK_TOOL.undo },
   check: { go: { then: { do: "find" } }, look: QUICK_LOOK.check, tool: QUICK_TOOL.check },
-  ask: { go: { then: { place: "ask" } }, look: QUICK_LOOK.ask, tool: QUICK_TOOL.ask },
   home: { go: {}, look: { colour: "grey", icon: "now" }, tool: null },
 };
-const make = (id: HoverActionId): HoverAction => ({ id, label: S.m93.act[id], look: ACT[id].look, go: ACT[id].go });
+const make = (id: HoverActionId): HoverAction => ({ id, label: S.m96.act[id], look: ACT[id].look, go: ACT[id].go });
 
 /** The ONE primary action for the moment (the choice M84's nextPeek made, plus Fix it and Stop): Stop while a job runs (the
  *  safety action, always there); See why with the engine stopped; Answer for a question; See what Claude asks while Claude
  *  Code waits on you here; Pick a project; Review changes; Fix it after a failed check; Check my project when not checked
- *  or changed since; else Ask. An action whose tool is turned off, or with the panel's buttons off, is Open Home instead. */
+ *  or changed since; M96: Undo last change while the last fix can be undone; else Check my project (M93 said Ask when all was fine: M96 asks in the small chat, opened from the
+ *  greeting, so the pill always offers a check when nothing waits). An action whose tool is turned off, or with the panel's
+ *  buttons off, is Open Home instead. */
 export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction {
   if (o.layout === "job") return make("stop");
   if (!m.runnerUp) return make("seeWhy");
@@ -106,19 +117,30 @@ export function hoverAction(m: Model, now: number, o: ActionInput): HoverAction 
   if (m.approvals.length > 0) return make("answer");
   if (claudeWaitsHere(m)) return make("claude");
   const project = projectOf(m);
+  const on = o.on ?? (() => true);
+  // Undo last change follows the Undo tool's switch (F20): with it off the pill offers the check it would offer anyway.
   const id: HoverActionId = !nameOf(project) ? "pick"
     : reviewWaits(m) > 0 ? "review"
-    : (() => { const k = homeStatus(m, project, now).kind; return k === "failing" ? "fix" : k === "unchecked" || k === "changed" ? "check" : "ask"; })();
+    : (() => { const k = homeStatus(m, project, now).kind; return k === "failing" ? "fix" : k === "unchecked" || k === "changed" ? "check" : undoCan(m, project) && on(QUICK_TOOL.undo!) ? "undo" : "check"; })();
   if (o.buttons === false) return make("home");
-  const tool = ACT[id].tool, on = o.on ?? (() => true);
+  const tool = ACT[id].tool;
   return tool === null || on(tool) ? make(id) : make("home");
 }
-/** The quiet Open Home beside the action, unless the action already is Open Home. */
-export const hoverSecondary = (a: HoverAction): boolean => a.id !== "home";
+// ---------- M96: the pill's words ----------
 
-// ---------- the height ----------
+/** What waits for the person: the pill says so with a small dot before its words (changes, a question, Claude Code). */
+const WAITS: ReadonlySet<HoverActionId> = new Set<HoverActionId>(["review", "answer", "claude"]);
+export type HoverPill = { words: string; dot: boolean };
+/** The words on the one glowing pill: the action's own, except Review changes, which says how many ("2 changes to review"),
+ *  and a small dot when something waits for the person. */
+export function hoverPill(a: HoverAction, m: Model): HoverPill {
+  const n = reviewWaits(m);
+  const words = a.id === "review" && n > 0 ? S.m96.changes(n) : a.label;
+  return { words, dot: WAITS.has(a.id) };
+}
 
-/** Two rows: the head (face, greeting, line) and the action row, with the panel's padding and one gap. */
-export const HOVER_ROW_H = { head: 44, act: 30 } as const;
-export const HOVER_PAD = { top: 8, bottom: 14 } as const;
-export const HOVER_H = HOVER_PAD.top + HOVER_PAD.bottom + HOVER_ROW_H.head + HOVER_ROW_H.act + 10;
+// ---------- the size ----------
+
+/** M96: one row under the notch, about 330 wide and 42 tall (island.rs PANEL_W_MIN to PANEL_W, PANEL_MIN to PANEL_MAX). */
+export const HOVER_W = 330;
+export const HOVER_H = 42;

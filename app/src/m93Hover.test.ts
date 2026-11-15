@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { initial, type HistoryItem, type Model } from "./model.ts";
 import type { ReviewCard } from "./review.ts";
-import { HOVER_H, HOVER_PAD, HOVER_ROW_H, NAME_SHOWN_MAX, firstName, hoverAction, hoverGreeting, hoverLine, hoverSecondary, type HoverActionId } from "./notchMinimal.ts";
+import { HOVER_H, NAME_SHOWN_MAX, firstName, hoverAction, hoverGreeting, hoverLine, type HoverActionId } from "./notchMinimal.ts";
 import { LAYOUT_H } from "./notchQuick.ts";
 import { arrivalFrom, islandLineKind } from "./home.ts";
 import { S } from "./strings.ts";
@@ -23,24 +23,26 @@ const m = (o: Partial<Model> = {}): Model => ({ ...initial(), runnerUp: true, co
 const approval = { id: "ap_1", agent: "a", tool: "Bash", risk: "network", summary: "curl example.com", detail: "curl example.com" } as unknown as Model["approvals"][number];
 const failing = (): Model => m({ history: [row({ status: "not_done", proof: "failed" })] });
 
-describe("the greeting: Hey and the first name, or Hey there", () => {
-  test("blank, missing or not a string says Hey there", () => {
+// M96 changed the greeting on purpose (the founder approved the HeyClicky style mock, 15 Nov 2026): lowercase, "hey rishabh"
+// and "hey there". The first word and its cleaning are unchanged; m96Notch.test.ts holds the rest.
+describe("the greeting: hey and the first name, or hey there", () => {
+  test("blank, missing or not a string says hey there", () => {
     for (const v of ["", "   ", "\n\t", null, undefined, 42, {}, ["Sam"]]) {
       expect(firstName(v)).toBe("");
-      expect(hoverGreeting(v)).toBe("Hey there");
+      expect(hoverGreeting(v)).toBe("hey there");
     }
-    expect(S.m93.heyThere).toBe("Hey there");
+    expect(S.m96.heyThere).toBe("hey there");
   });
-  test("one word is said as typed", () => {
-    expect(hoverGreeting("Rishabh")).toBe("Hey Rishabh");
-    expect(hoverGreeting("  Rishabh  ")).toBe("Hey Rishabh");
-    expect(hoverGreeting("sam")).toBe("Hey sam");
+  test("one word is said, in lowercase", () => {
+    expect(hoverGreeting("Rishabh")).toBe("hey rishabh");
+    expect(hoverGreeting("  Rishabh  ")).toBe("hey rishabh");
+    expect(hoverGreeting("sam")).toBe("hey sam");
   });
   test("a full name says only its first word", () => {
-    expect(hoverGreeting("Rishabh Kapadia")).toBe("Hey Rishabh");
-    expect(hoverGreeting("Mary   Ann  Smith")).toBe("Hey Mary");
-    expect(hoverGreeting("Jean-Luc Picard")).toBe("Hey Jean-Luc");
-    expect(hoverGreeting("O'Brien")).toBe("Hey O'Brien");
+    expect(hoverGreeting("Rishabh Kapadia")).toBe("hey rishabh");
+    expect(hoverGreeting("Mary   Ann  Smith")).toBe("hey mary");
+    expect(hoverGreeting("Jean-Luc Picard")).toBe("hey jean-luc");
+    expect(hoverGreeting("O'Brien")).toBe("hey o'brien");
   });
   test("odd characters: hidden, control and direction marks go; letters of any script stay; stray punctuation at the ends goes", () => {
     expect(firstName("Ri\u200bshabh")).toBe("Ri");   // a zero width space splits the word, never joins it invisibly
@@ -52,7 +54,7 @@ describe("the greeting: Hey and the first name, or Hey there", () => {
     expect(firstName("ऋषभ कपाड़िया")).toBe("ऋषभ");
     expect(firstName("李雷")).toBe("李雷");
     expect(firstName("🙂")).toBe("");
-    expect(hoverGreeting("🙂 ")).toBe("Hey there");
+    expect(hoverGreeting("🙂 ")).toBe("hey there");
     expect(firstName("<b>Sam</b>")).toBe("b>Sam</b");   // drawn as text by React, never as markup
   });
   test("a very long name is cut with an ellipsis, never splitting a letter", () => {
@@ -115,14 +117,15 @@ describe("one primary action that fits the moment, in every state", () => {
     ["a check failed", failing(), "fix", { then: { do: "find" } } as never],
     ["not checked yet", m(), "check", { then: { do: "find" } } as never],
     ["changed since the last check", m({ history: [row()], sinceCheck: { project: P, changed: true } }), "check", { then: { do: "find" } } as never],
-    ["all fine", m({ history: [row()] }), "ask", { then: { place: "ask" } } as never],
+    // M96 (changed on purpose): with nothing waiting the pill offers a check; asking is the small chat, from the hello.
+    ["all fine", m({ history: [row()] }), "check", { then: { do: "find" } } as never],
     ["a job runs", m(), "stop", null, { layout: "job" }],
     ["a job runs with buttons off", m(), "stop", null, { layout: "job", buttons: false }],
   ];
   for (const [name, x, id, go, o] of cases) test(name, () => {
     const a = act(x, o);
     expect(a.id).toBe(id);
-    expect(a.label).toBe(S.m93.act[id]);
+    expect(a.label).toBe(S.m96.act[id]);
     if (go === null) expect(a.go).toBeNull();
     else { expect(a.go).toEqual(go as never); if (a.go!.then) expect(arrivalFrom(a.go!)).not.toBeNull(); }
   });
@@ -133,16 +136,14 @@ describe("one primary action that fits the moment, in every state", () => {
   test("an action whose tool is turned off falls back to Open Home; buttons off leaves only Open Home", () => {
     expect(act(m({ review: batch(2) }), { on: (t) => t !== "review" }).id).toBe("home");
     expect(act(m(), { on: (t) => t !== "findProblem" }).id).toBe("home");
-    expect(act(m({ history: [row()] }), { on: (t) => t !== "askBox" }).id).toBe("home");
+    expect(act(m({ history: [row()] }), { on: (t) => t !== "findProblem" }).id).toBe("home");
     expect(act(m(), { buttons: false }).id).toBe("home");
     // The engine stopped and a question still lead with their one action whatever is turned off.
     expect(act(m({ runnerUp: false }), { buttons: false }).id).toBe("seeWhy");
   });
-  test("at most one quiet secondary, Open Home, and never twice", () => {
-    expect(hoverSecondary(act(m()))).toBe(true);
-    expect(hoverSecondary(act(m(), { layout: "job" }))).toBe(true);
-    expect(hoverSecondary(act(m({ connected: "none" })))).toBe(false);
-    expect(S.m93.openHome).toBe("Open Home");
+  test("M96 (changed on purpose): no quiet Open Home beside the pill; the small chat's expand button opens all of Home", () => {
+    expect(read("./islandPanel.tsx")).not.toContain("S.m93.openHome");
+    expect(read("./notchChat.tsx")).toContain("onClick={onExpand}");
   });
   test("each action has a look from the meaning colours, never a new colour", () => {
     expect(act(failing()).look).toEqual({ colour: "red", icon: "wrench" });
@@ -151,26 +152,28 @@ describe("one primary action that fits the moment, in every state", () => {
   });
 });
 
-describe("the panel shrinks to two rows, and keeps the safety behaviour", () => {
-  test("two rows: the head and the action, inside the shell's limits; CSS and the layout say the same", () => {
-    expect(HOVER_H).toBe(HOVER_PAD.top + HOVER_PAD.bottom + HOVER_ROW_H.head + HOVER_ROW_H.act + 10);
+// M96 changed the size on purpose (the founder approved the HeyClicky style mock, 15 Nov 2026): one 42 point row.
+describe("the panel shrinks to one row, and keeps the safety behaviour", () => {
+  test("one row, inside the shell's limits; CSS and the layout say the same", () => {
+    expect(HOVER_H).toBe(42);
     expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: HOVER_H, job: HOVER_H });
     const rs = read("../src-tauri/src/island.rs");
     const min = Number(/pub const PANEL_MIN: f64 = ([\d.]+);/.exec(rs)![1]), max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     expect(HOVER_H).toBeGreaterThanOrEqual(min);
     expect(HOVER_H).toBeLessThanOrEqual(max);
     expect(HOVER_H).toBeLessThan(120);
-    expect(read("./ui/notch.css")).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${HOVER_H}px;`);
+    expect(read("./ui/notch.css")).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { width: 330px; height: ${HOVER_H}px;`);
   });
   test("the panel draws only the face, the greeting, the line and the action; the M84 rows are gone from it", () => {
     const panel = read("./islandPanel.tsx");
     for (const gone of ["ip-ai", "ip-card", "ip-foot", "ip-key", "RunwayRing mark", "ip-word", "ip-progress", "toolsRow(", "latestReview(", "nextPeek(", "usePanelTools"]) expect(panel).not.toContain(gone);
-    expect(panel).toContain('className="ip-face"');
-    expect(panel).toContain('className="ip-greet-big"');
-    expect(panel).toContain('className="ip-cta"');
-    // Every press but Stop goes through island_go; Stop sends the stop command as before.
+    expect(panel).toContain('className="ip-face nb-face"');
+    expect(panel).toContain('className="nb-greet"');
+    expect(panel).toContain('className="nb-pill"');
+    // Every press but Stop goes through island_go; Stop sends the stop command as before. M96: the face and the hello open
+    // the small chat (island_chat) in place of the quiet Open Home.
     expect(panel).toContain('invoke("island_go", action.go)');
-    expect(panel).toContain('invoke("island_go", {})');
+    expect(panel).toContain('invoke("island_chat")');
     expect(panel).toContain("cmd: stopAgent()");
     // The panel sends nothing on opening (the M84 ask for the AI tools moved to Home, which already asks).
     expect(panel).not.toContain("showDoneSignal");

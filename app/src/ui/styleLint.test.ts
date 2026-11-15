@@ -246,16 +246,31 @@ describe("M71: one black look, colour for meaning only", () => {
    *  and its waterline, Settings' preview of it), and the notch itself (the island and its marks, the shape that grows
    *  out of it), and their own keyframes. */
   const CHARACTER_ART = /\.ui-visor|\.ui-orb|\.home-orb|\.home-char|\.character|visor|flowflow|\.fl-|\.ch-water|\.waterline|companion-hero|\.mark\b|\.island-wing|\.island-mark|\.island-shape|\.hs\b|@keyframes (glow|pose-glow|island-)/;   // M72: the notch's own art, never its panel
+  /** M96 (changed on purpose: the founder approved the HeyClicky style mock on 15 Nov 2026, after "just see how HeyClicky does
+   *  it"): the one thing to press under the notch is a lavender pill with a soft blue glow, and the small chat's mic, field
+   *  and the person's own bubble share it, on a faint dotted grid. Exactly these parts, named here, and nothing else;
+   *  m96Notch.test.ts holds that the lavender appears nowhere else. */
+  const M96_GLOW = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-field|\.notch-chat \.nc-field:focus-within)$/;
+  const M96_GRADIENT = /^(\.island-panel button\.nb-pill|\.notch-chat \.nc-mic|\.notch-chat \.nc-me|\.home\[data-chat\] \.notch-chat)$/;
   test("no gradient outside the character's own art", () => {
     const bad: string[] = [];
     // A mask that fades a scrolling strip's edge is no colour: it is left to the clean up, which decides about it.
-    for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) if (!CHARACTER_ART.test(r.sel) && !CHARACTER_ART.test(r.at ?? "") && !/mask-image$/.test(k) && /gradient\(/.test(v)) bad.push(`${file}: ${r.sel} { ${k} }`);
+    for (const [file, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) if (!CHARACTER_ART.test(r.sel) && !M96_GRADIENT.test(r.sel) && !CHARACTER_ART.test(r.at ?? "") && !/mask-image$/.test(k) && /gradient\(/.test(v)) bad.push(`${file}: ${r.sel} { ${k} }`);
     expect(bad).toEqual([]);
+  });
+  test("M96: the lavender's gradient and glow are on exactly the parts the mock gave them", () => {
+    const found = { glow: new Set<string>(), gradient: new Set<string>() };
+    for (const [, rules] of M71_FILES) for (const r of rules) for (const [k, v] of r.decl) {
+      if (M96_GLOW.test(r.sel) && /--[\w-]*glow/.test(v)) found.glow.add(r.sel);
+      if (M96_GRADIENT.test(r.sel) && /gradient\(/.test(v) && k.startsWith("background")) found.gradient.add(r.sel);
+    }
+    expect(found.glow.size).toBe(4);
+    expect(found.gradient.size).toBe(4);
   });
   test("no glow or halo: no drop shadow, no glow or halo token, no blurred coloured shadow, outside the character's art", () => {
     const bad: string[] = [];
     for (const [file, rules] of M71_FILES) for (const r of rules) {
-      if (CHARACTER_ART.test(r.sel) || CHARACTER_ART.test(r.at ?? "")) continue;
+      if (CHARACTER_ART.test(r.sel) || CHARACTER_ART.test(r.at ?? "") || M96_GLOW.test(r.sel)) continue;
       for (const [k, v] of r.decl) {
         if (/drop-shadow\(|--[\w-]*(glow|halo)/.test(v)) bad.push(`${file}: ${r.sel} { ${k}: ${v} }`);
         // A shadow with a blur in a colour of meaning is a glow (a neutral float shadow token is not).

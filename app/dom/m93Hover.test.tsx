@@ -11,25 +11,28 @@ const atRest = () => run([{ type: "auth.status", method: "api_key", source: "key
 const batch = { type: "review.batch", project: PROJECT, batch: "rv_4f2a9c01de", files: [{ file: "src/a.ts", kind: "modified" }], count: 2, capped: false, secretFiles: [], auto: false };
 const job = [{ type: "agent.state", agent: "builder-1", state: "working" }, { type: "checkpoint.created", project: PROJECT, agent: "builder-1", checkpoint: "cp_0042", label: "Before: make the button blue", files: 12, skipped: [] }];
 
+// M96 (changed on purpose, the founder approved the HeyClicky style mock, 15 Nov 2026): one glance is now one row: the face
+// and a lowercase hello (one button), then one pill with the action's own words; the line is the row's name, never drawn.
 describe("one glance in every state", () => {
   const states: [string, () => Model, string, string | null][] = [
-    ["not checked yet", atRest, S.m93.act.check, null],
-    ["changes to review", () => run([batch], atRest()), S.m93.act.review, S.m93.line.changes(2)],
-    ["Claude Code waits", () => run([{ type: "hook.waiting", project: PROJECT, waiting: true, message: "" }], atRest()), S.m93.act.claude, S.m93.line.claude],
-    ["a job runs", () => run(job, atRest()), S.m93.act.stop, null],
-    ["the engine stopped", () => ({ ...atRest(), runnerUp: false }), S.m93.act.seeWhy, S.m93.line.off],
-    ["no project", () => run([{ type: "auth.status", method: "api_key", source: "keychain" }]), S.m93.act.pick, null],
+    ["not checked yet", atRest, S.m96.act.check, null],
+    ["changes to review", () => run([batch], atRest()), S.m96.changes(2), S.m93.line.changes(2)],
+    ["Claude Code waits", () => run([{ type: "hook.waiting", project: PROJECT, waiting: true, message: "" }], atRest()), S.m96.act.claude, S.m93.line.claude],
+    ["a job runs", () => run(job, atRest()), S.m96.act.stop, null],
+    ["the engine stopped", () => ({ ...atRest(), runnerUp: false }), S.m96.act.seeWhy, S.m93.line.off],
+    ["no project", () => run([{ type: "auth.status", method: "api_key", source: "keychain" }]), S.m96.act.pick, null],
   ];
-  for (const [name, m, action, line] of states) test(name, async () => {
+  for (const [name, m, pill, line] of states) test(name, async () => {
     await renderPage(<IslandPanel m={m()} line="" shown />);
     const panel = document.querySelector(".island-panel")!;
-    expect(panel.children.length).toBe(2);
-    expect(panel.querySelector(".ip-greet-big")?.textContent).toMatch(/^Hey /);
-    expect(panel.querySelectorAll(".ip-line").length).toBeLessThanOrEqual(1);
-    if (line) expect(panel.querySelector(".ip-line")?.textContent).toBe(line);
-    expect(panel.querySelectorAll(".ip-cta").length).toBe(1);
-    expect(panel.querySelector(".ip-cta")?.textContent).toContain(action);
-    expect(panel.querySelectorAll("button").length).toBeLessThanOrEqual(2);
+    expect(panel.children.length).toBe(1);
+    expect(panel.querySelector(".nb-greet")?.textContent).toMatch(/^hey /);
+    expect(panel.querySelectorAll(".ip-line").length).toBe(0);
+    if (line) expect(panel.querySelector(".nb-row")?.getAttribute("aria-label")).toContain(line);
+    expect(panel.querySelectorAll(".nb-pill").length).toBe(1);
+    expect(panel.querySelector(".nb-pill")?.textContent).toBe(pill);
+    expect(panel.querySelectorAll(".nb-pill svg, .nb-pill .ui-mtile").length).toBe(0);
+    expect(panel.querySelectorAll("button").length).toBe(2);
     expect(panel.querySelectorAll(".ip-face").length).toBe(1);
   });
 });

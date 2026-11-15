@@ -46,10 +46,10 @@ export type PanelLayout = "quick" | "job" | "question" | "result";
 /** The layout for what the panel shows (islandPanel.ts panelView): a question and a result keep today's cards. */
 export const panelLayout = (v: PanelView): PanelLayout => (v.kind === "questions" ? "question" : v.kind === "job" ? "job" : v.kind === "result" ? "result" : "quick");
 /** The height of the quick and job layouts (island.rs PANEL_MIN to PANEL_MAX), the same, so nothing moves as a job starts. */
-// M93 (the founder, 14 Nov 2026: "it's too much for just a notch"): two rows, the greeting and the one action
-// (notchMinimal.ts HOVER_H, which m93Hover.test.ts pins to the same number; written out here so the two modules never load
-// each other in a circle).
-export const LAYOUT_H = { quick: 106, job: 106 } as const;
+// M96 (the founder, 15 Nov 2026: "just see how HeyClicky does it"): one 42 point row, the face, the greeting and the one
+// pill (notchMinimal.ts HOVER_H, which m96Notch.test.ts pins to the same number; written out here so the two modules never
+// load each other in a circle).
+export const LAYOUT_H = { quick: 42, job: 42 } as const;
 
 const nameOf = (project: string): string => project.split("/").filter(Boolean).at(-1) ?? "";
 const projectOf = (m: Model): string => m.task?.project ?? m.folder ?? "";

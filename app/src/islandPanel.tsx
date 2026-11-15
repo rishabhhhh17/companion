@@ -1,5 +1,8 @@
 // The panel under the notch (islandPanel.ts and notchMinimal.ts decide what is in it). It hangs from the notch like the notch
-// grown down. M93 (the founder, 14 Nov 2026, on the M84 panel: "it's too much for just a notch. It just needs to be like
+// grown down. M96 (the founder, 15 Nov 2026, on the M93 hover: "just see how HeyClicky does it", and "yeah" to the mock):
+// pointing grows ONE row out of the notch, about 330 wide: Flowflow's live face, a lowercase "hey <first name>", and one
+// glowing pill with the action's own words. A click on the face or the hello opens the small chat out of the notch
+// (main.rs island_chat, never with the keyboard). What follows is the M93 history this replaces. M93 (the founder, 14 Nov 2026, on the M84 panel: "it's too much for just a notch. It just needs to be like
 // 'Hey Rishabh' and some CTA"): resting the pointer opens two rows, Flowflow's live face beside "Hey <first name>" with at
 // most one short line under it, then ONE action that fits the moment and a quiet Open Home. The AI tools, the latest
 // review, the usage ring, the key to press, Settings and the practice offer live in Home. Opened by itself (a question, a
@@ -20,9 +23,9 @@ import { invoke } from "./tauri.ts";
 import { useSetting } from "./settingsStore.ts";
 import { homeStatus, notchStatusLine } from "./homeHero.ts";
 import { panelLayout } from "./notchQuick.ts";
-import { hoverAction, hoverGreeting, hoverLine, hoverSecondary } from "./notchMinimal.ts";
+import { hoverAction, hoverGreeting, hoverLine, hoverPill } from "./notchMinimal.ts";
 import { useGroups } from "./groups.ts";
-import { Button, Dot, Tile } from "./ui/parts.tsx";
+import { Button } from "./ui/parts.tsx";
 import { Icon } from "./icons.tsx";
 
 /** `brief` (M26): the panel opened by itself (a question, or a result that matters), so it shows only that; the pointer
@@ -132,6 +135,11 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
       </div>
     )
     : null;
+  // M96: the pill's words and its dot (notchMinimal.ts hoverPill).
+  const pill = hoverPill(action, m);
+  // M96: the face or the hello opens the small chat out of the notch (the shell opens Home as before with island.smallChat
+  // off). Never with the keyboard: the chat's field takes the keys only when the person clicks into it (rule 9).
+  const openChat = () => { if (ready()) void invoke("island_chat").catch(() => {}); };
   // Every press but Stop opens Home at a place (island_go); Stop stops, as Home's own Stop does.
   const act = () => {
     if (!ready()) return;
@@ -147,20 +155,16 @@ export const IslandPanel = forwardRef<HTMLDivElement, Props>(function IslandPane
         // Opened by itself, only a question or a result that matters (island.tsx); never the greeting or a button.
         view.kind === "questions" || view.kind === "result" ? live : null
       ) : <>
-      {/* M93: Flowflow's live face, in the state it is in, beside the greeting, with at most one short line under it. */}
-      <div className="ip-head" role="status" aria-label={S.m93.say(greet, hline?.words ?? null)}>
-        <FlowMini className="ip-face" state={m.character} still={!shown} />
-        <span className="ip-lead" aria-hidden="true">
-          <b className="ip-greet-big" title={greet}>{greet}</b>
-          {hline && <span className="ip-line" title={hline.words}><Dot colour={hline.colour} /><span>{hline.words}</span></span>}
-        </span>
-      </div>
-      {/* M93: ONE action that fits the moment, and a quiet Open Home unless the action already is that. */}
-      <div className="ip-act-row">
-        <Button kind="secondary" size="sm" className="ip-cta" tabIndex={tab} label={action.id === "stop" ? stopSay : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : undefined} onClick={act}>
-          {action.id === "stop" ? <Icon name="stop" size={12} /> : <Tile colour={action.look.colour} icon={action.look.icon} size="btn" />}{action.label}
-        </Button>
-        {hoverSecondary(action) && <button className="ip-home" type="button" tabIndex={tab} onClick={() => { if (ready()) void invoke("island_go", {}).catch(() => {}); }}>{S.m93.openHome}</button>}
+      {/* M96: one row out of the notch. The face and the hello are one button that opens the small chat; the one pill does
+          the moment's one action. The line M93 drew (hoverLine) is what VoiceOver hears and the pill's tooltip, never a row. */}
+      <div className="nb-row" role="group" aria-label={S.m93.say(greet, hline?.words ?? null)}>
+        <button className="nb-hi" type="button" tabIndex={tab} aria-label={S.m96.openChat(greet)} onClick={openChat}>
+          <FlowMini className="ip-face nb-face" state={m.character} still={!shown} />
+          <span className="nb-greet" title={greet}>{greet}</span>
+        </button>
+        <button className="nb-pill" type="button" tabIndex={tab} data-act={action.id} aria-label={action.id === "stop" ? stopSay : pill.dot ? `${pill.words}. ${S.m96.waits}` : undefined} title={action.id === "stop" ? keyHint("stop", S.look.stopKeys) : hline?.words ?? undefined} onClick={act}>
+          {pill.dot && <span className="nb-dot" aria-hidden="true" />}{pill.words}
+        </button>
       </div>
       </>}
     </div>

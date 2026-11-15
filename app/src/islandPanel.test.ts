@@ -58,7 +58,7 @@ describe("the panel under the notch shows the work, not a character", () => {
     expect(page).not.toContain("FlowflowView");
     expect(page).toContain("<IslandPanel");
     // M68: the wings also stay out at rest (island.wings) and for the hello, which asks for the panel under them.
-    expect(page).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW, proven: ticking \}\)/);
+    expect(page).toMatch(/invoke\("island_alert", \{ on: wingsOut, panel: panelH, cheer: cheering, ask: ask \|\| helloOn, wing: wingW, proven: ticking, panelW \}\)/);   // M96 (on purpose): and the width it draws
   });
 });
 
@@ -92,7 +92,9 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     // M93 (changed on purpose, the minimal hover): Stop is the hover's one action while a job runs, drawn with its icon,
     // and the only press that acts by itself.
     expect(view).toContain('if (action.go === null) { void invoke("send_command", { cmd: stopAgent() }).catch(() => {}); return; }');
-    expect(view).toContain('{action.id === "stop" ? <Icon name="stop" size={12} />');
+    // M96 (changed on purpose, the founder approved the HeyClicky style mock, 15 Nov): no icon in the pill; Stop says Stop
+    // and its keys to VoiceOver.
+    expect(view).toContain('aria-label={action.id === "stop" ? stopSay');
     // M69 (the YC benchmark spec 3.13): a mini receipt, not a toast. The character as the verdict says it, the fix, how it
     // was proven, the after picture, then Keep, Undo and See proof, with no key hints (the notch never takes the keyboard).
     // M70 step 4: no character in the panel (the founder: Squibby is not there always); a small tick or dot says the verdict.
@@ -123,8 +125,10 @@ describe("the hover panel shows only what is live (F28, 4.3)", () => {
     // bubble they removed was the hello at rest), with Settings and Open in words.
     // M93 (changed on purpose, the founder, 14 Nov: "It just needs to be like 'Hey Rishabh' and some CTA"): the greeting
     // leads, with at most one short line under it; Settings and Open left the head (Open Home is the quiet second action).
-    expect(view).toContain('<b className="ip-greet-big" title={greet}>{greet}</b>');
-    expect(view).toContain('{hline && <span className="ip-line" title={hline.words}><Dot colour={hline.colour} /><span>{hline.words}</span></span>}');
+    // M96 (changed on purpose, the founder approved the HeyClicky style mock, 15 Nov): one row, the face and a lowercase
+    // hello as one button that opens the small chat, then one pill. The line is what VoiceOver hears, never a row.
+    expect(view).toContain('<span className="nb-greet" title={greet}>{greet}</span>');
+    expect(view).toContain('aria-label={S.m93.say(greet, hline?.words ?? null)}');
     expect(view).toContain('const showButtons = useSetting("panel.showButtons") !== false;');
     for (const gone of ["greeting(", "ip-hi", "ip-go", "ip-pill", "ip-row", "S.panel.go", "S.look.chipFind", "S.look.chipSafe", "first_name", "panel.showHello"]) expect(view, gone).not.toContain(gone);
     const css = read("./style.css").replace(/\/\*[\s\S]*?\*\//g, "");

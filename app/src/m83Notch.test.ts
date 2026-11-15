@@ -119,7 +119,8 @@ describe("the facts row (M83)", () => {
     // M93 (changed on purpose, the minimal hover): the panel's one action and Open Home go through island_go; only Stop acts.
     const panel = read("./islandPanel.tsx");
     expect(panel).toContain('void invoke("island_go", action.go).catch(() => {});');
-    expect(panel).toContain('if (ready()) void invoke("island_go", {}).catch(() => {});');
+    // M96 (changed on purpose): no Open Home in the row; the face and the hello open the small chat instead.
+    expect(panel).toContain('if (ready()) void invoke("island_chat").catch(() => {});');
   });
 });
 
@@ -163,12 +164,13 @@ describe("the new size, pinned on both sides (M83)", () => {
   // M93 changed it again on purpose (the founder, 14 Nov: "it's too much for just a notch"): two rows, 106 points
   // (notchMinimal.ts HOVER_H; m93Hover.test.ts holds the rows).
   test("the quick and job layouts are one fixed height, inside the shell's limits", () => {
-    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: 106, job: 106 });
+    // M96 changed it again on purpose (the founder, 15 Nov: "just see how HeyClicky does it"): one 42 point row.
+    expect({ ...LAYOUT_H } as Record<string, number>).toEqual({ quick: 42, job: 42 });
     const rs = read("../src-tauri/src/island.rs");
     const max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(max);
     const css = read("./ui/notch.css");
-    expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${LAYOUT_H.quick}px;`);
+    expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { width: 330px; height: ${LAYOUT_H.quick}px;`);
     expect(read("./islandPanel.tsx")).not.toContain('<nav className="ip-facts"');
   });
 });

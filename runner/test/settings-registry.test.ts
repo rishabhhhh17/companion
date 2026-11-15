@@ -119,6 +119,8 @@ describe("the shipped list of settings", () => {
       "look.style": "instrument", "look.character": "visor",
       // M66: a light tap on the trackpad as the notch opens under your own click or pointing. Off, like sounds (rule 16).
       "island.haptics": false,
+      // M96: the small chat out of the notch first, on (the founder approved the mock, 15 Nov 2026).
+      "island.smallChat": true,
       // M68 step 2b (the founder, 4 Nov 2026: "no notch like how HeyClicky has, like hey Rishabh"): small wings at rest and a
       // short hello in the notch, both on; the name for the hello is only what the person types, empty by default.
       "island.wings": false, "island.hello": false, "you.name": "",
@@ -297,6 +299,11 @@ describe("the shipped list of settings", () => {
     sec("character.linger", 1.5, 0.5, 10, 0.5, "seconds");
     expect(defOf("island.display")!.options).toEqual(["follow", "builtIn", "main"]);
     // M70 (the founder, 4 Nov 2026: "just like HeyClicky's notch"): pointing opens a small panel first, the usual, or Home right away.
+    // M96 (the founder, 15 Nov 2026: "it starts small and then when we go to settings then it opens up"): a click on the
+    // greeting under the notch, or the ask key, opens Home as a small chat first. On, the usual; off, Home as before.
+    expect(defOf("island.smallChat")).toMatchObject({ section: "home", kind: "switch", default: true, scope: "app", applies: ["shell", "pages"], store: "settings", live: true });
+    expect(validate(defOf("island.smallChat")!, false).ok).toBe(true);
+    expect(validate(defOf("island.smallChat")!, "yes").ok).toBe(false);
     expect(defOf("island.pointOpens")).toMatchObject({ section: "home", kind: "choice", default: "status", options: ["home", "status"], scope: "app", applies: ["shell"], store: "settings", live: true });
     expect(defOf("home.goToNeeds")!.options).toEqual(["goToIt", "markTab"]);
     expect(defOf("home.size")!.options).toEqual(["standard", "large"]);

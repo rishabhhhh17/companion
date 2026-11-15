@@ -35,6 +35,12 @@ impl HomeSize {
     pub const WIDE_LARGE: HomeSize = HomeSize { w: 688.0, min_h: 560.0, max_h: 560.0 };
     /// The usual size: wide, at the standard size.
     pub const USUAL: HomeSize = HomeSize::WIDE;
+    /// M96, the small chat (the founder, 15 Nov 2026, on the wide M93 hover: "just see how HeyClicky does it", "it starts
+    /// small and then when we go to settings then it opens up"): clicking Flowflow or the greeting under the notch, or the
+    /// ask key, opens Home this small first, out of the notch: about 460 by 300 with the notch's own row, so 266 below it.
+    /// Settings and the expand button open it out to the size in force (`size_in_force`). Smaller than every other size, so
+    /// Home's window, made for the biggest, always holds it (app/src/notchChat.ts CHAT pins the same numbers).
+    pub const CHAT: HomeSize = HomeSize { w: 460.0, min_h: 266.0, max_h: 266.0 };
     /// The size the home.size word and the look.layout word name together. Tall is the panel from before M51; anything
     /// else is wide, the usual layout. A size word other than large is the standard size.
     pub fn of(size: &str, layout: &str) -> HomeSize {
@@ -58,6 +64,18 @@ pub const SETTINGS_H: f64 = 640.0;
 pub fn with_settings(base: HomeSize, open: bool) -> HomeSize {
     if !open || base.fixed() { return base; }
     HomeSize { w: base.w.max(HomeSize::LARGE.w), min_h: SETTINGS_H, max_h: SETTINGS_H }
+}
+/// M96: the size Home takes now. The small chat while it is open (`chat`), unless Settings is open, which always opens it out;
+/// otherwise the size set, with Settings as `with_settings` says.
+pub fn size_in_force(base: HomeSize, settings: bool, chat: bool) -> HomeSize {
+    if chat && !settings { HomeSize::CHAT } else { with_settings(base, settings) }
+}
+/// M96: whether Home opens as the small chat. Only when it was closed (a Home already open stays as it is), only with the
+/// island drawn (`island`: on a display, shown; the chat grows out of it) and the small chat on (island.smallChat), and only
+/// for the two ways in that ask for it: a click on Flowflow or the greeting in the panel under the notch ("notch_chat",
+/// never with the keyboard), and the ask key ("ask_key", which may take the keyboard, as it always did).
+pub fn opens_small(source: &str, was_open: bool, on: bool, island: bool) -> bool {
+    !was_open && on && island && matches!(source, "notch_chat" | "ask_key")
 }
 /// The usual size, as Home's window is made at launch (before any setting is read) and as the tests name it.
 pub const CARD: (f64, f64) = (HomeSize::USUAL.w, HomeSize::USUAL.min_h);
@@ -125,8 +143,14 @@ pub fn wing_w(asked: f64) -> f64 { if asked.is_finite() && asked > WING { asked.
 /// M83 (the founder, 12 Nov 2026: "it can be wider and give some more info"): 560, about 1.4 times the old 400, for the
 /// row of short facts (notchQuick.ts PANEL_W pins the same number).
 pub const PANEL_W: f64 = 560.0;
+/// M96 (HeyClicky's notch: small, then it opens out): the pointer's panel is one row about 330 wide (app/src/notchMinimal.ts
+/// HOVER_W); the question and result cards and the hello keep PANEL_W. The page says the width it draws (island_alert
+/// `panelW`); never narrower than this, never wider than PANEL_W, and nonsense (or nothing said) is PANEL_W, as before.
+pub const PANEL_W_MIN: f64 = 300.0;
+pub fn panel_w(asked: f64) -> f64 { if asked.is_finite() && asked >= PANEL_W_MIN { asked.min(PANEL_W) } else { PANEL_W } }
 /// How tall the panel may be below the notch's row: the page measures what it shows and asks (island_alert `panel`).
-pub const PANEL_MIN: f64 = 56.0;
+/// M96: the pointer's panel is one 42 point row under the notch, so the least is 40 (it was 56 for the two rows of M93).
+pub const PANEL_MIN: f64 = 40.0;
 pub const PANEL_MAX: f64 = 240.0;
 /// The height the page asked for, kept between PANEL_MIN and PANEL_MAX (nonsense is the smallest).
 pub fn panel_h(asked: f64) -> f64 { if asked.is_finite() { asked.clamp(PANEL_MIN, PANEL_MAX) } else { PANEL_MIN } }
@@ -185,9 +209,13 @@ pub struct Look { pub frame: Rect, pub core: f64, pub row: f64, pub wing: f64 }
 /// Every size is centred on the notch (or the display) and hangs from the same top, so the page's shape, centred in the
 /// window, stays in place on the screen when the window changes.
 pub fn look(d: &Display, mode: Mode, panel: f64) -> Look { look_winged(d, mode, panel, 0.0) }
+/// The same, with the panel at the full PANEL_W (the question and result cards, the hello).
+pub fn look_winged(d: &Display, mode: Mode, panel: f64, wing: f64) -> Look { look_sized(d, mode, panel, wing, PANEL_W) }
 /// The same, with the wings the page asked for (`wing`, island_alert; wing_w keeps it between WING and WING_MAX). Only the
 /// wings and the panel under them change with it; the bare notch and the panel under it never do.
-pub fn look_winged(d: &Display, mode: Mode, panel: f64, wing: f64) -> Look {
+/// M96: `pw`, the panel's width as the page said it (panel_w keeps it between PANEL_W_MIN and PANEL_W).
+pub fn look_sized(d: &Display, mode: Mode, panel: f64, wing: f64, pw: f64) -> Look {
+    let pw = panel_w(pw);
     let wing = match mode { Mode::Alert | Mode::WingsPeek => wing_w(wing), Mode::Rest | Mode::Peek => WING };
     let r = rest_frame(d);
     let (fx, fw, cx) = (d.frame[0], d.frame[2], center_x(d));
@@ -200,8 +228,8 @@ pub fn look_winged(d: &Display, mode: Mode, panel: f64, wing: f64) -> Look {
         // F28: the bare notch at rest. On a notch the window, and so the click and hover area, is exactly the notch.
         Mode::Rest => r,
         Mode::Alert => at(winged, top, row),
-        Mode::Peek => at(winged.max(PANEL_W), r[1], r[3] + panel_h(panel)),
-        Mode::WingsPeek => at(winged.max(PANEL_W), top, row + panel_h(panel)),
+        Mode::Peek => at(winged.max(pw), r[1], r[3] + panel_h(panel)),
+        Mode::WingsPeek => at(winged.max(pw), top, row + panel_h(panel)),
     };
     let row = match mode { Mode::Rest | Mode::Peek => r[3], Mode::Alert | Mode::WingsPeek => row };
     Look { frame, core, row, wing }
@@ -353,7 +381,9 @@ pub fn home_panel(on: Option<&Display>, sizes: &[HomeSize], now: HomeSize, spot:
     let (fx, fy, fw, fh) = (d.frame[0], d.frame[1], d.frame[2], d.frame[3]);
     let r = rest_frame(d);
     let bh = band_h(d);
-    let band_w = (r[2] + 2.0 * WING).min(fw);
+    // M96: the small chat is one shape out of the notch, as wide at the menu bar row as below it (the approved mock); the
+    // full Home keeps the band of the notch and its wings (F18).
+    let band_w = if now == HomeSize::CHAT { now.w.max(r[2] + 2.0 * WING).min(fw) } else { (r[2] + 2.0 * WING).min(fw) };
     let wide_w = w.min(d.work[2]).max(0.0);
     let body_w = now.w.min(wide_w).max(0.0);
     // Hanging from the band; never above the work area (a reading where the work area starts lower).
@@ -364,7 +394,9 @@ pub fn home_panel(on: Option<&Display>, sizes: &[HomeSize], now: HomeSize, spot:
     let ph = (top - fy + max_h + HEADROOM).min(fh);
     let cx = center_x(d);
     let x = around(cx, pw, fx, fw);
-    Some(HomePanel { frame: [x, fy, pw, ph], kind: kind(d).word(), cx: cx - x, rest: (r[2], r[3]), band: (band_w, bh), body_w, min_h: min_h.min(max_h), max_h, body_top: top - fy })
+    // M96: the small chat has one height of its own, in the same window (which holds every size, so it never resizes).
+    let (body_min, body_max) = if now == HomeSize::CHAT { (now.min_h.min(max_h), now.max_h.min(max_h)) } else { (min_h.min(max_h), max_h) };
+    Some(HomePanel { frame: [x, fy, pw, ph], kind: kind(d).word(), cx: cx - x, rest: (r[2], r[3]), band: (band_w, bh), body_w, min_h: body_min, max_h: body_max, body_top: top - fy })
 }
 
 /// Home grows from what the island shows, and folds back into it (M66 step 5): with something running (`wing`: the wings
@@ -430,9 +462,10 @@ pub const FROM_BAND_MS: u64 = 780;
 /// The panel's band width now, from what the shell kept at the opening (`(width, until)`, epoch ms) and the time `t`.
 pub fn from_band(kept: Option<(f64, u64)>, t: u64) -> Option<f64> { kept.filter(|k| t < k.1).map(|k| k.0) }
 
-/// The small panel's bottom corners when fully open (style.css `.island.notch { --r-open: 22px }`, and the usual --r-card
+/// The small panel's bottom corners when fully open (style.css `.island.notch { --r-open: 20px }`, M96: about 20, as the
+/// approved mock, and the usual --r-card
 /// on the pill and the line). The window is exactly the panel, so the clear parts are only beside these corners.
-pub const PANEL_R_NOTCH: f64 = 22.0;
+pub const PANEL_R_NOTCH: f64 = 20.0;
 pub const PANEL_R_CARD: f64 = 12.0;
 /// The bottom corner the island's shape is drawn with in a mode, for the click through: only the small panel (Peek,
 /// WingsPeek) is cut; at rest and with the wings out the window is the shape, as before.
@@ -555,7 +588,9 @@ impl Follow {
 /// the hover panel's contents are (`panel`, whole points, as the page measured them). `quiet` (M46): a call or a
 /// presentation is on with Quiet during calls on, or Companion is hidden; the island then never opens by itself.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool, pub quiet: bool, pub wing: u16 }
+pub struct State { pub hover: bool, pub alert: bool, pub home_open: bool, pub panel: u16, pub ask: bool, pub quiet: bool, pub wing: u16,
+    /// M96: the panel's width as the page said it (0: not said, the full PANEL_W).
+    pub pw: u16 }
 
 /// M34 (HeyClicky's notch shows how many results are new): results finished while Home was closed, counted up to 99 (the
 /// hover panel says "9+" past nine, M46); any result while Home is open is seen at once.
@@ -625,7 +660,7 @@ impl ReviewReady {
 
 /// M26: Home opened by a keyboard shortcut is simply there, with no drop and no spring (like Raycast: something opened
 /// many times a day by a key must feel instant). Every other way in (a click, the notch, a drop) still drops from the notch.
-pub fn animates_open(source: &str) -> bool { source != "hotkey" }
+pub fn animates_open(source: &str) -> bool { !matches!(source, "hotkey" | "ask_key") }
 
 /// Home open shows everything the line or the wings would, right below, so the island stays the bare notch over it.
 /// A question waiting for the person (`ask`, M23: the page says so only with Open the notch for questions on) opens the
@@ -656,7 +691,7 @@ impl PointOpens { pub fn of(word: &str) -> PointOpens { if word == "home" { Poin
 pub fn panel_rect(d: &Display, s: State) -> Option<(f64, f64)> {
     let m = mode(State { home_open: false, ..s });
     if !matches!(m, Mode::Peek | Mode::WingsPeek) { return None; }
-    let f = look_winged(d, m, f64::from(s.panel), f64::from(s.wing)).frame;
+    let f = look_sized(d, m, f64::from(s.panel), f64::from(s.wing), f64::from(s.pw)).frame;
     Some((f[2], f[3]))
 }
 
@@ -775,7 +810,8 @@ mod tests {
         assert!(!HomeSize::STANDARD.fixed() && !HomeSize::LARGE.fixed(), "the tall Home grows with what it shows");
         // The page tells the shell (card.tsx), and every place the size is read goes through home_size (main.rs).
         let main = crate::main_src();
-        assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
+        // M96 (on purpose): the size in force also knows the small chat (island.rs size_in_force).
+        assert!(main.contains("fn home_size() -> island::HomeSize { island::size_in_force(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst), CHAT_OPEN.load(Ordering::SeqCst)) }"));
         assert!(main.contains("fn resize_card(app: AppHandle, height: f64, settings: Option<bool>) {"));
         assert!(!main.contains("hs.size.min_h"), "the size in force is home_size(), Settings included");
     }
@@ -820,7 +856,7 @@ mod tests {
     #[test]
     fn home_grows_from_the_small_panel_only_while_the_island_shows_it() {
         let d = mbp14();
-        let st = |hover: bool, alert: bool, ask: bool| State { hover, alert, home_open: false, panel: 132, ask, quiet: false, wing: 40 };
+        let st = |hover: bool, alert: bool, ask: bool| State { hover, alert, home_open: false, panel: 132, ask, quiet: false, wing: 40, pw: 0 };
         // The pointer opened the small panel: Home grows from exactly that window, PANEL_W wide, the row and 132 tall.
         let (w, h) = panel_rect(&d, st(true, false, false)).unwrap();
         assert_eq!((w, h), (PANEL_W, frame_of(&d, Mode::Peek, 132.0)[3]));
@@ -1049,7 +1085,8 @@ mod tests {
         // One size definition (island.rs HomeSize), and the size in force comes from one place (home.size, home_size()).
         assert!(main.contains("use island::CARD;") && !main.contains("const CARD:") && !main.contains("CARD_MAX_H") && !main.contains("HomeSize { w:"), "one card size, defined here");
         // While Settings is open, Large and one fixed height (with_settings); otherwise the size home.size names.
-        assert!(main.contains("fn home_size() -> island::HomeSize { island::with_settings(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst)) }"));
+        // M96 (on purpose): the size in force also knows the small chat (island.rs size_in_force).
+        assert!(main.contains("fn home_size() -> island::HomeSize { island::size_in_force(home_set().size, SETTINGS_OPEN.load(Ordering::SeqCst), CHAT_OPEN.load(Ordering::SeqCst)) }"));
         let rc = main_body("fn resize_card(");
         assert!(rc.contains("let hs = home_size();") && rc.contains("height.clamp(hs.min_h, hs.max_h)"), "Home never grows past what the character keeps clear of");
         assert!(main_body("fn card_room(").contains("card_spot(mtm, d, home_size().max_h)"), "trips keep clear of Home where card_spot says, at its tallest");
@@ -1161,7 +1198,7 @@ mod tests {
     }
     #[test]
     fn the_size_follows_the_pointer_the_wings_and_home() {
-        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false, wing: 0 });
+        let s = |hover, alert, home_open| mode(State { hover, alert, home_open, panel: 0, ask: false, quiet: false, wing: 0, pw: 0 });
         assert_eq!(s(false, false, false), Mode::Rest);
         assert_eq!(s(false, true, false), Mode::Alert);
         assert_eq!(s(true, false, false), Mode::Peek);
@@ -1797,7 +1834,7 @@ mod tests {
 
     #[test]
     fn a_question_opens_the_panel_unless_home_is_open() {
-        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask, quiet: false, wing: 0 });
+        let s = |hover, home_open, ask| mode(State { hover, alert: true, home_open, panel: 0, ask, quiet: false, wing: 0, pw: 0 });
         assert_eq!(s(false, false, true), Mode::WingsPeek);
         assert_eq!(s(true, false, true), Mode::WingsPeek);
         assert_eq!(s(false, true, true), Mode::Rest);
@@ -1806,13 +1843,13 @@ mod tests {
 
     #[test]
     fn on_a_call_the_island_never_opens_by_itself_but_its_marks_show_and_the_pointer_still_opens_it() {
-        let q = |hover, alert, ask| mode(State { hover, alert, home_open: false, panel: 0, ask, quiet: true, wing: 0 });
+        let q = |hover, alert, ask| mode(State { hover, alert, home_open: false, panel: 0, ask, quiet: true, wing: 0, pw: 0 });
         assert_eq!(q(false, true, true), Mode::Alert, "a question waiting: the wings and their mark, no panel");
         assert_eq!(q(true, true, true), Mode::WingsPeek, "the person rested the pointer on it: it opens");
         assert_eq!(q(true, false, false), Mode::Peek, "the same on the bare notch");
         assert_eq!(q(false, true, false), Mode::Alert, "listening (or needs you) while quiet: the wings with the light");
         assert_eq!(q(false, false, false), Mode::Rest);
-        assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true, wing: 0 }), Mode::Rest, "Home open");
+        assert_eq!(mode(State { hover: false, alert: true, home_open: true, panel: 0, ask: true, quiet: true, wing: 0, pw: 0 }), Mode::Rest, "Home open");
         assert!(!State::default().quiet);
     }
 
@@ -1820,7 +1857,7 @@ mod tests {
     fn the_shell_keeps_the_island_quiet_on_a_call_and_when_hidden_and_looks_again_when_that_changes() {
         let main = crate::main_src();
         let body = |name: &str| { let b = &main[main.find(name).unwrap_or_else(|| panic!("{name}"))..]; b[..b.find("\n}\n").unwrap()].to_string() };
-        assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0 }"));
+        assert!(main.contains("island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0, pw: 0 }"));
         let place = body("fn place_island(");
         assert!(place.contains("s.quiet = quiet() || companion_hidden();"), "{place}");
         assert!(place.contains("ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet"), "no cheer on a call");
@@ -1836,6 +1873,9 @@ mod tests {
     #[test]
     fn home_opened_by_a_key_is_there_at_once() {
         assert!(!animates_open("hotkey"));
+        // M96: the ask key opens the small chat, as instantly as any key.
+        assert!(!animates_open("ask_key"));
+        assert!(animates_open("notch_chat"), "a click on the greeting grows it out of the notch");
         for s in ["button", "island", "dock", "drop", "first_run", "reopen"] { assert!(animates_open(s), "{s}"); }
     }
 
@@ -2061,7 +2101,8 @@ mod tests {
         let at = main.find("fn island_alert(").unwrap();
         let f = &main[at..at + main[at..].find("\n}\n").unwrap()];
         assert!(f.contains("wing: Option<f64>") && f.contains("island::wing_w(wing.unwrap_or(0.0))"), "{f}");
-        assert!(main.contains("island::look_winged(&d, mode, f64::from(state.panel), f64::from(state.wing))"), "placed with the wings the page asked for");
+        // M96 (on purpose): placed with the panel's width too (look_sized).
+        assert!(main.contains("island::look_sized(&d, mode, f64::from(state.panel), f64::from(state.wing), f64::from(state.pw))"), "placed with the wings the page asked for");
         assert!(main.contains("\"wing\": look.wing"), "and the page is told the wing it is drawn with");
     }
     #[test]
@@ -2143,8 +2184,9 @@ mod tests {
         }
         // The corners are the page's (style.css): 22 on the notch, the card radius on the pill and the line.
         let css = include_str!("../../src/style.css");
-        assert!(css.contains(".island.notch { --r-open: 22px; }"), "PANEL_R_NOTCH matches style.css");
-        assert_eq!(PANEL_R_NOTCH, 22.0);
+        // M96 (on purpose): about 20, as the approved mock.
+        assert!(css.contains(".island.notch { --r-open: 20px; }"), "PANEL_R_NOTCH matches style.css");
+        assert_eq!(PANEL_R_NOTCH, 20.0);
         let tokens = include_str!("../../src/ui/tokens.css");
         assert!(tokens.contains(&format!("--r-card: {}px;", PANEL_R_CARD as i64)), "PANEL_R_CARD matches the usual --r-card");
     }
@@ -2197,5 +2239,125 @@ mod tests {
         let open = main_body("fn open_card_then(");
         assert!(open.contains("*HOME_FROM.lock()") && open.contains("island::FROM_BAND_MS"), "{open}");
         assert!(main_body("fn home_rects_now(").contains("island::shape_rects_from(") && main_body("fn home_rects_now(").contains("island::from_band("));
+    }
+}
+
+// M96, the notch HeyClicky style: small, then it opens out (docs/milestones/M96-heyclicky-notch.md). The founder, 15 Nov 2026,
+// on the wide M93 hover: "I don't like how it looks, just see how HeyClicky does it", then "it starts small and then when we
+// go to settings then it opens up".
+#[cfg(test)]
+mod m96_tests {
+    use super::*;
+    fn mbp14() -> Display {
+        Display { id: "1512x982@0,0".into(), frame: [0.0, 0.0, 1512.0, 982.0], work: [0.0, 32.0, 1512.0, 875.0], primary: true,
+            notch: notch_from(1512.0, 32.0, 663.5, 663.5) }
+    }
+    fn air() -> Display { Display { id: "1440x900@0,0".into(), frame: [0.0, 0.0, 1440.0, 900.0], work: [0.0, 24.0, 1440.0, 806.0], primary: true, notch: None } }
+    fn main_body(name: &str) -> String { let m = crate::main_src(); let at = m.find(name).unwrap_or_else(|| panic!("{name}")); m[at..at + m[at..].find("\n}\n").unwrap()].to_string() }
+
+    #[test]
+    fn pointing_grows_one_small_row_out_of_the_notch() {
+        // The page says it draws 330: the window is 330 wide, centred on the notch, the notch's row and the one row tall.
+        let d = mbp14();
+        let l = look_sized(&d, Mode::Peek, 42.0, 0.0, 330.0);
+        let notch = rest_frame(&d);
+        assert_eq!(l.frame[2], 330.0);
+        assert!((l.frame[0] + l.frame[2] / 2.0 - (notch[0] + notch[2] / 2.0)).abs() < 0.01, "centred on the notch: one shape");
+        assert_eq!(l.frame[1], notch[1], "it hangs from the top, as the notch does: no gap");
+        assert_eq!(l.frame[3], notch[3] + 42.0);
+        // At rest: only the hardware notch, nothing drawn beside it.
+        assert_eq!(look_sized(&d, Mode::Rest, 42.0, 0.0, 330.0).frame, notch);
+        // Never narrower than the wings, never than PANEL_W_MIN, never wider than PANEL_W; nonsense is PANEL_W, as before.
+        assert_eq!(panel_w(330.0), 330.0);
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, 12.0, PANEL_W_MIN - 1.0] { assert_eq!(panel_w(bad), PANEL_W, "{bad}"); }
+        assert_eq!(panel_w(9999.0), PANEL_W);
+        assert_eq!(look_winged(&d, Mode::Peek, 42.0, 0.0), look_sized(&d, Mode::Peek, 42.0, 0.0, PANEL_W), "cards keep 560");
+        let wide_wings = look_sized(&d, Mode::WingsPeek, 42.0, WING_MAX, 330.0).frame;
+        assert!(wide_wings[2] >= rest_frame(&d)[2] + 2.0 * WING_MAX - 0.01, "with wide wings out, the panel is never narrower than they are");
+        // One row: the least is 40, so a 42 point row is what the page asked.
+        assert_eq!(PANEL_MIN, 40.0);
+        assert_eq!(panel_h(42.0), 42.0);
+        // The click through follows the 20 point corners.
+        assert_eq!(island_corner(Mode::Peek, Kind::Notch), 20.0);
+        // Home grows on from exactly that small window.
+        let st = State { hover: true, panel: 42, pw: 330, ..State::default() };
+        assert_eq!(panel_rect(&d, st), Some((330.0, notch[3] + 42.0)));
+        // The island page says its width with its height (island.tsx), and the shell keeps it in the state it places from.
+        let alert = main_body("fn island_alert(");
+        assert!(alert.contains("panel_w: Option<f64>") && alert.contains("s.pw = pw"), "{alert}");
+        assert!(main_body("fn place_island(").contains("island::look_sized(&d, mode, f64::from(state.panel), f64::from(state.wing), f64::from(state.pw))"));
+    }
+
+    #[test]
+    fn the_small_chat_opens_only_from_the_greeting_or_the_ask_key_and_opens_out_for_settings() {
+        // Which ways in open it small: the greeting (never with the keyboard) and the ask key, only from closed, only with
+        // the island drawn and the setting on.
+        assert!(opens_small("notch_chat", false, true, true));
+        assert!(opens_small("ask_key", false, true, true));
+        for s in ["island", "notch_panel", "point", "hotkey", "button", "menu", "drop", "first_run", "reopen", "explain_error", ""] { assert!(!opens_small(s, false, true, true), "{s}"); }
+        assert!(!opens_small("notch_chat", true, true, true), "a Home already open stays as it is");
+        assert!(!opens_small("notch_chat", false, false, true), "off in Settings: Home as before");
+        assert!(!opens_small("ask_key", false, true, false), "no island drawn: nothing to grow out of");
+        // The size: about 460 by 300 with the notch's row (266 under a 32 point notch, plus the row), one height.
+        assert_eq!((HomeSize::CHAT.w, HomeSize::CHAT.min_h, HomeSize::CHAT.max_h), (460.0, 266.0, 266.0));
+        assert!(HomeSize::CHAT.fixed());
+        for base in [HomeSize::STANDARD, HomeSize::LARGE, HomeSize::WIDE, HomeSize::WIDE_LARGE] {
+            assert!(HomeSize::CHAT.w < base.w && HomeSize::CHAT.max_h < with_settings(base, true).max_h, "smaller than every other size, so the window holds it");
+            assert_eq!(size_in_force(base, false, true), HomeSize::CHAT);
+            assert_eq!(size_in_force(base, true, true), with_settings(base, true), "Settings always opens it out");
+            assert_eq!(size_in_force(base, false, false), base);
+            assert_eq!(size_in_force(base, true, false), with_settings(base, true));
+        }
+        // In Home's one window: the body is the chat's size, the window is unchanged (never resized during a motion).
+        let d = mbp14();
+        let sizes = [HomeSize::WIDE, with_settings(HomeSize::WIDE, true)];
+        let full = home_panel(Some(&d), &sizes, HomeSize::WIDE, None).unwrap();
+        let chat = home_panel(Some(&d), &sizes, HomeSize::CHAT, None).unwrap();
+        assert_eq!(chat.frame, full.frame);
+        assert_eq!((chat.body_w, chat.min_h, chat.max_h), (460.0, 266.0, 266.0));
+        assert_eq!((full.body_w, full.min_h, full.max_h), (688.0, 480.0, 480.0));
+        // One shape out of the notch: as wide at the menu bar row as below it; the full Home keeps the notch and its wings.
+        assert_eq!(chat.band.0, 460.0);
+        assert_eq!(full.band.0, rest_frame(&d)[2] + 2.0 * WING);
+        assert_eq!(chat.body_h(9999.0), 266.0);
+        let r = shape_rects(&chat, true, 480.0);
+        assert_eq!(r[1][2], 460.0);
+        assert_eq!(r[1][3], 266.0);
+        assert!(inside_shape(&r, (r[1][0] + 230.0, r[1][1] + 100.0), 0.0) && !inside_shape(&r, (r[1][0] - 20.0, r[1][1] + 100.0), 0.0), "outside it, the pointer passes through to the app behind");
+        // The pill and the line too.
+        let p = home_panel(Some(&air()), &sizes, HomeSize::CHAT, None).unwrap();
+        assert_eq!(p.body_w, 460.0);
+    }
+
+    #[test]
+    fn the_shell_wires_the_chat_without_ever_taking_the_keys_by_itself() {
+        let m = crate::main_src();
+        // The greeting's click: the small chat, never with the keyboard (rule 9).
+        assert!(m.contains("fn island_chat(app: AppHandle) { open_card(&app, \"notch_chat\", false); }"));
+        // The ask key: the small chat, its field ready, as the ask key always took the keys.
+        assert!(m.contains("keymap::Action::Card => open_card(app, \"ask_key\", true),"));
+        // Decided as Home opens, before it is placed and told; the page hears it with "opened".
+        let open = main_body("fn open_card_then(");
+        assert!(open.contains("CHAT_OPEN.store(island::opens_small(&src, false, small_on, island_drawn), Ordering::SeqCst);"), "{open}");
+        assert!(open.find("CHAT_OPEN.store(").unwrap() < open.find("place_card(d, c);").unwrap(), "the size is set before Home is placed");
+        assert!(open.contains("opened[\"chat\"] = json!(CHAT_OPEN.load(Ordering::SeqCst));"));
+        // Opening out: only ever from the chat, and only Home's own body changes.
+        let ex = main_body("fn home_expand(");
+        assert!(ex.contains("if !CHAT_OPEN.swap(false, Ordering::SeqCst) { return; }") && ex.contains("with_panels(place_card);"), "{ex}");
+        for no in ["makeKey", "orderFront", "set_focus", "activate"] { assert!(!ex.contains(no), "{no}"); assert!(!main_body("fn island_chat(").contains(no), "{no}"); }
+        // Esc, a click elsewhere and Stop everything all go through home_closed, which forgets the chat; the island goes
+        // back to the bare notch (reset_hover).
+        let closed = main_body("fn home_closed(");
+        assert!(closed.contains("CHAT_OPEN.store(false, Ordering::SeqCst);") && closed.contains("reset_hover();"), "{closed}");
+        assert!(main_body("fn home_fold(").contains("home_closed();"));
+        assert!(m.contains("home_stop_now(\"stop_everything\")"));
+        // A chat opened by the greeting's click is the person's: it does not fold when the pointer leaves (only Esc, Close
+        // or a click elsewhere), unlike a Home that pointing opened.
+        assert!(open.contains("island::Leave::new(src == \"point\" || src == \"notch_panel\")"));
+        // The island's own window stays a plain panel that can never take the keys (states 1 and 2).
+        assert!(m.contains("let panel = if card { homepanel::HomePanel::make(mtm, frame, style) } else { NSPanel::initWithContentRect_styleMask_backing_defer("));
+        // Both commands are the ask box's (F20 groups).
+        let groups = include_str!("../../../protocol/groups.json");
+        assert!(groups.contains("\"island_go\", \"island_chat\", \"home_expand\""));
     }
 }

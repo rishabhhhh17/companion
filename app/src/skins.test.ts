@@ -108,7 +108,12 @@ describe("the chrome does not read a skin", () => {
       "--flow-base", "--flow-light", "--flow-deep", "--flow-glow", "--flow-tint", "--flow-grad-1", "--flow-grad-2", "--flow-grad-3",
       "--flow-sky", "--flow-foot", "--flow-lit", "--flow-card", "--flow-focus",
       // M68, the Visor (the founder's pick, 4 Nov 2026): the light behind its band, fixed art in every theme, never chrome.
-      "--visor-light", "--visor-glow", "--visor-needs", "--visor-needs-glow", "--visor-stop"];
+      "--visor-light", "--visor-glow", "--visor-needs", "--visor-needs-glow", "--visor-stop",
+      // M96 (the founder approved the HeyClicky style mock, 15 Nov 2026): the one lavender blue of the thing to press under the
+      // notch and of the person's words in the small chat, its dot, and the chat's faintly cool greys. Only the notch's pill
+      // and the chat use them (m96Notch.test.ts), never Home's chrome.
+      "--lav-1", "--lav-2", "--lav-2-soft", "--lav-ink", "--lav-line", "--lav-glow", "--lav-glow-soft", "--notch-wait",
+      "--chat-them", "--chat-them-fg", "--chat-field", "--chat-icon-fg"];
     for (const [name, block] of [["Night", night]] as const) {
       const t = tokens(block);
       for (const [k, v] of Object.entries(t)) if (!SEMANTIC.includes(k)) expect(sat(v), `${name} ${k}: ${v}`).toBeLessThan(0.04);

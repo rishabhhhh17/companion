@@ -590,6 +590,7 @@ export const S = {
     "you.name": "The notch says Hey and the first word of it. Empty says Hey there.",
     "you.buildsWith": "Picks which tip you see first. Kept on this Mac, never sent.",
     "island.pointOpens": "What opens when you point at the notch: a small panel first, or Home right away.",
+    "island.smallChat": "A click on the hello under the notch, or the ask key, opens a small chat first. Off: Home opens at its full size.",
     "island.openForQuestions": "The notch opens on its own for your OK. Things that can't be undone open Home.",
     "island.display": "Which screen the notch and Home use.",
     // M57 UI 12: the review of changes, first on the Fixing page.
@@ -2449,6 +2450,7 @@ export const S = {
     "notch.peekSide": { label: "Side", help: `Which side of the notch the character peeks from. On a display without a notch, it peeks from the side of the small pill in the menu bar.`, also: ["left", "right", "peek", "notch", "side"], options: { left: "Left", right: "Right" } },
     "notch.peekHideAfter": { label: "Hide after", help: `How long the character stays out after the last thing that happened: work ending, a question answered, a result. It gets sleepy near the end, then hides.`, also: ["hide", "idle", "quiet", "sleep", "peek", "notch", "minutes"], options: { "1": "After 1 minute", "2": "After 2 minutes", "5": "After 5 minutes", "10": "After 10 minutes" } },
     "island.peekOnHover": { label: "Open by pointing at the notch", help: "Rest the pointer on the notch and it opens. Off, the notch opens only when you click it.", also: ["Show status on hover", "Show status when I point at the notch", "hover", "peek", "status", "pointer"] },
+    "island.smallChat": { label: "Open a small chat first", help: `A click on the hello under the notch, or the ask key, opens a small chat: what happened lately, and a box to ask ${PRODUCT}. Its buttons open Settings or all of Home. Off, Home opens at its full size.`, also: ["chat", "small", "notch", "ask", "HeyClicky", "compact", "mini", "expand"] },
     "island.pointOpens": { label: "Pointing at the notch opens", help: `A small panel first, the usual: a hello, one line when something matters, and one button that fits, such as Check my project. It opens Home at the right place. Home right away opens all of ${PRODUCT} instead. A click on the notch always opens Home.`, also: ["hover", "point", "peek", "status", "notch", "open Home", "status line", "panel", "quick actions", "small panel"], options: { home: "Home right away", status: "A small panel first" } },
     "island.openDelay": { label: "Open the notch after pointing at it for", help: "How long the pointer rests on the notch before it opens. A short time can open it when you only pass over it on the way along the menu bar.", also: ["hover", "delay", "wait", "slow"] },
     "island.closeDelay": { label: "Close it after moving away for", help: "How long the status stays open after the pointer leaves the notch, so a small slip does not close it.", also: ["hover", "delay", "wait"] },
@@ -4033,6 +4035,63 @@ export const S = {
     say: (greet: string, line: string | null) => (line ? `${greet}. ${line}.` : `${greet}.`),
     // M93: the usage ring moves from the hover panel to Now in Home.
     runwayLabel: "Claude usage",
+  },
+  // M96: the notch HeyClicky style: small, then it opens out (docs/milestones/M96-heyclicky-notch.md). Lowercase hello, one
+  // glowing pill with the action's own words, and a small chat that opens out of the notch.
+  m96: {
+    hey: (name: string) => `hey ${name}`,
+    heyThere: "hey there",
+    // The one action, in the pill. Review changes says how many instead (changes).
+    act: {
+      stop: "Stop",
+      seeWhy: "See why",
+      answer: "Answer",
+      claude: "See what Claude asks",
+      pick: "Pick a project",
+      review: "Review changes",
+      fix: "Fix it",
+      undo: "Undo last change",
+      check: "Check my project",
+      home: "Open Home",
+    } as Record<"stop" | "seeWhy" | "answer" | "claude" | "pick" | "review" | "fix" | "undo" | "check" | "home", string>,
+    changes: (n: number) => (n === 1 ? "1 change to review" : `${n} changes to review`),
+    // What VoiceOver hears for the greeting button and the dot.
+    openChat: (greet: string) => `${greet}. Open the chat`,
+    waits: "Waiting for you",
+    // The small chat (notchChat.tsx).
+    chat: {
+      label: `Chat with ${PRODUCT}`,
+      settings: "Settings",
+      expand: "Open all of Home",
+      ask: `Ask ${PRODUCT}…`,
+      // The field's hint names the project an ask goes to (the M96 review: nothing in the chat said which).
+      askAbout: (project: string) => `Ask about ${project}…`,
+      // The project, beside the hello in the top row.
+      project: (project: string) => `Project: ${project}`,
+      send: "Send",
+      mic: "Hold to talk",
+      // The mic is not a button that listens (rule 5): its own words carry the keys to hold.
+      micKeys: (keys: string) => `Hold ${keys} to talk`,
+      stop: "Stop",
+      today: "Today",
+      yesterday: "Yesterday",
+      history: "What happened lately",
+      empty: (project: string) => (project ? `Ask me anything about ${project}.` : "Pick a project, or ask me anything."),
+      working: "Working on it.",
+      // Only proof says done (rule 14): a finished task whose checks did not all pass is said as what its proof says.
+      unchecked: (n: number | null) => (!n ? "Finished, not checked yet." : n === 1 ? "Finished, not checked yet. It changed 1 file." : `Finished, not checked yet. It changed ${n} files.`),
+      partial: "Finished. Some checks passed and some did not run.",
+      checksFailed: "Finished, but the checks did not pass.",
+      proven: (n: number | null) => (!n ? "Done, and the checks pass." : n === 1 ? "Done, and the checks pass. It changed 1 file." : `Done, and the checks pass. It changed ${n} files.`),
+      notDone: "It did not finish.",
+      failedCheck: (check: string) => `It did not finish. ${check} still fails.`,
+      stopped: "Stopped.",
+      undone: "Undone. Your files are back as they were.",
+      review: (n: number) => (n === 1 ? "Your AI tool changed 1 file. It is ready to review." : `Your AI tool changed ${n} files. It is ready to review.`),
+      claude: "Claude is waiting for you.",
+      off: `${PRODUCT} is not running.`,
+      notReady: `${PRODUCT} is getting ready.`,
+    },
   },
   // M94: What Squibby saved you. Counts of real events from this project's own history only: never a guess, never an
   // estimate of time, tokens or money, and never an amount (F29, M69). No streak, no praise (rule 16).

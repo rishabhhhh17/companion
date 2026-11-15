@@ -157,7 +157,7 @@ describe("the page: wings and hello in the notch, black, non activating, quiet",
   const panel = read("./islandPanel.tsx");
   test("the wings at rest ask the app for the wings' size (island.rs Alert), so they grow on the notch springs", () => {
     expect(page).toContain("const wingsOut = out || rest !== null || helloOn;");
-    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking })');
+    expect(page).toContain('invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking, panelW })');   // M96 (on purpose): and the width it draws
   });
   test("the hello is asked as the panel under the wings, which the app never opens on a call or while hidden (island.rs mode)", () => {
     expect(page).toContain('invoke("quiet_now")');
@@ -297,7 +297,8 @@ describe("one greeting for one name", () => {
     const { firstName } = await import("./notchHello.ts");
     const { hoverGreeting } = await import("./notchMinimal.ts");
     for (const typed of ["Rishabh Kapadia", "‮Rishabh Kapadia", "  Rishabh  ", "\"Sam\", Smith"]) {
-      expect(helloLine(firstName(typed), null).greet, typed).toBe(hoverGreeting(typed));
+      // M96 (changed on purpose): the hover greets in lowercase as the approved mock does; the same first word.
+      expect(helloLine(firstName(typed), null).greet.toLocaleLowerCase(), typed).toBe(hoverGreeting(typed));
     }
     expect(helloLine(firstName("Rishabh Kapadia"), null).greet).toBe("Hey Rishabh");
   });

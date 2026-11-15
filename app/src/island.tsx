@@ -244,10 +244,13 @@ function Island() {
   // the app can size the window before it opens (island.rs PANEL_MIN to PANEL_MAX).
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelH, setPanelH] = useState(0);
+  // M96: and its width (the pointer's one row is about 330, the cards 560), so the black grows out of the notch only as wide
+  // as the row it holds (island.rs panel_w).
+  const [panelW, setPanelW] = useState(0);
   useEffect(() => {
     const el = panelRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setPanelH(Math.ceil(el.offsetHeight)));
+    const ro = new ResizeObserver(() => { setPanelH(Math.ceil(el.offsetHeight)); setPanelW(Math.ceil(el.offsetWidth)); });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -334,7 +337,7 @@ function Island() {
   const wingsOut = out || rest !== null || helloOn;
   // M73 (fluid, item 11): `proven` while a proven fix's tick shows, so the shell can tap the trackpad once as it lands
   // (haptic.rs, only with island.haptics on).
-  useEffect(() => { void invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking }).catch(() => {}); }, [wingsOut, panelH, cheering, ask, helloOn, wingW, ticking]);
+  useEffect(() => { void invoke("island_alert", { on: wingsOut, panel: panelH, cheer: cheering, ask: ask || helloOn, wing: wingW, proven: ticking, panelW }).catch(() => {}); }, [wingsOut, panelH, cheering, ask, helloOn, wingW, ticking, panelW]);
   // What was out last stays drawn while the shape tucks back over it, so Flowflow and the mark slide away, never blink out.
   const lastWings = useRef<Wings | null>(null);
   if (wings) lastWings.current = wings;

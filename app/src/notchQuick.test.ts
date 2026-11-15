@@ -129,7 +129,9 @@ describe("the quick actions (M70: chosen from state, fixed slots, at most three)
     // purpose, the minimal hover): one action (notchMinimal.ts hoverAction, whose arrivals m93Hover.test.ts checks) and
     // Open Home; the gear left the panel (Settings is in Home). Only Stop sends a command, as before.
     expect(view).toContain('void invoke("island_go", action.go).catch(() => {});');
-    expect(view).toContain('invoke("island_go", {})');
+    // M96 (changed on purpose): no Open Home in the row; the face and the hello open the small chat (island_chat), whose
+    // expand button opens all of Home.
+    expect(view).toContain('invoke("island_chat")');
     const press = view.slice(view.indexOf("const act = () => {"), view.indexOf("return (", view.indexOf("const act = () => {")));
     expect(press.match(/send_command/g)?.length).toBe(1);
     expect(press).toContain("if (action.go === null) { void invoke(\"send_command\", { cmd: stopAgent() })");
@@ -160,20 +162,22 @@ describe("the layout and its fixed heights (M70: no jumps)", () => {
     const min = Number(/pub const PANEL_MIN: f64 = ([\d.]+);/.exec(rs)![1]), max = Number(/pub const PANEL_MAX: f64 = ([\d.]+);/.exec(rs)![1]);
     for (const h of Object.values(LAYOUT_H)) { expect(h).toBeGreaterThanOrEqual(min); expect(h).toBeLessThanOrEqual(max); }
     const css = read("./ui/notch.css");
-    expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { height: ${LAYOUT_H.quick}px;`);
+    // M96 (changed on purpose): one row, 330 wide and 42 tall.
+    expect(css).toContain(`.island-panel[data-layout="quick"], .island-panel[data-layout="job"] { width: 330px; height: ${LAYOUT_H.quick}px;`);
     expect(LAYOUT_H.quick).toBe(LAYOUT_H.job);
     // M70 step 4: short like HeyClicky's peek. M83: three rows. M84 (changed on purpose, the founder, 13 Nov: "I hope the
     // notch will be changed"): four rows that each say something (the head, the AI tools, a card, the foot), still under
     // the shell's PANEL_MAX (checked above).
     expect(LAYOUT_H.quick).toBeLessThanOrEqual(222);
     // M93 (changed on purpose): the greeting and the one line are cut with an ellipsis, never pushed out of the panel.
-    expect(css).toMatch(/\.ip-greet-big \{[^}]*text-overflow: ellipsis/);
-    expect(css).toMatch(/\.ip-line > span \{[^}]*text-overflow: ellipsis/);
+    expect(css).toMatch(/\.nb-greet \{[^}]*text-overflow: ellipsis/);
+    // M96 (changed on purpose): no line row any more; the pill's words are cut the same way.
+    expect(css).toMatch(/\.nb-pill \{[^}]*text-overflow: ellipsis/);
     // The founder: a small greeting first ("hey Rishabh"), from the typed name only, over the fact.
     const panel = read("./islandPanel.tsx");
     // M93 (changed on purpose): the first word of the typed name (notchMinimal.ts hoverGreeting), never the Mac's (F28).
     expect(panel).toContain('const greet = hoverGreeting(useSetting("you.name"));');
-    expect(panel).toContain('<b className="ip-greet-big" title={greet}>{greet}</b>');
+    expect(panel).toContain('<span className="nb-greet" title={greet}>{greet}</span>');
     // M70 step 4: the panel's one column never grows past it, or a long fact pushed Open out of the panel.
     expect(read("./style.css")).toMatch(/\.island-panel \{[^}]*display: grid; grid-template-columns: minmax\(0, 1fr\);/);
   });
@@ -267,24 +271,26 @@ describe("M70 step 4: the small panel says something useful at once, and leaves 
   test("the head row is the fact with Settings and Open in words; the character only in the opt in hello and (M84) its face in the head", () => {
     // M93 (changed on purpose, the founder, 14 Nov: "Hey Rishabh" and some CTA): the head is the face, the greeting and at
     // most one short line; Settings and Open left it (Open Home is the quiet second action, Settings is in Home).
-    const head = view.slice(view.indexOf('<div className="ip-head"'), view.indexOf("</div>", view.indexOf('<div className="ip-head"')));
+    // M96 (changed on purpose): one row; the line is in its name for VoiceOver, never drawn.
+    const head = view.slice(view.indexOf('<div className="nb-row"'), view.indexOf("</div>", view.indexOf('<div className="nb-row"')));
     expect(head).toContain("{greet}");
-    expect(head).toContain("{hline.words}");
+    expect(head).toContain("hline?.words");
     expect(head).not.toContain("S.notch.settings");
     expect(head).not.toContain("<Icon");
     expect(view).not.toContain("ip-fact\" role=\"status\" title={fact}>{fact}</p>");
     // M84 changed this on purpose (the milestone asks for Flowflow's live face beside the greeting): the opt in hello's
     // Visor, and the face in the head of the quick and job layouts. Nothing else in the panel draws the character.
     expect(view.match(/<FlowMini /g)?.length).toBe(2);
-    expect(view).toContain('<FlowMini className="ip-face" state={m.character} still={!shown} />');
+    expect(view).toContain('<FlowMini className="ip-face nb-face" state={m.character} still={!shown} />');
     expect(view).toContain('<FlowMini className="ip-agent" state="idle" still={!shown} />');
   });
   test("every action looks like a button, each with its colour tile (M71: the mock's raised pills, no blue main one)", () => {
-    // M93 (changed on purpose): one action, the same raised pill with its colour tile (Stop with its icon).
-    expect(view).toContain('kind="secondary" size="sm" className="ip-cta"');
-    expect(view).toContain('<Tile colour={action.look.colour} icon={action.look.icon} size="btn" />');
+    // M96 (changed on purpose, the founder approved the HeyClicky style mock, 15 Nov): one glowing lavender pill with the
+    // action's own words, no tile and no icon in it (notchMinimal.ts hoverPill).
+    expect(view).toContain('<button className="nb-pill" type="button"');
+    expect(view).not.toContain("<Tile");
     expect(view).not.toContain('kind={i === 0 ? "secondary" : "quiet"}');
-    expect(view).toContain("{action.label}");
+    expect(view).toContain("{pill.words}");
   });
   test("a proven result's second line is its proof, not the verdict said again (a failed one keeps its verdict)", () => {
     const f = finished();

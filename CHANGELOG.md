@@ -2,6 +2,16 @@
 
 What changed, in plain words. Newest first. Written so it can be posted while building in public.
 
+## The notch, small first, then it opens out: 15 Nov 2026
+
+- **Pointing at the notch grows one small row out of it,** the same black, like the notch got a little longer: the character, "hey sam", and one glowing button with what matters now, such as "2 changes to review" (with a small dot when something waits), "Fix it", "Undo last change", "Stop" while a job runs, or "Check my project" when nothing waits. Nothing else.
+- **Click the character or the hello and it opens into a small chat** under the notch: what happened lately as chat bubbles, and a box to ask Squibby, with the mic beside it. The ask key opens it too, ready to type. Asking there works exactly like asking in Home.
+- **Need more? It opens out.** The Settings button and the expand button grow it into all of Home, keeping anything you typed. If something needs your answer, like a question to allow, it opens out by itself so nothing waits out of sight. Esc or a click elsewhere folds it away; Stop everything hides it all.
+- **The chat says which project you are asking about,** beside the hello and in the box, and while a task works it has its own Stop. Its answers only say done when the checks passed: otherwise "Finished, not checked yet", "some checks did not run" or "the checks did not pass". The changes waiting and a failed check are bubbles you can press to open that place in Home.
+- If you hold the talk keys, attach a file, or a result or a notice comes in, the chat opens out into Home so you see it at once.
+- Stop under the notch now looks different from the other buttons, and every button there shades a little under the pointer. Undo last change follows the Undo switch in Settings.
+- It never takes your keyboard until you click into the box or press the ask key. Prefer Home at full size straight away? Settings, General, More options, Notch: Open a small chat first.
+
 ## What you have learned, and what to practise next: 15 Nov 2026
 
 - **Learn now follows what you have done.** A new part, What you have learned, lists the kinds of problems you have met and handled in Squibby, one plain line each, worded from what really happened: "A key written into the code: found and moved to settings, once" after a practice or your own change the checks proved, "a review found it and a later change took it out" after a review, or "Check question answered: why a key in the code is a problem". Under each line it says where it came from and when. Only fixes count: an ordinary feature task never adds a line, whatever its words mention.

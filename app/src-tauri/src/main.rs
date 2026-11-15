@@ -165,6 +165,9 @@ static CARD_H: AtomicU64 = AtomicU64::new(150);
 /// Settings is open in Home (the page says so with its height): Home uses the Large width and a fixed height (island.rs
 /// `with_settings`, the overhaul spec 3.1).
 static SETTINGS_OPEN: AtomicBool = AtomicBool::new(false);
+/// M96: Home is the small chat out of the notch (island.rs HomeSize::CHAT): set as it opens (island.rs opens_small), cleared
+/// when Settings or the expand button opens it out (home_expand) and whenever Home goes away (home_closed).
+static CHAT_OPEN: AtomicBool = AtomicBool::new(false);
 /// M51: the next move of the character's window is a plain ease with no overshoot (set by a let go that goes in at an edge).
 static LAND_EASE: AtomicBool = AtomicBool::new(false);
 static USER_HID: AtomicBool = AtomicBool::new(false);      // hidden from the menu bar icon
@@ -479,7 +482,7 @@ pub(crate) fn review_heard(app: &AppHandle, v: &Value) {
         review_dot_told(&a, changed);
     });
 }
-static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0 });
+static ISLAND_STATE: Mutex<island::State> = Mutex::new(island::State { hover: false, alert: false, home_open: false, panel: 0, ask: false, quiet: false, wing: 0, pw: 0 });
 static ISLAND_HOVER: Mutex<island::Hover> = Mutex::new(island::Hover::new());
 /// The display the island was on last (`island.json`), read once.
 static ISLAND_LAST: Mutex<Option<String>> = Mutex::new(None);
@@ -562,7 +565,7 @@ fn place_island(mtm: MainThreadMarker, follow_mouse: bool, reason: &str) {
     // marks still show, and the pointer still opens it (island.rs `mode`). Only the front app's id is read (rule 7).
     let state = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); s.home_open = HOME_OPEN.load(Ordering::SeqCst); s.quiet = quiet() || companion_hidden(); *s };
     let mode = island::mode(state);
-    let look = island::look_winged(&d, mode, f64::from(state.panel), f64::from(state.wing));
+    let look = island::look_sized(&d, mode, f64::from(state.panel), f64::from(state.wing), f64::from(state.pw));
     let look = if ISLAND_CHEER.load(Ordering::SeqCst) && !reduce_motion() && !state.quiet { island::cheered(&d, mode, look) } else { look };
     let f = look.frame;
     *ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()) = Some(d.clone());
@@ -676,6 +679,8 @@ fn reset_hover() {
 /// click away watch stops and the island goes back to its own size. Main thread.
 fn home_closed() {
     HOME_OPEN.store(false, Ordering::SeqCst);
+    // M96: the next opening decides again whether it is the small chat.
+    CHAT_OPEN.store(false, Ordering::SeqCst);
     *HOME_FROM.lock().unwrap_or_else(|e| e.into_inner()) = None;
     HOME_GEN.fetch_add(1, Ordering::SeqCst);
     reset_hover();
@@ -694,8 +699,11 @@ fn home_closed() {
 /// contents are (`panel`, points, measured; island.rs keeps it between PANEL_MIN and PANEL_MAX). M55: `wing`, how wide each
 /// wing must be to say a job's step in a word (measured; island.rs keeps it between WING and WING_MAX; none: the usual).
 #[tauri::command]
-fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>, wing: Option<f64>, proven: Option<bool>) {
+#[allow(clippy::too_many_arguments)]   // M96: a Tauri command, each argument one the island page names (panelW the newest)
+fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool>, ask: Option<bool>, wing: Option<f64>, proven: Option<bool>, panel_w: Option<f64>) {
     let panel = island::panel_h(panel.unwrap_or(0.0)).round() as u16;
+    // M96: the width the panel draws (the pointer's one row, about 330; the cards, 560).
+    let pw = island::panel_w(panel_w.unwrap_or(0.0)).round() as u16;
     let wing = island::wing_w(wing.unwrap_or(0.0)).round() as u16;
     let cheer = cheer.unwrap_or(false) && on;
     let ask = ask.unwrap_or(false) && on;
@@ -705,7 +713,7 @@ fn island_alert(app: AppHandle, on: bool, panel: Option<f64>, cheer: Option<bool
         let was_proven = ISLAND_PROVEN.swap(proven, Ordering::SeqCst);
         if haptic::ticks_on_proven(&setting_now(haptic::KEY), was_proven, proven) { haptic::tick(); }
         let cheer_changed = ISLAND_CHEER.swap(cheer, Ordering::SeqCst) != cheer;
-        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || s.wing != wing || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; s.wing = wing; c };
+        let changed = { let mut s = ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner()); let c = s.alert != on || s.panel != panel || s.ask != ask || s.wing != wing || s.pw != pw || cheer_changed; s.alert = on; s.panel = panel; s.ask = ask; s.wing = wing; s.pw = pw; c };
         if changed {
             if let Some(mtm) = MainThreadMarker::new() { place_island(mtm, false, "alert"); }
             // M66 step 5: Home grows from (and folds back into) the wings the island shows; its page hears when they change.
@@ -1047,6 +1055,13 @@ fn permissions_status() -> permissions::Permissions { permissions::current() }
 
 /// Show the card. `keyboard` is true only when the user asked to type (hotkey or Type button);
 /// clicking the character shows the card without taking the keyboard.
+/// M96: whether the small chat is on (island.smallChat) and the island is drawn to grow it out of. Home itself opens
+/// either way (beside the character with the island off).
+fn chat_can_grow() -> (bool, bool) {
+    let on = setting_now("island.smallChat").as_bool().unwrap_or(true);
+    (on, home_set().island_show && ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).is_some())
+}
+
 fn open_card(app: &AppHandle, source: &str, keyboard: bool) { open_card_then(app, source, keyboard, None); }
 
 /// Show the card, and tell Home what to do once it is open (`then`, arrival::arrival): start a lesson, show Learn or Settings.
@@ -1064,6 +1079,13 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
             let st = *ISLAND_STATE.lock().unwrap_or_else(|e| e.into_inner());
             ISLAND_ON.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|d| island::panel_rect(d, st))
         };
+        // M96: opened by a click on Flowflow or the greeting under the notch, or by the ask key, Home is the small chat first
+        // (island.rs opens_small); a Home already open stays as it is. Set before it is placed, so the page is told the
+        // chat's size before it hears it opened.
+        if !was_open {
+            let (small_on, island_drawn) = chat_can_grow();
+            CHAT_OPEN.store(island::opens_small(&src, false, small_on, island_drawn), Ordering::SeqCst);
+        }
         if !was_open {
             // M70 step 5: grown from the panel, Home's band is drawn the panel's width while it opens: so is its hit test,
             // until the band has eased back (island.rs FROM_BAND_MS), then the rects are asked again.
@@ -1110,6 +1132,8 @@ fn open_card_then(app: &AppHandle, source: &str, keyboard: bool, then: Option<se
         let cleared = review_ready().clear();
         review_dot_told(&a, cleared);
         let mut opened = match then { Some(t) => json!({ "keyboard": keyboard, "instant": instant, "then": t }), None => json!({ "keyboard": keyboard, "instant": instant }) };
+        // M96: the page draws the small chat (notchChat.tsx) while this is on.
+        opened["chat"] = json!(CHAT_OPEN.load(Ordering::SeqCst));
         if let (Some((w, h)), false) = (from, instant) { opened["from"] = json!({ "w": w, "h": h }); }
         // M55, adapts to you: the kind of app in front as Home opens (Home is a panel, so it is the app the person was using).
         if let Some(k) = everyday::home_front(&setting_now("home.followFrontApp"), front_id).and_then(|v| v.get("kind").cloned()) { opened["front"] = k; }
@@ -1238,6 +1262,26 @@ fn island_click(app: AppHandle) { open_card(&app, "island", false); }
 #[tauri::command]
 fn island_go(app: AppHandle, then: Option<serde_json::Value>) {
     open_card_then(&app, "notch_panel", false, then.as_ref().and_then(arrival::arrival));
+}
+
+/// M96: a click on Flowflow or the greeting in the panel under the notch opens Home as the small chat, out of the notch
+/// (island.rs opens_small; with island.smallChat off, Home as before). Never with the keyboard (rule 9): the chat's field
+/// takes the keys only when the person clicks into it.
+#[tauri::command]
+fn island_chat(app: AppHandle) { open_card(&app, "notch_chat", false); }
+
+/// M96: the small chat's Settings and expand buttons open Home out to the size in force, in the same window (place_card
+/// tells the page the new size, and the shape grows to it). Nothing else changes: the keys stay where they are.
+#[tauri::command]
+fn home_expand(app: AppHandle) {
+    if !CHAT_OPEN.swap(false, Ordering::SeqCst) { return; }
+    let _ = app.run_on_main_thread(|| {
+        let now = home_size();
+        CARD_H.store((CARD_H.load(Ordering::SeqCst) as f64).clamp(now.min_h, now.max_h) as u64, Ordering::SeqCst);
+        with_panels(place_card);
+        home_rects_now();
+        log("home_expanded", json!({}));
+    });
 }
 
 /// Home folds back into the notch as it closes (homeShape.css, on the CLOSE spring), and its page says when the fold has
@@ -1448,7 +1492,8 @@ fn main() {
                             open_card(app, "hotkey", false);
                             let _ = app.emit("find-problem", json!({ "front": everyday::front_kind(&front_id()) }));
                         }
-                        keymap::Action::Card => open_card(app, "hotkey", true),
+                        // M96: the ask key opens the small chat out of the notch, its field ready for words (opens_small).
+                        keymap::Action::Card => open_card(app, "ask_key", true),
                         keymap::Action::Read => {
                             // Changing hotkeys from inside a hotkey handler can deadlock the shortcut plugin, so hand the work to another thread.
                             let a = app.clone();
@@ -1479,7 +1524,7 @@ fn main() {
         )
         .manage(runner::Runner::new())
         .invoke_handler({
-            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in, peekout_want, peekout_state]);
+            let handler: Box<dyn Fn(tauri::ipc::Invoke) -> bool + Send + Sync> = Box::new(tauri::generate_handler![char_click, island_go, island_chat, home_expand, ui_click, restart_engine, follow_say, flowflow_rest, open_card_cmd, first_run_open, toggle_card, island_click, island_alert, island_state, resize_card, home_geom, home_folded, get_project, list_projects, use_project, pick_project, clone_project, start_in_new_folder, list_made, open_made, reveal_made, trash_made, shared_files_state, save_api_key, remove_api_key, data_inventory, permission_overview, open_permission_page, delete_everything, export_logs, report_problem, create_practice, practice_list, practice_mark, open_practice, restart_practice, remove_practice, remove_all_practices, showme_start, showme_aim, showme_labels, showme_clear, showme_hide, quiet_now, point_problem, do_it_for_me, show_diagram, open_acknowledgements, speak, speak_stop, voice_settings, voice_speed, set_voice_settings, update_status, check_update, install_update, update_note_take, celebrate, save_share_card, copy_link, copy_text, open_link, voice_download, key_map, key_choices, set_key, reset_keys, keys_notice_seen, close_card, send_command, drag_dock, drop_dock, settings_get, settings_set, settings_reset, settings_migrate, front_app, app_names, permissions_status, replay_events, ph_consent, ph_ready, ph_disarm, ph_accept, ph_restore, ph_dismiss, ph_answer, eh_consent, eh_dismiss, eh_typed, note_failure, sl_consent, sl_dismiss, drop_now, drop_pick, drop_stop, drop_close, drop_reveal, drop_trim, tried_mark, read_document, google_accounts, google_start, google_disconnect, claude_status, claude_install_now, license_status, license_activate, license_check_now, license_deactivate, plan_open_checkout, plan_open_portal, trial_start, save_report, report_status, report_activate, point_paste, open_in_editor, save_notes, save_receipt, numbers_mail, open_notes_file, ai_tools_find, handoff_prompt, handoff_put_in, peekout_want, peekout_state]);
             move |invoke: tauri::ipc::Invoke| {
                 // F20: a command of a tool whose group is switched off answers with one plain line and does nothing.
                 if let Some(line) = group_refusal(invoke.message.command()) { invoke.resolver.reject(line); return true; }
